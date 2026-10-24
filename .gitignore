@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-ssr/
+*.log
+*.local
+.DS_Store
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# test databases
+db/*.db
+db/*.db-wal
+db/*.db-shm
+

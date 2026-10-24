@@ -1,0 +1,127 @@
+@import '@fontsource/vazirmatn/400.css';
+@import '@fontsource/vazirmatn/500.css';
+@import '@fontsource/vazirmatn/700.css';
+
+/*
+ * Design tokens — see docs/design-language.md.
+ * Light is the default; dark follows the system unless the user picked a theme.
+ * Everything visual reads from these tokens, so future settings (accent colour, corner radius,
+ * background, sidebar style) only need to override variables on :root.
+ */
+:root {
+  /* shape + accent: user-configurable later */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+  --accent: #5b57f0;
+  --accent-on: #ffffff;
+  --accent-bg: color-mix(in srgb, var(--accent) 11%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 6%, transparent);
+  --accent-ring: color-mix(in srgb, var(--accent) 28%, transparent);
+  --ok: #1f9d6b;
+
+  color-scheme: light;
+  --bg-app: #f4f5fa;
+  --bg: #ffffff;
+  --bg-raised: #ffffff;
+  --pop: #ffffff;
+  --text: #171a26;
+  --muted: #5b6075;
+  --faint: #959bb0;
+  --hover: rgba(25, 30, 80, 0.05);
+  --active: rgba(25, 30, 80, 0.09);
+  --border: rgba(25, 30, 80, 0.095);
+  --danger: #e5484d;
+  --code-text: #c2378d;
+  --code-bg: rgba(30, 30, 70, 0.07);
+  --pre-bg: #f4f4f9;
+  --hl-kw: #cf222e;
+  --hl-str: #0a3069;
+  --hl-num: #0550ae;
+  --hl-com: #6e7781;
+  --hl-fn: #8250df;
+  --hl-type: #953800;
+  --hl-tag: #116329;
+  --hl-meta: #8250df;
+  --hl-punc: #6e7781;
+  --hl-add: rgba(46, 160, 67, 0.18);
+  --hl-del: rgba(248, 81, 73, 0.18);
+  --shadow: 0 0 0 1px rgba(25, 30, 80, 0.05), 0 2px 6px rgba(25, 30, 80, 0.06), 0 12px 28px rgba(25, 30, 80, 0.11);
+  --panel-shadow: 0 1px 2px rgba(25, 30, 80, 0.04), 0 6px 20px rgba(25, 30, 80, 0.06);
+  --app-bg-image: var(--bg-custom-light, radial-gradient(900px 520px at 0% 0%, rgba(150, 130, 255, 0.13), transparent 60%), radial-gradient(700px 500px at 100% 100%, rgba(120, 170, 255, 0.11), transparent 60%));
+  --font: 'Vazirmatn', 'Segoe UI', Tahoma, system-ui, sans-serif;
+  --mono: 'Cascadia Mono', Consolas, 'SFMono-Regular', monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --accent: #6c68f5;
+    color-scheme: dark;
+    --bg-app: #08090d;
+    --bg: #0e0f15;
+    --bg-raised: #14151c;
+    --pop: #181a22;
+    --text: #ececf2;
+    --muted: #9b9dae;
+    --faint: #5b5d6e;
+    --hover: rgba(255, 255, 255, 0.05);
+    --active: rgba(255, 255, 255, 0.09);
+    --border: rgba(255, 255, 255, 0.08);
+    --danger: #ff6369;
+    --code-text: #ff8cc6;
+    --code-bg: rgba(255, 255, 255, 0.08);
+    --pre-bg: #0a0b10;
+    --hl-kw: #ff7b72;
+    --hl-str: #a5d6ff;
+    --hl-num: #79c0ff;
+    --hl-com: #8b949e;
+    --hl-fn: #d2a8ff;
+    --hl-type: #ffa657;
+  --hl-tag: #7ee787;
+  --hl-meta: #d2a8ff;
+  --hl-punc: #8b949e;
+  --hl-add: rgba(46, 160, 67, 0.25);
+  --hl-del: rgba(248, 81, 73, 0.25);
+    --shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 4px 10px rgba(0, 0, 0, 0.5), 0 14px 32px rgba(0, 0, 0, 0.6);
+    --panel-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.35);
+    --app-bg-image: var(--bg-custom-dark, radial-gradient(800px 480px at 0% 0%, rgba(90, 70, 220, 0.18), transparent 60%), radial-gradient(700px 500px at 100% 100%, rgba(40, 90, 200, 0.12), transparent 60%));
+  }
+}
+:root[data-theme='dark'] {
+  --accent: #6c68f5;
+  color-scheme: dark;
+  --bg-app: #08090d;
+  --bg: #0e0f15;
+  --bg-raised: #14151c;
+  --pop: #181a22;
+  --text: #ececf2;
+  --muted: #9b9dae;
+  --faint: #5b5d6e;
+  --hover: rgba(255, 255, 255, 0.05);
+  --active: rgba(255, 255, 255, 0.09);
+  --border: rgba(255, 255, 255, 0.08);
+  --danger: #ff6369;
+  --code-text: #ff8cc6;
+  --code-bg: rgba(255, 255, 255, 0.08);
+  --pre-bg: #0a0b10;
+  --hl-kw: #ff7b72;
+  --hl-str: #a5d6ff;
+  --hl-num: #79c0ff;
+  --hl-com: #8b949e;
+  --hl-fn: #d2a8ff;
+  --hl-type: #ffa657;
+  --hl-tag: #7ee787;
+  --hl-meta: #d2a8ff;
+  --hl-punc: #8b949e;
+  --hl-add: rgba(46, 160, 67, 0.25);
+  --hl-del: rgba(248, 81, 73, 0.25);
+  --shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 4px 10px rgba(0, 0, 0, 0.5), 0 14px 32px rgba(0, 0, 0, 0.6);
+  --panel-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.35);
+  --app-bg-image: var(--bg-custom-dark, radial-gradient(800px 480px at 0% 0%, rgba(90, 70, 220, 0.18), transparent 60%), radial-gradient(700px 500px at 100% 100%, rgba(40, 90, 200, 0.12), transparent 60%));
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body { margin: 0; background: var(--bg-app); background-image: var(--app-bg-image); background-attachment: fixed; background-size: cover; background-position: center; background-repeat: no-repeat; color: var(--text); font-family: var(--font); font-size: 15px; -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; }
+::selection { background: var(--accent-bg); }
+* { scrollbar-width: thin; scrollbar-color: var(--active) transparent; }

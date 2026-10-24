@@ -1,0 +1,47 @@
+name: Build installers
+
+# Builds the Windows (.exe/.msi) and macOS (.dmg) installers. Run it from the Actions tab, or push a tag like v0.1.0.
+# The installers are attached to the workflow run as artifacts (and to a draft release for tags).
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: ''
+          - os: macos-latest
+            args: '--target universal-apple-darwin'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: spike/tiptap/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: spike/tiptap/src-tauri
+      - run: npm ci
+        working-directory: spike/tiptap
+      - uses: tauri-apps/tauri-action@v0
+        with:
+          projectPath: spike/tiptap
+          args: ${{ matrix.args }}
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: Noviq ${{ github.ref_name }}
+          releaseDraft: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: noviq-${{ matrix.os }}
+          path: spike/tiptap/src-tauri/target/**/release/bundle/**/*.{exe,msi,dmg}
+          if-no-files-found: warn
