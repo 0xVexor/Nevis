@@ -26,8 +26,7 @@
 .tiptap code { padding: 0.12em 0.5em; border: 1px solid color-mix(in srgb, var(--code-text) 18%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--code-text) 8%, transparent); font-size: 0.86em; font-weight: 500; }
 
 /* quote: a tinted card with a large gradient mark */
-.tiptap blockquote { position: relative; margin: 1.2em 0; padding: 18px 24px 18px 62px; border: 0; border-image: none; border-radius: 20px; background: linear-gradient(var(--to-end), var(--accent-soft), transparent 140%); color: var(--text); }
-:root[dir='rtl'] .tiptap blockquote { padding: 18px 62px 18px 24px; border-radius: 20px; }
+.tiptap blockquote { position: relative; margin: 1.2em 0; padding: 18px 26px; padding-inline-start: 68px; border: 0; border-image: none; border-radius: 20px; background: linear-gradient(var(--to-end), var(--accent-soft), transparent 140%); color: var(--text); }
 .tiptap blockquote::before { content: '\201C'; position: absolute; inset-inline-start: 18px; top: 4px; font: 700 3.6em/1 Georgia, 'Times New Roman', serif; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; pointer-events: none; }
 .tiptap blockquote::after { content: ''; position: absolute; inset-inline-start: 0; top: 16px; bottom: 16px; width: 3px; border-radius: 3px; background: var(--grad); }
 .tiptap blockquote p { margin: 0.3em 0; }
