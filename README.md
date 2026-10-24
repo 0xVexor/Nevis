@@ -1,86 +1,257 @@
-# Noviq — Local-first workspace (در حال طراحی)
+<div align="center">
 
-نوت‌برداری آفلاین با ادیتور بلاکی و پشتیبانی کامل فارسی/RTL/متن ترکیبی.
+<img src="spike/tiptap/src-tauri/icons/128x128.png" alt="Noviq" width="96" height="96">
 
-## ساختار
-| مسیر | محتوا |
+# Noviq.
+
+**A local-first notes workspace with first-class Persian and right-to-left support.**
+
+Block editor · backlinks and graph · spaced-repetition flashcards · optional Google Drive sync · no server, no account.
+
+[![Build installers](https://github.com/AliMirzad/noviq/actions/workflows/release.yml/badge.svg)](https://github.com/AliMirzad/noviq/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/AliMirzad/noviq?include_prereleases&label=release)](https://github.com/AliMirzad/noviq/releases)
+![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS-6c72ff)
+![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24c8db)
+
+[Download](https://github.com/AliMirzad/noviq/releases) · [Website](https://alimirzad.github.io/noviq/) · [Privacy](https://alimirzad.github.io/noviq/privacy.html) · [فارسی](README.fa.md)
+
+<br>
+
+<img src="docs/screenshots/editor.png" alt="Noviq editor with a Persian note, tags, status and the formatting toolbar" width="100%">
+
+</div>
+
+---
+
+## Why Noviq
+
+Most note apps treat right-to-left text as an afterthought: mixed Persian and English lines scramble punctuation, tables flip the wrong way, and code blocks inherit the wrong direction. Noviq was built the other way round. Direction is decided **per block**, mixed-language text renders correctly, and everything else (tables, lists, callouts, formulas, diagrams) follows.
+
+Your notes are plain files in a folder you own. There is no Noviq server and no sign-up. If you want your notes on more than one machine, Noviq can sync that folder through your own Google Drive.
+
+## Features
+
+### Editor
+
+- **Per-block text direction**: `/rtl`, `/ltr`, `/auto`, `Ctrl+Shift+←/→`, and the Word-style left/right `Ctrl+Shift` shortcut.
+- **Rich blocks**: headings, lists, checklists, quotes, RTL tables, callouts, collapsible toggles, images, and horizontal rules.
+- **Math**: inline and block formulas with KaTeX (`$x$`, `$$`).
+- **Diagrams**: write [Mermaid](https://mermaid.js.org/) text and get a live diagram, with zoom/pan and one-click conversion back to code. Pasting Mermaid text is detected automatically.
+- **Code blocks**: 24 languages with syntax highlighting, auto-detection, and sensible `Tab` / `Enter` indentation.
+- **Markdown-native**: live shortcuts as you type, and raw Markdown paste.
+- **Command menu** on `/` and `Ctrl+/` (also works on a Persian keyboard layout); with text selected it transforms the selection.
+- **Page links** with `[[`, `@`, or `/link`, plus automatic **backlinks** on every page.
+- **Find in page** (`Ctrl+F`) that understands Persian letter variants and ZWNJ.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/editor-blocks.png" alt="Code block, inline and block math, a Mermaid diagram, flashcard toggles and backlinks"></td>
+<td width="50%"><img src="docs/screenshots/reader.png" alt="Reading mode showing a page like a sheet of paper"></td>
+</tr>
+<tr>
+<td align="center"><sub>Code, KaTeX formulas, Mermaid diagrams, toggles and backlinks</sub></td>
+<td align="center"><sub>Reading mode: distraction-free, adjustable text size and width, progress</sub></td>
+</tr>
+</table>
+
+### Workspace
+
+- **Pages, sub-pages and folders** with drag and drop, favorites, icons and gradient or image covers.
+- **Tags and status** (to do / in progress / done) on every page, and a sortable, filterable **Pages table**.
+- **Graph view** of how your pages link together, for the whole vault or around the current page.
+- **Quick search and command palette** on `Ctrl+K`.
+- **Templates**: lecture, chapter summary, exercise, meeting notes, to-do list.
+- **Reading mode** (`Ctrl+.`): a read-only, paper-like view with outline and progress.
+- **Print / PDF** with clean print styles.
+- **Appearance**: light, dark or system theme, accent colors, backgrounds, editor fonts, and an English / Persian interface.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/graph.png" alt="Graph view of linked pages"></td>
+<td width="50%"><img src="docs/screenshots/table.png" alt="Pages table with tags, status and word counts"></td>
+</tr>
+<tr>
+<td align="center"><sub>Graph view</sub></td>
+<td align="center"><sub>Pages table</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/search.png" alt="Quick search with highlighted matches"></td>
+<td width="50%"><img src="docs/screenshots/templates.png" alt="Template gallery"></td>
+</tr>
+<tr>
+<td align="center"><sub>Quick search (<code>Ctrl+K</code>)</sub></td>
+<td align="center"><sub>Templates</sub></td>
+</tr>
+</table>
+
+### Study
+
+- **Flashcards from your notes**: every toggle block is a card (title is the question, content is the answer).
+- **Spaced repetition** (SM-2 style) with *again / hard / good / easy* grading, per page or across the whole vault.
+
+<img src="docs/screenshots/flashcards.png" alt="Flashcard review showing a question and the Show answer button" width="70%">
+
+### Your data
+
+- **Open files, not a database.** Pages are JSON, attachments are content-addressed files.
+- **Version history**: up to 40 versions per page, with preview and restore.
+- **30-day trash**; unreferenced images are cleaned up after a grace period.
+- **Import** Markdown files and **Obsidian vaults** (folders, `[[links|alias]]`, `![[images]]`, `#tags`, front matter, callouts).
+- **Export** to a zip (folder structure, `assets/`, front matter) or a JSON backup.
+
+### Make it yours
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/dark.png" alt="Dark theme"></td>
+<td width="50%"><img src="docs/screenshots/settings.png" alt="Appearance settings with themes, accent colors and backgrounds"></td>
+</tr>
+<tr>
+<td align="center"><sub>Dark theme</sub></td>
+<td align="center"><sub>Themes, accent colors and backgrounds</sub></td>
+</tr>
+</table>
+
+<img src="docs/screenshots/home.png" alt="Noviq home screen with recent pages, pinned pages and quick actions" width="100%">
+
+## Download
+
+Get the latest installer from the **[Releases](https://github.com/AliMirzad/noviq/releases)** page:
+
+| Platform | File |
 |---|---|
-| `docs/01-problem-and-mvp.md` | تعریف مسئله، معیار RTL، MVP |
-| `docs/adr/0001-editor-choice.md` | انتخاب TipTap (پذیرفته‌شده) |
-| `docs/adr/0002-data-model.md` | مدل داده SQLite (schema آماده؛ فعلاً با IndexedDB شبیه‌سازی می‌شود) |
-| `db/` | migration SQLite، نرمال‌سازی فارسی، و آزمون‌ها (schema، crash، zip، تشخیص زبان، فلش‌کارت، ترجمه) |
-| `spike/tiptap/` | اپ فعلی (React + TipTap) |
+| Windows 10 / 11 | `.exe` (NSIS) or `.msi` |
+| macOS (Intel and Apple Silicon) | `.dmg` (universal) |
 
-## اجرا
+> **First-run warnings.** Installers are not code-signed yet.
+> On **Windows**, SmartScreen may show *Unknown publisher*: choose *More info → Run anyway*.
+> On **macOS**, right-click the app and choose *Open* the first time.
+
+## Google Drive sync
+
+Sync is optional and works without any Noviq server.
+
+1. Click the workspace card at the bottom of the sidebar to open **Workspaces**, then sign in with your Google account.
+2. Noviq keeps your vault in step with a hidden app folder in *your* Google Drive.
+3. Install Noviq on another computer, sign in, and the same vault appears.
+
+What it can and cannot see:
+
+- Noviq requests only the **`drive.appdata`** scope (plus your email address, to show which account is connected). It can reach its own hidden application folder and **nothing else** in your Drive.
+- The sign-in token is stored in the operating system's credential store (Windows Credential Manager / macOS Keychain).
+- Your notes travel directly between your device and Google. See the **[Privacy Policy](https://alimirzad.github.io/noviq/privacy.html)**.
+
+Two devices editing the same page never silently lose work: the newer edit wins and the older one is kept in that page's history. Different pages never conflict.
+
+## How your data is stored
+
+A **vault** is an ordinary folder (default `Documents/Noviq`), the single source of truth. Everything else is derived and rebuildable.
+
+```
+MyVault/
+  .noviq/vault.json            vault format version
+  pages/<id>.json              one file per page or folder (TipTap document + metadata)
+  files/ab/<sha256>            attachments, content-addressed (never conflict)
+  history/<pageId>/<ts>.json   previous versions of a page (up to 40)
+  kv/<key>.json                synced settings (e.g. flashcard schedule)
+  .trash/                      deleted items, purged after 30 days
+```
+
+Design notes: file names are IDs, not titles, so renames and moves never create conflicts; every write is atomic (temp file → `fsync` → rename); one edit touches exactly one file. The reasoning is in [ADR-0003](docs/adr/0003-vault-and-sync.md).
+
+## Built with
+
+| | |
+|---|---|
+| Shell | [Tauri 2](https://tauri.app/) (Rust) |
+| UI | React 19, TypeScript, Vite |
+| Editor | [TipTap 3](https://tiptap.dev/) (ProseMirror) |
+| Math / diagrams | KaTeX, Mermaid |
+| Storage | Plain files in a vault folder; IndexedDB when run in a browser |
+| Sync | Google Drive API (`appDataFolder`), OAuth 2.0 with PKCE |
+
+## Build from source
+
+**Prerequisites:** Node.js 22.18+, Rust (stable), and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS (on Windows: Visual Studio Build Tools with *Desktop development with C++*; on macOS: Xcode Command Line Tools).
+
 ```bash
-cd spike/tiptap && npm install && npm run dev      # http://localhost:5173
-# آزمون‌ها — Node 22.18+ (node:sqlite و اجرای مستقیم TypeScript)
-for t in schema crash zip detect srs mermaid-detect; do node db/test-$t.mjs; done
-node db/check-i18n.mjs                              # رشته‌های t('…') بدون ترجمه‌ی فارسی
-```
-
-## ذخیره‌سازی و ایمنی داده
-- **IndexedDB** (بدون سقف ۵ مگابایتی localStorage): هر صفحه یک رکورد؛ هر ویرایش فقط همان رکورد را در یک تراکنش می‌نویسد. داده‌ی قدیمی localStorage یک‌بار و با تأیید خوانش‌مجدد مهاجرت می‌کند.
-- **پشتیبان خودکار در پوشه‌ی واقعی** (File System Access، Edge/Chrome): `notes-backup-latest.json` بعد از تغییرات، و روزی یک فایل با نگه‌داری ۱۴ روز. تنظیم: «داده‌ها ← پشتیبان خودکار در پوشه…».
-- **تاریخچه‌ی نسخه‌ها**: تا ۴۰ نسخه برای هر صفحه (حداکثر هر ۱۰ دقیقه)، با پیش‌نمایش و بازگردانی.
-- سطل زباله ۳۰ روزه؛ تصویرهای بی‌مرجع پاک می‌شوند (با مهلت یک‌ساعته).
-
-## قابلیت‌ها
-**ادیتور**
-- bidi هر بلوک: `/rtl` `/ltr` `/auto`، `Ctrl+Shift+←/→`، و میانبر Word (Ctrl چپ+Shift چپ = LTR، راست+راست = RTL)
-- جدول RTL، لیست، چک‌لیست، Callout، Toggle، تصویر، فرمول KaTeX (`$x$`، `$$` + فاصله)، نمودار **Mermaid** (`/mermaid`، ` ```mermaid `، paste متن خام یا بلوک کد Mermaid به‌صورت خودکار نمودار می‌شود؛ متن موجود را با دکمه‌ی «نمودار» در منوی انتخاب تبدیل کنید؛ فلش‌های typographic مثل `–>` هنگام رندر اصلاح می‌شوند)
-- بلوک کد: ۲۴ زبان با انتخابگر و تشخیص خودکار؛ `Tab` ۴ فاصله، `Shift+Tab`، `Enter` با حفظ تورفتگی
-- Markdown: شورت‌کات‌های زنده، `نشانه + Tab`، paste خام Markdown
-- **`Ctrl+/`** منوی دستور مثل `/` در محل مکان‌نما (با کیبورد فارسی هم): تایپ برای فیلتر، ↑ ↓ Enter؛ با متن انتخاب‌شده روی همان انتخاب کار می‌کند (تبدیل به عنوان/لیست/کد، قرار دادن در Callout یا Toggle، تبدیل به نمودار)
-- **حالت مطالعه (`Ctrl+.` یا دکمهٔ کتاب بالای صفحه)**: صفحه فقط‌خواندنی می‌شود و مثل برگهٔ PDF روی پس‌زمینهٔ خاکستری نمایش داده می‌شود؛ نوار ابزار، سایدبار و ابزارهای ویرایش پنهان‌اند. اندازهٔ متن (A−/A+)، عرض صفحه، فهرست عنوان‌ها و درصد پیشرفت مطالعه دارد؛ تصویر و نمودار همچنان قابل بزرگ‌نمایی‌اند. خروج با `Esc`
-- **عرض صفحه**: `Alt` + `=` پهن‌تر و `Alt` + `-` باریک‌تر (گام ۸۰ پیکسل، بین ۶۴۰ و ۱۸۰۰؛ ذخیره می‌شود). در حالت مطالعه همین کلیدها عرض برگه را عوض می‌کنند.
-- نمودار: دکمه‌های **بزرگ‌نمایی** (بزرگ‌نمای زوم/جابه‌جایی: چرخ ماوس، کشیدن، `0` `1` `+` `−`، `Esc`) و **تبدیل به کد**
-- تصویر: تغییر اندازه با دستگیره یا ۲۵/۵۰/۷۵/۱۰۰٪، تراز، بزرگ‌نمایی با دابل‌کلیک، حذف، و `/تصویر از لینک` (دانلود و ذخیره برای آفلاین)
-- `Ctrl+F` جست‌وجو در صفحه (هم‌ارزی ي/ك، ZWNJ)، فهرست عناوین در پنل صفحه، قالب‌ها روی صفحه‌ی خالی
-- **لینک صفحه**: `[[` (کل نام داخل کروشه لینک می‌شود)، `@` یا `/لینک` برای کیبورد فارسی، و تایپ `]]` به‌صورت دستی
-
-**فضای کار**
-- صفحه/زیرصفحه/**پوشه** با Drag & Drop، علاقه‌مندی، آیکون، کاور، `Ctrl+K`، پیوندهای ورودی
-- **برچسب و وضعیت** برای هر صفحه + «جدول صفحه‌ها» (فیلتر، مرتب‌سازی، تغییر وضعیت)
-- **فلش‌کارت**: هر Toggle یک کارت است؛ مرور با تکرار فاصله‌دار (دوباره/سخت/خوب/آسان)
-- **چاپ / PDF** با استایل چاپ تمیز
-- **وارد کردن Vault مثل Obsidian**: ساختار پوشه‌ها، `[[لینک|alias]]`، `![[تصویر]]`، تگ‌های `#a/b` و front matter، callout
-- وارد کردن فایل‌های Markdown، خروجی zip (ساختار پوشه‌ای + `assets/` + front matter)، پشتیبان JSON
-
-## وضعیت فعلی (برای ادامه‌ی کار)
-
-**آماده و تست‌شده:** اپ وب (React + TipTap) با همه‌ی قابلیت‌های بالا؛ `tsc` و `vite build` سبز؛ آزمون‌های `db/` سبز؛ schema دو migration (`db/migrations/0001` و `0002`).
-
-**پوسته‌ی دسکتاپ Tauri (ساخته و تست‌شده روی ویندوز):** ذخیره‌ی واقعی در پوشه‌ی **Vault** (فایل ساده؛ ADR-0003) که با Google Drive همگام می‌شود. پیش‌فرض `DocumentsNoviq`؛ تغییر از «داده‌ها ← پوشه‌ی داده (همگام‌سازی)…». دیتابیس قدیمی SQLite در اولین اجرا خودکار وارد Vault می‌شود. نصب‌کننده‌ها: `spike/tiptap/src-tauri/target/release/bundle/` (`nsis/*.exe`، `msi/*.msi`). آزمون Rust: `cd spike/tiptap/src-tauri && cargo test`.
-- در Tauri: `db.ts` و `attachments.ts` به دستورهای Rust وصل می‌شوند؛ در مرورگر همان IndexedDB.
-- `.github/workflows/release.yml`: ساخت نصب‌کننده‌ی ویندوز و مک روی GitHub Actions (پس از push).
-
-### قدم‌های بعدی
-1. ویندوز: `rustup default stable-x86_64-pc-windows-msvc` + Visual Studio Build Tools (Desktop C++). مک: Xcode Command Line Tools.
-2. `cd spike/tiptap && npm install && npm run tauri dev` — خطاهای Rust (اگر بود) را رفع کنید.
-3. تست دستی در اپ دسکتاپ: بستن و باز کردن برنامه و ماندن صفحه‌ها، تصویر چسباندن، تاریخچه‌ی نسخه، فلش‌کارت، پشتیبان JSON و بازیابی.
-4. `npm run tauri build` ← `.exe`/`.msi`؛ برای `.dmg` روی مک یا Actions.
-5. داده‌ی قدیمی مرورگر خودکار منتقل نمی‌شود: در مرورگر پشتیبان JSON بگیرید و در اپ دسکتاپ بازیابی کنید.
-
-### گرفتن بیلد (نصب‌کننده)
-
-**روش ۱ — GitHub Actions (بدون نیاز به نصب Rust؛ برای ویندوز و مک با هم):**
-1. مخزن را push کنید.
-2. در GitHub به تب **Actions** بروید ← workflow به نام **Build installers** ← **Run workflow**. (یا یک تگ بزنید: `git tag v0.1.0 && git push --tags`.)
-3. بعد از پایان اجرا، فایل‌های `noviq-windows-latest` (`.exe`/`.msi`) و `noviq-macos-latest` (`.dmg`) را از بخش **Artifacts** همان run دانلود کنید. برای تگ، یک Draft Release هم ساخته می‌شود.
-
-**روش ۲ — روی ماشین خودتان (ویندوز):**
-```
-rustup default stable-x86_64-pc-windows-msvc   # + Visual Studio Build Tools (Desktop development with C++)
-cd spike/tiptap
+git clone https://github.com/AliMirzad/noviq.git
+cd noviq/spike/tiptap
 npm install
+```
+
+Run the desktop app in development:
+
+```bash
+npm run tauri dev
+```
+
+Or run just the web UI in a browser (uses IndexedDB and its own sample content):
+
+```bash
+npm run dev          # http://localhost:5173
+```
+
+Build installers for your platform (output in `src-tauri/target/release/bundle/`):
+
+```bash
 npm run tauri build
 ```
-خروجی در `spike/tiptap/src-tauri/target/release/bundle/` (`nsis/*.exe` و `msi/*.msi`). بیلد `.dmg` فقط روی مک (یا روش ۱) ممکن است.
 
-### کارهای باز
-- ⚠️ `SearchModal` پراپ `commands` را الزامی می‌گیرد ولی `App.tsx` آن را نمی‌دهد (`tsc -b` خطا می‌دهد و Ctrl+K احتمالاً کرش می‌کند): پالت دستورات هنوز وصل نشده.
-- چند رشته‌ی `t('…')` بدون ترجمه (`node db/check-i18n.mjs`).
-- پشتیبان خودکار در پوشه هنوز File System Access مرورگر است؛ برای دسکتاپ باید به مسیر معمولی دیسک برود.
-- `page_links` و FTS در SQLite پر نمی‌شوند (جست‌وجو در JS است).
-- تست IME واقعی و WebView2/WKWebView، Sync، دیتابیس‌ها.
+### Google Drive sync in your own build
+
+The OAuth client belongs to the app, not to the user. Create a **Desktop app** OAuth client in Google Cloud (Drive API enabled, scope `drive.appdata`), then either:
+
+- set `NOVIQ_GOOGLE_CLIENT_ID` and `NOVIQ_GOOGLE_CLIENT_SECRET` as environment variables at build time, or
+- drop the downloaded JSON as `google-oauth.json` into the app-data folder.
+
+Without credentials the app still works fully offline; only the sync button is unavailable.
+
+### Tests
+
+```bash
+# Node 22.18+ (uses node:sqlite and runs TypeScript directly)
+for t in schema crash zip detect srs mermaid-detect; do node db/test-$t.mjs; done
+node db/check-i18n.mjs                         # t('…') strings missing a Persian translation
+cd spike/tiptap/src-tauri && cargo test        # Rust: vault, index, sync
+cd .. && npx tsc -b                            # type check
+```
+
+## Releasing
+
+Installers for Windows and macOS are built by [GitHub Actions](.github/workflows/release.yml).
+
+1. Bump `version` in `spike/tiptap/src-tauri/tauri.conf.json`, `Cargo.toml` and `package.json`.
+2. Add the Google credentials as repository secrets `NOVIQ_GOOGLE_CLIENT_ID` and `NOVIQ_GOOGLE_CLIENT_SECRET`.
+3. Tag and push:
+   ```bash
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+4. Review the draft release that the workflow creates, then publish it.
+
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| `spike/tiptap/` | The app: React UI (`src/`) and the Tauri shell (`src-tauri/`) |
+| `spike/tiptap/src-tauri/src/` | Rust: `vault`, `index`, `registry`, `legacy` migration, and `sync/` (Google auth and Drive) |
+| `db/` | SQLite migrations, Persian normalization, and the Node test suite |
+| `docs/` | Design docs, [architecture decision records](docs/adr/), and the project site |
+
+## Roadmap
+
+- Code-signed installers (Windows and macOS) and automatic updates
+- Mobile apps (iOS / Android) on the same vault format
+- Live collaboration through an optional server (the page format is already backend-independent; see ADR-0003)
+- A local SQLite index for full-text search and backlinks on very large vaults
+
+## Privacy
+
+Noviq runs entirely on your computer. It has no analytics or telemetry and never sends your notes to us. The only network traffic is to Google, and only if you turn on sync. Full details: [Privacy Policy](https://alimirzad.github.io/noviq/privacy.html).
+
+---
+
+<div align="center">
+<sub>Made by Vexor.</sub>
+</div>
