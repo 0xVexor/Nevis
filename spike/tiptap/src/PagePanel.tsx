@@ -61,7 +61,7 @@ export function PagePanel({ open, page, pages, onClose, onOpen, onNewSub, onFav,
           <Row icon={<Ic.Markdown />} label="Markdown" onClick={onExport} />
           <Row icon={<Ic.History />} label={t('History')} onClick={() => window.dispatchEvent(new Event('open-history'))} />
           <Row icon={<Ic.Print />} label={t('Print / PDF')} onClick={() => printPage(page.title)} />
-          <Row icon={<Ic.Book />} label={t('Reader mode')} onClick={() => (onClose(), window.dispatchEvent(new Event('toggle-reader')))} />
+          <Row icon={<Ic.Reader />} label={t('Reader mode')} onClick={() => (onClose(), window.dispatchEvent(new Event('toggle-reader')))} />
           <Row icon={<Ic.Cards />} label={t('Flashcards')} onClick={() => window.dispatchEvent(new Event('open-cards'))} />
           <Row icon={<Ic.Table />} label={t('Pages table')} onClick={() => window.dispatchEvent(new Event('open-table'))} />
           <Row icon={<Ic.Settings />} label={t('Settings')} onClick={onSettings} />

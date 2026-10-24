@@ -51,7 +51,7 @@ node db/check-i18n.mjs                              # رشته‌های t('…')
 
 **آماده و تست‌شده:** اپ وب (React + TipTap) با همه‌ی قابلیت‌های بالا؛ `tsc` و `vite build` سبز؛ آزمون‌های `db/` سبز؛ schema دو migration (`db/migrations/0001` و `0002`).
 
-**نوشته‌شده ولی هنوز کامپایل/اجرا نشده:** پوسته‌ی دسکتاپ Tauri در `spike/tiptap/src-tauri/` (ذخیره‌ی واقعی در SQLite + فایل‌ها در پوشه‌ی داده‌ی برنامه). روی ماشین قبلی MSVC نبود، پس کد Rust یک‌بار هم build نشده؛ احتمال چند خطای کوچک کامپایل هست.
+**پوسته‌ی دسکتاپ Tauri (ساخته و تست‌شده روی ویندوز):** ذخیره‌ی واقعی در پوشه‌ی **Vault** (فایل ساده؛ ADR-0003) که با Google Drive همگام می‌شود. پیش‌فرض `DocumentsNoviq`؛ تغییر از «داده‌ها ← پوشه‌ی داده (همگام‌سازی)…». دیتابیس قدیمی SQLite در اولین اجرا خودکار وارد Vault می‌شود. نصب‌کننده‌ها: `spike/tiptap/src-tauri/target/release/bundle/` (`nsis/*.exe`، `msi/*.msi`). آزمون Rust: `cd spike/tiptap/src-tauri && cargo test`.
 - در Tauri: `db.ts` و `attachments.ts` به دستورهای Rust وصل می‌شوند؛ در مرورگر همان IndexedDB.
 - `.github/workflows/release.yml`: ساخت نصب‌کننده‌ی ویندوز و مک روی GitHub Actions (پس از push).
 

@@ -54,3 +54,23 @@ assert.equal(hashText('كلاس چیست؟'), hashText('کلاس  چیست؟'), 
 assert.notEqual(hashText('الف'), hashText('ب'))
 assert.notEqual(extractCards('a', doc)[0].key, extractCards('b', doc)[0].key, 'same question on two pages = two cards')
 console.log('srs OK — scheduling and card extraction behave')
+
+// ── review log (stats shown in the flashcards window) and its merge-friendly shape ──
+import { bump, countOn, dayKey, lastDays, streak, total } from '../spike/tiptap/src/reviewlog.ts'
+{
+  const NOW = new Date(2026, 9, 24, 15, 0, 0).getTime()
+  let log = {}
+  log = bump(log, 'A', dayKey(NOW))
+  log = bump(log, 'A', dayKey(NOW))
+  log = bump(log, 'B', dayKey(NOW)) // another device, same day
+  assert.equal(countOn(log, dayKey(NOW)), 3, 'devices add up for a day')
+  for (const back of [1, 2]) log = bump(log, 'A', dayKey(NOW - back * DAY))
+  assert.equal(streak(log, NOW), 3, 'today + 2 days before')
+  assert.equal(streak({ [dayKey(NOW - DAY)]: { A: 1 } }, NOW), 1, 'nothing yet today does not break a streak')
+  assert.equal(streak({ [dayKey(NOW - 3 * DAY)]: { A: 1 } }, NOW), 0, 'a gap does')
+  assert.equal(total(log), 5)
+  const days = lastDays(log, 14, NOW)
+  assert.equal(days.length, 14)
+  assert.equal(days.at(-1).count, 3)
+  console.log('review log: ok')
+}

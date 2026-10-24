@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import * as Ic from '../icons'
 
 const ICONS: Record<string, (p: { size?: number }) => React.JSX.Element> = {
+  star: Ic.Star,
   list: Ic.List,
   ol: Ic.OrderedList,
   check: Ic.Checklist,

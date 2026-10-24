@@ -4,6 +4,8 @@ import { Plugin } from '@tiptap/pm/state'
 import { putFile, urlFor } from '../attachments'
 import { openLightbox } from './lightbox'
 import { t } from '../i18n'
+import { setLabel, svgIcon } from './svgIcons'
+import { promptDialog } from '../dialog'
 
 type ImageAlign = 'left' | 'center' | 'right' | 'start' | 'end' // start/end: older pages, logical sides
 const WIDTHS = [25, 50, 75, 100]
@@ -54,20 +56,20 @@ export const AttImage = Image.extend({
       const btn = (label: string, title: string, fn: () => void) => {
         const b = document.createElement('button')
         b.type = 'button'
-        b.textContent = label
+        setLabel(b, label)
         b.title = title
         b.onmousedown = (e) => e.preventDefault()
         b.onclick = fn
         return b
       }
       const sizeBtns = WIDTHS.map((w) => btn(`${w}%`, t('Width {w}%', { w }), () => setAttrs({ width: w === 100 ? 100 : w })))
-      const reset = btn('⟲', t('Original size'), () => setAttrs({ width: null }))
+      const reset = btn(svgIcon.reset, t('Original size'), () => setAttrs({ width: null }))
       // physical sides (what "left" and "right" mean on screen); clicking the active one returns to the natural position
       const aligns: [ImageAlign, string][] = [['left', t('Align left')], ['center', t('Center')], ['right', t('Align right')]]
-      const alignBtns = aligns.map(([a, title]) => btn({ left: '⇤', center: '↔', right: '⇥', start: '', end: '' }[a], title, () => setAttrs({ align: cur.attrs.align === a ? null : a })))
-      const big = btn('⤢', t('Enlarge'), () => img.src && openLightbox({ src: img.src, alt: cur.attrs.alt }))
+      const alignBtns = aligns.map(([a, title]) => btn({ left: svgIcon.left, center: svgIcon.center, right: svgIcon.right, start: '', end: '' }[a], title, () => setAttrs({ align: cur.attrs.align === a ? null : a })))
+      const big = btn(svgIcon.enlarge, t('Enlarge'), () => img.src && openLightbox({ src: img.src, alt: cur.attrs.alt }))
       big.classList.add('img-big')
-      const del = btn('✕', t('Remove image'), () => {
+      const del = btn(svgIcon.close, t('Remove image'), () => {
         const pos = getPos()
         if (pos != null) editor.view.dispatch(editor.state.tr.delete(pos, pos + cur.nodeSize))
       })
@@ -106,7 +108,8 @@ export const AttImage = Image.extend({
         handle.addEventListener('pointerup', up)
       }
 
-      fig.append(img, bar, handle)
+      // the size / position / enlarge / remove toolbar is the floating ImageBubble now; `bar` stays only so its events keep being ignored
+      fig.append(img, handle)
 
       const style = (n: typeof node) => {
         fig.style.width = n.attrs.width ? `${n.attrs.width}%` : ''
@@ -168,7 +171,7 @@ export function pickImages(editor: any) {
  * if the site does not allow that (CORS), the link itself is used and the image then needs the internet.
  */
 export async function insertImageFromUrl(editor: any, url?: string | null) {
-  const u = (url ?? window.prompt(t('Image address (URL):')) ?? '').trim()
+  const u = (url ?? (await promptDialog({ title: t('Image from the web'), message: t('Image address (URL):'), placeholder: 'https://', ltr: true })) ?? '').trim()
   if (!u) return false
   let src = u
   let alt = decodeURIComponent(u.split('/').pop()?.split('?')[0] ?? '') || ''

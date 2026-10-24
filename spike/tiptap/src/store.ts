@@ -6,7 +6,7 @@ export const repo = new Repo(() => [
     id: crypto.randomUUID(),
     parentId: null,
     title: 'خوش آمدید',
-    icon: '👋',
+    icon: 'i:hand',
     favorite: true,
     sort: 0,
     content: WELCOME_DOC,

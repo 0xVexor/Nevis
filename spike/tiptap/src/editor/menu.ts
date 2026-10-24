@@ -16,6 +16,7 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
 
     const draw = () => {
       if (!el) return
+      const kept = el.querySelector('.slash-list')?.scrollTop ?? 0
       el.innerHTML = ''
       const label = document.createElement('div')
       label.className = 'slash-label'
@@ -28,6 +29,9 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
         el.append(none)
         return
       }
+      const list = document.createElement('div')
+      list.className = 'slash-list'
+      el.append(list)
       items.forEach((it, i) => {
         const v = cfg.view(it)
         const b = document.createElement('button')
@@ -47,21 +51,31 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
         b.onmousemove = () => {
           if (selected !== i) {
             selected = i
-            el!.querySelector('.sel')?.classList.remove('sel')
+            list.querySelector('.sel')?.classList.remove('sel')
             b.classList.add('sel')
           }
         }
-        el!.append(b)
-        if (i === selected) b.scrollIntoView({ block: 'nearest' })
+        list.append(b)
       })
+      const foot = document.createElement('div')
+      foot.className = 'slash-foot'
+      foot.innerHTML = '<span><kbd>↑</kbd><kbd>↓</kbd> ' + t('Navigate') + '</span><span><kbd>↵</kbd> ' + t('Select') + '</span><span><kbd>Esc</kbd> ' + t('Close') + '</span>'
+      el.append(foot)
+      // keep the scroll position across redraws, then make sure the selected row is fully inside the visible list (never under the footer)
+      list.scrollTop = kept
+      const cur = list.querySelector<HTMLElement>('.sel')
+      if (cur) {
+        if (cur.offsetTop - 6 < list.scrollTop) list.scrollTop = Math.max(0, cur.offsetTop - 6)
+        else if (cur.offsetTop + cur.offsetHeight + 6 > list.scrollTop + list.clientHeight) list.scrollTop = cur.offsetTop + cur.offsetHeight + 6 - list.clientHeight
+      }
     }
     const place = (props: any) => {
       const r = props.clientRect?.()
       if (!el || !r) return
-      const h = Math.min(el.offsetHeight || 340, 340)
+      const h = Math.min(el.offsetHeight || 400, 400)
       const below = r.bottom + 6 + h < window.innerHeight
       el.style.top = `${below ? r.bottom + 6 : Math.max(8, r.top - h - 6)}px`
-      el.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 330))}px`
+      el.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 360))}px`
     }
 
     return {

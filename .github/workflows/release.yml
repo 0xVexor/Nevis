@@ -34,6 +34,10 @@ jobs:
       - run: npm ci
         working-directory: spike/tiptap
       - uses: tauri-apps/tauri-action@v0
+        env:
+          # compiled into the app so Google Drive sync works for every user (see src-tauri/src/sync/auth.rs)
+          NOVIQ_GOOGLE_CLIENT_ID: ${{ secrets.NOVIQ_GOOGLE_CLIENT_ID }}
+          NOVIQ_GOOGLE_CLIENT_SECRET: ${{ secrets.NOVIQ_GOOGLE_CLIENT_SECRET }}
         with:
           projectPath: spike/tiptap
           args: ${{ matrix.args }}

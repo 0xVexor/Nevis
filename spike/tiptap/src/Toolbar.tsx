@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { alertDialog, promptDialog } from './dialog'
+import { hasHeaderColumn, hasHeaderRow } from './editor/tableHeader'
 import * as Ic from './icons'
 import { insertImageFromUrl, insertImages, pickImages } from './editor/image'
 import { t } from './i18n'
@@ -31,9 +33,12 @@ export function Toolbar({ editor, diagram }: { editor: any; diagram?: { from: nu
   }, [])
   const link = (c: Chain) => {
     const prev = editor.getAttributes('link').href ?? ''
-    const url = window.prompt(t('Link URL (empty = remove link)'), prev)
-    if (url === null) return c
-    return url ? c.setLink({ href: url }) : c.unsetLink()
+    void promptDialog({ title: t('Link'), message: t('Link URL (empty = remove link)'), initial: prev, placeholder: 'https://', ltr: true }).then((url) => {
+      if (url === null) return
+      const ch = editor.chain().focus()
+      ;(url ? ch.setLink({ href: url }) : ch.unsetLink()).run()
+    })
+    return c
   }
   // Less-used commands: inline in the bar when there is room, otherwise folded into the "more" dropdown.
   const extras = [
@@ -152,10 +157,11 @@ function TableMenu({ editor }: { editor: any }) {
   const inTable = editor.isActive('table')
   const run = (fn: (c: Chain) => Chain) => (fn(editor.chain().focus()).run(), setOpen(false))
   const insert = (rows: number, cols: number) => run((c) => c.insertTable({ rows, cols, withHeaderRow: true }))
-  const Item = ({ icon, label, onClick, danger, off }: { icon: ReactNode; label: string; onClick: () => void; danger?: boolean; off?: boolean }) => (
-    <button className={'tb-mi' + (danger ? ' danger' : '')} role="menuitem" disabled={off} onMouseDown={(e) => e.preventDefault()} onClick={onClick}>
+  const Item = ({ icon, label, onClick, danger, off, on }: { icon: ReactNode; label: string; onClick: () => void; danger?: boolean; off?: boolean; on?: boolean }) => (
+    <button className={'tb-mi' + (danger ? ' danger' : '') + (on ? ' on' : '')} role="menuitemcheckbox" aria-checked={on} disabled={off} onMouseDown={(e) => e.preventDefault()} onClick={onClick}>
       <span className="tb-mi-ic">{icon}</span>
       <span className="tb-mi-l">{label}</span>
+      {on && <Ic.Check size={14} />}
     </button>
   )
   return (
@@ -180,9 +186,12 @@ function TableMenu({ editor }: { editor: any }) {
           <Item icon={<Ic.Plus size={16} />} label={t('Insert column left')} off={!inTable} onClick={() => run((c) => c.addColumnBefore())} />
           <Item icon={<Ic.Plus size={16} />} label={t('Insert column right')} off={!inTable} onClick={() => run((c) => c.addColumnAfter())} />
           <div className="tb-msep" />
-          <Item icon="⇤" label={t('Align table left')} off={!inTable} onClick={() => run((c) => c.setTableAlign('left'))} />
-          <Item icon="↔" label={t('Center table')} off={!inTable} onClick={() => run((c) => c.setTableAlign('center'))} />
-          <Item icon="⇥" label={t('Align table right')} off={!inTable} onClick={() => run((c) => c.setTableAlign('right'))} />
+          <Item icon={<Ic.Table size={16} />} label={t('Header row')} on={inTable && hasHeaderRow(editor)} off={!inTable} onClick={() => run((c) => c.toggleHeaderRow())} />
+          <Item icon={<Ic.Table size={16} />} label={t('Header column')} on={inTable && hasHeaderColumn(editor)} off={!inTable} onClick={() => run((c) => c.toggleHeaderColumn())} />
+          <div className="tb-msep" />
+          <Item icon={<Ic.AlignLeft size={16} />} label={t('Align table left')} off={!inTable} onClick={() => run((c) => c.setTableAlign('left'))} />
+          <Item icon={<Ic.AlignCenter size={16} />} label={t('Center table')} off={!inTable} onClick={() => run((c) => c.setTableAlign('center'))} />
+          <Item icon={<Ic.AlignRight size={16} />} label={t('Align table right')} off={!inTable} onClick={() => run((c) => c.setTableAlign('right'))} />
           <Item icon="▭" label={t('Full-width table')} off={!inTable} onClick={() => run((c) => c.setTableAlign(null).setTableWidth(100))} />
           <div className="tb-msep" />
           <Item danger icon={<Ic.Trash size={16} />} label={t('Delete table')} off={!inTable} onClick={() => run((c) => c.deleteTable())} />
@@ -205,9 +214,9 @@ function ImageMenu({ editor }: { editor: any }) {
         if (type) out.push(new File([await item.getType(type)], 'pasted.' + type.split('/')[1], { type }))
       }
       if (out.length) await insertImages(editor, out)
-      else window.alert(t('No image on the clipboard'))
+      else void alertDialog({ title: t('No image on the clipboard') })
     } catch {
-      window.alert(t('No image on the clipboard'))
+      void alertDialog({ title: t('No image on the clipboard') })
     }
   }
   const Item = ({ icon, label, onClick, danger }: { icon: ReactNode; label: string; onClick: () => void; danger?: boolean }) => (

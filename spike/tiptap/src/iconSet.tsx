@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { MORE_GLYPHS } from './iconSetMore'
 
 /** Outline glyphs a page can use as its icon instead of an emoji. Stored on the page as `i:<name>`. */
 export const ICON_PREFIX = 'i:'
@@ -65,22 +66,32 @@ export const GLYPHS: Record<string, [string, string]> = {
   link: ['link url chain', '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'],
 }
 
+Object.assign(GLYPHS, MORE_GLYPHS)
 export const GLYPH_NAMES = Object.keys(GLYPHS)
 
 export const isGlyph = (icon?: string): icon is string => !!icon && icon.startsWith(ICON_PREFIX)
 
-export function Glyph({ name, size = 18 }: { name: string; size?: number }) {
+/** A page icon is `i:name`, or `i:name@#rrggbb` when a colour was chosen. */
+export const parseIcon = (icon: string) => {
+  const body = icon.startsWith(ICON_PREFIX) ? icon.slice(ICON_PREFIX.length) : icon
+  const [name, color] = body.split('@')
+  return { name, color: color || undefined }
+}
+
+export function Glyph({ name, size = 18, color }: { name: string; size?: number; color?: string }) {
   const g = GLYPHS[name]
   if (!g) return null
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden dangerouslySetInnerHTML={{ __html: g[1] }} />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={color ? { color } : undefined} dangerouslySetInnerHTML={{ __html: g[1] }} />
   )
 }
 
 /** A page icon as something renderable: an emoji as text, an `i:name` glyph as an SVG. */
 export function iconNode(icon: string | undefined, size = 18, fallback?: ReactNode): ReactNode {
   if (!icon) return fallback ?? null
-  return isGlyph(icon) ? <Glyph name={icon.slice(ICON_PREFIX.length)} size={size} /> : icon
+  if (!isGlyph(icon)) return icon
+  const g = parseIcon(icon)
+  return <Glyph name={g.name} size={size} color={g.color} />
 }
 
 /** Plain-text stand-in for places that can only show text (a glyph becomes a page emoji). */

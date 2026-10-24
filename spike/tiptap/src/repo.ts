@@ -1,5 +1,7 @@
 import { normalizeFa } from './normalize'
-import { addVersion, allPages, deleteVersions, listVersions, savePages } from './db'
+import { addVersion, allPages, deleteVersions, isTauri, listVersions, savePages, vaultStamp } from './db'
+
+const WATCH_EVERY = 3000 // how often the vault folder is checked for changes made by the sync tool
 
 type PageKind = 'page' | 'folder'
 export type PageStatus = 'todo' | 'doing' | 'done'
@@ -35,6 +37,7 @@ export interface PageRepo {
   remove(id: string): void // soft delete, includes descendants
   search(query: string): Page[]
   backlinks(id: string): Page[] // pages that contain a pageLink to `id`
+  linkGraph(): { nodes: Page[]; edges: [string, string][] } // pages and the page links between them
   move(id: string, parentId: string | null, beforeId: string | null): boolean // beforeId null = append
   trash(): Page[] // roots of deleted subtrees, newest first
   restoreFromTrash(id: string): void
@@ -101,6 +104,7 @@ export class Repo implements PageRepo {
     if (!rows.length) {
       const legacy = readLegacy()
       this.pages = legacy ?? this.seed()
+      this.rebuildLinks()
       this.full = true
       await this.writeNow()
       if (legacy) {
@@ -113,6 +117,7 @@ export class Repo implements PageRepo {
       }
     } else {
       this.pages = rows
+      this.rebuildLinks()
     }
     navigator.storage?.persist?.().catch(() => {})
   }
@@ -150,9 +155,50 @@ export class Repo implements PageRepo {
     this.gone.clear()
     this.full = false
     if (!full && !upserts.length && !removed.length) return this.queue
-    this.queue = this.queue.then(() => savePages(upserts, removed, full)).catch((e) => this.fail(e))
+    this.queue = this.queue
+      .then(() => savePages(upserts, removed, full))
+      .then(async () => {
+        if (isTauri) this.stamp = await vaultStamp() // our own writes are not "external" changes
+      })
+      .catch((e) => this.fail(e))
     window.dispatchEvent(new Event('data-changed'))
     return this.queue
+  }
+
+  // ───── changes made by other devices (the vault folder is synced by a drive client) ─────
+
+  private stamp = ''
+  private polling = false
+
+  /** Desktop app: reload pages when the sync tool changes the vault, as long as there is nothing unsaved here. */
+  async watch() {
+    if (!isTauri) return
+    this.stamp = await vaultStamp()
+    window.setInterval(() => void this.poll(), WATCH_EVERY)
+  }
+
+  private idle = () => !this.dirty.size && !this.gone.size && !this.full
+
+  private async poll() {
+    if (this.polling || !this.idle()) return
+    this.polling = true
+    try {
+      await this.queue
+      if ((await vaultStamp()) === this.stamp) return
+      const rows = await allPages() // also merges conflict copies, which changes the folder again
+      if (!this.idle()) return // edited meanwhile: try again next round (the stamp is still different)
+      const old = new Map(this.pages.map((p) => [p.id, p]))
+      const changed = rows.filter((r) => old.get(r.id)?.updatedAt !== r.updatedAt || old.get(r.id)?.deletedAt !== r.deletedAt)
+      const removed = this.pages.length + changed.filter((c) => !old.has(c.id)).length - rows.length
+      this.pages = rows
+      this.rebuildLinks()
+      this.stamp = await vaultStamp()
+      if (changed.length || removed) window.dispatchEvent(new CustomEvent('external-change', { detail: changed.map((c) => c.id) }))
+    } catch (e) {
+      console.error('vault watch', e)
+    } finally {
+      this.polling = false
+    }
   }
 
   // ───── queries ─────
@@ -161,8 +207,44 @@ export class Repo implements PageRepo {
   pagesOnly = () => this.list().filter((p) => p.kind !== 'folder')
   get = (id: string) => this.pages.find((p) => p.id === id && !p.deletedAt)
 
+  // ───── page links (derived from the content, cf. page_links in ADR-0002) ─────
+  // out: page -> pages it links to; inn: page -> pages that link to it. Kept current per edited page, so
+  // asking for backlinks never scans every document.
+
+  private out = new Map<string, Set<string>>()
+  private inn = new Map<string, Set<string>>()
+
+  private unindexLinks(id: string) {
+    for (const target of this.out.get(id) ?? []) this.inn.get(target)?.delete(id)
+    this.out.delete(id)
+  }
+
+  private indexLinks(p: Page) {
+    this.unindexLinks(p.id)
+    if (p.kind === 'folder' || typeof p.content === 'string') return
+    const targets = linkedIds(p.content)
+    targets.delete(p.id)
+    if (!targets.size) return
+    this.out.set(p.id, targets)
+    for (const t of targets) (this.inn.get(t) ?? this.inn.set(t, new Set()).get(t)!).add(p.id)
+  }
+
+  private rebuildLinks() {
+    this.out.clear()
+    this.inn.clear()
+    this.pages.forEach((p) => this.indexLinks(p))
+  }
+
   backlinks(id: string): Page[] {
-    return this.pagesOnly().filter((p) => p.id !== id && linkedIds(p.content).has(id))
+    return [...(this.inn.get(id) ?? [])].map((s) => this.get(s)).filter((p): p is Page => !!p && p.kind !== 'folder')
+  }
+
+  linkGraph(): { nodes: Page[]; edges: [string, string][] } {
+    const nodes = this.pagesOnly()
+    const live = new Set(nodes.map((p) => p.id))
+    const edges: [string, string][] = []
+    for (const [from, targets] of this.out) if (live.has(from)) for (const to of targets) if (live.has(to)) edges.push([from, to])
+    return { nodes, edges }
   }
 
   search(query: string): Page[] {
@@ -199,6 +281,7 @@ export class Repo implements PageRepo {
     if (!p) return
     if (patch.content !== undefined) this.snapshot(p)
     Object.assign(p, patch, { updatedAt: Date.now() })
+    if (patch.content !== undefined) this.indexLinks(p)
     this.touch(id)
   }
 
@@ -285,6 +368,7 @@ export class Repo implements PageRepo {
     }
     walk(id)
     this.pages = this.pages.filter((p) => !gone.has(p.id))
+    gone.forEach((g) => this.unindexLinks(g))
     this.drop(gone)
     gone.forEach((g) => void deleteVersions(g).catch(() => {}))
   }
@@ -303,6 +387,7 @@ export class Repo implements PageRepo {
 
   restore(pages: Page[]) {
     this.pages = structuredClone(pages)
+    this.rebuildLinks()
     this.full = true
     this.schedule()
   }

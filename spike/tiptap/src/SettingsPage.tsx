@@ -1,16 +1,20 @@
 import { useState, type ReactNode } from 'react'
+import { confirmDialog } from './dialog'
 import { ACCENTS, DEFAULTS, FONTS, PRESETS, TEXT_COLORS, updateSettings, useSettings, type FontId, type SidebarStyle, type Theme } from './settings'
 import { pickFiles } from './io'
 import { putFile } from './attachments'
 import * as Ic from './icons'
 import { t } from './i18n'
 import { Select } from './ui'
+import { SHORTCUTS, keyLabel } from './shortcuts'
 
-type Tab = 'appearance' | 'editor' | 'language'
-const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
-  { id: 'appearance', label: 'Appearance', icon: <Ic.Palette /> },
-  { id: 'editor', label: 'Editor & font', icon: <Ic.Type /> },
-  { id: 'language', label: 'Language', icon: <Ic.Globe /> },
+type Tab = 'appearance' | 'editor' | 'general' | 'shortcuts' | 'language'
+const TABS: { id: Tab; label: string; title: string; hint: string; icon: ReactNode }[] = [
+  { id: 'appearance', label: 'Appearance', title: 'Appearance', hint: 'Customize how the app looks and feels.', icon: <Ic.Palette /> },
+  { id: 'editor', label: 'Editor & font', title: 'Editor', hint: 'Set the font, size and color of page text.', icon: <Ic.Type /> },
+  { id: 'general', label: 'General', title: 'General', hint: 'Reminders and how files are stored.', icon: <Ic.Settings /> },
+  { id: 'shortcuts', label: 'Shortcuts', title: 'Keyboard shortcuts', hint: 'Everything you can do without leaving the keyboard.', icon: <Ic.Keyboard /> },
+  { id: 'language', label: 'Language', title: 'Language & layout', hint: 'Choose the interface language and which side things sit on.', icon: <Ic.Globe /> },
 ]
 
 const THEMES: { id: Theme; label: string }[] = [
@@ -144,6 +148,7 @@ function Appearance() {
         <Toggle label={t('Glass effect')} hint={t('Floating, blurred sidebar over the background')} on={s.glass} onChange={(glass) => updateSettings({ glass })} />
         <Toggle label={t('Show cover image')} on={s.showCovers} onChange={(showCovers) => updateSettings({ showCovers })} />
         <Toggle label={t('Show page icons')} on={s.showIcons} onChange={(showIcons) => updateSettings({ showIcons })} />
+        <Toggle label={t('Reduce motion')} hint={t('Minimizes animations.')} on={s.reduceMotion} onChange={(reduceMotion) => updateSettings({ reduceMotion })} />
       </div>
     </>
   )
@@ -153,6 +158,10 @@ function Editor() {
   const s = useSettings()
   return (
     <>
+      <Group title={t('Font')}>
+        <Select value={s.font} onChange={(v) => updateSettings({ font: v as FontId })} options={FONTS.map((f) => ({ value: f.id, label: t(f.label) }))} />
+      </Group>
+
       <Group title={t('Text size')}>
         <div className="range-row">
           <input type="range" min={13} max={22} step={1} value={s.fontSize} onChange={(e) => updateSettings({ fontSize: +e.target.value })} />
@@ -185,6 +194,53 @@ function Editor() {
   )
 }
 
+function General() {
+  const s = useSettings()
+  return (
+    <div className="toggle-list first">
+      <Toggle label={t('Flashcard reminders')} hint={t('Notifies you when cards are due and the app is in the background.')} on={s.cardReminders} onChange={(cardReminders) => updateSettings({ cardReminders })} />
+      <Toggle label={t('Compress large images')} hint={t('Shrinks big pictures when you add them, so the vault and sync stay light.')} on={s.compressImages} onChange={(compressImages) => updateSettings({ compressImages })} />
+    </div>
+  )
+}
+
+function Shortcuts() {
+  const [q, setQ] = useState('')
+  const needle = q.trim().toLowerCase()
+  const groups = SHORTCUTS.map((g) => ({
+    ...g,
+    items: g.items.filter((i) => !needle || i.label.toLowerCase().includes(needle) || t(i.label).toLowerCase().includes(needle) || i.keys.some((k) => k.map(keyLabel).join('+').toLowerCase().includes(needle))),
+  })).filter((g) => g.items.length)
+  return (
+    <>
+      <div className="sc-search">
+        <Ic.Search size={15} />
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Search shortcuts…')} aria-label={t('Search shortcuts…')} />
+      </div>
+      {groups.map((g) => (
+        <Group key={g.title} title={t(g.title)}>
+          <ul className="sc-list">
+            {g.items.map((i) => (
+              <li key={i.label}>
+                <span>{t(i.label)}</span>
+                <span className="sc-keys">
+                  {i.keys.map((chord, n) => (
+                    <span key={n} className="sc-chord">
+                      {n > 0 && <em>{t('or')}</em>}
+                      {chord.map((k, j) => <kbd key={j}>{keyLabel(k)}</kbd>)}
+                    </span>
+                  ))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Group>
+      ))}
+      {!groups.length && <p className="sc-none">{t('No shortcut matches.')}</p>}
+    </>
+  )
+}
+
 function LanguageTab() {
   const s = useSettings()
   return (
@@ -209,6 +265,10 @@ function LanguageTab() {
 export function SettingsView() {
   const [tab, setTab] = useState<Tab>('appearance')
   const s = useSettings()
+  const cur = TABS.find((x) => x.id === tab)!
+  const reset = async () => {
+    if (await confirmDialog({ title: t('Reset all settings'), message: t('Reset all settings to their defaults? Language and direction stay as they are.'), confirmLabel: t('Reset'), danger: true })) updateSettings({ ...DEFAULTS, lang: s.lang, dir: s.dir })
+  }
   return (
     <div className="settings">
       <header className="set-head">
@@ -216,7 +276,7 @@ export function SettingsView() {
           <h2>{t('Settings')}</h2>
           <p>{t('Make the appearance and editor your own.')}</p>
         </div>
-        <button className="ghost-btn" onClick={() => updateSettings({ ...DEFAULTS, lang: s.lang, dir: s.dir })}>{t('Reset all')}</button>
+        <button className="ghost-btn" onClick={reset}>{t('Reset all')}</button>
       </header>
       <div className="set-body">
         <nav className="set-tabs">
@@ -229,20 +289,17 @@ export function SettingsView() {
         </nav>
         <div className="set-card">
           <header className="set-card-head">
-            <h3>{tab === 'appearance' ? t('Appearance') : tab === 'editor' ? t('Editor') : t('Language & layout')}</h3>
-            <p>{tab === 'appearance' ? t('Customize how the app looks and feels.') : tab === 'editor' ? t('Set the size and color of page text.') : t('Choose the interface language and which side things sit on.')}</p>
+            <h3>{t(cur.title)}</h3>
+            <p>{t(cur.hint)}</p>
           </header>
-          {tab === 'appearance' ? <Appearance /> : tab === 'editor' ? <Editor /> : <LanguageTab />}
+          {tab === 'appearance' ? <Appearance /> : tab === 'editor' ? <Editor /> : tab === 'general' ? <General /> : tab === 'shortcuts' ? <Shortcuts /> : <LanguageTab />}
         </div>
-        <aside className="set-side">
-          <h3>{t('Preview')}</h3>
-          <Preview />
-          <label className="field">
-            <span>{t('Font')}</span>
-            <Select value={s.font} onChange={(v) => updateSettings({ font: v as FontId })} options={FONTS.map((f) => ({ value: f.id, label: t(f.label) }))} />
-          </label>
-          <Toggle label={t('Reduce motion')} hint={t('Minimizes animations.')} on={s.reduceMotion} onChange={(reduceMotion) => updateSettings({ reduceMotion })} />
-        </aside>
+        {(tab === 'appearance' || tab === 'editor') && (
+          <aside className="set-side">
+            <h3>{t('Preview')}</h3>
+            <Preview />
+          </aside>
+        )}
       </div>
     </div>
   )

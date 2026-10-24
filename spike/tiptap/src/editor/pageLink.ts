@@ -136,7 +136,7 @@ export const PageLinkSuggest = Extension.create({
             .slice(0, 8)
             .map((p) => ({ id: p.id, title: p.title || tr('Untitled'), icon: plainIcon(p.icon), desc: tr('Link to this page') }))
           const exact = repo.pagesOnly().some((p) => normalizeFa(p.title).trim() === q)
-          if (full.trim() && !exact) hits.push({ id: null, title: full.trim(), icon: '＋', desc: tr('Create a new page and link to it') })
+          if (full.trim() && !exact) hits.push({ id: null, title: full.trim(), icon: 'i:plus', desc: tr('Create a new page and link to it') })
           return hits
         },
         command: ({ editor: ed, range, props }) => {

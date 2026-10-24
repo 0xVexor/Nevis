@@ -5,7 +5,6 @@ import { PageIcon } from './PageIcon'
 import { MenuItem, Popover, ago } from './ui'
 import * as Ic from './icons'
 import { locale, t } from './i18n'
-import './home.css'
 
 interface Props {
   pages: Page[]
@@ -82,7 +81,7 @@ export function Home({ pages, onOpen, onNew, onFolder, onTable, onCards, onSearc
       <div className="hm-grid">
         <div className="hm-main">
           <section className="hm-hero">
-            <CoverThumb cover={{ kind: 'gradient', id: 'highland' }} className="hm-hero-bg" />
+            <CoverThumb cover={{ kind: 'gradient', id: 'aurora' }} className="hm-hero-bg" />
             <div className="hm-hero-tx">
               <small>{date}</small>
               <h1>{greeting()} <span className="hm-sun"><Ic.Sun size={30} /></span></h1>
@@ -108,7 +107,7 @@ export function Home({ pages, onOpen, onNew, onFolder, onTable, onCards, onSearc
             <div className="hm-cards">
               {recent.map((p) => (
                 <button key={p.id} className="hm-card" onClick={() => onOpen(p.id)}>
-                  <CoverThumb cover={p.cover ?? { kind: 'gradient', id: 'mist' }} className="hm-card-cover" />
+                  <CoverThumb cover={p.cover ?? { kind: 'gradient', id: 'peachmist' }} className="hm-card-cover" />
                   <span className="hm-card-b">
                     <span className="hm-row-ic"><PageIcon page={p} /></span>
                     <span className="hm-card-t">

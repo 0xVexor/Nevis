@@ -5,6 +5,12 @@ import { invoke } from '@tauri-apps/api/core'
 
 export const isTauri = '__TAURI_INTERNALS__' in window
 
+// While the app switches to another vault, the old workspace is still in memory. Nothing may be written then,
+// or its pages would end up in the vault that was just opened.
+let frozen = false
+export const freezeStorage = () => void (frozen = true)
+export const storageFrozen = () => frozen
+
 const NAME = 'not.db'
 let opening: Promise<IDBDatabase> | null = null
 
@@ -42,6 +48,7 @@ export async function allPages(): Promise<any[]> {
 
 /** One transaction: either everything is written or nothing (crash safety). */
 export async function savePages(upserts: any[], removed: string[], clearFirst: boolean) {
+  if (frozen) return
   if (isTauri) return invoke<void>('pages_save', { upserts, removed, clearFirst })
   const tx = (await db()).transaction('pages', 'readwrite')
   const s = tx.objectStore('pages')
@@ -60,6 +67,7 @@ export async function kvGet<T>(key: string): Promise<T | undefined> {
 }
 
 export async function kvSet(key: string, value: unknown) {
+  if (frozen) return
   if (inSqlite(key)) return invoke<void>('kv_set', { key, value })
   const tx = (await db()).transaction('kv', 'readwrite')
   tx.objectStore('kv').put(value, key)
@@ -84,6 +92,7 @@ export async function listVersions(pageId: string): Promise<Version[]> {
 }
 
 export async function addVersion(v: Version) {
+  if (frozen) return
   if (isTauri) return invoke<void>('version_add', { version: v })
   const tx = (await db()).transaction('versions', 'readwrite')
   tx.objectStore('versions').put(v)
@@ -97,6 +106,7 @@ export async function addVersion(v: Version) {
 }
 
 export async function deleteVersions(pageId: string) {
+  if (frozen) return
   if (isTauri) return invoke<void>('versions_delete', { pageId })
   const all = await listVersions(pageId)
   if (!all.length) return
@@ -104,3 +114,41 @@ export async function deleteVersions(pageId: string) {
   all.forEach((v) => tx.objectStore('versions').delete([v.pageId, v.ts]))
   await done(tx)
 }
+
+// ───── vaults and account (desktop app only, ADR-0003) ─────
+
+export interface VaultEntry {
+  id: string
+  name: string
+  path: string
+  sync: boolean
+  exists: boolean
+}
+export interface AccountStatus {
+  configured: boolean // the app has Google OAuth credentials
+  email: string | null
+  syncOn: boolean // sync of the open vault
+  state: 'off' | 'idle' | 'syncing' | 'error'
+  lastAt: number
+  error: string
+}
+export interface CloudVault {
+  id: string
+  name: string
+}
+
+export const vaultStamp = () => invoke<string>('vault_stamp')
+export const vaultList = () => invoke<{ vaults: VaultEntry[]; current: string | null }>('vault_list')
+export const vaultInfo = () => invoke<{ id: string; name: string; path: string }>('vault_info')
+export const vaultCreate = (parent: string, name: string) => invoke<string>('vault_create', { parent, name })
+export const vaultAdd = (path: string) => invoke<string>('vault_add', { path })
+export const vaultOpen = (id: string) => invoke<void>('vault_open', { id })
+export const vaultClose = () => invoke<void>('vault_close')
+export const vaultForget = (id: string) => invoke<void>('vault_forget', { id })
+export const accountStatus = () => invoke<AccountStatus>('account_status')
+export const accountLogin = () => invoke<string>('account_login')
+export const accountLogout = () => invoke<void>('account_logout')
+export const syncSet = (on: boolean) => invoke<void>('sync_set', { on })
+export const syncNow = () => invoke<void>('sync_now')
+export const cloudVaults = () => invoke<CloudVault[]>('cloud_vaults')
+export const cloudDownload = (id: string, name: string, parent: string) => invoke<void>('cloud_download', { id, name, parent })

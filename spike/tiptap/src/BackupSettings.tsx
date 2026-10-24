@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { backupNow, backupStatus, backupSupported, chooseBackupFolder, disableBackup, grantAccess } from './autobackup'
 import { t, locale } from './i18n'
+import * as Ic from './icons'
 
 const when = (ts?: number) => (ts ? new Date(ts).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' }) : t('Not yet'))
 
@@ -30,6 +31,7 @@ export function BackupSettings({ onClose }: { onClose: () => void }) {
             <b>{t('Automatic backup')}</b>
             <small>{t('A full copy of all pages and images in a folder you choose.')}</small>
           </div>
+          <button className="icon-btn" title={t('Close')} onClick={onClose}><Ic.Close size={16} /></button>
         </div>
         <div className="backup-body">
           {!backupSupported() ? (
@@ -38,7 +40,7 @@ export function BackupSettings({ onClose }: { onClose: () => void }) {
             <>
               <dl className="backup-info">
                 <dt>{t('Status')}</dt>
-                <dd>{st.enabled ? (st.error === 'NEEDS_PERMISSION' ? t('⚠️ Needs access permission') : st.error ? t('❌ Error') : t('✅ On')) : t('Off')}</dd>
+                <dd>{st.enabled ? (st.error === 'NEEDS_PERMISSION' ? t('Needs access permission') : st.error ? t('Error') : t('On')) : t('Off')}</dd>
                 <dt>{t('Folder')}</dt>
                 <dd dir="auto">{st.folder ?? '—'}</dd>
                 <dt>{t('Last backup')}</dt>

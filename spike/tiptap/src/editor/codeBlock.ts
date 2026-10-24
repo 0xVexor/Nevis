@@ -4,6 +4,8 @@ import { common, createLowlight } from 'lowlight'
 import { detectLanguage } from './detect'
 import { looksLikeMermaid } from './mermaid'
 import { t } from '../i18n'
+import { svgIcon } from './svgIcons'
+import { openLangMenu } from './langMenu'
 
 const lowlight = createLowlight(common)
 
@@ -158,6 +160,17 @@ function smartBackspace(editor: any) {
 }
 
 export const CodeBlock = CodeBlockLowlight.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      // text alignment inside the block (left / center / right), set from the bar on the block or the toolbar's align buttons
+      textAlign: {
+        default: null,
+        parseHTML: (el: HTMLElement) => (el.querySelector('pre') ?? el).style.textAlign || el.getAttribute('data-align') || null,
+        renderHTML: (a: any) => (a.textAlign ? { 'data-align': a.textAlign } : {}),
+      },
+    }
+  },
   addKeyboardShortcuts() {
     const parent = (this.parent?.() ?? {}) as Record<string, (ctx: any) => boolean>
     return {
@@ -184,6 +197,20 @@ export const CodeBlock = CodeBlockLowlight.extend({
       select.setAttribute('aria-label', t('Programming language'))
       const auto = new Option(t('Auto-detect'), '')
       select.append(auto, ...LANGS.map((l) => new Option(t(l.name), l.id)))
+      select.hidden = true // the native list is replaced by the app's own dropdown below; the <select> stays as the data holder
+      const trigger = document.createElement('button')
+      trigger.type = 'button'
+      trigger.className = 'code-lang code-lang-btn'
+      trigger.setAttribute('aria-haspopup', 'listbox')
+      trigger.setAttribute('aria-label', t('Programming language'))
+      trigger.onmousedown = (e) => e.preventDefault()
+      trigger.onclick = () => {
+        if (!editor.isEditable) return
+        openLangMenu(trigger, [...select.options].map((o) => ({ value: o.value, label: o.text })), select.value, (v) => {
+          select.value = v
+          select.onchange?.(new Event('change'))
+        })
+      }
 
       const copy = document.createElement('button')
       copy.className = 'code-copy'
@@ -206,7 +233,23 @@ export const CodeBlock = CodeBlockLowlight.extend({
         if (pos == null || !mer || !editor.isEditable) return
         editor.view.dispatch(editor.state.tr.replaceWith(pos, pos + current.nodeSize, mer.create({ code: current.textContent })))
       }
-      bar.append(select, diag, copy)
+      // alignment of the code text: left / center / right
+      const aligns: [string, string, string][] = [['left', svgIcon.left, t('Align left')], ['center', svgIcon.center, t('Center')], ['right', svgIcon.right, t('Align right')]]
+      const alignBtns = aligns.map(([a, icon, title]) => {
+        const b = document.createElement('button')
+        b.type = 'button'
+        b.className = 'code-copy code-al'
+        b.innerHTML = icon
+        b.title = title
+        b.onmousedown = (e) => e.preventDefault()
+        b.onclick = () => {
+          const pos = getPos()
+          if (pos == null || !editor.isEditable) return
+          editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...current.attrs, textAlign: current.attrs.textAlign === a ? null : a }))
+        }
+        return b
+      })
+      bar.append(trigger, select, diag, ...alignBtns, copy)
 
       const pre = document.createElement('pre')
       const code = document.createElement('code')
@@ -221,6 +264,10 @@ export const CodeBlock = CodeBlockLowlight.extend({
         const seen = id ? null : detectLanguage(n.textContent)
         auto.text = seen ? `${t('Auto-detect')} · ${t(nameOf(seen))}` : t('Auto-detect')
         diag.hidden = !(n.attrs.language === 'mermaid' || looksLikeMermaid(n.textContent))
+        trigger.innerHTML = '<span class="cl-t"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
+        ;(trigger.querySelector('.cl-t') as HTMLElement).textContent = select.selectedOptions[0]?.text ?? ''
+        pre.style.textAlign = n.attrs.textAlign ?? ''
+        alignBtns.forEach((b, i) => b.classList.toggle('on', n.attrs.textAlign === aligns[i][0]))
       }
       sync(node)
 

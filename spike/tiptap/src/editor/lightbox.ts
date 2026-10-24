@@ -1,4 +1,5 @@
 import { t } from '../i18n'
+import { setLabel, svgIcon } from './svgIcons'
 
 interface LightboxSource {
   svg?: string // markup of a diagram
@@ -31,7 +32,7 @@ export function openLightbox(source: LightboxSource): () => void {
   const mk = (label: string, title: string, fn: () => void) => {
     const b = document.createElement('button')
     b.type = 'button'
-    b.textContent = label
+    setLabel(b, label)
     b.title = title
     b.onclick = (e) => (e.stopPropagation(), fn())
     return b
@@ -39,12 +40,12 @@ export function openLightbox(source: LightboxSource): () => void {
   const pct = document.createElement('span')
   pct.className = 'lb-pct'
   bar.append(
-    mk('−', t('Zoom out') + '  −', () => zoomBy(1 / 1.25)),
+    mk(svgIcon.minus, t('Zoom out') + '  −', () => zoomBy(1 / 1.25)),
     pct,
-    mk('+', t('Zoom in') + '  +', () => zoomBy(1.25)),
+    mk(svgIcon.plus, t('Zoom in') + '  +', () => zoomBy(1.25)),
     mk(t('Fit'), t('Fit to window') + '  0', () => fit()),
     mk('100%', t('Actual size') + '  1', () => actual()),
-    mk('✕', t('Close') + '  Esc', () => close()),
+    mk(svgIcon.close, t('Close') + '  Esc', () => close()),
   )
   root.append(stage, bar)
   document.body.append(root)

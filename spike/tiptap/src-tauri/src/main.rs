@@ -1,236 +1,242 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-//! Storage for Noviq: one SQLite file (schema in db/migrations, see ADR-0002) plus content-addressed
-//! attachment files, both under the OS app-data folder. The web UI talks to it through the commands below
+//! Storage for Noviq: Vault folders (pages, attachments, history as plain files; see ADR-0003) that the app can
+//! keep in sync with the user's Google Drive by itself. The web UI talks to it through the commands below
 //! (spike/tiptap/src/db.ts and attachments.ts); in a plain browser the same UI falls back to IndexedDB.
 
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
-use serde_json::{json, Map, Value};
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard};
-use tauri::ipc::{InvokeBody, Request, Response};
-use tauri::{Manager, State};
+mod index;
+mod legacy;
+mod registry;
+mod sync;
+mod vault;
 
-const MIGRATIONS: [&str; 2] = [
-    include_str!("../../../../db/migrations/0001_init.sql"),
-    include_str!("../../../../db/migrations/0002_app_fields.sql"),
-];
-const KEEP_VERSIONS: i64 = 40;
-const EMPTY_DOC: &str = r#"{"type":"doc","content":[]}"#;
+use registry::{Entry, Registry};
+use serde_json::{json, Value};
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::{channel, Sender};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
+use sync::{auth, drive::Drive, SyncState};
+use tauri::ipc::{InvokeBody, Request, Response};
+use tauri::{AppHandle, Manager, State};
+use vault::{err, now_ms, Res, Vault};
+
+#[derive(Clone, Default)]
+struct SyncStatus {
+    state: &'static str, // "off" | "idle" | "syncing" | "error"
+    last_at: i64,
+    error: String,
+}
 
 struct Store {
-    db: Mutex<Connection>,
-    files: PathBuf,
+    app_data: PathBuf, // per-device data: the list of vaults, sign-in, sync bookkeeping
+    reg: Mutex<Registry>,
+    vault: Mutex<Option<Vault>>,
+    status: Arc<Mutex<SyncStatus>>,
+    kick: Mutex<Sender<()>>,
+    index: Mutex<Option<(PathBuf, rusqlite::Connection)>>, // search index of the open vault
 }
 
-type Res<T> = Result<T, String>;
+type St<'a> = State<'a, Store>;
 
-fn err<E: ToString>(e: E) -> String {
-    e.to_string()
+fn lock_vault<'a>(s: &'a St) -> Res<MutexGuard<'a, Option<Vault>>> {
+    s.vault.lock().map_err(err)
 }
 
-fn open_db(dir: &Path) -> rusqlite::Result<Connection> {
-    let conn = Connection::open(dir.join("noviq.db"))?;
-    conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA foreign_keys = ON;")?;
-    let current: usize = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    for (i, sql) in MIGRATIONS.iter().enumerate().skip(current) {
-        let tx = conn.unchecked_transaction()?;
-        tx.execute_batch(sql)?;
-        tx.execute_batch(&format!("PRAGMA user_version = {}", i + 1))?;
-        tx.commit()?;
+/// Runs `f` on the open vault; errors when the picker is showing.
+fn with<T>(s: &St, f: impl FnOnce(&Vault) -> Res<T>) -> Res<T> {
+    match &*lock_vault(s)? {
+        Some(v) => f(v),
+        None => Err("no vault open".into()),
     }
-    Ok(conn)
 }
 
-fn lock<'a>(s: &'a State<Store>) -> Res<MutexGuard<'a, Connection>> {
-    s.db.lock().map_err(err)
+/// A change was written: let the sync thread know (it waits a moment so bursts become one sync).
+fn kick(s: &St) {
+    if let Ok(k) = s.kick.lock() {
+        let _ = k.send(());
+    }
+}
+
+// Settings that belong to this device and must not travel through the vault.
+const LOCAL_KEYS: [&str; 1] = ["backupCfg"];
+
+// ───── vaults: list, create, open, switch ─────
+
+fn entry_json(e: &Entry) -> Value {
+    json!({ "id": e.id, "name": e.name, "path": e.path, "sync": e.sync, "exists": Path::new(&e.path).join(".noviq/vault.json").exists() })
+}
+
+#[tauri::command]
+fn vault_list(s: St) -> Res<Value> {
+    let r = s.reg.lock().map_err(err)?;
+    Ok(json!({ "vaults": r.vaults.iter().map(entry_json).collect::<Vec<_>>(), "current": r.current }))
+}
+
+#[tauri::command]
+fn vault_info(s: St) -> Res<Value> {
+    with(&s, |v| Ok(json!({ "id": v.id(), "name": v.name(), "path": v.root.to_string_lossy() })))
+}
+
+/// Makes the vault of `e` the open one.
+fn activate(s: &St, e: &Entry, import_legacy: bool) -> Res<()> {
+    let v = Vault::open(PathBuf::from(&e.path))?;
+    if import_legacy {
+        match legacy::import(&s.app_data, &v) {
+            Ok(n) if n > 0 => eprintln!("imported {n} pages from noviq.db"),
+            Ok(_) => {}
+            Err(e) => eprintln!("legacy import failed: {e}"),
+        }
+    }
+    v.purge_trash();
+    let mut r = s.reg.lock().map_err(err)?;
+    r.add(Entry { name: v.name(), ..e.clone() });
+    r.current = Some(e.id.clone());
+    r.save(&s.app_data)?;
+    *lock_vault(s)? = Some(v);
+    drop(r);
+    kick(s);
+    Ok(())
+}
+
+/// A vault created while signed in is synced from the start: signing in is all the user has to do.
+fn auto_sync(s: &St) -> bool {
+    auth::email(&s.app_data).is_some() && auth::creds(&s.app_data).is_some()
+}
+
+fn clean_name(name: &str) -> Res<String> {
+    let n: String = name.trim().chars().filter(|c| !"<>:\"/\\|?*".contains(*c) && !c.is_control()).collect();
+    if n.is_empty() || n == "." || n == ".." {
+        return Err("invalid name".into());
+    }
+    Ok(n)
+}
+
+/// New vault `<parent>/<name>`. The user picks the parent folder; there is no hidden default location.
+#[tauri::command]
+fn vault_create(s: St, parent: String, name: String) -> Res<String> {
+    let name = clean_name(&name)?;
+    let root = PathBuf::from(&parent).join(&name);
+    if !PathBuf::from(&parent).is_absolute() {
+        return Err("path must be absolute".into());
+    }
+    if root.join(".noviq/vault.json").exists() {
+        return Err("a vault already exists there".into());
+    }
+    let first = s.reg.lock().map_err(err)?.vaults.is_empty();
+    let v = Vault::create(root.clone(), &name)?;
+    let e = Entry { id: v.id(), name, path: root.to_string_lossy().into(), sync: auto_sync(&s) };
+    activate(&s, &e, first)?;
+    Ok(e.id)
+}
+
+/// Opens a folder as a vault (an existing Noviq vault, e.g. one copied from another computer).
+#[tauri::command]
+fn vault_add(s: St, path: String) -> Res<String> {
+    let root = PathBuf::from(&path);
+    if !root.is_dir() || !root.is_absolute() {
+        return Err("not a folder".into());
+    }
+    let v = Vault::open(root.clone())?;
+    let e = Entry { id: v.id(), name: v.name(), path, sync: auto_sync(&s) };
+    activate(&s, &e, false)?;
+    Ok(e.id)
+}
+
+#[tauri::command]
+fn vault_open(s: St, id: String) -> Res<()> {
+    let e = s.reg.lock().map_err(err)?.find(&id).cloned().ok_or("unknown vault")?;
+    activate(&s, &e, false)
+}
+
+/// Back to the picker (switching vaults).
+#[tauri::command]
+fn vault_close(s: St) -> Res<()> {
+    let mut r = s.reg.lock().map_err(err)?;
+    r.current = None;
+    r.save(&s.app_data)?;
+    *lock_vault(&s)? = None;
+    Ok(())
+}
+
+/// Forgets a vault on this device; its files stay where they are.
+#[tauri::command]
+fn vault_forget(s: St, id: String) -> Res<()> {
+    let mut r = s.reg.lock().map_err(err)?;
+    r.vaults.retain(|e| e.id != id);
+    if r.current.as_deref() == Some(&id) {
+        r.current = None;
+        *lock_vault(&s)? = None;
+    }
+    r.save(&s.app_data)
+}
+
+/// Changes whenever a page file is added, removed or rewritten, by us or by the sync.
+#[tauri::command]
+fn vault_stamp(s: St) -> Res<String> {
+    with(&s, |v| Ok(v.stamp()))
 }
 
 // ───── pages ─────
 
 #[tauri::command]
-fn pages_all(s: State<Store>) -> Res<Vec<Value>> {
-    let db = lock(&s)?;
-    let mut tags: HashMap<String, Vec<Value>> = HashMap::new();
-    let mut st = db.prepare("SELECT page_id, tag FROM page_tags ORDER BY rowid").map_err(err)?;
-    for r in st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))).map_err(err)? {
-        let (id, tag) = r.map_err(err)?;
-        tags.entry(id).or_default().push(Value::String(tag));
-    }
-    let mut st = db
-        .prepare(
-            "SELECT id, parent_id, kind, title, icon, cover, title_dir, status, is_favorite, sort_key, content, updated_at, deleted_at
-             FROM pages ORDER BY id",
-        )
-        .map_err(err)?;
-    let rows = st
-        .query_map([], |r| {
-            let id: String = r.get(0)?;
-            let mut p = Map::new();
-            p.insert("parentId".into(), r.get::<_, Option<String>>(1)?.map_or(Value::Null, Value::String));
-            let kind: String = r.get(2)?;
-            if kind != "page" {
-                p.insert("kind".into(), kind.into());
-            }
-            p.insert("title".into(), r.get::<_, String>(3)?.into());
-            if let Some(v) = r.get::<_, Option<String>>(4)? {
-                p.insert("icon".into(), v.into());
-            }
-            if let Some(v) = r.get::<_, Option<String>>(5)? {
-                p.insert("cover".into(), serde_json::from_str(&v).unwrap_or(Value::Null));
-            }
-            if let Some(v) = r.get::<_, Option<String>>(6)? {
-                p.insert("titleDir".into(), v.into());
-            }
-            if let Some(v) = r.get::<_, Option<String>>(7)? {
-                p.insert("status".into(), v.into());
-            }
-            p.insert("favorite".into(), (r.get::<_, i64>(8)? != 0).into());
-            p.insert("sort".into(), r.get::<_, String>(9)?.parse::<f64>().unwrap_or(0.0).into());
-            p.insert("content".into(), serde_json::from_str(&r.get::<_, String>(10)?).unwrap_or(Value::Null));
-            p.insert("updatedAt".into(), r.get::<_, i64>(11)?.into());
-            p.insert("deletedAt".into(), r.get::<_, Option<i64>>(12)?.map_or(Value::Null, Value::from));
-            if let Some(t) = tags.remove(&id) {
-                p.insert("tags".into(), Value::Array(t));
-            }
-            p.insert("id".into(), id.into());
-            Ok(Value::Object(p))
-        })
-        .map_err(err)?;
-    rows.collect::<Result<_, _>>().map_err(err)
+fn pages_all(s: St) -> Res<Vec<Value>> {
+    with(&s, |v| v.pages_all())
 }
 
-fn opt_str<'a>(p: &'a Value, k: &str) -> Option<&'a str> {
-    p.get(k).and_then(Value::as_str)
-}
-
-fn upsert_page(tx: &Transaction, p: &Value) -> Res<()> {
-    let id = opt_str(p, "id").ok_or("page without id")?;
-    let kind = if opt_str(p, "kind") == Some("folder") { "folder" } else { "page" };
-    let status = opt_str(p, "status").filter(|s| ["todo", "doing", "done"].contains(s));
-    let dir = opt_str(p, "titleDir").filter(|s| ["rtl", "ltr"].contains(s));
-    let cover = p.get("cover").filter(|c| !c.is_null()).map(Value::to_string);
-    let content = p.get("content").filter(|c| !c.is_null()).map_or(EMPTY_DOC.to_string(), Value::to_string);
-    let sort = p.get("sort").and_then(Value::as_f64).unwrap_or(0.0).to_string();
-    let updated = p.get("updatedAt").and_then(Value::as_f64).unwrap_or(0.0) as i64;
-    let deleted = p.get("deletedAt").and_then(Value::as_f64).map(|d| d as i64);
-    let fav = p.get("favorite").and_then(Value::as_bool).unwrap_or(false) as i64;
-    tx.execute(
-        "INSERT INTO pages(id, parent_id, kind, title, icon, cover, title_dir, status, is_favorite, sort_key, content, created_at, updated_at, deleted_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?12,?13)
-         ON CONFLICT(id) DO UPDATE SET parent_id=?2, kind=?3, title=?4, icon=?5, cover=?6, title_dir=?7, status=?8,
-           is_favorite=?9, sort_key=?10, content=?11, updated_at=?12, deleted_at=?13",
-        params![id, opt_str(p, "parentId"), kind, opt_str(p, "title").unwrap_or(""), opt_str(p, "icon"), cover, dir, status, fav, sort, content, updated, deleted],
-    )
-    .map_err(err)?;
-    tx.execute("DELETE FROM page_tags WHERE page_id = ?", [id]).map_err(err)?;
-    for t in p.get("tags").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
-        tx.execute("INSERT OR IGNORE INTO page_tags(page_id, tag) VALUES (?1, ?2)", params![id, t]).map_err(err)?;
-    }
-    Ok(())
-}
-
-/// Deletes pages without cascading into their children: a child of a deleted page moves to the top level instead of vanishing.
-fn delete_pages(tx: &Transaction, ids: &[String]) -> Res<()> {
-    for id in ids {
-        tx.execute("UPDATE pages SET parent_id = NULL WHERE parent_id = ?", [id]).map_err(err)?;
-    }
-    for id in ids {
-        tx.execute("DELETE FROM pages WHERE id = ?", [id]).map_err(err)?;
-    }
-    Ok(())
-}
-
-/// One transaction: everything is written or nothing. `clear_first` = the upserts are the whole workspace.
+/// `clear_first` = the upserts are the whole workspace. Every page is its own atomic file write.
 #[tauri::command]
-fn pages_save(s: State<Store>, upserts: Vec<Value>, removed: Vec<String>, clear_first: bool) -> Res<()> {
-    let mut db = lock(&s)?;
-    let tx = db.transaction().map_err(err)?;
-    tx.execute_batch("PRAGMA defer_foreign_keys = ON").map_err(err)?;
-    for p in &upserts {
-        upsert_page(&tx, p)?;
-    }
-    let mut gone = removed;
-    if clear_first {
-        let keep: HashSet<&str> = upserts.iter().filter_map(|p| opt_str(p, "id")).collect();
-        let mut st = tx.prepare("SELECT id FROM pages").map_err(err)?;
-        let all: Vec<String> = st.query_map([], |r| r.get(0)).map_err(err)?.collect::<Result<_, _>>().map_err(err)?;
-        drop(st);
-        gone.extend(all.into_iter().filter(|id| !keep.contains(id.as_str())));
-    }
-    delete_pages(&tx, &gone)?;
-    // a parent that no longer exists must not make the whole save fail
-    tx.execute("UPDATE pages SET parent_id = NULL WHERE parent_id IS NOT NULL AND parent_id NOT IN (SELECT id FROM pages)", [])
-        .map_err(err)?;
-    tx.commit().map_err(err)
+fn pages_save(s: St, upserts: Vec<Value>, removed: Vec<String>, clear_first: bool) -> Res<()> {
+    with(&s, |v| v.save_pages(&upserts, &removed, clear_first))?;
+    kick(&s);
+    Ok(())
 }
 
 // ───── key-value settings ─────
 
-#[tauri::command]
-fn kv_get(s: State<Store>, key: String) -> Res<Option<Value>> {
-    let v: Option<String> = lock(&s)?.query_row("SELECT value FROM kv WHERE key = ?", [key], |r| r.get(0)).optional().map_err(err)?;
-    Ok(v.and_then(|v| serde_json::from_str(&v).ok()))
+fn kv_file(s: &St, v: &Vault, key: &str) -> Res<PathBuf> {
+    if LOCAL_KEYS.contains(&key) {
+        vault::check_id(key)?;
+        Ok(s.app_data.join("kv").join(format!("{key}.json")))
+    } else {
+        v.kv_path(key)
+    }
 }
 
 #[tauri::command]
-fn kv_set(s: State<Store>, key: String, value: Value) -> Res<()> {
-    lock(&s)?.execute("INSERT OR REPLACE INTO kv(key, value) VALUES (?1, ?2)", params![key, value.to_string()]).map_err(err)?;
+fn kv_get(s: St, key: String) -> Res<Option<Value>> {
+    with(&s, |v| Ok(std::fs::read(kv_file(&s, v, &key)?).ok().and_then(|b| serde_json::from_slice(&b).ok())))
+}
+
+#[tauri::command]
+fn kv_set(s: St, key: String, value: Value) -> Res<()> {
+    with(&s, |v| vault::write_atomic(&kv_file(&s, v, &key)?, value.to_string().as_bytes()))?;
+    kick(&s);
     Ok(())
 }
 
 // ───── page history ─────
 
 #[tauri::command]
-fn versions_list(s: State<Store>, page_id: String) -> Res<Vec<Value>> {
-    let db = lock(&s)?;
-    let mut st = db.prepare("SELECT ts, title, content FROM page_versions WHERE page_id = ? ORDER BY ts DESC").map_err(err)?;
-    let rows = st
-        .query_map([&page_id], |r| {
-            let content: String = r.get(2)?;
-            Ok(json!({ "pageId": page_id, "ts": r.get::<_, i64>(0)?, "title": r.get::<_, String>(1)?, "content": serde_json::from_str::<Value>(&content).unwrap_or(Value::Null) }))
-        })
-        .map_err(err)?;
-    rows.collect::<Result<_, _>>().map_err(err)
+fn versions_list(s: St, page_id: String) -> Res<Vec<Value>> {
+    with(&s, |v| v.versions_list(&page_id))
 }
 
 #[tauri::command]
-fn version_add(s: State<Store>, version: Value) -> Res<()> {
-    let page_id = opt_str(&version, "pageId").ok_or("version without pageId")?;
-    let ts = version.get("ts").and_then(Value::as_f64).unwrap_or(0.0) as i64;
-    let db = lock(&s)?;
-    let exists = db.query_row("SELECT 1 FROM pages WHERE id = ?", [page_id], |_| Ok(true)).optional().map_err(err)?.unwrap_or(false);
-    if !exists {
-        return Ok(()); // the page itself is not saved yet; its first snapshot is not worth failing for
-    }
-    db.execute(
-        "INSERT OR REPLACE INTO page_versions(page_id, ts, title, content) VALUES (?1,?2,?3,?4)",
-        params![page_id, ts, opt_str(&version, "title").unwrap_or(""), version.get("content").unwrap_or(&Value::Null).to_string()],
-    )
-    .map_err(err)?;
-    db.execute(
-        "DELETE FROM page_versions WHERE page_id = ?1 AND ts NOT IN (SELECT ts FROM page_versions WHERE page_id = ?1 ORDER BY ts DESC LIMIT ?2)",
-        params![page_id, KEEP_VERSIONS],
-    )
-    .map_err(err)?;
+fn version_add(s: St, version: Value) -> Res<()> {
+    with(&s, |v| v.version_add(&version))?;
+    kick(&s);
     Ok(())
 }
 
 #[tauri::command]
-fn versions_delete(s: State<Store>, page_id: String) -> Res<()> {
-    lock(&s)?.execute("DELETE FROM page_versions WHERE page_id = ?", [page_id]).map_err(err)?;
+fn versions_delete(s: St, page_id: String) -> Res<()> {
+    with(&s, |v| v.versions_delete(&page_id))?;
+    kick(&s);
     Ok(())
 }
 
-// ───── attachments: <data>/files/<id[0:2]>/<id>, metadata in `attachments` (id = sha256 of the bytes) ─────
-
-fn file_path(s: &Store, id: &str) -> Res<PathBuf> {
-    if id.len() < 8 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return Err("bad file id".into());
-    }
-    Ok(s.files.join(&id[..2]).join(id))
-}
+// ───── attachments: <vault>/files/<id[0:2]>/<id> (+ <id>.json metadata); id = sha256 of the bytes ─────
 
 fn header(r: &Request, k: &str) -> String {
     r.headers().get(k).and_then(|v| v.to_str().ok()).unwrap_or("").to_string()
@@ -238,69 +244,245 @@ fn header(r: &Request, k: &str) -> String {
 
 /// Raw body = file bytes; metadata in headers (the name is percent-encoded by the caller).
 #[tauri::command]
-fn file_put(s: State<Store>, request: Request) -> Res<()> {
+fn file_put(s: St, request: Request) -> Res<()> {
     let InvokeBody::Raw(bytes) = request.body() else { return Err("expected raw bytes".into()) };
-    let id = header(&request, "x-file-id");
-    let path = file_path(&s, &id)?;
-    std::fs::create_dir_all(path.parent().ok_or("bad path")?).map_err(err)?;
-    let tmp = path.with_extension("part");
-    std::fs::write(&tmp, bytes).map_err(err)?;
-    std::fs::rename(&tmp, &path).map_err(err)?;
-    let added = header(&request, "x-added-at").parse::<i64>().unwrap_or(0);
-    lock(&s)?
-        .execute(
-            "INSERT INTO attachments(id, sha256, mime, size, original_name, created_at) VALUES (?1,?1,?2,?3,?4,?5)
-             ON CONFLICT(id) DO UPDATE SET created_at = ?5",
-            params![id, header(&request, "x-file-type"), bytes.len() as i64, header(&request, "x-file-name"), added],
-        )
-        .map_err(err)?;
+    let added = header(&request, "x-added-at").parse::<i64>().unwrap_or_else(|_| now_ms());
+    with(&s, |v| v.file_put(&header(&request, "x-file-id"), bytes, &header(&request, "x-file-type"), &header(&request, "x-file-name"), added))?;
+    kick(&s);
     Ok(())
 }
 
 #[tauri::command]
-fn file_get(s: State<Store>, id: String) -> Res<Response> {
-    std::fs::read(file_path(&s, &id)?).map(Response::new).map_err(|_| "missing".to_string())
+fn file_get(s: St, id: String) -> Res<Response> {
+    with(&s, |v| v.file_get(&id)).map(Response::new)
 }
 
 /// Metadata of every stored file (no bytes).
 #[tauri::command]
-fn files_list(s: State<Store>) -> Res<Vec<Value>> {
-    let db = lock(&s)?;
-    let mut st = db.prepare("SELECT id, mime, size, original_name, created_at FROM attachments").map_err(err)?;
-    let rows = st
-        .query_map([], |r| {
-            Ok(json!({ "id": r.get::<_, String>(0)?, "type": r.get::<_, String>(1)?, "size": r.get::<_, i64>(2)?, "name": r.get::<_, Option<String>>(3)?.unwrap_or_default(), "addedAt": r.get::<_, i64>(4)? }))
-        })
-        .map_err(err)?;
-    rows.collect::<Result<_, _>>().map_err(err)
+fn files_list(s: St) -> Res<Vec<Value>> {
+    with(&s, |v| Ok(v.files_list()))
 }
 
 #[tauri::command]
-fn file_delete(s: State<Store>, id: String) -> Res<()> {
-    let path = file_path(&s, &id)?;
-    lock(&s)?.execute("DELETE FROM attachments WHERE id = ?", [&id]).map_err(err)?;
-    let _ = std::fs::remove_file(path);
+fn file_delete(s: St, id: String) -> Res<()> {
+    with(&s, |v| v.file_delete(&id))?;
+    kick(&s);
     Ok(())
 }
 
 #[tauri::command]
-fn files_clear(s: State<Store>) -> Res<()> {
-    lock(&s)?.execute("DELETE FROM attachments", []).map_err(err)?;
-    let _ = std::fs::remove_dir_all(&s.files);
+fn files_clear(s: St) -> Res<()> {
+    with(&s, |v| {
+        for f in v.files_list() {
+            if let Some(id) = f.get("id").and_then(Value::as_str) {
+                v.file_delete(id)?;
+            }
+        }
+        Ok(())
+    })?;
+    kick(&s);
     Ok(())
+}
+
+
+// ───── search index (see index.rs; the UI sends normalized text, see searchIndex.ts) ─────
+
+/// Runs `f` on the index of the open vault, opening (or switching to) it when needed.
+fn with_index<T>(s: &St, f: impl FnOnce(&mut rusqlite::Connection) -> Res<T>) -> Res<T> {
+    let root = with(s, |v| Ok(v.root.clone()))?;
+    let mut g = s.index.lock().map_err(err)?;
+    if g.as_ref().map_or(true, |(r, _)| *r != root) {
+        *g = Some((root.clone(), index::open(&root)?));
+    }
+    f(&mut g.as_mut().unwrap().1)
+}
+
+#[tauri::command]
+fn index_state(s: St) -> Res<std::collections::HashMap<String, i64>> {
+    with_index(&s, |db| index::state(db))
+}
+
+#[tauri::command]
+fn index_update(s: St, docs: Vec<index::Doc>, removed: Vec<String>) -> Res<()> {
+    with_index(&s, |db| index::update(db, &docs, &removed))
+}
+
+#[tauri::command]
+fn index_search(s: St, words: Vec<String>, limit: usize) -> Res<Vec<String>> {
+    with_index(&s, |db| index::search(db, &words, limit))
+}
+
+// ───── account and sync ─────
+
+fn drive_for(app_data: &Path) -> Res<Drive> {
+    let c = auth::creds(app_data).ok_or("NOT_CONFIGURED")?;
+    Drive::new(auth::Session::new(c, app_data))
+}
+
+#[tauri::command]
+fn account_status(s: St) -> Value {
+    let configured = auth::creds(&s.app_data).is_some();
+    let email = auth::email(&s.app_data);
+    let st = s.status.lock().map(|x| x.clone()).unwrap_or_default();
+    let sync_on = lock_vault(&s).ok().and_then(|g| g.as_ref().map(|v| v.id())).and_then(|id| s.reg.lock().ok()?.find(&id).map(|e| e.sync)).unwrap_or(false);
+    json!({ "configured": configured, "email": email, "syncOn": sync_on, "state": st.state, "lastAt": st.last_at, "error": st.error })
+}
+
+/// Opens the browser for Google sign-in and waits until it is done. Returns the e-mail address.
+#[tauri::command]
+async fn account_login(s: St<'_>) -> Res<String> {
+    let app_data = s.app_data.clone();
+    let c = auth::creds(&app_data).ok_or("NOT_CONFIGURED")?;
+    let email = tauri::async_runtime::spawn_blocking(move || auth::login(&c, &app_data)).await.map_err(err)??;
+    kick(&s);
+    Ok(email)
+}
+
+#[tauri::command]
+fn account_logout(s: St) -> Res<()> {
+    auth::logout(&s.app_data);
+    if let Ok(mut st) = s.status.lock() {
+        *st = SyncStatus { state: "off", ..Default::default() };
+    }
+    Ok(())
+}
+
+/// Turns sync of the open vault on or off.
+#[tauri::command]
+fn sync_set(s: St, on: bool) -> Res<()> {
+    let id = with(&s, |v| Ok(v.id()))?;
+    let mut r = s.reg.lock().map_err(err)?;
+    if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
+        e.sync = on;
+    }
+    r.save(&s.app_data)?;
+    drop(r);
+    kick(&s);
+    Ok(())
+}
+
+#[tauri::command]
+fn sync_now(s: St) {
+    kick(&s);
+}
+
+/// Vaults stored in the account that are not on this device yet.
+#[tauri::command]
+async fn cloud_vaults(s: St<'_>) -> Res<Vec<Value>> {
+    let app_data = s.app_data.clone();
+    let local: Vec<String> = s.reg.lock().map_err(err)?.vaults.iter().map(|e| e.id.clone()).collect();
+    let found = tauri::async_runtime::spawn_blocking(move || drive_for(&app_data)?.cloud_vaults()).await.map_err(err)??;
+    Ok(found.into_iter().filter(|v| !local.contains(&v.1)).map(|v| json!({ "folder": v.0, "id": v.1, "name": v.2 })).collect())
+}
+
+/// Creates `<parent>/<name>` for a vault that exists in the cloud and downloads it.
+#[tauri::command]
+async fn cloud_download(s: St<'_>, id: String, name: String, parent: String) -> Res<()> {
+    let name = clean_name(&name)?;
+    let root = PathBuf::from(&parent).join(&name);
+    let v = Vault::create_with_id(root.clone(), &name, &id)?;
+    let e = Entry { id: v.id(), name, path: root.to_string_lossy().into(), sync: true };
+    drop(v);
+    let (app_data, status) = (s.app_data.clone(), s.status.clone());
+    let e2 = e.clone();
+    tauri::async_runtime::spawn_blocking(move || run_sync(&app_data, &e2, &status)).await.map_err(err)??;
+    activate(&s, &e, false)
+}
+
+/// One synchronization of one vault.
+fn run_sync(app_data: &Path, e: &Entry, status: &Arc<Mutex<SyncStatus>>) -> Res<()> {
+    let set = |state: &'static str, error: String, done: bool| {
+        if let Ok(mut st) = status.lock() {
+            st.state = state;
+            st.error = error;
+            if done {
+                st.last_at = now_ms();
+            }
+        }
+    };
+    set("syncing", String::new(), false);
+    let result: Res<()> = (|| {
+        let vault = Vault { root: PathBuf::from(&e.path) };
+        let mut drive = drive_for(app_data)?;
+        let state_file = app_data.join("sync").join(format!("{}.json", e.id));
+        let mut state = SyncState::load(&state_file);
+        if state.remote_folder.is_empty() {
+            state.remote_folder = drive.vault_folder(&e.id, &e.name)?;
+        }
+        let rep = {
+            let mut remote = drive.remote_for(&state.remote_folder);
+            sync::sync_once(&vault, &mut remote, &mut state)?
+        };
+        state.save(&state_file)?;
+        if rep.errors.is_empty() { Ok(()) } else { Err(rep.errors.join("; ")) }
+    })();
+    match &result {
+        Ok(()) => set("idle", String::new(), true),
+        Err(m) => set("error", m.clone(), false),
+    }
+    result
+}
+
+fn sync_thread(app: AppHandle, rx: std::sync::mpsc::Receiver<()>) {
+    loop {
+        // a change wakes us at once; otherwise sync (and so look for remote changes) every minute
+        let _ = rx.recv_timeout(Duration::from_secs(60));
+        std::thread::sleep(Duration::from_millis(1500)); // let a burst of saves finish
+        while rx.try_recv().is_ok() {}
+        let s = app.state::<Store>();
+        let entry = {
+            let cur = s.reg.lock().ok().and_then(|r| r.current.clone());
+            cur.and_then(|id| s.reg.lock().ok()?.find(&id).cloned())
+        };
+        let ready = entry.as_ref().is_some_and(|e| e.sync) && auth::email(&s.app_data).is_some() && auth::creds(&s.app_data).is_some();
+        match entry {
+            Some(e) if ready => {
+                let _ = run_sync(&s.app_data, &e, &s.status);
+            }
+            _ => {
+                if let Ok(mut st) = s.status.lock() {
+                    st.state = "off";
+                }
+            }
+        }
+    }
 }
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
-            let dir = app.path().app_data_dir()?;
-            let files = dir.join("files");
-            std::fs::create_dir_all(&files)?;
-            app.manage(Store { db: Mutex::new(open_db(&dir)?), files });
+            let app_data = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&app_data)?;
+            let (tx, rx) = channel();
+            app.manage(Store {
+                reg: Mutex::new(Registry::load(&app_data)),
+                app_data,
+                vault: Mutex::new(None),
+                status: Arc::new(Mutex::new(SyncStatus { state: "off", ..Default::default() })),
+                kick: Mutex::new(tx),
+                index: Mutex::new(None),
+            });
+            // reopen the vault that was open last time; if it is gone, the picker is shown
+            let s = app.state::<Store>();
+            let cur = s.reg.lock().ok().and_then(|r| r.current.clone().and_then(|id| r.find(&id).cloned()));
+            if let Some(e) = cur {
+                if let Err(m) = activate(&s, &e, false) {
+                    eprintln!("cannot open vault {}: {m}", e.path);
+                    if let Ok(mut r) = s.reg.lock() {
+                        r.current = None;
+                    }
+                }
+            }
+            let handle = app.handle().clone();
+            std::thread::spawn(move || sync_thread(handle, rx));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            pages_all, pages_save, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list, file_delete, files_clear
+            vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_stamp, pages_all, pages_save, kv_get, kv_set,
+            versions_list, version_add, versions_delete, file_put, file_get, files_list, file_delete, files_clear, account_status, account_login,
+            account_logout, sync_set, sync_now, cloud_vaults, cloud_download, index_state, index_update, index_search
         ])
         .run(tauri::generate_context!())
         .expect("error while running Noviq");

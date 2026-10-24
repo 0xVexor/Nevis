@@ -1,0 +1,110 @@
+/* ═════════ page content, redesigned from zero: type, quotes, code, tables, rules ═════════
+   (the toolbar, the "/" menu and the table/image bars have their own files) */
+
+.tiptap { line-height: 1.95; font-feature-settings: 'kern', 'liga'; text-wrap: pretty; }
+.tiptap p { margin: 0.55em 0; }
+.tiptap strong { font-weight: 800; }
+.tiptap em { font-style: italic; }
+.tiptap u { text-decoration-thickness: 2px; text-underline-offset: 4px; text-decoration-color: var(--accent-ring); }
+.tiptap s { text-decoration-color: var(--faint); }
+.tiptap mark { padding: 0.05em 0.3em; border-radius: 6px; background: linear-gradient(transparent 38%, color-mix(in srgb, var(--warn) 45%, transparent) 38%); color: inherit; }
+
+/* headings: a bar hangs in the margin of h2, a short rule closes h1 */
+.tiptap h1, .tiptap h2, .tiptap h3 { position: relative; line-height: 1.3; }
+.tiptap h1 { margin: 1.8em 0 0.6em; padding-bottom: 0.4em; font-size: 2.15em; font-weight: 800; letter-spacing: -0.035em; }
+.tiptap h1::after { content: ''; position: absolute; inset-inline-start: 0; bottom: 0; width: 56px; height: 4px; border-radius: 4px; background: var(--grad); }
+.tiptap h2 { margin: 1.7em 0 0.45em; font-size: 1.6em; font-weight: 800; letter-spacing: -0.025em; }
+.tiptap h2::before { content: ''; position: absolute; inset-inline-start: -20px; top: 0.22em; bottom: 0.22em; width: 4px; border-radius: 4px; background: var(--grad); opacity: 0.85; }
+.tiptap h3 { margin: 1.5em 0 0.35em; font-size: 1.22em; font-weight: 700; letter-spacing: -0.01em; color: color-mix(in srgb, var(--accent) 55%, var(--text)); }
+.tiptap > :first-child { margin-top: 0; }
+
+/* links */
+.tiptap a { padding: 0 0.12em; border-radius: 5px; text-decoration: underline; text-decoration-thickness: 2px; text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); text-underline-offset: 4px; transition: background 0.15s, text-decoration-color 0.15s; }
+.tiptap a:hover { background: var(--accent-bg); text-decoration-color: var(--accent); }
+
+/* inline code */
+.tiptap code { padding: 0.12em 0.5em; border: 1px solid color-mix(in srgb, var(--code-text) 18%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--code-text) 8%, transparent); font-size: 0.86em; font-weight: 500; }
+
+/* quote: a tinted card with a large gradient mark */
+.tiptap blockquote { position: relative; margin: 1.2em 0; padding: 18px 24px 18px 62px; border: 0; border-image: none; border-radius: 20px; background: linear-gradient(var(--to-end), var(--accent-soft), transparent 140%); color: var(--text); }
+:root[dir='rtl'] .tiptap blockquote { padding: 18px 62px 18px 24px; border-radius: 20px; }
+.tiptap blockquote::before { content: '\201C'; position: absolute; inset-inline-start: 18px; top: 4px; font: 700 3.6em/1 Georgia, 'Times New Roman', serif; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; pointer-events: none; }
+.tiptap blockquote::after { content: ''; position: absolute; inset-inline-start: 0; top: 16px; bottom: 16px; width: 3px; border-radius: 3px; background: var(--grad); }
+.tiptap blockquote p { margin: 0.3em 0; }
+.tiptap blockquote blockquote { margin: 0.6em 0; background: var(--hover); }
+
+/* code block: a window with its own title strip */
+.code-wrap { position: relative; margin: 1.3em 0; border: 1px solid var(--border-strong); border-radius: 20px; background: var(--pre-bg); overflow: hidden; box-shadow: 0 14px 34px -18px light-dark(rgb(30 20 100 / 0.28), rgb(0 0 0 / 0.7)), inset 0 1px 0 light-dark(rgb(255 255 255 / 0.8), rgb(255 255 255 / 0.03)); }
+.code-wrap::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 42px; border-bottom: 1px solid var(--border); background: linear-gradient(var(--hover), transparent); pointer-events: none; }
+.code-wrap::after { content: ''; position: absolute; top: 16px; left: 18px; width: 10px; height: 10px; border-radius: 50%; background: #ff5f57; box-shadow: 18px 0 0 #febc2e, 36px 0 0 #28c840; opacity: 0.9; pointer-events: none; }
+.code-wrap pre, .tiptap .code-wrap pre { margin: 0; padding: 56px 24px 20px; border: 0; border-radius: 0; background: none; box-shadow: none; font-size: 13.5px; line-height: 1.75; tab-size: 2; }
+.code-bar { top: 6px; right: 10px; opacity: 0.75; }
+.code-lang, .code-copy { height: 28px; border-radius: 9px; font-size: 12px; }
+.code-lang:hover, .code-copy:hover { background: var(--active); }
+.tiptap pre { border-radius: 18px; }
+
+/* tables: soft frame, tinted header, quiet rows */
+.tiptap .tableWrapper { margin: 1.3em 0; padding: 1px; }
+.tiptap table { border-collapse: separate; border-spacing: 0; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--bg-raised); box-shadow: 0 10px 28px -18px light-dark(rgb(30 20 100 / 0.25), rgb(0 0 0 / 0.6)); }
+.tiptap td, .tiptap th { padding: 11px 16px; border: 0; border-bottom: 1px solid var(--border); border-inline-end: 1px solid var(--border); line-height: 1.7; transition: background 0.15s; }
+.tiptap tr > :last-child { border-inline-end: 0; }
+.tiptap tr:last-child > * { border-bottom: 0; }
+.tiptap tr:first-child > :first-child { border-start-start-radius: 17px; }
+.tiptap tr:first-child > :last-child { border-start-end-radius: 17px; }
+.tiptap tr:last-child > :first-child { border-end-start-radius: 17px; }
+.tiptap tr:last-child > :last-child { border-end-end-radius: 17px; }
+.tiptap th { background: var(--grad-soft), var(--bg-raised); font-weight: 800; letter-spacing: -0.005em; border-bottom-color: var(--border-strong); }
+.tiptap tbody tr:not(:first-child):nth-child(even) > td { background: color-mix(in srgb, var(--hover) 55%, transparent); }
+.tiptap tbody tr:hover > td { background: var(--accent-soft); }
+
+/* divider: three quiet dots */
+.tiptap hr { width: 72px; height: 12px; margin: 2.2em auto; border: 0; background: radial-gradient(circle, var(--faint) 2.2px, transparent 2.8px) center / 24px 12px repeat-x; opacity: 0.8; }
+
+/* callout and toggle, matching the new surfaces */
+.callout { gap: 14px; padding: 18px 20px; border-radius: 20px; border-color: color-mix(in srgb, var(--accent) 24%, transparent); }
+.callout-ic { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 13px; background: var(--bg-raised); box-shadow: 0 2px 8px var(--accent-ring), inset 0 0 0 1px var(--border); font-size: 20px; line-height: 1; }
+.toggle { margin: 0.5em 0; padding: 4px 8px 4px 4px; border-radius: 14px; transition: background 0.15s; }
+.toggle:hover { background: var(--hover); }
+.toggle-btn { width: 28px; height: 28px; border-radius: 9px; margin-top: 4px; background: var(--hover); }
+.toggle.open .toggle-btn { background: var(--accent-bg); color: var(--accent); }
+.toggle-body > :first-child { font-weight: 700; }
+.toggle.open .toggle-body > :nth-child(n + 2) { margin-inline-start: 6px; padding-inline-start: 14px; border-inline-start: 2px solid var(--border-strong); }
+
+/* math, images */
+.math-block { margin: 1em 0; padding: 14px; border: 1px dashed var(--border-strong); border-radius: 16px; background: var(--bg-sunk); }
+.tiptap .img-fig img { border-radius: 18px; box-shadow: 0 16px 36px -18px light-dark(rgb(30 20 100 / 0.35), rgb(0 0 0 / 0.7)); }
+
+/* inside a code block the text is plain: no pill, no border, no tint */
+.tiptap pre code, .tiptap .code-wrap pre code { padding: 0; border: 0; border-radius: 0; background: none; color: inherit; font-size: inherit; font-weight: inherit; }
+.code-bar .code-al { display: inline-grid; place-items: center; width: 28px; padding: 0; }
+.code-bar .code-al.on { background: var(--accent-bg); color: var(--accent); }
+.code-bar .code-al svg { display: block; }
+
+/* icons inside the text: a mask, so any colour works and static HTML renders the same */
+.inline-icon { display: inline-block; width: 1.2em; height: 1.2em; margin-inline: 0.1em; vertical-align: -0.24em; background-color: currentColor; -webkit-mask: var(--ic) center / contain no-repeat; mask: var(--ic) center / contain no-repeat; }
+.ProseMirror-selectednode.inline-icon { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.fc-a .inline-icon, .hist-preview .inline-icon { color: var(--accent); }
+
+/* icon picker: colour row */
+.icon-colors { display: flex; flex-wrap: wrap; gap: 7px; margin: 0 2px 10px; }
+.icon-color { width: 22px; height: 22px; flex: none; padding: 0; border: 2px solid transparent; border-radius: 50%; outline: 1px solid var(--border); cursor: var(--cursor-hand, pointer); transition: transform 0.2s var(--spring), box-shadow 0.2s; }
+.icon-color:hover { transform: scale(1.18); }
+.icon-color.on { border-color: var(--pop); box-shadow: 0 0 0 2px var(--text); }
+.icon-color.auto { background: conic-gradient(#6a5cff, #ff6ec7, #f59e0b, #10b981, #3b82f6, #6a5cff); }
+.emoji-grid button.glyph.on { background: var(--accent-bg); box-shadow: inset 0 0 0 1px var(--accent-ring); }
+
+/* code language dropdown */
+.code-bar .code-lang-btn { display: inline-flex; align-items: center; gap: 6px; max-width: 220px; padding: 0 8px 0 10px; border: 1px solid var(--border); background: var(--bg-raised); color: var(--text); font-weight: 600; }
+.code-bar .code-lang-btn:hover { border-color: var(--border-strong); background: var(--hover); }
+.code-bar .code-lang-btn .cl-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-bar .code-lang-btn svg { flex: none; color: var(--faint); }
+.code-bar select.code-lang { display: none; }
+.lang-pop { z-index: 600; width: 240px; padding: 0; border-radius: 18px; overflow: hidden; direction: ltr; text-align: start; }
+.lang-head { padding: 8px 8px 4px; }
+.lang-search { width: 100%; height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: 11px; background: var(--bg); color: var(--text); font-size: 13px; outline: none; }
+.lang-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.lang-list { max-height: 260px; overflow: auto; padding: 4px 6px 6px; }
+.lang-list .menu-item { min-height: 34px; padding: 6px 10px; border-radius: 10px; }
+.lang-list .menu-item.hot { background: var(--hover); }
+.lang-list .menu-item.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+.lang-none { padding: 14px; text-align: center; color: var(--muted); font-size: 13px; }

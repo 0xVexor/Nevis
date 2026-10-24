@@ -10,6 +10,7 @@ import { makeZip, type ZipEntry } from './zip'
 import type { Page, PageStatus } from './repo'
 import { t } from './i18n'
 
+
 /** HTML -> ProseMirror JSON using the real schema, without mounting anything. */
 function htmlToDoc(html: string): any {
   const ed = new Editor({ extensions, content: html })
@@ -312,15 +313,17 @@ const safeName = (s: string) =>
   (s.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, 80)) || t('Untitled')
 const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/svg+xml': 'svg' }
 
-/** Every page as Markdown, laid out as folders that mirror the page tree, plus an assets/ folder. */
-export async function exportAllZip(): Promise<{ blob: Blob; pages: number; files: number }> {
+export interface MarkdownTree {
+  files: { path: string; text: string }[]
+  assets: { id: string; ext: string }[] // attachments used by the pages, stored as assets/<id>.<ext>
+}
+
+/** Every page as Markdown, laid out as folders that mirror the page tree. `typeOf` gives the mime type of an attachment (undefined = missing). */
+export async function buildMarkdownTree(typeOf: (id: string) => string | undefined): Promise<MarkdownTree> {
   const pages = repo.list()
-  const files = new Map((await allFiles()).map((f) => [f.id, f]))
-  const used = new Set<string>()
+  const used = new Map<string, string>()
   const taken = new Set<string>()
-  const entries: ZipEntry[] = []
-  const enc = new TextEncoder()
-  let count = 0
+  const files: MarkdownTree['files'] = []
 
   const place = async (p: Page, dir: string[]) => {
     let name = safeName(p.title)
@@ -337,20 +340,25 @@ export async function exportAllZip(): Promise<{ blob: Blob; pages: number; files
     const md = await toMarkdown(p.title, doc, (src) => {
       if (!src.startsWith('att:')) return src
       const id = src.slice(4)
-      const f = files.get(id)
-      if (!f) return ''
-      used.add(id)
-      return `${up}assets/${id}.${EXT[f.type] ?? 'bin'}`
+      const type = typeOf(id)
+      if (type === undefined) return ''
+      const ext = EXT[type] ?? 'bin'
+      used.set(id, ext)
+      return `${up}assets/${id}.${ext}`
     })
-    entries.push({ path: [...dir, `${name}.md`].join('/'), data: enc.encode(frontMatter(p) + md) })
-    count++
+    files.push({ path: [...dir, `${name}.md`].join('/'), text: frontMatter(p) + md })
     for (const c of pages.filter((x) => x.parentId === p.id).sort((a, b) => a.sort - b.sort)) await place(c, [...dir, name])
   }
   for (const r of pages.filter((p) => !p.parentId).sort((a, b) => a.sort - b.sort)) await place(r, [])
+  return { files, assets: [...used].map(([id, ext]) => ({ id, ext })) }
+}
 
-  for (const id of used) {
-    const f = files.get(id)!
-    entries.push({ path: `assets/${id}.${EXT[f.type] ?? 'bin'}`, data: new Uint8Array(await f.blob.arrayBuffer()) })
-  }
-  return { blob: makeZip(entries), pages: count, files: used.size }
+/** The zip download: the Markdown tree plus the image files. */
+export async function exportAllZip(): Promise<{ blob: Blob; pages: number; files: number }> {
+  const all = new Map((await allFiles()).map((f) => [f.id, f]))
+  const tree = await buildMarkdownTree((id) => all.get(id)?.type)
+  const enc = new TextEncoder()
+  const entries: ZipEntry[] = tree.files.map((f) => ({ path: f.path, data: enc.encode(f.text) }))
+  for (const a of tree.assets) entries.push({ path: `assets/${a.id}.${a.ext}`, data: new Uint8Array(await all.get(a.id)!.blob.arrayBuffer()) })
+  return { blob: makeZip(entries), pages: tree.files.length, files: tree.assets.length }
 }

@@ -41,6 +41,7 @@ const ITEMS: Item[] = [
     keywords: `code کد ${l.id} ${l.alias} ${l.name}`,
     run: (c: any) => c.setCodeBlock({ language: l.id }),
   })),
+  { title: 'Icon', desc: 'An icon inside the text, in any colour', icon: 'i:star', keywords: 'icon symbol emoji glyph آیکون نماد ایموجی', run: (c) => (window.dispatchEvent(new Event('pick-inline-icon')), c) },
   { title: 'Table', desc: '3×3 table with a header row', icon: 'i:table', keywords: 'table جدول', run: (c) => c.insertTable({ rows: 3, cols: 3, withHeaderRow: true }) },
   { title: 'Image', desc: 'Add a picture from your device', icon: 'i:image', keywords: 'image picture photo upload تصویر عکس', run: (c, ed) => (pickImages(ed), c) },
   { title: 'Image from link', desc: 'Add a picture from a web address (saved for offline use)', icon: 'i:link', keywords: 'image url link web picture photo تصویر لینک آدرس اینترنت', run: (c, ed) => (insertImageFromUrl(ed), c) },
@@ -68,7 +69,7 @@ export type CommandItem = Item
 export const shownItem = shown
 
 /** Items that put something new into the page: with a selection they go after it instead of replacing it. */
-export const INSERTS = new Set(['Table', 'Divider', 'Image', 'Image from link', 'Formula (block)', 'Formula (inline)', 'Diagram (Mermaid)', 'Link to page'])
+export const INSERTS = new Set(['Icon', 'Table', 'Divider', 'Image', 'Image from link', 'Formula (block)', 'Formula (inline)', 'Diagram (Mermaid)', 'Link to page'])
 
 /**
  * What the Ctrl+/ palette offers: everything of the slash menu, and with text selected also actions on it

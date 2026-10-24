@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { repo, gcFiles, TRASH_DAYS } from './store'
 import type { Cover, Page, PageStatus } from './repo'
 import { SettingsView } from './SettingsPage'
+import { Tasks } from './Tasks'
 import { CoverBanner, CoverPicker } from './Cover'
 import { PagePanel } from './PagePanel'
 import { PageIcon } from './PageIcon'
@@ -10,15 +11,27 @@ import { BackupError, buildBackup, download, pageToMarkdown, restoreBackup } fro
 import { exportAllZip, importMarkdown, importVault, pickDirectory, pickFiles } from './io'
 import { PagesTable } from './PagesTable'
 import { Flashcards } from './Flashcards'
+import { SidebarTags } from './SidebarTags'
+import { Templates, TEMPLATE_GLYPH } from './TemplateGallery'
+import { getTemplates } from './templates'
 import { PageView, type SaveState } from './PageView'
 import { ReaderBar, loadReaderCfg, type ReaderCfg } from './ReaderBar'
 import { BackupSettings } from './BackupSettings'
-import { MenuItem, NameDialog, Popover, SearchModal, Toast, TrashModal, type PaletteCommand } from './ui'
+import { Vaults } from './Vaults'
+import { SyncButton } from './SyncButton'
+import { WorkspaceCard } from './VaultSwitcher'
+import { GraphView } from './GraphView'
+import { searchPages } from './searchIndex'
+import { isTauri, kvGet, kvSet, syncNow } from './db'
+import { watchDueCards } from './cardsDue'
+import { normalizeFa } from './normalize'
+import { MenuItem, MenuLabel, MenuSep, NameDialog, Popover, SearchModal, Toast, TrashModal, type PaletteCommand } from './ui'
 import { Home } from './Home'
 import { iconNode } from './iconSet'
 import * as Ic from './icons'
+import { printPage } from './print'
+import { confirmDialog } from './dialog'
 import { OPEN_PAGE, PAGES_CHANGED } from './editor/pageLink'
-import './App.css'
 import { t } from './i18n'
 
 const PAGE_W = { min: 640, max: 1800, def: 1400, step: 80 }
@@ -58,13 +71,16 @@ function TreeRow(props: RowProps) {
   const kids = pages.filter((p) => p.parentId === page.id).sort((a, b) => a.sort - b.sort)
   const open = !collapsed.has(page.id)
   const folder = page.kind === 'folder'
+  const leaf = depth > 0 && !folder && !kids.length // nested plain pages: just a title, hung on the guide line
+  const total = (id: string): number => pages.filter((p) => p.parentId === id).reduce((n, p) => n + (p.kind === 'folder' ? total(p.id) : 1 + total(p.id)), 0)
+  const count = kids.length ? total(page.id) : 0
   return (
     <>
       <div
-        className={'row' + (page.id === currentId ? ' cur' : '') + (zone ? ' drop-' + zone : '')}
-        style={{ paddingInlineStart: 6 + depth * 14 }}
+        className={'row tree' + (folder ? ' folder' : '') + (leaf ? ' leaf' : '') + (page.id === currentId ? ' cur' : '') + (zone ? ' drop-' + zone : '')}
         draggable
         onClick={() => (folder ? props.onToggle(page.id) : props.onOpen(page.id))}
+        onContextMenu={(e) => (e.preventDefault(), e.stopPropagation(), props.onMenu(page.id, new DOMRect(e.clientX, e.clientY, 0, 0)))}
         onDragStart={(e) => {
           e.dataTransfer.setData('application/x-page', page.id)
           e.dataTransfer.effectAllowed = 'move'
@@ -99,12 +115,13 @@ function TreeRow(props: RowProps) {
         </button>
         <span className="ic"><PageIcon page={page} /></span>
         <span className="ntitle" dir="auto">{page.title || (folder ? t('Untitled folder') : t('Untitled'))}</span>
+        {count > 0 && <span className="tree-count">{String(count).padStart(2, '0')}</span>}
         <span className="acts">
           <button title={t('Options')} onClick={(e) => (e.stopPropagation(), props.onMenu(page.id, e.currentTarget.getBoundingClientRect()))}><Ic.Dots size={16} /></button>
           <button title={folder ? t('New page in folder') : t('New subpage')} onClick={(e) => (e.stopPropagation(), props.onAdd(page.id))}><Ic.Plus size={16} /></button>
         </span>
       </div>
-      {open && kids.map((k) => <TreeRow key={k.id} {...props} page={k} depth={depth + 1} />)}
+      {open && kids.length > 0 && <div className="tree-kids">{kids.map((k) => <TreeRow key={k.id} {...props} page={k} depth={depth + 1} />)}</div>}
     </>
   )
 }
@@ -112,26 +129,36 @@ function TreeRow(props: RowProps) {
 export default function App() {
   const [pages, setPages] = useState<Page[]>(() => repo.list())
   const [currentId, setCurrentIdRaw] = useState<string>(() => localStorage.getItem('not.current') || repo.pagesOnly()[0]?.id || '')
-  const [view, setView] = useState<'home' | 'page' | 'settings'>('home')
+  const [view, setView] = useState<'home' | 'page' | 'settings' | 'tasks'>('home')
   const [panelOpen, setPanelOpen] = useState<boolean>(() => store('not.panel.v2', false))
   const [coverMenu, setCoverMenu] = useState<DOMRect | null>(null)
   // opening any page (sidebar, search, link, breadcrumb…) also leaves the settings view
   const setCurrentId = useCallback((id: string) => (setView('page'), setCurrentIdRaw(id)), [])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
-  const [shut, setShut] = useState<{ favs: boolean; pages: boolean }>({ favs: false, pages: false })
+  const [shut, setShut] = useState<{ favs: boolean; pages: boolean; tags: boolean; saved: boolean }>({ favs: false, pages: false, tags: false, saved: false })
   const [save, setSave] = useState<SaveState>('saved')
   const [sideOpen, setSideOpen] = useState<boolean>(() => store('not.side', true))
   const [searching, setSearching] = useState(false)
+  const [searchInit, setSearchInit] = useState('') // query to start the search with (a saved search)
+  const [tagFilter, setTagFilter] = useState<string | null>(null) // sidebar: show only pages with this tag
+  const [saved, setSaved] = useState<{ id: string; name: string; query: string }[]>([])
+  useEffect(() => void kvGet<{ id: string; name: string; query: string }[]>('savedSearches').then((s) => setSaved(Array.isArray(s) ? s : [])), [])
+  const saveSaved = (next: { id: string; name: string; query: string }[]) => (setSaved(next), void kvSet('savedSearches', next))
   const [trashOpen, setTrashOpen] = useState(false)
   const [naming, setNaming] = useState<{ title: string; label: string; initial: string; action: string; onSubmit: (name: string) => void } | null>(null)
   const [backupOpen, setBackupOpen] = useState(false)
+  const [folderOpen, setFolderOpen] = useState(false)
   const [tableOpen, setTableOpen] = useState(false)
+  const [graphOpen, setGraphOpen] = useState(false)
+  const [dueCards, setDueCards] = useState(0)
+  useEffect(() => watchDueCards(setDueCards, isTauri), [])
   const [cardsOpen, setCardsOpen] = useState(false)
   const [dataMenu, setDataMenu] = useState<DOMRect | null>(null)
-  const [shareMenu, setShareMenu] = useState<DOMRect | null>(null)
+  const [blankMenu, setBlankMenu] = useState<DOMRect | null>(null) // right-click on empty sidebar space
   const [trashTick, setTrashTick] = useState(0)
   const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null)
   const [menu, setMenu] = useState<{ id: string; rect: DOMRect } | null>(null)
+  const [movingId, setMovingId] = useState<string | null>(null)
   const [reader, setReader] = useState(false)
   const [readerCfg, setReaderCfg] = useState<ReaderCfg>(loadReaderCfg)
   const [pageW, setPageW] = useState<number>(() => Number(localStorage.getItem('not.page.width')) || PAGE_W.def)
@@ -166,15 +193,16 @@ export default function App() {
     const changed = () => refresh()
     window.addEventListener(OPEN_PAGE, open)
     window.addEventListener(PAGES_CHANGED, changed)
+    window.addEventListener('external-change', changed)
     return () => {
       window.removeEventListener(OPEN_PAGE, open)
       window.removeEventListener(PAGES_CHANGED, changed)
+      window.removeEventListener('external-change', changed)
     }
   }, [refresh])
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey
-      if (mod && e.key.toLowerCase() === 'k') (e.preventDefault(), setSearching(true))
       if (mod && e.key === '\\') (e.preventDefault(), setSideOpen((s) => !s))
       // Alt + = / Alt + -: wider / narrower text column (in reader mode: the reader page)
       if (e.altKey && !mod && !e.shiftKey && (e.code === 'Equal' || e.code === 'Minus')) {
@@ -189,11 +217,42 @@ export default function App() {
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
   }, [])
+  // Ctrl/Cmd+K opens search from anywhere in the app: capture phase (the editor cannot swallow it) and the physical key
+  // (so it also works with the Persian keyboard layout, where e.key is not “k”)
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === 'KeyK' || e.key.toLowerCase() === 'k')) {
+        e.preventDefault()
+        e.stopPropagation()
+        setSearching(true)
+      }
+    }
+    window.addEventListener('keydown', key, true)
+    return () => window.removeEventListener('keydown', key, true)
+  }, [])
 
   const add = (parentId: string | null) => {
     const p = repo.create(parentId)
     if (parentId) expand(parentId)
     refresh()
+    setCurrentId(p.id)
+  }
+  useEffect(() => {
+    const open = (e: Event) => (setSearchInit(String((e as CustomEvent).detail ?? '')), setSearching(true))
+    window.addEventListener('open-search', open)
+    return () => window.removeEventListener('open-search', open)
+  }, [])
+  const [tplOpen, setTplOpen] = useState(false)
+  const addFromTemplate = (id: string) => {
+    setTplOpen(false)
+    const p = repo.create(null)
+    const tp = getTemplates().find((x) => x.id === id)
+    if (tp) {
+      repo.update(p.id, { title: tp.pageTitle, icon: 'i:' + (TEMPLATE_GLYPH[tp.id] ?? 'page') })
+      ;(window as any).__pendingTpl = { pageId: p.id, id }
+    }
+    refresh()
+    setView('page')
     setCurrentId(p.id)
   }
   const addFolder = (parentId: string | null) =>
@@ -219,15 +278,23 @@ export default function App() {
     if (id === currentId) setCurrentId(repo.pagesOnly()[0]?.id ?? '')
     setToast({ msg: t('“{title}” moved to trash', { title: p.title || t('Untitled') }), undo: () => (repo.restoreFromTrash(id), refresh(), p.kind !== 'folder' && setCurrentId(id)) })
   }
+  const duplicate = (id: string) => {
+    const p = repo.get(id)
+    if (!p) return
+    const c = repo.create(p.parentId, p.kind)
+    repo.update(c.id, { title: p.title ? p.title + ' ' + t('(copy)') : '', icon: p.icon, cover: p.cover, titleDir: p.titleDir, tags: p.tags ? [...p.tags] : undefined, status: p.status, content: structuredClone(p.content) })
+    refresh()
+    if (p.kind !== 'folder') setCurrentId(c.id)
+  }
   const purge = async (p: Page) => {
-    if (!confirm(t('“{title}” will be deleted permanently. This cannot be undone.', { title: p.title || t('Untitled') }))) return
+    if (!(await confirmDialog({ title: t('Delete permanently'), message: t('“{title}” will be deleted permanently. This cannot be undone.', { title: p.title || t('Untitled') }), confirmLabel: t('Delete permanently'), danger: true }))) return
     repo.purge(p.id)
     await gcFiles()
     refresh()
     setTrashTick((t) => t + 1)
   }
   const emptyTrash = async () => {
-    if (!confirm(t('Permanently delete everything in the trash? This cannot be undone.'))) return
+    if (!(await confirmDialog({ title: t('Empty trash'), message: t('Permanently delete everything in the trash? This cannot be undone.'), confirmLabel: t('Empty trash'), danger: true }))) return
     repo.emptyTrash()
     await gcFiles()
     refresh()
@@ -297,7 +364,7 @@ export default function App() {
   }
   const doRestore = async () => {
     const [f] = await pickFiles('application/json')
-    if (!f || !confirm(t('All current pages will be replaced by the backup. Continue?'))) return
+    if (!f || !(await confirmDialog({ title: t('Restore from backup'), message: t('All current pages will be replaced by the backup. Continue?'), confirmLabel: t('Restore'), danger: true }))) return
     try {
       const r = await restoreBackup(repo, await f.text())
       refresh()
@@ -320,6 +387,13 @@ export default function App() {
 
   const roots = useMemo(() => pages.filter((p) => !p.parentId).sort((a, b) => a.sort - b.sort), [pages])
   const favs = pages.filter((p) => p.favorite)
+  // tags with their page counts (letters compared after Persian normalization, so ي/ی count as one tag)
+  const tagList = useMemo(() => {
+    const m = new Map<string, { key: string; label: string; count: number }>()
+    for (const p of pages) if (p.kind !== 'folder') for (const tg of p.tags ?? []) { const key = normalizeFa(tg); const g = m.get(key); g ? g.count++ : m.set(key, { key, label: tg, count: 1 }) }
+    return [...m.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'fa'))
+  }, [pages])
+  const taggedPages = useMemo(() => (tagFilter ? pages.filter((p) => p.kind !== 'folder' && p.tags?.some((tg) => normalizeFa(tg) === tagFilter)) : []), [pages, tagFilter])
   const crumbs = useMemo(() => {
     const out: Page[] = []
     for (let p: Page | undefined = current; p; p = p.parentId ? pages.find((x) => x.id === p!.parentId) : undefined) out.unshift(p)
@@ -327,15 +401,18 @@ export default function App() {
   }, [current, pages])
   const commands: PaletteCommand[] = [
     { id: 'new-page', label: t('New page'), icon: <Ic.Page />, keywords: 'create add صفحه جدید', run: () => add(null) },
+    { id: 'templates', label: t('Templates'), icon: <Ic.Blocks />, keywords: 'template قالب تمپلیت', run: () => setTplOpen(true) },
     { id: 'new-folder', label: t('New folder'), icon: <Ic.Folder />, keywords: 'create add پوشه', run: () => addFolder(null) },
     ...(current && view === 'page' ? [
       { id: 'subpage', label: t('Add subpage'), icon: <Ic.Plus />, keywords: 'زیرصفحه', run: () => add(current.id) },
       { id: 'fav', label: current.favorite ? t('Remove from favorites') : t('Add to favorites'), icon: <Ic.Star filled={current.favorite} />, keywords: 'star pin علاقه‌مندی', run: () => fav(current.id) },
-      { id: 'reader', label: t('Reader mode'), icon: <Ic.Book />, keywords: 'read مطالعه', hint: 'Ctrl .', run: () => setReader(true) },
+      { id: 'reader', label: t('Reader mode'), icon: <Ic.Reader />, keywords: 'read مطالعه', hint: 'Ctrl .', run: () => setReader(true) },
       { id: 'export-md', label: t('Export Markdown'), icon: <Ic.Markdown />, keywords: 'download خروجی', run: () => exportMd(current.id) },
     ] : []),
     { id: 'home', label: t('Home'), icon: <Ic.Home />, keywords: 'dashboard خانه', run: () => setView('home') },
     { id: 'table', label: t('Pages table'), icon: <Ic.Table />, keywords: 'database جدول', run: () => setTableOpen(true) },
+    { id: 'graph', label: t('Graph view'), icon: <Ic.Link />, keywords: 'graph links map backlinks گراف نقشه ارتباط پیوند', run: () => setGraphOpen(true) },
+    { id: 'tasks', label: t('Tasks'), icon: <Ic.Checklist />, keywords: 'tasks todo checklist کارها وظایف چک لیست', run: () => setView('tasks') },
     { id: 'cards', label: t('Flashcards'), icon: <Ic.Cards />, keywords: 'review srs فلش‌کارت', run: () => setCardsOpen(true) },
     { id: 'trash', label: t('Trash'), icon: <Ic.Trash />, keywords: 'deleted سطل', run: () => setTrashOpen(true) },
     { id: 'theme', label: dark ? t('Light mode') : t('Dark mode'), icon: dark ? <Ic.Sun /> : <Ic.Moon />, keywords: 'theme dark light تم', run: () => updateSettings({ theme: dark ? 'light' : 'dark' }) },
@@ -344,6 +421,7 @@ export default function App() {
     { id: 'vault', label: t('Import Obsidian vault (folder)…'), icon: <Ic.Folder />, keywords: 'obsidian', run: doVault },
     { id: 'export-all', label: t('Export all pages (zip with Markdown & images)'), icon: <Ic.Download />, keywords: 'zip', run: doExportAll },
     { id: 'backup', label: t('Full backup (JSON)'), icon: <Ic.Save />, keywords: 'پشتیبان', run: doBackup },
+    ...[{ id: 'data-folder', label: t('Workspaces and sync…'), icon: <Ic.Folder />, keywords: 'sync google drive vault switch پوشه داده همگام', run: () => setFolderOpen(true) }],
     { id: 'auto-backup', label: t('Automatic backup to folder…'), icon: <Ic.Save />, keywords: 'پشتیبان خودکار', run: () => setBackupOpen(true) },
     { id: 'settings', label: t('Settings'), icon: <Ic.Settings />, keywords: 'preferences تنظیمات', run: () => setView('settings') },
   ]
@@ -353,10 +431,10 @@ export default function App() {
 
   return (
     <div className={'app' + (reader && view === 'page' && current ? ' reading' : '')} style={{ ['--page-w' as any]: pageW + 'px', ['--r-scale' as any]: readerCfg.scale, ['--r-width' as any]: readerCfg.width + 'px' }}>
-      <aside className={'side' + (sideOpen ? '' : ' closed')}>
+      <aside className={'side' + (sideOpen ? '' : ' closed')} onContextMenu={(e) => (e.preventDefault(), setBlankMenu(new DOMRect(e.clientX, e.clientY, 0, 0)))}>
         <div className="ws">
           <span className="ws-logo"><Ic.Logo size={24} /></span>
-          <span className="ws-name">Noviq</span>
+          <span className="ws-name">Noviq.</span>
           <button className="icon-btn" title={t('Close sidebar  Ctrl+\\')} onClick={() => setSideOpen(false)}><Ic.Sidebar /></button>
         </div>
 
@@ -373,6 +451,14 @@ export default function App() {
             <span className="ic"><Ic.Settings /></span><span className="ntitle">{t('Settings')}</span>
           </button>
 
+          <button className={'row plain' + (view === 'tasks' ? ' cur' : '')} onClick={() => setView('tasks')}>
+            <span className="ic"><Ic.Checklist /></span><span className="ntitle">{t('Tasks')}</span>
+          </button>
+
+          <button className="row plain" onClick={() => setTplOpen(true)}><span className="ic"><Ic.Blocks /></span><span className="ntitle">{t('Templates')}</span></button>
+
+          <button className="row plain" onClick={() => setCardsOpen(true)}><span className="ic"><Ic.Cards /></span><span className="ntitle">{t('Flashcards')}</span>{dueCards > 0 && <span className="badge">{dueCards}</span>}</button>
+
           {favs.length > 0 && (
             <>
               <button className={"section" + (shut.favs ? " shut" : "")} onClick={() => setShut((s) => ({ ...s, favs: !s.favs }))}>{t('Favorites')}<Ic.Chevron size={13} /></button>
@@ -385,9 +471,26 @@ export default function App() {
             </>
           )}
 
-          <button className={"section" + (shut.pages ? " shut" : "")} onClick={() => setShut((s) => ({ ...s, pages: !s.pages }))}>{t('Pages')}<Ic.Chevron size={13} /></button>
+          {saved.length > 0 && (
+            <>
+              <button className={"section" + (shut.saved ? " shut" : "")} onClick={() => setShut((s) => ({ ...s, saved: !s.saved }))}>{t('Saved searches')}<Ic.Chevron size={13} /></button>
+              {!shut.saved && saved.map((s) => (
+                <div key={s.id} className="row saved-row" style={{ paddingInlineStart: 24 }} title={s.query} onClick={() => (setSearchInit(s.query), setSearching(true))}>
+                  <span className="ic"><Ic.Search size={15} /></span>
+                  <span className="ntitle" dir="auto">{s.name}</span>
+                  <span className="acts"><button title={t('Delete')} onClick={(e) => (e.stopPropagation(), saveSaved(saved.filter((x) => x.id !== s.id)))}><Ic.Close size={14} /></button></span>
+                </div>
+              ))}
+            </>
+          )}
+
+          {<button className={"section" + (shut.pages ? " shut" : "")} onClick={() => setShut((s) => ({ ...s, pages: !s.pages }))}>{t('Pages')}<Ic.Chevron size={13} /></button>}
           {!shut.pages && roots.map((p) => <TreeRow key={p.id} {...rowProps} page={p} depth={0} />)}
           {!shut.pages && roots.length === 0 && <div className="empty-note">{t('No pages yet')}</div>}
+
+          {tagList.length > 0 && (
+            <SidebarTags tags={tagList} active={tagFilter} onPick={setTagFilter} shut={!!shut.tags} onToggle={() => setShut((x) => ({ ...x, tags: !x.tags }))} pages={taggedPages} currentId={current?.id} onOpen={setCurrentId} />
+          )}
 
           <div className="side-utils">
           <button className="row plain" onClick={() => addFolder(null)}>
@@ -397,13 +500,11 @@ export default function App() {
             <span className="ic"><Ic.Trash /></span><span className="ntitle">{t('Trash')}</span>
             {repo.trash().length > 0 && <span className="badge">{repo.trash().length}</span>}
           </button>
-          <button className="row plain" onClick={(e) => setDataMenu(e.currentTarget.getBoundingClientRect())}>
-            <span className="ic"><Ic.Download /></span><span className="ntitle">{t('Data & backup')}</span>
-          </button>
           </div>
         </div>
 
         <div className="side-foot">
+          <WorkspaceCard onOpen={() => setFolderOpen(true)} />
           <button className="new-page" onClick={() => add(null)}>
             <Ic.Plus size={16} /><span>{t('New page')}</span>
           </button>
@@ -415,17 +516,18 @@ export default function App() {
         <header className="topbar">
           {!sideOpen && <button className="icon-btn" title={t('Open sidebar  Ctrl+\\')} onClick={() => setSideOpen(true)}><Ic.Sidebar /></button>}
           <nav className="crumbs">
-            <span className="crumb-home"><Ic.Home size={15} /></span>
-            {view === 'home' && <span className="crumb"><span className="crumb-folder">{t('Home')}</span></span>}
-            {view === 'settings' && <span className="crumb"><span className="crumb-folder"><span className="ic"><Ic.Settings size={15} /></span>{t('Settings')}</span></span>}
+            <button className="crumb-home" title={t('Home')} onClick={() => setView('home')}><Ic.Home size={15} /></button>
+            {view === 'home' && <span className="crumb"><span className="crumb-cur"><Ic.Sidebar size={14} />{t('Home')}</span></span>}
+            {view === 'tasks' && <span className="crumb"><span className="crumb-cur"><Ic.Checklist size={14} />{t('Tasks')}</span></span>}
+            {view === 'settings' && <span className="crumb"><span className="crumb-cur"><Ic.Settings size={14} />{t('Settings')}</span></span>}
             {view === 'page' && crumbs.map((c, i) => (
-              <span key={c.id} className="crumb">
-                {i > 0 && <span className="crumb-sep">/</span>}
+              <span key={c.id} className={'crumb' + (i === crumbs.length - 1 ? ' last' : '')}>
+                <span className="crumb-sep"><Ic.Chevron size={13} /></span>
                 {c.kind === 'folder' ? (
-                  <span className="crumb-folder" dir="auto"><span className="ic">📁</span>{c.title || t('Folder')}</span>
+                  <span className="crumb-folder" dir="auto"><Ic.Folder size={14} /><span>{c.title || t('Folder')}</span></span>
                 ) : (
                   <button onClick={() => setCurrentId(c.id)} dir="auto">
-                    <span className="ic">{iconNode(c.icon, 15)}</span>{c.title || t('Untitled')}
+                    <span className="ic">{iconNode(c.icon, 14)}</span><span className="crumb-t">{c.title || t('Untitled')}</span>
                   </button>
                 )}
               </span>
@@ -433,23 +535,28 @@ export default function App() {
           </nav>
           <span className="spacer" />
           <span className={'status' + (save === 'saving' ? ' busy' : '')}><i className="dot" />{save === 'saving' ? t('Saving…') : t('Saved')}</span>
-          {current && view === 'page' && (
-            <>
-              <button className="icon-btn" title={t('Reader mode  Ctrl+.')} onClick={() => setReader(true)}><Ic.Book /></button>
-              <button className={'icon-btn' + (current.favorite ? ' fav-on' : '')} title={t('Favorite')} onClick={() => fav(current.id)}><Ic.Star filled={current.favorite} /></button>
-              <button className="share-btn" title={t('Import & export')} onClick={(e) => setShareMenu(e.currentTarget.getBoundingClientRect())}><Ic.Share size={15} />{t('Share')}</button>
-              <button className={'icon-btn panel-toggle' + (panelOpen ? ' active' : '')} title={t('Page side panel (quick actions & navigation)')} onClick={() => setPanelOpen((o) => !o)}><Ic.Panel /></button>
-            </>
-          )}
-          <button className="icon-btn" title={dark ? t('Light mode') : t('Dark mode')} onClick={() => updateSettings({ theme: dark ? 'light' : 'dark' })}>
-            {dark ? <Ic.Sun /> : <Ic.Moon />}
-          </button>
+          <div className="tb-group">
+            {isTauri && <SyncButton onSetup={() => setFolderOpen(true)} />}
+            {current && view === 'page' && (
+              <>
+                <button className="icon-btn" title={t('Reader mode  Ctrl+.')} onClick={() => setReader(true)}><Ic.Reader /></button>
+                <button className={'icon-btn' + (current.favorite ? ' fav-on' : '')} title={t('Favorite')} onClick={() => fav(current.id)}><Ic.Star filled={current.favorite} /></button>
+                <button className={'icon-btn panel-toggle' + (panelOpen ? ' active' : '')} title={t('Page side panel (quick actions & navigation)')} onClick={() => setPanelOpen((o) => !o)}><Ic.Panel /></button>
+              </>
+            )}
+            <button className="icon-btn" title={dark ? t('Light mode') : t('Dark mode')} onClick={() => updateSettings({ theme: dark ? 'light' : 'dark' })}>
+              {dark ? <Ic.Sun /> : <Ic.Moon />}
+            </button>
+          </div>
+          {current && view === 'page' && <button className="share-btn" title={t('Share & export')} onClick={(e) => setDataMenu(e.currentTarget.getBoundingClientRect())}><Ic.Share size={15} />{t('Share')}</button>}
         </header>
 
         {reader && view === 'page' && current && <ReaderBar cfg={readerCfg} onCfg={(c) => (setReaderCfg(c), localStorage.setItem('not.reader.cfg', JSON.stringify(c)))} onExit={() => setReader(false)} />}
         <div className="scroller">
           {view === 'home' ? (
             <Home pages={pages} onOpen={setCurrentId} onNew={() => add(null)} onFolder={() => addFolder(null)} onTable={() => setTableOpen(true)} onCards={() => setCardsOpen(true)} onSearch={() => setSearching(true)} />
+          ) : view === 'tasks' ? (
+            <Tasks onOpen={setCurrentId} />
           ) : view === 'settings' ? (
             <SettingsView />
           ) : current ? (
@@ -488,13 +595,42 @@ export default function App() {
       {menu && menuPage && (
         <Popover anchor={menu.rect} onClose={() => setMenu(null)} align="end">
           <div className="menu">
+            {menuPage.kind !== 'folder' && <MenuItem icon={<Ic.Open />} label={t('Open')} onClick={() => (setCurrentId(menu.id), setView('page'), setMenu(null))} />}
             {menuPage.kind !== 'folder' && <MenuItem icon={<Ic.Star filled={menuPage.favorite} />} label={menuPage.favorite ? t('Remove from favorites') : t('Add to favorites')} onClick={() => (fav(menu.id), setMenu(null))} />}
+            <MenuSep />
+            <MenuLabel>{t('Create')}</MenuLabel>
             <MenuItem icon={<Ic.Plus />} label={menuPage.kind === 'folder' ? t('Add page in this folder') : t('Add subpage')} onClick={() => (add(menu.id), setMenu(null))} />
-            <MenuItem icon={<Ic.Folder />} label={t('Add folder')} onClick={() => (addFolder(menu.id), setMenu(null))} />
-            <MenuItem icon={<Ic.Page />} label={t('Rename')} onClick={() => (rename(menu.id), setMenu(null))} />
+            <MenuItem icon={<Ic.Folders />} label={t('Add folder')} onClick={() => (addFolder(menu.id), setMenu(null))} />
+            <MenuSep />
+            <MenuLabel>{t('Organize')}</MenuLabel>
+            <MenuItem icon={<Ic.Pencil />} label={t('Rename')} onClick={() => (rename(menu.id), setMenu(null))} />
+            {menuPage.kind !== 'folder' && <MenuItem icon={<Ic.Copy />} label={t('Duplicate')} onClick={() => (duplicate(menu.id), setMenu(null))} />}
+            <MenuItem icon={<Ic.Folder />} label={t('Move to folder')} onClick={() => (setMovingId(menu.id), setMenu(null))} />
+            {menuPage.parentId && <MenuItem icon={<Ic.Up />} label={t('Move to top level')} onClick={() => (move(menu.id, null, null), setMenu(null))} />}
+            <MenuItem icon={<Ic.Clipboard />} label={t('Copy title')} onClick={() => (void navigator.clipboard?.writeText(menuPage.title || ''), setMenu(null))} />
             {menuPage.kind !== 'folder' && <MenuItem icon={<Ic.Markdown />} label={t('Export Markdown')} onClick={() => (exportMd(menu.id), setMenu(null))} />}
-            <div className="menu-sep" />
+            <MenuSep />
             <MenuItem danger icon={<Ic.Trash />} label={t('Delete')} hint="Delete" onClick={() => (del(menu.id), setMenu(null))} />
+          </div>
+        </Popover>
+      )}
+
+      {blankMenu && (
+        <Popover anchor={blankMenu} onClose={() => setBlankMenu(null)}>
+          <div className="menu">
+            <MenuItem icon={<Ic.Plus />} label={t('New page')} onClick={() => (add(null), setBlankMenu(null))} />
+            <MenuItem icon={<Ic.Folders />} label={t('New folder')} onClick={() => (addFolder(null), setBlankMenu(null))} />
+            <MenuItem icon={<Ic.Blocks />} label={t('New from template…')} onClick={() => (setTplOpen(true), setBlankMenu(null))} />
+            <MenuSep />
+            <MenuLabel>{t('Go to')}</MenuLabel>
+            <MenuItem icon={<Ic.Home />} label={t('Home')} onClick={() => (setView('home'), setBlankMenu(null))} />
+            <MenuItem icon={<Ic.Table />} label={t('Pages table')} onClick={() => (setTableOpen(true), setBlankMenu(null))} />
+            <MenuItem icon={<Ic.Cards />} label={t('Flashcards')} onClick={() => (setCardsOpen(true), setBlankMenu(null))} />
+            <MenuItem icon={<Ic.Link />} label={t('Graph view')} onClick={() => (setGraphOpen(true), setBlankMenu(null))} />
+            <MenuSep />
+            <MenuItem icon={<Ic.Upload />} label={t('Import Markdown files…')} onClick={() => (setBlankMenu(null), doImport())} />
+            <MenuItem icon={<Ic.Trash />} label={t('Trash')} onClick={() => (setTrashOpen(true), setBlankMenu(null))} />
+            <MenuItem icon={<Ic.Settings />} label={t('Settings')} onClick={() => (setView('settings'), setBlankMenu(null))} />
           </div>
         </Popover>
       )}
@@ -505,40 +641,43 @@ export default function App() {
         </Popover>
       )}
 
-      {shareMenu && current && (
-        <Popover anchor={shareMenu} onClose={() => setShareMenu(null)} align="end">
-          <div className="menu">
-            <MenuItem icon={<Ic.Markdown />} label={t('Export Markdown')} onClick={() => (setShareMenu(null), exportMd(current.id))} />
-            <MenuItem icon={<Ic.Markdown />} label={t('Export all pages (zip with Markdown & images)')} onClick={() => (setShareMenu(null), doExportAll())} />
-            <div className="menu-sep" />
-            <MenuItem icon={<Ic.Upload />} label={t('Import Markdown files…')} onClick={() => (setShareMenu(null), doImport())} />
-            <MenuItem icon={<Ic.Folder />} label={t('Import Obsidian vault (folder)…')} onClick={() => (setShareMenu(null), doVault())} />
-            <div className="menu-sep" />
-            <MenuItem icon={<Ic.Download />} label={t('Full backup (JSON)')} onClick={() => (setShareMenu(null), doBackup())} />
-            <MenuItem icon={<Ic.Upload />} label={t('Restore from backup…')} onClick={() => (setShareMenu(null), doRestore())} />
-          </div>
-        </Popover>
-      )}
 
       {dataMenu && (
-        <Popover anchor={dataMenu} onClose={() => setDataMenu(null)}>
-          <div className="menu">
+        <Popover anchor={dataMenu} onClose={() => setDataMenu(null)} align="end">
+          <div className="menu share-menu">
+            {current && view === 'page' && (
+              <>
+                <MenuLabel>{t('Share this page')}</MenuLabel>
+                <MenuItem icon={<Ic.Markdown />} label={t('Export Markdown')} desc={t('Download as a .md file')} onClick={() => (setDataMenu(null), exportMd(current.id))} />
+                <MenuItem icon={<Ic.Pdf />} label={t('Print / PDF')} desc={t('Save as PDF or print')} onClick={() => (setDataMenu(null), printPage(current.title))} />
+                <MenuItem icon={<Ic.Copy />} label={t('Copy as Markdown')} desc={t('Put it on the clipboard')} onClick={async () => { setDataMenu(null); await navigator.clipboard?.writeText(await pageToMarkdown(current)); setToast({ msg: t('Copied') }) }} />
+                <MenuItem icon={<Ic.Reader />} label={t('Reader mode')} hint="Ctrl ." onClick={() => (setDataMenu(null), setReader(true))} />
+                <MenuSep />
+              </>
+            )}
+            <MenuLabel>{t('Import')}</MenuLabel>
             <MenuItem icon={<Ic.Upload />} label={t('Import Markdown files…')} onClick={() => (setDataMenu(null), doImport())} />
-            <MenuItem icon={<Ic.Folder />} label={t('Import Obsidian vault (folder)…')} onClick={() => (setDataMenu(null), doVault())} />
-            <MenuItem icon={<Ic.Table />} label={t('Pages table')} onClick={() => (setDataMenu(null), setTableOpen(true))} />
-            <MenuItem icon={<Ic.Cards />} label={t('Flashcards')} onClick={() => (setDataMenu(null), setCardsOpen(true))} />
-            <MenuItem icon={<Ic.Markdown />} label={t('Export all pages (zip with Markdown & images)')} onClick={() => (setDataMenu(null), doExportAll())} />
-            <div className="menu-sep" />
-            <MenuItem icon={<Ic.Save />} label={t('Automatic backup to folder…')} onClick={() => (setDataMenu(null), setBackupOpen(true))} />
+            <MenuItem icon={<Ic.Folders />} label={t('Import Obsidian vault (folder)…')} onClick={() => (setDataMenu(null), doVault())} />
+            <MenuSep />
+            <MenuLabel>{t('Export & backup')}</MenuLabel>
+            <MenuItem icon={<Ic.Archive />} label={t('Export all pages (zip with Markdown & images)')} onClick={() => (setDataMenu(null), doExportAll())} />
             <MenuItem icon={<Ic.Download />} label={t('Full backup (JSON)')} onClick={() => (setDataMenu(null), doBackup())} />
             <MenuItem icon={<Ic.Upload />} label={t('Restore from backup…')} onClick={() => (setDataMenu(null), doRestore())} />
+            <MenuItem icon={<Ic.Save />} label={t('Automatic backup to folder…')} onClick={() => (setDataMenu(null), setBackupOpen(true))} />
+            {isTauri && <MenuSep />}
+            {isTauri && <MenuItem icon={<Ic.Cloud />} label={t('Sync now')} onClick={() => (setDataMenu(null), void syncNow())} />}
+            {<MenuItem icon={<Ic.Layers />} label={t('Workspaces and sync…')} onClick={() => (setDataMenu(null), setFolderOpen(true))} />}
           </div>
         </Popover>
       )}
 
+      {folderOpen && <Vaults onClose={() => setFolderOpen(false)} onNew={(create) => setNaming({ title: t('New workspace'), label: t('Workspace name:'), initial: t('My notes'), action: t('Next'), onSubmit: (n) => void create(n.trim() || t('My notes')) })} />}
+      {movingId && <div className="overlay" onMouseDown={() => setMovingId(null)}><div className="modal move-dialog" role="dialog" aria-modal="true" aria-label={t('Move to folder')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && setMovingId(null)}><div className="modal-head"><b>{t('Move to folder')}</b><button className="icon-btn" title={t('Close')} onClick={() => setMovingId(null)}><Ic.Close /></button></div><div className="modal-list"><button className="result" onClick={() => { move(movingId,null,null); setMovingId(null) }}><Ic.Book /><span>{t('Move to top level')}</span></button>{pages.filter((p) => { if(p.kind !== 'folder' || p.id === movingId) return false; let parent: Page | undefined = p; const seen = new Set<string>(); while(parent) { if(parent.id === movingId || seen.has(parent.id)) return false; seen.add(parent.id); parent = pages.find((x) => x.id === parent!.parentId) } return true }).map((p) => <button className="result" key={p.id} onClick={() => { move(movingId,p.id,null); setMovingId(null) }}><Ic.Folder /><span dir="auto">{p.title || t('Untitled folder')}</span></button>)}</div></div></div>}
       {backupOpen && <BackupSettings onClose={() => setBackupOpen(false)} />}
+      {graphOpen && <GraphView currentId={current?.id} onOpen={setCurrentId} onClose={() => setGraphOpen(false)} />}
       {tableOpen && <PagesTable pages={pages} onOpen={setCurrentId} onStatus={setStatus} onClose={() => setTableOpen(false)} />}
-      {cardsOpen && <Flashcards pageId={view === 'page' ? current?.id : undefined} onOpenPage={(id) => (setCardsOpen(false), setCurrentId(id))} onClose={() => setCardsOpen(false)} />}
+      {tplOpen && <Templates onPick={addFromTemplate} onClose={() => setTplOpen(false)} />}
+      {cardsOpen && <Flashcards pageId={view === 'page' ? current?.id : undefined} onOpenPage={(id) => (setCardsOpen(false), setCurrentId(id))} onClose={() => (setCardsOpen(false), window.dispatchEvent(new Event('cards-reviewed')))} />}
 
       {naming && <NameDialog {...naming} onClose={() => setNaming(null)} />}
       {trashOpen && (
@@ -546,7 +685,13 @@ export default function App() {
       )}
       {toast && <Toast msg={toast.msg} action={toast.undo ? t('Undo') : undefined} onAction={toast.undo} onClose={() => setToast(null)} />}
 
-      {searching &&<SearchModal pages={pages.filter((p) => p.kind !== 'folder')} search={(q) => repo.search(q)} commands={commands} onOpen={setCurrentId} onClose={() => setSearching(false)} />}
+      {searching && (
+        <SearchModal
+          pages={pages.filter((p) => p.kind !== 'folder')} search={searchPages} commands={commands} onOpen={setCurrentId} initialQuery={searchInit}
+          onClose={() => (setSearching(false), setSearchInit(''))}
+          onSaveSearch={(query) => setNaming({ title: t('Save this search'), label: t('Name:'), initial: query, action: t('Save'), onSubmit: (name) => saveSaved([...saved, { id: crypto.randomUUID(), name: name.trim() || query, query }]) })}
+        />
+      )}
     </div>
   )
 }

@@ -1,0 +1,95 @@
+/*
+ * Noviq design tokens — "Aurora Paper".
+ * One definition per token: light-dark() picks the palette from color-scheme, and
+ * color-scheme itself follows the system unless the user chose a theme (data-theme on <html>).
+ * Settings only override a few variables inline on :root (--accent, --radius*, --font, --editor-*).
+ */
+:root {
+  color-scheme: light dark;
+
+  /* shape */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+  --radius-xl: calc(var(--radius-lg) * 1.45);
+
+  /* accent: one hue, everything else is derived so a custom accent recolours the whole app */
+  --accent: light-dark(#6a5cff, #8479ff);
+  --accent-on: #ffffff;
+  --accent-2: oklch(from var(--accent) l c calc(h + 40));
+  --accent-bg: color-mix(in srgb, var(--accent) 12%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 6%, transparent);
+  --accent-ring: color-mix(in srgb, var(--accent) 30%, transparent);
+  --grad: linear-gradient(135deg, var(--accent), var(--accent-2));
+  --grad-soft: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, transparent), color-mix(in srgb, var(--accent-2) 12%, transparent));
+
+  /* surfaces */
+  --bg-app: light-dark(#e8e6f4, #06060c);
+  --bg: light-dark(#fffefe, #0d0d15);
+  --bg-raised: light-dark(#ffffff, #14141f);
+  --bg-sunk: light-dark(#f4f3fa, #09090f);
+  --pop: light-dark(#ffffff, #191926);
+  --side-bg: light-dark(rgb(255 255 255 / 0.66), rgb(20 20 32 / 0.66));
+
+  /* ink */
+  --text: light-dark(#16132a, #ecebf6);
+  --muted: light-dark(#5b5875, #a3a0ba);
+  --faint: light-dark(#9895b0, #67657f);
+
+  /* lines + states */
+  --hover: light-dark(rgb(50 36 140 / 0.055), rgb(255 255 255 / 0.06));
+  --active: light-dark(rgb(50 36 140 / 0.1), rgb(255 255 255 / 0.1));
+  --border: light-dark(rgb(50 36 140 / 0.11), rgb(255 255 255 / 0.09));
+  --border-strong: light-dark(rgb(50 36 140 / 0.2), rgb(255 255 255 / 0.18));
+  --dot: light-dark(rgb(70 50 180 / 0.14), rgb(255 255 255 / 0.055));
+
+  /* status */
+  --danger: light-dark(#e5484d, #ff6b70);
+  --ok: light-dark(#1f9d6b, #34c98e);
+  --warn: #f5a524;
+
+  /* code */
+  --code-text: light-dark(#c2378d, #ff8cc6);
+  --code-bg: light-dark(rgb(50 36 140 / 0.07), rgb(255 255 255 / 0.08));
+  --pre-bg: light-dark(#f5f4fb, #090910);
+  --hl-kw: light-dark(#cf222e, #ff7b72);
+  --hl-str: light-dark(#0a3069, #a5d6ff);
+  --hl-num: light-dark(#0550ae, #79c0ff);
+  --hl-com: light-dark(#6e7781, #8b949e);
+  --hl-fn: light-dark(#8250df, #d2a8ff);
+  --hl-type: light-dark(#953800, #ffa657);
+  --hl-tag: light-dark(#116329, #7ee787);
+  --hl-meta: light-dark(#8250df, #d2a8ff);
+  --hl-punc: light-dark(#6e7781, #8b949e);
+  --hl-add: rgb(46 160 67 / 0.2);
+  --hl-del: rgb(248 81 73 / 0.2);
+
+  /* depth */
+  --shadow: 0 0 0 1px var(--border), 0 4px 12px light-dark(rgb(30 20 100 / 0.07), rgb(0 0 0 / 0.45)), 0 22px 48px light-dark(rgb(30 20 100 / 0.16), rgb(0 0 0 / 0.6));
+  --panel-shadow: 0 1px 2px light-dark(rgb(30 20 100 / 0.05), rgb(0 0 0 / 0.4)), 0 10px 32px light-dark(rgb(30 20 100 / 0.09), rgb(0 0 0 / 0.38));
+  --glow: 0 6px 20px color-mix(in srgb, var(--accent) 38%, transparent);
+
+  /* type + motion */
+  --font: 'Vazirmatn', 'Segoe UI', Tahoma, system-ui, sans-serif;
+  --mono: 'Cascadia Mono', Consolas, 'SFMono-Regular', monospace;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --to-end: 90deg; /* gradient direction toward the inline end; flipped for RTL below */
+
+  /* canvas: soft aurora behind the floating panels; a custom background (settings) replaces it */
+  --mesh-light:
+    radial-gradient(1000px 620px at 6% -8%, rgb(135 115 255 / 0.3), transparent 62%),
+    radial-gradient(860px 560px at 104% 8%, rgb(255 135 190 / 0.2), transparent 62%),
+    radial-gradient(900px 640px at 64% 112%, rgb(80 200 255 / 0.22), transparent 62%);
+  --mesh-dark:
+    radial-gradient(1000px 620px at 6% -8%, rgb(100 80 255 / 0.2), transparent 62%),
+    radial-gradient(860px 560px at 104% 8%, rgb(230 70 160 / 0.12), transparent 62%),
+    radial-gradient(900px 640px at 64% 112%, rgb(30 120 220 / 0.15), transparent 62%);
+  --app-bg-image: var(--bg-custom-light, var(--mesh-light));
+}
+:root[dir='rtl'] { --to-end: 270deg; }
+:root[data-theme='light'] { color-scheme: light; }
+:root[data-theme='dark'] { color-scheme: dark; --app-bg-image: var(--bg-custom-dark, var(--mesh-dark)); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) { --app-bg-image: var(--bg-custom-dark, var(--mesh-dark)); }
+}

@@ -1,0 +1,25 @@
+/* print / Save as PDF: only the page itself, on white, nothing clipped */
+@media print {
+  :root:root:root {
+    color-scheme: light;
+    --bg: #fff; --bg-app: #fff; --bg-sunk: #fff; --pop: #fff; --app-bg-image: none;
+    --text: #111; --muted: #444; --faint: #777; --hover: rgb(0 0 0 / 0.05); --active: rgb(0 0 0 / 0.1); --border: rgb(0 0 0 / 0.22);
+    --pre-bg: #f6f6f6; --code-bg: #eee; --code-text: #b3261e;
+  }
+  html, body, #root { height: auto !important; background: #fff !important; background-image: none !important; }
+  .side, .topbar, .page-drawer, .findbar, .templates, .block-handle, .bubble, .slash-menu, .toast, .popover, .overlay,
+  .cover-acts, .page-tools, .code-bar, .toggle-btn, .callout-ic, .backlinks-title + .backlink, .toolbar,
+  .img-bar, .img-handle, .mermaid-bar, .lightbox { display: none !important; }
+  .app, .main, .scroller, .page-cols { display: block !important; height: auto !important; overflow: visible !important; position: static !important; width: auto !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; border: 0 !important; border-radius: 0 !important; background: #fff !important; animation: none !important; }
+  .app::before, .main::before { display: none !important; }
+  .page { max-width: none !important; padding: 0 !important; margin: 0 !important; }
+  .tiptap { min-height: 0 !important; font-size: 12pt; }
+  .tiptap pre, .tiptap pre code { white-space: pre-wrap !important; word-break: break-word; overflow: visible !important; }
+  .tiptap pre, .tiptap table, .tiptap tr, .callout, .math-block, .tiptap img { break-inside: avoid; }
+  .tiptap h1, .tiptap h2, .tiptap h3 { break-after: avoid; }
+  .toggle:not(.open) .toggle-body > :not(:first-child) { display: block !important; } /* print everything, even closed toggles */
+  .code-wrap { margin: 6px 0; }
+  .code-wrap pre { padding-top: 12px !important; }
+  .title { font-size: 26pt !important; }
+  a { color: inherit !important; }
+}

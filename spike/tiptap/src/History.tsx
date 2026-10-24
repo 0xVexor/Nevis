@@ -4,6 +4,8 @@ import { docToHtml, hydrate } from './render'
 import { ago } from './ui'
 import type { Page } from './repo'
 import { t } from './i18n'
+import { confirmDialog } from './dialog'
+import * as Ic from './icons'
 
 const words = (n: any): number => {
   const text = (x: any): string => (!x || typeof x === 'string' ? '' : (x.text ?? (x.content ?? []).map(text).join(' ')))
@@ -25,7 +27,7 @@ export function History({ page, editor, onClose }: { page: Page; editor: any; on
   }, [html])
 
   const restore = async () => {
-    if (!v || !confirm(t('Replace the current content of this page with this version? The current content is saved as a version first.'))) return
+    if (!v || !(await confirmDialog({ title: t('Restore this version'), message: t('Replace the current content of this page with this version? The current content is saved as a version first.'), confirmLabel: t('Restore') }))) return
     await addVersion({ pageId: page.id, ts: Date.now(), title: page.title, content: editor.getJSON() })
     editor.commands.setContent(v.content)
     onClose()
@@ -39,7 +41,7 @@ export function History({ page, editor, onClose }: { page: Page; editor: any; on
             <b>{t('Version history')}</b>
             <small>{t('A version is saved automatically when you start editing, at most every 10 minutes.')}</small>
           </div>
-          <button className="icon-btn" onClick={onClose} title={t('Close')}>✕</button>
+          <button className="icon-btn" onClick={onClose} title={t('Close')}><Ic.Close size={16} /></button>
         </div>
         <div className="hist-body">
           <div className="hist-list">

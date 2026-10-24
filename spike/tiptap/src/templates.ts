@@ -69,6 +69,18 @@ const TEMPLATES: Template[] = [
       '<h2>اقدام‌ها</h2><ul data-type="taskList">' + task('') + '</ul>',
     ].join(''),
   },
+  {
+    id: 'todo',
+    title: 'فهرست کارها',
+    desc: 'کارهای امروز، این هفته و بعداً با چک‌باکس',
+    icon: '✅',
+    pageTitle: 'کارها',
+    html: [
+      '<h2>امروز</h2><ul data-type="taskList">' + task('') + '</ul>',
+      '<h2>این هفته</h2><ul data-type="taskList">' + task('') + '</ul>',
+      '<h2>بعداً</h2><ul data-type="taskList">' + task('') + '</ul>',
+    ].join(''),
+  },
 ]
 
 /** English versions of the templates (the Persian originals above are used when the UI language is Persian). */
@@ -119,6 +131,16 @@ const EN: Record<string, Pick<Template, 'title' | 'desc' | 'pageTitle' | 'html'>
       '<h2>Agenda</h2><ul><li></li></ul>',
       '<h2>Decisions</h2>' + callout('✅', ''),
       '<h2>Action items</h2><ul data-type="taskList">' + task('') + '</ul>',
+    ].join(''),
+  },
+  todo: {
+    title: 'To-do list',
+    desc: 'Tasks for today, this week and later, with checkboxes',
+    pageTitle: 'To-do',
+    html: [
+      '<h2>Today</h2><ul data-type="taskList">' + task('') + '</ul>',
+      '<h2>This week</h2><ul data-type="taskList">' + task('') + '</ul>',
+      '<h2>Later</h2><ul data-type="taskList">' + task('') + '</ul>',
     ].join(''),
   },
 }

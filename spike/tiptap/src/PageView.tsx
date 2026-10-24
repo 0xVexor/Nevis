@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { getFind, scrollToMatch } from './editor/find'
 import { looksLikeMermaid } from './editor/mermaid'
-import { BubbleMenu } from '@tiptap/react/menus'
+import { TableBubble } from './TableBubble'
+import { ImageBubble } from './ImageBubble'
 import { extensions } from './editor/extensions'
 import { repo } from './store'
 import type { Page, PageStatus } from './repo'
@@ -12,30 +13,17 @@ import { History } from './History'
 import { normalizeFa } from './normalize'
 import { getTemplates, type Template } from './templates'
 import { OPEN_PAGE } from './editor/pageLink'
-import { ago, EmojiPicker, Popover, Select } from './ui'
-import { iconNode, plainIcon } from './iconSet'
+import { ago, EmojiPicker, MenuItem, MenuLabel, MenuSep, Popover, Select } from './ui'
+import { printPage } from './print'
+import { toneOf } from './PageIcon'
+import { Glyph, isGlyph, parseIcon } from './iconSet'
+import { TEMPLATE_GLYPH } from './TemplateGallery'
+import { iconNode } from './iconSet'
 import * as Ic from './icons'
 import { Toolbar } from './Toolbar'
 import { t } from './i18n'
 
 export type SaveState = 'saved' | 'saving'
-
-const isCellSel = (s: any) => !!s.$anchorCell
-
-// BubbleMenu re-registers its plugin whenever these props change identity, which dispatches a transaction
-// and re-renders us: keep them module-level so the menus mount once.
-const TABLE_OPTS = { placement: 'top-start' as const, offset: 6 }
-const showTable = ({ editor, state }: any) => editor.isEditable && editor.isActive('table') && (state.selection.empty || isCellSel(state.selection))
-const BTN = (props: { label: React.ReactNode; title?: string; on?: boolean; run: (c: any) => any; editor: any; wide?: boolean }) => (
-  <button
-    className={(props.on ? 'on ' : '') + (props.wide ? 'wide' : '')}
-    title={props.title}
-    onMouseDown={(e) => e.preventDefault()}
-    onClick={() => props.run(props.editor.chain().focus()).run()}
-  >
-    {props.label}
-  </button>
-)
 
 const TITLE_CMDS = [
   { id: 'rtl', title: 'Right-to-left (RTL)', desc: 'Make the title right-to-left', kw: 'rtl direction right to left جهت راست چین' },
@@ -123,6 +111,93 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
     if (editor) (editor.storage as any).currentPageId = page.id
   }, [editor, page.id])
 
+  // right-click inside the text: clipboard and undo actions (the browser's own menu is switched off in the desktop app)
+  const [ctx, setCtx] = useState<DOMRect | null>(null)
+  // plain $…$ text becomes a formula once the editor loses focus (it already does when the cursor leaves the paragraph)
+  useEffect(() => {
+    if (!editor) return
+    const onBlur = () => !editor.isDestroyed && editor.isEditable && (editor.commands as any).convertFormulas()
+    editor.on('blur', onBlur)
+    return () => void editor.off('blur', onBlur)
+  }, [editor])
+  const [addingTag, setAddingTag] = useState(false)
+  const [iconAt, setIconAt] = useState<DOMRect | null>(null)
+  useEffect(() => {
+    if (!editor) return
+    // "/" > Icon: the slash text is already removed; open the picker where the caret is
+    const open = () => window.setTimeout(() => {
+      const c = editor.view.coordsAtPos(editor.state.selection.from)
+      setIconAt(new DOMRect(c.left, c.top, 0, c.bottom - c.top))
+    }, 0)
+    window.addEventListener('pick-inline-icon', open)
+    return () => window.removeEventListener('pick-inline-icon', open)
+  }, [editor])
+  const [tagDraft, setTagDraft] = useState('')
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    const dom = editor.view.dom
+    const open = (e: MouseEvent) => {
+      if ((e.target as HTMLElement).closest('input, textarea')) return
+      e.preventDefault()
+      setCtx(new DOMRect(e.clientX, e.clientY, 0, 0))
+    }
+    dom.addEventListener('contextmenu', open)
+    return () => dom.removeEventListener('contextmenu', open)
+  }, [editor])
+  const paste = async (plain: boolean) => {
+    if (!editor) return
+    editor.commands.focus()
+    try {
+      const items = plain ? [] : await navigator.clipboard.read()
+      for (const it of items) {
+        if (it.types.includes('text/html')) return editor.view.pasteHTML(await (await it.getType('text/html')).text())
+      }
+      editor.view.pasteText(await navigator.clipboard.readText())
+    } catch {
+      /* clipboard access denied */
+    }
+  }
+  const hasSel = !!editor && !editor.state.selection.empty
+
+  // outline: which heading is the reader at (last one that has scrolled past the top of the page area)
+  const [activeHead, setActiveHead] = useState(-1)
+  useEffect(() => {
+    if (!editor) return
+    const sc = document.querySelector('.scroller')
+    if (!sc) return
+    const on = () => {
+      if (editor.isDestroyed) return
+      const r = sc.getBoundingClientRect()
+      const top = r.top + Math.max(140, r.height * 0.35)
+      let cur = -1
+      editor.state.doc.descendants((n, pos) => {
+        if (n.type.name !== 'heading') return true
+        const el = editor.view.nodeDOM(pos) as HTMLElement | null
+        if (el && el.getBoundingClientRect().top <= top) cur = pos
+        return false
+      })
+      setActiveHead(cur)
+    }
+    on()
+    sc.addEventListener('scroll', on, { passive: true })
+    editor.on('update', on)
+    return () => {
+      sc.removeEventListener('scroll', on)
+      editor.off('update', on)
+    }
+  }, [editor])
+
+  // another device changed this page (arrived through the synced vault folder): show its content without saving it back
+  useEffect(() => {
+    const onExternal = (e: Event) => {
+      if (!editor || editor.isDestroyed || !(e as CustomEvent<string[]>).detail.includes(page.id)) return
+      const fresh = repo.get(page.id)?.content
+      if (fresh && typeof fresh !== 'string' && JSON.stringify(fresh) !== JSON.stringify(editor.getJSON())) editor.commands.setContent(fresh, { emitUpdate: false })
+    }
+    window.addEventListener('external-change', onExternal)
+    return () => window.removeEventListener('external-change', onExternal)
+  }, [editor, page.id])
+
   useEffect(() => {
     if (editor && typeof page.content === 'string') repo.update(page.id, { content: editor.getJSON() })
   }, [editor, page.id, page.content])
@@ -205,6 +280,25 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
     return () => window.removeEventListener('keydown', key)
   }, [editor])
 
+  // a page created from the Templates gallery: fill it once its editor exists
+  useEffect(() => {
+    const p = (window as any).__pendingTpl
+    if (!editor || !p || p.pageId !== page.id) return
+    delete (window as any).__pendingTpl
+    const tp = getTemplates().find((x) => x.id === p.id)
+    if (!tp) return
+    editor.commands.setContent(tp.html)
+    onMeta()
+    requestAnimationFrame(() => {
+      const el = titleRef.current
+      if (!el) return
+      el.value = tp.pageTitle
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+      el.focus()
+      el.setSelectionRange(el.value.length, el.value.length)
+    })
+  }, [editor, page.id])
+
   // ───── outline: rendered into the slot of the page panel (if the panel is open) ─────
   const [slot, setSlot] = useState<HTMLElement | null>(null)
   useEffect(() => {
@@ -221,7 +315,11 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
       repo.update(page.id, { title: t.pageTitle })
       fit()
     }
-    if (!icon) (repo.update(page.id, { icon: t.icon }), setIcon(t.icon))
+    if (!icon) {
+      const g = 'i:' + (TEMPLATE_GLYPH[t.id] ?? 'page')
+      repo.update(page.id, { icon: g })
+      setIcon(g)
+    }
     onMeta()
     // let the user finish the title ("جلسه‌ی درس — …") right away
     requestAnimationFrame(() => {
@@ -270,9 +368,9 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
             }}
           />
           <span className="find-count">{find.matches.length ? t('{i} of {n}', { i: find.index + 1, n: find.matches.length }) : find.query ? t('Not found') : ''}</span>
-          <button title={t('Previous  Shift+Enter')} onClick={() => stepFind(-1)}>▲</button>
-          <button title={t('Next  Enter')} onClick={() => stepFind(1)}>▼</button>
-          <button title={t('Close  Esc')} onClick={closeFind}>✕</button>
+          <button title={t('Previous  Shift+Enter')} onClick={() => stepFind(-1)}><span style={{ display: 'inline-flex', transform: 'rotate(-90deg)' }}><Ic.Chevron size={14} /></span></button>
+          <button title={t('Next  Enter')} onClick={() => stepFind(1)}><span style={{ display: 'inline-flex', transform: 'rotate(90deg)' }}><Ic.Chevron size={14} /></span></button>
+          <button title={t('Close  Esc')} onClick={closeFind}><Ic.Close size={14} /></button>
         </div>
       )}
       {slot &&
@@ -280,18 +378,23 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
           <section>
             <h4>{t('Outline')}</h4>
             {heads.length === 0 && <div className="pd-note">{t('Add headings (H1–H3) and the outline will appear here.')}</div>}
-            {heads.map((h) => (
-              <button key={h.pos} className="pd-row ol" style={{ paddingInlineStart: 10 + (h.level - 1) * 14 }} onClick={() => gotoHeading(h.pos)} dir="auto">
-                {h.text || t('Untitled')}
-              </button>
-            ))}
+            {heads.length > 0 && (
+              <nav className="ol-tl">
+                {heads.map((h) => (
+                  <button key={h.pos} className={'ol-item' + (h.pos === activeHead ? ' on' : '')} style={{ ['--lv' as string]: h.level - 1 } as React.CSSProperties} onClick={() => gotoHeading(h.pos)}>
+                    <i className="ol-dot" />
+                    <span className="ol-tx" dir="auto">{h.text || t('Untitled')}</span>
+                  </button>
+                ))}
+              </nav>
+            )}
           </section>,
           slot,
         )}
       <div className="page-head">
         <div className="page-top">
           <button className={'page-icon' + (icon ? '' : ' empty')} onClick={(e) => setPicker(e.currentTarget.getBoundingClientRect())} title={t('Change icon')}>
-            {icon ? <span className="page-icon-g">{iconNode(icon, 40)}</span> : <Ic.Page size={44} />}
+            {icon ? <span className="page-icon-g" style={isGlyph(icon) ? { color: parseIcon(icon).color ?? toneOf(page.id) } : undefined}>{iconNode(icon, 40)}</span> : <Ic.Page size={44} />}
           </button>
           <div className="page-tools">
             {!icon && <button onClick={(e) => setPicker(e.currentTarget.getBoundingClientRect())}><Ic.Star size={14} />{t('Add icon')}</button>}
@@ -301,7 +404,8 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
         {picker && (
           <Popover anchor={picker} onClose={() => setPicker(null)}>
             <EmojiPicker
-              onPick={(e) => (repo.update(page.id, { icon: e }), setIcon(e), setPicker(null), onMeta())}
+              current={icon}
+              onPick={(e, close = true) => (repo.update(page.id, { icon: e }), setIcon(e), close && setPicker(null), onMeta())}
               onClear={() => (repo.update(page.id, { icon: undefined }), setIcon(undefined), setPicker(null), onMeta())}
             />
           </Popover>
@@ -365,35 +469,66 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
         {tags.map((tag) => (
           <span key={tag} className="tag-chip static" dir="auto" style={{ ['--hue' as string]: [...tag].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7) } as React.CSSProperties}>
             {tag}
-            <button title={t('Remove')} onClick={() => saveTags(tags.filter((x) => x !== tag))}>×</button>
+            <button title={t('Remove')} onClick={() => saveTags(tags.filter((x) => x !== tag))}><Ic.Close size={11} /></button>
           </span>
         ))}
-        <input
-          className="tag-input"
-          dir="auto"
-          list="tag-list"
-          placeholder={t('Add tag…')}
-          title={t('Add tag…')}
-          onKeyDown={(e) => {
-            const el = e.currentTarget
-            if ((e.key === 'Enter' || e.key === ',' || e.key === '،') && el.value.trim()) {
-              e.preventDefault()
-              saveTags(addTag(tags, el.value))
-              el.value = ''
-            } else if (e.key === 'Backspace' && !el.value && tags.length) saveTags(tags.slice(0, -1))
-          }}
-          onBlur={(e) => {
-            if (e.currentTarget.value.trim()) (saveTags(addTag(tags, e.currentTarget.value)), (e.currentTarget.value = ''))
-          }}
-        />
-        <datalist id="tag-list">
-          {allTags(repo.pagesOnly())
-            .filter((x) => !tags.some((y) => normalizeFa(y) === normalizeFa(x)))
-            .map((x) => <option key={x} value={x} />)}
-        </datalist>
+        {addingTag ? (
+          <span className="tag-new">
+            <span className="tag-new-h">#</span>
+            <input
+              className="tag-input"
+              dir="auto"
+              autoFocus
+              value={tagDraft}
+              placeholder={t('Tag name…')}
+              onChange={(e) => setTagDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.key === 'Enter' || e.key === ',' || e.key === '،') && tagDraft.trim()) {
+                  e.preventDefault()
+                  saveTags(addTag(tags, tagDraft))
+                  setTagDraft('')
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setTagDraft('')
+                  setAddingTag(false)
+                } else if (e.key === 'Backspace' && !tagDraft && tags.length) saveTags(tags.slice(0, -1))
+              }}
+              onBlur={() => {
+                if (tagDraft.trim()) saveTags(addTag(tags, tagDraft))
+                setTagDraft('')
+                setAddingTag(false)
+              }}
+            />
+            {(() => {
+              const q = normalizeFa(tagDraft.trim())
+              const sugg = allTags(repo.pagesOnly())
+                .filter((x) => !tags.some((y) => normalizeFa(y) === normalizeFa(x)) && (!q || normalizeFa(x).includes(q)))
+                .slice(0, 6)
+              return (
+                sugg.length > 0 && (
+                  <div className="tag-sugg" role="listbox">
+                    {sugg.map((x) => (
+                      <button key={x} type="button" role="option" onMouseDown={(e) => (e.preventDefault(), saveTags(addTag(tags, x)), setTagDraft(''))}>
+                        <span className="tagchip-h">#</span>
+                        <span dir="auto">{x}</span>
+                      </button>
+                    ))}
+                  </div>
+                )
+              )
+            })()}
+          </span>
+        ) : (
+          <button type="button" className="tag-add" title={t('Add tag…')} aria-label={t('Add tag…')} onClick={() => setAddingTag(true)}>
+            <Ic.Plus size={14} />
+            {tags.length === 0 && <span>{t('Add tag…')}</span>}
+          </button>
+        )}
             </div>
           </div>
         </div>
+        </div>
+        <div className="meta-row inline">
         <div className="meta-cell">
           <span className="meta-ic"><Ic.Flag size={16} /></span>
           <div className="meta-body">
@@ -415,8 +550,6 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
             </div>
           </div>
         </div>
-        </div>
-        <div className="meta-row">
         <div className="meta-cell">
           <button
             className={'meta-ic like' + (page.favorite ? ' on' : '')}
@@ -446,7 +579,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
           <span className="templates-label">{t('Quick start with a template')}</span>
           {getTemplates().map((t) => (
             <button key={t.id} title={t.desc} onClick={() => applyTemplate(t)}>
-              <span>{t.icon}</span>
+              <span className="tpl-chip-ic"><Glyph name={TEMPLATE_GLYPH[t.id] ?? 'page'} size={14} /></span>
               {t.title}
             </button>
           ))}
@@ -454,6 +587,39 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
       )}
 
       {!readOnly && <Toolbar editor={editor} diagram={diagram} />}
+      {ctx && editor && (
+        <Popover anchor={ctx} onClose={() => setCtx(null)}>
+          <div className="menu ctx-menu">
+            {!readOnly && (
+              <div className="menu-quick">
+                <button title={t('Undo') + '  Ctrl+Z'} onClick={() => (setCtx(null), editor.chain().focus().undo().run())}><Ic.Undo size={16} /></button>
+                <button title={t('Redo') + '  Ctrl+Y'} onClick={() => (setCtx(null), editor.chain().focus().redo().run())}><Ic.Redo size={16} /></button>
+                {hasSel && <button title={t('Cut') + '  Ctrl+X'} onClick={() => (setCtx(null), document.execCommand('cut'))}><Ic.Cut size={16} /></button>}
+                {hasSel && <button title={t('Copy') + '  Ctrl+C'} onClick={() => (setCtx(null), document.execCommand('copy'))}><Ic.Copy size={16} /></button>}
+                <button title={t('Paste') + '  Ctrl+V'} onClick={() => (setCtx(null), void paste(false))}><Ic.Paste size={16} /></button>
+              </div>
+            )}
+            {!readOnly && hasSel && (
+              <>
+                <MenuLabel>{t('Format')}</MenuLabel>
+                <MenuItem icon={<Ic.Bold />} label={t('Bold')} hint="Ctrl+B" onClick={() => (setCtx(null), editor.chain().focus().toggleBold().run())} />
+                <MenuItem icon={<Ic.Italic />} label={t('Italic')} hint="Ctrl+I" onClick={() => (setCtx(null), editor.chain().focus().toggleItalic().run())} />
+                <MenuItem icon={<Ic.Strike />} label={t('Strikethrough')} onClick={() => (setCtx(null), editor.chain().focus().toggleStrike().run())} />
+                <MenuItem icon={<Ic.Code />} label={t('Code')} onClick={() => (setCtx(null), editor.chain().focus().toggleCode().run())} />
+                <MenuItem icon={<Ic.Quote />} label={t('Quote')} onClick={() => (setCtx(null), editor.chain().focus().toggleBlockquote().run())} />
+              </>
+            )}
+            {!readOnly && <MenuItem icon={<Ic.Paste />} label={t('Paste as plain text')} hint="Ctrl+Shift+V" onClick={() => (setCtx(null), void paste(true))} />}
+            {!readOnly && <MenuItem icon={<Ic.Code />} label={t('Convert $…$ to formulas')} onClick={() => (setCtx(null), (editor.commands as any).convertFormulas())} />}
+            <MenuItem icon={<Ic.SelectAll />} label={t('Select all')} hint="Ctrl+A" onClick={() => (setCtx(null), editor.chain().focus().selectAll().run())} />
+            <MenuSep />
+            <MenuItem icon={<Ic.Search />} label={t('Find in page')} hint="Ctrl+F" onClick={() => (setCtx(null), window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true })))} />
+            <MenuItem icon={<Ic.History />} label={t('History')} onClick={() => (setCtx(null), window.dispatchEvent(new Event('open-history')))} />
+            <MenuItem icon={<Ic.Reader />} label={t('Reader mode')} hint="Ctrl ." onClick={() => (setCtx(null), window.dispatchEvent(new Event('toggle-reader')))} />
+            <MenuItem icon={<Ic.Print />} label={t('Print / PDF')} onClick={() => (setCtx(null), printPage(page.title))} />
+          </div>
+        </Popover>
+      )}
       <EditorContent editor={editor} className="ec" />
 
       {historyOpen && <History page={page} editor={editor} onClose={() => setHistoryOpen(false)} />}
@@ -463,40 +629,28 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
           <div className="backlinks-title">{t('Backlinks')} · {backs.length}</div>
           {backs.map((b) => (
             <button key={b.id} className="backlink" onClick={() => window.dispatchEvent(new CustomEvent(OPEN_PAGE, { detail: b.id }))}>
-              <span className="backlink-ic">{plainIcon(b.icon)}</span>
+              <span className="backlink-ic">{iconNode(b.icon, 15, <Ic.Page size={15} />)}</span>
               <span dir="auto">{b.title || t('Untitled')}</span>
             </button>
           ))}
         </section>
       )}
 
-      <BubbleMenu
-        editor={editor}
-        options={TABLE_OPTS}
-        shouldShow={showTable}
-      >
-        <div className="bubble" dir="rtl">
-          <BTN editor={editor} wide label={t('+ Row')} run={(c) => c.addRowAfter()} />
-          <BTN editor={editor} wide label={t('+ Column')} run={(c) => c.addColumnAfter()} />
-          <BTN editor={editor} wide label={t('− Row')} run={(c) => c.deleteRow()} />
-          <BTN editor={editor} wide label={t('− Column')} run={(c) => c.deleteColumn()} />
-          <BTN editor={editor} wide label={t('Merge')} run={(c) => c.mergeCells()} />
-          <BTN editor={editor} wide label={t('Split')} run={(c) => c.splitCell()} />
-          <span className="sep" />
-          <BTN editor={editor} wide label={t('Table RTL')} run={(c) => c.setTableDirection('rtl')} />
-          <BTN editor={editor} wide label={t('Table LTR')} run={(c) => c.setTableDirection('ltr')} />
-          <span className="sep" />
-          {[50, 75, 100].map((w) => (
-            <BTN key={w} editor={editor} label={`${w}%`} title={t('Table width {w}%', { w })} on={(editor.getAttributes('table').tableWidth ?? 100) === w} run={(c) => c.setTableWidth(w)} />
-          ))}
-          <span className="sep" />
-          {([['left', '⇤', 'Align table left'], ['center', '↔', 'Center table'], ['right', '⇥', 'Align table right']] as const).map(([a, icon, title]) => (
-            <BTN key={a} editor={editor} label={icon} title={t(title)} on={editor.getAttributes('table').tableAlign === a} run={(c) => c.setTableAlign(a)} />
-          ))}
-          <span className="sep" />
-          <BTN editor={editor} wide label={t('Delete table')} run={(c) => c.deleteTable()} />
-        </div>
-      </BubbleMenu>
+      {iconAt && (
+        <Popover anchor={iconAt} onClose={() => (setIconAt(null), editor.commands.focus())}>
+          <EmojiPicker
+            onClear={() => (setIconAt(null), editor.commands.focus())}
+            onPick={(ic) => {
+              const g = parseIcon(ic)
+              setIconAt(null)
+              editor.chain().focus().insertContent({ type: 'inlineIcon', attrs: { name: g.name, color: g.color ?? null } }).run()
+            }}
+            clearLabel={t('Cancel')}
+          />
+        </Popover>
+      )}
+      <TableBubble editor={editor} />
+      <ImageBubble editor={editor} />
     </div>
   )
 }

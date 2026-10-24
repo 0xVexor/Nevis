@@ -1,4 +1,5 @@
-import { Node, InputRule, mergeAttributes } from '@tiptap/core'
+import { Node, Extension, InputRule, mergeAttributes } from '@tiptap/core'
+import { Plugin, PluginKey } from '@tiptap/pm/state'
 import katex from 'katex'
 import { t } from '../i18n'
 
@@ -136,6 +137,80 @@ export const MathBlock = Node.create({
           const $from = state.doc.resolve(range.from)
           const start = $from.before()
           state.tr.replaceWith(start, start + $from.parent.nodeSize, type.create({ latex: '' }))
+        },
+      }),
+    ]
+  },
+})
+
+// ───────── text → formula when you leave it ─────────
+const autoKey = new PluginKey('mathAuto')
+const INLINE = /(?<![\\$\w])\$([^\s$](?:[^$\n]*[^\s$])?)\$(?![\w$])/g
+
+/** Turns `$…$` inside a paragraph into inline formulas, and a paragraph that is just `$$…$$` into a formula block. */
+function convertBlock(tr: any, pos: number, schema: any) {
+  const node = tr.doc.nodeAt(pos)
+  if (!node || !node.isTextblock || !['paragraph', 'heading'].includes(node.type.name)) return
+  const whole = node.textContent.trim().match(/^\$\$([\s\S]+)\$\$$/)
+  if (whole && node.childCount === 1 && node.firstChild!.isText && schema.nodes.mathBlock) {
+    tr.replaceWith(pos, pos + node.nodeSize, schema.nodes.mathBlock.create({ latex: whole[1].trim() }))
+    return
+  }
+  const inline = schema.nodes.mathInline
+  if (!inline) return
+  const edits: { from: number; to: number; latex: string }[] = []
+  node.forEach((child: any, offset: number) => {
+    if (!child.isText || child.marks.some((m: any) => m.type.name === 'code')) return
+    for (const m of child.text.matchAll(INLINE)) {
+      const from = pos + 1 + offset + m.index
+      edits.push({ from, to: from + m[0].length, latex: m[1] })
+    }
+  })
+  for (const e of edits.reverse()) tr.replaceWith(e.from, e.to, inline.create({ latex: e.latex }))
+}
+
+/** A formula typed as plain `$x^2$` stays text while you are on that line; it becomes a real formula as soon as the cursor leaves the paragraph, the editor loses focus, or you run "convert formulas". */
+export const MathAuto = Extension.create({
+  name: 'mathAuto',
+  addCommands() {
+    return { convertFormulas: () => ({ tr, dispatch }: any) => (dispatch?.(tr.setMeta(autoKey, 'all')), true) } as any
+  },
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: autoKey,
+        props: { handleDOMEvents: { blur: (view: any) => (view.dispatch(view.state.tr.setMeta(autoKey, 'all')), false) } },
+        appendTransaction(trs: readonly any[], oldState: any, newState: any) {
+          if (trs.some((t) => t.getMeta(autoKey) === 'skip')) return null
+          const all = trs.some((t) => t.getMeta(autoKey) === 'all')
+          if (!all && !trs.some((t) => t.selectionSet || t.docChanged)) return null
+          const targets = new Set<number>()
+          if (all) {
+            newState.doc.descendants((n: any, p: number) => {
+              if (n.isTextblock) targets.add(p)
+              return !n.isTextblock
+            })
+          } else {
+            // only the paragraph the cursor just left
+            const $o = oldState.selection.$from
+            if ($o.depth < 1) return null
+            let p = $o.before($o.depth)
+            for (const t of trs) p = t.mapping.map(p)
+            const $n = newState.selection.$from
+            const same = $n.depth >= 1 && $n.before($n.depth) === p
+            if (same) return null
+            targets.add(p)
+          }
+          const tr = newState.tr
+          let changed = false
+          for (const p of [...targets].sort((a, b) => b - a)) {
+            const before = tr.docChanged
+            convertBlock(tr, tr.mapping.map(p), newState.schema)
+            changed = changed || tr.docChanged !== before || tr.docChanged
+          }
+          if (!tr.docChanged) return null
+          tr.setMeta(autoKey, 'skip')
+          return changed ? tr : null
         },
       }),
     ]

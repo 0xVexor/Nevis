@@ -45,7 +45,7 @@ export function PagesTable({ pages, onOpen, onStatus, onClose }: { pages: Page[]
   const head = (key: SortKey, label: string) => (
     <th onClick={() => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : 1 }))} className={sort.key === key ? 'sorted' : ''}>
       {label}
-      {sort.key === key && <span className="sort-arrow">{sort.dir === 1 ? '▲' : '▼'}</span>}
+      {sort.key === key && <span className={'sort-arrow ' + (sort.dir === 1 ? 'asc' : 'desc')}><Ic.Chevron size={11} /></span>}
     </th>
   )
 
@@ -57,7 +57,7 @@ export function PagesTable({ pages, onOpen, onStatus, onClose }: { pages: Page[]
             <b>{t('Pages table')}</b>
             <small>{t('{n} of {total} pages', { n: rows.length, total: real.length })}</small>
           </div>
-          <button className="icon-btn" onClick={onClose} title={t('Close')}>✕</button>
+          <button className="icon-btn" onClick={onClose} title={t('Close')}><Ic.Close size={16} /></button>
         </div>
         <div className="pt-filters">
           <div className="pt-search"><Ic.Search size={15} /><input autoFocus dir="auto" placeholder={t('Filter by title, tag or path…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>

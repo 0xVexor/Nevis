@@ -10,11 +10,12 @@ import { CommandPalette } from './commandPalette'
 import { FindInPage } from './find'
 import { MermaidBlock } from './mermaid'
 import { AttImage, ImageFiles } from './image'
+import { InlineIcon } from './inlineIcon'
 import { DragHandle } from './dragHandle'
 import { MarkdownPaste } from './markdownPaste'
 import { MarkdownTab } from './markdownTab'
+import { MathAuto, MathBlock, MathInline } from './math'
 import { Callout, Toggle } from './blocks'
-import { MathBlock, MathInline } from './math'
 import { PageLink, PageLinkSuggest } from './pageLink'
 import { t } from '../i18n'
 
@@ -140,7 +141,7 @@ const Direction = Extension.create({
     const setTextAlign = (a: 'left' | 'center' | 'right' | 'justify') => ({ state, tr, dispatch }: any) => {
       const { from, to } = state.selection
       const nodes: [any, number][] = []
-      state.doc.nodesBetween(from, to, (node: any, pos: number) => void (LEAF.includes(node.type.name) && nodes.push([node, pos])))
+      state.doc.nodesBetween(from, to, (node: any, pos: number) => void (([...LEAF, 'codeBlock'].includes(node.type.name)) && nodes.push([node, pos])))
       const clear = nodes.length > 0 && nodes.every(([n]) => n.attrs.textAlign === a)
       for (const [node, pos] of nodes) tr.setNodeMarkup(pos, undefined, { ...node.attrs, textAlign: clear ? null : a })
       if (dispatch) dispatch(tr)
@@ -207,6 +208,8 @@ export const extensions = [
   TaskList,
   TaskItem.configure({ nested: true }),
   AttImage,
+  InlineIcon,
+  MathAuto,
   ImageFiles,
   MarkdownPaste,
   MarkdownTab,

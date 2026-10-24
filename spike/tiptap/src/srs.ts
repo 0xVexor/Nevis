@@ -7,6 +7,7 @@ export interface Rec {
   interval: number // days; 0 = "again", due again in minutes
   reps: number // successful reviews in a row
   due: number // ms timestamp
+  last?: number // ms timestamp of the last review; decides which device wins when two devices reviewed the same card
 }
 
 export type Grade = 0 | 1 | 2 | 3 // again, hard, good, easy
@@ -18,7 +19,7 @@ export const FRESH: Rec = { ease: 2.5, interval: 0, reps: 0, due: 0 }
 
 export function schedule(prev: Rec | undefined, grade: Grade, now = Date.now()): Rec {
   const r = prev ?? FRESH
-  if (grade === 0) return { ease: Math.max(1.3, r.ease - 0.2), interval: 0, reps: 0, due: now + AGAIN_MS }
+  if (grade === 0) return { ease: Math.max(1.3, r.ease - 0.2), interval: 0, reps: 0, due: now + AGAIN_MS, last: now }
   let interval: number
   let ease = r.ease
   if (grade === 1) {
@@ -30,7 +31,7 @@ export function schedule(prev: Rec | undefined, grade: Grade, now = Date.now()):
     interval = (r.reps === 0 ? 3 : Math.round(r.interval * ease * 1.3)) + 1
     ease += 0.15
   }
-  return { ease, interval: Math.max(1, interval), reps: r.reps + 1, due: now + Math.max(1, interval) * DAY }
+  return { ease, interval: Math.max(1, interval), reps: r.reps + 1, due: now + Math.max(1, interval) * DAY, last: now }
 }
 
 /** "10m", "3d", "2mo" for the buttons under a card. */
