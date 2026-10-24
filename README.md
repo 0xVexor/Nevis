@@ -8,7 +8,7 @@
 
 Block editor · backlinks and graph · spaced-repetition flashcards · optional Google Drive sync · no server, no account.
 
-[![Build installers](https://github.com/AliMirzad/noviq/actions/workflows/release.yml/badge.svg)](https://github.com/AliMirzad/noviq/actions/workflows/release.yml)
+[![Build installers](https://img.shields.io/github/actions/workflow/status/AliMirzad/noviq/release.yml?label=build)](https://github.com/AliMirzad/noviq/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/AliMirzad/noviq?include_prereleases&label=release)](https://github.com/AliMirzad/noviq/releases)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS-6c72ff)
 ![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24c8db)

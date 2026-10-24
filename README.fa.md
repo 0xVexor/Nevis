@@ -8,7 +8,7 @@
 
 ادیتور بلاکی · بک‌لینک و گراف · فلش‌کارت با تکرار فاصله‌دار · سینک اختیاری با Google Drive · بدون سرور، بدون حساب کاربری.
 
-[![Build installers](https://github.com/AliMirzad/noviq/actions/workflows/release.yml/badge.svg)](https://github.com/AliMirzad/noviq/actions/workflows/release.yml)
+[![Build installers](https://img.shields.io/github/actions/workflow/status/AliMirzad/noviq/release.yml?label=build)](https://github.com/AliMirzad/noviq/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/AliMirzad/noviq?include_prereleases&label=release)](https://github.com/AliMirzad/noviq/releases)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS-6c72ff)
 
