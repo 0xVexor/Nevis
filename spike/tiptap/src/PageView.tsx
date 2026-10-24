@@ -4,6 +4,7 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import { getFind, scrollToMatch } from './editor/find'
 import { looksLikeMermaid } from './editor/mermaid'
 import { TableBubble } from './TableBubble'
+import { PageLinkPicker } from './PageLinkPicker'
 import { ImageBubble } from './ImageBubble'
 import { extensions } from './editor/extensions'
 import { repo } from './store'
@@ -12,7 +13,7 @@ import { STATUS, addTag, allTags } from './meta'
 import { History } from './History'
 import { normalizeFa } from './normalize'
 import { getTemplates, type Template } from './templates'
-import { OPEN_PAGE } from './editor/pageLink'
+import { OPEN_PAGE, PAGES_CHANGED } from './editor/pageLink'
 import { ago, EmojiPicker, MenuItem, MenuLabel, MenuSep, Popover, Select } from './ui'
 import { printPage } from './print'
 import { toneOf } from './PageIcon'
@@ -121,6 +122,18 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
     return () => void editor.off('blur', onBlur)
   }, [editor])
   const [addingTag, setAddingTag] = useState(false)
+  const [linkPick, setLinkPick] = useState<{ rect: DOMRect; from: number; to: number; text: string } | null>(null)
+  useEffect(() => {
+    if (!editor) return
+    // "Link to page" with text selected: pick the page the selection should point to
+    const open = (e: Event) => {
+      const { from, to } = (e as CustomEvent<{ from: number; to: number }>).detail
+      const c = editor.view.coordsAtPos(to)
+      setLinkPick({ rect: new DOMRect(c.left, c.top, 0, c.bottom - c.top), from, to, text: editor.state.doc.textBetween(from, to, ' ') })
+    }
+    window.addEventListener('pick-page-link', open)
+    return () => window.removeEventListener('pick-page-link', open)
+  }, [editor])
   const [iconAt, setIconAt] = useState<DOMRect | null>(null)
   useEffect(() => {
     if (!editor) return
@@ -636,6 +649,26 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
         </section>
       )}
 
+      {linkPick && (
+        <Popover anchor={linkPick.rect} onClose={() => (setLinkPick(null), editor.commands.focus())}>
+          <PageLinkPicker
+            text={linkPick.text}
+            currentId={page.id}
+            onPick={(id) => {
+              const { from, to, text } = linkPick
+              let target = id
+              if (!target) {
+                target = repo.create(null).id
+                repo.update(target, { title: text.trim() })
+                window.dispatchEvent(new Event(PAGES_CHANGED))
+              }
+              setLinkPick(null)
+              editor.chain().focus().insertContentAt({ from, to }, { type: 'pageLink', attrs: { id: target, label: text.trim() } }).run()
+              onMeta()
+            }}
+          />
+        </Popover>
+      )}
       {iconAt && (
         <Popover anchor={iconAt} onClose={() => (setIconAt(null), editor.commands.focus())}>
           <EmojiPicker

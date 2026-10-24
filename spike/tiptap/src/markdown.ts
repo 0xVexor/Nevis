@@ -14,7 +14,7 @@ async function inline(nodes: Node[] = [], img: ImageResolver): Promise<string> {
   for (const n of nodes) {
     if (n.type === 'hardBreak') out += '  \n'
     else if (n.type === 'mathInline') out += `$${n.attrs?.latex ?? ''}$`
-    else if (n.type === 'pageLink') out += `[[${titleOf(n.attrs?.id)}]]`
+    else if (n.type === 'pageLink') out += n.attrs?.label && n.attrs.label !== titleOf(n.attrs?.id) ? `[[${titleOf(n.attrs?.id)}|${n.attrs.label}]]` : `[[${titleOf(n.attrs?.id)}]]`
     else if (n.type === 'image') out +=`![${esc(n.attrs?.alt ?? '')}](${await img(n.attrs.src)})`
     else if (n.type === 'text') {
       const marks = n.marks?.map((m) => m.type) ?? []

@@ -17,6 +17,16 @@ interface Item {
   run: (chain: any, editor: any) => any
 }
 
+/** "Link to page": with text selected it becomes a link to the page you pick; otherwise it opens the `[[` picker. */
+export function linkSelection(c: any, editor: any) {
+  const { from, to, empty } = editor.state.selection
+  if (!empty && editor.state.doc.textBetween(from, to, ' ').trim()) {
+    window.dispatchEvent(new CustomEvent('pick-page-link', { detail: { from, to } }))
+    return c
+  }
+  return c.insertContent('[[')
+}
+
 const ITEMS: Item[] = [
   { title: 'Text', desc: 'Write with a plain paragraph', icon: 'Aa', keywords: 'paragraph text متن پاراگراف', run: (c) => c.setParagraph() },
   { title: 'Heading 1', desc: 'Large section heading', icon: 'H1', keywords: 'heading h1 عنوان تیتر', run: (c) => c.setHeading({ level: 1 }) },
@@ -25,7 +35,7 @@ const ITEMS: Item[] = [
   { title: 'Bulleted list', desc: 'A simple list with bullets', icon: 'i:list', keywords: 'bullet list لیست نقطه', run: (c) => c.toggleBulletList() },
   { title: 'Numbered list', desc: 'An ordered list with numbers', icon: 'i:ol', keywords: 'numbered ordered list لیست شماره', run: (c) => c.toggleOrderedList() },
   { title: 'Checklist', desc: 'Track tasks with checkboxes', icon: 'i:check', keywords: 'todo task check چک لیست کار', run: (c) => c.toggleTaskList() },
-  { title: 'Link to page', desc: 'Link to another page (same as [[ — no bracket key needed)', icon: 'i:link', keywords: 'link page wiki backlink لینک صفحه پیوند', run: (c) => c.insertContent('[[') },
+  { title: 'Link to page', desc: 'Link to another page (same as [[ — no bracket key needed)', icon: 'i:link', keywords: 'link page wiki backlink لینک صفحه پیوند', run: (c, editor) => linkSelection(c, editor) },
   { title: 'Callout', desc: 'Highlighted box for a tip or warning', icon: 'i:callout', keywords: 'callout note tip warning نکته هشدار کادر', run: (c) => c.insertContent({ type: 'callout', content: [{ type: 'paragraph' }] }) },
   { title: 'Toggle', desc: 'A collapsible section', icon: 'i:toggle', keywords: 'toggle collapse details accordion جمع باز', run: (c) => c.insertContent({ type: 'toggle', attrs: { open: true }, content: [{ type: 'paragraph' }] }) },
   { title: 'Diagram (Mermaid)', desc: 'Flowcharts, UML, sequences and more from text', icon: 'i:diagram', keywords: 'mermaid diagram flowchart uml sequence graph نمودار فلوچارت', run: (c) => c.insertContent({ type: 'mermaid', attrs: { code: '' } }) },
@@ -69,7 +79,7 @@ export type CommandItem = Item
 export const shownItem = shown
 
 /** Items that put something new into the page: with a selection they go after it instead of replacing it. */
-export const INSERTS = new Set(['Icon', 'Table', 'Divider', 'Image', 'Image from link', 'Formula (block)', 'Formula (inline)', 'Diagram (Mermaid)', 'Link to page'])
+export const INSERTS = new Set(['Icon', 'Table', 'Divider', 'Image', 'Image from link', 'Formula (block)', 'Formula (inline)', 'Diagram (Mermaid)'])
 
 /**
  * What the Ctrl+/ palette offers: everything of the slash menu, and with text selected also actions on it

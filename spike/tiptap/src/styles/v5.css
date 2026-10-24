@@ -114,3 +114,14 @@ button + .backup-warn, .backup-acts + .backup-warn, .wsd-acts + .backup-warn { m
 .ws-logo { line-height: 0; }
 .ws-logo svg { display: block; }
 .ws-name { line-height: 1; padding-top: 0; }
+
+/* "link to page" picker */
+.plp { width: 300px; }
+.plp-search { display: flex; align-items: center; gap: 8px; margin: 8px 8px 4px; padding: 0 12px; height: 38px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--muted); }
+.plp-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.plp-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 13.5px; }
+.plp-list { max-height: 300px; overflow: auto; padding: 4px 6px 8px; }
+.plp-list .menu-item { min-height: 38px; }
+.plp-list .menu-item.hot { background: var(--accent-bg); }
+.plp-list .menu-item.hot .menu-ic { background: var(--accent-bg); color: var(--accent); }
+.page-link[title] { cursor: var(--cursor-hand, pointer); }

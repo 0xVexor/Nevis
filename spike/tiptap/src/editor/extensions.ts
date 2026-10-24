@@ -11,6 +11,7 @@ import { FindInPage } from './find'
 import { MermaidBlock } from './mermaid'
 import { AttImage, ImageFiles } from './image'
 import { InlineIcon } from './inlineIcon'
+import { HeadingDir } from './headingDir'
 import { DragHandle } from './dragHandle'
 import { MarkdownPaste } from './markdownPaste'
 import { MarkdownTab } from './markdownTab'
@@ -209,6 +210,7 @@ export const extensions = [
   TaskItem.configure({ nested: true }),
   AttImage,
   InlineIcon,
+  HeadingDir,
   MathAuto,
   ImageFiles,
   MarkdownPaste,

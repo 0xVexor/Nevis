@@ -22,9 +22,10 @@ export const PageLink = Node.create({
   inline: true,
   atom: true,
   selectable: true,
-  addAttributes: () => ({ id: { default: '' } }),
-  parseHTML: () => [{ tag: 'a[data-type="page-link"]', getAttrs: (el) => ({ id: (el as HTMLElement).getAttribute('data-id') ?? '' }) }],
-  renderHTML: ({ node }) => ['a', mergeAttributes({ 'data-type': 'page-link', 'data-id': node.attrs.id }), repo.get(node.attrs.id)?.title || tr('Page')],
+  // `label`: text the link shows instead of the page title (set when selected text is turned into a link)
+  addAttributes: () => ({ id: { default: '' }, label: { default: null } }),
+  parseHTML: () => [{ tag: 'a[data-type="page-link"]', getAttrs: (el) => ({ id: (el as HTMLElement).getAttribute('data-id') ?? '', label: (el as HTMLElement).getAttribute('data-label') }) }],
+  renderHTML: ({ node }) => ['a', mergeAttributes({ 'data-type': 'page-link', 'data-id': node.attrs.id }, node.attrs.label ? { 'data-label': node.attrs.label } : {}), node.attrs.label || repo.get(node.attrs.id)?.title || tr('Page')],
 
   /**
    * Typing a complete `[[Title]]` (or `[[Title|alias]]`) by hand turns it into a link when the closing `]]` is typed:
@@ -53,6 +54,7 @@ export const PageLink = Node.create({
   addNodeView() {
     return ({ node }) => {
       const id: string = node.attrs.id
+      const label: string | null = node.attrs.label
       const a = document.createElement('a')
       a.className = 'page-link'
       a.contentEditable = 'false'
@@ -67,7 +69,8 @@ export const PageLink = Node.create({
         const t = document.createElement('span')
         t.className = 'page-link-title'
         t.setAttribute('dir', 'auto')
-        t.textContent = p ? p.title || tr('Untitled') : tr('Deleted page')
+        t.textContent = p ? label || p.title || tr('Untitled') : tr('Deleted page')
+        if (p && label) a.title = p.title || tr('Untitled')
         a.append(ic, t)
       }
       paint()

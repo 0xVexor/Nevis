@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { alertDialog, promptDialog } from './dialog'
 import { hasHeaderColumn, hasHeaderRow } from './editor/tableHeader'
+import { linkSelection } from './editor/slash'
 import * as Ic from './icons'
 import { insertImageFromUrl, insertImages, pickImages } from './editor/image'
 import { t } from './i18n'
@@ -48,7 +49,7 @@ export function Toolbar({ editor, diagram }: { editor: any; diagram?: { from: nu
     { key: 'quote', icon: <Ic.Quote size={16} />, title: t('Quote'), on: is('blockquote'), run: (c: Chain) => c.toggleBlockquote() },
     { key: 'code', icon: <Ic.Code size={16} />, title: t('Inline code'), on: is('code'), run: (c: Chain) => c.toggleCode() },
     { key: 'link', icon: <Ic.Link size={16} />, title: t('Link'), on: is('link'), run: link },
-    { key: 'at', icon: <Ic.At size={16} />, title: t('Link to page'), run: (c: Chain) => c.setTextSelection(editor.state.selection.to).insertContent('[[') },
+    { key: 'at', icon: <Ic.At size={16} />, title: t('Link to page'), run: (c: Chain) => linkSelection(c, editor) },
     { key: 'cb', icon: <span className="tb-tx">{'{ }'}</span>, title: t('Code block'), on: is('codeBlock'), run: (c: Chain) => c.toggleCodeBlock() },
     ...(diagram ? [{ key: 'diagram', icon: <Ic.Diagram size={16} />, title: t('Turn the selected text into a Mermaid diagram'), run: (c: Chain) => c.insertContentAt({ from: diagram.from, to: diagram.to }, { type: 'mermaid', attrs: { code: diagram.code } }) }] : []),
     { key: 'undo', icon: <Ic.Undo size={16} />, title: t('Undo  Ctrl+Z'), run: (c: Chain) => c.undo() },
