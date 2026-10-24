@@ -1,6 +1,6 @@
 [package]
 name = "noviq"
-version = "0.1.1"
+version = "0.1.2"
 description = "Noviq: offline notes with full Persian/RTL support"
 edition = "2021"
 
