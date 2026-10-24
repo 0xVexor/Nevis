@@ -12,6 +12,7 @@ import { exportAllZip, importMarkdown, importVault, pickDirectory, pickFiles } f
 import { PagesTable } from './PagesTable'
 import { Flashcards } from './Flashcards'
 import { SidebarTags } from './SidebarTags'
+import { Explorer } from './Explorer'
 import { Templates, TEMPLATE_GLYPH } from './TemplateGallery'
 import { getTemplates } from './templates'
 import { PageView, type SaveState } from './PageView'
@@ -129,7 +130,7 @@ function TreeRow(props: RowProps) {
 export default function App() {
   const [pages, setPages] = useState<Page[]>(() => repo.list())
   const [currentId, setCurrentIdRaw] = useState<string>(() => localStorage.getItem('not.current') || repo.pagesOnly()[0]?.id || '')
-  const [view, setView] = useState<'home' | 'page' | 'settings' | 'tasks'>('home')
+  const [view, setView] = useState<'home' | 'page' | 'settings' | 'tasks' | 'files'>('home')
   const [panelOpen, setPanelOpen] = useState<boolean>(() => store('not.panel.v2', false))
   const [coverMenu, setCoverMenu] = useState<DOMRect | null>(null)
   // opening any page (sidebar, search, link, breadcrumb…) also leaves the settings view
@@ -412,6 +413,7 @@ export default function App() {
     { id: 'home', label: t('Home'), icon: <Ic.Home />, keywords: 'dashboard خانه', run: () => setView('home') },
     { id: 'table', label: t('Pages table'), icon: <Ic.Table />, keywords: 'database جدول', run: () => setTableOpen(true) },
     { id: 'graph', label: t('Graph view'), icon: <Ic.Link />, keywords: 'graph links map backlinks گراف نقشه ارتباط پیوند', run: () => setGraphOpen(true) },
+    { id: 'files', label: t('Files'), icon: <Ic.Folders />, keywords: 'files explorer folders manage فایل مدیریت پوشه فایل‌ها', run: () => setView('files') },
     { id: 'tasks', label: t('Tasks'), icon: <Ic.Checklist />, keywords: 'tasks todo checklist کارها وظایف چک لیست', run: () => setView('tasks') },
     { id: 'cards', label: t('Flashcards'), icon: <Ic.Cards />, keywords: 'review srs فلش‌کارت', run: () => setCardsOpen(true) },
     { id: 'trash', label: t('Trash'), icon: <Ic.Trash />, keywords: 'deleted سطل', run: () => setTrashOpen(true) },
@@ -459,6 +461,10 @@ export default function App() {
 
           <button className="row plain" onClick={() => setCardsOpen(true)}><span className="ic"><Ic.Cards /></span><span className="ntitle">{t('Flashcards')}</span>{dueCards > 0 && <span className="badge">{dueCards}</span>}</button>
 
+          <button className="row plain" onClick={() => setGraphOpen(true)}>
+            <span className="ic"><Ic.Link /></span><span className="ntitle">{t('Graph view')}</span>
+          </button>
+
           {favs.length > 0 && (
             <>
               <button className={"section" + (shut.favs ? " shut" : "")} onClick={() => setShut((s) => ({ ...s, favs: !s.favs }))}>{t('Favorites')}<Ic.Chevron size={13} /></button>
@@ -496,6 +502,9 @@ export default function App() {
           <button className="row plain" onClick={() => addFolder(null)}>
             <span className="ic"><Ic.Folder /></span><span className="ntitle">{t('New folder')}</span>
           </button>
+          <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => setView('files')}>
+            <span className="ic"><Ic.Folders /></span><span className="ntitle">{t('Files')}</span>
+          </button>
           <button className="row plain" onClick={() => setTrashOpen(true)}>
             <span className="ic"><Ic.Trash /></span><span className="ntitle">{t('Trash')}</span>
             {repo.trash().length > 0 && <span className="badge">{repo.trash().length}</span>}
@@ -518,6 +527,7 @@ export default function App() {
           <nav className="crumbs">
             <button className="crumb-home" title={t('Home')} onClick={() => setView('home')}><Ic.Home size={15} /></button>
             {view === 'home' && <span className="crumb"><span className="crumb-cur"><Ic.Sidebar size={14} />{t('Home')}</span></span>}
+            {view === 'files' && <span className="crumb"><span className="crumb-cur"><Ic.Folders size={14} />{t('Files')}</span></span>}
             {view === 'tasks' && <span className="crumb"><span className="crumb-cur"><Ic.Checklist size={14} />{t('Tasks')}</span></span>}
             {view === 'settings' && <span className="crumb"><span className="crumb-cur"><Ic.Settings size={14} />{t('Settings')}</span></span>}
             {view === 'page' && crumbs.map((c, i) => (
@@ -555,6 +565,8 @@ export default function App() {
         <div className="scroller">
           {view === 'home' ? (
             <Home pages={pages} onOpen={setCurrentId} onNew={() => add(null)} onFolder={() => addFolder(null)} onTable={() => setTableOpen(true)} onCards={() => setCardsOpen(true)} onSearch={() => setSearching(true)} />
+          ) : view === 'files' ? (
+            <Explorer pages={pages} onOpen={setCurrentId} onChange={refresh} onToast={(msg, undo) => setToast({ msg, undo })} />
           ) : view === 'tasks' ? (
             <Tasks onOpen={setCurrentId} />
           ) : view === 'settings' ? (
@@ -624,6 +636,7 @@ export default function App() {
             <MenuSep />
             <MenuLabel>{t('Go to')}</MenuLabel>
             <MenuItem icon={<Ic.Home />} label={t('Home')} onClick={() => (setView('home'), setBlankMenu(null))} />
+            <MenuItem icon={<Ic.Folders />} label={t('Files')} onClick={() => (setView('files'), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Table />} label={t('Pages table')} onClick={() => (setTableOpen(true), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Cards />} label={t('Flashcards')} onClick={() => (setCardsOpen(true), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Link />} label={t('Graph view')} onClick={() => (setGraphOpen(true), setBlankMenu(null))} />
@@ -651,7 +664,6 @@ export default function App() {
                 <MenuItem icon={<Ic.Markdown />} label={t('Export Markdown')} desc={t('Download as a .md file')} onClick={() => (setDataMenu(null), exportMd(current.id))} />
                 <MenuItem icon={<Ic.Pdf />} label={t('Print / PDF')} desc={t('Save as PDF or print')} onClick={() => (setDataMenu(null), printPage(current.title))} />
                 <MenuItem icon={<Ic.Copy />} label={t('Copy as Markdown')} desc={t('Put it on the clipboard')} onClick={async () => { setDataMenu(null); await navigator.clipboard?.writeText(await pageToMarkdown(current)); setToast({ msg: t('Copied') }) }} />
-                <MenuItem icon={<Ic.Reader />} label={t('Reader mode')} hint="Ctrl ." onClick={() => (setDataMenu(null), setReader(true))} />
                 <MenuSep />
               </>
             )}
