@@ -627,4 +627,12 @@ export const FA: Record<string, string> = {
   "No tasks here": "کاری اینجا نیست",
   "Convert $…$ to formulas": "تبدیل $…$ به فرمول",
   "Inbox": "صندوق ورودی",
+  "New formula (empty line: block; selected text or elsewhere: inline)": "فرمول جدید (خط خالی: بلاک؛ متن انتخاب‌شده یا جای دیگر: داخل متن)",
+  "Edit the selected formula": "ویرایش فرمول انتخاب‌شده",
+  "Save a formula": "ذخیرهٔ فرمول",
+  "New line in a block formula": "خط جدید در فرمول بلاک",
+  "Save a diagram": "ذخیرهٔ نمودار",
+  "Enter: save · Shift+Enter: new line · Esc: cancel": "Enter: ذخیره · Shift+Enter: خط جدید · Esc: انصراف",
+  "Enter: save · Esc: cancel": "Enter: ذخیره · Esc: انصراف",
+  "Type LaTeX above, e.g. \\frac{a}{b}": "کد LaTeX را بالا بنویس، مثلاً \\frac{a}{b}",
 }

@@ -67,7 +67,11 @@ export const SHORTCUTS: ShortcutGroup[] = [
     items: [
       sc('Turn a typed marker (#, -, 1., >, [], ```, ---) into a block', ['Tab']),
       sc('Indent / outdent inside a code block', ['Tab'], ['Shift', 'Tab']),
-      sc('Save a formula or diagram', ['Mod', 'Enter']),
+      sc('New formula (empty line: block; selected text or elsewhere: inline)', ['Mod', 'Shift', 'M']),
+      sc('Edit the selected formula', ['Enter']),
+      sc('Save a formula', ['Enter']),
+      sc('New line in a block formula', ['Shift', 'Enter']),
+      sc('Save a diagram', ['Mod', 'Enter']),
       sc('Cancel editing a formula or diagram', ['Esc']),
     ],
   },

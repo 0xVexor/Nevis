@@ -106,3 +106,11 @@ button + .backup-warn, .backup-acts + .backup-warn, .wsd-acts + .backup-warn { m
 .templates button .tpl-chip-ic svg { display: block; }
 .templates button { padding: 2px 16px 0; }
 .templates button .tpl-chip-ic { transform: translateY(-1px); }
+
+/* brand: larger mark, name tucked right against it */
+.ws { gap: 7px; padding-inline-start: 4px; }
+.ws-name { font-size: 19px; }
+.ws { gap: 3px; }
+.ws-logo { line-height: 0; }
+.ws-logo svg { display: block; }
+.ws-name { line-height: 1; padding-top: 0; }

@@ -108,3 +108,16 @@
 .lang-list .menu-item.hot { background: var(--hover); }
 .lang-list .menu-item.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
 .lang-none { padding: 14px; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* formula editor: field, live preview and a one-line hint */
+.math-edit { position: relative; display: inline-block; vertical-align: middle; max-width: 100%; }
+.math-edit.block { display: block; }
+.math-field { font-family: var(--mono); font-size: 14px; line-height: 1.6; border: 1px solid var(--accent); border-radius: 10px; background: var(--bg); color: var(--text); padding: 6px 10px; outline: none; direction: ltr; text-align: left; box-shadow: 0 0 0 3px var(--accent-ring); }
+.math-block .math-field { width: 100%; min-height: 44px; resize: none; display: block; overflow: hidden; }
+.math-inline .math-field { min-width: 80px; }
+.math-pop { margin-top: 8px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--pop); text-align: center; animation: pop-in 0.15s var(--ease); }
+.math-inline .math-pop { position: absolute; z-index: 40; top: 100%; inset-inline-start: 0; min-width: 220px; box-shadow: var(--shadow); text-align: start; }
+.math-live { min-height: 28px; overflow-x: auto; }
+.math-live.math-empty { color: var(--faint); font-size: 13px; }
+.math-live.math-err { color: var(--danger); font-family: var(--mono); font-size: 12.5px; text-align: start; white-space: pre-wrap; }
+.math-hint { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border-strong); font-size: 11.5px; color: var(--faint); text-align: start; }

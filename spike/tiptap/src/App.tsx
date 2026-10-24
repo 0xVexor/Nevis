@@ -433,7 +433,7 @@ export default function App() {
     <div className={'app' + (reader && view === 'page' && current ? ' reading' : '')} style={{ ['--page-w' as any]: pageW + 'px', ['--r-scale' as any]: readerCfg.scale, ['--r-width' as any]: readerCfg.width + 'px' }}>
       <aside className={'side' + (sideOpen ? '' : ' closed')} onContextMenu={(e) => (e.preventDefault(), setBlankMenu(new DOMRect(e.clientX, e.clientY, 0, 0)))}>
         <div className="ws">
-          <span className="ws-logo"><Ic.Logo size={24} /></span>
+          <span className="ws-logo"><Ic.Logo size={32} /></span>
           <span className="ws-name">Noviq.</span>
           <button className="icon-btn" title={t('Close sidebar  Ctrl+\\')} onClick={() => setSideOpen(false)}><Ic.Sidebar /></button>
         </div>
