@@ -19,6 +19,7 @@ import { Explorer } from './Explorer'
 import { Templates, TEMPLATE_GLYPH } from './TemplateGallery'
 import { getTemplates } from './templates'
 import { PageView, type SaveState } from './PageView'
+import { buildIndex, type PageIndex } from './pageIndex'
 import { ReaderBar, loadReaderCfg, type ReaderCfg } from './ReaderBar'
 import { BackupSettings } from './BackupSettings'
 import { Vaults } from './Vaults'
@@ -59,7 +60,7 @@ const put = (k: string, v: unknown) => {
 interface RowProps {
   page: Page
   depth: number
-  pages: Page[]
+  index: PageIndex
   currentId: string
   collapsed: Set<string>
   onToggle: (id: string) => void
@@ -69,15 +70,17 @@ interface RowProps {
   onMove: (id: string, parentId: string | null, beforeId: string | null) => void
 }
 
+const NO_KIDS: Page[] = []
+const BIG_TREE = 150 // pages from which the sidebar tree starts collapsed
+
 function TreeRow(props: RowProps) {
-  const { page, depth, pages, currentId, collapsed } = props
+  const { page, depth, index, currentId, collapsed } = props
   const [zone, setZone] = useState<'before' | 'inside' | 'after' | null>(null)
-  const kids = pages.filter((p) => p.parentId === page.id).sort((a, b) => a.sort - b.sort)
+  const kids = index.kids.get(page.id) ?? NO_KIDS
   const open = !collapsed.has(page.id)
   const folder = page.kind === 'folder'
   const leaf = depth > 0 && !folder && !kids.length // nested plain pages: just a title, hung on the guide line
-  const total = (id: string): number => pages.filter((p) => p.parentId === id).reduce((n, p) => n + (p.kind === 'folder' ? total(p.id) : 1 + total(p.id)), 0)
-  const count = kids.length ? total(page.id) : 0
+  const count = kids.length ? (index.count.get(page.id) ?? 0) : 0
   return (
     <>
       <div
@@ -104,7 +107,7 @@ function TreeRow(props: RowProps) {
           setZone(null)
           if (!dragged || !z || dragged === page.id) return
           if (z === 'inside') return props.onMove(dragged, page.id, null)
-          const sibs = pages.filter((p) => p.parentId === page.parentId && p.id !== dragged).sort((a, b) => a.sort - b.sort)
+          const sibs = (index.kids.get(page.parentId ?? null) ?? NO_KIDS).filter((p) => p.id !== dragged)
           const i = sibs.findIndex((s) => s.id === page.id)
           props.onMove(dragged, page.parentId, z === 'before' ? page.id : (sibs[i + 1]?.id ?? null))
         }}
@@ -138,7 +141,16 @@ export default function App() {
   const [coverMenu, setCoverMenu] = useState<DOMRect | null>(null)
   // opening any page (sidebar, search, link, breadcrumb…) also leaves the settings view
   const setCurrentId = useCallback((id: string) => (setView('page'), setCurrentIdRaw(id)), [])
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  // a big vault starts with its folders closed (except the way down to the open page): thousands of rows are slow to build and no use to scan
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    const all = repo.list()
+    if (all.length < BIG_TREE) return new Set()
+    const byId = new Map(all.map((p) => [p.id, p]))
+    const keep = new Set<string>()
+    for (let p = byId.get(localStorage.getItem('not.current') ?? ''); p?.parentId && !keep.has(p.parentId); p = byId.get(p.parentId)) keep.add(p.parentId)
+    const parents = new Set(all.map((p) => p.parentId))
+    return new Set(all.filter((p) => !keep.has(p.id) && parents.has(p.id)).map((p) => p.id))
+  })
   const [shut, setShut] = useState<{ favs: boolean; pages: boolean; tags: boolean; saved: boolean }>({ favs: false, pages: false, tags: false, saved: false })
   const [save, setSave] = useState<SaveState>('saved')
   const [sideOpen, setSideOpen] = useState<boolean>(() => store('not.side', true))
@@ -399,7 +411,8 @@ export default function App() {
     refresh()
   }
 
-  const roots = useMemo(() => pages.filter((p) => !p.parentId).sort((a, b) => a.sort - b.sort), [pages])
+  const index = useMemo(() => buildIndex(pages), [pages])
+  const roots = index.kids.get(null) ?? []
   const favs = pages.filter((p) => p.favorite)
   // tags with their page counts (letters compared after Persian normalization, so ي/ی count as one tag)
   const tagList = useMemo(() => {
@@ -444,7 +457,7 @@ export default function App() {
   ]
   const menuPage = menu ? pages.find((p) => p.id === menu.id) : undefined
 
-  const rowProps = { pages, currentId: current?.id ?? '', collapsed, onToggle: toggle, onOpen: setCurrentId, onAdd: add, onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }), onMove: move }
+  const rowProps = { index, currentId: current?.id ?? '', collapsed, onToggle: toggle, onOpen: setCurrentId, onAdd: add, onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }), onMove: move }
 
   return (
     <div className={'app' + (reader && view === 'page' && current ? ' reading' : '')} style={{ ['--page-w' as any]: pageW + 'px', ['--r-scale' as any]: readerCfg.scale, ['--r-width' as any]: readerCfg.width + 'px' }}>
