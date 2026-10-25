@@ -184,6 +184,18 @@ button.wsd-row:hover:not(:disabled) { border-color: var(--accent-ring); transfor
 .wsd-acts button:hover { border-color: var(--border-strong); }
 .wsd-acts button.primary { border: 0; background: var(--grad); color: var(--accent-on); }
 .wsd-acts button.danger { color: var(--danger); margin-inline-start: auto; }
+/* workspace rows with an actions menu */
+.wsd-item { display: flex; flex-direction: column; }
+.wsd-main { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: inherit; text-align: start; cursor: var(--cursor-hand, pointer); }
+.wsd-main:disabled { cursor: default; }
+.wsd-more { flex: none; width: 32px; height: 32px; border: 1px solid transparent; border-radius: 10px; background: none; color: var(--muted); font-size: 18px; line-height: 1; cursor: var(--cursor-hand, pointer); }
+.wsd-more:hover:not(:disabled), .wsd-more[aria-expanded="true"] { border-color: var(--border-strong); color: var(--text); background: var(--hover); }
+.wsd-menu { margin: 6px 4px 2px; }
+.wsd-menu button.danger, .wsd-more-acts button.danger { margin-inline-start: 0; }
+.wsd-more-acts { margin-top: 10px; }
+.wsd-tx small.wsd-bad { color: var(--danger); }
+.wsd-row > .wsd-acts { flex: none; }
+.wsd-dot.paused { background: var(--warn); }
 .app.reading .page-meta { display: none; }
 .rb-exit { justify-content: center; min-width: 132px; padding: 0 18px; line-height: 1; text-align: center; }
 .rb-exit svg { display: block; flex: none; }

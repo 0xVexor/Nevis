@@ -3,17 +3,25 @@
 //!
 //! Method: a file-level three-way comparison. For every path the engine knows the local content hash, the remote
 //! content hash and `base`, the hash both sides agreed on at the last sync. Whoever differs from `base` changed.
+//!
+//! Safety rules (docs/sync-design-research.md): a file that is merely *absent* is not proof of a deletion, so
+//! nothing runs against a vault or a cloud folder that is not there (preflight), a sync that would delete a lot waits
+//! for the user, nothing is ever deleted outright (it goes to the trash of the vault / of Drive), and a file that
+//! changed while we were talking to Drive is never overwritten.
 
 pub mod auth;
 pub mod drive;
 
-use crate::vault::{err, now_ms, write_atomic, Res, Vault};
+use crate::vault::{err, now_ms, write_atomic, Res, Vault, VAULT_MISMATCH, VAULT_MISSING};
 use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
+
+/// The cloud folder of the vault does not exist (any more): deleted from Drive, the app data was cleared, wrong account.
+pub const CLOUD_GONE: &str = "CLOUD_GONE";
 
 #[derive(Clone, Debug)]
 pub struct RemoteFile {
@@ -24,11 +32,16 @@ pub struct RemoteFile {
 }
 
 pub trait Remote {
+    /// The cloud folder is there and usable; `Err(CLOUD_GONE)` when it is not.
+    fn check(&mut self) -> Res<()>;
     fn list(&mut self) -> Res<Vec<RemoteFile>>;
     fn download(&mut self, f: &RemoteFile) -> Res<Vec<u8>>;
     /// Creates the file, or replaces its content when `existing` is the id of the current remote file.
     fn upload(&mut self, path: &str, existing: Option<&str>, bytes: &[u8]) -> Res<RemoteFile>;
-    fn delete(&mut self, id: &str) -> Res<()>;
+    /// The file as it is right now; `None` when it is gone or in the trash.
+    fn get(&mut self, id: &str) -> Res<Option<RemoteFile>>;
+    /// Moves the file to the trash of the remote (never an outright delete).
+    fn trash(&mut self, id: &str) -> Res<()>;
 }
 
 /// What the previous sync left behind, per path. Stored next to the app (per device), never in the vault.
@@ -47,12 +60,26 @@ pub struct Entry {
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct SyncState {
     pub remote_folder: String,
+    /// The Google account this state belongs to. Another account is another cloud: the bookkeeping starts over.
+    #[serde(default)]
+    pub account: String,
     pub files: BTreeMap<String, Entry>,
+    /// The user confirmed the deletions that were held back; used up by the next sync.
+    #[serde(default)]
+    pub allow_deletes_once: bool,
 }
 
 impl SyncState {
+    /// A state file that cannot be read is moved aside and the sync starts from a clean slate: without `base` the
+    /// engine only adds (uploads what is only here, downloads what is only there) and never deletes.
     pub fn load(path: &Path) -> SyncState {
-        fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+        match fs::read(path) {
+            Ok(b) => serde_json::from_slice(&b).unwrap_or_else(|_| {
+                let _ = fs::rename(path, path.with_extension("corrupt"));
+                SyncState::default()
+            }),
+            Err(_) => SyncState::default(),
+        }
     }
     pub fn save(&self, path: &Path) -> Res<()> {
         write_atomic(path, &serde_json::to_vec(self).map_err(err)?)
@@ -79,13 +106,16 @@ pub enum Action {
     Forget(String),
 }
 
-/// Pure decision table; see the module comment.
-pub fn plan(local: &BTreeMap<String, Local>, remote: &BTreeMap<String, RemoteFile>, base: &BTreeMap<String, Entry>) -> Vec<Action> {
+/// Pure decision table; see the module comment. Paths in `unknown` (could not be read right now) are left alone.
+pub fn plan(local: &BTreeMap<String, Local>, remote: &BTreeMap<String, RemoteFile>, base: &BTreeMap<String, Entry>, unknown: &BTreeSet<String>) -> Vec<Action> {
     let mut paths: Vec<&String> = local.keys().chain(remote.keys()).chain(base.keys()).collect();
     paths.sort();
     paths.dedup();
     let mut out = vec![];
     for p in paths {
+        if unknown.contains(p) {
+            continue; // a file we cannot see is neither deleted nor changed
+        }
         let (l, r, b) = (local.get(p), remote.get(p), base.get(p).map(|e| e.base.as_str()));
         let p = p.clone();
         match (l, r) {
@@ -116,6 +146,12 @@ pub fn plan(local: &BTreeMap<String, Local>, remote: &BTreeMap<String, RemoteFil
     out
 }
 
+/// Deletions wait for the user when they look like a mistake instead of an edit: many at once, all of them, or
+/// one side is empty although we know it had files (an unplugged drive, a broken listing, a wiped cloud).
+fn hold_deletes(deletes: usize, tracked: usize, local_empty: bool, remote_empty: bool) -> bool {
+    deletes > 0 && (deletes > 5usize.max(tracked / 5) || (tracked >= 5 && deletes == tracked) || ((local_empty || remote_empty) && tracked > 0))
+}
+
 fn md5_hex(bytes: &[u8]) -> String {
     Md5::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -123,25 +159,41 @@ fn md5_hex(bytes: &[u8]) -> String {
 /// Everything that belongs to the vault and is worth syncing.
 const ROOTS: [&str; 5] = ["pages", "files", "history", "kv", ".trash"];
 
-fn scan(root: &Path, cache: &BTreeMap<String, Entry>) -> Res<BTreeMap<String, Local>> {
+fn mtime_of(meta: &fs::Metadata) -> u128 {
+    meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos())
+}
+
+/// The local files, and the paths that exist but could not be read right now (locked by another program...).
+fn scan(root: &Path, cache: &BTreeMap<String, Entry>) -> Res<(BTreeMap<String, Local>, BTreeSet<String>)> {
     let mut out = BTreeMap::new();
-    fn walk(root: &Path, dir: &Path, cache: &BTreeMap<String, Entry>, out: &mut BTreeMap<String, Local>) -> Res<()> {
+    let mut unknown = BTreeSet::new();
+    fn walk(root: &Path, dir: &Path, cache: &BTreeMap<String, Entry>, out: &mut BTreeMap<String, Local>, unknown: &mut BTreeSet<String>) -> Res<()> {
+        // a folder we cannot list would make all its files look deleted: that is an error, not "unknown"
         for e in fs::read_dir(dir).map_err(err)?.flatten() {
             let path = e.path();
             let name = e.file_name().to_string_lossy().to_string();
             if name.starts_with('.') && name.ends_with(".tmp") {
                 continue; // a write in progress
             }
-            let meta = e.metadata().map_err(err)?;
+            let rel = path.strip_prefix(root).map_err(err)?.to_string_lossy().replace('\\', "/");
+            let Ok(meta) = e.metadata() else {
+                unknown.insert(rel);
+                continue;
+            };
             if meta.is_dir() {
-                walk(root, &path, cache, out)?;
+                walk(root, &path, cache, out, unknown)?;
                 continue;
             }
-            let rel = path.strip_prefix(root).map_err(err)?.to_string_lossy().replace('\\', "/");
-            let mtime = meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
+            let mtime = mtime_of(&meta);
             let md5 = match cache.get(&rel) {
                 Some(c) if c.size == meta.len() && c.mtime == mtime && !c.md5.is_empty() => c.md5.clone(),
-                _ => md5_hex(&fs::read(&path).map_err(err)?),
+                _ => match fs::read(&path) {
+                    Ok(b) => md5_hex(&b),
+                    Err(_) => {
+                        unknown.insert(rel);
+                        continue;
+                    }
+                },
             };
             out.insert(rel, Local { md5, size: meta.len(), mtime });
         }
@@ -150,23 +202,26 @@ fn scan(root: &Path, cache: &BTreeMap<String, Entry>) -> Res<BTreeMap<String, Lo
     for r in ROOTS {
         let d = root.join(r);
         if d.exists() {
-            walk(root, &d, cache, &mut out)?;
+            walk(root, &d, cache, &mut out, &mut unknown)?;
         }
     }
     let marker = root.join(".noviq/vault.json");
-    if let Ok(b) = fs::read(&marker) {
-        let m = fs::metadata(&marker).map_err(err)?;
-        let mtime = m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
-        out.insert(".noviq/vault.json".into(), Local { md5: md5_hex(&b), size: m.len(), mtime });
+    match fs::read(&marker) {
+        Ok(b) => {
+            let m = fs::metadata(&marker).map_err(err)?;
+            out.insert(".noviq/vault.json".into(), Local { md5: md5_hex(&b), size: m.len(), mtime: mtime_of(&m) });
+        }
+        Err(_) => {
+            unknown.insert(".noviq/vault.json".into());
+        }
     }
-    Ok(out)
+    Ok((out, unknown))
 }
 
 /// Remote paths come from another device (or a hostile account): only known vault locations, no escaping.
 fn safe_rel(p: &str) -> bool {
     !p.contains("..") && !p.contains('\\') && !p.starts_with('/') && !p.contains(':') && (p == ".noviq/vault.json" || ROOTS.iter().any(|r| p.starts_with(&format!("{r}/"))))
 }
-
 
 /// Settings files that two devices change independently are merged instead of letting the newer file win:
 /// a review done on a phone must not be lost because the laptop saved its own schedule a minute later.
@@ -208,12 +263,19 @@ fn merge_kv(path: &str, local: &[u8], remote: &[u8]) -> Option<Vec<u8>> {
     }
     serde_json::to_vec(&Value::Object(out)).ok()
 }
+
 #[derive(Default, Debug)]
 pub struct Report {
     pub uploaded: usize,
     pub downloaded: usize,
     pub deleted: usize,
     pub conflicts: usize,
+    /// left for the next round because the file changed while we were busy
+    pub skipped: usize,
+    /// deletions that wait for the user's confirmation
+    pub held: usize,
+    /// duplicate files of the same name that were cleaned up in the cloud
+    pub deduped: usize,
     pub errors: Vec<String>,
 }
 
@@ -223,21 +285,87 @@ impl Report {
     }
 }
 
-pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState) -> Res<Report> {
-    let root = &vault.root;
-    let local = scan(root, &state.files)?;
-    let mut rmap: BTreeMap<String, RemoteFile> = BTreeMap::new();
-    for f in remote.list()? {
-        rmap.entry(f.path.clone()).or_insert(f); // a duplicate name (two devices created it at once) is ignored
+/// True when the file is not what the scan saw any more (edited, deleted or created since).
+fn changed_since(path: &Path, md5: Option<&str>) -> bool {
+    match (fs::read(path), md5) {
+        (Ok(b), Some(m)) => md5_hex(&b) != m,
+        (Ok(_), None) => true,
+        (Err(_), Some(_)) => true,
+        (Err(_), None) => path.exists(),
     }
-    let actions = plan(&local, &rmap, &state.files);
+}
+
+/// Uploads and checks that the cloud stored what we sent; one more try before giving up on a damaged upload.
+fn verified_upload(remote: &mut dyn Remote, path: &str, existing: Option<&str>, bytes: &[u8]) -> Res<RemoteFile> {
+    let want = md5_hex(bytes);
+    let mut up = remote.upload(path, existing, bytes)?;
+    if !up.md5.is_empty() && up.md5 != want {
+        up = remote.upload(path, Some(&up.id), bytes)?;
+        if !up.md5.is_empty() && up.md5 != want {
+            return Err(format!("upload of {path} is corrupt"));
+        }
+    }
+    Ok(up)
+}
+
+/// Drive allows several files of the same name (a retried upload, two devices creating a file at once). Pick one
+/// the same way on every device, keep the content of the others in the sync trash and trash them in the cloud.
+fn dedupe(vault: &Vault, remote: &mut dyn Remote, listed: Vec<RemoteFile>, rep: &mut Report) -> BTreeMap<String, RemoteFile> {
+    let mut groups: BTreeMap<String, Vec<RemoteFile>> = BTreeMap::new();
+    for f in listed {
+        groups.entry(f.path.clone()).or_default().push(f);
+    }
+    let mut out = BTreeMap::new();
+    for (path, mut files) in groups {
+        files.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms).then_with(|| a.id.cmp(&b.id)));
+        let winner = files.remove(0);
+        for dup in files {
+            if !safe_rel(&path) {
+                break;
+            }
+            let kept = dup.md5 == winner.md5 || remote.download(&dup).and_then(|b| vault.sync_trash_put(&path, &b)).is_ok();
+            if !kept {
+                continue; // its content could not be kept: leave it where it is
+            }
+            match remote.trash(&dup.id) {
+                Ok(()) => rep.deduped += 1,
+                Err(e) => rep.errors.push(format!("duplicate {path}: {e}")),
+            }
+        }
+        out.insert(path, winner);
+    }
+    out
+}
+
+/// One synchronization. `progress` is called every now and then with the bookkeeping so far, so that a crash or a
+/// lost connection in the middle costs only the work since then.
+pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, progress: &mut dyn FnMut(&SyncState)) -> Res<Report> {
+    let root = &vault.root;
+    // preflight: nothing below may run against a vault or a cloud folder that is not there
+    if !root.is_dir() || vault.id().is_empty() {
+        return Err(VAULT_MISSING.into());
+    }
+    remote.check()?;
+    let (local, unknown) = scan(root, &state.files)?;
     let mut rep = Report::default();
+    let listed = remote.list()?;
+    let rmap = dedupe(vault, remote, listed, &mut rep);
+    let mut actions = plan(&local, &rmap, &state.files, &unknown);
+
+    let deletes = actions.iter().filter(|a| matches!(a, Action::DeleteLocal(_) | Action::DeleteRemote(_))).count();
+    if hold_deletes(deletes, state.files.len(), local.is_empty(), rmap.is_empty()) && !state.allow_deletes_once {
+        rep.held = deletes;
+        actions.retain(|a| !matches!(a, Action::DeleteLocal(_) | Action::DeleteRemote(_)));
+    }
+    state.allow_deletes_once = false;
+
     let mut merged: Vec<(String, RemoteFile)> = vec![];
 
     let cache = |state: &mut SyncState, p: &str, l: &Local, base: &str, rid: &str| {
         state.files.insert(p.to_string(), Entry { base: base.to_string(), remote_id: rid.to_string(), size: l.size, mtime: l.mtime, md5: l.md5.clone() });
     };
 
+    let mut done = 0usize;
     for a in actions {
         let res: Res<()> = (|| {
             match &a {
@@ -248,7 +376,19 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState) 
                 Action::Upload(p) => {
                     let l = &local[p];
                     let bytes = fs::read(root.join(p)).map_err(err)?;
-                    let up = remote.upload(p, rmap.get(p).map(|r| r.id.as_str()), &bytes)?;
+                    // the cloud copy may have been replaced since we listed it: then this is a conflict for the next round
+                    let existing = match rmap.get(p) {
+                        Some(r) => match remote.get(&r.id)? {
+                            Some(cur) if cur.md5 != r.md5 => {
+                                rep.skipped += 1;
+                                return Ok(());
+                            }
+                            Some(_) => Some(r.id.clone()),
+                            None => None,
+                        },
+                        None => None,
+                    };
+                    let up = verified_upload(remote, p, existing.as_deref(), &bytes)?;
                     cache(state, p, l, &md5_hex(&bytes), &up.id);
                     rep.uploaded += 1;
                 }
@@ -261,24 +401,43 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState) 
                     if md5_hex(&bytes) != r.md5 && !r.md5.is_empty() {
                         return Err(format!("download of {p} is corrupt"));
                     }
+                    // an edit made here while we were downloading must not be overwritten: next round it is a conflict
+                    if changed_since(&root.join(p), local.get(p).map(|l| l.md5.as_str())) {
+                        rep.skipped += 1;
+                        return Ok(());
+                    }
                     write_atomic(&root.join(p), &bytes)?;
                     let m = fs::metadata(root.join(p)).map_err(err)?;
-                    let mtime = m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
-                    cache(state, p, &Local { md5: md5_hex(&bytes), size: m.len(), mtime }, &md5_hex(&bytes), &r.id);
+                    cache(state, p, &Local { md5: md5_hex(&bytes), size: m.len(), mtime: mtime_of(&m) }, &md5_hex(&bytes), &r.id);
                     rep.downloaded += 1;
                 }
                 Action::DeleteLocal(p) => {
                     if !safe_rel(p) {
                         return Err(format!("refusing remote path {p}"));
                     }
-                    let _ = fs::remove_file(root.join(p));
+                    if p == ".noviq/vault.json" {
+                        rep.skipped += 1; // the identity of the vault is never removed by a sync
+                        return Ok(());
+                    }
+                    // proof that it is really gone from the cloud, not just missing from a listing
+                    if let Some(e) = state.files.get(p).filter(|e| !e.remote_id.is_empty()) {
+                        if remote.get(&e.remote_id)?.is_some() {
+                            rep.skipped += 1;
+                            return Ok(());
+                        }
+                    }
+                    if changed_since(&root.join(p), local.get(p).map(|l| l.md5.as_str())) {
+                        rep.skipped += 1;
+                        return Ok(());
+                    }
+                    vault.sync_trash_move(p)?; // recoverable for 30 days; when it fails the file stays and so does `base`
                     state.files.remove(p);
                     rep.deleted += 1;
                 }
                 Action::DeleteRemote(p) => {
-                    let id = state.files.get(p).map(|e| e.remote_id.clone()).unwrap_or_default();
+                    let id = rmap.get(p).map(|r| r.id.clone()).or_else(|| state.files.get(p).map(|e| e.remote_id.clone())).unwrap_or_default();
                     if !id.is_empty() {
-                        remote.delete(&id)?;
+                        remote.trash(&id)?;
                     }
                     state.files.remove(p);
                     rep.deleted += 1;
@@ -289,7 +448,17 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState) 
                 Action::Conflict(p) => {
                     let (l, r) = (&local[p], &rmap[p]);
                     rep.conflicts += 1;
-                    if p.starts_with("pages/") && p.ends_with(".json") {
+                    if p == ".noviq/vault.json" && !state.files.contains_key(p) {
+                        // first sync of a vault that was downloaded: its identity and name are the cloud's
+                        let theirs = remote.download(r)?;
+                        let id_of = |b: &[u8]| serde_json::from_slice::<serde_json::Value>(b).ok().and_then(|v| v.get("id").and_then(|i| i.as_str().map(String::from)));
+                        if id_of(&theirs) != id_of(&fs::read(root.join(p)).map_err(err)?) {
+                            return Err(VAULT_MISMATCH.into());
+                        }
+                        write_atomic(&root.join(p), &theirs)?;
+                        state.files.insert(p.clone(), Entry { base: r.md5.clone(), remote_id: r.id.clone(), ..Default::default() });
+                        rep.downloaded += 1;
+                    } else if p.starts_with("pages/") && p.ends_with(".json") {
                         // keep both: the remote copy lands as a conflict copy, which the vault merges (newer wins, older goes to history)
                         let stem = p.trim_start_matches("pages/").trim_end_matches(".json");
                         let bytes = remote.download(r)?;
@@ -304,20 +473,24 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState) 
                     } {
                         // flashcard schedule and review log: keep what either device did
                         write_atomic(&root.join(p), &both)?;
-                        let up = remote.upload(p, Some(&r.id), &both)?;
+                        let up = verified_upload(remote, p, Some(&r.id), &both)?;
                         state.files.insert(p.clone(), Entry { base: md5_hex(&both), remote_id: up.id, ..Default::default() });
                         rep.uploaded += 1;
                     } else {
-                        // anything else: the newer file wins
+                        // anything else: the newer file wins, the other version waits in the sync trash
                         let local_ms = (l.mtime / 1_000_000) as i64;
                         if r.modified_ms > local_ms {
+                            let mine = fs::read(root.join(p)).map_err(err)?;
                             let bytes = remote.download(r)?;
+                            vault.sync_trash_put(p, &mine)?;
                             write_atomic(&root.join(p), &bytes)?;
                             state.files.insert(p.clone(), Entry { base: r.md5.clone(), remote_id: r.id.clone(), ..Default::default() });
                             rep.downloaded += 1;
                         } else {
+                            let theirs = remote.download(r)?;
+                            vault.sync_trash_put(p, &theirs)?;
                             let bytes = fs::read(root.join(p)).map_err(err)?;
-                            let up = remote.upload(p, Some(&r.id), &bytes)?;
+                            let up = verified_upload(remote, p, Some(&r.id), &bytes)?;
                             state.files.insert(p.clone(), Entry { base: md5_hex(&bytes), remote_id: up.id, ..Default::default() });
                             rep.uploaded += 1;
                         }
@@ -329,6 +502,10 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState) 
         if let Err(e) = res {
             rep.errors.push(format!("{a:?}: {e}"));
         }
+        done += 1;
+        if done % 25 == 0 {
+            progress(state);
+        }
     }
     if !merged.is_empty() {
         vault.resolve_conflicts();
@@ -337,7 +514,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState) 
             let res: Res<()> = (|| {
                 let bytes = fs::read(root.join(&p)).map_err(err)?;
                 if md5_hex(&bytes) != r.md5 {
-                    let up = remote.upload(&p, Some(&r.id), &bytes)?;
+                    let up = verified_upload(remote, &p, Some(&r.id), &bytes)?;
                     state.files.insert(p.clone(), Entry { base: md5_hex(&bytes), remote_id: up.id, ..Default::default() });
                     rep.uploaded += 1;
                 } else {
@@ -369,35 +546,76 @@ mod tests {
     #[derive(Default)]
     struct Mem {
         files: Vec<(RemoteFile, Vec<u8>)>,
+        trashed: Vec<(RemoteFile, Vec<u8>)>,
         clock: i64,
         next: u32,
+        gone: bool,            // the cloud folder does not exist any more
+        hide_all: bool,        // the listing answers nothing (a broken listing)
+        corrupt_uploads: bool, // the cloud reports another md5 than what was sent
+        on_download: Option<Rc<dyn Fn()>>,
+        on_get: Option<Rc<dyn Fn()>>,
     }
 
     #[derive(Clone, Default)]
     struct Shared(Rc<RefCell<Mem>>);
 
+    impl Shared {
+        /// A file created by "another device" directly in the cloud.
+        fn put(&self, path: &str, bytes: &[u8], modified_ms: i64) -> RemoteFile {
+            let mut m = self.0.borrow_mut();
+            m.next += 1;
+            let f = RemoteFile { id: format!("x{}", m.next), path: path.into(), md5: md5_hex(bytes), modified_ms };
+            m.files.push((f.clone(), bytes.to_vec()));
+            f
+        }
+    }
+
     impl Remote for Shared {
+        fn check(&mut self) -> Res<()> {
+            if self.0.borrow().gone { Err(CLOUD_GONE.into()) } else { Ok(()) }
+        }
         fn list(&mut self) -> Res<Vec<RemoteFile>> {
-            Ok(self.0.borrow().files.iter().map(|(f, _)| f.clone()).collect())
+            let m = self.0.borrow();
+            Ok(if m.hide_all { vec![] } else { m.files.iter().map(|(f, _)| f.clone()).collect() })
         }
         fn download(&mut self, f: &RemoteFile) -> Res<Vec<u8>> {
+            let hook = self.0.borrow().on_download.clone();
+            if let Some(h) = hook {
+                h();
+            }
             self.0.borrow().files.iter().find(|(x, _)| x.id == f.id).map(|(_, b)| b.clone()).ok_or("gone".to_string())
         }
         fn upload(&mut self, path: &str, existing: Option<&str>, bytes: &[u8]) -> Res<RemoteFile> {
             let mut m = self.0.borrow_mut();
             m.clock += 1000;
             let at = m.clock;
-            if let Some(i) = m.files.iter().position(|(f, _)| Some(f.id.as_str()) == existing) {
+            let mut out = if let Some(i) = m.files.iter().position(|(f, _)| Some(f.id.as_str()) == existing) {
                 m.files[i] = (RemoteFile { id: m.files[i].0.id.clone(), path: path.into(), md5: md5_hex(bytes), modified_ms: at }, bytes.to_vec());
-                return Ok(m.files[i].0.clone());
+                m.files[i].0.clone()
+            } else {
+                m.next += 1;
+                let f = RemoteFile { id: format!("r{}", m.next), path: path.into(), md5: md5_hex(bytes), modified_ms: at };
+                m.files.push((f.clone(), bytes.to_vec()));
+                f
+            };
+            if m.corrupt_uploads {
+                out.md5 = "bad".into();
             }
-            m.next += 1;
-            let f = RemoteFile { id: format!("r{}", m.next), path: path.into(), md5: md5_hex(bytes), modified_ms: at };
-            m.files.push((f.clone(), bytes.to_vec()));
-            Ok(f)
+            Ok(out)
         }
-        fn delete(&mut self, id: &str) -> Res<()> {
-            self.0.borrow_mut().files.retain(|(f, _)| f.id != id);
+        fn get(&mut self, id: &str) -> Res<Option<RemoteFile>> {
+            let hook = self.0.borrow().on_get.clone();
+            if let Some(h) = hook {
+                h();
+            }
+            Ok(self.0.borrow().files.iter().find(|(f, _)| f.id == id).map(|(f, _)| f.clone()))
+        }
+        fn trash(&mut self, id: &str) -> Res<()> {
+            let mut m = self.0.borrow_mut();
+            if let Some(i) = m.files.iter().position(|(f, _)| f.id == id) {
+                let x = m.files.remove(i);
+                m.trashed.push(x);
+            }
             Ok(())
         }
     }
@@ -419,8 +637,11 @@ mod tests {
             }
             Device { vault, state: SyncState::default(), remote: remote.clone() }
         }
+        fn try_sync(&mut self) -> Res<Report> {
+            sync_once(&self.vault, &mut self.remote, &mut self.state, &mut |_| {})
+        }
         fn sync(&mut self) -> Report {
-            let r = sync_once(&self.vault, &mut self.remote, &mut self.state).unwrap();
+            let r = self.try_sync().unwrap();
             assert!(r.errors.is_empty(), "{:?}", r.errors);
             r
         }
@@ -429,6 +650,9 @@ mod tests {
         }
         fn save(&self, id: &str, title: &str, at: i64) {
             self.vault.save_pages(&[json!({ "id": id, "title": title, "content": {"type":"doc","content":[]}, "updatedAt": at, "deletedAt": null })], &[], false).unwrap();
+        }
+        fn page_count(&self) -> usize {
+            self.vault.pages_all().unwrap().len()
         }
     }
 
@@ -440,6 +664,11 @@ mod tests {
         let a = Device::new("a", &remote, Some("00000000-0000-4000-8000-000000000000"));
         let b = Device::new("b", &remote, Some("00000000-0000-4000-8000-000000000000"));
         (a, b)
+    }
+
+    /// Does the sync trash of `v` hold `rel` with exactly this content?
+    fn trash_has(v: &Vault, rel: &str, content: &[u8]) -> bool {
+        fs::read_dir(v.sync_trash_dir()).into_iter().flatten().flatten().any(|e| fs::read(e.path().join(rel)).is_ok_and(|b| b == content))
     }
 
     #[test]
@@ -502,8 +731,9 @@ mod tests {
         b.sync();
         assert!(b.page(P1).is_none());
         assert!(b.vault.root.join(".trash/pages").join(format!("{P1}.json")).exists()); // still recoverable
+        // the page file itself went to the sync trash, not into the void
+        assert!(fs::read_dir(b.vault.sync_trash_dir()).unwrap().count() >= 1);
     }
-
 
     #[test]
     fn flashcard_progress_from_two_devices_is_merged() {
@@ -530,6 +760,7 @@ mod tests {
             assert_eq!(l["2026-10-23"], json!({ "B": 1 }));
         }
     }
+
     #[test]
     fn remote_paths_cannot_escape_the_vault() {
         assert!(safe_rel("pages/x.json") && safe_rel(".noviq/vault.json"));
@@ -546,7 +777,7 @@ mod tests {
             lo.map(|m| lm.insert("p".to_string(), l(m)));
             re.map(|m| rm.insert("p".to_string(), r(m)));
             ba.map(|m| bm.insert("p".to_string(), e(m)));
-            plan(&lm, &rm, &bm)
+            plan(&lm, &rm, &bm, &BTreeSet::new())
         };
         assert_eq!(run(Some("a"), None, None), [Action::Upload("p".into())]);
         assert_eq!(run(None, Some("a"), None), [Action::Download("p".into())]);
@@ -558,5 +789,243 @@ mod tests {
         assert_eq!(run(None, Some("a"), Some("a")), [Action::DeleteRemote("p".into())]);
         assert_eq!(run(None, None, Some("a")), [Action::Forget("p".into())]);
         assert!(run(Some("a"), Some("a"), Some("a")).is_empty());
+    }
+
+    #[test]
+    fn a_file_that_cannot_be_seen_is_left_alone() {
+        let r = RemoteFile { id: "i".into(), path: "p".into(), md5: "a".into(), modified_ms: 0 };
+        let rm = BTreeMap::from([("p".to_string(), r)]);
+        let bm = BTreeMap::from([("p".to_string(), Entry { base: "a".into(), remote_id: "i".into(), ..Default::default() })]);
+        // not in the local scan only because it could not be read: that is not "deleted here"
+        assert_eq!(plan(&BTreeMap::new(), &rm, &bm, &BTreeSet::new()), [Action::DeleteRemote("p".into())]);
+        assert!(plan(&BTreeMap::new(), &rm, &bm, &BTreeSet::from(["p".to_string()])).is_empty());
+    }
+
+    #[test]
+    fn deletions_are_held_back_when_they_look_like_a_mistake() {
+        assert!(!hold_deletes(0, 100, true, true));
+        assert!(!hold_deletes(1, 100, false, false)); // an ordinary delete
+        assert!(!hold_deletes(5, 20, false, false));
+        assert!(hold_deletes(6, 20, false, false)); // more than the threshold
+        assert!(hold_deletes(30, 100, false, false)); // more than 20%
+        assert!(hold_deletes(5, 5, false, false)); // everything
+        assert!(hold_deletes(1, 10, true, false)); // the local side is empty although we know files
+        assert!(hold_deletes(1, 10, false, true)); // so is the cloud
+        assert!(!hold_deletes(1, 0, true, true)); // nothing was ever synced: nothing to lose
+    }
+
+    // ───── lifecycle: a vault or a cloud that is not there must never turn into deletions ─────
+
+    #[test]
+    fn a_vanished_vault_folder_never_deletes_the_cloud() {
+        let (mut a, _b) = pair();
+        for (i, id) in [P1, P2].iter().enumerate() {
+            a.save(id, "x", 100 + i as i64);
+        }
+        a.sync();
+        let before = a.remote.0.borrow().files.len();
+        assert!(before >= 2);
+        fs::remove_dir_all(&a.vault.root).unwrap();
+        assert_eq!(a.try_sync().err().as_deref(), Some(VAULT_MISSING));
+        // the folder came back empty, without its marker (what the old `open` did): still nothing happens
+        fs::create_dir_all(&a.vault.root).unwrap();
+        assert_eq!(a.try_sync().err().as_deref(), Some(VAULT_MISSING));
+        assert_eq!(a.remote.0.borrow().files.len(), before);
+        assert!(a.remote.0.borrow().trashed.is_empty());
+    }
+
+    #[test]
+    fn a_vault_that_lost_all_its_files_waits_for_the_user() {
+        let (mut a, _b) = pair();
+        for i in 0..8 {
+            a.save(&format!("{i:08}-1111-4111-8111-111111111111"), "x", 100);
+        }
+        a.sync();
+        for e in fs::read_dir(a.vault.pages_dir()).unwrap().flatten() {
+            fs::remove_file(e.path()).unwrap();
+        }
+        let before = a.remote.0.borrow().files.len();
+        let r = a.sync();
+        assert_eq!(r.held, 8, "held for confirmation");
+        assert_eq!((r.deleted, a.remote.0.borrow().files.len()), (0, before));
+        // the user confirms: the pages go to the trash of the cloud, not into the void
+        a.state.allow_deletes_once = true;
+        let r = a.sync();
+        assert_eq!(r.held, 0);
+        assert_eq!(a.remote.0.borrow().trashed.len(), 8);
+    }
+
+    #[test]
+    fn a_wiped_cloud_listing_never_deletes_local_files() {
+        let (mut a, _b) = pair();
+        a.save(P1, "mine", 100);
+        a.save(P2, "mine too", 100);
+        a.sync();
+        a.remote.0.borrow_mut().hide_all = true;
+        let r = a.sync();
+        assert!(r.held > 0 && r.deleted == 0);
+        assert_eq!(a.page_count(), 2);
+    }
+
+    #[test]
+    fn a_cloud_folder_that_is_gone_stops_the_sync() {
+        let (mut a, _b) = pair();
+        a.save(P1, "mine", 100);
+        a.sync();
+        a.remote.0.borrow_mut().gone = true;
+        assert_eq!(a.try_sync().err().as_deref(), Some(CLOUD_GONE));
+        assert_eq!(a.page_count(), 1);
+    }
+
+    #[test]
+    fn a_state_file_that_cannot_be_read_means_a_clean_slate_without_deletions() {
+        let (mut a, mut b) = pair();
+        a.save(P1, "one", 100);
+        b.save(P2, "two", 100);
+        a.sync();
+        b.sync();
+        a.sync();
+        let file = std::env::temp_dir().join(format!("noviq-state-{}.json", now_ms()));
+        fs::write(&file, b"{ this is not json").unwrap();
+        a.state = SyncState::load(&file);
+        assert!(a.state.files.is_empty() && file.with_extension("corrupt").exists());
+        let r = a.sync();
+        assert_eq!((r.deleted, r.held), (0, 0));
+        assert_eq!((a.page_count(), b.page_count()), (2, 2));
+    }
+
+    // ───── concurrency: a file that changed while we were busy is not overwritten ─────
+
+    #[test]
+    fn an_edit_made_while_downloading_is_not_overwritten() {
+        let (mut a, mut b) = pair();
+        a.save(P1, "v1", 100);
+        a.sync();
+        b.sync();
+        a.save(P1, "v2", 200);
+        a.sync();
+        // while b downloads v2, the user edits the page on b
+        let root = b.vault.root.clone();
+        b.remote.0.borrow_mut().on_download = Some(Rc::new(move || {
+            let v = Vault { root: root.clone() };
+            v.save_pages(&[json!({ "id": P1, "title": "typed on b", "content": {"type":"doc","content":[]}, "updatedAt": 500, "deletedAt": null })], &[], false).unwrap();
+        }));
+        let r = b.sync();
+        assert_eq!(r.skipped, 1);
+        assert_eq!(b.page(P1).unwrap()["title"], "typed on b", "the edit survives");
+        // next rounds: both versions changed, the newer one wins and the other is in the history
+        b.remote.0.borrow_mut().on_download = None;
+        b.sync();
+        a.sync();
+        b.sync();
+        assert_eq!(a.page(P1).unwrap()["title"], "typed on b");
+        assert!(b.vault.versions_list(P1).unwrap().iter().any(|v| v["title"] == "v2"), "v2 is kept");
+    }
+
+    #[test]
+    fn an_upload_over_a_cloud_file_that_changed_meanwhile_becomes_a_conflict() {
+        let (mut a, mut b) = pair();
+        a.save(P1, "v1", 100);
+        a.sync();
+        b.sync();
+        a.save(P1, "from a", 200);
+        // between listing and uploading, b's version reaches the cloud
+        let cloud = a.remote.clone();
+        let theirs = json!({ "id": P1, "title": "from b", "content": {"type":"doc","content":[]}, "updatedAt": 300, "deletedAt": null }).to_string();
+        a.remote.0.borrow_mut().on_get = Some(Rc::new(move || {
+            let id = cloud.0.borrow().files.iter().find(|(f, _)| f.path == format!("pages/{P1}.json")).map(|(f, _)| f.id.clone()).unwrap();
+            let mut m = cloud.0.borrow_mut();
+            let i = m.files.iter().position(|(f, _)| f.id == id).unwrap();
+            m.files[i].0.md5 = md5_hex(theirs.as_bytes());
+            m.files[i].1 = theirs.clone().into_bytes();
+        }));
+        let r = a.sync();
+        assert_eq!(r.skipped, 1);
+        let cloud_copy = a.remote.0.borrow().files.iter().find(|(f, _)| f.path == format!("pages/{P1}.json")).map(|(_, b)| b.clone()).unwrap();
+        assert!(String::from_utf8(cloud_copy).unwrap().contains("from b"), "the other device's version is still in the cloud");
+        a.remote.0.borrow_mut().on_get = None;
+        a.sync();
+        b.sync();
+        a.sync();
+        assert_eq!(a.page(P1).unwrap()["title"], "from b"); // newer
+        assert!(a.vault.versions_list(P1).unwrap().iter().any(|v| v["title"] == "from a"));
+    }
+
+    #[test]
+    fn a_damaged_upload_is_not_recorded_as_synced() {
+        let (mut a, _b) = pair();
+        a.save(P1, "x", 100);
+        a.remote.0.borrow_mut().corrupt_uploads = true;
+        let r = a.try_sync().unwrap();
+        assert!(!r.errors.is_empty());
+        assert!(!a.state.files.contains_key(&format!("pages/{P1}.json")));
+    }
+
+    #[test]
+    fn the_loser_of_a_conflict_in_another_file_is_kept() {
+        let (mut a, mut b) = pair();
+        let put = |d: &Device, v: &str| write_atomic(&d.vault.root.join("kv/other.json"), v.as_bytes()).unwrap();
+        put(&a, "{\"v\":1}");
+        a.sync();
+        b.sync();
+        put(&a, "{\"v\":\"a\"}");
+        put(&b, "{\"v\":\"b\"}");
+        a.sync();
+        b.sync();
+        a.sync();
+        let winner = fs::read(a.vault.root.join("kv/other.json")).unwrap();
+        let loser: &[u8] = if winner == b"{\"v\":\"b\"}" { b"{\"v\":\"a\"}" } else { b"{\"v\":\"b\"}" };
+        assert!(trash_has(&a.vault, "kv/other.json", loser) || trash_has(&b.vault, "kv/other.json", loser), "the other version is in a sync trash");
+    }
+
+    #[test]
+    fn duplicate_files_in_the_cloud_are_resolved_the_same_way_everywhere() {
+        let (mut a, mut b) = pair();
+        a.save(P1, "x", 100);
+        a.sync();
+        let path = format!("pages/{P1}.json");
+        // a retried upload left a second file of the same name, with other content
+        a.remote.put(&path, b"{\"older\":true}", 1);
+        let r = a.sync();
+        assert_eq!(r.deduped, 1);
+        assert_eq!(a.remote.0.borrow().files.iter().filter(|(f, _)| f.path == path).count(), 1);
+        assert_eq!(a.remote.0.borrow().trashed.len(), 1);
+        assert!(trash_has(&a.vault, &path, b"{\"older\":true}"), "its content is kept");
+        b.sync();
+        assert_eq!(b.page(P1).unwrap()["title"], "x");
+    }
+
+    #[test]
+    fn the_name_of_a_downloaded_vault_comes_from_the_cloud() {
+        let (mut a, _b) = pair();
+        a.save(P1, "x", 100);
+        a.sync();
+        // a new device downloads the vault: its marker is made from the name the user typed
+        let remote = a.remote.clone();
+        let mut c = Device::new("c", &remote, Some("00000000-0000-4000-8000-000000000000"));
+        c.vault.rename("Another name").unwrap();
+        c.sync();
+        assert_eq!(c.vault.name(), "T");
+        assert_eq!(a.remote.0.borrow().files.iter().filter(|(f, _)| f.path == ".noviq/vault.json").count(), 1);
+        // a marker of another vault is refused
+        let mut d = Device::new("d", &remote, Some("99999999-9999-4999-8999-999999999999"));
+        let r = d.try_sync().unwrap();
+        assert!(r.errors.iter().any(|e| e.contains(VAULT_MISMATCH)));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_locked_file_does_not_stop_the_sync_or_get_deleted() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let (mut a, _b) = pair();
+        a.save(P1, "locked", 100);
+        a.save(P2, "free", 100);
+        a.sync();
+        let _lock = fs::OpenOptions::new().read(true).share_mode(0).open(a.vault.pages_dir().join(format!("{P1}.json"))).unwrap();
+        // the locked file is "unknown": the other page still syncs, nothing is deleted in the cloud
+        a.save(P2, "free, edited", 200);
+        let r = a.sync();
+        assert_eq!(r.uploaded, 1);
+        assert!(a.remote.0.borrow().files.iter().any(|(f, _)| f.path == format!("pages/{P1}.json")));
     }
 }
