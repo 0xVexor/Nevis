@@ -188,21 +188,24 @@ export function AuthFlow({ status, initial = 'signin', onDone, onBack }: { statu
     if (status && !typedServer.current) setServer(status.server)
   }, [status])
 
+  // the address in use: what was typed, else the one of the account, else the app's default
+  const address = server.trim() || status?.server || status?.defaultServer || ''
+
   // ask the server about itself (does it take new accounts, does it want an invite code)
   const check = useCallback(() => {
-    if (!server) return
+    if (!address) return
     setReach('checking')
     let stale = false
     const timer = window.setTimeout(
       () =>
-        serverHealth(server).then(
+        serverHealth(address).then(
           (h) => !stale && (setHealth(h), setReach('ok')),
           (e) => !stale && (setHealth(null), setReachError(explain(e)), setReach('down')),
         ),
       typedServer.current ? 500 : 0,
     )
     return () => (stale = true, window.clearTimeout(timer))
-  }, [server])
+  }, [address])
   useEffect(() => check(), [check])
 
   const closed = mode === 'signup' && health?.registration === 'closed'
@@ -233,13 +236,13 @@ export function AuthFlow({ status, initial = 'signin', onDone, onBack }: { statu
     try {
       const name = user.trim()
       if (mode === 'signin') {
-        await accountLogin(server, name, pw)
+        await accountLogin(address, name, pw)
         onDone()
       } else if (mode === 'signup') {
-        setKey(await accountRegister(server, name, pw, invite))
+        setKey(await accountRegister(address, name, pw, invite))
         setMode('key')
       } else {
-        setKey(await accountRecover(server, name, recovery, pw))
+        setKey(await accountRecover(address, name, recovery, pw))
         setMode('key')
       }
     } catch (err) {
@@ -327,7 +330,7 @@ export function AuthFlow({ status, initial = 'signin', onDone, onBack }: { statu
           </Field>
           <span className={'acct-reach ' + reach}>
             <i />
-            {reach === 'checking' ? t('Checking the server…') : reach === 'ok' ? t('Connected to {host}', { host: host(server) }) : reachError}
+            {reach === 'checking' ? t('Checking the server…') : reach === 'ok' ? t('Connected to {host}', { host: host(address) }) : reachError}
           </span>
           {status && server !== status.defaultServer && (
             <button type="button" className="acct-link" onClick={() => ((typedServer.current = false), setServer(status.defaultServer))}>{t('Use the default server')}</button>
