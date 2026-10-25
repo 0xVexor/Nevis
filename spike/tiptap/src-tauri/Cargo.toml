@@ -21,6 +21,7 @@ md-5 = "0.10"
 base64 = "0.22"
 open = "5"
 keyring = { version = "3", features = ["windows-native", "apple-native"] }
+trash = "5" # moves a vault folder to the Recycle Bin / Trash instead of deleting it
 
 [profile.release]
 lto = true

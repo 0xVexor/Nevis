@@ -9,6 +9,8 @@ export const isTauri = '__TAURI_INTERNALS__' in window
 // or its pages would end up in the vault that was just opened.
 let frozen = false
 export const freezeStorage = () => void (frozen = true)
+/** The switch did not happen after all: the workspace in memory may be saved again. */
+export const thawStorage = () => void (frozen = false)
 export const storageFrozen = () => frozen
 
 const NAME = 'not.db'
@@ -49,7 +51,12 @@ export async function allPages(): Promise<any[]> {
 /** One transaction: either everything is written or nothing (crash safety). */
 export async function savePages(upserts: any[], removed: string[], clearFirst: boolean) {
   if (frozen) return
-  if (isTauri) return invoke<void>('pages_save', { upserts, removed, clearFirst })
+  if (isTauri) {
+    // ids of pages whose newer version on disk (another device's edit) was kept in the page history instead of being overwritten
+    const kept = await invoke<string[]>('pages_save', { upserts, removed, clearFirst })
+    if (kept.length) window.dispatchEvent(new CustomEvent('sync-conflict', { detail: kept }))
+    return
+  }
   const tx = (await db()).transaction('pages', 'readwrite')
   const s = tx.objectStore('pages')
   if (clearFirst) s.clear()
@@ -123,14 +130,19 @@ export interface VaultEntry {
   path: string
   sync: boolean
   exists: boolean
+  /** ok: the vault is in its folder; missing: folder or marker gone (moved, deleted, drive unplugged); mismatch: another vault is in that folder */
+  status: 'ok' | 'missing' | 'mismatch'
 }
 export interface AccountStatus {
   configured: boolean // the app has Google OAuth credentials
   email: string | null
   syncOn: boolean // sync of the open vault
-  state: 'off' | 'idle' | 'syncing' | 'error'
+  state: 'off' | 'idle' | 'syncing' | 'paused' | 'error'
   lastAt: number
+  /** NEEDS_CONFIRM: `error` holds the number of deletions that wait for the user */
   error: string
+  /** why sync is paused: VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE | NEEDS_CONFIRM */
+  reason: string
 }
 export interface CloudVault {
   id: string
@@ -145,10 +157,21 @@ export const vaultAdd = (path: string) => invoke<string>('vault_add', { path })
 export const vaultOpen = (id: string) => invoke<void>('vault_open', { id })
 export const vaultClose = () => invoke<void>('vault_close')
 export const vaultForget = (id: string) => invoke<void>('vault_forget', { id })
+/** The vault was moved: point at its new folder (must hold the same vault). */
+export const vaultLocate = (id: string, path: string) => invoke<void>('vault_locate', { id, path })
+/** Moves the vault's folder to the Recycle Bin / Trash and forgets it here. The cloud copy stays. */
+export const vaultTrashLocal = (id: string) => invoke<void>('vault_trash_local', { id })
+export const vaultRename = (id: string, name: string) => invoke<void>('vault_rename', { id, name })
 export const accountStatus = () => invoke<AccountStatus>('account_status')
 export const accountLogin = () => invoke<string>('account_login')
 export const accountLogout = () => invoke<void>('account_logout')
 export const syncSet = (on: boolean) => invoke<void>('sync_set', { on })
 export const syncNow = () => invoke<void>('sync_now')
+/** Runs the deletions a sync held back (many files at once, or a side that looked empty). */
+export const syncConfirm = () => invoke<void>('sync_confirm')
+/** Moves the cloud copy of a vault to the Drive trash; the vault on this device stays. */
+export const cloudDelete = (id: string) => invoke<void>('cloud_delete', { id })
+/** The cloud copy is gone: upload this vault again as a new cloud copy (nothing is deleted). */
+export const cloudReupload = (id: string) => invoke<void>('cloud_reupload', { id })
 export const cloudVaults = () => invoke<CloudVault[]>('cloud_vaults')
 export const cloudDownload = (id: string, name: string, parent: string) => invoke<void>('cloud_download', { id, name, parent })
