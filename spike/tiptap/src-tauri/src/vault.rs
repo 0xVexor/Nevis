@@ -56,24 +56,90 @@ fn updated_at(v: &Value) -> i64 {
     v.get("updatedAt").and_then(Value::as_f64).unwrap_or(0.0) as i64
 }
 
+/// What is at `root`, reading only: the vault `id` ("ok"), another vault ("mismatch") or nothing ("missing").
+pub fn probe(root: &Path, id: &str) -> &'static str {
+    match read_json(&root.join(".noviq/vault.json")) {
+        None => "missing",
+        Some(m) if m.get("id").and_then(Value::as_str) == Some(id) => "ok",
+        Some(_) => "mismatch",
+    }
+}
+
 pub struct Vault {
     pub root: PathBuf,
 }
 
+/// Error codes the UI knows (see `explain` in the web app). They are plain strings because commands return `Res<T>`.
+pub const VAULT_MISSING: &str = "VAULT_MISSING"; // the folder (or its marker) is gone: moved, deleted, drive unplugged
+pub const VAULT_MISMATCH: &str = "VAULT_MISMATCH"; // the folder holds another vault than the one we expected
+
 impl Vault {
+    /// Opens a vault that exists. It never creates the folder or an identity: a vault whose folder vanished must not
+    /// come back as an empty vault under a new id (a sync would then take that as "everything was deleted").
     pub fn open(root: PathBuf) -> Res<Vault> {
-        for d in ["pages", "files", "history", "kv", ".noviq", ".trash/pages", ".trash/files"] {
-            fs::create_dir_all(root.join(d)).map_err(err)?;
+        if !root.is_dir() || !root.join(".noviq/vault.json").is_file() {
+            return Err(VAULT_MISSING.into());
         }
         let v = Vault { root };
-        // the identity travels with the folder (and through sync), so every device knows it is the same vault
-        let mut meta = v.meta_value();
-        if meta.get("id").and_then(Value::as_str).is_none() {
-            let name = v.root.file_name().and_then(|n| n.to_str()).unwrap_or("Noviq").to_string();
-            meta = json!({ "format": 1, "id": uuid::Uuid::new_v4().to_string(), "name": name });
-            write_atomic(&v.root.join(".noviq/vault.json"), meta.to_string().as_bytes())?;
+        if v.id().is_empty() {
+            return Err(VAULT_MISSING.into());
+        }
+        v.make_dirs()?;
+        Ok(v)
+    }
+
+    /// Like `open`, and also checks that the folder is the vault `id`.
+    pub fn open_as(root: PathBuf, id: &str) -> Res<Vault> {
+        let v = Vault::open(root)?;
+        if v.id() != id {
+            return Err(VAULT_MISMATCH.into());
         }
         Ok(v)
+    }
+
+    /// The user picked a folder that may be an existing vault or just a folder: it becomes a vault (gets an identity if it has none).
+    pub fn adopt(root: PathBuf) -> Res<Vault> {
+        if !root.is_dir() {
+            return Err(VAULT_MISSING.into());
+        }
+        if !root.join(".noviq/vault.json").is_file() {
+            let name = root.file_name().and_then(|n| n.to_str()).unwrap_or("Noviq").to_string();
+            fs::create_dir_all(root.join(".noviq")).map_err(err)?;
+            write_atomic(&root.join(".noviq/vault.json"), json!({ "format": 1, "id": uuid::Uuid::new_v4().to_string(), "name": name }).to_string().as_bytes())?;
+        }
+        Vault::open(root)
+    }
+
+    fn make_dirs(&self) -> Res<()> {
+        for d in ["pages", "files", "history", "kv", ".noviq", ".trash/pages", ".trash/files"] {
+            fs::create_dir_all(self.root.join(d)).map_err(err)?;
+        }
+        Ok(())
+    }
+
+    /// Where files go that the sync would otherwise drop (deleted or overwritten by another device). Not synced, emptied after 30 days.
+    pub fn sync_trash_dir(&self) -> PathBuf {
+        self.root.join(".noviq/sync-trash")
+    }
+
+    /// Keeps `bytes` (the content of vault file `rel`) in the sync trash.
+    pub fn sync_trash_put(&self, rel: &str, bytes: &[u8]) -> Res<()> {
+        let mut ts = now_ms();
+        while self.sync_trash_dir().join(ts.to_string()).join(rel).exists() {
+            ts += 1;
+        }
+        write_atomic(&self.sync_trash_dir().join(ts.to_string()).join(rel), bytes)
+    }
+
+    /// Moves vault file `rel` into the sync trash instead of deleting it.
+    pub fn sync_trash_move(&self, rel: &str) -> Res<()> {
+        let mut ts = now_ms();
+        while self.sync_trash_dir().join(ts.to_string()).join(rel).exists() {
+            ts += 1;
+        }
+        let dest = self.sync_trash_dir().join(ts.to_string()).join(rel);
+        fs::create_dir_all(dest.parent().ok_or("bad path")?).map_err(err)?;
+        fs::rename(self.root.join(rel), &dest).map_err(err)
     }
 
     fn meta_value(&self) -> Value {
@@ -101,6 +167,13 @@ impl Vault {
             write_atomic(&marker, json!({ "format": 1, "id": id, "name": name }).to_string().as_bytes())?;
         }
         Vault::open(root)
+    }
+
+    /// New display name, stored in the marker (it travels through sync like the id).
+    pub fn rename(&self, name: &str) -> Res<()> {
+        let mut meta = self.meta_value();
+        meta["name"] = Value::String(name.to_string());
+        write_atomic(&self.root.join(".noviq/vault.json"), meta.to_string().as_bytes())
     }
 
     pub fn pages_dir(&self) -> PathBuf {
@@ -174,16 +247,30 @@ impl Vault {
         Ok(())
     }
 
-    pub fn save_pages(&self, upserts: &[Value], removed: &[String], clear_first: bool) -> Res<()> {
+    /// Returns the ids of pages whose version on disk was not the one the edit started from (`_base`, the `updatedAt`
+    /// the editor loaded): that version came from another device, so it is kept in the history before ours replaces it.
+    pub fn save_pages(&self, upserts: &[Value], removed: &[String], clear_first: bool) -> Res<Vec<String>> {
+        let mut kept = vec![];
         for p in upserts {
             let id = p.get("id").and_then(Value::as_str).ok_or("page without id")?;
             let path = self.page_path(id)?;
+            // `_base` is bookkeeping of the editor, not part of the page file
+            let base = p.get("_base").and_then(Value::as_i64);
+            let mut p = p.clone();
+            if let Some(o) = p.as_object_mut() {
+                o.remove("_base");
+            }
             if !clear_first {
                 if let Some(cur) = read_json(&path) {
-                    if updated_at(&cur) > updated_at(p) {
+                    if updated_at(&cur) > updated_at(&p) {
                         // another device saved a newer version of this page: ours must not overwrite it
-                        self.keep_loser(id, p)?;
+                        self.keep_loser(id, &p)?;
                         continue;
+                    }
+                    if base.is_some_and(|b| updated_at(&cur) != b && updated_at(&cur) != updated_at(&p)) {
+                        // the file changed under the editor (the sync brought another device's edit): do not lose that version
+                        self.keep_loser(id, &cur)?;
+                        kept.push(id.to_string());
                     }
                 }
             }
@@ -209,7 +296,7 @@ impl Vault {
                 write_atomic(&self.root.join(".trash/pages").join(format!("{id}.del")), now_ms().to_string().as_bytes())?;
             }
         }
-        Ok(())
+        Ok(kept)
     }
 
     /// Cheap fingerprint of the pages folder, to notice changes made by the sync tool.
@@ -350,6 +437,13 @@ impl Vault {
                 }
             }
         }
+        // what the sync set aside (one folder per moment, named by its time)
+        for e in fs::read_dir(self.sync_trash_dir()).into_iter().flatten().flatten() {
+            let Some(at) = e.file_name().to_str().and_then(|n| n.parse::<i64>().ok()) else { continue };
+            if now_ms() - at > TRASH_KEEP_MS {
+                let _ = fs::remove_dir_all(e.path());
+            }
+        }
     }
 
     pub fn has_pages(&self) -> bool {
@@ -398,7 +492,7 @@ mod tests {
 
     #[test]
     fn roundtrip_and_stale_write_keeps_history() {
-        let v = Vault::open(tmp("rt")).unwrap();
+        let v = Vault::create(tmp("rt"), "T").unwrap();
         v.save_pages(&[page(A, "new", 200)], &[], false).unwrap();
         v.save_pages(&[page(A, "old", 100)], &[], false).unwrap(); // stale: must not overwrite
         let all = v.pages_all().unwrap();
@@ -411,7 +505,7 @@ mod tests {
 
     #[test]
     fn conflict_copy_is_merged() {
-        let v = Vault::open(tmp("conf")).unwrap();
+        let v = Vault::create(tmp("conf"), "T").unwrap();
         v.save_pages(&[page(A, "mine", 100)], &[], false).unwrap();
         write_atomic(&v.pages_dir().join(format!("{A} (1).json")), page(A, "theirs", 300).to_string().as_bytes()).unwrap();
         let all = v.pages_all().unwrap();
@@ -423,7 +517,7 @@ mod tests {
 
     #[test]
     fn removed_page_goes_to_trash_and_files_roundtrip() {
-        let v = Vault::open(tmp("trash")).unwrap();
+        let v = Vault::create(tmp("trash"), "T").unwrap();
         v.save_pages(&[page(A, "x", 1)], &[], false).unwrap();
         v.save_pages(&[], &[A.to_string()], false).unwrap();
         assert!(v.pages_all().unwrap().is_empty());
@@ -440,8 +534,66 @@ mod tests {
 
     #[test]
     fn rejects_path_traversal() {
-        let v = Vault::open(tmp("sec")).unwrap();
+        let v = Vault::create(tmp("sec"), "T").unwrap();
         assert!(v.save_pages(&[page("../evil", "x", 1)], &[], false).is_err());
         assert!(v.versions_list("..").is_err());
+    }
+
+    #[test]
+    fn open_never_recreates_a_vanished_vault() {
+        let root = tmp("gone");
+        let v = Vault::create(root.clone(), "T").unwrap();
+        let id = v.id();
+        assert!(Vault::open_as(root.clone(), &id).is_ok());
+        fs::remove_dir_all(&root).unwrap();
+        assert_eq!(Vault::open(root.clone()).err().as_deref(), Some(VAULT_MISSING));
+        assert!(!root.exists(), "the folder must not come back");
+        // a folder that exists but has no marker is not a vault either (the user must adopt it on purpose)
+        fs::create_dir_all(&root).unwrap();
+        assert_eq!(Vault::open(root.clone()).err().as_deref(), Some(VAULT_MISSING));
+        assert!(!root.join(".noviq").exists());
+        let adopted = Vault::adopt(root.clone()).unwrap();
+        assert_ne!(adopted.id(), id);
+    }
+
+    #[test]
+    fn open_as_refuses_another_vault() {
+        let root = tmp("other");
+        let v = Vault::create(root.clone(), "T").unwrap();
+        assert_eq!(Vault::open_as(root, "00000000-0000-4000-8000-000000000000").err().as_deref(), Some(VAULT_MISMATCH));
+        drop(v);
+    }
+
+    #[test]
+    fn a_stale_edit_keeps_the_version_it_would_overwrite() {
+        let v = Vault::create(tmp("base"), "T").unwrap();
+        v.save_pages(&[page(A, "v1", 100)], &[], false).unwrap();
+        // another device's edit arrives (updatedAt 200) while the editor still works on v1
+        v.save_pages(&[page(A, "from other device", 200)], &[], false).unwrap();
+        let mut mine = page(A, "typed here", 300);
+        mine["_base"] = json!(100);
+        assert_eq!(v.save_pages(&[mine], &[], false).unwrap(), vec![A.to_string()]);
+        let all = v.pages_all().unwrap();
+        assert_eq!(all[0]["title"], "typed here");
+        assert!(all[0].get("_base").is_none(), "bookkeeping must not reach the file");
+        assert_eq!(v.versions_list(A).unwrap()[0]["title"], "from other device");
+        // an edit based on what is on disk is a normal save
+        let mut next = page(A, "typed again", 400);
+        next["_base"] = json!(300);
+        assert!(v.save_pages(&[next], &[], false).unwrap().is_empty());
+    }
+
+    #[test]
+    fn sync_trash_keeps_files_and_purges_old_ones() {
+        let v = Vault::create(tmp("strash"), "T").unwrap();
+        v.save_pages(&[page(A, "x", 1)], &[], false).unwrap();
+        v.sync_trash_move(&format!("pages/{A}.json")).unwrap();
+        assert!(v.pages_all().unwrap().is_empty());
+        v.sync_trash_put("kv/srs.json", b"{}").unwrap();
+        let old = v.sync_trash_dir().join("1000");
+        write_atomic(&old.join("pages/old.json"), b"{}").unwrap();
+        v.purge_trash();
+        assert!(!old.exists(), "older than the retention time");
+        assert_eq!(fs::read_dir(v.sync_trash_dir()).unwrap().count(), 2, "recent entries stay");
     }
 }

@@ -12,6 +12,7 @@ mod vault;
 
 use registry::{Entry, Registry};
 use serde_json::{json, Value};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -19,13 +20,15 @@ use std::time::Duration;
 use sync::{auth, drive::Drive, SyncState};
 use tauri::ipc::{InvokeBody, Request, Response};
 use tauri::{AppHandle, Manager, State};
-use vault::{err, now_ms, Res, Vault};
+use vault::{err, now_ms, Res, Vault, VAULT_MISMATCH, VAULT_MISSING};
 
 #[derive(Clone, Default)]
 struct SyncStatus {
-    state: &'static str, // "off" | "idle" | "syncing" | "error"
+    state: &'static str, // "off" | "idle" | "syncing" | "paused" | "error"
     last_at: i64,
     error: String,
+    /// why a sync is paused: VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE | NEEDS_CONFIRM (then `error` holds the number of held deletions)
+    reason: String,
 }
 
 struct Store {
@@ -33,6 +36,8 @@ struct Store {
     reg: Mutex<Registry>,
     vault: Mutex<Option<Vault>>,
     status: Arc<Mutex<SyncStatus>>,
+    /// vaults whose held-back deletions the user confirmed; used up by the next sync of that vault
+    confirm: Arc<Mutex<BTreeSet<String>>>,
     kick: Mutex<Sender<()>>,
     index: Mutex<Option<(PathBuf, rusqlite::Connection)>>, // search index of the open vault
 }
@@ -46,7 +51,13 @@ fn lock_vault<'a>(s: &'a St) -> Res<MutexGuard<'a, Option<Vault>>> {
 /// Runs `f` on the open vault; errors when the picker is showing.
 fn with<T>(s: &St, f: impl FnOnce(&Vault) -> Res<T>) -> Res<T> {
     match &*lock_vault(s)? {
-        Some(v) => f(v),
+        Some(v) => {
+            // a vault whose folder vanished while it was open is not written to: that would re-create half of it
+            if !v.root.join(".noviq/vault.json").is_file() {
+                return Err(VAULT_MISSING.into());
+            }
+            f(v)
+        }
         None => Err("no vault open".into()),
     }
 }
@@ -64,7 +75,8 @@ const LOCAL_KEYS: [&str; 1] = ["backupCfg"];
 // ───── vaults: list, create, open, switch ─────
 
 fn entry_json(e: &Entry) -> Value {
-    json!({ "id": e.id, "name": e.name, "path": e.path, "sync": e.sync, "exists": Path::new(&e.path).join(".noviq/vault.json").exists() })
+    let status = vault::probe(Path::new(&e.path), &e.id); // "ok" | "missing" | "mismatch"
+    json!({ "id": e.id, "name": e.name, "path": e.path, "sync": e.sync, "exists": status == "ok", "status": status })
 }
 
 #[tauri::command]
@@ -80,7 +92,8 @@ fn vault_info(s: St) -> Res<Value> {
 
 /// Makes the vault of `e` the open one.
 fn activate(s: &St, e: &Entry, import_legacy: bool) -> Res<()> {
-    let v = Vault::open(PathBuf::from(&e.path))?;
+    // never creates anything: a folder that vanished, or holds another vault, is reported instead of replaced by an empty one
+    let v = Vault::open_as(PathBuf::from(&e.path), &e.id)?;
     if import_legacy {
         match legacy::import(&s.app_data, &v) {
             Ok(n) if n > 0 => eprintln!("imported {n} pages from noviq.db"),
@@ -137,10 +150,85 @@ fn vault_add(s: St, path: String) -> Res<String> {
     if !root.is_dir() || !root.is_absolute() {
         return Err("not a folder".into());
     }
-    let v = Vault::open(root.clone())?;
+    let v = Vault::adopt(root.clone())?;
     let e = Entry { id: v.id(), name: v.name(), path, sync: auto_sync(&s) };
     activate(&s, &e, false)?;
     Ok(e.id)
+}
+
+fn entry_of(s: &St, id: &str) -> Res<Entry> {
+    s.reg.lock().map_err(err)?.find(id).cloned().ok_or_else(|| "unknown vault".to_string())
+}
+
+fn state_file(app_data: &Path, id: &str) -> PathBuf {
+    app_data.join("sync").join(format!("{id}.json"))
+}
+
+/// The user points at the folder of a vault that was moved or renamed.
+#[tauri::command]
+fn vault_locate(s: St, id: String, path: String) -> Res<()> {
+    let root = PathBuf::from(&path);
+    if !root.is_absolute() {
+        return Err("path must be absolute".into());
+    }
+    let v = Vault::open_as(root, &id)?; // VAULT_MISSING / VAULT_MISMATCH
+    let mut r = s.reg.lock().map_err(err)?;
+    let e = r.vaults.iter_mut().find(|e| e.id == id).ok_or("unknown vault")?;
+    e.path = path;
+    e.name = v.name();
+    r.save(&s.app_data)?;
+    drop(r);
+    kick(&s);
+    Ok(())
+}
+
+/// Moves the folder of a vault to the Recycle Bin / Trash and forgets the vault on this device. The cloud copy stays.
+#[tauri::command]
+fn vault_trash_local(s: St, id: String) -> Res<()> {
+    let e = entry_of(&s, &id)?;
+    let was_open = lock_vault(&s)?.as_ref().is_some_and(|v| v.id() == id);
+    if was_open {
+        *lock_vault(&s)? = None;
+        *s.index.lock().map_err(err)? = None; // the search index keeps a file of the vault open
+    }
+    if Path::new(&e.path).exists() {
+        if let Err(m) = trash::delete(&e.path) {
+            // nothing was removed: the vault stays as it was, open again if it was open
+            if was_open {
+                let _ = activate(&s, &e, false);
+            }
+            return Err(err(m));
+        }
+    }
+    let mut r = s.reg.lock().map_err(err)?;
+    r.vaults.retain(|x| x.id != id);
+    if r.current.as_deref() == Some(&id) {
+        r.current = None;
+    }
+    r.save(&s.app_data)?;
+    let _ = std::fs::remove_file(state_file(&s.app_data, &id));
+    Ok(())
+}
+
+/// The display name of a vault (it is kept in the vault folder and travels with the sync).
+#[tauri::command]
+fn vault_rename(s: St, id: String, name: String) -> Res<()> {
+    let name = clean_name(&name)?;
+    let e = entry_of(&s, &id)?;
+    let open_one = lock_vault(&s)?.as_ref().is_some_and(|v| v.id() == id);
+    if open_one {
+        with(&s, |v| v.rename(&name))?;
+    } else {
+        Vault::open_as(PathBuf::from(&e.path), &id)?.rename(&name)?;
+    }
+    let mut r = s.reg.lock().map_err(err)?;
+    if let Some(x) = r.vaults.iter_mut().find(|x| x.id == id) {
+        x.name = name;
+    }
+    r.save(&s.app_data)?;
+    drop(r);
+    kick(&s);
+    Ok(())
 }
 
 #[tauri::command]
@@ -186,10 +274,11 @@ fn pages_all(s: St) -> Res<Vec<Value>> {
 
 /// `clear_first` = the upserts are the whole workspace. Every page is its own atomic file write.
 #[tauri::command]
-fn pages_save(s: St, upserts: Vec<Value>, removed: Vec<String>, clear_first: bool) -> Res<()> {
-    with(&s, |v| v.save_pages(&upserts, &removed, clear_first))?;
+fn pages_save(s: St, upserts: Vec<Value>, removed: Vec<String>, clear_first: bool) -> Res<Vec<String>> {
+    // ids of pages whose newer version on disk (another device's edit) went to the page history before ours replaced it
+    let kept = with(&s, |v| v.save_pages(&upserts, &removed, clear_first))?;
     kick(&s);
-    Ok(())
+    Ok(kept)
 }
 
 // ───── key-value settings ─────
@@ -325,7 +414,7 @@ fn account_status(s: St) -> Value {
     let email = auth::email(&s.app_data);
     let st = s.status.lock().map(|x| x.clone()).unwrap_or_default();
     let sync_on = lock_vault(&s).ok().and_then(|g| g.as_ref().map(|v| v.id())).and_then(|id| s.reg.lock().ok()?.find(&id).map(|e| e.sync)).unwrap_or(false);
-    json!({ "configured": configured, "email": email, "syncOn": sync_on, "state": st.state, "lastAt": st.last_at, "error": st.error })
+    json!({ "configured": configured, "email": email, "syncOn": sync_on, "state": st.state, "lastAt": st.last_at, "error": st.error, "reason": st.reason })
 }
 
 /// Opens the browser for Google sign-in and waits until it is done. Returns the e-mail address.
@@ -366,13 +455,57 @@ fn sync_now(s: St) {
     kick(&s);
 }
 
-/// Vaults stored in the account that are not on this device yet.
+/// The user confirmed the deletions a sync held back (many files, or a side that looked empty): the next sync runs them.
+#[tauri::command]
+fn sync_confirm(s: St) -> Res<()> {
+    let id = with(&s, |v| Ok(v.id()))?;
+    s.confirm.lock().map_err(err)?.insert(id);
+    kick(&s);
+    Ok(())
+}
+
+/// The cloud copy of a vault goes to the Drive trash; the vault on this device stays and its sync is turned off here.
+#[tauri::command]
+async fn cloud_delete(s: St<'_>, id: String) -> Res<()> {
+    {
+        let mut r = s.reg.lock().map_err(err)?;
+        if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
+            e.sync = false;
+        }
+        r.save(&s.app_data)?;
+    }
+    let app_data = s.app_data.clone();
+    let vault_id = id.clone();
+    tauri::async_runtime::spawn_blocking(move || drive_for(&app_data)?.trash_vault_folder(&vault_id)).await.map_err(err)??;
+    // a later upload starts from a clean slate: a missing cloud must never be read as "deleted there"
+    let _ = std::fs::remove_file(state_file(&s.app_data, &id));
+    if let Ok(mut st) = s.status.lock() {
+        *st = SyncStatus { state: "off", ..Default::default() };
+    }
+    Ok(())
+}
+
+/// The cloud copy is gone but the vault here is kept: sync it again as a new cloud copy (everything is uploaded, nothing deleted).
+#[tauri::command]
+fn cloud_reupload(s: St, id: String) -> Res<()> {
+    let _ = std::fs::remove_file(state_file(&s.app_data, &id));
+    let mut r = s.reg.lock().map_err(err)?;
+    if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
+        e.sync = true;
+    }
+    r.save(&s.app_data)?;
+    drop(r);
+    kick(&s);
+    Ok(())
+}
+
+/// Every vault stored in the account. The UI hides the ones that are on this device with their folder in place; those whose
+/// folder is gone stay in the list, so that they can be downloaded again.
 #[tauri::command]
 async fn cloud_vaults(s: St<'_>) -> Res<Vec<Value>> {
     let app_data = s.app_data.clone();
-    let local: Vec<String> = s.reg.lock().map_err(err)?.vaults.iter().map(|e| e.id.clone()).collect();
     let found = tauri::async_runtime::spawn_blocking(move || drive_for(&app_data)?.cloud_vaults()).await.map_err(err)??;
-    Ok(found.into_iter().filter(|v| !local.contains(&v.1)).map(|v| json!({ "folder": v.0, "id": v.1, "name": v.2 })).collect())
+    Ok(found.into_iter().map(|v| json!({ "folder": v.0, "id": v.1, "name": v.2 })).collect())
 }
 
 /// Creates `<parent>/<name>` for a vault that exists in the cloud and downloads it.
@@ -381,46 +514,84 @@ async fn cloud_download(s: St<'_>, id: String, name: String, parent: String) -> 
     let name = clean_name(&name)?;
     let root = PathBuf::from(&parent).join(&name);
     let v = Vault::create_with_id(root.clone(), &name, &id)?;
+    if v.id() != id {
+        return Err(VAULT_MISMATCH.into()); // the folder already holds another vault
+    }
     let e = Entry { id: v.id(), name, path: root.to_string_lossy().into(), sync: true };
     drop(v);
-    let (app_data, status) = (s.app_data.clone(), s.status.clone());
+    let (app_data, status, confirm) = (s.app_data.clone(), s.status.clone(), s.confirm.clone());
     let e2 = e.clone();
-    tauri::async_runtime::spawn_blocking(move || run_sync(&app_data, &e2, &status)).await.map_err(err)??;
+    tauri::async_runtime::spawn_blocking(move || run_sync(&app_data, &e2, &status, &confirm)).await.map_err(err)??;
     activate(&s, &e, false)
 }
 
 /// One synchronization of one vault.
-fn run_sync(app_data: &Path, e: &Entry, status: &Arc<Mutex<SyncStatus>>) -> Res<()> {
-    let set = |state: &'static str, error: String, done: bool| {
+fn run_sync(app_data: &Path, e: &Entry, status: &Arc<Mutex<SyncStatus>>, confirm: &Arc<Mutex<BTreeSet<String>>>) -> Res<()> {
+    let set = |state: &'static str, reason: &str, error: String, done: bool| {
         if let Ok(mut st) = status.lock() {
             st.state = state;
+            st.reason = reason.to_string();
             st.error = error;
             if done {
                 st.last_at = now_ms();
             }
         }
     };
-    set("syncing", String::new(), false);
-    let result: Res<()> = (|| {
-        let vault = Vault { root: PathBuf::from(&e.path) };
+    set("syncing", "", String::new(), false);
+    let result: Res<sync::Report> = (|| {
+        // The vault must be there and be the one we think it is. A folder that vanished is never a reason to
+        // delete the cloud copy, and nothing is created here.
+        let vault = Vault::open_as(PathBuf::from(&e.path), &e.id)?;
         let mut drive = drive_for(app_data)?;
-        let state_file = app_data.join("sync").join(format!("{}.json", e.id));
+        let state_file = state_file(app_data, &e.id);
         let mut state = SyncState::load(&state_file);
-        if state.remote_folder.is_empty() {
-            state.remote_folder = drive.vault_folder(&e.id, &e.name)?;
+        let account = auth::email(app_data).unwrap_or_default();
+        if state.account != account {
+            // another Google account is another cloud: start over, with no `base` there is nothing to delete
+            state.files.clear();
+            state.remote_folder.clear();
+            state.account = account;
         }
+        if state.remote_folder.is_empty() {
+            let (folder, created) = drive.vault_folder(&e.id, &e.name)?;
+            if created {
+                state.files.clear(); // a new, empty cloud folder is not "everything was deleted there"
+            }
+            state.remote_folder = folder;
+        }
+        state.allow_deletes_once = confirm.lock().map(|mut c| c.remove(&e.id)).unwrap_or(false);
         let rep = {
             let mut remote = drive.remote_for(&state.remote_folder);
-            sync::sync_once(&vault, &mut remote, &mut state)?
+            sync::sync_once(&vault, &mut remote, &mut state, &mut |st| {
+                let _ = st.save(&state_file); // after every batch of work: a crash costs only what came after
+            })?
         };
         state.save(&state_file)?;
-        if rep.errors.is_empty() { Ok(()) } else { Err(rep.errors.join("; ")) }
+        Ok(rep)
     })();
-    match &result {
-        Ok(()) => set("idle", String::new(), true),
-        Err(m) => set("error", m.clone(), false),
+    match result {
+        Ok(rep) if !rep.errors.is_empty() => {
+            let m = rep.errors.join("; ");
+            set("error", "ERROR", m.clone(), false);
+            Err(m)
+        }
+        Ok(rep) if rep.held > 0 => {
+            set("paused", "NEEDS_CONFIRM", rep.held.to_string(), false);
+            Ok(())
+        }
+        Ok(_) => {
+            set("idle", "", String::new(), true);
+            Ok(())
+        }
+        Err(m) if [VAULT_MISSING, VAULT_MISMATCH, sync::CLOUD_GONE].contains(&m.as_str()) => {
+            set("paused", &m, String::new(), false);
+            Err(m)
+        }
+        Err(m) => {
+            set("error", "ERROR", m.clone(), false);
+            Err(m)
+        }
     }
-    result
 }
 
 fn sync_thread(app: AppHandle, rx: std::sync::mpsc::Receiver<()>) {
@@ -437,7 +608,7 @@ fn sync_thread(app: AppHandle, rx: std::sync::mpsc::Receiver<()>) {
         let ready = entry.as_ref().is_some_and(|e| e.sync) && auth::email(&s.app_data).is_some() && auth::creds(&s.app_data).is_some();
         match entry {
             Some(e) if ready => {
-                let _ = run_sync(&s.app_data, &e, &s.status);
+                let _ = run_sync(&s.app_data, &e, &s.status, &s.confirm);
             }
             _ => {
                 if let Ok(mut st) = s.status.lock() {
@@ -461,6 +632,7 @@ fn main() {
                 app_data,
                 vault: Mutex::new(None),
                 status: Arc::new(Mutex::new(SyncStatus { state: "off", ..Default::default() })),
+                confirm: Arc::new(Mutex::new(BTreeSet::new())),
                 kick: Mutex::new(tx),
                 index: Mutex::new(None),
             });
@@ -480,9 +652,10 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_stamp, pages_all, pages_save, kv_get, kv_set,
-            versions_list, version_add, versions_delete, file_put, file_get, files_list, file_delete, files_clear, account_status, account_login,
-            account_logout, sync_set, sync_now, cloud_vaults, cloud_download, index_state, index_update, index_search
+            vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
+            vault_stamp, pages_all, pages_save, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list,
+            file_delete, files_clear, account_status, account_login, account_logout, sync_set, sync_now, sync_confirm, cloud_vaults,
+            cloud_download, cloud_delete, cloud_reupload, index_state, index_update, index_search
         ])
         .run(tauri::generate_context!())
         .expect("error while running Noviq");

@@ -3,7 +3,7 @@
 //! (the file name is the relative path, e.g. `pages/<id>.json`).
 
 use super::auth::Session;
-use super::{Remote, RemoteFile};
+use super::{Remote, RemoteFile, CLOUD_GONE};
 use crate::vault::{err, Res};
 use reqwest::blocking::{Client, RequestBuilder};
 use serde_json::{json, Value};
@@ -12,11 +12,14 @@ use std::time::Duration;
 const API: &str = "https://www.googleapis.com/drive/v3/files";
 const UPLOAD: &str = "https://www.googleapis.com/upload/drive/v3/files";
 const FIELDS: &str = "id,name,md5Checksum,modifiedTime";
+const FIELDS_TRASHED: &str = "id,name,md5Checksum,modifiedTime,trashed";
 const FOLDER_MIME: &str = "application/vnd.google-apps.folder";
 
 pub struct Drive {
     http: Client,
     session: Session,
+    /// ids reserved with files.generateIds: creating a file with a known id can be retried without making a second file
+    ids: Vec<String>,
 }
 
 /// "2026-10-24T12:34:56.789Z" → unix ms (Drive always answers in UTC).
@@ -44,7 +47,41 @@ fn file_of(v: &Value) -> Option<RemoteFile> {
 
 impl Drive {
     pub fn new(session: Session) -> Res<Drive> {
-        Ok(Drive { http: Client::builder().timeout(Duration::from_secs(120)).build().map_err(err)?, session })
+        Ok(Drive { http: Client::builder().timeout(Duration::from_secs(120)).build().map_err(err)?, session, ids: vec![] })
+    }
+
+    /// A file id reserved for a create request (files.generateIds, space appDataFolder); `None` when Drive does not hand one out.
+    fn new_id(&mut self) -> Option<String> {
+        if self.ids.is_empty() {
+            let r: Value = self.send(|h| h.get(format!("{API}/generateIds")).query(&[("space", "appDataFolder"), ("count", "20")])).ok()?.json().ok()?;
+            self.ids = r.get("ids")?.as_array()?.iter().filter_map(|i| i.as_str().map(String::from)).collect();
+        }
+        self.ids.pop()
+    }
+
+    /// The file as Drive has it now; `None` when it does not exist (any more) or is in the trash.
+    fn file_now(&mut self, id: &str) -> Res<Option<RemoteFile>> {
+        let url = format!("{API}/{id}");
+        match self.send(|h| h.get(&url).query(&[("fields", FIELDS_TRASHED)])) {
+            Ok(r) => {
+                let v: Value = r.json().map_err(err)?;
+                if v.get("trashed").and_then(Value::as_bool).unwrap_or(false) {
+                    return Ok(None);
+                }
+                Ok(file_of(&v))
+            }
+            Err(e) if e.contains("404") => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn trash_file(&mut self, id: &str) -> Res<()> {
+        let url = format!("{API}/{id}");
+        match self.send(|h| h.patch(&url).json(&json!({ "trashed": true }))) {
+            Ok(_) => Ok(()),
+            Err(e) if e.contains("404") => Ok(()), // already gone
+            Err(e) => Err(e),
+        }
     }
 
     /// Sends a request with a fresh token; retries throttling / server errors, and once after a rejected token.
@@ -111,14 +148,27 @@ impl Drive {
             .collect())
     }
 
-    /// Finds the Drive folder of a vault, or creates it.
-    pub fn vault_folder(&mut self, vault_id: &str, name: &str) -> Res<String> {
-        if let Some((id, ..)) = self.cloud_vaults()?.into_iter().find(|v| v.1 == vault_id) {
-            return Ok(id);
+    /// The Drive folder of a vault, if the account has one.
+    pub fn find_vault_folder(&mut self, vault_id: &str) -> Res<Option<String>> {
+        Ok(self.cloud_vaults()?.into_iter().find(|v| v.1 == vault_id).map(|v| v.0))
+    }
+
+    /// Finds the Drive folder of a vault, or creates it. The flag says it was just created (it is empty).
+    pub fn vault_folder(&mut self, vault_id: &str, name: &str) -> Res<(String, bool)> {
+        if let Some(id) = self.find_vault_folder(vault_id)? {
+            return Ok((id, false));
         }
         let meta = json!({ "name": format!("noviq-vault-{vault_id}"), "mimeType": FOLDER_MIME, "parents": ["appDataFolder"], "appProperties": { "vaultId": vault_id, "vaultName": name } });
         let r: Value = self.send(|h| h.post(API).query(&[("fields", "id")]).json(&meta))?.json().map_err(err)?;
-        r.get("id").and_then(Value::as_str).map(String::from).ok_or_else(|| "Drive: folder not created".into())
+        r.get("id").and_then(Value::as_str).map(|i| (i.to_string(), true)).ok_or_else(|| "Drive: folder not created".into())
+    }
+
+    /// Moves the cloud copy of a vault to the Drive trash (never an outright delete). Does nothing when there is none.
+    pub fn trash_vault_folder(&mut self, vault_id: &str) -> Res<()> {
+        match self.find_vault_folder(vault_id)? {
+            Some(id) => self.trash_file(&id),
+            None => Ok(()),
+        }
     }
 
     pub fn remote_for(&mut self, folder: &str) -> FolderRemote<'_> {
@@ -132,6 +182,29 @@ pub struct FolderRemote<'a> {
 }
 
 impl Remote for FolderRemote<'_> {
+    fn check(&mut self) -> Res<()> {
+        let url = format!("{API}/{}", self.folder);
+        match self.drive.send(|h| h.get(&url).query(&[("fields", "id,trashed")])) {
+            Ok(r) => {
+                let v: Value = r.json().map_err(err)?;
+                if v.get("trashed").and_then(Value::as_bool).unwrap_or(false) {
+                    return Err(CLOUD_GONE.into());
+                }
+                Ok(())
+            }
+            Err(e) if e.contains("404") => Err(CLOUD_GONE.into()),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn get(&mut self, id: &str) -> Res<Option<RemoteFile>> {
+        self.drive.file_now(id)
+    }
+
+    fn trash(&mut self, id: &str) -> Res<()> {
+        self.drive.trash_file(id)
+    }
+
     fn list(&mut self) -> Res<Vec<RemoteFile>> {
         let q = format!("'{}' in parents and trashed=false", self.folder);
         Ok(self.drive.list_query(&q, FIELDS)?.iter().filter_map(file_of).collect())
@@ -144,36 +217,35 @@ impl Remote for FolderRemote<'_> {
     }
 
     fn upload(&mut self, path: &str, existing: Option<&str>, bytes: &[u8]) -> Res<RemoteFile> {
-        let meta = match existing {
-            Some(_) => json!({}),
-            None => json!({ "name": path, "parents": [self.folder] }),
+        // a create carries a reserved id: if the answer got lost and the request is repeated, Drive says "already
+        // exists" instead of making a second file of the same name
+        let new_id = if existing.is_none() { self.drive.new_id() } else { None };
+        let meta = match (existing, &new_id) {
+            (Some(_), _) => json!({}),
+            (None, Some(id)) => json!({ "id": id, "name": path, "parents": [self.folder] }),
+            (None, None) => json!({ "name": path, "parents": [self.folder] }),
         };
         let boundary = format!("noviq{}", uuid::Uuid::new_v4().simple());
         let mut body = format!("--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{meta}\r\n--{boundary}\r\nContent-Type: application/octet-stream\r\n\r\n").into_bytes();
         body.extend_from_slice(bytes);
         body.extend_from_slice(format!("\r\n--{boundary}--").as_bytes());
         let ctype = format!("multipart/related; boundary={boundary}");
-        let r: Value = self
-            .drive
-            .send(|h| {
-                let rb = match existing {
-                    Some(id) => h.patch(format!("{UPLOAD}/{id}")),
-                    None => h.post(UPLOAD),
-                };
-                rb.query(&[("uploadType", "multipart"), ("fields", FIELDS)]).header("Content-Type", ctype.as_str()).body(body.clone())
-            })?
-            .json()
-            .map_err(err)?;
+        let sent = self.drive.send(|h| {
+            let rb = match existing {
+                Some(id) => h.patch(format!("{UPLOAD}/{id}")),
+                None => h.post(UPLOAD),
+            };
+            rb.query(&[("uploadType", "multipart"), ("fields", FIELDS)]).header("Content-Type", ctype.as_str()).body(body.clone())
+        });
+        let r: Value = match sent {
+            Ok(resp) => resp.json().map_err(err)?,
+            Err(e) if e.contains("409") && new_id.is_some() => {
+                // the first try had arrived after all
+                return self.drive.file_now(new_id.as_deref().unwrap_or_default())?.ok_or(e);
+            }
+            Err(e) => return Err(e),
+        };
         file_of(&r).ok_or_else(|| format!("Drive: unexpected upload answer {r}"))
-    }
-
-    fn delete(&mut self, id: &str) -> Res<()> {
-        let url = format!("{API}/{id}");
-        match self.drive.send(|h| h.delete(&url)) {
-            Ok(_) => Ok(()),
-            Err(e) if e.contains("404") => Ok(()), // already gone
-            Err(e) => Err(e),
-        }
     }
 }
 
