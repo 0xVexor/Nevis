@@ -202,7 +202,7 @@ export async function importMarkdown(files: File[]): Promise<Page[]> {
   }
   // second pass: now that every title exists, resolve [[links]] (also to pre-existing pages)
   const titles = titleMap()
-  for (const p of created) repo.update(p.id, { content: linkify(repo.get(p.id)!.content, titles) })
+  for (const p of created) repo.update(p.id, { content: linkify(repo.get(p.id)!.content, titles) }, { history: false })
   return created.map((p) => repo.get(p.id)!)
 }
 
@@ -302,8 +302,13 @@ export async function importVault(files: File[], onProgress?: (done: number, tot
   }
 
   // second pass: every title (and alias) exists now, so [[links]] can be resolved, also to older pages
+  // (no history entries: the page was imported a moment ago, a copy of every note would only double the writes)
   const titles = titleMap(aliasOf)
-  for (const p of made) repo.update(p.id, { content: linkify(repo.get(p.id)!.content, titles) })
+  for (let i = 0; i < made.length; i++) {
+    const p = made[i]
+    repo.update(p.id, { content: linkify(repo.get(p.id)!.content, titles) }, { history: false })
+    if (i % 25 === 24) await new Promise((r) => setTimeout(r)) // and the app stays responsive while it works through a big vault
+  }
   return result
 }
 

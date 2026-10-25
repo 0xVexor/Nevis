@@ -36,7 +36,9 @@
 .gv-svg.grabbing { cursor: var(--cursor-grabbing, grabbing); }
 .gv-node { cursor: var(--cursor-hand, pointer); transition: opacity 0.2s; }
 .gv-label { fill: var(--text); paint-order: stroke; stroke: var(--bg-sunk); stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
-.gv-tools { position: absolute; display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: 14px; background: color-mix(in srgb, var(--bg-raised) 85%, transparent); backdrop-filter: blur(14px); box-shadow: var(--panel-shadow); }
+/* No backdrop-filter on anything over the map: the canvas changes every frame, so a blur behind these panels would be recomputed every frame. */
+.graph-overlay { backdrop-filter: none; background: radial-gradient(60% 50% at 50% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent), light-dark(rgb(24 16 70 / 0.5), rgb(2 2 8 / 0.74)); }
+.gv-tools { position: absolute; display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: 14px; background: color-mix(in srgb, var(--bg-raised) 94%, transparent); box-shadow: var(--panel-shadow); }
 .gv-search { top: 16px; inset-inline-start: 16px; width: 250px; padding: 0 12px; height: 40px; gap: 8px; color: var(--muted); }
 .gv-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 .gv-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 13.5px; }
@@ -49,7 +51,7 @@
 .gv-stats { top: 16px; inset-inline-end: 16px; padding: 4px 6px; gap: 2px; }
 .gv-stats span { display: inline-flex; align-items: baseline; gap: 6px; padding: 5px 10px; font-size: 12px; color: var(--muted); }
 .gv-stats b { font-size: 16px; font-weight: 800; color: var(--text); }
-.gv-top { position: absolute; top: 74px; inset-inline-end: 16px; width: 230px; padding: 10px; border: 1px solid var(--border); border-radius: 18px; background: color-mix(in srgb, var(--bg-raised) 85%, transparent); backdrop-filter: blur(14px); box-shadow: var(--panel-shadow); }
+.gv-top { position: absolute; top: 74px; inset-inline-end: 16px; width: 230px; padding: 10px; border: 1px solid var(--border); border-radius: 18px; background: color-mix(in srgb, var(--bg-raised) 94%, transparent); box-shadow: var(--panel-shadow); }
 .gv-top h4 { margin: 0 0 6px; padding: 0 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.07em; color: var(--faint); }
 .gv-top button { display: flex; align-items: center; gap: 9px; width: 100%; height: 32px; padding: 0 8px; border: 0; border-radius: 10px; background: transparent; color: var(--text); font-size: 13px; text-align: start; cursor: var(--cursor-hand, pointer); }
 .gv-top button:hover, .gv-top button.on { background: var(--hover); }

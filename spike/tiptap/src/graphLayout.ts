@@ -1,47 +1,71 @@
-export const GRAPH_W = 1000
-export const GRAPH_H = 640
+import { layoutGraph, type Layout } from './graphForce'
+import { kvGet, kvSet } from './db'
 
-export interface Pt {
-  x: number
-  y: number
+export type { Layout }
+
+const ALGORITHM = 2 // bump when graphForce changes, so old cached pictures are not reused
+const KEEP = 4 // cached layouts (whole vault, a few local maps)
+const KV = 'graphLayouts'
+
+interface Saved {
+  key: string
+  w: number
+  h: number
+  xy: string // base64 of the Float32Array
 }
 
-/** Fruchterman–Reingold: linked pages attract, all pages repel. Deterministic start, so the picture is stable between opens. */
-export function layout(ids: string[], edges: [string, string][]): Map<string, Pt> {
-  const W = GRAPH_W
-  const H = GRAPH_H
-  const pos = ids.map((_, i) => ({ x: W / 2 + Math.cos(i * 2.399) * 20 * Math.sqrt(i + 1), y: H / 2 + Math.sin(i * 2.399) * 20 * Math.sqrt(i + 1) }))
-  const index = new Map(ids.map((id, i) => [id, i]))
-  const e = edges.map(([a, b]) => [index.get(a)!, index.get(b)!] as const)
-  const k = Math.sqrt((W * H) / Math.max(ids.length, 1)) * 0.8
-  const rounds = ids.length > 300 ? 70 : 180
-  for (let it = 0; it < rounds; it++) {
-    const cool = 1 - it / rounds
-    const dx = ids.map(() => 0)
-    const dy = ids.map(() => 0)
-    for (let i = 0; i < ids.length; i++)
-      for (let j = i + 1; j < ids.length; j++) {
-        let ax = pos[i].x - pos[j].x
-        let ay = pos[i].y - pos[j].y
-        const d2 = Math.max(ax * ax + ay * ay, 0.01)
-        const f = (k * k) / d2
-        ax *= f
-        ay *= f
-        dx[i] += ax; dy[i] += ay; dx[j] -= ax; dy[j] -= ay
-      }
-    for (const [a, b] of e) {
-      const ax = pos[a].x - pos[b].x
-      const ay = pos[a].y - pos[b].y
-      const d = Math.max(Math.hypot(ax, ay), 0.01)
-      const f = d / k
-      dx[a] -= (ax / d) * d * f; dy[a] -= (ay / d) * d * f; dx[b] += (ax / d) * d * f; dy[b] += (ay / d) * d * f
+/** The picture depends only on the number of pages and on the links between them (the layout is deterministic). */
+function keyOf(n: number, edges: Int32Array): string {
+  let h = 2166136261 ^ ALGORITHM
+  for (let i = 0; i < edges.length; i++) h = Math.imul(h ^ edges[i], 16777619)
+  return `${n}:${edges.length}:${(h >>> 0).toString(36)}`
+}
+
+const toB64 = (a: Float32Array) => {
+  const bytes = new Uint8Array(a.buffer, a.byteOffset, a.byteLength)
+  let s = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(s)
+}
+const fromB64 = (s: string) => {
+  const bin = atob(s)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new Float32Array(bytes.buffer)
+}
+
+const compute = (n: number, edges: Int32Array): Promise<Layout> => {
+  if (typeof Worker === 'undefined') return Promise.resolve(layoutGraph(n, edges))
+  return new Promise((resolve) => {
+    let worker: Worker
+    try {
+      worker = new Worker(new URL('./graphLayout.worker.ts', import.meta.url), { type: 'module' })
+    } catch {
+      return resolve(layoutGraph(n, edges))
     }
-    for (let i = 0; i < ids.length; i++) {
-      const d = Math.max(Math.hypot(dx[i], dy[i]), 0.01)
-      const m = Math.min(d, 30 * cool + 1)
-      pos[i].x = Math.min(W - 40, Math.max(40, pos[i].x + (dx[i] / d) * m + (W / 2 - pos[i].x) * 0.01))
-      pos[i].y = Math.min(H - 40, Math.max(40, pos[i].y + (dy[i] / d) * m + (H / 2 - pos[i].y) * 0.01))
-    }
+    worker.onmessage = (e: MessageEvent<Layout>) => (worker.terminate(), resolve(e.data))
+    worker.onerror = () => (worker.terminate(), resolve(layoutGraph(n, edges)))
+    worker.postMessage({ n, edges: edges.slice() })
+  })
+}
+
+/** Lays the graph out off the main thread, and remembers the result so opening the same map again is instant. */
+export async function layoutAsync(n: number, edges: Int32Array): Promise<Layout> {
+  const key = keyOf(n, edges)
+  let saved: Saved[] = []
+  try {
+    const raw = await kvGet<Saved[]>(KV)
+    if (Array.isArray(raw)) saved = raw
+    const hit = saved.find((s) => s.key === key)
+    if (hit) return { xy: fromB64(hit.xy), w: hit.w, h: hit.h }
+  } catch {
+    /* no cache: just compute */
   }
-  return new Map(ids.map((id, i) => [id, pos[i]]))
+  const l = await compute(n, edges)
+  try {
+    await kvSet(KV, [{ key, w: l.w, h: l.h, xy: toB64(l.xy) }, ...saved.filter((s) => s.key !== key)].slice(0, KEEP))
+  } catch {
+    /* the cache is an optimisation only */
+  }
+  return l
 }
