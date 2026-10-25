@@ -223,4 +223,6 @@ export const cloudVaults = () => invoke<CloudVault[]>('cloud_vaults')
 /** Cloud vaults deleted in the last 30 days, which can be brought back. */
 export const cloudTrashed = () => invoke<TrashedVault[]>('cloud_trashed')
 export const cloudRestore = (id: string) => invoke<void>('cloud_restore', { id })
+/** Deletes a vault of the server's trash for good (not undoable). */
+export const cloudPurge = (id: string) => invoke<void>('cloud_purge', { id })
 export const cloudDownload = (id: string, name: string, parent: string) => invoke<void>('cloud_download', { id, name, parent })

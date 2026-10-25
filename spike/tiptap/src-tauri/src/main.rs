@@ -629,6 +629,18 @@ async fn cloud_trashed(s: St<'_>) -> Res<Vec<Value>> {
     Ok(r["vaults"].as_array().cloned().unwrap_or_default().into_iter().map(|v| json!({ "id": v["id"], "name": v["name"], "deletedAt": v["deleted_at"] })).collect())
 }
 
+/// Deletes a vault that is in the server's trash for good. The server refuses a vault that is not in the trash.
+#[tauri::command]
+async fn cloud_purge(s: St<'_>, id: String) -> Res<()> {
+    let app_data = s.app_data.clone();
+    blocking(move || {
+        let api = account::api(&app_data)?;
+        let url = api.url(&format!("/v1/vaults/{id}/permanent"));
+        api.send(|c| c.delete(&url)).map(|_| ())
+    })
+    .await
+}
+
 #[tauri::command]
 async fn cloud_restore(s: St<'_>, id: String) -> Res<()> {
     let app_data = s.app_data.clone();
@@ -899,7 +911,7 @@ fn main() {
             vault_stamp, pages_all, pages_save, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list,
             file_delete, files_clear, account_status, server_health, account_register, account_login, account_recover, account_logout, account_info,
             account_revoke_device, account_change_password, account_new_recovery_key, account_delete, save_text_file, sync_set, sync_now, sync_confirm, cloud_vaults,
-            cloud_trashed, cloud_restore, cloud_download, cloud_delete, cloud_reupload, index_state, index_update, index_search
+            cloud_trashed, cloud_restore, cloud_purge, cloud_download, cloud_delete, cloud_reupload, index_state, index_update, index_search
         ])
         .run(tauri::generate_context!())
         .expect("error while running Noviq");

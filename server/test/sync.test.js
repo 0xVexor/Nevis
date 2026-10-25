@@ -246,6 +246,22 @@ describe('vaults and commits', () => {
     assert.equal((await files()).length, 1)
   })
 
+  it('deletes a trashed vault for good, with its files in the storage, and only a trashed one', async () => {
+    await commit(s, a.token, v, [{ put: ['pages/a.json', 'gone for good'] }])
+    const keep = await call(s, 'DELETE', `/v1/vaults/${v}/permanent`, { token: a.token })
+    assert.equal(keep.status, 409) // not in the trash: a mistake must not remove a live vault
+    assert.equal(keep.body.error, 'not_in_trash')
+    await call(s, 'DELETE', `/v1/vaults/${v}`, { token: a.token })
+    const other = await register(s, 'mallory')
+    assert.equal((await call(s, 'DELETE', `/v1/vaults/${v}/permanent`, { token: other.token })).status, 404)
+    assert.equal((await call(s, 'DELETE', `/v1/vaults/${v}/permanent`, { token: a.token })).status, 200)
+    assert.equal((await call(s, 'GET', '/v1/vaults?trashed=1', { token: a.token })).body.vaults.length, 0)
+    assert.equal(await s.storage.has(`v/${v}/b/${sha('gone for good').slice(0, 2)}/${sha('gone for good')}`), false)
+    assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM files').get().n, 0)
+    assert.equal((await call(s, 'GET', '/v1/account', { token: a.token })).body.quota.used, 0)
+    assert.equal((await call(s, 'POST', `/v1/vaults/${v}/undelete`, { token: a.token })).status, 404)
+  })
+
   it('limits the number of vaults per account', async () => {
     await s.close()
     s = await setup({ maxVaults: 2 })
