@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { open } from '@tauri-apps/plugin-dialog'
-import { accountLogin, accountStatus, cloudDownload, cloudVaults, vaultAdd, vaultCreate, vaultForget, vaultList, vaultOpen, type AccountStatus, type CloudVault, type VaultEntry } from './db'
+import { accountLogin, accountStatus, cloudDownload, cloudVaults, vaultAdd, vaultCreate, vaultForget, vaultList, vaultLocate, vaultOpen, type AccountStatus, type CloudVault, type VaultEntry } from './db'
+import { explain } from './vaultErrors'
 import * as Ic from './icons'
 import { t } from './i18n'
 
@@ -8,8 +9,6 @@ const pickFolder = async (title: string) => {
   const dir = await open({ directory: true, multiple: false, title })
   return typeof dir === 'string' ? dir : null
 }
-
-const explain = (e: unknown) => (String(e) === 'NOT_CONFIGURED' ? t('Google sign-in is not set up in this build of the app.') : String(e))
 
 /** Shown when no vault is open: first run, or after “Switch vault”. The user always chooses where a vault lives. */
 export function VaultPicker({ onOpened }: { onOpened: () => void }) {
@@ -25,6 +24,8 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
     setAcc(await accountStatus())
   }, [])
   useEffect(() => void refresh(), [refresh])
+  // a vault that is on this device with its folder in place is not offered for download; one whose folder is gone is
+  const elsewhere = (cloud ?? []).filter((c) => !vaults.some((v) => v.id === c.id && v.status === 'ok'))
   useEffect(() => {
     if (!acc?.email) return setCloud(null)
     cloudVaults().then(setCloud, (e) => (setCloud([]), setError(explain(e))))
@@ -61,6 +62,13 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
       await accountLogin()
       await refresh()
     })
+  const locate = (v: VaultEntry) =>
+    run('locate' + v.id, async () => {
+      const dir = await pickFolder(t('Choose the folder of “{name}”', { name: v.name }))
+      if (!dir) return
+      await vaultLocate(v.id, dir)
+      await refresh()
+    })
   const download = (v: CloudVault) =>
     run('dl' + v.id, async () => {
       const parent = await pickFolder(t('Choose where to put this vault on this computer'))
@@ -90,9 +98,11 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
                     <div>
                       <b dir="auto">{v.name}</b> {v.sync && <small className="vp-cloud"><Ic.Cloud size={13} /></small>}
                       <small dir="ltr" style={{ display: 'block', opacity: 0.7 }}>{v.path}</small>
-                      {!v.exists && <small className="backup-warn">{t('Folder not found')}</small>}
+                      {v.status === 'missing' && <small className="backup-warn">{t('Folder not found')}</small>}
+                      {v.status === 'mismatch' && <small className="backup-warn">{t('A different vault is in this folder.')}</small>}
                     </div>
                     <span>
+                      {v.status !== 'ok' && <button disabled={!!busy} onClick={() => locate(v)}>{t('Locate folder…')}</button>}
                       <button className="primary" disabled={!v.exists || !!busy} onClick={() => run('open', async () => (await vaultOpen(v.id), onOpened()))}>{t('Open')}</button>
                       <button disabled={!!busy} title={t('Remove from the list (files stay on disk)')} onClick={() => run('forget', async () => (await vaultForget(v.id), refresh()))}>✕</button>
                     </span>
@@ -120,9 +130,9 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
           ) : (
             <>
               <small dir="ltr">{acc.email}</small>
-              {cloud === null ? <p>{t('Loading…')}</p> : cloud.length === 0 ? <p>{t('No other vaults in this account.')}</p> : (
+              {cloud === null ? <p>{t('Loading…')}</p> : elsewhere.length === 0 ? <p>{t('No other vaults in this account.')}</p> : (
                 <ul className="vault-list">
-                  {cloud.map((v) => (
+                  {elsewhere.map((v) => (
                     <li key={v.id}>
                       <b dir="auto">{v.name}</b>
                       <button className="primary" disabled={!!busy} onClick={() => download(v)}>{busy === 'dl' + v.id ? t('Downloading…') : t('Download to this computer…')}</button>

@@ -86,6 +86,8 @@ export class Repo implements PageRepo {
   private timer = 0
   private queue: Promise<void> = Promise.resolve()
   private lastSnap = new Map<string, number>()
+  /** `updatedAt` of every page as last read from or written to the vault folder: the version our next edit of it starts from. */
+  private diskAt = new Map<string, number>()
 
   private seed: () => Page[]
   constructor(seed: () => Page[]) {
@@ -117,9 +119,14 @@ export class Repo implements PageRepo {
       }
     } else {
       this.pages = rows
+      this.noteDisk(rows)
       this.rebuildLinks()
     }
     navigator.storage?.persist?.().catch(() => {})
+  }
+
+  private noteDisk(rows: Page[]) {
+    this.diskAt = new Map(rows.map((r) => [r.id, r.updatedAt]))
   }
 
   private fail(e: unknown) {
@@ -156,8 +163,10 @@ export class Repo implements PageRepo {
     this.full = false
     if (!full && !upserts.length && !removed.length) return this.queue
     this.queue = this.queue
-      .then(() => savePages(upserts, removed, full))
+      // desktop: tell the vault which version each edit started from, so that a newer version brought by the sync is kept in the history, not overwritten
+      .then(() => savePages(isTauri && !full ? upserts.map((p) => ({ ...p, _base: this.diskAt.get(p.id) ?? null })) : upserts, removed, full))
       .then(async () => {
+        for (const p of upserts) this.diskAt.set(p.id, p.updatedAt)
         if (isTauri) this.stamp = await vaultStamp() // our own writes are not "external" changes
       })
       .catch((e) => this.fail(e))
@@ -191,6 +200,7 @@ export class Repo implements PageRepo {
       const changed = rows.filter((r) => old.get(r.id)?.updatedAt !== r.updatedAt || old.get(r.id)?.deletedAt !== r.deletedAt)
       const removed = this.pages.length + changed.filter((c) => !old.has(c.id)).length - rows.length
       this.pages = rows
+      this.noteDisk(rows)
       this.rebuildLinks()
       this.stamp = await vaultStamp()
       if (changed.length || removed) window.dispatchEvent(new CustomEvent('external-change', { detail: changed.map((c) => c.id) }))
