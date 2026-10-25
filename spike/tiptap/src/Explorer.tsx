@@ -295,8 +295,8 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
   }
 
   const sortBy = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: 1 }))
-  const kindOf = (p: Page) => (p.kind === 'folder' ? t('Folder') : t('Page'))
-  const metaOf = (p: Page) => (p.kind === 'folder' ? t('{n} items', { n: kids(p.id).length }) : t('{n} words', { n: wordCount(p.content) }))
+  const kindOf = (p: Page) => (p.kind === 'folder' ? t('Folder') : p.kind === 'board' ? t('Board') : t('Page'))
+  const metaOf = (p: Page) => (p.kind === 'folder' ? t('{n} items', { n: kids(p.id).length }) : p.kind === 'board' ? t('Drawing') : t('{n} words', { n: wordCount(p.content) }))
 
   const cell = (p: Page) =>
     renaming === p.id ? (
