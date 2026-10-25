@@ -9,6 +9,7 @@ import { SlashCommand } from './slash'
 import { CommandPalette } from './commandPalette'
 import { FindInPage } from './find'
 import { MermaidBlock } from './mermaid'
+import { DrawingBlock } from './drawing'
 import { AttImage, ImageFiles } from './image'
 import { InlineIcon } from './inlineIcon'
 import { HeadingDir } from './headingDir'
@@ -224,6 +225,7 @@ export const extensions = [
   DragHandle,
   FindInPage,
   MermaidBlock,
+  DrawingBlock,
   Placeholder.configure({ placeholder: ({ node }) => (node.type.name === 'paragraph' ? t('Start writing, or press / for commands…') : ''), showOnlyCurrent: true }),
   Direction,
   SlashCommand,
