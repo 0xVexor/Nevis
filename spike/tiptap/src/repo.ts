@@ -186,6 +186,9 @@ export class Repo implements PageRepo {
     if (!isTauri) return
     this.stamp = await vaultStamp()
     window.setInterval(() => !document.hidden && void this.poll(), WATCH_EVERY) // nothing to refresh while the window is not shown; the next tick catches up
+    // the sync brought another device's change: show it now instead of at the next tick
+    void import('@tauri-apps/api/event').then(({ listen }) => listen('vault-changed', () => void this.poll())).catch(() => {})
+    window.addEventListener('focus', () => void this.poll())
   }
 
   private idle = () => !this.dirty.size && !this.gone.size && !this.full

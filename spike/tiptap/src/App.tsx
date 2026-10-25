@@ -23,6 +23,7 @@ import { buildIndex, type PageIndex } from './pageIndex'
 import { ReaderBar, loadReaderCfg, type ReaderCfg } from './ReaderBar'
 import { BackupSettings } from './BackupSettings'
 import { Vaults } from './Vaults'
+import { AccountDialog } from './Account'
 import { SyncButton } from './SyncButton'
 import { WorkspaceCard } from './VaultSwitcher'
 import { GraphView } from './GraphView'
@@ -169,6 +170,7 @@ export default function App() {
   const [naming, setNaming] = useState<{ title: string; label: string; initial: string; action: string; onSubmit: (name: string) => void } | null>(null)
   const [backupOpen, setBackupOpen] = useState(false)
   const [folderOpen, setFolderOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
   const [tableOpen, setTableOpen] = useState(false)
   const [graphOpen, setGraphOpen] = useState(false)
   const [dueCards, setDueCards] = useState(0)
@@ -456,7 +458,8 @@ export default function App() {
     { id: 'vault', label: t('Import Obsidian vault (folder)…'), icon: <Ic.Folder />, keywords: 'obsidian', run: doVault },
     { id: 'export-all', label: t('Export all pages (zip with Markdown & images)'), icon: <Ic.Download />, keywords: 'zip', run: doExportAll },
     { id: 'backup', label: t('Full backup (JSON)'), icon: <Ic.Save />, keywords: 'پشتیبان', run: doBackup },
-    ...[{ id: 'data-folder', label: t('Workspaces and sync…'), icon: <Ic.Folder />, keywords: 'sync google drive vault switch پوشه داده همگام', run: () => setFolderOpen(true) }],
+    ...[{ id: 'data-folder', label: t('Workspaces and sync…'), icon: <Ic.Folder />, keywords: 'sync vault switch workspace پوشه داده همگام', run: () => setFolderOpen(true) }],
+    ...(isTauri ? [{ id: 'account', label: t('Account and sync…'), icon: <Ic.Cloud />, keywords: 'account sign in login register password device حساب ورود ثبت‌نام رمز دستگاه', run: () => setAccountOpen(true) }] : []),
     { id: 'auto-backup', label: t('Automatic backup to folder…'), icon: <Ic.Save />, keywords: 'پشتیبان خودکار', run: () => setBackupOpen(true) },
     { id: 'settings', label: t('Settings'), icon: <Ic.Settings />, keywords: 'preferences تنظیمات', run: () => setView('settings') },
   ]
@@ -606,7 +609,7 @@ export default function App() {
           <span className="spacer" />
           <span className={'status' + (save === 'saving' ? ' busy' : '')}><i className="dot" />{save === 'saving' ? t('Saving…') : t('Saved')}</span>
           <div className="tb-group">
-            {isTauri && <SyncButton onSetup={() => setFolderOpen(true)} />}
+            {isTauri && <SyncButton onSetup={() => setFolderOpen(true)} onSignIn={() => setAccountOpen(true)} />}
             {current && view === 'page' && (
               <>
                 <button className="icon-btn" title={t('Reader mode  Ctrl+.')} onClick={() => setReader(true)}><Ic.Reader /></button>
@@ -632,7 +635,7 @@ export default function App() {
           ) : view === 'drawings' ? (
             <Drawings onOpen={setCurrentId} onNew={() => add(null, 'board')} />
           ) : view === 'settings' ? (
-            <SettingsView data={{ importMarkdown: doImport, importVault: () => void doVault(), exportAll: doExportAll, backup: doBackup, restore: doRestore, autoBackup: () => setBackupOpen(true), workspaces: () => setFolderOpen(true), syncNow: isTauri ? () => void syncNow() : undefined }} />
+            <SettingsView data={{ importMarkdown: doImport, importVault: () => void doVault(), exportAll: doExportAll, backup: doBackup, restore: doRestore, autoBackup: () => setBackupOpen(true), workspaces: () => setFolderOpen(true), account: isTauri ? () => setAccountOpen(true) : undefined, syncNow: isTauri ? () => void syncNow() : undefined }} />
           ) : current?.kind === 'board' ? (
             <BoardView key={current.id} page={current} onSave={setSave} onMeta={refresh} readOnly={reader} />
           ) : current ? (
@@ -736,7 +739,8 @@ export default function App() {
         </Popover>
       )}
 
-      {folderOpen && <Vaults onClose={() => setFolderOpen(false)} onNew={(create) => setNaming({ title: t('New workspace'), label: t('Workspace name:'), initial: t('My notes'), action: t('Next'), onSubmit: (n) => void create(n.trim() || t('My notes')) })} />}
+      {accountOpen && <AccountDialog onClose={() => setAccountOpen(false)} onWorkspaces={() => setFolderOpen(true)} />}
+      {folderOpen && <Vaults onClose={() => setFolderOpen(false)} onAccount={() => setAccountOpen(true)} onNew={(create) => setNaming({ title: t('New workspace'), label: t('Workspace name:'), initial: t('My notes'), action: t('Next'), onSubmit: (n) => void create(n.trim() || t('My notes')) })} />}
       {movingId && <div className="overlay" onMouseDown={() => setMovingId(null)}><div className="modal move-dialog" role="dialog" aria-modal="true" aria-label={t('Move to folder')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && setMovingId(null)}><div className="modal-head"><b>{t('Move to folder')}</b><button className="icon-btn" title={t('Close')} onClick={() => setMovingId(null)}><Ic.Close /></button></div><div className="modal-list"><button className="result" onClick={() => { move(movingId,null,null); setMovingId(null) }}><Ic.Book /><span>{t('Move to top level')}</span></button>{pages.filter((p) => { if(p.kind !== 'folder' || p.id === movingId) return false; let parent: Page | undefined = p; const seen = new Set<string>(); while(parent) { if(parent.id === movingId || seen.has(parent.id)) return false; seen.add(parent.id); parent = pages.find((x) => x.id === parent!.parentId) } return true }).map((p) => <button className="result" key={p.id} onClick={() => { move(movingId,p.id,null); setMovingId(null) }}><Ic.Folder /><span dir="auto">{p.title || t('Untitled folder')}</span></button>)}</div></div></div>}
       {backupOpen && <BackupSettings onClose={() => setBackupOpen(false)} />}
       {graphOpen && <GraphView currentId={current?.id} onOpen={setCurrentId} onClose={() => setGraphOpen(false)} />}

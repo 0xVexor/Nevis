@@ -6,7 +6,7 @@
 
 **A local-first notes workspace with first-class Persian and right-to-left support.**
 
-Block editor · backlinks and graph · spaced-repetition flashcards · optional Google Drive sync · no server, no account.
+Block editor · backlinks and graph · spaced-repetition flashcards · optional sync between devices · your notes stay in plain files.
 
 [![Build installers](https://img.shields.io/github/actions/workflow/status/AliMirzad/noviq/release.yml?label=build)](https://github.com/AliMirzad/noviq/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/AliMirzad/noviq?include_prereleases&label=release)](https://github.com/AliMirzad/noviq/releases)
@@ -27,7 +27,7 @@ Block editor · backlinks and graph · spaced-repetition flashcards · optional 
 
 Most note apps treat right-to-left text as an afterthought: mixed Persian and English lines scramble punctuation, tables flip the wrong way, and code blocks inherit the wrong direction. Noviq was built the other way round. Direction is decided **per block**, mixed-language text renders correctly, and everything else (tables, lists, callouts, formulas, diagrams) follows.
 
-Your notes are plain files in a folder you own. There is no Noviq server and no sign-up. If you want your notes on more than one machine, Noviq can sync that folder through your own Google Drive.
+Your notes are plain files in a folder you own. Nothing needs an account to work. If you want your notes on more than one device, Noviq can keep that folder in sync through the Noviq sync server, which you can run yourself (see [`server/`](server/)). An account is just a user name and a password: no email address, no phone number.
 
 ## Features
 
@@ -127,21 +127,23 @@ Get the latest installer from the **[Releases](https://github.com/AliMirzad/novi
 > On **Windows**, SmartScreen may show *Unknown publisher*: choose *More info → Run anyway*.
 > On **macOS**, right-click the app and choose *Open* the first time.
 
-## Google Drive sync
+## Sync between devices
 
-Sync is optional and works without any Noviq server.
+Sync is optional. It needs a Noviq sync server: the app uses `https://sync.manaz.pro` by default, and the **Server** field of the sign-in form points it at your own.
 
-1. Click the workspace card at the bottom of the sidebar to open **Workspaces**, then sign in with your Google account.
-2. Noviq keeps your vault in step with a hidden app folder in *your* Google Drive.
-3. Install Noviq on another computer, sign in, and the same vault appears.
+1. Click the sync button in the top bar (or **Settings → Data → Account and sync**) and **create an account**: a user name and a password. Save the **recovery key** that is shown once: it is the only way to choose a new password if you forget yours.
+2. Turn on sync for your workspace. A change on one device reaches your other devices within about a second.
+3. Install Noviq on another computer, sign in, and download the vault.
 
-What it can and cannot see:
+What to know:
 
-- Noviq requests only the **`drive.appdata`** scope (plus your email address, to show which account is connected). It can reach its own hidden application folder and **nothing else** in your Drive.
-- The sign-in token is stored in the operating system's credential store (Windows Credential Manager / macOS Keychain).
-- Your notes travel directly between your device and Google. See the **[Privacy Policy](https://alimirzad.github.io/noviq/privacy.html)**.
+- **Fast.** The app holds one request open to the server and is told the moment another device saves; only what changed travels.
+- **Safe on a bad connection.** Your edits are written to your disk first. When the connection drops they wait and go out when it is back; a file that is merely missing is never read as "deleted", and deleted files stay recoverable for 30 days.
+- **Two devices, one page.** Nothing is silently overwritten: the newer edit wins and the older one is kept in that page's history. Different pages never conflict.
+- The device token is stored in the operating system's credential store (Windows Credential Manager / macOS Keychain).
+- Your notes are stored on the server in your account (not yet end-to-end encrypted). See the **[Privacy Policy](https://alimirzad.github.io/noviq/privacy.html)**.
 
-Two devices editing the same page never silently lose work: the newer edit wins and the older one is kept in that page's history. Different pages never conflict.
+The server is in [`server/`](server/) (Node.js, S3-compatible storage, SQLite): [how to run it](server/README.md).
 
 ## How your data is stored
 
@@ -168,7 +170,7 @@ Design notes: file names are IDs, not titles, so renames and moves never create 
 | Editor | [TipTap 3](https://tiptap.dev/) (ProseMirror) |
 | Math / diagrams | KaTeX, Mermaid |
 | Storage | Plain files in a vault folder; IndexedDB when run in a browser |
-| Sync | Google Drive API (`appDataFolder`), OAuth 2.0 with PKCE |
+| Sync | Noviq sync server ([`server/`](server/): Node.js, S3, SQLite): revisions with compare-and-swap, long-poll notifications |
 
 ## Build from source
 
@@ -198,14 +200,10 @@ Build installers for your platform (output in `src-tauri/target/release/bundle/`
 npm run tauri build
 ```
 
-### Google Drive sync in your own build
+### The sync server in your own build
 
-The OAuth client belongs to the app, not to the user. Create a **Desktop app** OAuth client in Google Cloud (Drive API enabled, scope `drive.appdata`), then either:
+The app talks to the server named by the build-time environment variable `NOVIQ_SERVER` (default `https://sync.manaz.pro`). Users can also type another address under **Server** on the sign-in form. Without a reachable server the app works fully offline; only syncing waits.
 
-- set `NOVIQ_GOOGLE_CLIENT_ID` and `NOVIQ_GOOGLE_CLIENT_SECRET` as environment variables at build time, or
-- drop the downloaded JSON as `google-oauth.json` into the app-data folder.
-
-Without credentials the app still works fully offline; only the sync button is unavailable.
 
 ### Tests
 
@@ -213,7 +211,8 @@ Without credentials the app still works fully offline; only the sync button is u
 # Node 22.18+ (uses node:sqlite and runs TypeScript directly)
 for t in schema crash zip detect srs mermaid-detect; do node db/test-$t.mjs; done
 node db/check-i18n.mjs                         # t('…') strings missing a Persian translation
-cd spike/tiptap/src-tauri && cargo test        # Rust: vault, index, sync
+cd spike/tiptap/src-tauri && cargo test        # Rust: vault, index, sync engine, server client
+cd server && npm test                          # the sync server (Node 22.13+)
 cd .. && npx tsc -b                            # type check
 ```
 
@@ -222,7 +221,7 @@ cd .. && npx tsc -b                            # type check
 Installers for Windows and macOS are built by [GitHub Actions](.github/workflows/release.yml).
 
 1. Bump `version` in `spike/tiptap/src-tauri/tauri.conf.json`, `Cargo.toml` and `package.json`.
-2. Add the Google credentials as repository secrets `NOVIQ_GOOGLE_CLIENT_ID` and `NOVIQ_GOOGLE_CLIENT_SECRET`.
+2. Optionally set the repository variable `NOVIQ_SERVER` to compile in the address of your own sync server.
 3. Tag and push:
    ```bash
    git tag v0.1.0
@@ -235,7 +234,8 @@ Installers for Windows and macOS are built by [GitHub Actions](.github/workflows
 | Path | Contents |
 |---|---|
 | `spike/tiptap/` | The app: React UI (`src/`) and the Tauri shell (`src-tauri/`) |
-| `spike/tiptap/src-tauri/src/` | Rust: `vault`, `index`, `registry`, `legacy` migration, and `sync/` (Google auth and Drive) |
+| `spike/tiptap/src-tauri/src/` | Rust: `vault`, `index`, `registry`, `legacy` migration, and `sync/` (the engine, the account, the server client) |
+| `server/` | The sync server: accounts, revisions, blobs on S3, instant change notification |
 | `db/` | SQLite migrations, Persian normalization, and the Node test suite |
 | `docs/` | Design docs, [architecture decision records](docs/adr/), and the project site |
 
@@ -243,12 +243,12 @@ Installers for Windows and macOS are built by [GitHub Actions](.github/workflows
 
 - Code-signed installers (Windows and macOS) and automatic updates
 - Mobile apps (iOS / Android) on the same vault format
-- Live collaboration through an optional server (the page format is already backend-independent; see ADR-0003)
+- Live co-editing of one page (CRDT) on top of the sync server, and end-to-end encryption of synced notes
 - A local SQLite index for full-text search and backlinks on very large vaults
 
 ## Privacy
 
-Noviq runs entirely on your computer. It has no analytics or telemetry and never sends your notes to us. The only network traffic is to Google, and only if you turn on sync. Full details: [Privacy Policy](https://alimirzad.github.io/noviq/privacy.html).
+Noviq runs on your computer. It has no analytics or telemetry and sends your notes nowhere unless you turn on sync; then they go to the sync server you signed in to (by default `sync.manaz.pro`, or your own). Full details: [Privacy Policy](https://alimirzad.github.io/noviq/privacy.html).
 
 ---
 
