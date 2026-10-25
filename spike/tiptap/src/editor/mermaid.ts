@@ -24,19 +24,73 @@ async function mermaid(): Promise<Mermaid> {
   return m
 }
 
-export async function renderDiagram(code: string): Promise<{ svg: string } | { error: string }> {
-  try {
+type Rendered = { svg: string } | { error: string }
+
+// Mermaid renders into shared scratch elements and keeps global state, so renders run strictly one after another
+// (concurrent ones used to trip over each other and show a flash of errors). Results are cached per code + theme.
+let chain: Promise<unknown> = Promise.resolve()
+const cache = new Map<string, Rendered>()
+const CACHE_MAX = 200
+
+/** Mermaid draws its "Syntax error" bomb (and a scratch container) straight into <body> and leaves it there. */
+const sweep = (id: string) => document.querySelectorAll(`body > #d${id}, body > #${id}, body > [id^="dmmd-"], body > [id^="mmd-"]`).forEach((el) => el.remove())
+
+const remember = (key: string, r: Rendered) => {
+  cache.delete(key)
+  cache.set(key, r)
+  if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value!)
+}
+
+export function renderDiagram(code: string): Promise<Rendered> {
+  const text = cleanMermaid(code)
+  const run = async (): Promise<Rendered> => {
     const m = await mermaid()
-    return { svg: (await m.render(`mmd-${++seq}`, cleanMermaid(code))).svg }
-  } catch (e) {
-    document.getElementById(`dmmd-${seq}`)?.remove() // mermaid leaves its scratch element behind on a syntax error
-    return { error: String((e as Error)?.message ?? e).split('\n')[0] }
+    const key = `${theme}\n${text}`
+    const hit = cache.get(key)
+    if (hit) return hit
+    const id = `mmd-${++seq}` // this render's own id, so a failure cleans up after itself and nobody else
+    let r: Rendered
+    try {
+      await m.parse(text) // a syntax error is found here, before mermaid draws anything into the page
+      r = { svg: (await m.render(id, text)).svg }
+    } catch (e) {
+      sweep(id)
+      r = { error: String((e as Error)?.message ?? e).split('\n')[0] }
+    }
+    remember(key, r) // errors are cached too: the same broken code is not parsed again on every redraw
+    return r
   }
+  const out = chain.then(run, run)
+  chain = out.catch(() => {})
+  return out
 }
 
 const views = new Set<() => void>()
-// diagrams carry the theme in their SVG, so they are redrawn when the theme changes
-new MutationObserver(() => views.forEach((v) => v())).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] })
+const themeKey = () => `${document.documentElement.dataset.theme ?? ''}|${getComputedStyle(document.body).colorScheme}`
+let lastTheme = themeKey()
+// diagrams carry the theme in their SVG, so they are redrawn when the theme changes (not on every other style change)
+new MutationObserver(() => {
+  const now = themeKey()
+  if (now === lastTheme) return
+  lastTheme = now
+  views.forEach((v) => v())
+}).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] })
+
+// Diagrams far from the screen are not drawn: a page with dozens of them opens at once and fills in as it is scrolled.
+const visible = new WeakMap<Element, (on: boolean) => void>()
+// rootMargin only widens the viewport, not a scroll container, so the observer's root is the nearest scrolling ancestor
+const watchers = new Map<Element | null, IntersectionObserver>()
+const scroller = (el: Element): Element | null => {
+  for (let p = el.parentElement; p; p = p.parentElement) if (/(auto|scroll)/.test(getComputedStyle(p).overflowY) && p.scrollHeight > p.clientHeight) return p
+  return null
+}
+const watch = (el: Element) => {
+  const root = scroller(el)
+  let w = watchers.get(root)
+  if (!w) watchers.set(root, (w = new IntersectionObserver((entries) => entries.forEach((e) => visible.get(e.target)?.(e.isIntersecting)), { root, rootMargin: '400px 0px' })))
+  w.observe(el)
+  return w
+}
 
 /** A diagram written in Mermaid text. Click to edit the source; the picture updates as you type. */
 export const MermaidBlock = Node.create({
@@ -131,10 +185,31 @@ export const MermaidBlock = Node.create({
           into.textContent = r.error
         }
       }
-      const redraw = () => !editing && void paint(cur.attrs.code)
+      // drawn only while near the screen; changes that arrive while it is far away are applied when it comes back
+      let near = false
+      let stale = true
+      const draw = () => {
+        if (editing) return
+        if (!near) return void (stale = true)
+        stale = false
+        void paint(cur.attrs.code)
+      }
+      const redraw = () => draw()
       views.add(redraw)
-      paint(node.attrs.code)
-
+      let reported = false
+      visible.set(dom, (on) => {
+        reported = true
+        near = on
+        if (on && stale) draw()
+      })
+      let obs: IntersectionObserver | undefined
+      requestAnimationFrame(() => (obs = watch(dom))) // after the node is in the page, so its scroll container can be found
+      // a page that is not being shown (hidden window, background tab) never reports visibility: draw anyway so printing/export still work
+      window.setTimeout(() => {
+        if (reported || !dom.isConnected) return
+        near = true
+        draw()
+      }, 1500)
       const commit = (value: string | null) => {
         editing = false
         dom.classList.remove('editing')
@@ -142,7 +217,7 @@ export const MermaidBlock = Node.create({
         const pos = getPos()
         if (pos != null && value !== null && value !== cur.attrs.code) {
           editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...cur.attrs, code: value }))
-        } else paint(cur.attrs.code)
+        } else draw()
         editor.view.focus()
       }
 
@@ -194,12 +269,16 @@ export const MermaidBlock = Node.create({
         update: (n) => {
           if (n.type !== cur.type) return false
           cur = n
-          if (!editing) paint(n.attrs.code)
+          draw()
           return true
         },
         stopEvent: () => editing || bar.matches(':hover'),
         ignoreMutation: () => true,
-        destroy: () => void views.delete(redraw),
+        destroy: () => {
+          views.delete(redraw)
+          obs?.unobserve(dom)
+          visible.delete(dom)
+        },
       }
     }
   },

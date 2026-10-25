@@ -8,7 +8,7 @@ import { repo } from './store'
 import type { Page } from './repo'
 
 const QUIET = 800 // wait for editing to pause before updating the index
-const CHUNK = 200 // pages per call, so a first build of a big vault does not freeze the app
+const CHUNK = 40 // pages per call, so a first build of a big vault does not freeze the app (each page's text is extracted and normalised on the UI thread)
 const LIMIT = 50
 
 const textOf = (n: any): string => (!n || typeof n === 'string' ? '' : (n.text ?? (n.content ?? []).map(textOf).join(' ')))
