@@ -26,6 +26,7 @@ const SERVER_SAYS: Record<string, string> = {
   inconsistent: 'The copy on the server could not be verified. Nothing was changed; try again in a moment.',
   conflict: 'Another device changed this at the same moment. It will be merged on the next sync.',
   internal: 'The server had a problem. Try again in a moment.',
+  not_in_trash: 'Only a vault that is in the server trash can be deleted for good.',
   not_noviq: 'This address does not answer like a Noviq sync server. Check the address, or the server may not be running yet.',
   http_401: 'This address does not answer like a Noviq sync server. Check the address, or the server may not be running yet.',
   http_404: 'This address does not answer like a Noviq sync server. Check the address, or the server may not be running yet.',
