@@ -3,7 +3,7 @@ import { addVersion, allPages, deleteVersions, isTauri, listVersions, savePages,
 
 const WATCH_EVERY = 3000 // how often the vault folder is checked for changes made by the sync tool
 
-export type PageKind = 'page' | 'folder' | 'board'
+export type PageKind = 'page' | 'folder' | 'board' | 'todo'
 export type PageStatus = 'todo' | 'doing' | 'done'
 export type Cover = { kind: 'gradient'; id: string } | { kind: 'image'; file: string } // image = content-addressed attachment id
 
@@ -52,6 +52,8 @@ const LEGACY_KEY = 'not.pages.v1' // the localStorage era; migrated once, then r
 const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] }
 // a board is a page whose whole content is one drawing block (ids of its scene + picture files), so files, search, history and backup need nothing special
 const EMPTY_BOARD = { type: 'doc', content: [{ type: 'drawing', attrs: { scene: '', preview: '' } }] }
+// a to-do list is a page that starts as one empty checklist; its items are ordinary taskItems, so Tasks, search and sync need nothing special
+const EMPTY_TODO = { type: 'doc', content: [{ type: 'taskList', content: [{ type: 'taskItem', attrs: { checked: false }, content: [{ type: 'paragraph' }] }] }] }
 const SNAPSHOT_EVERY = 10 * 60 * 1000 // at most one history entry per page per 10 minutes of editing
 
 function textOf(node: any): string {
@@ -278,11 +280,11 @@ export class Repo implements PageRepo {
     const page: Page = {
       id: crypto.randomUUID(),
       parentId,
-      ...(kind === 'folder' || kind === 'board' ? { kind } : {}),
+      ...(kind === 'folder' || kind === 'board' || kind === 'todo' ? { kind } : {}),
       title: '',
       favorite: false,
       sort: sibs.length ? Math.max(...sibs.map((s) => s.sort)) + 1 : 0,
-      content: kind === 'board' ? EMPTY_BOARD : EMPTY_DOC,
+      content: kind === 'board' ? EMPTY_BOARD : kind === 'todo' ? EMPTY_TODO : EMPTY_DOC,
       updatedAt: Date.now(),
       deletedAt: null,
     }

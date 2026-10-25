@@ -8,7 +8,7 @@ import * as Ic from './icons'
 type Filter = 'open' | 'done' | 'all'
 
 /** Every checklist item of every page in one place. Ticking a box here changes the page itself. */
-export function Tasks({ onOpen }: { onOpen: (id: string) => void }) {
+export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onNewList: () => void }) {
   const [tick, setTick] = useState(0)
   const [filter, setFilter] = useState<Filter>('open')
   const [draft, setDraft] = useState('')
@@ -31,7 +31,15 @@ export function Tasks({ onOpen }: { onOpen: (id: string) => void }) {
   const shown = tasks.filter((x) => x.text && (filter === 'all' || (filter === 'done') === x.checked))
   const groups = new Map<string, Task[]>()
   for (const x of shown) groups.set(x.pageId, [...(groups.get(x.pageId) ?? []), x])
-  
+  // stand-alone to-do lists first, then checklists that live inside ordinary pages
+  const isList = (id: string) => repo.get(id)?.kind === 'todo'
+  const listGroups = [...groups].filter(([id]) => isList(id))
+  const pageGroups = [...groups].filter(([id]) => !isList(id))
+  const lists = useMemo(
+    () => repo.pagesOnly().filter((p) => p.kind === 'todo').map((p) => ({ page: p, all: tasks.filter((x) => x.pageId === p.id && x.text) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tasks],
+  )
 
   const add = () => {
     const text = draft.trim()
@@ -55,13 +63,30 @@ export function Tasks({ onOpen }: { onOpen: (id: string) => void }) {
         {draft.trim() && <button className="primary" type="submit">{t('Add')}</button>}
       </form>
 
-      <div className="tk-tabs" role="tablist">
-        {(['open', 'done', 'all'] as Filter[]).map((f) => (
-          <button key={f} role="tab" aria-selected={filter === f} className={filter === f ? 'on' : ''} onClick={() => setFilter(f)}>
-            {f === 'open' ? t('Active') : f === 'done' ? t('Done') : t('All')}
-          </button>
-        ))}
+      <div className="dw-tools">
+        <div className="tk-tabs" role="tablist">
+          {(['open', 'done', 'all'] as Filter[]).map((f) => (
+            <button key={f} role="tab" aria-selected={filter === f} className={filter === f ? 'on' : ''} onClick={() => setFilter(f)}>
+              {f === 'open' ? t('Active') : f === 'done' ? t('Done') : t('All')}
+            </button>
+          ))}
+        </div>
+        <span className="spacer" />
+        <button className="primary" onClick={onNewList}><Ic.Plus size={15} />{t('New list')}</button>
       </div>
+
+      {lists.length > 0 && (
+        <section className="tk-group">
+          <div className="tk-label">{t('To-do lists')}</div>
+          {lists.map(({ page, all }) => (
+            <button key={page.id} className="tk-page" onClick={() => onOpen(page.id)}>
+              <span className="hm-row-ic"><PageIcon page={page} /></span>
+              <b dir="auto">{page.title || t('Untitled')}</b>
+              <small>{all.filter((x) => x.checked).length}/{all.length}</small>
+            </button>
+          ))}
+        </section>
+      )}
 
       {inboxShown.length > 0 && (
         <section className="tk-group">
@@ -80,10 +105,12 @@ export function Tasks({ onOpen }: { onOpen: (id: string) => void }) {
       {groups.size === 0 && inboxShown.length === 0 ? (
         <div className="hm-empty">{filter === 'open' && tasks.length ? t('All done 🎉') : t('No tasks here')}</div>
       ) : (
-        [...groups].map(([pageId, items]) => {
+        [...listGroups, ...pageGroups].map(([pageId, items], i) => {
           const page = repo.get(pageId)!
+          const head = i === 0 && listGroups.length ? t('In lists') : i === listGroups.length && pageGroups.length ? t('In pages') : ''
           return (
             <section key={pageId} className="tk-group">
+              {head && <div className="tk-label">{head}</div>}
               <button className="tk-page" onClick={() => onOpen(pageId)}>
                 <span className="hm-row-ic"><PageIcon page={page} /></span>
                 <b dir="auto">{page.title || t('Untitled')}</b>

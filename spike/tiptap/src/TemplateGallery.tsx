@@ -4,7 +4,7 @@ import * as Ic from './icons'
 import { t } from './i18n'
 
 /** Glyph shown for each built-in template (new pages get it as their icon). */
-export const TEMPLATE_GLYPH: Record<string, string> = { lecture: 'graduation', chapter: 'book', exercise: 'target', meeting: 'users', todo: 'check' }
+export const TEMPLATE_GLYPH: Record<string, string> = { lecture: 'graduation', chapter: 'book', exercise: 'target', meeting: 'users', todo: 'list' }
 
 /** Template gallery: pick one and a new page is created from it. */
 export function Templates({ onPick, onClose }: { onPick: (id: string) => void; onClose: () => void }) {

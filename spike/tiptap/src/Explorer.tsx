@@ -87,7 +87,9 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
   const forward = () => hist.fwd.length && (setHist((h) => ({ back: [...h.back, cwd], fwd: h.fwd.slice(1) })), setCwd(hist.fwd[0]), setSel(new Set()))
   const up = () => go(path.length ? (path[path.length - 1].parentId ?? null) : null)
 
-  const open = (p: Page) => (p.kind === 'folder' ? go(p.id) : onOpen(p.id))
+  const subCount = (p: Page) => (p.kind === 'folder' ? 0 : kids(p.id).length) // pages can hold subpages too
+  // folders and pages with subpages are entered; a page with subpages is opened itself with Ctrl (double-click / Enter) or from the menu
+  const open = (p: Page, asPage = false) => (p.kind === 'folder' || (subCount(p) && !asPage) ? go(p.id) : onOpen(p.id))
   const target = () => items.filter((p) => sel.has(p.id))
 
   // the mouse's side buttons (back / forward) and Alt+←/→ move through the folders you visited, like a file manager
@@ -119,6 +121,8 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
       const b = items.findIndex((x) => x.id === p.id)
       const [from, to] = a < b ? [a, b] : [b, a]
       setSel(new Set(items.slice(from, to + 1).map((x) => x.id)))
+    } else if ((e.ctrlKey || e.metaKey) && subCount(p)) {
+      open(p, true) // Ctrl+click on a page with subpages opens the page itself (a plain double-click enters it)
     } else if (e.ctrlKey || e.metaKey) {
       setSel((s) => {
         const n = new Set(s)
@@ -251,7 +255,7 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
     const idx = items.findIndex((p) => p.id === (anchor ?? ids[0]))
     if (e.key === 'Delete') (e.preventDefault(), remove(ids))
     else if (e.key === 'F2' && ids.length === 1) (e.preventDefault(), startRename(ids[0]))
-    else if (e.key === 'Enter' && ids.length === 1) (e.preventDefault(), open(byId.get(ids[0])!))
+    else if (e.key === 'Enter' && ids.length === 1) (e.preventDefault(), open(byId.get(ids[0])!, mod))
     else if (e.altKey && e.key === 'ArrowLeft') (e.preventDefault(), back())
     else if (e.altKey && e.key === 'ArrowRight') (e.preventDefault(), forward())
     else if (e.key === 'Backspace' || (e.altKey && e.key === 'ArrowUp')) (e.preventDefault(), up())
@@ -295,7 +299,7 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
   }
 
   const sortBy = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: 1 }))
-  const kindOf = (p: Page) => (p.kind === 'folder' ? t('Folder') : p.kind === 'board' ? t('Board') : t('Page'))
+  const kindOf = (p: Page) => (p.kind === 'folder' ? t('Folder') : p.kind === 'board' ? t('Board') : p.kind === 'todo' ? t('To-do list') : t('Page'))
   const metaOf = (p: Page) => (p.kind === 'folder' ? t('{n} items', { n: kids(p.id).length }) : p.kind === 'board' ? t('Drawing') : t('{n} words', { n: wordCount(p.content) }))
 
   const cell = (p: Page) =>
@@ -317,11 +321,20 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
         }}
       />
     ) : (
-      <span className="fx-name">{p.title || t('Untitled')}</span>
+      <span className="fx-name">
+        <span className="fx-t">{p.title || t('Untitled')}</span>
+        {subCount(p) > 0 && (
+          <span className="fx-subs" title={t('{n} subpages', { n: subCount(p) })}>
+            <Ic.Folders size={12} />
+            {subCount(p)}
+          </span>
+        )}
+      </span>
     )
 
   const row = (p: Page) => {
     const folder = p.kind === 'folder'
+    const holder = folder || subCount(p) > 0 // folders and pages with subpages accept drops
     const cls = 'fx-item' + (sel.has(p.id) ? ' sel' : '') + (clip?.cut && clip.ids.includes(p.id) ? ' cut' : '') + (dropOn === p.id ? ' drop' : '')
     return (
       <div
@@ -338,9 +351,9 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
           setMenu({ rect: new DOMRect(e.clientX, e.clientY, 0, 0), id: p.id })
         }}
         onDragStart={(e) => dragStart(e, p)}
-        onDragOver={folder ? (e) => dragOver(e, p.id) : undefined}
+        onDragOver={holder ? (e) => dragOver(e, p.id) : undefined}
         onDragLeave={() => dropOn === p.id && setDropOn(null)}
-        onDrop={folder ? (e) => dropTo(e, p.id) : undefined}
+        onDrop={holder ? (e) => dropTo(e, p.id) : undefined}
       >
         <button type="button" className={'fx-check' + (sel.has(p.id) ? ' on' : '')} role="checkbox" aria-checked={sel.has(p.id)} aria-label={t('Select')} onClick={(e) => toggleOne(e, p)} onDoubleClick={(e) => e.stopPropagation()}>
           <Ic.Check size={13} />
@@ -454,7 +467,9 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
       {menu && (
         <Popover anchor={menu.rect} onClose={() => setMenu(null)}>
           <div className="menu">
-            {menuTarget && <MenuItem icon={<Ic.Open />} label={t('Open')} hint="Enter" onClick={() => (setMenu(null), open(menuTarget))} />}
+            {menuTarget && subCount(menuTarget) > 0 && <MenuItem icon={<Ic.Folders />} label={t('Show subpages')} hint="Enter" onClick={() => (setMenu(null), go(menuTarget.id))} />}
+            {menuTarget && subCount(menuTarget) > 0 && <MenuItem icon={<Ic.Open />} label={t('Open page')} hint="Ctrl Enter" onClick={() => (setMenu(null), open(menuTarget, true))} />}
+            {menuTarget && !subCount(menuTarget) && <MenuItem icon={<Ic.Open />} label={t('Open')} hint="Enter" onClick={() => (setMenu(null), open(menuTarget))} />}
             {menuTarget && <MenuItem icon={<Ic.Pencil />} label={t('Rename')} hint="F2" onClick={() => (setMenu(null), startRename(menuTarget.id))} />}
             {menuTarget && <MenuSep />}
             {menuTarget && <MenuItem icon={<Ic.Cut />} label={t('Cut')} hint="Ctrl X" onClick={() => (setMenu(null), doCut(target().map((p) => p.id)))} />}
