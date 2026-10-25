@@ -3,8 +3,8 @@
 .app::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background-image: radial-gradient(circle, var(--dot) 1.2px, transparent 1.6px); background-size: 24px 24px; mask-image: linear-gradient(to bottom, #000, transparent 75%); }
 
 /* ───────── sidebar dock ───────── */
-.side { position: relative; width: var(--side-w, 264px); flex: none; display: flex; flex-direction: column; overflow: hidden; padding: 0 10px; border-radius: var(--radius-xl); background: var(--side-bg); backdrop-filter: blur(22px) saturate(1.5); border: 1px solid var(--border); box-shadow: var(--panel-shadow); transition: margin 0.32s var(--ease), opacity 0.2s, transform 0.32s var(--ease); }
-.side.closed { margin-inline-start: calc(-1 * var(--side-w, 264px) - 12px); opacity: 0; pointer-events: none; transform: scale(0.97); }
+.side { --sw: min(var(--side-w, 264px), 36vw); position: relative; width: var(--sw); flex: none; display: flex; flex-direction: column; overflow: hidden; padding: 0 10px; border-radius: var(--radius-xl); background: color-mix(in srgb, var(--side-bg) calc(100% - var(--glass-side, 0) * 82%), transparent); backdrop-filter: blur(calc(22px + var(--glass-side, 0) * 18px)) saturate(calc(1.5 + var(--glass-side, 0) * 0.4)); border: 1px solid var(--border); box-shadow: var(--panel-shadow); transition: margin 0.32s var(--ease), opacity 0.2s, transform 0.32s var(--ease); }
+.side.closed { margin-inline-start: calc(-1 * var(--sw) - 12px); opacity: 0; pointer-events: none; transform: scale(0.97); }
 .side.resizing { transition: opacity 0.2s, transform 0.32s var(--ease); user-select: none; }
 .side-grip { position: absolute; z-index: 5; top: 0; bottom: 0; inset-inline-end: 0; width: 8px; cursor: var(--cursor-ew, col-resize); touch-action: none; }
 .side-grip::after { content: ''; position: absolute; top: 50%; inset-inline-end: 2px; width: 3px; height: 40px; margin-top: -20px; border-radius: 3px; background: var(--accent); opacity: 0; transition: opacity 0.15s; }
@@ -70,7 +70,8 @@
 .vault-switch .ntitle { text-align: start; font-weight: 600; color: var(--text); }
 
 /* ───────── main sheet ───────── */
-.main { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-xl); box-shadow: var(--panel-shadow); overflow: hidden; transition: padding-inline-end 0.3s var(--ease); }
+.main { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; background: color-mix(in srgb, var(--bg) calc(100% - var(--glass-main, 0) * 75%), transparent); border: 1px solid var(--border); border-radius: var(--radius-xl); box-shadow: var(--panel-shadow); overflow: hidden; transition: padding-inline-end 0.3s var(--ease); }
+.main::after { content: ''; position: absolute; inset: 0; z-index: 0; border-radius: inherit; pointer-events: none; backdrop-filter: blur(calc(var(--glass-main, 0) * 28px)) saturate(calc(1 + var(--glass-main, 0) * 0.5)); }
 .main::before { content: ''; position: absolute; inset-inline: 0; top: 0; height: 220px; z-index: 0; pointer-events: none; background: radial-gradient(70% 100% at 50% 0%, var(--accent-soft), transparent); }
 .main > * { position: relative; z-index: 1; }
 .scroller { flex: 1; overflow: auto; animation: fade-in 0.35s var(--ease); }
@@ -120,9 +121,7 @@
 .blank p { margin: 0 0 16px; }
 
 /* ───────── appearance switches (settings → data-attributes on <html>) ───────── */
-:root[data-glass] .side { background: color-mix(in srgb, var(--bg-raised) 42%, transparent); backdrop-filter: blur(34px) saturate(1.8); }
-:root[data-side='compact'] .side { width: var(--side-w, 228px); }
-:root[data-side='compact'] .side.closed { margin-inline-start: calc(-1 * var(--side-w, 228px) - 12px); }
+:root[data-side='compact'] .side { --sw: min(var(--side-w, 228px), 36vw); }
 :root[data-side='compact'] .row { min-height: 30px; font-size: 13px; }
 :root[data-side='compact'] .section { margin-top: 10px; }
 :root[data-side='icons'] .side { width: 68px; }
@@ -144,6 +143,8 @@
 :root[data-side='icons'] .ws { justify-content: center; }
 :root[data-side='icons'] .search-row { border-color: transparent; background: transparent; box-shadow: none; padding: 0; }
 :root[data-side='icons'] .new-page { width: 44px; margin-inline: auto; }
+.side-tip { position: fixed; z-index: 90; max-width: 260px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 11px; background: var(--pop); color: var(--text); box-shadow: var(--shadow); font-size: 13px; font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; transform: translateY(-50%); animation: fade-in 0.14s var(--ease); }
+.side-tip.rtl { transform: translate(-100%, -50%); }
 :root[data-covers='off'] .cover { display: none; }
 :root[data-covers='off'] .page-cols.has-cover .page { padding-top: 40px; }
 :root[data-covers='off'] .page-cols.has-cover .page-head .page-icon { margin-top: 0; }

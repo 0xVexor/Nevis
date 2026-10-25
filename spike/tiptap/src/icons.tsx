@@ -100,4 +100,5 @@ export const TableDelete = (p: P) => <I {...p}><rect x="3" y="4" width="18" heig
 export const HeadRow = (p: P) => <I {...p}><path d="M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4H3z" fill="currentColor" fillOpacity="0.28" /><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M12 10v10" /></I>
 export const HeadCol = (p: P) => <I {...p}><path d="M3 6a2 2 0 0 1 2-2h4v16H5a2 2 0 0 1-2-2z" fill="currentColor" fillOpacity="0.28" /><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16M9 12h12" /></I>
 export const Reset = (p: P) => <I {...p}><path d="M4 12a8 8 0 1 0 3-6.2M4 4v5h5" /></I>
+export const Shrink = (p: P) => <I {...p}><path d="M20 9h-5V4M4 15h5v5M15 9l5-5M9 15l-5 5" /></I>
 export const Enlarge = (p: P) => <I {...p}><path d="M15 4h5v5M9 20H4v-5M20 4l-7 7M4 20l7-7" /></I>

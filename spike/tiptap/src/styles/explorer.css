@@ -41,6 +41,11 @@ button.fx-h:hover { color: var(--text); }
 .fx-item > .fx-ic { position: absolute; inset-inline-start: 50px; }
 .fx-item .fx-name { grid-column: 2; padding-inline-start: 36px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .fx-item .fx-rename { grid-column: 2; margin-inline-start: 32px; height: 32px; padding: 0 10px; border: 1px solid var(--accent); border-radius: 10px; background: var(--bg); color: var(--text); font-size: 14px; outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
+.fx-item .fx-name { display: flex; align-items: center; gap: 8px; }
+.fx-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fx-subs { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: 999px; background: var(--accent-bg); color: var(--accent); font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fx-body.grid .fx-item .fx-name { display: block; }
+.fx-body.grid .fx-subs { margin-inline-start: 6px; vertical-align: 1px; }
 .fx-col { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fx-ic { display: grid; place-items: center; width: 28px; height: 28px; flex: none; }
 .fx-ic.folder { color: var(--accent); }
