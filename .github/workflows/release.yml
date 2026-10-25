@@ -51,5 +51,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: noviq-${{ matrix.os }}
-          path: spike/tiptap/src-tauri/target/**/release/bundle/**/*.{exe,msi,dmg}
-          if-no-files-found: warn
+          # one pattern per line: the glob of this action does not expand {exe,msi,dmg}
+          path: |
+            spike/tiptap/src-tauri/target/**/release/bundle/**/*.exe
+            spike/tiptap/src-tauri/target/**/release/bundle/**/*.msi
+            spike/tiptap/src-tauri/target/**/release/bundle/**/*.dmg
+          if-no-files-found: error
