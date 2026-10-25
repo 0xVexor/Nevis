@@ -877,4 +877,8 @@ export const FA: Record<string, string> = {
   "This address does not answer like a Noviq sync server. Check the address, or the server may not be running yet.": "این نشانی مثل یک سرور همگام‌سازی Noviq جواب نمی‌دهد. نشانی را بررسی کنید؛ شاید هم سرور هنوز راه نیفتاده است.",
   "The file was not saved": "فایل ذخیره نشد",
   "Saved to {path}": "ذخیره شد در {path}",
+  "Delete “{name}” for good?": "«{name}» برای همیشه حذف شود؟",
+  "It and all its files are removed from the server now and cannot be brought back. The notes on your devices are not touched.": "این Vault و همه‌ی فایل‌هایش همین حالا از سرور پاک می‌شوند و قابل بازگشت نیست. یادداشت‌های روی دستگاه‌هایتان دست‌نخورده می‌مانند.",
+  "Delete for good": "حذف برای همیشه",
+  "Only a vault that is in the server trash can be deleted for good.": "فقط Vaultی که در سطل زباله‌ی سرور است برای همیشه حذف می‌شود.",
 }
