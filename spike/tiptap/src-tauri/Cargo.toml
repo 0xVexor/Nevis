@@ -1,6 +1,6 @@
 [package]
 name = "noviq"
-version = "0.1.2"
+version = "0.2.0"
 description = "Noviq: offline notes with full Persian/RTL support"
 edition = "2021"
 
@@ -14,12 +14,11 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 uuid = { version = "1", features = ["v4"] }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls", "http2"] }
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
 md-5 = "0.10"
 base64 = "0.22"
-open = "5"
 keyring = { version = "3", features = ["windows-native", "apple-native"] }
 trash = "5" # moves a vault folder to the Recycle Bin / Trash instead of deleting it
 

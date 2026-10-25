@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { open } from '@tauri-apps/plugin-dialog'
 import {
-  accountLogin, accountLogout, accountStatus, cloudDelete, cloudDownload, cloudReupload, cloudVaults, freezeStorage, isTauri, syncConfirm, syncNow, syncSet, thawStorage,
+  accountStatus, cloudDelete, cloudDownload, cloudReupload, cloudVaults, freezeStorage, isTauri, syncConfirm, syncNow, syncSet, thawStorage,
   vaultAdd, vaultClose, vaultCreate, vaultForget, vaultInfo, vaultList, vaultLocate, vaultOpen, vaultRename, vaultTrashLocal,
   type AccountStatus, type CloudVault, type VaultEntry,
 } from './db'
 import { repo } from './store'
 import { alertDialog, confirmDialog, promptDialog } from './dialog'
 import { explain } from './vaultErrors'
+import { syncLabel } from './Account'
 import * as Ic from './icons'
 import { locale, t } from './i18n'
 
@@ -20,11 +21,11 @@ const pickFolder = async (title: string) => {
 
 /**
  * Workspaces dialog: every vault of this device with its state and what can be done with it (switch, rename, locate,
- * remove, delete), the vaults of the Google account that are not here yet, and the sync of the open vault.
+ * remove, delete), the vaults of the account that are not here yet, and the sync of the open vault.
  * Nothing destructive happens without its own confirmation, and what it does is said in that confirmation:
  * removing from the list, moving the folder to the Recycle Bin and deleting the cloud copy are three different things.
  */
-export function Vaults({ onClose, onNew }: { onClose: () => void; onNew: (create: (name: string) => Promise<void>) => void }) {
+export function Vaults({ onClose, onNew, onAccount }: { onClose: () => void; onNew: (create: (name: string) => Promise<void>) => void; onAccount: () => void }) {
   const [id, setId] = useState('')
   const [vaults, setVaults] = useState<VaultEntry[]>([])
   const [acc, setAcc] = useState<AccountStatus | null>(null)
@@ -35,11 +36,11 @@ export function Vaults({ onClose, onNew }: { onClose: () => void; onNew: (create
 
   const refresh = useCallback(() => (isTauri ? accountStatus().then(setAcc, () => {}) : Promise.resolve()), [])
   const reloadVaults = useCallback(() => (isTauri ? vaultList().then((l) => setVaults(l.vaults), () => {}) : Promise.resolve()), [])
-  const email = acc?.email ?? null
+  const signedIn = !!acc?.signedIn
   const reloadCloud = useCallback(() => {
-    if (!email) return setCloud(null)
+    if (!signedIn) return setCloud(null)
     cloudVaults().then(setCloud, (e) => (setCloud([]), setError(explain(e))))
-  }, [email])
+  }, [signedIn])
 
   useEffect(() => {
     if (!isTauri) return
@@ -155,7 +156,7 @@ export function Vaults({ onClose, onNew }: { onClose: () => void; onNew: (create
       const ok = await confirmByName(
         v,
         t('Delete the cloud copy of “{name}”?', { name: v.name }),
-        t('The cloud copy goes to the Google Drive trash and is not synced any more. The files on this computer stay, and other devices keep their local copies. Type the name of the workspace to confirm.'),
+        t('The cloud copy goes to the server trash, where you can bring it back for 30 days, and is not synced any more. The files on this computer stay, and other devices keep their local copies. Type the name of the workspace to confirm.'),
         t('Delete cloud copy'),
       )
       if (ok) await cloudDelete(v.id)
@@ -165,16 +166,15 @@ export function Vaults({ onClose, onNew }: { onClose: () => void; onNew: (create
       const ok = await confirmByName(
         v,
         t('Delete “{name}” everywhere?', { name: v.name }),
-        t('The cloud copy goes to the Google Drive trash and the folder on this computer to the Recycle Bin. Other devices keep their local copies. Type the name of the workspace to confirm.'),
+        t('The cloud copy goes to the server trash (30 days) and the folder on this computer to the Recycle Bin. Other devices keep their local copies. Type the name of the workspace to confirm.'),
         t('Delete everywhere'),
       )
       if (!ok) return
-      if (email) await cloudDelete(v.id)
+      if (signedIn) await cloudDelete(v.id)
       if (v.id === id) await switching(() => vaultTrashLocal(v.id))
       else await vaultTrashLocal(v.id)
     })
 
-  const status = !acc?.syncOn ? t('Off') : acc.state === 'syncing' ? t('Syncing…') : acc.state === 'error' ? t('Error') : acc.state === 'paused' ? t('Paused') : t('Up to date')
   const paused = acc?.syncOn && acc.state === 'paused' ? acc.reason : ''
   const here = new Set(vaults.filter((v) => v.status === 'ok').map((v) => v.id))
   const elsewhere = (cloud ?? []).filter((c) => !here.has(c.id))
@@ -209,14 +209,15 @@ export function Vaults({ onClose, onNew }: { onClose: () => void; onNew: (create
                     <button className="wsd-more" disabled={busy} aria-label={t('Actions')} title={t('Actions')} aria-expanded={menu === v.id} onClick={() => setMenu(menu === v.id ? '' : v.id)}>⋯</button>
                   </div>
                   {menu === v.id && (
-                    <div className="wsd-acts wsd-menu">
-                      {v.status === 'ok' && v.id !== id && <button disabled={busy} onClick={() => void switchTo(v.id)}>{t('Switch')}</button>}
-                      {v.status === 'ok' && <button disabled={busy} onClick={() => void rename(v)}>{t('Rename…')}</button>}
-                      {v.status !== 'ok' && <button className="primary" disabled={busy} onClick={() => void locate(v)}>{t('Locate folder…')}</button>}
-                      <button disabled={busy} onClick={() => void forget(v)}>{t('Remove from list')}</button>
-                      {v.status === 'ok' && <button className="danger" disabled={busy} onClick={() => void trashLocal(v)}>{t('Move folder to Recycle Bin…')}</button>}
-                      {email && <button className="danger" disabled={busy} onClick={() => void deleteCloud(v)}>{t('Delete cloud copy…')}</button>}
-                      {v.status === 'ok' && <button className="danger" disabled={busy} onClick={() => void deleteEverywhere(v)}>{t('Delete everywhere…')}</button>}
+                    <div className="wsd-menu" role="menu">
+                      {v.status === 'ok' && v.id !== id && <button role="menuitem" disabled={busy} onClick={() => void switchTo(v.id)}><Ic.Open size={16} />{t('Switch')}</button>}
+                      {v.status === 'ok' && <button role="menuitem" disabled={busy} onClick={() => void rename(v)}><Ic.Pencil size={16} />{t('Rename…')}</button>}
+                      {v.status !== 'ok' && <button role="menuitem" className="accent" disabled={busy} onClick={() => void locate(v)}><Ic.Folder size={16} />{t('Locate folder…')}</button>}
+                      <button role="menuitem" disabled={busy} onClick={() => void forget(v)}><Ic.Close size={16} />{t('Remove from list')}</button>
+                      <div className="wsd-sep" role="separator" />
+                      {v.status === 'ok' && <button role="menuitem" className="danger" disabled={busy} onClick={() => void trashLocal(v)}><Ic.Trash size={16} />{t('Move folder to Recycle Bin…')}</button>}
+                      {signedIn && <button role="menuitem" className="danger" disabled={busy} onClick={() => void deleteCloud(v)}><Ic.Cloud size={16} />{t('Delete cloud copy…')}</button>}
+                      {v.status === 'ok' && <button role="menuitem" className="danger" disabled={busy} onClick={() => void deleteEverywhere(v)}><Ic.Trash size={16} />{t('Delete everywhere…')}</button>}
                     </div>
                   )}
                 </div>
@@ -246,7 +247,7 @@ export function Vaults({ onClose, onNew }: { onClose: () => void; onNew: (create
 
           {isTauri && elsewhere.length > 0 && (
             <section className="wsd-sync">
-              <h4>{t('In your Google account, not on this computer')}</h4>
+              <h4>{t('In your account, not on this computer')}</h4>
               <div className="wsd-list">
                 {elsewhere.map((c) => (
                   <div key={c.id} className="wsd-row">
@@ -262,23 +263,24 @@ export function Vaults({ onClose, onNew }: { onClose: () => void; onNew: (create
           {isTauri && (
             <section className="wsd-sync">
               <h4>{t('Sync between devices')}</h4>
-              {!acc?.email ? (
+              {!acc?.signedIn ? (
                 <div className="wsd-card">
-                  <p>{t('Sign in with your Google account and Noviq keeps this vault in sync on all your devices. Nothing else to set up.')}</p>
-                  <button className="primary" disabled={busy || acc?.configured === false} onClick={() => void run(accountLogin)}>{busy ? t('Waiting for the browser…') : t('Sign in with Google')}</button>
-                  {acc?.configured === false && <p className="backup-warn">{t('Google sign-in is not set up in this build of the app.')}</p>}
+                  <p>{t('Sign in and Noviq keeps this vault in sync on all your devices, within a second or two of each change. You need only a user name and a password: no email address.')}</p>
+                  <button className="primary" disabled={busy} onClick={() => (onClose(), onAccount())}>{t('Sign in or create account')}</button>
                 </div>
               ) : (
                 <div className="wsd-card">
                   <dl className="wsd-info">
-                    <dt>{t('Account')}</dt><dd dir="ltr">{acc.email}</dd>
-                    <dt>{t('Sync this vault')}</dt><dd><i className={'wsd-dot ' + (acc.syncOn ? acc.state : 'off')} />{status}</dd>
+                    <dt>{t('Account')}</dt><dd dir="ltr">{acc.username}</dd>
+                    <dt>{t('Sync this vault')}</dt><dd><i className={'wsd-dot ' + (acc.syncOn ? acc.state : 'off')} />{syncLabel(acc)}</dd>
                     <dt>{t('Last sync')}</dt><dd>{when(acc.lastAt)}</dd>
                   </dl>
-                  {acc.state === 'error' && acc.error && <p className="backup-warn" dir="auto">{acc.error}</p>}
+                  {acc.syncOn && acc.state === 'offline' && <p className="backup-warn">{t('You are offline. Everything you write is saved on this device and goes to the server by itself when the connection is back.')}</p>}
+                  {acc.state === 'error' && acc.error && <p className="backup-warn" dir="auto">{explain(acc.error)}</p>}
+                  {paused === 'SIGNED_OUT' && <p className="backup-warn">{t('You are signed out of this device. Sign in again to keep syncing.')}</p>}
                   {paused === 'VAULT_MISSING' && <p className="backup-warn">{t('The vault folder was not found. Sync is paused and nothing in the cloud was changed. Use “Locate folder…” in the list above.')}</p>}
                   {paused === 'VAULT_MISMATCH' && <p className="backup-warn">{t('A different vault is in the folder of this workspace. Sync is paused and nothing was changed.')}</p>}
-                  {paused === 'CLOUD_GONE' && <p className="backup-warn">{t('The cloud copy of this vault is gone (deleted from another device, or the app data was cleared in your Google account). Your files here are untouched.')}</p>}
+                  {paused === 'CLOUD_GONE' && <p className="backup-warn">{t('The cloud copy of this vault is gone (deleted from another device or from the server). Your files here are untouched.')}</p>}
                   {paused === 'NEEDS_CONFIRM' && <p className="backup-warn">{t('{n} files would be deleted by this sync. If you deleted them on purpose, confirm; otherwise turn sync off and check the folder.', { n: acc.error })}</p>}
                   {!acc.syncOn && elsewhere.length > 0 && (
                     <p className="backup-warn">{t('Your account already has other vaults in the cloud (listed above). To get one of them on this computer, download it. Turning on sync here makes a separate cloud copy of this vault.')}</p>
@@ -286,6 +288,7 @@ export function Vaults({ onClose, onNew }: { onClose: () => void; onNew: (create
                   <div className="wsd-acts">
                     {acc.syncOn ? (
                       <>
+                        {paused === 'SIGNED_OUT' && <button className="primary" disabled={busy} onClick={() => (onClose(), onAccount())}>{t('Sign in again')}</button>}
                         {paused === 'CLOUD_GONE' && <button className="primary" disabled={busy} onClick={() => void run(() => cloudReupload(id))}>{t('Upload this vault again')}</button>}
                         {paused === 'NEEDS_CONFIRM' && <button className="primary" disabled={busy} onClick={() => void run(syncConfirm)}>{t('Yes, delete them')}</button>}
                         <button disabled={busy} onClick={() => void run(syncNow)}><Ic.Cloud size={15} />{t('Sync now')}</button>
@@ -294,7 +297,7 @@ export function Vaults({ onClose, onNew }: { onClose: () => void; onNew: (create
                     ) : (
                       <button className="primary" disabled={busy} onClick={() => void run(() => syncSet(true))}>{t('Turn on sync for this vault')}</button>
                     )}
-                    <button className="danger" disabled={busy} onClick={() => void run(accountLogout)}>{t('Sign out')}</button>
+                    <button disabled={busy} onClick={() => (onClose(), onAccount())}>{t('Manage account…')}</button>
                   </div>
                 </div>
               )}
