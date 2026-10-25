@@ -8,11 +8,12 @@ import { t } from './i18n'
 import { Select } from './ui'
 import { SHORTCUTS, keyLabel } from './shortcuts'
 
-type Tab = 'appearance' | 'editor' | 'general' | 'shortcuts' | 'language'
+type Tab = 'appearance' | 'editor' | 'general' | 'data' | 'shortcuts' | 'language'
 const TABS: { id: Tab; label: string; title: string; hint: string; icon: ReactNode }[] = [
   { id: 'appearance', label: 'Appearance', title: 'Appearance', hint: 'Customize how the app looks and feels.', icon: <Ic.Palette /> },
   { id: 'editor', label: 'Editor & font', title: 'Editor', hint: 'Set the font, size and color of page text.', icon: <Ic.Type /> },
   { id: 'general', label: 'General', title: 'General', hint: 'Reminders and how files are stored.', icon: <Ic.Settings /> },
+  { id: 'data', label: 'Data & backup', title: 'Data & backup', hint: 'Import, export, back up and sync your notes.', icon: <Ic.Archive /> },
   { id: 'shortcuts', label: 'Shortcuts', title: 'Keyboard shortcuts', hint: 'Everything you can do without leaving the keyboard.', icon: <Ic.Keyboard /> },
   { id: 'language', label: 'Language', title: 'Language & layout', hint: 'Choose the interface language and which side things sit on.', icon: <Ic.Globe /> },
 ]
@@ -241,6 +242,48 @@ function Shortcuts() {
   )
 }
 
+export interface DataActions {
+  importMarkdown: () => void
+  importVault: () => void
+  exportAll: () => void
+  backup: () => void
+  restore: () => void
+  autoBackup: () => void
+  workspaces: () => void
+  syncNow?: () => void
+}
+
+const Row = ({ icon, label, hint, onClick }: { icon: ReactNode; label: string; hint?: string; onClick: () => void }) => (
+    <button className="set-action" onClick={onClick}>
+      {icon}
+      <span className="toggle-tx">
+        <b>{label}</b>
+        {hint && <small>{hint}</small>}
+      </span>
+    </button>
+  )
+
+function DataTab({ a }: { a: DataActions }) {
+  return (
+    <>
+      <Group title={t('Import')}>
+        <Row icon={<Ic.Upload />} label={t('Import Markdown files…')} onClick={a.importMarkdown} />
+        <Row icon={<Ic.Folders />} label={t('Import Obsidian vault (folder)…')} onClick={a.importVault} />
+      </Group>
+      <Group title={t('Export & backup')}>
+        <Row icon={<Ic.Archive />} label={t('Export all pages (zip with Markdown & images)')} onClick={a.exportAll} />
+        <Row icon={<Ic.Download />} label={t('Full backup (JSON)')} onClick={a.backup} />
+        <Row icon={<Ic.Upload />} label={t('Restore from backup…')} onClick={a.restore} />
+        <Row icon={<Ic.Save />} label={t('Automatic backup to folder…')} onClick={a.autoBackup} />
+      </Group>
+      <Group title={t('Workspaces')}>
+        {a.syncNow && <Row icon={<Ic.Cloud />} label={t('Sync now')} onClick={a.syncNow} />}
+        <Row icon={<Ic.Layers />} label={t('Workspaces and sync…')} onClick={a.workspaces} />
+      </Group>
+    </>
+  )
+}
+
 function LanguageTab() {
   const s = useSettings()
   return (
@@ -262,7 +305,7 @@ function LanguageTab() {
   )
 }
 
-export function SettingsView() {
+export function SettingsView({ data }: { data: DataActions }) {
   const [tab, setTab] = useState<Tab>('appearance')
   const s = useSettings()
   const cur = TABS.find((x) => x.id === tab)!
@@ -292,7 +335,7 @@ export function SettingsView() {
             <h3>{t(cur.title)}</h3>
             <p>{t(cur.hint)}</p>
           </header>
-          {tab === 'appearance' ? <Appearance /> : tab === 'editor' ? <Editor /> : tab === 'general' ? <General /> : tab === 'shortcuts' ? <Shortcuts /> : <LanguageTab />}
+          {tab === 'appearance' ? <Appearance /> : tab === 'editor' ? <Editor /> : tab === 'general' ? <General /> : tab === 'data' ? <DataTab a={data} /> : tab === 'shortcuts' ? <Shortcuts /> : <LanguageTab />}
         </div>
         {(tab === 'appearance' || tab === 'editor') && (
           <aside className="set-side">

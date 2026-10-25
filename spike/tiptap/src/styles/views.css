@@ -181,6 +181,9 @@
 .toggle-list.first { margin-top: 0; border-top: 0; }
 .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--border); }
 .toggle-list .toggle-row:last-child { border-bottom: 0; }
+.set-action { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; margin-bottom: 8px; border: 1px solid var(--border); background: var(--bg); border-radius: var(--radius, 12px); color: inherit; text-align: start; cursor: var(--cursor-hand, pointer); transition: border-color 0.2s, background 0.2s; }
+.set-action:hover { border-color: var(--accent); }
+.set-action > svg { flex: none; color: var(--muted); }
 .toggle-tx { display: flex; flex-direction: column; gap: 2px; }
 .toggle-tx b { font-weight: 600; font-size: 14px; }
 .toggle-tx small { color: var(--muted); font-size: 12px; }

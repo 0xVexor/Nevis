@@ -160,6 +160,7 @@ const cursors = (hex: string) => ({
   grabbing: `${shape(GRABBING, hex)} 12 12, grabbing`,
   zoom: `${zoomCursor(hex)} 10 10, zoom-in`,
   nwse: `${lines('M6 6h5M6 6v5M6 6L18 18M18 18h-5M18 18v-5', hex)} 12 12, nwse-resize`,
+  ew: `${lines('M3 12h18M3 12l4-4M3 12l4 4M21 12l-4-4M21 12l-4 4', hex)} 12 12, col-resize`,
   nesw: `${lines('M18 6h-5M18 6v5M18 6L6 18M6 18h5M6 18v-5', hex)} 12 12, nesw-resize`,
 })
 
@@ -185,6 +186,7 @@ export function apply(s: Settings = state) {
   set('--cursor-zoom', cur.zoom)
   set('--cursor-nwse', cur.nwse)
   set('--cursor-nesw', cur.nesw)
+  set('--cursor-ew', cur.ew)
   set('--radius', s.radius === DEFAULTS.radius ? null : s.radius + 'px')
   set('--radius-sm', s.radius === DEFAULTS.radius ? null : Math.max(3, Math.round(s.radius * 0.67)) + 'px')
   set('--radius-lg', s.radius === DEFAULTS.radius ? null : Math.round(s.radius * 1.33) + 'px')
