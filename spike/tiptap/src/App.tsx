@@ -71,6 +71,8 @@ interface RowProps {
 }
 
 const NO_KIDS: Page[] = []
+const SIDE_MIN = 200
+const SIDE_MAX = 480
 const BIG_TREE = 150 // pages from which the sidebar tree starts collapsed
 
 function TreeRow(props: RowProps) {
@@ -154,6 +156,9 @@ export default function App() {
   const [shut, setShut] = useState<{ favs: boolean; pages: boolean; tags: boolean; saved: boolean }>({ favs: false, pages: false, tags: false, saved: false })
   const [save, setSave] = useState<SaveState>('saved')
   const [sideOpen, setSideOpen] = useState<boolean>(() => store('not.side', true))
+  const [sideW, setSideW] = useState<number | null>(() => store<number | null>('not.sideW', null)) // null: the width of the chosen sidebar style
+  const [sideDrag, setSideDrag] = useState(false)
+  useEffect(() => put('not.sideW', sideW), [sideW])
   const [searching, setSearching] = useState(false)
   const [searchInit, setSearchInit] = useState('') // query to start the search with (a saved search)
   const [tagFilter, setTagFilter] = useState<string | null>(null) // sidebar: show only pages with this tag
@@ -461,7 +466,26 @@ export default function App() {
 
   return (
     <div className={'app' + (reader && view === 'page' && current ? ' reading' : '')} style={{ ['--page-w' as any]: pageW + 'px', ['--r-scale' as any]: readerCfg.scale, ['--r-width' as any]: readerCfg.width + 'px' }}>
-      <aside className={'side' + (sideOpen ? '' : ' closed')} onContextMenu={(e) => (e.preventDefault(), setBlankMenu(new DOMRect(e.clientX, e.clientY, 0, 0)))}>
+      <aside className={'side' + (sideOpen ? '' : ' closed') + (sideDrag ? ' resizing' : '')} style={sideW ? { ['--side-w' as any]: sideW + 'px' } : undefined} onContextMenu={(e) => (e.preventDefault(), setBlankMenu(new DOMRect(e.clientX, e.clientY, 0, 0)))}>
+        <div
+          className="side-grip"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t('Resize sidebar')}
+          title={t('Drag to resize, double-click to reset')}
+          onDoubleClick={() => setSideW(null)}
+          onPointerDown={(e) => {
+            const aside = e.currentTarget.parentElement!
+            const rtl = getComputedStyle(aside).direction === 'rtl'
+            const edge = rtl ? aside.getBoundingClientRect().right : aside.getBoundingClientRect().left
+            e.currentTarget.setPointerCapture(e.pointerId)
+            setSideDrag(true)
+            const move = (ev: PointerEvent) => setSideW(Math.round(Math.min(SIDE_MAX, Math.max(SIDE_MIN, rtl ? edge - ev.clientX : ev.clientX - edge))))
+            const up = () => (setSideDrag(false), window.removeEventListener('pointermove', move), window.removeEventListener('pointerup', up))
+            window.addEventListener('pointermove', move)
+            window.addEventListener('pointerup', up)
+          }}
+        />
         <div className="ws">
           <span className="ws-logo"><Ic.Logo size={32} /></span>
           <span className="ws-name">Noviq.</span>
@@ -608,7 +632,7 @@ export default function App() {
           ) : view === 'drawings' ? (
             <Drawings onOpen={setCurrentId} onNew={() => add(null, 'board')} />
           ) : view === 'settings' ? (
-            <SettingsView />
+            <SettingsView data={{ importMarkdown: doImport, importVault: () => void doVault(), exportAll: doExportAll, backup: doBackup, restore: doRestore, autoBackup: () => setBackupOpen(true), workspaces: () => setFolderOpen(true), syncNow: isTauri ? () => void syncNow() : undefined }} />
           ) : current?.kind === 'board' ? (
             <BoardView key={current.id} page={current} onSave={setSave} onMeta={refresh} readOnly={reader} />
           ) : current ? (
@@ -706,21 +730,8 @@ export default function App() {
                 <MenuItem icon={<Ic.Markdown />} label={t('Export Markdown')} desc={t('Download as a .md file')} onClick={() => (setDataMenu(null), exportMd(current.id))} />
                 <MenuItem icon={<Ic.Pdf />} label={t('Print / PDF')} desc={t('Save as PDF or print')} onClick={() => (setDataMenu(null), printPage(current.title))} />
                 <MenuItem icon={<Ic.Copy />} label={t('Copy as Markdown')} desc={t('Put it on the clipboard')} onClick={async () => { setDataMenu(null); await navigator.clipboard?.writeText(await pageToMarkdown(current)); setToast({ msg: t('Copied') }) }} />
-                <MenuSep />
               </>
             )}
-            <MenuLabel>{t('Import')}</MenuLabel>
-            <MenuItem icon={<Ic.Upload />} label={t('Import Markdown files…')} onClick={() => (setDataMenu(null), doImport())} />
-            <MenuItem icon={<Ic.Folders />} label={t('Import Obsidian vault (folder)…')} onClick={() => (setDataMenu(null), doVault())} />
-            <MenuSep />
-            <MenuLabel>{t('Export & backup')}</MenuLabel>
-            <MenuItem icon={<Ic.Archive />} label={t('Export all pages (zip with Markdown & images)')} onClick={() => (setDataMenu(null), doExportAll())} />
-            <MenuItem icon={<Ic.Download />} label={t('Full backup (JSON)')} onClick={() => (setDataMenu(null), doBackup())} />
-            <MenuItem icon={<Ic.Upload />} label={t('Restore from backup…')} onClick={() => (setDataMenu(null), doRestore())} />
-            <MenuItem icon={<Ic.Save />} label={t('Automatic backup to folder…')} onClick={() => (setDataMenu(null), setBackupOpen(true))} />
-            {isTauri && <MenuSep />}
-            {isTauri && <MenuItem icon={<Ic.Cloud />} label={t('Sync now')} onClick={() => (setDataMenu(null), void syncNow())} />}
-            {<MenuItem icon={<Ic.Layers />} label={t('Workspaces and sync…')} onClick={() => (setDataMenu(null), setFolderOpen(true))} />}
           </div>
         </Popover>
       )}
