@@ -28,6 +28,7 @@ interface Scene {
   w: number
   h: number
   gap: number // typical distance between neighbouring pages, in world units
+  adj: { off: Int32Array; nb: Int32Array } // neighbours of page i: nb[off[i] .. off[i + 1]]
 }
 
 interface View {
@@ -122,6 +123,8 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
   const glideFrame = useRef(0)
   const touchedAt = useRef(0) // last time the view moved
   const settle = useRef(0)
+  // The page under the pointer, kept outside React state so hovering repaints at once (null = use the state, e.g. a hover in the side list).
+  const hoverRef = useRef<{ idx: number; near: Set<number> } | null>(null)
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -159,6 +162,7 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
   useEffect(() => {
     let live = true
     setScene(null)
+    hoverRef.current = null
     const { edges, deg } = picked
     // canonical order (by id), so the same vault always gives the same picture, whatever order the pages were read in: that is what lets it be cached
     const pages = [...picked.pages].sort((a, b) => (a.id < b.id ? -1 : 1))
@@ -169,7 +173,16 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
     void layoutAsync(pages.length, pairs).then((l) => {
       if (!live) return
       const nodes = pages.map((p, i): N => ({ id: p.id, title: p.title || t('Untitled'), x: l.xy[i * 2], y: l.xy[i * 2 + 1], deg: deg.get(p.id) ?? 0, tone: toneOf(p.id) }))
-      setScene({ nodes, edges: pairs, byId, w: l.w, h: l.h, gap: Math.sqrt((l.w * l.h) / Math.max(pages.length, 1)) * 0.9 })
+      const off = new Int32Array(pages.length + 1)
+      for (let e = 0; e < pairs.length; e++) off[pairs[e] + 1]++
+      for (let i = 0; i < pages.length; i++) off[i + 1] += off[i]
+      const at = off.slice(0, pages.length)
+      const nb = new Int32Array(pairs.length)
+      for (let e = 0; e < pairs.length; e += 2) {
+        nb[at[pairs[e]]++] = pairs[e + 1]
+        nb[at[pairs[e + 1]]++] = pairs[e]
+      }
+      setScene({ nodes, edges: pairs, byId, w: l.w, h: l.h, gap: Math.sqrt((l.w * l.h) / Math.max(pages.length, 1)) * 0.9, adj: { off, nb } })
     })
     return () => void (live = false)
   }, [picked])
@@ -371,7 +384,9 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
   const draw = useCallback(() => {
     const cv = canvas.current
     const out = cv?.getContext('2d')
-    const input = paintInput.current
+    const base = paintInput.current
+    const h = hoverRef.current
+    const input = h ? { ...base, focusIdx: h.idx, near: h.near } : base
     const scene = input.scene
     if (!cv || !out || !scene) return
     const dpr = window.devicePixelRatio || 1
@@ -398,8 +413,8 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
     const v = view.current
     const key = `${cv.width}x${cv.height}|${v.x},${v.y},${v.k}|${input.curIdx}|${pal.key}`
     if (!have || have.key !== key || have.scene !== scene) {
-      const mx = Math.round(W * 0.35)
-      const my = Math.round(H * 0.35)
+      const mx = Math.round(W * 0.5)
+      const my = Math.round(H * 0.5)
       const lc = have?.cv ?? document.createElement('canvas')
       lc.width = Math.round((W + 2 * mx) * dpr)
       lc.height = Math.round((H + 2 * my) * dpr)
@@ -633,8 +648,12 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
                 const d = drag.current
                 if (!d) {
                   const i = nodeAt(e.nativeEvent.offsetX, e.nativeEvent.offsetY)
-                  const id = i >= 0 ? (scene!.nodes[i].id) : null
-                  setHover((h) => (h === id ? h : id))
+                  if (hoverRef.current ? hoverRef.current.idx === i : i < 0 && !hover) return
+                  const near = new Set<number>()
+                  if (i >= 0 && scene) for (let k = scene.adj.off[i]; k < scene.adj.off[i + 1]; k++) near.add(scene.adj.nb[k])
+                  hoverRef.current = { idx: i, near }
+                  redraw() // painted before React has re-rendered the side card
+                  setHover(i >= 0 ? scene!.nodes[i].id : null)
                   return
                 }
                 const dx = e.clientX - d.x
@@ -656,7 +675,7 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
                   if (i >= 0) (onClose(), onOpen(scene!.nodes[i].id))
                 }
               }}
-              onPointerLeave={() => ((drag.current = null), setHover(null))}
+              onPointerLeave={() => ((drag.current = null), (hoverRef.current = { idx: -1, near: NO_SET }), redraw(), setHover(null))}
               onDoubleClick={() => fit(true)}
             />
             {!scene && (
@@ -686,7 +705,7 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
             <aside className="gv-top">
               <h4>{t('Most connected')}</h4>
               {top.map((n) => (
-                <button key={n.id} className={n.id === hover ? 'on' : ''} onPointerEnter={() => setHover(n.id)} onPointerLeave={() => setHover(null)} onClick={() => (onClose(), onOpen(n.id))}>
+                <button key={n.id} className={n.id === hover ? 'on' : ''} onPointerEnter={() => ((hoverRef.current = null), setHover(n.id))} onPointerLeave={() => ((hoverRef.current = null), setHover(null))} onClick={() => (onClose(), onOpen(n.id))}>
                   <i style={{ background: n.tone }} />
                   <span dir="auto">{n.title}</span>
                   <em>{n.deg}</em>

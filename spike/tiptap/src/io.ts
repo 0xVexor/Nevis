@@ -242,6 +242,14 @@ export async function importVault(files: File[], onProgress?: (done: number, tot
   }
   const result: VaultResult = { vault, pages: 0, folders: 1, images: 0, tags: 0, skipped: inVault.length - notes.length - new Set(inVault.filter((x) => IMAGE.test(x.path.at(-1)!)).map((x) => x.f)).size }
 
+  // work in slices of ~12 ms and then let the UI draw, so a big vault imports quickly and the app stays responsive meanwhile
+  let sliceAt = performance.now()
+  const breathe = async () => {
+    if (performance.now() - sliceAt < 12) return
+    await new Promise((r) => setTimeout(r))
+    sliceAt = performance.now()
+  }
+
   const root = repo.create(null, 'folder')
   repo.update(root.id, { title: vault })
   const folders = new Map<string, string>([['', root.id]])
@@ -298,7 +306,7 @@ export async function importVault(files: File[], onProgress?: (done: number, tot
     result.pages++
     result.tags += tags.length
     onProgress?.(i + 1, notes.length)
-    if (i % 4 === 3) await new Promise((r) => setTimeout(r)) // let the UI breathe on big vaults
+    await breathe()
   }
 
   // second pass: every title (and alias) exists now, so [[links]] can be resolved, also to older pages
@@ -307,7 +315,7 @@ export async function importVault(files: File[], onProgress?: (done: number, tot
   for (let i = 0; i < made.length; i++) {
     const p = made[i]
     repo.update(p.id, { content: linkify(repo.get(p.id)!.content, titles) }, { history: false })
-    if (i % 25 === 24) await new Promise((r) => setTimeout(r)) // and the app stays responsive while it works through a big vault
+    await breathe()
   }
   return result
 }
