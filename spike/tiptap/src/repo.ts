@@ -33,7 +33,7 @@ export interface PageRepo {
   pagesOnly(): Page[] // without folders
   get(id: string): Page | undefined
   create(parentId: string | null, kind?: PageKind): Page
-  update(id: string, patch: Patch): void
+  update(id: string, patch: Patch, opts?: { history?: boolean }): void // history: false = this edit is machine-made (import, link fix-up) and leaves no history entry
   remove(id: string): void // soft delete, includes descendants
   search(query: string): Page[]
   backlinks(id: string): Page[] // pages that contain a pageLink to `id`
@@ -185,7 +185,7 @@ export class Repo implements PageRepo {
   async watch() {
     if (!isTauri) return
     this.stamp = await vaultStamp()
-    window.setInterval(() => void this.poll(), WATCH_EVERY)
+    window.setInterval(() => !document.hidden && void this.poll(), WATCH_EVERY) // nothing to refresh while the window is not shown; the next tick catches up
   }
 
   private idle = () => !this.dirty.size && !this.gone.size && !this.full
@@ -288,10 +288,10 @@ export class Repo implements PageRepo {
     return page
   }
 
-  update(id: string, patch: Patch) {
+  update(id: string, patch: Patch, opts?: { history?: boolean }) {
     const p = this.pages.find((x) => x.id === id)
     if (!p) return
-    if (patch.content !== undefined) this.snapshot(p)
+    if (patch.content !== undefined && opts?.history !== false) this.snapshot(p)
     Object.assign(p, patch, { updatedAt: Date.now() })
     if (patch.content !== undefined) this.indexLinks(p)
     this.touch(id)

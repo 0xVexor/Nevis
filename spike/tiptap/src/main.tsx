@@ -16,7 +16,9 @@ const root = createRoot(document.getElementById('root')!)
 
 function start() {
   // the workspace is loaded before the first render
-  initStore().then(() => {
+  const bench = import.meta.env.DEV && !isTauri ? Number(new URLSearchParams(location.search).get('bench')) : 0
+  const seeded = bench > 0 ? import('./devBench').then((m) => m.seedBench(bench)) : Promise.resolve()
+  seeded.then(initStore).then(() => {
     void initBackup()
     void repo.watch()
     initSearchIndex()
