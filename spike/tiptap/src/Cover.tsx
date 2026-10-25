@@ -20,7 +20,18 @@ const PEAKS_B = 'M0 400V300l120-60 90 50 130-90 110 80 100-40 140 90 110-70 130 
 const PEAKS_C = 'M0 400V340l140-40 120 30 160-60 140 50 160-30 130 40 150-30 200 40V400z'
 const PINES = 'M0 400V280l30-70 30 70 30-90 30 90 30-60 30 60 30-100 30 100 30-70 30 70 30-90 30 90 30-60 30 60 30-100 30 100 30-80 30 80 30-60 30 60 30-90 30 90 30-70 30 70 30-100 30 100 30-60 30 60 30-80 30 80 30-70 30 70 30-90 30 90 30-60 30 60 30-100 30 100V400z'
 
+// flat colour with a small row of potted plants, drawn as inline SVG (pot tops at y=36, bottoms at y=50 of a 60-high box)
+const potRow = (bg: string, w: number, pots: { x: number; art: string }[], dx = 0) =>
+  `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${w} 60'>${pots.map((p) => `<g transform='translate(${p.x + dx} 36)'>${p.art}</g>`).join('')}</svg>`)}") center 56% / auto 56% no-repeat, ${bg}`
+const arms = (c: string) => `<path d='M-3.5 -6h-3a2 2 0 0 1-2-2v-5M3.5 -9h3a2 2 0 0 0 2-2v-4' stroke='${c}' stroke-width='3' fill='none' stroke-linecap='round'/>`
+const terracotta = `<rect x='-3.5' y='-20' width='7' height='21' rx='3.5' fill='#7fa58f'/>${arms('#7fa58f')}<path d='M-8 0h16l-2.5 14h-11z' fill='#f0a47c'/><rect x='-9' y='-1' width='18' height='4' rx='1.2' fill='#f4b390'/>`
+const concrete = `<path d='M0 0l-6-14 3 7-1-10 4 9 4-9-1 10 3-7z' fill='#3e5f52'/><path d='M0 0l-9-8 6 3-8-1 9 1-2-4zM0 0l9-8-6 3 8-1-9 1 2-4z' fill='#4d6f5f'/><rect x='-9' y='0' width='18' height='15' rx='2.5' fill='#d9d9d4'/><path d='M-9 4h18' stroke='#c4c4be' stroke-width='.8'/>`
+const fabric = `<ellipse cx='0' cy='-6' rx='7' ry='9' fill='#668b72'/><path d='M-3-10v8M3-10v8M0-14v10' stroke='#86ab90' stroke-width='.8'/><circle cx='0' cy='-16' r='3.4' fill='#e6bca5'/><circle cx='0' cy='-16' r='1.2' fill='#f3dccd'/><path d='M-9 0h18v12a4 4 0 0 1-4 4h-10a4 4 0 0 1-4-4z' fill='#b9c9b5'/><circle cx='0' cy='8' r='3' fill='#f4f7f1' opacity='.9'/><circle cx='0' cy='8' r='1' fill='#e6bca5'/>`
+
 const GRADIENTS: { id: string; label: string; css: string }[] = [
+  { id: 'pots-blush', label: 'Blush cacti', css: potRow('#f1e5e3', 120, [30, 60, 90].map((x) => ({ x, art: terracotta }))) },
+  { id: 'pots-azure', label: 'Azure succulents', css: potRow('#568bb0', 240, [128, 156, 184].map((x) => ({ x, art: concrete }))) },
+  { id: 'pots-sage', label: 'Sage cacti', css: potRow('#96a693', 120, [20, 47, 74, 101].map((x) => ({ x, art: fabric }))) },
   { id: 'aurora', label: 'Aurora', css: mesh(['#ff8fd8', 10, 15], ['#7fb2ff', 88, 10], ['#a98bff', 55, 95], ['#7ff0ff', 8, 90]) + ', #5b4bd6' },
   { id: 'nebula', label: 'Nebula', css: stars + ', ' + mesh(['#b44bff', 18, 25], ['#ff4f9a', 82, 30], ['#2f6bff', 50, 100]) + ', #0b0b24' },
   { id: 'prism', label: 'Prism', css: 'conic-gradient(from 210deg at 50% 120%, #ff6ec7, #ffb86b, #fff27a, #6bf2b4, #6bb8ff, #a77bff, #ff6ec7)' },
@@ -38,7 +49,7 @@ const GRADIENTS: { id: string; label: string; css: string }[] = [
 
 /** Covers no longer offered: pages that used them show the closest of the ten. */
 const LEGACY: Record<string, string> = { sunset: 'liquid', ocean: 'lagoon', forest: 'topo', rose: 'peachmist', dusk: 'nebula', mist: 'peachmist', nightsky: 'nebula', dunes: 'peachmist', tide: 'lagoon', 'mesh-iris': 'aurora', 'mesh-peach': 'peachmist', 'mesh-mint': 'lagoon', 'mesh-ember': 'liquid', 'mesh-deep': 'lagoon', sand: 'peachmist' }
-const gradientOf = (id: string) => GRADIENTS.find((g) => g.id === (LEGACY[id] ?? id)) ?? GRADIENTS[0]
+const gradientOf = (id: string) => GRADIENTS.find((g) => g.id === (LEGACY[id] ?? id)) ?? GRADIENTS.find((g) => g.id === 'aurora')!
 
 function useCoverStyle(cover: Cover | undefined) {
   const [url, setUrl] = useState<string | null>(null)

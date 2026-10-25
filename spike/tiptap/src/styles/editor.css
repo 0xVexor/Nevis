@@ -240,7 +240,13 @@
 /* boards (a whole page that is one drawing) and the drawings gallery */
 .scroller:has(.board) { overflow: hidden; display: flex; flex-direction: column; }
 .board { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.board-head { padding: 12px 24px 8px; }
+.board-head { display: flex; align-items: center; gap: 8px; padding: 12px 24px 8px; }
+.board-full { flex: none; }
+.board.full { position: fixed; inset: 0; z-index: 60; background: var(--bg); }
+.board:fullscreen { background: var(--bg); }
+.board.full .board-head { padding: 10px 16px 6px; }
+.board.full .board-title { font-size: 20px; }
+.board.full .board-stage { margin: 0 8px 8px; }
 .board-title { width: 100%; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 26px; font-weight: 700; padding: 4px 0; }
 .board-title::placeholder { color: var(--faint); }
 .board-stage { flex: 1; min-height: 0; margin: 0 16px 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; position: relative; background: var(--bg); }
@@ -252,6 +258,12 @@
 .dw-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 .dw-tools .primary { display: inline-flex; align-items: center; gap: 6px; }
 .dw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.dw-item { position: relative; display: flex; flex-direction: column; }
+.dw-item .dw-card { flex: 1; }
+.dw-del { position: absolute; top: 8px; inset-inline-end: 8px; width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--muted, var(--faint)); opacity: 0; cursor: var(--cursor-hand, pointer); transition: opacity 0.15s, color 0.15s, border-color 0.15s; }
+.dw-item:hover .dw-del, .dw-del:focus-visible { opacity: 1; }
+.dw-del:hover { color: var(--danger, #d33); border-color: var(--danger, #d33); }
+@media (hover: none) { .dw-del { opacity: 1; } }
 .dw-card { display: flex; flex-direction: column; text-align: start; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg); color: inherit; overflow: hidden; cursor: var(--cursor-hand, pointer); transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s; }
 .dw-card:hover { border-color: var(--accent); box-shadow: var(--panel-shadow); transform: translateY(-1px); }
 .dw-thumb { aspect-ratio: 4 / 3; display: grid; place-items: center; background: #fff; border-bottom: 1px solid var(--border); overflow: hidden; }
@@ -278,3 +290,4 @@
 .excalidraw.excalidraw .context-menu-item__shortcut { background: transparent; border: 0; box-shadow: none; padding-block: 0; }
 /* Excalidraw's own loader says "Loading scene…" in English; the spinner alone is enough */
 .excalidraw.excalidraw .LoadingMessage .LoadingMessage-text { display: none; }
+:root[data-board-full] :is(.side, .topbar) { display: none; }

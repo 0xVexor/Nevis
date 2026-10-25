@@ -17,7 +17,7 @@ export function PageIcon({ page }: { page: Pick<Page, 'id' | 'icon' | 'kind'> })
   if (page.icon && !isGlyph(page.icon)) return <span className="pg-ic emoji">{iconNode(page.icon, 15)}</span>
   return (
     <span className="pg-ic tile" style={{ ['--tone' as string]: (page.icon && isGlyph(page.icon) && parseIcon(page.icon).color) || toneOf(page.id) }}>
-      {page.icon ? iconNode(page.icon, 14) : page.kind === 'folder' ? <Ic.Folder size={13} /> : page.kind === 'board' ? <Ic.Pencil size={13} /> : <Ic.Page size={13} />}
+      {page.icon ? iconNode(page.icon, 14) : page.kind === 'folder' ? <Ic.Folder size={13} /> : page.kind === 'board' ? <Ic.Pencil size={13} /> : page.kind === 'todo' ? <Ic.Checklist size={13} /> : <Ic.Page size={13} />}
     </span>
   )
 }
