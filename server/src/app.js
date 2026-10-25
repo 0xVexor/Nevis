@@ -5,6 +5,7 @@ import Fastify from 'fastify'
 import { DUMMY_HASH, Limiter, checkPow, hashPassword, makeChallenge, newId, newRecoveryKey, newToken, recoveryHash, safeEqualHex, sha256hex, verifyPassword } from './auth.js'
 import { blobRow, receiveBlob, receivedBytes, usedBytes } from './blobs.js'
 import { tx } from './db.js'
+import { purgeVault } from './gc.js'
 import { Hub } from './hub.js'
 import { blobKey } from './storage.js'
 import { HttpError, changesSince, commit, createVault, listVaults, ownedVault, publicFile, renameVault, restoreRevision, revisionRow, revisionsOf, stateOf, trashVault, untrashVault, vaultRow } from './vaults.js'
@@ -265,6 +266,16 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
     const v = vaultOf(req)
     trashVault(db, v, now())
     hub.notify(v.id)
+    return { ok: true }
+  })
+
+  /** Deletes a vault that is already in the trash for good, without waiting for the retention period. Not undoable. */
+  app.delete('/v1/vaults/:id/permanent', async (req) => {
+    const v = vaultOf(req, { deleted: true })
+    if (!v.deleted_at) throw new HttpError(409, 'not_in_trash')
+    await purgeVault(db, storage, v.id)
+    hub.notify(v.id)
+    onWrite()
     return { ok: true }
   })
 

@@ -15,6 +15,13 @@ async function dropVaultBlobs(db, storage, vaultId) {
   db.prepare('DELETE FROM blobs WHERE vault_id = ?').run(vaultId)
 }
 
+/** Removes a vault for good: its blobs from the storage, then its rows (files and revisions go with it). */
+export async function purgeVault(db, storage, vaultId) {
+  await dropVaultBlobs(db, storage, vaultId)
+  db.prepare('DELETE FROM ops WHERE vault_id = ?').run(vaultId)
+  db.prepare('DELETE FROM vaults WHERE id = ?').run(vaultId)
+}
+
 export async function runGc({ db, storage, cfg, now = Date.now() }) {
   const stats = { tombstones: 0, revisions: 0, blobs: 0, vaults: 0, users: 0, ops: 0, staging: 0 }
   const keep = now - cfg.retentionDays * DAY

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
   isTauri, saveTextFile, accountChangePassword, accountDelete, accountInfo, accountLogin, accountLogout, accountNewRecoveryKey, accountRecover, accountRegister, accountRevokeDevice, accountStatus,
-  cloudReupload, cloudRestore, cloudTrashed, serverHealth, syncConfirm, syncNow, syncSet, vaultInfo,
+  cloudPurge, cloudReupload, cloudRestore, cloudTrashed, serverHealth, syncConfirm, syncNow, syncSet, vaultInfo,
   type AccountInfo, type AccountStatus, type ServerHealth, type TrashedVault,
 } from './db'
 import { save as saveDialog } from '@tauri-apps/plugin-dialog'
@@ -451,6 +451,16 @@ export function AccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: {
     onClose()
   }
 
+  const purge = async (id: string, name: string) => {
+    const ok = await confirmDialog({
+      title: t('Delete “{name}” for good?', { name }),
+      message: t('It and all its files are removed from the server now and cannot be brought back. The notes on your devices are not touched.'),
+      confirmLabel: t('Delete for good'),
+      danger: true,
+    })
+    if (ok) await run(() => cloudPurge(id))
+  }
+
   const revoke = async (id: string, name: string) => {
     const ok = await confirmDialog({
       title: t('Sign out “{name}”?', { name }),
@@ -557,7 +567,10 @@ export function AccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: {
                       <div key={v.id} className="wsd-row">
                         <span className="wsd-ic"><Ic.Trash size={16} /></span>
                         <span className="wsd-tx"><b dir="auto">{v.name}</b><small>{ago(v.deletedAt)}</small></span>
-                        <span className="wsd-acts"><button disabled={busy} onClick={() => void run(() => cloudRestore(v.id))}>{t('Restore')}</button></span>
+                        <span className="wsd-acts">
+                          <button disabled={busy} onClick={() => void run(() => cloudRestore(v.id))}>{t('Restore')}</button>
+                          <button className="danger" disabled={busy} onClick={() => void purge(v.id, v.name)}>{t('Delete for good')}</button>
+                        </span>
                       </div>
                     ))}
                   </div>
