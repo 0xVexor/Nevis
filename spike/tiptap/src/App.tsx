@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react'
 import { repo, gcFiles, TRASH_DAYS } from './store'
 import type { Cover, Page, PageStatus } from './repo'
 import { SettingsView } from './SettingsPage'
 import { Tasks } from './Tasks'
 import { Drawings } from './Drawings'
+import { SideTip } from './SideTip'
+import { removeInlineDrawing, type DrawingInfo } from './drawingData'
 import { BoardView } from './BoardView'
 import { warmDrawing } from './editor/excalidraw'
 import { CoverBanner, CoverPicker } from './Cover'
@@ -72,9 +74,53 @@ interface RowProps {
 }
 
 const NO_KIDS: Page[] = []
-const SIDE_MIN = 200
-const SIDE_MAX = 480
+const isBox = (index: PageIndex, p: Page) => p.kind === 'folder' || (index.kids.get(p.id) ?? NO_KIDS).length > 0 // holds other pages
+const SIDE_MIN = 160
+const SIDE_MAX = 600
 const BIG_TREE = 150 // pages from which the sidebar tree starts collapsed
+
+/** The compact page list (like IntelliJ's flattened packages): no nesting. Each folder / page with subpages is one row showing its whole path, with its plain pages listed under it. */
+function CompactList(props: Omit<RowProps, 'page' | 'depth'> & { roots: Page[] }) {
+  const { index, roots, currentId, collapsed } = props
+  const label = (p: Page) => p.title || (p.kind === 'folder' ? t('Untitled folder') : t('Untitled'))
+  const file = (p: Page) => (
+    <div key={p.id} className={'row tree cmp-file' + (p.id === currentId ? ' cur' : '')} onClick={() => props.onOpen(p.id)} onContextMenu={(e) => (e.preventDefault(), e.stopPropagation(), props.onMenu(p.id, new DOMRect(e.clientX, e.clientY, 0, 0)))}>
+      <span className="ic"><PageIcon page={p} /></span>
+      <span className="ntitle" dir="auto">{label(p)}</span>
+      <span className="acts">
+        <button title={t('Options')} onClick={(e) => (e.stopPropagation(), props.onMenu(p.id, e.currentTarget.getBoundingClientRect()))}><Ic.Dots size={16} /></button>
+      </span>
+    </div>
+  )
+  const out: ReactNode[] = roots.filter((p) => !isBox(index, p)).map(file)
+  const walk = (p: Page, path: string[]) => {
+    const kids = index.kids.get(p.id) ?? NO_KIDS
+    const files = kids.filter((k) => !isBox(index, k))
+    const open = !collapsed.has(p.id)
+    const folder = p.kind === 'folder'
+    out.push(
+      <div key={p.id} className={'row tree cmp-head' + (folder ? ' folder' : '') + (p.id === currentId ? ' cur' : '')} onClick={() => (folder ? props.onToggle(p.id) : props.onOpen(p.id))} onContextMenu={(e) => (e.preventDefault(), e.stopPropagation(), props.onMenu(p.id, new DOMRect(e.clientX, e.clientY, 0, 0)))}>
+        <button className={'twisty' + (open ? ' open' : '')} style={{ visibility: files.length ? 'visible' : 'hidden' }} onClick={(e) => (e.stopPropagation(), props.onToggle(p.id))} aria-label={t('Expand or collapse')}>
+          <Ic.Chevron size={14} />
+        </button>
+        <span className="ic"><PageIcon page={p} /></span>
+        <span className="ntitle" dir="auto" title={[...path, label(p)].join(' / ')}>
+          {path.length > 0 && <i className="cmp-path">{(path.length > 2 ? '… / ' : '') + path.slice(-2).join(' / ')} / </i>}
+          {label(p)}
+        </span>
+        {files.length > 0 && <span className="tree-count">{String(files.length).padStart(2, '0')}</span>}
+        <span className="acts">
+          <button title={t('Options')} onClick={(e) => (e.stopPropagation(), props.onMenu(p.id, e.currentTarget.getBoundingClientRect()))}><Ic.Dots size={16} /></button>
+          <button title={folder ? t('New page in folder') : t('New subpage')} onClick={(e) => (e.stopPropagation(), props.onAdd(p.id))}><Ic.Plus size={16} /></button>
+        </span>
+      </div>,
+    )
+    if (open) files.forEach((f) => out.push(file(f)))
+    kids.filter((k) => isBox(index, k)).forEach((k) => walk(k, [...path, label(p)]))
+  }
+  roots.filter((p) => isBox(index, p)).forEach((p) => walk(p, []))
+  return <>{out}</>
+}
 
 function TreeRow(props: RowProps) {
   const { page, depth, index, currentId, collapsed } = props
@@ -196,6 +242,27 @@ export default function App() {
     if (current) localStorage.setItem('not.current', current.id)
   }, [current])
   useEffect(() => put('not.side', sideOpen), [sideOpen])
+  // views lay themselves out by the width of the main panel (window minus sidebar), not the window: data-main on .app is lg / md / sm / xs
+  const mainWatch = useRef<ResizeObserver>(undefined)
+  const mainRef = useCallback((main: HTMLElement | null) => {
+    mainWatch.current?.disconnect()
+    const app = main?.parentElement
+    if (!main || !app) return
+    const ro = new ResizeObserver(() => {
+      const w = main.clientWidth
+      app.dataset.main = w > 940 ? 'lg' : w > 700 ? 'md' : w > 480 ? 'sm' : 'xs'
+    })
+    ro.observe(main)
+    mainWatch.current = ro
+  }, [])
+  // a narrow window has no room for the sidebar beside the page: it starts out of the way (Ctrl+\ or the button brings it back)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 760px)')
+    if (mq.matches) setSideOpen(false)
+    const on = (e: MediaQueryListEvent) => e.matches && setSideOpen(false)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
   useEffect(() => put('not.panel.v2', panelOpen), [panelOpen])
   // tools opened from the page panel (it talks to us through window events, so it needs no extra props)
   useEffect(() => {
@@ -264,8 +331,9 @@ export default function App() {
     return () => window.removeEventListener('keydown', key, true)
   }, [])
 
-  const add = (parentId: string | null, kind?: 'board') => {
+  const add = (parentId: string | null, kind?: 'board' | 'todo') => {
     const p = repo.create(parentId, kind)
+    if (kind === 'todo') repo.update(p.id, { title: t('To-do list') }, { history: false })
     if (parentId) expand(parentId)
     refresh()
     setCurrentId(p.id)
@@ -310,6 +378,13 @@ export default function App() {
     refresh()
     if (id === currentId) setCurrentId(repo.pagesOnly()[0]?.id ?? '')
     setToast({ msg: t('“{title}” moved to trash', { title: p.title || t('Untitled') }), undo: () => (repo.restoreFromTrash(id), refresh(), p.kind !== 'folder' && setCurrentId(id)) })
+  }
+  const delDrawing = (d: DrawingInfo) => {
+    if (d.source === 'board') return del(d.pageId)
+    const before = removeInlineDrawing(d.pageId, Number(d.key.split(':')[1]))
+    if (!before) return
+    refresh()
+    setToast({ msg: t('Drawing deleted'), undo: () => (repo.update(d.pageId, { content: before }), refresh()) })
   }
   const duplicate = (id: string) => {
     const p = repo.get(id)
@@ -437,6 +512,8 @@ export default function App() {
     { id: 'new-page', label: t('New page'), icon: <Ic.Page />, keywords: 'create add صفحه جدید', run: () => add(null) },
     { id: 'templates', label: t('Templates'), icon: <Ic.Blocks />, keywords: 'template قالب تمپلیت', run: () => setTplOpen(true) },
     { id: 'new-folder', label: t('New folder'), icon: <Ic.Folder />, keywords: 'create add پوشه', run: () => addFolder(null) },
+    { id: 'compact-pages', label: settings.pagesView === 'compact' ? t('Show pages as a tree') : t('Show pages as a compact list'), icon: <Ic.Layers />, keywords: 'compact flat list tree pages sidebar intellij فشرده لیست درخت صفحه', run: () => updateSettings({ pagesView: settings.pagesView === 'compact' ? 'tree' : 'compact' }) },
+    { id: 'new-todo', label: t('New to-do list'), icon: <Ic.Checklist />, keywords: 'create add todo task list checklist لیست کار تسک چک‌لیست جدید', run: () => add(null, 'todo') },
     { id: 'new-board', label: t('New board'), icon: <Ic.Pencil />, keywords: 'create add whiteboard drawing canvas sketch بوم نقاشی طراحی جدید', run: () => add(null, 'board') },
     ...(current && view === 'page' ? [
       { id: 'subpage', label: t('Add subpage'), icon: <Ic.Plus />, keywords: 'زیرصفحه', run: () => add(current.id) },
@@ -550,7 +627,8 @@ export default function App() {
           )}
 
           {<button className={"section" + (shut.pages ? " shut" : "")} onClick={() => setShut((s) => ({ ...s, pages: !s.pages }))}>{t('Pages')}<Ic.Chevron size={13} /></button>}
-          {!shut.pages && roots.map((p) => <TreeRow key={p.id} {...rowProps} page={p} depth={0} />)}
+          {!shut.pages && settings.pagesView === 'compact' && <div className="cmp-list"><CompactList {...rowProps} roots={roots} /></div>}
+          {!shut.pages && settings.pagesView !== 'compact' && <div className="tree-scroll"><div className="tree-in">{roots.map((p) => <TreeRow key={p.id} {...rowProps} page={p} depth={0} />)}</div></div>}
           {!shut.pages && roots.length === 0 && <div className="empty-note">{t('No pages yet')}</div>}
 
           {tagList.length > 0 && (
@@ -558,11 +636,17 @@ export default function App() {
           )}
 
           <div className="side-utils">
+          <button className="row plain" onClick={() => add(null)}>
+            <span className="ic"><Ic.Page /></span><span className="ntitle">{t('New page')}</span>
+          </button>
           <button className="row plain" onClick={() => addFolder(null)}>
             <span className="ic"><Ic.Folder /></span><span className="ntitle">{t('New folder')}</span>
           </button>
           <button className="row plain" onPointerEnter={warmDrawing} onFocus={warmDrawing} onClick={() => add(null, 'board')}>
             <span className="ic"><Ic.Pencil /></span><span className="ntitle">{t('New board')}</span>
+          </button>
+          <button className="row plain" onClick={() => add(null, 'todo')}>
+            <span className="ic"><Ic.Checklist /></span><span className="ntitle">{t('New to-do list')}</span>
           </button>
           <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => setView('files')}>
             <span className="ic"><Ic.Folders /></span><span className="ntitle">{t('Files')}</span>
@@ -574,6 +658,7 @@ export default function App() {
           </div>
         </div>
 
+        <SideTip />
         <div className="side-foot">
           <WorkspaceCard onOpen={() => setFolderOpen(true)} />
           <button className="new-page" onClick={() => add(null)}>
@@ -583,7 +668,7 @@ export default function App() {
         </div>
       </aside>
 
-      <main className={'main' + (panelOpen && !reader && view === 'page' && current ? ' drawer-open' : '')}>
+      <main ref={mainRef} className={'main' + (panelOpen && !reader && view === 'page' && current ? ' drawer-open' : '')}>
         <header className="topbar">
           {!sideOpen && <button className="icon-btn" title={t('Open sidebar  Ctrl+\\')} onClick={() => setSideOpen(true)}><Ic.Sidebar /></button>}
           <nav className="crumbs">
@@ -631,9 +716,9 @@ export default function App() {
           ) : view === 'files' ? (
             <Explorer pages={pages} onOpen={setCurrentId} onChange={refresh} onToast={(msg, undo) => setToast({ msg, undo })} />
           ) : view === 'tasks' ? (
-            <Tasks onOpen={setCurrentId} />
+            <Tasks onOpen={setCurrentId} onNewList={() => add(null, 'todo')} />
           ) : view === 'drawings' ? (
-            <Drawings onOpen={setCurrentId} onNew={() => add(null, 'board')} />
+            <Drawings onOpen={setCurrentId} onNew={() => add(null, 'board')} onDelete={delDrawing} />
           ) : view === 'settings' ? (
             <SettingsView data={{ importMarkdown: doImport, importVault: () => void doVault(), exportAll: doExportAll, backup: doBackup, restore: doRestore, autoBackup: () => setBackupOpen(true), workspaces: () => setFolderOpen(true), account: isTauri ? () => setAccountOpen(true) : undefined, syncNow: isTauri ? () => void syncNow() : undefined }} />
           ) : current?.kind === 'board' ? (
@@ -701,6 +786,7 @@ export default function App() {
             <MenuItem icon={<Ic.Plus />} label={t('New page')} onClick={() => (add(null), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Folders />} label={t('New folder')} onClick={() => (addFolder(null), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Pencil />} label={t('New board')} onClick={() => (add(null, 'board'), setBlankMenu(null))} />
+            <MenuItem icon={<Ic.Checklist />} label={t('New to-do list')} onClick={() => (add(null, 'todo'), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Blocks />} label={t('New from template…')} onClick={() => (setTplOpen(true), setBlankMenu(null))} />
             <MenuSep />
             <MenuLabel>{t('Go to')}</MenuLabel>

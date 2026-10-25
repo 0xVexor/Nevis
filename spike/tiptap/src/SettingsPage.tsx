@@ -1,21 +1,21 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { confirmDialog } from './dialog'
-import { ACCENTS, DEFAULTS, FONTS, PRESETS, TEXT_COLORS, updateSettings, useSettings, type FontId, type SidebarStyle, type Theme } from './settings'
+import { ACCENTS, DEFAULTS, FONTS, PRESETS, TEXT_COLORS, loadFont, updateSettings, useSettings, type FontGroup, type FontId, type SidebarStyle, type Theme } from './settings'
 import { pickFiles } from './io'
 import { putFile } from './attachments'
 import * as Ic from './icons'
 import { t } from './i18n'
-import { Select } from './ui'
 import { SHORTCUTS, keyLabel } from './shortcuts'
 
-type Tab = 'appearance' | 'editor' | 'general' | 'data' | 'shortcuts' | 'language'
+type Tab = 'appearance' | 'editor' | 'language' | 'general' | 'data' | 'shortcuts' | 'about'
 const TABS: { id: Tab; label: string; title: string; hint: string; icon: ReactNode }[] = [
-  { id: 'appearance', label: 'Appearance', title: 'Appearance', hint: 'Customize how the app looks and feels.', icon: <Ic.Palette /> },
-  { id: 'editor', label: 'Editor & font', title: 'Editor', hint: 'Set the font, size and color of page text.', icon: <Ic.Type /> },
+  { id: 'appearance', label: 'Appearance', title: 'Appearance', hint: 'Colors, background, glass and the shape of the app.', icon: <Ic.Palette /> },
+  { id: 'editor', label: 'Editor & font', title: 'Editor & font', hint: 'The typeface, size and color of your page text.', icon: <Ic.Type /> },
+  { id: 'language', label: 'Language', title: 'Language & layout', hint: 'The interface language and which side things sit on.', icon: <Ic.Globe /> },
   { id: 'general', label: 'General', title: 'General', hint: 'Reminders and how files are stored.', icon: <Ic.Settings /> },
   { id: 'data', label: 'Data & backup', title: 'Data & backup', hint: 'Import, export, back up and sync your notes.', icon: <Ic.Archive /> },
   { id: 'shortcuts', label: 'Shortcuts', title: 'Keyboard shortcuts', hint: 'Everything you can do without leaving the keyboard.', icon: <Ic.Keyboard /> },
-  { id: 'language', label: 'Language', title: 'Language & layout', hint: 'Choose the interface language and which side things sit on.', icon: <Ic.Globe /> },
+  { id: 'about', label: 'About', title: 'About', hint: 'What this app is.', icon: <Ic.Info /> },
 ]
 
 const THEMES: { id: Theme; label: string }[] = [
@@ -30,25 +30,83 @@ const SIDEBAR_STYLES: { id: SidebarStyle; label: string }[] = [
   { id: 'icons', label: 'Icons only' },
 ]
 
-const Toggle = ({ label, hint, on, onChange }: { label: string; hint?: string; on: boolean; onChange: (v: boolean) => void }) => (
-  <div className="toggle-row">
-    <span className="toggle-tx">
-      <b>{label}</b>
-      {hint && <small>{hint}</small>}
-    </span>
-    <button role="switch" aria-checked={on} aria-label={label} className={'switch' + (on ? ' on' : '')} onClick={() => onChange(!on)} />
-  </div>
-)
+// ───── building blocks: a card holds rows; a row is "label + hint" on one side and its control on the other ─────
 
-const Group = ({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) => (
-  <section className="set-group">
-    <h3>{title}</h3>
-    {hint && <p>{hint}</p>}
-    {children}
+const Card = ({ icon, title, hint, children }: { icon?: ReactNode; title: string; hint?: string; children: ReactNode }) => (
+  <section className="sx-card">
+    <header className="sx-card-head">
+      {icon && <span className="sx-ic">{icon}</span>}
+      <div>
+        <h3>{title}</h3>
+        {hint && <p>{hint}</p>}
+      </div>
+    </header>
+    <div className="sx-card-body">{children}</div>
   </section>
 )
 
-/** Miniature of the app drawn with the live tokens, so every setting shows up here at once. */
+/** `wide` rows put the control under the text (swatches, grids); the others keep it beside it. */
+const Row = ({ label, hint, children, wide }: { label: string; hint?: string; children: ReactNode; wide?: boolean }) => (
+  <div className={'sx-row' + (wide ? ' wide' : '')}>
+    <div className="sx-tx">
+      <b>{label}</b>
+      {hint && <small>{hint}</small>}
+    </div>
+    <div className="sx-ctl">{children}</div>
+  </div>
+)
+
+const Switch = ({ label, on, onChange }: { label: string; on: boolean; onChange: (v: boolean) => void }) => (
+  <button role="switch" aria-checked={on} aria-label={label} className={'switch' + (on ? ' on' : '')} onClick={() => onChange(!on)} />
+)
+
+const Toggle = ({ label, hint, on, onChange }: { label: string; hint?: string; on: boolean; onChange: (v: boolean) => void }) => (
+  <Row label={label} hint={hint}>
+    <Switch label={label} on={on} onChange={onChange} />
+  </Row>
+)
+
+const Range = ({ label, value, min, max, step = 1, unit = '', onChange }: { label: string; value: number; min: number; max: number; step?: number; unit?: string; onChange: (v: number) => void }) => (
+  <div className="sx-range">
+    <input type="range" aria-label={label} min={min} max={max} step={step} value={value} style={{ ['--p' as string]: ((value - min) / (max - min)) * 100 + '%' } as CSSProperties} onChange={(e) => onChange(+e.target.value)} />
+    <output>
+      {value}
+      {unit}
+    </output>
+  </div>
+)
+
+const Segmented = <V extends string>({ value, options, onChange }: { value: V; options: { id: V; label: string; lang?: string }[]; onChange: (v: V) => void }) => (
+  <div className="segmented" role="radiogroup">
+    {options.map((o) => (
+      <button key={o.id} role="radio" aria-checked={value === o.id} lang={o.lang} className={value === o.id ? 'on' : ''} onClick={() => onChange(o.id)}>
+        {o.label}
+      </button>
+    ))}
+  </div>
+)
+
+const Swatches = ({ value, colors, onPick, fallback }: { value: string | null; colors: string[]; onPick: (c: string | null) => void; fallback: string }) => {
+  const custom = !!value && !colors.includes(value)
+  return (
+    <div className="swatches">
+      <button className={'swatch default' + (!value ? ' on' : '')} title={t('Default')} aria-label={t('Default')} onClick={() => onPick(null)}>
+        <Ic.Check size={14} />
+      </button>
+      {colors.map((c) => (
+        <button key={c} className={'swatch' + (value === c ? ' on' : '')} style={{ background: c }} title={c} aria-label={c} onClick={() => onPick(c)}>
+          <Ic.Check size={14} />
+        </button>
+      ))}
+      <label className={'swatch custom' + (custom ? ' on' : '')} title={t('Custom color')} style={custom ? { background: value! } : undefined}>
+        {custom ? <Ic.Check size={14} /> : <Ic.Plus size={14} />}
+        <input type="color" value={value ?? fallback} onChange={(e) => onPick(e.target.value)} />
+      </label>
+    </div>
+  )
+}
+
+/** Miniature of the app drawn with the live tokens (background, glass, radius, accent), so every change shows up here at once. */
 function Preview() {
   return (
     <div className="pv" aria-hidden>
@@ -57,101 +115,144 @@ function Preview() {
         <i className="pv-row cur" />
         <i className="pv-row" />
         <i className="pv-row" />
+        <i className="pv-row short" />
       </div>
       <div className="pv-main">
         <i className="pv-title" />
         <i className="pv-line" />
         <i className="pv-line short" />
+        <i className="pv-line" />
         <i className="pv-btn" />
       </div>
     </div>
   )
 }
 
+// ───── tabs ─────
+
 function Appearance() {
   const s = useSettings()
-  const custom = !!s.accent && !ACCENTS.includes(s.accent)
   const bgKey = s.bg.kind === 'preset' ? s.bg.id : s.bg.kind
   return (
     <>
-      <Group title={t('Theme')}>
-        <div className="theme-cards">
-          {THEMES.map((th) => (
-            <button key={th.id} className={'theme-card' + (s.theme === th.id ? ' on' : '')} onClick={() => updateSettings({ theme: th.id })}>
-              <span className={'theme-prev tp-' + th.id}>
-                <i /><i /><i />
+      <div className="sx-hero">
+        <Preview />
+      </div>
+
+      <Card icon={<Ic.Palette />} title={t('Theme & color')}>
+        <Row label={t('Theme')} wide>
+          <div className="theme-cards">
+            {THEMES.map((th) => (
+              <button key={th.id} className={'theme-card' + (s.theme === th.id ? ' on' : '')} aria-pressed={s.theme === th.id} onClick={() => updateSettings({ theme: th.id })}>
+                <span className={'theme-prev tp-' + th.id}>
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                {t(th.label)}
+              </button>
+            ))}
+          </div>
+        </Row>
+        <Row label={t('Accent color')} hint={t('Buttons, highlights and the mouse pointer follow it.')} wide>
+          <Swatches value={s.accent} colors={ACCENTS} fallback="#6857f0" onPick={(accent) => updateSettings({ accent })} />
+        </Row>
+      </Card>
+
+      <Card icon={<Ic.Image />} title={t('Background')} hint={t('Shows behind the sidebar and around the app.')}>
+        <Row label={t('Style')} wide>
+          <div className="bg-grid">
+            <button className={'bg-tile' + (bgKey === 'default' ? ' on' : '')} onClick={() => updateSettings({ bg: { kind: 'default' } })}>
+              <span className="bg-prev bp-default" />
+              {t('Default')}
+            </button>
+            <button className={'bg-tile' + (bgKey === 'none' ? ' on' : '')} onClick={() => updateSettings({ bg: { kind: 'none' } })}>
+              <span className="bg-prev bp-none" />
+              {t('Plain')}
+            </button>
+            {PRESETS.map((p) => (
+              <button key={p.id} className={'bg-tile' + (bgKey === p.id ? ' on' : '')} onClick={() => updateSettings({ bg: { kind: 'preset', id: p.id } })}>
+                <span className="bg-prev" style={{ ['--c1' as string]: p.dark[0], ['--c2' as string]: p.dark[1], ['--l1' as string]: p.light[0], ['--l2' as string]: p.light[1] }} />
+                {t(p.label)}
+              </button>
+            ))}
+            <button
+              className={'bg-tile' + (bgKey === 'image' ? ' on' : '')}
+              onClick={async () => {
+                const [f] = await pickFiles('image/*')
+                if (f) updateSettings({ bg: { kind: 'image', file: await putFile(f) } })
+              }}
+            >
+              <span className="bg-prev bp-add">
+                <Ic.Image size={20} />
               </span>
-              {t(th.label)}
+              {t('My image')}
             </button>
-          ))}
-        </div>
-      </Group>
+          </div>
+        </Row>
+        {s.bg.kind === 'preset' && (
+          <Row label={t('Color strength')} hint={t('How strongly the background colors glow.')}>
+            <Range label={t('Color strength')} value={s.bgStrength} min={50} max={200} step={5} unit="%" onChange={(bgStrength) => updateSettings({ bgStrength })} />
+          </Row>
+        )}
+      </Card>
 
-      <Group title={t('Accent color')}>
-        <div className="swatches">
-          <button className={'swatch default' + (!s.accent ? ' on' : '')} title={t('Default')} onClick={() => updateSettings({ accent: null })}>
-            <Ic.Check size={14} />
-          </button>
-          {ACCENTS.map((c) => (
-            <button key={c} className={'swatch' + (s.accent === c ? ' on' : '')} style={{ background: c }} title={c} onClick={() => updateSettings({ accent: c })}>
-              <Ic.Check size={14} />
-            </button>
-          ))}
-          <label className={'swatch custom' + (custom ? ' on' : '')} title={t('Custom color')} style={custom ? { background: s.accent! } : undefined}>
-            {custom ? <Ic.Check size={14} /> : <Ic.Plus size={14} />}
-            <input type="color" value={s.accent ?? '#6857f0'} onChange={(e) => updateSettings({ accent: e.target.value })} />
-          </label>
-        </div>
-      </Group>
+      <Card icon={<Ic.Layers />} title={t('Surfaces')} hint={t('Make the panels see-through so the background shows behind them.')}>
+        <Row label={t('Sidebar style')}>
+          <Segmented value={s.sidebar} options={SIDEBAR_STYLES.map((o) => ({ ...o, label: t(o.label) }))} onChange={(sidebar) => updateSettings({ sidebar })} />
+        </Row>
+        <Row label={t('Page list')} hint={t('Tree nests subpages. Compact lists each folder as one row with its pages right under it.')}>
+          <Segmented value={s.pagesView} options={[{ id: 'tree', label: t('Tree') }, { id: 'compact', label: t('Compact') }]} onChange={(pagesView) => updateSettings({ pagesView })} />
+        </Row>
+        <Row label={t('Sidebar glass')} hint={t('Transparency and blur of the sidebar.')}>
+          <Range label={t('Sidebar glass')} value={s.sideGlass} min={0} max={100} step={5} unit="%" onChange={(sideGlass) => updateSettings({ sideGlass })} />
+        </Row>
+        <Row label={t('Main panel glass')} hint={t('Transparency and blur of the page area.')}>
+          <Range label={t('Main panel glass')} value={s.mainGlass} min={0} max={100} step={5} unit="%" onChange={(mainGlass) => updateSettings({ mainGlass })} />
+        </Row>
+        <Row label={t('Corner radius')}>
+          <Range label={t('Corner radius')} value={s.radius} min={4} max={20} unit="px" onChange={(radius) => updateSettings({ radius })} />
+        </Row>
+      </Card>
 
-      <Group title={t('Background')} hint={t('Shows behind the sidebar and around the app.')}>
-        <div className="bg-grid">
-          <button className={'bg-tile' + (bgKey === 'default' ? ' on' : '')} onClick={() => updateSettings({ bg: { kind: 'default' } })}>
-            <span className="bg-prev bp-default" />{t('Default')}
-          </button>
-          <button className={'bg-tile' + (bgKey === 'none' ? ' on' : '')} onClick={() => updateSettings({ bg: { kind: 'none' } })}>
-            <span className="bg-prev bp-none" />{t('Plain')}
-          </button>
-          {PRESETS.map((p) => (
-            <button key={p.id} className={'bg-tile' + (bgKey === p.id ? ' on' : '')} onClick={() => updateSettings({ bg: { kind: 'preset', id: p.id } })}>
-              <span className="bg-prev" style={{ ['--c1' as string]: p.dark[0], ['--c2' as string]: p.dark[1], ['--l1' as string]: p.light[0], ['--l2' as string]: p.light[1] }} />
-              {t(p.label)}
-            </button>
-          ))}
-          <button
-            className={'bg-tile' + (bgKey === 'image' ? ' on' : '')}
-            onClick={async () => {
-              const [f] = await pickFiles('image/*')
-              if (f) updateSettings({ bg: { kind: 'image', file: await putFile(f) } })
-            }}
-          >
-            <span className="bg-prev bp-add"><Ic.Image size={20} /></span>{t('My image')}
-          </button>
-        </div>
-      </Group>
-
-      <Group title={t('Sidebar style')}>
-        <div className="segmented">
-          {SIDEBAR_STYLES.map((o) => (
-            <button key={o.id} className={s.sidebar === o.id ? 'on' : ''} onClick={() => updateSettings({ sidebar: o.id })}>{t(o.label)}</button>
-          ))}
-        </div>
-      </Group>
-
-      <Group title={t('Corner radius')}>
-        <div className="range-row">
-          <input type="range" min={4} max={20} step={1} value={s.radius} onChange={(e) => updateSettings({ radius: +e.target.value })} />
-          <output>{s.radius}px</output>
-        </div>
-      </Group>
-
-      <div className="toggle-list">
-        <Toggle label={t('Glass effect')} hint={t('Floating, blurred sidebar over the background')} on={s.glass} onChange={(glass) => updateSettings({ glass })} />
+      <Card icon={<Ic.Settings />} title={t('Interface')}>
         <Toggle label={t('Show cover image')} on={s.showCovers} onChange={(showCovers) => updateSettings({ showCovers })} />
         <Toggle label={t('Show page icons')} on={s.showIcons} onChange={(showIcons) => updateSettings({ showIcons })} />
         <Toggle label={t('Reduce motion')} hint={t('Minimizes animations.')} on={s.reduceMotion} onChange={(reduceMotion) => updateSettings({ reduceMotion })} />
-      </div>
+      </Card>
     </>
+  )
+}
+
+const GROUPS: { id: FontGroup; label: string; sample: string }[] = [
+  { id: 'persian', label: 'Persian & Arabic', sample: 'سلام، این یک نمونه است ۱۲۳' },
+  { id: 'english', label: 'English', sample: 'The quick brown fox 123' },
+  { id: 'system', label: 'System', sample: 'Aa  آب' },
+]
+
+function FontPicker({ value, onPick }: { value: FontId; onPick: (id: FontId) => void }) {
+  useEffect(() => FONTS.forEach(loadFont), []) // every card previews its own face
+  return (
+    <div className="fp">
+      {GROUPS.map((g) => (
+        <div key={g.id} className="fp-group">
+          <div className="fp-label">{t(g.label)}</div>
+          <div className="fp-grid">
+            {FONTS.filter((f) => f.group === g.id).map((f) => (
+              <button key={f.id} className={'fp-card' + (value === f.id ? ' on' : '')} aria-pressed={value === f.id} onClick={() => onPick(f.id)}>
+                <span className="fp-name">
+                  {t(f.label)}
+                  {value === f.id && <Ic.Check size={14} />}
+                </span>
+                <span className="fp-sample" dir="auto" style={{ fontFamily: f.stack }}>
+                  {f.sample ?? g.sample}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -159,49 +260,64 @@ function Editor() {
   const s = useSettings()
   return (
     <>
-      <Group title={t('Font')}>
-        <Select value={s.font} onChange={(v) => updateSettings({ font: v as FontId })} options={FONTS.map((f) => ({ value: f.id, label: t(f.label) }))} />
-      </Group>
+      <Card icon={<Ic.Type />} title={t('Font')} hint={t('Applies to the text of your pages. Every font is built in, so it works offline.')}>
+        <FontPicker value={s.font} onPick={(font) => updateSettings({ font })} />
+      </Card>
 
-      <Group title={t('Text size')}>
-        <div className="range-row">
-          <input type="range" min={13} max={22} step={1} value={s.fontSize} onChange={(e) => updateSettings({ fontSize: +e.target.value })} />
-          <output>{s.fontSize}px</output>
+      <Card icon={<Ic.Settings />} title={t('Text')}>
+        <Row label={t('Text size')}>
+          <Range label={t('Text size')} value={s.fontSize} min={13} max={22} unit="px" onChange={(fontSize) => updateSettings({ fontSize })} />
+        </Row>
+        <Row label={t('Text color')} hint={t('Leave on default to follow the theme.')} wide>
+          <Swatches value={s.textColor} colors={TEXT_COLORS} fallback="#888888" onPick={(textColor) => updateSettings({ textColor })} />
+        </Row>
+        <div className="font-preview tiptap-like">
+          <h4>{t('Preview')}</h4>
+          <p>
+            متغیر <code>count</code> را تعریف کنید و مقدار ۱۰ بدهید. This is an English sentence in the middle.
+          </p>
         </div>
-      </Group>
-
-      <Group title={t('Text color')}>
-        <div className="swatches">
-          <button className={'swatch default' + (!s.textColor ? ' on' : '')} title={t('Default')} onClick={() => updateSettings({ textColor: null })}>
-            <Ic.Check size={14} />
-          </button>
-          {TEXT_COLORS.map((c) => (
-            <button key={c} className={'swatch' + (s.textColor === c ? ' on' : '')} style={{ background: c }} title={c} onClick={() => updateSettings({ textColor: c })}>
-              <Ic.Check size={14} />
-            </button>
-          ))}
-          <label className={'swatch custom' + (s.textColor && !TEXT_COLORS.includes(s.textColor) ? ' on' : '')} title={t('Custom color')} style={s.textColor && !TEXT_COLORS.includes(s.textColor) ? { background: s.textColor } : undefined}>
-            {s.textColor && !TEXT_COLORS.includes(s.textColor) ? <Ic.Check size={14} /> : <Ic.Plus size={14} />}
-            <input type="color" value={s.textColor ?? '#888888'} onChange={(e) => updateSettings({ textColor: e.target.value })} />
-          </label>
-        </div>
-      </Group>
-
-      <div className="font-preview tiptap-like">
-        <h4>{t('Preview')}</h4>
-        <p>متغیر <code>count</code> را تعریف کنید و مقدار ۱۰ بدهید. This is an English sentence in the middle.</p>
-      </div>
+      </Card>
     </>
+  )
+}
+
+function LanguageTab() {
+  const s = useSettings()
+  return (
+    <Card icon={<Ic.Globe />} title={t('Language & layout')}>
+      <Row label={t('Interface language')} hint={t('Changes the language of menus, buttons and messages. Your page content is never translated.')}>
+        <Segmented
+          value={s.lang}
+          options={[
+            { id: 'en', label: 'English' },
+            { id: 'fa', label: 'فارسی', lang: 'fa' },
+          ]}
+          onChange={(lang) => updateSettings({ lang })}
+        />
+      </Row>
+      <Row label={t('Layout direction')} hint={t('Where the sidebar, lists and panels sit. “Auto” follows the language.')}>
+        <Segmented
+          value={s.dir}
+          options={[
+            { id: 'auto', label: t('Auto') },
+            { id: 'ltr', label: t('Left to right') },
+            { id: 'rtl', label: t('Right to left') },
+          ]}
+          onChange={(dir) => updateSettings({ dir })}
+        />
+      </Row>
+    </Card>
   )
 }
 
 function General() {
   const s = useSettings()
   return (
-    <div className="toggle-list first">
+    <Card icon={<Ic.Settings />} title={t('Reminders & files')}>
       <Toggle label={t('Flashcard reminders')} hint={t('Notifies you when cards are due and the app is in the background.')} on={s.cardReminders} onChange={(cardReminders) => updateSettings({ cardReminders })} />
       <Toggle label={t('Compress large images')} hint={t('Shrinks big pictures when you add them, so the vault and sync stay light.')} on={s.compressImages} onChange={(compressImages) => updateSettings({ compressImages })} />
-    </div>
+    </Card>
   )
 }
 
@@ -219,7 +335,7 @@ function Shortcuts() {
         <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Search shortcuts…')} aria-label={t('Search shortcuts…')} />
       </div>
       {groups.map((g) => (
-        <Group key={g.title} title={t(g.title)}>
+        <Card key={g.title} title={t(g.title)}>
           <ul className="sc-list">
             {g.items.map((i) => (
               <li key={i.label}>
@@ -228,14 +344,16 @@ function Shortcuts() {
                   {i.keys.map((chord, n) => (
                     <span key={n} className="sc-chord">
                       {n > 0 && <em>{t('or')}</em>}
-                      {chord.map((k, j) => <kbd key={j}>{keyLabel(k)}</kbd>)}
+                      {chord.map((k, j) => (
+                        <kbd key={j}>{keyLabel(k)}</kbd>
+                      ))}
                     </span>
                   ))}
                 </span>
               </li>
             ))}
           </ul>
-        </Group>
+        </Card>
       ))}
       {!groups.length && <p className="sc-none">{t('No shortcut matches.')}</p>}
     </>
@@ -254,56 +372,50 @@ export interface DataActions {
   syncNow?: () => void
 }
 
-const Row = ({ icon, label, hint, onClick }: { icon: ReactNode; label: string; hint?: string; onClick: () => void }) => (
-    <button className="set-action" onClick={onClick}>
-      {icon}
-      <span className="toggle-tx">
-        <b>{label}</b>
-        {hint && <small>{hint}</small>}
-      </span>
-    </button>
-  )
+const Action = ({ icon, label, hint, onClick }: { icon: ReactNode; label: string; hint?: string; onClick: () => void }) => (
+  <button className="sx-action" onClick={onClick}>
+    <span className="sx-ic">{icon}</span>
+    <span className="sx-tx">
+      <b>{label}</b>
+      {hint && <small>{hint}</small>}
+    </span>
+    <Ic.Chevron size={14} />
+  </button>
+)
 
 function DataTab({ a }: { a: DataActions }) {
   return (
     <>
-      <Group title={t('Import')}>
-        <Row icon={<Ic.Upload />} label={t('Import Markdown files…')} onClick={a.importMarkdown} />
-        <Row icon={<Ic.Folders />} label={t('Import Obsidian vault (folder)…')} onClick={a.importVault} />
-      </Group>
-      <Group title={t('Export & backup')}>
-        <Row icon={<Ic.Archive />} label={t('Export all pages (zip with Markdown & images)')} onClick={a.exportAll} />
-        <Row icon={<Ic.Download />} label={t('Full backup (JSON)')} onClick={a.backup} />
-        <Row icon={<Ic.Upload />} label={t('Restore from backup…')} onClick={a.restore} />
-        <Row icon={<Ic.Save />} label={t('Automatic backup to folder…')} onClick={a.autoBackup} />
-      </Group>
-      <Group title={t('Workspaces')}>
-        {a.account && <Row icon={<Ic.Cloud />} label={t('Account and sync…')} hint={t('Sign in, devices, password and recovery key')} onClick={a.account} />}
-        {a.syncNow && <Row icon={<Ic.Cloud />} label={t('Sync now')} onClick={a.syncNow} />}
-        <Row icon={<Ic.Layers />} label={t('Workspaces and sync…')} onClick={a.workspaces} />
-      </Group>
+      <Card icon={<Ic.Upload />} title={t('Import')}>
+        <Action icon={<Ic.Upload />} label={t('Import Markdown files…')} onClick={a.importMarkdown} />
+        <Action icon={<Ic.Folders />} label={t('Import Obsidian vault (folder)…')} onClick={a.importVault} />
+      </Card>
+      <Card icon={<Ic.Archive />} title={t('Export & backup')}>
+        <Action icon={<Ic.Archive />} label={t('Export all pages (zip with Markdown & images)')} onClick={a.exportAll} />
+        <Action icon={<Ic.Download />} label={t('Full backup (JSON)')} onClick={a.backup} />
+        <Action icon={<Ic.Upload />} label={t('Restore from backup…')} onClick={a.restore} />
+        <Action icon={<Ic.Save />} label={t('Automatic backup to folder…')} onClick={a.autoBackup} />
+      </Card>
+      <Card icon={<Ic.Cloud />} title={t('Workspaces')}>
+        {a.account && <Action icon={<Ic.Cloud />} label={t('Account and sync…')} hint={t('Sign in, devices, password and recovery key')} onClick={a.account} />}
+        {a.syncNow && <Action icon={<Ic.Cloud />} label={t('Sync now')} onClick={a.syncNow} />}
+        <Action icon={<Ic.Layers />} label={t('Workspaces and sync…')} onClick={a.workspaces} />
+      </Card>
     </>
   )
 }
 
-function LanguageTab() {
-  const s = useSettings()
+function About() {
   return (
-    <>
-      <Group title={t('Interface language')} hint={t('Changes the language of menus, buttons and messages. Your page content is never translated.')}>
-        <div className="segmented">
-          <button className={s.lang === 'en' ? 'on' : ''} onClick={() => updateSettings({ lang: 'en' })}>English</button>
-          <button className={s.lang === 'fa' ? 'on' : ''} onClick={() => updateSettings({ lang: 'fa' })} lang="fa">فارسی</button>
-        </div>
-      </Group>
-      <Group title={t('Layout direction')} hint={t('Where the sidebar, lists and panels sit. “Auto” follows the language.')}>
-        <div className="segmented">
-          {([['auto', 'Auto'], ['ltr', 'Left to right'], ['rtl', 'Right to left']] as const).map(([id, label]) => (
-            <button key={id} className={s.dir === id ? 'on' : ''} onClick={() => updateSettings({ dir: id })}>{t(label)}</button>
-          ))}
-        </div>
-      </Group>
-    </>
+    <Card icon={<Ic.Info />} title="Noviq.">
+      <div className="sx-about">
+        <span className="sx-logo">
+          <Ic.Logo size={34} />
+        </span>
+        <p>{t('Your notes, checklists and drawings in one calm place. Everything stays on your device unless you choose to sync it.')}</p>
+        <small>{t('Created by')} Vexor</small>
+      </div>
+    </Card>
   )
 }
 
@@ -321,30 +433,26 @@ export function SettingsView({ data }: { data: DataActions }) {
           <h2>{t('Settings')}</h2>
           <p>{t('Make the appearance and editor your own.')}</p>
         </div>
-        <button className="ghost-btn" onClick={reset}>{t('Reset all')}</button>
+        <button className="ghost-btn" onClick={reset}>
+          {t('Reset all')}
+        </button>
       </header>
-      <div className="set-body">
-        <nav className="set-tabs">
+      <div className="sx-layout">
+        <nav className="set-tabs" role="tablist" aria-label={t('Settings')}>
           {TABS.map((th) => (
-            <button key={th.id} className={tab === th.id ? 'on' : ''} onClick={() => setTab(th.id)}>
+            <button key={th.id} role="tab" aria-selected={tab === th.id} className={tab === th.id ? 'on' : ''} onClick={() => setTab(th.id)}>
               {th.icon}
               {t(th.label)}
             </button>
           ))}
         </nav>
-        <div className="set-card">
-          <header className="set-card-head">
+        <div className="sx-pane" role="tabpanel">
+          <header className="sx-pane-head">
             <h3>{t(cur.title)}</h3>
             <p>{t(cur.hint)}</p>
           </header>
-          {tab === 'appearance' ? <Appearance /> : tab === 'editor' ? <Editor /> : tab === 'general' ? <General /> : tab === 'data' ? <DataTab a={data} /> : tab === 'shortcuts' ? <Shortcuts /> : <LanguageTab />}
+          {tab === 'appearance' ? <Appearance /> : tab === 'editor' ? <Editor /> : tab === 'language' ? <LanguageTab /> : tab === 'general' ? <General /> : tab === 'data' ? <DataTab a={data} /> : tab === 'shortcuts' ? <Shortcuts /> : <About />}
         </div>
-        {(tab === 'appearance' || tab === 'editor') && (
-          <aside className="set-side">
-            <h3>{t('Preview')}</h3>
-            <Preview />
-          </aside>
-        )}
       </div>
     </div>
   )

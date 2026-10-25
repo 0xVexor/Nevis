@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { MORE_GLYPHS } from './iconSetMore'
+import { EXTRA_GLYPHS } from './iconSetExtra'
 
 /** Outline glyphs a page can use as its icon instead of an emoji. Stored on the page as `i:<name>`. */
 export const ICON_PREFIX = 'i:'
@@ -66,7 +67,7 @@ export const GLYPHS: Record<string, [string, string]> = {
   link: ['link url chain', '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'],
 }
 
-Object.assign(GLYPHS, MORE_GLYPHS)
+Object.assign(GLYPHS, MORE_GLYPHS, EXTRA_GLYPHS)
 export const GLYPH_NAMES = Object.keys(GLYPHS)
 
 export const isGlyph = (icon?: string): icon is string => !!icon && icon.startsWith(ICON_PREFIX)

@@ -4,9 +4,10 @@ import { useSyncExternalStore } from 'react'
 
 export type Theme = 'system' | 'light' | 'dark'
 export type SidebarStyle = 'default' | 'compact' | 'icons'
+export type PagesView = 'tree' | 'compact' // compact: every folder / page with subpages is one flat row (its full path), its files listed right under it
 export type Lang = 'en' | 'fa'
 type LayoutDir = 'auto' | 'ltr' | 'rtl' // auto = follow the language
-export type FontId = 'vazir' | 'ibm' | 'naskh' | 'system' | 'serif' | 'mono'
+export type FontId = 'vazir' | 'estedad' | 'notosans' | 'ibm' | 'kufi' | 'naskh' | 'amiri' | 'inter' | 'geist' | 'jakarta' | 'sourceserif' | 'jetbrains' | 'system' | 'serif' | 'mono'
 export type Background = { kind: 'default' } | { kind: 'none' } | { kind: 'preset'; id: string } | { kind: 'image'; file: string }
 
 export interface Settings {
@@ -20,7 +21,10 @@ export interface Settings {
   fontSize: number // editor text, px
   textColor: string | null // editor text colour, null = theme text colour
   sidebar: SidebarStyle
-  glass: boolean // floating, blurred sidebar card instead of a flat one
+  pagesView: PagesView
+  sideGlass: number // 0-100: how see-through (and blurred) the sidebar is
+  mainGlass: number // 0-100: the same for the main panel
+  bgStrength: number // 50-200 (%): how strongly the background colours glow
   showCovers: boolean
   showIcons: boolean
   cardReminders: boolean
@@ -28,7 +32,7 @@ export interface Settings {
   reduceMotion: boolean
 }
 
-export const DEFAULTS: Settings = { lang: 'en', dir: 'auto', theme: 'light', accent: null, bg: { kind: 'default' }, radius: 12, font: 'vazir', fontSize: 16, textColor: null, sidebar: 'default', glass: false, showCovers: true, showIcons: true, reduceMotion: false, cardReminders: true, compressImages: true }
+export const DEFAULTS: Settings = { lang: 'en', dir: 'auto', theme: 'light', accent: null, bg: { kind: 'default' }, radius: 12, font: 'vazir', fontSize: 16, textColor: null, sidebar: 'default', pagesView: 'tree', sideGlass: 0, mainGlass: 0, bgStrength: 100, showCovers: true, showIcons: true, reduceMotion: false, cardReminders: true, compressImages: true }
 
 const KEY = 'not.settings'
 const LEGACY_THEME = 'not.theme' // 'light' | 'dark' | null from before the settings page
@@ -36,23 +40,38 @@ const LEGACY_THEME = 'not.theme' // 'light' | 'dark' | null from before the sett
 export const ACCENTS = ['#6857f0', '#3b6cf6', '#0ea5c6', '#22b07d', '#f59e0b', '#ef5b4f', '#e24a9f', '#8b8fa3']
 export const TEXT_COLORS = ['#6857f0', '#3b6cf6', '#0e8fa8', '#1e9d6b', '#c27c0a', '#d6453a', '#c23a85', '#7a7f96']
 
-export const FONTS: { id: FontId; label: string; stack: string; css?: () => Promise<unknown> }[] = [
-  { id: 'vazir', label: 'Vazirmatn (default)', stack: "'Vazirmatn', 'Segoe UI', Tahoma, system-ui, sans-serif" },
-  {
-    id: 'ibm',
-    label: 'IBM Plex Sans Arabic',
-    stack: "'IBM Plex Sans Arabic', 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif",
-    css: () => Promise.all([import('@fontsource/ibm-plex-sans-arabic/400.css'), import('@fontsource/ibm-plex-sans-arabic/500.css'), import('@fontsource/ibm-plex-sans-arabic/700.css')]),
-  },
-  {
-    id: 'naskh',
-    label: 'Noto Naskh',
-    stack: "'Noto Naskh Arabic', 'Vazirmatn', 'Times New Roman', serif",
-    css: () => Promise.all([import('@fontsource/noto-naskh-arabic/400.css'), import('@fontsource/noto-naskh-arabic/500.css'), import('@fontsource/noto-naskh-arabic/700.css')]),
-  },
-  { id: 'system', label: 'System font', stack: "system-ui, 'Segoe UI', Tahoma, sans-serif" },
-  { id: 'serif', label: 'Serif (Georgia)', stack: "Georgia, 'Times New Roman', 'Vazirmatn', serif" },
-  { id: 'mono', label: 'Monospace', stack: "'Cascadia Mono', Consolas, 'Vazirmatn', monospace" },
+export type FontGroup = 'persian' | 'english' | 'system'
+export interface FontDef {
+  id: FontId
+  label: string
+  group: FontGroup
+  stack: string
+  sample?: string // what the picker shows in this face (defaults to the group's sample)
+  css?: () => Promise<unknown>
+}
+
+const FA_TAIL = "'Vazirmatn', 'Segoe UI', Tahoma, sans-serif" // Persian letters fall back to Vazirmatn in the Latin faces
+const w3 = (a: () => Promise<unknown>, b: () => Promise<unknown>, c: () => Promise<unknown>) => () => Promise.all([a(), b(), c()])
+
+/** Faces for page text, grouped for the picker. Every web font is bundled (@fontsource) and loaded only when chosen or previewed. */
+export const FONTS: FontDef[] = [
+  { id: 'vazir', group: 'persian', label: 'Vazirmatn (default)', stack: "'Vazirmatn', 'Segoe UI', Tahoma, system-ui, sans-serif" },
+  { id: 'estedad', group: 'persian', label: 'Estedad', stack: "'Estedad', 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif", css: w3(() => import('@fontsource/estedad/400.css'), () => import('@fontsource/estedad/500.css'), () => import('@fontsource/estedad/700.css')) },
+  { id: 'notosans', group: 'persian', label: 'Noto Sans Arabic', stack: "'Noto Sans Arabic', 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif", css: w3(() => import('@fontsource/noto-sans-arabic/400.css'), () => import('@fontsource/noto-sans-arabic/500.css'), () => import('@fontsource/noto-sans-arabic/700.css')) },
+  { id: 'ibm', group: 'persian', label: 'IBM Plex Sans Arabic', stack: "'IBM Plex Sans Arabic', 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif", css: w3(() => import('@fontsource/ibm-plex-sans-arabic/400.css'), () => import('@fontsource/ibm-plex-sans-arabic/500.css'), () => import('@fontsource/ibm-plex-sans-arabic/700.css')) },
+  { id: 'kufi', group: 'persian', label: 'Noto Kufi Arabic', stack: "'Noto Kufi Arabic', 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif", css: w3(() => import('@fontsource/noto-kufi-arabic/400.css'), () => import('@fontsource/noto-kufi-arabic/500.css'), () => import('@fontsource/noto-kufi-arabic/700.css')) },
+  { id: 'naskh', group: 'persian', label: 'Noto Naskh', stack: "'Noto Naskh Arabic', 'Vazirmatn', 'Times New Roman', serif", css: w3(() => import('@fontsource/noto-naskh-arabic/400.css'), () => import('@fontsource/noto-naskh-arabic/500.css'), () => import('@fontsource/noto-naskh-arabic/700.css')) },
+  { id: 'amiri', group: 'persian', label: 'Amiri', stack: "'Amiri', 'Vazirmatn', 'Times New Roman', serif", css: () => Promise.all([import('@fontsource/amiri/400.css'), import('@fontsource/amiri/700.css')]) },
+
+  { id: 'inter', group: 'english', label: 'Inter', stack: `'Inter', ${FA_TAIL}`, css: w3(() => import('@fontsource/inter/400.css'), () => import('@fontsource/inter/500.css'), () => import('@fontsource/inter/700.css')) },
+  { id: 'geist', group: 'english', label: 'Geist', stack: `'Geist', ${FA_TAIL}`, css: w3(() => import('@fontsource/geist-sans/400.css'), () => import('@fontsource/geist-sans/500.css'), () => import('@fontsource/geist-sans/700.css')) },
+  { id: 'jakarta', group: 'english', label: 'Plus Jakarta Sans', stack: `'Plus Jakarta Sans', ${FA_TAIL}`, css: w3(() => import('@fontsource/plus-jakarta-sans/400.css'), () => import('@fontsource/plus-jakarta-sans/500.css'), () => import('@fontsource/plus-jakarta-sans/700.css')) },
+  { id: 'sourceserif', group: 'english', label: 'Source Serif', stack: "'Source Serif 4', 'Vazirmatn', Georgia, serif", css: w3(() => import('@fontsource/source-serif-4/400.css'), () => import('@fontsource/source-serif-4/500.css'), () => import('@fontsource/source-serif-4/700.css')) },
+  { id: 'jetbrains', group: 'english', label: 'JetBrains Mono', stack: "'JetBrains Mono', 'Cascadia Mono', Consolas, 'Vazirmatn', monospace", css: w3(() => import('@fontsource/jetbrains-mono/400.css'), () => import('@fontsource/jetbrains-mono/500.css'), () => import('@fontsource/jetbrains-mono/700.css')) },
+
+  { id: 'system', group: 'system', label: 'System font', stack: "system-ui, 'Segoe UI', Tahoma, sans-serif" },
+  { id: 'serif', group: 'system', label: 'Serif (Georgia)', stack: "Georgia, 'Times New Roman', 'Vazirmatn', serif" },
+  { id: 'mono', group: 'system', label: 'Monospace', stack: "'Cascadia Mono', Consolas, 'Vazirmatn', monospace" },
 ]
 
 /** Backgrounds behind the floating panels; each is a pair of glows, [light-mode, dark-mode] colours. */
@@ -71,7 +90,14 @@ export const PRESETS: { id: string; label: string; light: [string, string]; dark
   { id: 'midnight', label: 'Midnight', light: ['rgba(70,80,180,.3)', 'rgba(40,120,200,.26)'], dark: ['rgba(40,50,160,.38)', 'rgba(20,90,170,.3)'] },
 ]
 
-const glow = ([a, b]: [string, string]) => `radial-gradient(900px 560px at 0% 0%, ${a}, transparent 62%), radial-gradient(800px 560px at 100% 100%, ${b}, transparent 62%), radial-gradient(700px 520px at 85% 0%, color-mix(in srgb, ${a} 50%, ${b}), transparent 65%)`
+/** Scales the alpha of an rgba() colour (the presets are all written that way). */
+const alpha = (c: string, k: number) => c.replace(/rgba((d+),(d+),(d+),([d.]+))/, (_, r, g, b, a) => `rgba(${r},${g},${b},${Math.min(0.9, +a * k).toFixed(3)})`)
+const BASE_GLOW = 1.45 // the stock presets were too faint behind opaque panels
+const glow = ([a0, b0]: [string, string], strength: number) => {
+  const k = BASE_GLOW * (strength / 100)
+  const [a, b] = [alpha(a0, k), alpha(b0, k)]
+  return `radial-gradient(1500px 1000px at 0% 0%, ${a}, transparent 68%), radial-gradient(1400px 1000px at 100% 100%, ${b}, transparent 68%), radial-gradient(1100px 800px at 85% 0%, color-mix(in srgb, ${a} 50%, ${b}), transparent 70%)`
+}
 
 function load(): Settings {
   let saved: Partial<Settings> = {}
@@ -84,6 +110,8 @@ function load(): Settings {
   } catch {
     /* corrupt value: fall back to defaults */
   }
+  const old = saved as { glass?: boolean }
+  if (old.glass && saved.sideGlass === undefined) saved.sideGlass = 60 // the old on/off switch became a slider
   return { ...DEFAULTS, ...saved }
 }
 
@@ -116,7 +144,7 @@ const onAccent = (hex: string) => {
 }
 
 let bgToken = 0
-async function applyBackground(root: HTMLElement, bg: Background) {
+async function applyBackground(root: HTMLElement, bg: Background, strength: number) {
   const set = (light: string | null, dark: string | null) => {
     for (const [k, v] of [['--bg-custom-light', light], ['--bg-custom-dark', dark]] as const) v === null ? root.style.removeProperty(k) : root.style.setProperty(k, v)
   }
@@ -125,7 +153,7 @@ async function applyBackground(root: HTMLElement, bg: Background) {
   if (bg.kind === 'none') return set('none', 'none')
   if (bg.kind === 'preset') {
     const p = PRESETS.find((x) => x.id === bg.id)
-    return p ? set(glow(p.light), glow(p.dark)) : set(null, null)
+    return p ? set(glow(p.light, strength), glow(p.dark, strength)) : set(null, null)
   }
   const { urlFor } = await import('./attachments')
   const url = await urlFor('att:' + bg.file)
@@ -153,6 +181,24 @@ const zoomCursor = (hex: string) =>
       `<circle cx="10" cy="10" r="6.5" fill="${hex}" stroke="#fff" stroke-width="1.7"/>` +
       '<path d="M10 7v6M7 10h6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>',
   )
+// the same hue, shifted in lightness (OKLab): the pointer stays recognisably the accent but never melts into accent-coloured buttons
+const toneOf = (hex: string, dL: number) => {
+  const n = parseInt(hex.replace('#', '').padEnd(6, '0').slice(0, 6), 16)
+  const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+  const gam = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055)
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => lin(v / 255))
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b)
+  const sv = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
+  const L = Math.min(0.95, Math.max(0.2, 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * sv + dL))
+  const A = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * sv
+  const B = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * sv
+  const l3 = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3
+  const m3 = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3
+  const s3 = (L - 0.0894841775 * A - 1.291485548 * B) ** 3
+  const ch = (v: number) => Math.round(Math.min(1, Math.max(0, gam(v))) * 255).toString(16).padStart(2, '0')
+  return '#' + ch(4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s3) + ch(-1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3) + ch(-0.0041960863 * l3 - 0.7034186147 * m3 + 1.707614701 * s3)
+}
 const cursors = (hex: string) => ({
   arrow: `${shape(ARROW, hex)} 4 3, default`,
   hand: `${shape(HAND, hex)} 11 3, pointer`,
@@ -165,6 +211,10 @@ const cursors = (hex: string) => ({
 })
 
 const loadedFonts = new Set<FontId>()
+/** Pulls in a bundled face's CSS once (also used by the font picker to preview each face in itself). */
+export function loadFont(f: FontDef) {
+  if (f.css && !loadedFonts.has(f.id)) (loadedFonts.add(f.id), void f.css().catch(() => loadedFonts.delete(f.id)))
+}
 
 export function apply(s: Settings = state) {
   const root = document.documentElement
@@ -177,8 +227,9 @@ export function apply(s: Settings = state) {
   set('--accent-on', s.accent ? onAccent(s.accent) : null)
   // a chosen accent keeps its own hue in gradients (the stock accent drifts toward pink)
   set('--accent-2', s.accent ? 'oklch(from var(--accent) calc(l + 0.06) c calc(h + 16))' : null)
-  // the mouse pointer is drawn in the accent colour, with a white edge and a dark halo so it reads on light and dark surfaces alike
-  const cur = cursors(s.accent ?? (isDark(s) ? '#8479ff' : '#6a5cff'))
+  // the mouse pointer is drawn in a shade of the accent (darker on light themes, lighter on dark), with a white edge and a dark halo so it reads on light and dark surfaces alike
+  const dark = isDark(s)
+  const cur = cursors(toneOf(s.accent ?? (dark ? '#8479ff' : '#6a5cff'), dark ? 0.12 : -0.12))
   set('--cursor-arrow', cur.arrow)
   set('--cursor-hand', cur.hand)
   set('--cursor-grab', cur.grab)
@@ -195,16 +246,17 @@ export function apply(s: Settings = state) {
   // boolean/enum switches are plain attributes on <html>; the stylesheet decides what they mean
   const flag = (k: string, on: boolean, v = '1') => (on ? root.setAttribute(k, v) : root.removeAttribute(k))
   flag('data-side', s.sidebar !== 'default', s.sidebar)
-  flag('data-glass', s.glass)
+  set('--glass-side', s.sideGlass ? String(s.sideGlass / 100) : null)
+  set('--glass-main', s.mainGlass ? String(s.mainGlass / 100) : null)
   flag('data-covers', !s.showCovers, 'off')
   flag('data-icons', !s.showIcons, 'off')
   flag('data-motion', s.reduceMotion, 'reduce')
 
   const f = FONTS.find((x) => x.id === s.font) ?? FONTS[0]
   set('--font', f.id === 'vazir' ? null : f.stack)
-  if (f.css && !loadedFonts.has(f.id)) (loadedFonts.add(f.id), void f.css().catch(() => loadedFonts.delete(f.id)))
+  loadFont(f)
 
-  void applyBackground(root, s.bg)
+  void applyBackground(root, s.bg, s.bgStrength)
 }
 
 apply()

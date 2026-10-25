@@ -6,6 +6,7 @@ import type { Page } from './repo'
 import type { SaveState } from './PageView'
 import { loadScene, saveScene, type SceneData } from './editor/excalidraw'
 import { t } from './i18n'
+import * as Ic from './icons'
 
 const Canvas = lazy(() => import('./DrawingCanvas')) // the library loads only when a board is opened
 
@@ -20,8 +21,36 @@ export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Pa
   const timer = useRef(0)
   const queue = useRef<Promise<unknown>>(Promise.resolve())
   const dirty = useRef(false) // anything saved during this visit (then old files are garbage-collected on leaving)
+  const [full, setFull] = useState(false) // the board fills the whole window
+  const root = useRef<HTMLDivElement>(null)
   const notify = useRef(onSave)
   notify.current = onSave
+
+  // real full screen (the element goes to the browser's top layer, above the sidebar); a plain overlay if the browser refuses
+  const toggleFull = () => {
+    if (document.fullscreenElement) return void document.exitFullscreen()
+    if (full) return setFull(false)
+    const el = root.current
+    if (!el?.requestFullscreen) return setFull(true)
+    el.requestFullscreen().catch(() => setFull(true))
+    window.setTimeout(() => !document.fullscreenElement && setFull(true), 500) // a webview that ignores the request still gets the overlay
+  }
+  useEffect(() => {
+    const sync = () => document.fullscreenElement === root.current && setFull(true)
+    const leave = () => !document.fullscreenElement && setFull(false)
+    document.addEventListener('fullscreenchange', sync)
+    document.addEventListener('fullscreenchange', leave)
+    return () => {
+      document.removeEventListener('fullscreenchange', sync)
+      document.removeEventListener('fullscreenchange', leave)
+      if (document.fullscreenElement === root.current) void document.exitFullscreen()
+    }
+  }, [])
+  // the overlay covers the window: the sidebar steps aside while it is up
+  useEffect(() => {
+    full ? document.documentElement.setAttribute('data-board-full', '') : document.documentElement.removeAttribute('data-board-full')
+    return () => document.documentElement.removeAttribute('data-board-full')
+  }, [full])
 
   useEffect(() => {
     let live = true
@@ -74,7 +103,7 @@ export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Pa
   }
 
   return (
-    <div className="board">
+    <div ref={root} className={'board' + (full ? ' full' : '')}>
       <div className="board-head">
         <input
           className="board-title"
@@ -84,6 +113,9 @@ export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Pa
           defaultValue={page.title}
           onChange={(e) => (repo.update(page.id, { title: e.target.value }), onMeta())}
         />
+        <button className="icon-btn board-full" title={full ? t('Exit full screen') : t('Full screen')} aria-pressed={full} onClick={toggleFull}>
+          {full ? <Ic.Shrink /> : <Ic.Enlarge />}
+        </button>
       </div>
       <div className="board-stage" dir="ltr">
         {initial === undefined ? (

@@ -18,7 +18,7 @@ function Thumb({ preview }: { preview: string }) {
 }
 
 /** Every drawing in one place: whole-page boards and drawing blocks inside pages. */
-export function Drawings({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: () => void }) {
+export function Drawings({ onOpen, onNew, onDelete }: { onOpen: (id: string) => void; onNew: () => void; onDelete: (d: DrawingInfo) => void }) {
   const [tick, setTick] = useState(0)
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
@@ -62,13 +62,16 @@ export function Drawings({ onOpen, onNew }: { onOpen: (id: string) => void; onNe
       ) : (
         <div className="dw-grid">
           {shown.map((d) => (
-            <button key={d.key} className="dw-card" onClick={() => onOpen(d.pageId)}>
-              <span className="dw-thumb"><Thumb preview={d.preview} /></span>
-              <span className="dw-meta">
-                <b dir="auto">{d.title || t('Untitled')}</b>
-                <small>{d.source === 'board' ? t('Board') : t('In page')} · {new Date(d.updatedAt).toLocaleDateString()}</small>
-              </span>
-            </button>
+            <div key={d.key} className="dw-item">
+              <button className="dw-card" onClick={() => onOpen(d.pageId)}>
+                <span className="dw-thumb"><Thumb preview={d.preview} /></span>
+                <span className="dw-meta">
+                  <b dir="auto">{d.title || t('Untitled')}</b>
+                  <small>{d.source === 'board' ? t('Board') : t('In page')} · {new Date(d.updatedAt).toLocaleDateString()}</small>
+                </span>
+              </button>
+              <button className="dw-del" title={t('Delete')} aria-label={t('Delete')} onClick={() => onDelete(d)}><Ic.Trash size={15} /></button>
+            </div>
           ))}
         </div>
       )}
