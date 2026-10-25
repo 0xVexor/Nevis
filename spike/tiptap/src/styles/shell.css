@@ -3,8 +3,13 @@
 .app::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background-image: radial-gradient(circle, var(--dot) 1.2px, transparent 1.6px); background-size: 24px 24px; mask-image: linear-gradient(to bottom, #000, transparent 75%); }
 
 /* ───────── sidebar dock ───────── */
-.side { position: relative; width: 264px; flex: none; display: flex; flex-direction: column; overflow: hidden; padding: 0 10px; border-radius: var(--radius-xl); background: var(--side-bg); backdrop-filter: blur(22px) saturate(1.5); border: 1px solid var(--border); box-shadow: var(--panel-shadow); transition: margin 0.32s var(--ease), opacity 0.2s, transform 0.32s var(--ease); }
-.side.closed { margin-inline-start: -276px; opacity: 0; pointer-events: none; transform: scale(0.97); }
+.side { position: relative; width: var(--side-w, 264px); flex: none; display: flex; flex-direction: column; overflow: hidden; padding: 0 10px; border-radius: var(--radius-xl); background: var(--side-bg); backdrop-filter: blur(22px) saturate(1.5); border: 1px solid var(--border); box-shadow: var(--panel-shadow); transition: margin 0.32s var(--ease), opacity 0.2s, transform 0.32s var(--ease); }
+.side.closed { margin-inline-start: calc(-1 * var(--side-w, 264px) - 12px); opacity: 0; pointer-events: none; transform: scale(0.97); }
+.side.resizing { transition: opacity 0.2s, transform 0.32s var(--ease); user-select: none; }
+.side-grip { position: absolute; z-index: 5; top: 0; bottom: 0; inset-inline-end: 0; width: 8px; cursor: var(--cursor-ew, col-resize); touch-action: none; }
+.side-grip::after { content: ''; position: absolute; top: 50%; inset-inline-end: 2px; width: 3px; height: 40px; margin-top: -20px; border-radius: 3px; background: var(--accent); opacity: 0; transition: opacity 0.15s; }
+.side-grip:hover::after, .side.resizing .side-grip::after { opacity: 0.55; }
+:root[data-side='icons'] .side-grip { display: none; }
 .ws { display: flex; align-items: center; gap: 10px; height: 62px; padding: 0 6px; flex: none; }
 .ws-logo { display: grid; place-items: center; color: var(--text); filter: drop-shadow(0 4px 10px color-mix(in srgb, var(--accent) 40%, transparent)); }
 .ws-name { flex: 1; font-size: 18px; font-weight: 800; letter-spacing: -0.02em; background: linear-gradient(var(--to-end), var(--text) 30%, var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -116,11 +121,24 @@
 
 /* ───────── appearance switches (settings → data-attributes on <html>) ───────── */
 :root[data-glass] .side { background: color-mix(in srgb, var(--bg-raised) 42%, transparent); backdrop-filter: blur(34px) saturate(1.8); }
-:root[data-side='compact'] .side { width: 228px; }
+:root[data-side='compact'] .side { width: var(--side-w, 228px); }
+:root[data-side='compact'] .side.closed { margin-inline-start: calc(-1 * var(--side-w, 228px) - 12px); }
 :root[data-side='compact'] .row { min-height: 30px; font-size: 13px; }
 :root[data-side='compact'] .section { margin-top: 10px; }
 :root[data-side='icons'] .side { width: 68px; }
 :root[data-side='icons'] .side.closed { margin-inline-start: -80px; }
+/* tree in icon mode: no indent or guide lines (they would not fit 68px), nested pages keep their icon, counts are hidden */
+:root[data-side='icons'] .tree-kids { margin-inline-start: 0; padding-inline-start: 0; border: 0; }
+:root[data-side='icons'] .row.tree.leaf .ic { display: grid; }
+:root[data-side='icons'] .row.tree.leaf { padding-inline-start: 0; }
+:root[data-side='icons'] .tree-count { display: none; }
+:root[data-side='icons'] .row.cur::before { top: 8px; bottom: 8px; }
+/* compact: tighter indent so deep trees keep room for titles */
+:root[data-side='compact'] .tree-kids { margin-inline-start: 11px; padding-inline-start: 5px; }
+:root[data-side='compact'] .row.tree { gap: 2px; }
+:root[data-side='compact'] .row.tree.leaf { min-height: 28px; }
+:root[data-side='compact'] .twisty { width: 18px; height: 18px; }
+:root[data-side='compact'] .acts button { width: 22px; height: 22px; }
 :root[data-side='icons'] :is(.ntitle, .ws-name, .section, .row kbd, .acts, .twisty, .empty-note, .badge, .new-page span, .ws .icon-btn, .side-credit) { display: none; }
 :root[data-side='icons'] .row { justify-content: center; padding-inline: 0 !important; }
 :root[data-side='icons'] .ws { justify-content: center; }

@@ -1,5 +1,8 @@
 // English → Persian UI strings (see i18n.ts). Generated once from the original Persian UI, edit freely.
 export const FA: Record<string, string> = {
+  "Resize sidebar": "تغییر اندازهٔ نوار کناری",
+  "Drag to resize, double-click to reset": "برای تغییر اندازه بکشید، برای بازنشانی دوبار کلیک کنید",
+  "Import, export, back up and sync your notes.": "وارد کردن، خروجی گرفتن، پشتیبان‌گیری و همگام‌سازی یادداشت‌ها.",
   "Emoji": "اموجی",
   "Suggested": "پیشنهادی",
   "Move to folder": "انتقال به پوشه",
