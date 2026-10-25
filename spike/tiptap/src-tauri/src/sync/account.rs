@@ -10,9 +10,10 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
 /// The server the app talks to unless the user types another one (or the build sets NOVIQ_SERVER).
+/// A build environment that defines NOVIQ_SERVER as an empty string (an unset CI variable does that) means "no choice", not "no server".
 pub const DEFAULT_SERVER: &str = match option_env!("NOVIQ_SERVER") {
-    Some(s) => s,
-    None => "https://sync.manaz.pro",
+    Some(s) if !s.is_empty() => s,
+    _ => "https://sync.manaz.pro",
 };
 
 const KEYRING_SERVICE: &str = "noviq";
@@ -74,7 +75,8 @@ pub fn forget_google(app_data: &Path) {
 
 /// `https://host`, or `http://` only for a server on this computer (development). Anything else is refused: a token must not travel in the clear.
 pub fn normalize_server(s: &str) -> Res<String> {
-    let s = s.trim().trim_end_matches('/');
+    // nothing typed (or nothing known yet): the default server
+    let s = Some(s.trim()).filter(|t| !t.is_empty()).unwrap_or(DEFAULT_SERVER).trim_end_matches('/');
     let s = if s.contains("://") { s.to_string() } else { format!("https://{s}") };
     let rest = s.strip_prefix("https://").or_else(|| s.strip_prefix("http://").filter(|r| ["localhost", "127.0.0.1", "[::1]"].iter().any(|h| r.starts_with(h)))).ok_or("HUB:insecure_server")?;
     if rest.is_empty() || rest.contains(char::is_whitespace) || rest.contains('?') || rest.contains('#') {
@@ -208,7 +210,9 @@ mod tests {
         assert_eq!(normalize_server("http://localhost:3000").unwrap(), "http://localhost:3000");
         assert_eq!(normalize_server("http://127.0.0.1:3111/").unwrap(), "http://127.0.0.1:3111");
         assert!(normalize_server("http://sync.example.com").is_err());
-        assert!(normalize_server("").is_err());
+        assert_eq!(normalize_server("").unwrap(), DEFAULT_SERVER);
+        assert_eq!(normalize_server("   ").unwrap(), DEFAULT_SERVER);
+        assert!(!DEFAULT_SERVER.is_empty());
         assert!(normalize_server("https://bad host").is_err());
     }
 
