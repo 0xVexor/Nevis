@@ -250,6 +250,7 @@ export interface DataActions {
   restore: () => void
   autoBackup: () => void
   workspaces: () => void
+  account?: () => void
   syncNow?: () => void
 }
 
@@ -277,6 +278,7 @@ function DataTab({ a }: { a: DataActions }) {
         <Row icon={<Ic.Save />} label={t('Automatic backup to folder…')} onClick={a.autoBackup} />
       </Group>
       <Group title={t('Workspaces')}>
+        {a.account && <Row icon={<Ic.Cloud />} label={t('Account and sync…')} hint={t('Sign in, devices, password and recovery key')} onClick={a.account} />}
         {a.syncNow && <Row icon={<Ic.Cloud />} label={t('Sync now')} onClick={a.syncNow} />}
         <Row icon={<Ic.Layers />} label={t('Workspaces and sync…')} onClick={a.workspaces} />
       </Group>
