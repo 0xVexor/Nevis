@@ -160,6 +160,30 @@
 .mermaid-src { width: 100%; font-family: var(--mono); font-size: 13px; line-height: 1.6; border: 1px solid var(--accent); border-radius: 10px; background: var(--bg); color: var(--text); padding: 10px 12px; outline: none; resize: vertical; direction: ltr; text-align: left; box-shadow: 0 0 0 3px var(--accent-ring); }
 .mermaid-hint { color: var(--faint); font-size: 12px; margin-top: 6px; }
 
+/* drawings (Excalidraw) */
+.ProseMirror-selectednode.drawing-block { outline: 2px solid var(--accent); }
+.drawing-block { position: relative; margin: 12px 0; border: 1px solid transparent; border-radius: var(--radius-lg); }
+.drawing-block:hover { border-color: var(--border); background: var(--bg-sunk); }
+.drawing-view { padding: 10px; text-align: center; overflow-x: auto; cursor: var(--cursor-hand, pointer); }
+.drawing-view .drawing-img, .drawing-view img { max-width: 100%; height: auto; border-radius: var(--radius); background: #fff; }
+.drawing-view.empty { color: var(--faint); font-size: 14px; padding: 28px; }
+.drawing-actions { position: absolute; top: 8px; inset-inline-end: 8px; display: flex; gap: 6px; opacity: 0; transition: opacity 0.15s; z-index: 2; }
+.drawing-block:hover .drawing-actions { opacity: 1; }
+.drawing-actions button { border: 1px solid var(--border); background: var(--pop); color: var(--muted); border-radius: 9px; padding: 3px 12px; font-size: 12px; cursor: var(--cursor-hand, pointer); }
+.drawing-actions button:hover { color: var(--accent); background: var(--bg-raised); }
+.app.reading .drawing-actions .dr-edit { display: none; }
+.drawing-modal { position: fixed; inset: 0; z-index: 600; display: flex; flex-direction: column; background: var(--bg); animation: fade-in 0.2s; }
+.drawing-bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg-raised, var(--bg)); }
+.drawing-bar strong { font-size: 15px; }
+.drawing-hint { flex: 1; color: var(--faint); font-size: 12px; }
+.drawing-bar button { border: 1px solid var(--border); background: var(--pop); color: var(--text); border-radius: 10px; padding: 6px 16px; font-size: 13px; cursor: var(--cursor-hand, pointer); }
+.drawing-bar button:hover { border-color: var(--accent); color: var(--accent); }
+.drawing-bar .drawing-done { background: var(--accent); border-color: var(--accent); color: #fff; }
+.drawing-bar .drawing-done:hover { color: #fff; filter: brightness(1.08); }
+.drawing-bar .drawing-done:disabled { opacity: 0.6; cursor: default; }
+.drawing-stage { flex: 1; min-height: 0; position: relative; }
+.drawing-stage .excalidraw { --color-primary: var(--accent); }
+
 /* images */
 .tiptap .img-fig { position: relative; display: block; margin: 10px 0; max-width: 100%; width: fit-content; }
 .tiptap .img-fig.sized { width: auto; }
@@ -212,3 +236,45 @@
 .slash-tx b { flex: none; font-size: 13.5px; font-weight: 600; }
 .slash-tx small { font-size: 11.5px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .slash-empty { padding: 12px; color: var(--muted); font-size: 14px; }
+
+/* boards (a whole page that is one drawing) and the drawings gallery */
+.scroller:has(.board) { overflow: hidden; display: flex; flex-direction: column; }
+.board { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.board-head { padding: 12px 24px 8px; }
+.board-title { width: 100%; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 26px; font-weight: 700; padding: 4px 0; }
+.board-title::placeholder { color: var(--faint); }
+.board-stage { flex: 1; min-height: 0; margin: 0 16px 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; position: relative; background: var(--bg); }
+.board-loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--faint); font-size: 14px; }
+.dw { max-width: 1040px; }
+.dw-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.dw-tools .tk-tabs { margin-bottom: 0; }
+.dw-search { flex: 1; min-width: 160px; height: 36px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text); padding: 0 12px; font: inherit; outline: none; }
+.dw-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.dw-tools .primary { display: inline-flex; align-items: center; gap: 6px; }
+.dw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.dw-card { display: flex; flex-direction: column; text-align: start; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg); color: inherit; overflow: hidden; cursor: var(--cursor-hand, pointer); transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s; }
+.dw-card:hover { border-color: var(--accent); box-shadow: var(--panel-shadow); transform: translateY(-1px); }
+.dw-thumb { aspect-ratio: 4 / 3; display: grid; place-items: center; background: #fff; border-bottom: 1px solid var(--border); overflow: hidden; }
+.dw-thumb img { width: 100%; height: 100%; object-fit: contain; }
+.dw-blank { color: var(--faint); }
+.dw-meta { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; min-width: 0; }
+.dw-meta b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dw-meta small { color: var(--faint); font-size: 12px; }
+
+/* Excalidraw menus (right-click and the main menu) drawn like the app's own menus (see .popover / .menu-item in overlays.css, v2.css) */
+.excalidraw.excalidraw .context-menu, .excalidraw.excalidraw .dropdown-menu-container { min-width: 230px; max-height: min(70vh, 640px); overflow-y: auto; margin: 0; padding: 6px; list-style: none; background: var(--pop) !important; color: var(--text); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow); font-family: var(--font); animation: pop-in 0.2s var(--ease); }
+.excalidraw.excalidraw .context-menu li { margin: 0; }
+.excalidraw.excalidraw .context-menu-item, .excalidraw.excalidraw .dropdown-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px 12px; border: 0; border-radius: 12px; background: transparent; color: var(--text); font: inherit; font-size: 13.5px; line-height: 1.2; text-align: start; cursor: var(--cursor-hand, pointer); transition: background 0.12s; }
+.excalidraw.excalidraw .context-menu-item:hover, .excalidraw.excalidraw .context-menu-item:focus-visible, .excalidraw.excalidraw .context-menu-item.active,
+.excalidraw.excalidraw .dropdown-menu-item:hover, .excalidraw.excalidraw .dropdown-menu-item:focus-visible { background: var(--hover); outline: none; }
+.excalidraw.excalidraw .context-menu-item__label { flex: 1; min-width: 0; text-align: start; }
+.excalidraw.excalidraw .context-menu-item__shortcut, .excalidraw.excalidraw .dropdown-menu-item__shortcut { margin-inline-start: auto; padding-inline-start: 24px; font: inherit; font-size: 11.5px; color: var(--faint); direction: ltr; }
+.excalidraw.excalidraw .context-menu-item.dangerous, .excalidraw.excalidraw .context-menu-item.dangerous .context-menu-item__label { color: var(--danger); }
+.excalidraw.excalidraw .context-menu-item.dangerous:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.excalidraw.excalidraw .context-menu-item:disabled { opacity: 0.4; cursor: default; background: transparent; }
+.excalidraw.excalidraw .context-menu-item-separator, .excalidraw.excalidraw .dropdown-menu-item-divider { height: 1px; margin: 6px 4px; border: 0; background: var(--border); }
+/* the app's global .popover styles must not leak onto Excalidraw's own .popover wrapper (the menu above draws the box itself) */
+.excalidraw.excalidraw .popover { min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; animation: none; overflow: visible; }
+.excalidraw.excalidraw .context-menu-item__shortcut { background: transparent; border: 0; box-shadow: none; padding-block: 0; }
+/* Excalidraw's own loader says "Loading scene…" in English; the spinner alone is enough */
+.excalidraw.excalidraw .LoadingMessage .LoadingMessage-text { display: none; }

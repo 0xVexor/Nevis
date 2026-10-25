@@ -11,6 +11,7 @@ const ICONS: Record<string, (p: { size?: number }) => React.JSX.Element> = {
   callout: Ic.Callout,
   toggle: Ic.Toggle,
   diagram: Ic.Diagram,
+  pencil: Ic.Pencil,
   quote: Ic.Quote,
   code: Ic.Code,
   table: Ic.Table,

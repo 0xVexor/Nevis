@@ -39,6 +39,7 @@ const ITEMS: Item[] = [
   { title: 'Callout', desc: 'Highlighted box for a tip or warning', icon: 'i:callout', keywords: 'callout note tip warning نکته هشدار کادر', run: (c) => c.insertContent({ type: 'callout', content: [{ type: 'paragraph' }] }) },
   { title: 'Toggle', desc: 'A collapsible section', icon: 'i:toggle', keywords: 'toggle collapse details accordion جمع باز', run: (c) => c.insertContent({ type: 'toggle', attrs: { open: true }, content: [{ type: 'paragraph' }] }) },
   { title: 'Diagram (Mermaid)', desc: 'Flowcharts, UML, sequences and more from text', icon: 'i:diagram', keywords: 'mermaid diagram flowchart uml sequence graph نمودار فلوچارت', run: (c) => c.insertContent({ type: 'mermaid', attrs: { code: '' } }) },
+  { title: 'Drawing', desc: 'Sketch, draw shapes and arrows on a whiteboard', icon: 'i:pencil', keywords: 'drawing whiteboard sketch canvas excalidraw draw نقاشی بوم طراحی ترسیم', run: (c) => c.insertContent({ type: 'drawing' }) },
   { title: 'Formula (block)', desc: 'LaTeX math on its own line', icon: '∑', keywords: 'math latex formula equation فرمول ریاضی', run: (c) => c.insertContent({ type: 'mathBlock', attrs: { latex: '' } }) },
   { title: 'Formula (inline)', desc: 'A small formula inside a sentence, or type $x$', icon: 'x²', keywords: 'math inline latex formula فرمول ریاضی', run: (c) => c.insertContent({ type: 'mathInline', attrs: { latex: '' } }) },
   { title: 'Quote', desc: 'Highlight a sentence', icon: 'i:quote', keywords: 'quote نقل قول', run: (c) => c.toggleBlockquote() },

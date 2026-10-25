@@ -3,6 +3,9 @@ import { repo, gcFiles, TRASH_DAYS } from './store'
 import type { Cover, Page, PageStatus } from './repo'
 import { SettingsView } from './SettingsPage'
 import { Tasks } from './Tasks'
+import { Drawings } from './Drawings'
+import { BoardView } from './BoardView'
+import { warmDrawing } from './editor/excalidraw'
 import { CoverBanner, CoverPicker } from './Cover'
 import { PagePanel } from './PagePanel'
 import { PageIcon } from './PageIcon'
@@ -130,7 +133,7 @@ function TreeRow(props: RowProps) {
 export default function App() {
   const [pages, setPages] = useState<Page[]>(() => repo.list())
   const [currentId, setCurrentIdRaw] = useState<string>(() => localStorage.getItem('not.current') || repo.pagesOnly()[0]?.id || '')
-  const [view, setView] = useState<'home' | 'page' | 'settings' | 'tasks' | 'files'>('home')
+  const [view, setView] = useState<'home' | 'page' | 'settings' | 'tasks' | 'drawings' | 'files'>('home')
   const [panelOpen, setPanelOpen] = useState<boolean>(() => store('not.panel.v2', false))
   const [coverMenu, setCoverMenu] = useState<DOMRect | null>(null)
   // opening any page (sidebar, search, link, breadcrumb…) also leaves the settings view
@@ -242,8 +245,8 @@ export default function App() {
     return () => window.removeEventListener('keydown', key, true)
   }, [])
 
-  const add = (parentId: string | null) => {
-    const p = repo.create(parentId)
+  const add = (parentId: string | null, kind?: 'board') => {
+    const p = repo.create(parentId, kind)
     if (parentId) expand(parentId)
     refresh()
     setCurrentId(p.id)
@@ -414,6 +417,7 @@ export default function App() {
     { id: 'new-page', label: t('New page'), icon: <Ic.Page />, keywords: 'create add صفحه جدید', run: () => add(null) },
     { id: 'templates', label: t('Templates'), icon: <Ic.Blocks />, keywords: 'template قالب تمپلیت', run: () => setTplOpen(true) },
     { id: 'new-folder', label: t('New folder'), icon: <Ic.Folder />, keywords: 'create add پوشه', run: () => addFolder(null) },
+    { id: 'new-board', label: t('New board'), icon: <Ic.Pencil />, keywords: 'create add whiteboard drawing canvas sketch بوم نقاشی طراحی جدید', run: () => add(null, 'board') },
     ...(current && view === 'page' ? [
       { id: 'subpage', label: t('Add subpage'), icon: <Ic.Plus />, keywords: 'زیرصفحه', run: () => add(current.id) },
       { id: 'fav', label: current.favorite ? t('Remove from favorites') : t('Add to favorites'), icon: <Ic.Star filled={current.favorite} />, keywords: 'star pin علاقه‌مندی', run: () => fav(current.id) },
@@ -425,6 +429,7 @@ export default function App() {
     { id: 'graph', label: t('Graph view'), icon: <Ic.Link />, keywords: 'graph links map backlinks گراف نقشه ارتباط پیوند', run: () => setGraphOpen(true) },
     { id: 'files', label: t('Files'), icon: <Ic.Folders />, keywords: 'files explorer folders manage فایل مدیریت پوشه فایل‌ها', run: () => setView('files') },
     { id: 'tasks', label: t('Tasks'), icon: <Ic.Checklist />, keywords: 'tasks todo checklist کارها وظایف چک لیست', run: () => setView('tasks') },
+    { id: 'drawings', label: t('Drawings'), icon: <Ic.Pencil />, keywords: 'drawings boards whiteboard sketch canvas excalidraw نقاشی بوم طراحی ترسیم', run: () => setView('drawings') },
     { id: 'cards', label: t('Flashcards'), icon: <Ic.Cards />, keywords: 'review srs فلش‌کارت', run: () => setCardsOpen(true) },
     { id: 'trash', label: t('Trash'), icon: <Ic.Trash />, keywords: 'deleted سطل', run: () => setTrashOpen(true) },
     { id: 'theme', label: dark ? t('Light mode') : t('Dark mode'), icon: dark ? <Ic.Sun /> : <Ic.Moon />, keywords: 'theme dark light تم', run: () => updateSettings({ theme: dark ? 'light' : 'dark' }) },
@@ -465,6 +470,10 @@ export default function App() {
 
           <button className={'row plain' + (view === 'tasks' ? ' cur' : '')} onClick={() => setView('tasks')}>
             <span className="ic"><Ic.Checklist /></span><span className="ntitle">{t('Tasks')}</span>
+          </button>
+
+          <button className={'row plain' + (view === 'drawings' ? ' cur' : '')} onPointerEnter={warmDrawing} onClick={() => setView('drawings')}>
+            <span className="ic"><Ic.Pencil /></span><span className="ntitle">{t('Drawings')}</span>
           </button>
 
           <button className="row plain" onClick={() => setTplOpen(true)}><span className="ic"><Ic.Blocks /></span><span className="ntitle">{t('Templates')}</span></button>
@@ -512,6 +521,9 @@ export default function App() {
           <button className="row plain" onClick={() => addFolder(null)}>
             <span className="ic"><Ic.Folder /></span><span className="ntitle">{t('New folder')}</span>
           </button>
+          <button className="row plain" onPointerEnter={warmDrawing} onFocus={warmDrawing} onClick={() => add(null, 'board')}>
+            <span className="ic"><Ic.Pencil /></span><span className="ntitle">{t('New board')}</span>
+          </button>
           <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => setView('files')}>
             <span className="ic"><Ic.Folders /></span><span className="ntitle">{t('Files')}</span>
           </button>
@@ -539,6 +551,7 @@ export default function App() {
             {view === 'home' && <span className="crumb"><span className="crumb-cur"><Ic.Sidebar size={14} />{t('Home')}</span></span>}
             {view === 'files' && <span className="crumb"><span className="crumb-cur"><Ic.Folders size={14} />{t('Files')}</span></span>}
             {view === 'tasks' && <span className="crumb"><span className="crumb-cur"><Ic.Checklist size={14} />{t('Tasks')}</span></span>}
+            {view === 'drawings' && <span className="crumb"><span className="crumb-cur"><Ic.Pencil size={14} />{t('Drawings')}</span></span>}
             {view === 'settings' && <span className="crumb"><span className="crumb-cur"><Ic.Settings size={14} />{t('Settings')}</span></span>}
             {view === 'page' && crumbs.map((c, i) => (
               <span key={c.id} className={'crumb' + (i === crumbs.length - 1 ? ' last' : '')}>
@@ -579,8 +592,12 @@ export default function App() {
             <Explorer pages={pages} onOpen={setCurrentId} onChange={refresh} onToast={(msg, undo) => setToast({ msg, undo })} />
           ) : view === 'tasks' ? (
             <Tasks onOpen={setCurrentId} />
+          ) : view === 'drawings' ? (
+            <Drawings onOpen={setCurrentId} onNew={() => add(null, 'board')} />
           ) : view === 'settings' ? (
             <SettingsView />
+          ) : current?.kind === 'board' ? (
+            <BoardView key={current.id} page={current} onSave={setSave} onMeta={refresh} readOnly={reader} />
           ) : current ? (
             <>
               {current.cover && <CoverBanner cover={current.cover} onChange={setCoverMenu} onRemove={() => setCover(undefined)} />}
@@ -623,6 +640,7 @@ export default function App() {
             <MenuLabel>{t('Create')}</MenuLabel>
             <MenuItem icon={<Ic.Plus />} label={menuPage.kind === 'folder' ? t('Add page in this folder') : t('Add subpage')} onClick={() => (add(menu.id), setMenu(null))} />
             <MenuItem icon={<Ic.Folders />} label={t('Add folder')} onClick={() => (addFolder(menu.id), setMenu(null))} />
+            <MenuItem icon={<Ic.Pencil />} label={t('Add board')} onClick={() => (add(menu.id, 'board'), setMenu(null))} />
             <MenuSep />
             <MenuLabel>{t('Organize')}</MenuLabel>
             <MenuItem icon={<Ic.Pencil />} label={t('Rename')} onClick={() => (rename(menu.id), setMenu(null))} />
@@ -642,6 +660,7 @@ export default function App() {
           <div className="menu">
             <MenuItem icon={<Ic.Plus />} label={t('New page')} onClick={() => (add(null), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Folders />} label={t('New folder')} onClick={() => (addFolder(null), setBlankMenu(null))} />
+            <MenuItem icon={<Ic.Pencil />} label={t('New board')} onClick={() => (add(null, 'board'), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Blocks />} label={t('New from template…')} onClick={() => (setTplOpen(true), setBlankMenu(null))} />
             <MenuSep />
             <MenuLabel>{t('Go to')}</MenuLabel>

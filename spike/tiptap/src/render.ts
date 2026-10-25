@@ -29,6 +29,15 @@ export async function hydrate(root: HTMLElement) {
       /* leave the LaTeX source visible */
     }
   }
+  for (const el of Array.from(root.querySelectorAll<HTMLElement>('[data-type="drawing"]'))) {
+    const u = await urlFor('att:' + (el.getAttribute('data-preview') ?? ''))
+    if (!u) continue
+    const img = document.createElement('img')
+    img.src = u
+    img.alt = 'Drawing'
+    el.replaceChildren(img)
+    el.classList.add('drawing-view')
+  }
   for (const el of Array.from(root.querySelectorAll<HTMLElement>('[data-type="mermaid"]'))) {
     const r = await renderDiagram(el.getAttribute('data-code') ?? '')
     if ('svg' in r) (el.innerHTML = r.svg, el.classList.add('mermaid-view'))

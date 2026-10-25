@@ -3,14 +3,14 @@ import { addVersion, allPages, deleteVersions, isTauri, listVersions, savePages,
 
 const WATCH_EVERY = 3000 // how often the vault folder is checked for changes made by the sync tool
 
-type PageKind = 'page' | 'folder'
+export type PageKind = 'page' | 'folder' | 'board'
 export type PageStatus = 'todo' | 'doing' | 'done'
 export type Cover = { kind: 'gradient'; id: string } | { kind: 'image'; file: string } // image = content-addressed attachment id
 
 export interface Page {
   id: string
   parentId: string | null
-  kind?: PageKind // absent = page; a folder only groups other pages and has no content of its own
+  kind?: PageKind // absent = page; a folder only groups other pages and has no content of its own; a board is a page that is one whole drawing
   title: string
   icon?: string
   cover?: Cover
@@ -50,6 +50,8 @@ export interface PageRepo {
 
 const LEGACY_KEY = 'not.pages.v1' // the localStorage era; migrated once, then removed
 const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] }
+// a board is a page whose whole content is one drawing block (ids of its scene + picture files), so files, search, history and backup need nothing special
+const EMPTY_BOARD = { type: 'doc', content: [{ type: 'drawing', attrs: { scene: '', preview: '' } }] }
 const SNAPSHOT_EVERY = 10 * 60 * 1000 // at most one history entry per page per 10 minutes of editing
 
 function textOf(node: any): string {
@@ -273,11 +275,11 @@ export class Repo implements PageRepo {
     const page: Page = {
       id: crypto.randomUUID(),
       parentId,
-      ...(kind === 'folder' ? { kind } : {}),
+      ...(kind === 'folder' || kind === 'board' ? { kind } : {}),
       title: '',
       favorite: false,
       sort: sibs.length ? Math.max(...sibs.map((s) => s.sort)) + 1 : 0,
-      content: EMPTY_DOC,
+      content: kind === 'board' ? EMPTY_BOARD : EMPTY_DOC,
       updatedAt: Date.now(),
       deletedAt: null,
     }

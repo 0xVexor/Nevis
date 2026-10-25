@@ -45,6 +45,8 @@ async function block(n: Node, img: ImageResolver, indent = ''): Promise<string> 
       return await inline([n], img)
     case 'horizontalRule':
       return '---'
+    case 'drawing':
+      return n.attrs?.preview ? `![Drawing](${await img('att:' + n.attrs.preview)})` : ''
     case 'mermaid':
       return '```mermaid\n' + (n.attrs?.code ?? '') + '\n```'
     case 'mathBlock':
