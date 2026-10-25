@@ -133,20 +133,53 @@ export interface VaultEntry {
   /** ok: the vault is in its folder; missing: folder or marker gone (moved, deleted, drive unplugged); mismatch: another vault is in that folder */
   status: 'ok' | 'missing' | 'mismatch'
 }
+/** Signed in or not, and what the sync of the open vault is doing. */
 export interface AccountStatus {
-  configured: boolean // the app has Google OAuth credentials
-  email: string | null
+  signedIn: boolean
+  username: string | null
+  /** the server of the account (or the default one when signed out) */
+  server: string
+  defaultServer: string
   syncOn: boolean // sync of the open vault
-  state: 'off' | 'idle' | 'syncing' | 'paused' | 'error'
+  /** offline: the server cannot be reached; changes stay on this device and go out when it is back */
+  state: 'off' | 'idle' | 'syncing' | 'paused' | 'error' | 'offline'
   lastAt: number
   /** NEEDS_CONFIRM: `error` holds the number of deletions that wait for the user */
   error: string
-  /** why sync is paused: VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE | NEEDS_CONFIRM */
+  /** why sync is paused: VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE | SIGNED_OUT | NEEDS_CONFIRM */
   reason: string
 }
 export interface CloudVault {
   id: string
   name: string
+  files?: number
+  bytes?: number
+}
+export interface TrashedVault {
+  id: string
+  name: string
+  deletedAt: number
+}
+/** What a server says about itself. */
+export interface ServerHealth {
+  ok: boolean
+  /** open: anyone; invite: needs an invite code; closed: no new accounts */
+  registration: 'open' | 'invite' | 'closed'
+  pow_bits: number
+  api: number
+}
+export interface AccountDevice {
+  id: string
+  name: string
+  created_at: number
+  last_seen: number
+  current: boolean
+}
+export interface AccountInfo {
+  user: { id: string; username: string; created_at: number }
+  devices: AccountDevice[]
+  quota: { used: number; limit: number }
+  vaults: number
 }
 
 export const vaultStamp = () => invoke<string>('vault_stamp')
@@ -163,15 +196,31 @@ export const vaultLocate = (id: string, path: string) => invoke<void>('vault_loc
 export const vaultTrashLocal = (id: string) => invoke<void>('vault_trash_local', { id })
 export const vaultRename = (id: string, name: string) => invoke<void>('vault_rename', { id, name })
 export const accountStatus = () => invoke<AccountStatus>('account_status')
-export const accountLogin = () => invoke<string>('account_login')
+export const serverHealth = (server: string) => invoke<ServerHealth>('server_health', { server })
+/** Creates an account and signs in; resolves with the recovery key (shown once). */
+export const accountRegister = (server: string, username: string, password: string, invite: string) => invoke<string>('account_register', { server, username, password, invite })
+export const accountLogin = (server: string, username: string, password: string) => invoke<void>('account_login', { server, username, password })
+/** A new password with the recovery key; signs in and resolves with the new recovery key. */
+export const accountRecover = (server: string, username: string, recoveryKey: string, newPassword: string) => invoke<string>('account_recover', { server, username, recoveryKey, newPassword })
 export const accountLogout = () => invoke<void>('account_logout')
+/** Writes a small .txt file where the user chose in the save dialog (the webview cannot download files). */
+export const saveTextFile = (path: string, text: string) => invoke<void>('save_text_file', { path, text })
+export const accountInfo = () => invoke<AccountInfo>('account_info')
+export const accountRevokeDevice = (id: string) => invoke<void>('account_revoke_device', { id })
+export const accountChangePassword = (oldPassword: string, newPassword: string) => invoke<void>('account_change_password', { oldPassword, newPassword })
+export const accountNewRecoveryKey = (password: string) => invoke<string>('account_new_recovery_key', { password })
+/** Schedules the deletion of the account (30 days of grace) and signs out here. */
+export const accountDelete = (password: string) => invoke<number>('account_delete', { password })
 export const syncSet = (on: boolean) => invoke<void>('sync_set', { on })
 export const syncNow = () => invoke<void>('sync_now')
 /** Runs the deletions a sync held back (many files at once, or a side that looked empty). */
 export const syncConfirm = () => invoke<void>('sync_confirm')
-/** Moves the cloud copy of a vault to the Drive trash; the vault on this device stays. */
+/** Moves the cloud copy of a vault to the server's trash (30 days); the vault on this device stays. */
 export const cloudDelete = (id: string) => invoke<void>('cloud_delete', { id })
 /** The cloud copy is gone: upload this vault again as a new cloud copy (nothing is deleted). */
 export const cloudReupload = (id: string) => invoke<void>('cloud_reupload', { id })
 export const cloudVaults = () => invoke<CloudVault[]>('cloud_vaults')
+/** Cloud vaults deleted in the last 30 days, which can be brought back. */
+export const cloudTrashed = () => invoke<TrashedVault[]>('cloud_trashed')
+export const cloudRestore = (id: string) => invoke<void>('cloud_restore', { id })
 export const cloudDownload = (id: string, name: string, parent: string) => invoke<void>('cloud_download', { id, name, parent })

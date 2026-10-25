@@ -1,0 +1,150 @@
+/* Account and sync: sign in, create an account, recovery key, the account page. Built from the Aurora Paper tokens (tokens.css). */
+
+/* the dialog */
+.modal.acct { width: min(560px, 94vw); max-height: 88vh; }
+.acct .wsd-body { display: flex; flex-direction: column; gap: 14px; padding-top: 6px; }
+.acct .wsd-info { margin-bottom: 12px; }
+
+/* hero: the icon tile, a title and one calm sentence */
+.acct-hero { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 0 4px; text-align: center; }
+.acct-hero h3 { margin: 6px 0 0; font-size: 21px; font-weight: 800; letter-spacing: -0.02em; }
+.acct-hero p { margin: 0; max-width: 42ch; color: var(--muted); font-size: 13.5px; line-height: 1.8; }
+.acct-hero-ic { display: grid; place-items: center; flex: none; width: 48px; height: 48px; border-radius: 16px; background: var(--grad-soft); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-ring); }
+.acct-hero-ic.key { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 40%, transparent); }
+
+/* the form */
+.acct-form { display: flex; flex-direction: column; gap: 14px; }
+.acct-form .acct-seg { align-self: center; }
+.acct-seg button { min-width: 112px; }
+.acct-field { display: flex; flex-direction: column; gap: 6px; }
+.acct-label { font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.acct-field small { color: var(--faint); font-size: 12px; line-height: 1.7; }
+.acct-field input, .acct-adv input { flex: none; min-width: 0; height: 42px; padding: 0 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raised); color: var(--text); font-size: 14.5px; outline: none; inline-size: 100%; transition: border-color 0.15s, box-shadow 0.15s; }
+.acct-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.acct-field input::placeholder { color: var(--faint); }
+.acct-mono { font-family: var(--mono); letter-spacing: 0.08em; }
+.acct-pw { position: relative; display: block; }
+.acct-pw input { padding-inline-end: 44px; }
+.acct-pw .icon-btn { position: absolute; inset-block: 4px; inset-inline-end: 4px; width: 34px; height: 34px; }
+
+/* how strong the password is: three bars and one word */
+.acct-meter { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+.acct-meter i { flex: none; inline-size: 34px; block-size: 4px; border-radius: 4px; background: var(--border-strong); transition: background 0.2s; }
+.acct-meter small { margin-inline-start: 6px; font-size: 12px; color: var(--faint); }
+.acct-meter.s0 i:nth-child(1) { background: var(--danger); }
+.acct-meter.s1 i:nth-child(1) { background: var(--warn); }
+.acct-meter.s2 i:nth-child(-n + 2) { background: var(--accent); }
+.acct-meter.s3 i { background: var(--ok); }
+
+/* messages */
+.acct-err, .acct-note { margin: 0; padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.75; }
+.acct-err { background: color-mix(in srgb, var(--danger) 10%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 32%, transparent); color: var(--text); }
+.acct-note { background: var(--accent-soft); border: 1px solid var(--accent-ring); color: var(--muted); }
+
+/* buttons of this dialog */
+.acct-wide { inline-size: 100%; height: 44px; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.acct-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.acct-row button:not(.primary), .acct-profile + * button:not(.primary):not(.icon-btn) { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raised); color: var(--text); font-size: 13px; cursor: var(--cursor-hand, pointer); }
+.acct-row button:not(.primary):hover:not(:disabled) { border-color: var(--border-strong); }
+.acct-row button.primary { display: inline-flex; align-items: center; gap: 8px; height: 36px; }
+.acct-links { display: flex; justify-content: space-between; gap: 12px; margin-top: -2px; }
+.acct-link { padding: 4px 2px; border: 0; background: none; color: var(--accent); font-size: 13px; cursor: var(--cursor-hand, pointer); }
+.acct-link:hover { text-decoration: underline; }
+.acct-back { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; margin-inline-start: -8px; border: 0; border-radius: 9px; background: none; color: var(--muted); font-size: 13px; cursor: var(--cursor-hand, pointer); }
+.acct-back:hover { background: var(--hover); color: var(--text); }
+.acct-back svg { transform: scaleX(-1); }
+:root[dir='rtl'] .acct-back svg { transform: none; }
+.acct-check { display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; line-height: 1.7; cursor: var(--cursor-hand, pointer); }
+.acct-check input { margin-top: 5px; inline-size: 16px; block-size: 16px; accent-color: var(--accent); }
+.acct-spin { inline-size: 14px; block-size: 14px; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 30%, transparent); border-top-color: currentColor; animation: spin 0.8s linear infinite; }
+
+/* the server (advanced) */
+.acct-adv { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px dashed var(--border-strong); border-radius: 14px; }
+.acct-reach { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+.acct-reach i { inline-size: 8px; block-size: 8px; border-radius: 50%; background: var(--faint); }
+.acct-reach.ok i { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
+.acct-reach.down i { background: var(--danger); }
+.acct-reach.checking i { background: var(--warn); animation: pulse 1s ease-in-out infinite; --dot-c: var(--warn); }
+
+/* the recovery key */
+.acct-keyscreen { display: flex; flex-direction: column; gap: 16px; }
+.acct-key { padding: 18px 16px; border: 1px solid var(--accent-ring); border-radius: 16px; background: var(--accent-soft); text-align: center; font-family: var(--mono); font-size: 21px; font-weight: 700; letter-spacing: 0.1em; user-select: all; word-break: break-all; }
+.acct-keyscreen .acct-row { justify-content: center; }
+.acct-keyscreen .acct-row button { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raised); color: var(--text); font-size: 13px; cursor: var(--cursor-hand, pointer); }
+
+/* the account page */
+.acct-profile { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 18px; background: linear-gradient(var(--to-end), var(--accent-soft), transparent 140%), var(--bg-raised); }
+.acct-profile > div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.acct-profile b { font-size: 16px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; }
+.acct-profile small { color: var(--faint); font-size: 12px; }
+.acct-avatar { display: grid; place-items: center; flex: none; inline-size: 44px; block-size: 44px; border-radius: 15px; background: var(--grad); color: var(--accent-on); font-size: 19px; font-weight: 800; box-shadow: var(--glow); }
+.acct-pill { display: inline-flex; align-items: center; gap: 7px; flex: none; padding: 5px 12px; border-radius: 99px; background: var(--hover); color: var(--muted); font-size: 12.5px; font-weight: 600; }
+.acct-pill i { inline-size: 8px; block-size: 8px; border-radius: 50%; background: var(--faint); }
+.acct-pill.idle { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.acct-pill.idle i { background: var(--ok); }
+.acct-pill.syncing { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.acct-pill.syncing i { background: var(--warn); animation: pulse 1s ease-in-out infinite; --dot-c: var(--warn); }
+.acct-pill.offline, .acct-pill.paused { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.acct-pill.offline i, .acct-pill.paused i { background: var(--warn); }
+.acct-pill.error { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.acct-pill.error i { background: var(--danger); }
+
+.acct-card { padding: 16px; border: 1px solid var(--border); border-radius: 18px; background: var(--bg-sunk); }
+.acct-card > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.acct-card h4 { margin: 0; font-size: 11.5px; font-weight: 700; letter-spacing: 0.07em; color: var(--faint); }
+.acct-card .wsd-list { margin-bottom: 0; }
+.acct-card .wsd-acts + .backup-warn, .acct-card .acct-err + .wsd-acts, .acct-card .acct-note + .wsd-acts { margin-top: 12px; }
+.acct-card > .acct-err, .acct-card > .acct-note { margin-bottom: 12px; }
+.acct-meta { margin: 8px 0 0; color: var(--muted); font-size: 12.5px; }
+.acct-usage { block-size: 8px; border-radius: 8px; background: var(--border); overflow: hidden; }
+.acct-usage i { display: block; block-size: 100%; border-radius: 8px; background: var(--grad); transition: inline-size 0.4s var(--ease); }
+.acct-usage i.full { background: var(--danger); }
+.acct-trashed { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.acct-trashed h5 { margin: 0 0 10px; font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.acct-trashed .wsd-row { margin-bottom: 8px; }
+.acct-inline { display: flex; flex-direction: column; gap: 12px; }
+.acct-inline .primary { display: inline-flex; align-items: center; gap: 8px; }
+
+/* first run: the invitation to sign in, and the account chip of the picker */
+.acct-invite { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 16px; margin: 4px 0 18px; border: 1px solid var(--accent-ring); border-radius: 18px; background: linear-gradient(var(--to-end), var(--accent-soft), transparent 140%), var(--bg-raised); }
+.acct-invite > div { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.acct-invite b { font-size: 14.5px; }
+.acct-invite small { color: var(--muted); font-size: 12.5px; line-height: 1.75; }
+.acct-chip { display: flex; align-items: center; gap: 12px; inline-size: 100%; padding: 10px 14px; margin-bottom: 16px; border: 1px solid var(--border); border-radius: 16px; background: var(--bg-raised); color: var(--text); text-align: start; cursor: var(--cursor-hand, pointer); transition: border-color 0.2s; }
+.acct-chip:hover { border-color: var(--accent-ring); }
+.acct-chip .acct-avatar { inline-size: 36px; block-size: 36px; border-radius: 12px; font-size: 16px; box-shadow: none; }
+.acct-chip-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.acct-chip-tx small { color: var(--faint); font-size: 12px; }
+:root[dir='rtl'] .acct-chip > svg { transform: scaleX(-1); }
+.acct-lang { flex: none; }
+.acct-lang button { padding: 5px 12px; }
+.overlay.picker .modal-head { align-items: flex-start; }
+
+/* states of the sync, wherever they are shown */
+.wsd-dot.offline { background: var(--warn); }
+.sync-btn.sync-offline { color: var(--warn); }
+
+/* security: one line per thing, the name on one side and its button on the other */
+.acct-lines { display: flex; flex-direction: column; }
+.acct-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); font-size: 13.5px; }
+.acct-line:first-child { border-top: 0; padding-top: 0; }
+.acct-line:last-child { padding-bottom: 0; }
+.acct-line > span { color: var(--muted); font-weight: 600; }
+.acct-line.danger > span { color: var(--danger); }
+.acct-line button { flex: none; display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raised); color: var(--text); font-size: 13px; white-space: nowrap; cursor: var(--cursor-hand, pointer); }
+.acct-line button:hover:not(:disabled) { border-color: var(--border-strong); }
+.acct-line button.danger { color: var(--danger); }
+.acct-line button.danger:hover:not(:disabled) { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); }
+
+/* the actions of one workspace: a menu, not a heap of buttons */
+.wsd-menu { display: flex; flex-direction: column; margin: 6px 2px 4px; padding: 6px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-raised); animation: pop-in 0.18s var(--ease); }
+.wsd-menu button { display: flex; align-items: center; gap: 10px; inline-size: 100%; block-size: 38px; padding: 0 10px; border: 0; border-radius: 9px; background: none; color: var(--text); font-size: 13.5px; text-align: start; cursor: var(--cursor-hand, pointer); }
+.wsd-menu button svg { flex: none; color: var(--muted); }
+.wsd-menu button:hover:not(:disabled) { background: var(--hover); }
+.wsd-menu button:disabled { opacity: 0.5; cursor: default; }
+.wsd-menu button.accent { color: var(--accent); font-weight: 600; }
+.wsd-menu button.accent svg { color: var(--accent); }
+.wsd-menu button.danger, .wsd-menu button.danger svg { color: var(--danger); }
+.wsd-menu button.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 9%, transparent); }
+.wsd-sep { block-size: 1px; margin: 4px 6px; background: var(--border); }
+.wsd-sep:last-child, .wsd-menu > .wsd-sep + .wsd-sep { display: none; }

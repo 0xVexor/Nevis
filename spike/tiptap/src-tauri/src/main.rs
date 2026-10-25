@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 //! Storage for Noviq: Vault folders (pages, attachments, history as plain files; see ADR-0003) that the app can
-//! keep in sync with the user's Google Drive by itself. The web UI talks to it through the commands below
+//! keep in sync, by itself, through the Noviq sync server (server/ in this repository). The web UI talks to it through the commands below
 //! (spike/tiptap/src/db.ts and attachments.ts); in a plain browser the same UI falls back to IndexedDB.
 
 mod index;
@@ -14,20 +14,21 @@ use registry::{Entry, Registry};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, Sender};
+use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
-use sync::{auth, drive::Drive, SyncState};
+use std::time::{Duration, Instant};
+use sync::hub::{self, Hub};
+use sync::{account, SyncState};
 use tauri::ipc::{InvokeBody, Request, Response};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use vault::{err, now_ms, Res, Vault, VAULT_MISMATCH, VAULT_MISSING};
 
 #[derive(Clone, Default)]
 struct SyncStatus {
-    state: &'static str, // "off" | "idle" | "syncing" | "paused" | "error"
+    state: &'static str, // "off" | "idle" | "syncing" | "paused" | "error" | "offline"
     last_at: i64,
     error: String,
-    /// why a sync is paused: VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE | NEEDS_CONFIRM (then `error` holds the number of held deletions)
+    /// why a sync is paused: VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE | SIGNED_OUT | NEEDS_CONFIRM (then `error` holds the number of held deletions)
     reason: String,
 }
 
@@ -35,10 +36,8 @@ struct Store {
     app_data: PathBuf, // per-device data: the list of vaults, sign-in, sync bookkeeping
     reg: Mutex<Registry>,
     vault: Mutex<Option<Vault>>,
-    status: Arc<Mutex<SyncStatus>>,
-    /// vaults whose held-back deletions the user confirmed; used up by the next sync of that vault
-    confirm: Arc<Mutex<BTreeSet<String>>>,
-    kick: Mutex<Sender<()>>,
+    ctx: SyncCtx,
+    kick: Mutex<Sender<Kick>>,
     index: Mutex<Option<(PathBuf, rusqlite::Connection)>>, // search index of the open vault
 }
 
@@ -64,9 +63,7 @@ fn with<T>(s: &St, f: impl FnOnce(&Vault) -> Res<T>) -> Res<T> {
 
 /// A change was written: let the sync thread know (it waits a moment so bursts become one sync).
 fn kick(s: &St) {
-    if let Ok(k) = s.kick.lock() {
-        let _ = k.send(());
-    }
+    kick_as(s, Kick::Edit);
 }
 
 // Settings that belong to this device and must not travel through the vault.
@@ -114,7 +111,7 @@ fn activate(s: &St, e: &Entry, import_legacy: bool) -> Res<()> {
 
 /// A vault created while signed in is synced from the start: signing in is all the user has to do.
 fn auto_sync(s: &St) -> bool {
-    auth::email(&s.app_data).is_some() && auth::creds(&s.app_data).is_some()
+    account::load(&s.app_data).is_some()
 }
 
 fn clean_name(name: &str) -> Res<String> {
@@ -403,37 +400,150 @@ fn index_search(s: St, words: Vec<String>, limit: usize) -> Res<Vec<String>> {
 
 // ───── account and sync ─────
 
-fn drive_for(app_data: &Path) -> Res<Drive> {
-    let c = auth::creds(app_data).ok_or("NOT_CONFIGURED")?;
-    Drive::new(auth::Session::new(c, app_data))
+/// Why the sync thread was woken. A saved edit syncs at once; a change reported by the server (or the user pressing
+/// "Sync now") may also try while the network was known to be down, an edit may not (it would only wait for a timeout again).
+#[derive(Clone, Copy, PartialEq)]
+enum Kick {
+    Edit,
+    Remote,
+    User,
 }
 
-#[tauri::command]
-fn account_status(s: St) -> Value {
-    let configured = auth::creds(&s.app_data).is_some();
-    let email = auth::email(&s.app_data);
-    let st = s.status.lock().map(|x| x.clone()).unwrap_or_default();
-    let sync_on = lock_vault(&s).ok().and_then(|g| g.as_ref().map(|v| v.id())).and_then(|id| s.reg.lock().ok()?.find(&id).map(|e| e.sync)).unwrap_or(false);
-    json!({ "configured": configured, "email": email, "syncOn": sync_on, "state": st.state, "lastAt": st.last_at, "error": st.error, "reason": st.reason })
+/// What the sync needs besides the vault. Cheap to clone, so that the sync thread, the watcher and the commands share one.
+#[derive(Clone)]
+struct SyncCtx {
+    app_data: PathBuf,
+    status: Arc<Mutex<SyncStatus>>,
+    /// vaults whose held-back deletions the user confirmed; used up by the next sync of that vault
+    confirm: Arc<Mutex<BTreeSet<String>>>,
+    /// (vault id, server `seq` this device has applied): what the watcher compares the server with
+    synced: Arc<Mutex<(String, i64)>>,
+    app: Option<AppHandle>,
 }
 
-/// Opens the browser for Google sign-in and waits until it is done. Returns the e-mail address.
-#[tauri::command]
-async fn account_login(s: St<'_>) -> Res<String> {
-    let app_data = s.app_data.clone();
-    let c = auth::creds(&app_data).ok_or("NOT_CONFIGURED")?;
-    let email = tauri::async_runtime::spawn_blocking(move || auth::login(&c, &app_data)).await.map_err(err)??;
-    kick(&s);
-    Ok(email)
+fn kick_as(s: &St, k: Kick) {
+    if let Ok(tx) = s.kick.lock() {
+        let _ = tx.send(k);
+    }
 }
 
-#[tauri::command]
-fn account_logout(s: St) -> Res<()> {
-    auth::logout(&s.app_data);
-    if let Ok(mut st) = s.status.lock() {
+fn set_off(ctx: &SyncCtx) {
+    if let Ok(mut st) = ctx.status.lock() {
         *st = SyncStatus { state: "off", ..Default::default() };
     }
+}
+
+/// Runs a blocking job (network, proof of work) off the thread that serves the UI.
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Res<T> + Send + 'static) -> Res<T> {
+    tauri::async_runtime::spawn_blocking(f).await.map_err(err)?
+}
+
+/// Signed in or not, and what the sync of the open vault is doing.
+#[tauri::command]
+fn account_status(s: St) -> Value {
+    let acct = account::load(&s.app_data);
+    let st = s.ctx.status.lock().map(|x| x.clone()).unwrap_or_default();
+    let sync_on = lock_vault(&s).ok().and_then(|g| g.as_ref().map(|v| v.id())).and_then(|id| s.reg.lock().ok()?.find(&id).map(|e| e.sync)).unwrap_or(false);
+    json!({
+        "signedIn": acct.is_some(),
+        "username": acct.as_ref().map(|a| a.username.clone()),
+        "server": acct.as_ref().map_or_else(|| account::DEFAULT_SERVER.to_string(), |a| a.server.clone()),
+        "defaultServer": account::DEFAULT_SERVER,
+        "syncOn": sync_on,
+        "state": st.state,
+        "lastAt": st.last_at,
+        "error": st.error,
+        "reason": st.reason,
+    })
+}
+
+/// What a server says about itself (does it take new accounts, does it want an invite code); for the sign-up form.
+#[tauri::command]
+async fn server_health(server: String) -> Res<Value> {
+    blocking(move || account::health(&server)).await
+}
+
+/// Creates an account and signs in. Returns the recovery key (shown once).
+#[tauri::command]
+async fn account_register(s: St<'_>, server: String, username: String, password: String, invite: String) -> Res<String> {
+    let app_data = s.app_data.clone();
+    let key = blocking(move || account::register(&app_data, &server, username.trim(), &password, invite.trim())).await?;
+    kick_as(&s, Kick::User);
+    Ok(key)
+}
+
+#[tauri::command]
+async fn account_login(s: St<'_>, server: String, username: String, password: String) -> Res<()> {
+    let app_data = s.app_data.clone();
+    blocking(move || account::login(&app_data, &server, username.trim(), &password)).await?;
+    kick_as(&s, Kick::User);
     Ok(())
+}
+
+/// A forgotten password: the recovery key sets a new one. Returns the new recovery key.
+#[tauri::command]
+async fn account_recover(s: St<'_>, server: String, username: String, recovery_key: String, new_password: String) -> Res<String> {
+    let app_data = s.app_data.clone();
+    let key = blocking(move || account::recover(&app_data, &server, username.trim(), &recovery_key, &new_password)).await?;
+    kick_as(&s, Kick::User);
+    Ok(key)
+}
+
+#[tauri::command]
+async fn account_logout(s: St<'_>) -> Res<()> {
+    let app_data = s.app_data.clone();
+    blocking(move || {
+        account::logout(&app_data);
+        Ok(())
+    })
+    .await?;
+    set_off(&s.ctx);
+    Ok(())
+}
+
+/// The account page: devices, storage used.
+#[tauri::command]
+async fn account_info(s: St<'_>) -> Res<Value> {
+    let app_data = s.app_data.clone();
+    blocking(move || account::info(&app_data)).await
+}
+
+#[tauri::command]
+async fn account_revoke_device(s: St<'_>, id: String) -> Res<()> {
+    let app_data = s.app_data.clone();
+    blocking(move || account::revoke_device(&app_data, &id)).await
+}
+
+#[tauri::command]
+async fn account_change_password(s: St<'_>, old_password: String, new_password: String) -> Res<()> {
+    let app_data = s.app_data.clone();
+    blocking(move || account::change_password(&app_data, &old_password, &new_password)).await
+}
+
+#[tauri::command]
+async fn account_new_recovery_key(s: St<'_>, password: String) -> Res<String> {
+    let app_data = s.app_data.clone();
+    blocking(move || account::new_recovery_key(&app_data, &password)).await
+}
+
+/// Schedules the deletion of the account on the server (30 days of grace) and signs out here.
+#[tauri::command]
+async fn account_delete(s: St<'_>, password: String) -> Res<i64> {
+    let app_data = s.app_data.clone();
+    let after = blocking(move || account::delete_account(&app_data, &password)).await?;
+    set_off(&s.ctx);
+    Ok(after)
+}
+
+/// Writes a small text file at a place the user chose in the save dialog (the recovery key). The webview of the desktop app
+/// cannot download a file by itself. Only an absolute `.txt` path and a short text are accepted.
+#[tauri::command]
+fn save_text_file(path: String, text: String) -> Res<()> {
+    let p = PathBuf::from(&path);
+    if !p.is_absolute() || text.len() > 4096 || p.extension().and_then(|e| e.to_str()).map(str::to_lowercase).as_deref() != Some("txt") {
+        return Err("this file cannot be saved here".into());
+    }
+    vault::write_atomic(&p, text.as_bytes())
 }
 
 /// Turns sync of the open vault on or off.
@@ -446,25 +556,25 @@ fn sync_set(s: St, on: bool) -> Res<()> {
     }
     r.save(&s.app_data)?;
     drop(r);
-    kick(&s);
+    kick_as(&s, Kick::User);
     Ok(())
 }
 
 #[tauri::command]
 fn sync_now(s: St) {
-    kick(&s);
+    kick_as(&s, Kick::User);
 }
 
 /// The user confirmed the deletions a sync held back (many files, or a side that looked empty): the next sync runs them.
 #[tauri::command]
 fn sync_confirm(s: St) -> Res<()> {
     let id = with(&s, |v| Ok(v.id()))?;
-    s.confirm.lock().map_err(err)?.insert(id);
-    kick(&s);
+    s.ctx.confirm.lock().map_err(err)?.insert(id);
+    kick_as(&s, Kick::User);
     Ok(())
 }
 
-/// The cloud copy of a vault goes to the Drive trash; the vault on this device stays and its sync is turned off here.
+/// The cloud copy of a vault goes to the server's trash (30 days); the vault on this device stays and its sync is turned off here.
 #[tauri::command]
 async fn cloud_delete(s: St<'_>, id: String) -> Res<()> {
     {
@@ -476,16 +586,19 @@ async fn cloud_delete(s: St<'_>, id: String) -> Res<()> {
     }
     let app_data = s.app_data.clone();
     let vault_id = id.clone();
-    tauri::async_runtime::spawn_blocking(move || drive_for(&app_data)?.trash_vault_folder(&vault_id)).await.map_err(err)??;
+    blocking(move || {
+        let api = account::api(&app_data)?;
+        let url = api.url(&format!("/v1/vaults/{vault_id}"));
+        api.send(|c| c.delete(&url)).map(|_| ())
+    })
+    .await?;
     // a later upload starts from a clean slate: a missing cloud must never be read as "deleted there"
     let _ = std::fs::remove_file(state_file(&s.app_data, &id));
-    if let Ok(mut st) = s.status.lock() {
-        *st = SyncStatus { state: "off", ..Default::default() };
-    }
+    set_off(&s.ctx);
     Ok(())
 }
 
-/// The cloud copy is gone but the vault here is kept: sync it again as a new cloud copy (everything is uploaded, nothing deleted).
+/// The cloud copy is gone but the vault here is kept: sync it again as a new cloud copy (everything is uploaded, nothing is deleted).
 #[tauri::command]
 fn cloud_reupload(s: St, id: String) -> Res<()> {
     let _ = std::fs::remove_file(state_file(&s.app_data, &id));
@@ -495,7 +608,7 @@ fn cloud_reupload(s: St, id: String) -> Res<()> {
     }
     r.save(&s.app_data)?;
     drop(r);
-    kick(&s);
+    kick_as(&s, Kick::User);
     Ok(())
 }
 
@@ -504,8 +617,22 @@ fn cloud_reupload(s: St, id: String) -> Res<()> {
 #[tauri::command]
 async fn cloud_vaults(s: St<'_>) -> Res<Vec<Value>> {
     let app_data = s.app_data.clone();
-    let found = tauri::async_runtime::spawn_blocking(move || drive_for(&app_data)?.cloud_vaults()).await.map_err(err)??;
-    Ok(found.into_iter().map(|v| json!({ "folder": v.0, "id": v.1, "name": v.2 })).collect())
+    let r = blocking(move || account::api(&app_data)?.get("/v1/vaults")).await?;
+    Ok(r["vaults"].as_array().cloned().unwrap_or_default().into_iter().map(|v| json!({ "id": v["id"], "name": v["name"], "files": v["files"], "bytes": v["bytes"] })).collect())
+}
+
+/// Vaults deleted from the account in the last 30 days, which can still be brought back.
+#[tauri::command]
+async fn cloud_trashed(s: St<'_>) -> Res<Vec<Value>> {
+    let app_data = s.app_data.clone();
+    let r = blocking(move || account::api(&app_data)?.get("/v1/vaults?trashed=1")).await?;
+    Ok(r["vaults"].as_array().cloned().unwrap_or_default().into_iter().map(|v| json!({ "id": v["id"], "name": v["name"], "deletedAt": v["deleted_at"] })).collect())
+}
+
+#[tauri::command]
+async fn cloud_restore(s: St<'_>, id: String) -> Res<()> {
+    let app_data = s.app_data.clone();
+    blocking(move || account::api(&app_data)?.post(&format!("/v1/vaults/{id}/undelete"), &json!({})).map(|_| ())).await
 }
 
 /// Creates `<parent>/<name>` for a vault that exists in the cloud and downloads it.
@@ -519,16 +646,18 @@ async fn cloud_download(s: St<'_>, id: String, name: String, parent: String) -> 
     }
     let e = Entry { id: v.id(), name, path: root.to_string_lossy().into(), sync: true };
     drop(v);
-    let (app_data, status, confirm) = (s.app_data.clone(), s.status.clone(), s.confirm.clone());
+    let ctx = s.ctx.clone();
     let e2 = e.clone();
-    tauri::async_runtime::spawn_blocking(move || run_sync(&app_data, &e2, &status, &confirm)).await.map_err(err)??;
+    blocking(move || run_sync(&ctx, &e2, true)).await?;
     activate(&s, &e, false)
 }
 
-/// One synchronization of one vault.
-fn run_sync(app_data: &Path, e: &Entry, status: &Arc<Mutex<SyncStatus>>, confirm: &Arc<Mutex<BTreeSet<String>>>) -> Res<()> {
+/// One synchronization of one vault: bring the mirror of the server up to date, then let the engine compare and move files.
+/// `patient`: retry a lost request a few times. While the network is known to be down it is false: one try, then the back-off
+/// decides when to look again, so that a sync does not sit for ten seconds in retries when the connection has just come back.
+fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool) -> Res<()> {
     let set = |state: &'static str, reason: &str, error: String, done: bool| {
-        if let Ok(mut st) = status.lock() {
+        if let Ok(mut st) = ctx.status.lock() {
             st.state = state;
             st.reason = reason.to_string();
             st.error = error;
@@ -542,49 +671,67 @@ fn run_sync(app_data: &Path, e: &Entry, status: &Arc<Mutex<SyncStatus>>, confirm
         // The vault must be there and be the one we think it is. A folder that vanished is never a reason to
         // delete the cloud copy, and nothing is created here.
         let vault = Vault::open_as(PathBuf::from(&e.path), &e.id)?;
-        let mut drive = drive_for(app_data)?;
-        let state_file = state_file(app_data, &e.id);
+        let acct = account::load(&ctx.app_data).ok_or("AUTH:signed_out")?;
+        let api = account::api(&ctx.app_data)?;
+        let api = if patient { api } else { api.quick() };
+        let state_file = state_file(&ctx.app_data, &e.id);
         let mut state = SyncState::load(&state_file);
-        let account = auth::email(app_data).unwrap_or_default();
-        if state.account != account {
-            // another Google account is another cloud: start over, with no `base` there is nothing to delete
+        let who = format!("{}@{}", acct.username.to_lowercase(), acct.server);
+        if state.account != who {
+            // another account or server is another cloud: start over, with no `base` there is nothing to delete
             state.files.clear();
-            state.remote_folder.clear();
-            state.account = account;
+            state.hub = Default::default();
+            state.account = who;
         }
-        if state.remote_folder.is_empty() {
-            let (folder, created) = drive.vault_folder(&e.id, &e.name)?;
-            if created {
-                state.files.clear(); // a new, empty cloud folder is not "everything was deleted there"
-            }
-            state.remote_folder = folder;
+        let mut hub = Hub::new(api, &e.id, state.hub.clone());
+        let pre = hub.preflight(&vault.name())?;
+        if pre.baseline {
+            // a new cloud copy, a server that lost data, or a device that was away longer than the server remembers:
+            // what the engine believes about "the last sync" says nothing now, so it only adds, and deletes nothing
+            state.files.clear();
         }
-        state.allow_deletes_once = confirm.lock().map(|mut c| c.remove(&e.id)).unwrap_or(false);
-        let rep = {
-            let mut remote = drive.remote_for(&state.remote_folder);
-            sync::sync_once(&vault, &mut remote, &mut state, &mut |st| {
-                let _ = st.save(&state_file); // after every batch of work: a crash costs only what came after
-            })?
-        };
+        state.allow_deletes_once = ctx.confirm.lock().map(|mut c| c.remove(&e.id)).unwrap_or(false);
+        let rep = sync::sync_once(&vault, &mut hub, &mut state, &mut |st| {
+            let _ = st.save(&state_file); // after every batch of work: a crash costs only what came after
+        })?;
+        state.hub = hub.cache.clone();
         state.save(&state_file)?;
+        if let Ok(mut s) = ctx.synced.lock() {
+            *s = (e.id.clone(), state.hub.seq);
+        }
         Ok(rep)
     })();
     match result {
-        Ok(rep) if !rep.errors.is_empty() => {
-            let m = rep.errors.join("; ");
-            set("error", "ERROR", m.clone(), false);
-            Err(m)
-        }
-        Ok(rep) if rep.held > 0 => {
-            set("paused", "NEEDS_CONFIRM", rep.held.to_string(), false);
-            Ok(())
-        }
-        Ok(_) => {
-            set("idle", "", String::new(), true);
-            Ok(())
+        Ok(rep) => {
+            // pages changed by another device: the open page and the lists are refreshed now, not at the next poll
+            if rep.downloaded + rep.deleted + rep.conflicts > 0 {
+                if let Some(app) = &ctx.app {
+                    let _ = app.emit("vault-changed", e.id.clone());
+                }
+            }
+            if !rep.errors.is_empty() {
+                let m = rep.errors.join("; ");
+                let (state, reason) = if hub::is_network(&m) { ("offline", "NETWORK") } else if hub::is_auth(&m) { ("paused", "SIGNED_OUT") } else { ("error", "ERROR") };
+                set(state, reason, m.clone(), false);
+                Err(m)
+            } else if rep.held > 0 {
+                set("paused", "NEEDS_CONFIRM", rep.held.to_string(), false);
+                Ok(())
+            } else {
+                set("idle", "", String::new(), true);
+                Ok(())
+            }
         }
         Err(m) if [VAULT_MISSING, VAULT_MISMATCH, sync::CLOUD_GONE].contains(&m.as_str()) => {
             set("paused", &m, String::new(), false);
+            Err(m)
+        }
+        Err(m) if hub::is_network(&m) => {
+            set("offline", "NETWORK", m.clone(), false);
+            Err(m)
+        }
+        Err(m) if hub::is_auth(&m) => {
+            set("paused", "SIGNED_OUT", m.clone(), false);
             Err(m)
         }
         Err(m) => {
@@ -594,26 +741,120 @@ fn run_sync(app_data: &Path, e: &Entry, status: &Arc<Mutex<SyncStatus>>, confirm
     }
 }
 
-fn sync_thread(app: AppHandle, rx: std::sync::mpsc::Receiver<()>) {
+fn current_entry(s: &Store) -> Option<Entry> {
+    let cur = s.reg.lock().ok().and_then(|r| r.current.clone());
+    cur.and_then(|id| s.reg.lock().ok()?.find(&id).cloned())
+}
+
+/// How long to wait before trying again after the n-th failure in a row: 3, 6, 12, then 20 seconds. Short on purpose: the
+/// network of a person who is offline comes and goes, and the first moment it is back is when their notes should move.
+fn backoff(fails: u32) -> Duration {
+    Duration::from_secs((3u64 << fails.saturating_sub(1).min(5)).min(20))
+}
+
+fn sync_thread(app: AppHandle, rx: Receiver<Kick>) {
+    let mut fails = 0u32;
+    let mut retry_at = Instant::now();
     loop {
-        // a change wakes us at once; otherwise sync (and so look for remote changes) every minute
-        let _ = rx.recv_timeout(Duration::from_secs(60));
-        std::thread::sleep(Duration::from_millis(1500)); // let a burst of saves finish
-        while rx.try_recv().is_ok() {}
-        let s = app.state::<Store>();
-        let entry = {
-            let cur = s.reg.lock().ok().and_then(|r| r.current.clone());
-            cur.and_then(|id| s.reg.lock().ok()?.find(&id).cloned())
+        // an edit, the server, or the user wakes us at once; the long wait is only a safety net
+        let first = match rx.recv_timeout(Duration::from_secs(300)) {
+            Ok(k) => Some(k),
+            Err(RecvTimeoutError::Timeout) => None,
+            Err(RecvTimeoutError::Disconnected) => return,
         };
-        let ready = entry.as_ref().is_some_and(|e| e.sync) && auth::email(&s.app_data).is_some() && auth::creds(&s.app_data).is_some();
-        match entry {
-            Some(e) if ready => {
-                let _ = run_sync(&s.app_data, &e, &s.status, &s.confirm);
+        let mut urgent = matches!(first, Some(Kick::User | Kick::Remote));
+        if first == Some(Kick::Edit) {
+            std::thread::sleep(Duration::from_millis(250)); // let a burst of saves finish; a change from the server is not a burst and goes at once
+            while let Ok(k) = rx.try_recv() {
+                urgent |= matches!(k, Kick::User | Kick::Remote);
             }
-            _ => {
-                if let Ok(mut st) = s.status.lock() {
-                    st.state = "off";
+        }
+        // while the network is down an edit does not try again before the back-off is over; the server speaking to us, or the user, does
+        if fails > 0 && !urgent && Instant::now() < retry_at {
+            continue;
+        }
+        let s = app.state::<Store>();
+        let ctx = s.ctx.clone();
+        let entry = current_entry(&s);
+        let ready = entry.as_ref().is_some_and(|e| e.sync) && account::load(&ctx.app_data).is_some();
+        match entry {
+            Some(e) if ready => match run_sync(&ctx, &e, fails == 0) {
+                Ok(()) => fails = 0,
+                Err(_) => {
+                    fails += 1;
+                    retry_at = Instant::now() + backoff(fails);
                 }
+            },
+            _ => {
+                fails = 0;
+                set_off(&ctx);
+            }
+        }
+    }
+}
+
+/// Holds one request open to the server ("long poll"): it is answered the moment another device saves, so a change
+/// arrives within a second without anyone asking over and over. When the network is down it retries with a growing
+/// pause (at most 8 seconds), and the first answer after that wakes the sync at once.
+fn watcher(app: AppHandle) {
+    let mut failures = 0u32;
+    let mut hold = Duration::from_secs(4);
+    loop {
+        let s = app.state::<Store>();
+        let ctx = s.ctx.clone();
+        let tx = s.kick.lock().ok().map(|k| k.clone());
+        let (Some(e), Some(tx)) = (current_entry(&s).filter(|e| e.sync), tx) else {
+            std::thread::sleep(Duration::from_secs(2));
+            continue;
+        };
+        let Ok(api) = account::api(&ctx.app_data) else {
+            std::thread::sleep(Duration::from_secs(2));
+            continue;
+        };
+        let since = ctx.synced.lock().map(|g| if g.0 == e.id { g.1 } else { -1 }).unwrap_or(-1);
+        if since < 0 {
+            std::thread::sleep(Duration::from_secs(1)); // the first sync of this vault is still on its way
+            continue;
+        }
+        let api = api.quick();
+        // after a failure the first question is "are you there?", answered at once: waiting 25 seconds for news would hide that the network is back
+        let wait = if failures > 0 { 0 } else { 25 };
+        let url = api.url(&format!("/v1/vaults/{}/state?since={since}&wait={wait}", e.id));
+        let answer = api.send(|c| c.get(&url).timeout(Duration::from_secs(40))).and_then(|r| r.json::<Value>().map_err(err));
+        match answer {
+            Ok(v) => {
+                if failures > 0 {
+                    failures = 0;
+                    let _ = tx.send(Kick::Remote); // the network is back
+                }
+                if v["seq"].as_i64().unwrap_or(0) > since {
+                    let _ = tx.send(Kick::Remote);
+                    // wait until that sync has moved us forward; if it cannot (the server is failing), ask less and less often
+                    let start = Instant::now();
+                    let mut moved = false;
+                    while start.elapsed() < hold {
+                        std::thread::sleep(Duration::from_millis(200));
+                        if ctx.synced.lock().map(|g| g.0 != e.id || g.1 > since).unwrap_or(true) {
+                            moved = true;
+                            break;
+                        }
+                    }
+                    hold = if moved { Duration::from_secs(4) } else { (hold * 2).min(Duration::from_secs(60)) };
+                }
+            }
+            Err(m) => {
+                failures += 1;
+                // two failures in a row: say so now, without waiting for the sync thread's own (slower) attempt to give up
+                if failures >= 2 && hub::is_network(&m) {
+                    if let Ok(mut st) = ctx.status.lock() {
+                        if st.state == "idle" || st.state == "error" {
+                            st.state = "offline";
+                            st.reason = "NETWORK".into();
+                        }
+                    }
+                }
+                let pause = if hub::is_auth(&m) { 10 } else { (1u64 << failures.min(5)).min(8) };
+                std::thread::sleep(Duration::from_secs(pause));
             }
         }
     }
@@ -626,16 +867,16 @@ fn main() {
         .setup(|app| {
             let app_data = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data)?;
+            account::forget_google(&app_data); // the sign-in of earlier versions is gone
             let (tx, rx) = channel();
-            app.manage(Store {
-                reg: Mutex::new(Registry::load(&app_data)),
-                app_data,
-                vault: Mutex::new(None),
+            let ctx = SyncCtx {
+                app_data: app_data.clone(),
                 status: Arc::new(Mutex::new(SyncStatus { state: "off", ..Default::default() })),
                 confirm: Arc::new(Mutex::new(BTreeSet::new())),
-                kick: Mutex::new(tx),
-                index: Mutex::new(None),
-            });
+                synced: Arc::new(Mutex::new((String::new(), -1))),
+                app: Some(app.handle().clone()),
+            };
+            app.manage(Store { reg: Mutex::new(Registry::load(&app_data)), app_data, vault: Mutex::new(None), ctx, kick: Mutex::new(tx), index: Mutex::new(None) });
             // reopen the vault that was open last time; if it is gone, the picker is shown
             let s = app.state::<Store>();
             let cur = s.reg.lock().ok().and_then(|r| r.current.clone().and_then(|id| r.find(&id).cloned()));
@@ -649,13 +890,16 @@ fn main() {
             }
             let handle = app.handle().clone();
             std::thread::spawn(move || sync_thread(handle, rx));
+            let handle = app.handle().clone();
+            std::thread::spawn(move || watcher(handle));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
             vault_stamp, pages_all, pages_save, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list,
-            file_delete, files_clear, account_status, account_login, account_logout, sync_set, sync_now, sync_confirm, cloud_vaults,
-            cloud_download, cloud_delete, cloud_reupload, index_state, index_update, index_search
+            file_delete, files_clear, account_status, server_health, account_register, account_login, account_recover, account_logout, account_info,
+            account_revoke_device, account_change_password, account_new_recovery_key, account_delete, save_text_file, sync_set, sync_now, sync_confirm, cloud_vaults,
+            cloud_trashed, cloud_restore, cloud_download, cloud_delete, cloud_reupload, index_state, index_update, index_search
         ])
         .run(tauri::generate_context!())
         .expect("error while running Noviq");

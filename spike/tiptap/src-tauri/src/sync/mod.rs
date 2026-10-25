@@ -1,4 +1,4 @@
-//! Sync of a vault with a remote copy (Google Drive, see drive.rs) without any help from the user.
+//! Sync of a vault with a remote copy (the Noviq sync server, see hub.rs) without any help from the user.
 //! The engine is independent of the remote: it only needs the `Remote` trait, so it is tested with an in-memory one.
 //!
 //! Method: a file-level three-way comparison. For every path the engine knows the local content hash, the remote
@@ -6,11 +6,11 @@
 //!
 //! Safety rules (docs/sync-design-research.md): a file that is merely *absent* is not proof of a deletion, so
 //! nothing runs against a vault or a cloud folder that is not there (preflight), a sync that would delete a lot waits
-//! for the user, nothing is ever deleted outright (it goes to the trash of the vault / of Drive), and a file that
-//! changed while we were talking to Drive is never overwritten.
+//! for the user, nothing is ever deleted outright (it goes to the trash of the vault / of the server), and a file that
+//! changed while we were talking to the server is never overwritten.
 
-pub mod auth;
-pub mod drive;
+pub mod account;
+pub mod hub;
 
 use crate::vault::{err, now_ms, write_atomic, Res, Vault, VAULT_MISMATCH, VAULT_MISSING};
 use md5::{Digest, Md5};
@@ -20,7 +20,7 @@ use std::fs;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 
-/// The cloud folder of the vault does not exist (any more): deleted from Drive, the app data was cleared, wrong account.
+/// The cloud copy of the vault does not exist (any more): deleted on the server or from another device, or a wrong account.
 pub const CLOUD_GONE: &str = "CLOUD_GONE";
 
 #[derive(Clone, Debug)]
@@ -59,10 +59,12 @@ pub struct Entry {
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct SyncState {
-    pub remote_folder: String,
-    /// The Google account this state belongs to. Another account is another cloud: the bookkeeping starts over.
+    /// The account and server this state belongs to (`user@server`). Another account is another cloud: the bookkeeping starts over.
     #[serde(default)]
     pub account: String,
+    /// What this device knows about the server's copy; see hub.rs.
+    #[serde(default)]
+    pub hub: hub::Cache,
     pub files: BTreeMap<String, Entry>,
     /// The user confirmed the deletions that were held back; used up by the next sync.
     #[serde(default)]
@@ -308,7 +310,7 @@ fn verified_upload(remote: &mut dyn Remote, path: &str, existing: Option<&str>, 
     Ok(up)
 }
 
-/// Drive allows several files of the same name (a retried upload, two devices creating a file at once). Pick one
+/// A remote may hold several files of the same name (Drive did; the Noviq server cannot). Pick one
 /// the same way on every device, keep the content of the others in the sync trash and trash them in the cloud.
 fn dedupe(vault: &Vault, remote: &mut dyn Remote, listed: Vec<RemoteFile>, rep: &mut Report) -> BTreeMap<String, RemoteFile> {
     let mut groups: BTreeMap<String, Vec<RemoteFile>> = BTreeMap::new();
