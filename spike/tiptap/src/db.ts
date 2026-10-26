@@ -2,6 +2,7 @@
 // in a plain browser it falls back to IndexedDB: one record per page (so saving a page rewrites that page only), a versions
 // store for page history, and a small key-value store.
 import { invoke } from '@tauri-apps/api/core'
+import { DB_SCHEMA_VERSION, upgradeDatabaseStores } from './database/storage/idb'
 
 export const isTauri = '__TAURI_INTERNALS__' in window
 
@@ -18,14 +19,20 @@ let opening: Promise<IDBDatabase> | null = null
 
 export function db(): Promise<IDBDatabase> {
   return (opening ??= new Promise((resolve, reject) => {
-    const req = indexedDB.open(NAME, 1)
+    const req = indexedDB.open(NAME, DB_SCHEMA_VERSION)
     req.onupgradeneeded = () => {
       const d = req.result
-      d.createObjectStore('pages', { keyPath: 'id' })
-      d.createObjectStore('versions', { keyPath: ['pageId', 'ts'] }).createIndex('byPage', 'pageId')
-      d.createObjectStore('kv')
+      // v1: pages / versions / kv. Existing data is never touched by an upgrade; the database stores (v2) are only added.
+      if (!d.objectStoreNames.contains('pages')) d.createObjectStore('pages', { keyPath: 'id' })
+      if (!d.objectStoreNames.contains('versions')) d.createObjectStore('versions', { keyPath: ['pageId', 'ts'] }).createIndex('byPage', 'pageId')
+      if (!d.objectStoreNames.contains('kv')) d.createObjectStore('kv')
+      upgradeDatabaseStores(d)
     }
-    req.onsuccess = () => resolve(req.result)
+    req.onblocked = () => reject(new Error('Another tab of this app uses an older version of the data. Close the other tabs and reload.'))
+    req.onsuccess = () => {
+      req.result.onversionchange = () => req.result.close() // let a newer tab upgrade; this one reloads
+      resolve(req.result)
+    }
     req.onerror = () => reject(req.error)
   }))
 }

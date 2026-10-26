@@ -1,4 +1,5 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { Suspense, lazy, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+const DatabaseSettings = lazy(() => import('./database/ui/DatabaseSettings').then((m) => ({ default: m.DatabaseSettings })))
 import { confirmDialog } from './dialog'
 import { ACCENTS, DEFAULTS, FONTS, PRESETS, TEXT_COLORS, loadFont, updateSettings, useSettings, type FontGroup, type FontId, type SidebarStyle, type Theme } from './settings'
 import { pickFiles } from './io'
@@ -7,13 +8,14 @@ import * as Ic from './icons'
 import { t } from './i18n'
 import { SHORTCUTS, keyLabel } from './shortcuts'
 
-type Tab = 'appearance' | 'editor' | 'language' | 'general' | 'data' | 'shortcuts' | 'about'
+type Tab = 'appearance' | 'editor' | 'language' | 'general' | 'data' | 'database' | 'shortcuts' | 'about'
 const TABS: { id: Tab; label: string; title: string; hint: string; icon: ReactNode }[] = [
   { id: 'appearance', label: 'Appearance', title: 'Appearance', hint: 'Colors, background, glass and the shape of the app.', icon: <Ic.Palette /> },
   { id: 'editor', label: 'Editor & font', title: 'Editor & font', hint: 'The typeface, size and color of your page text.', icon: <Ic.Type /> },
   { id: 'language', label: 'Language', title: 'Language & layout', hint: 'The interface language and which side things sit on.', icon: <Ic.Globe /> },
   { id: 'general', label: 'General', title: 'General', hint: 'Reminders and how files are stored.', icon: <Ic.Settings /> },
   { id: 'data', label: 'Data & backup', title: 'Data & backup', hint: 'Import, export, back up and sync your notes.', icon: <Ic.Archive /> },
+  { id: 'database', label: 'Database', title: 'Database', hint: 'Calendar defaults, maps and connected services.', icon: <Ic.Table /> },
   { id: 'shortcuts', label: 'Shortcuts', title: 'Keyboard shortcuts', hint: 'Everything you can do without leaving the keyboard.', icon: <Ic.Keyboard /> },
   { id: 'about', label: 'About', title: 'About', hint: 'What this app is.', icon: <Ic.Info /> },
 ]
@@ -451,7 +453,7 @@ export function SettingsView({ data }: { data: DataActions }) {
             <h3>{t(cur.title)}</h3>
             <p>{t(cur.hint)}</p>
           </header>
-          {tab === 'appearance' ? <Appearance /> : tab === 'editor' ? <Editor /> : tab === 'language' ? <LanguageTab /> : tab === 'general' ? <General /> : tab === 'data' ? <DataTab a={data} /> : tab === 'shortcuts' ? <Shortcuts /> : <About />}
+          {tab === 'appearance' ? <Appearance /> : tab === 'editor' ? <Editor /> : tab === 'language' ? <LanguageTab /> : tab === 'general' ? <General /> : tab === 'data' ? <DataTab a={data} /> : tab === 'database' ? <Suspense fallback={null}><DatabaseSettings /></Suspense> : tab === 'shortcuts' ? <Shortcuts /> : <About />}
         </div>
       </div>
     </div>

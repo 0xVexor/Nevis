@@ -23,6 +23,8 @@ import { iconNode } from './iconSet'
 import * as Ic from './icons'
 import { Toolbar } from './Toolbar'
 import { t } from './i18n'
+import { lazy, Suspense } from 'react'
+const RowProperties = lazy(() => import('./database/ui/RowProperties').then((m) => ({ default: m.RowProperties })))
 
 export type SaveState = 'saved' | 'saving'
 
@@ -472,6 +474,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
         )}
       </div>
 
+      {page.database && <Suspense fallback={null}><RowProperties pageId={page.id} /></Suspense>}
       <div className="page-meta">
         <div className="meta-row">
         <div className="meta-cell tags">

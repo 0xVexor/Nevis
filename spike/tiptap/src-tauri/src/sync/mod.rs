@@ -159,7 +159,7 @@ fn md5_hex(bytes: &[u8]) -> String {
 }
 
 /// Everything that belongs to the vault and is worth syncing.
-const ROOTS: [&str; 5] = ["pages", "files", "history", "kv", ".trash"];
+const ROOTS: [&str; 6] = ["pages", "files", "history", "kv", ".trash", "databases"];
 
 fn mtime_of(meta: &fs::Metadata) -> u128 {
     meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos())
@@ -222,7 +222,7 @@ fn scan(root: &Path, cache: &BTreeMap<String, Entry>) -> Res<(BTreeMap<String, L
 
 /// Remote paths come from another device (or a hostile account): only known vault locations, no escaping.
 fn safe_rel(p: &str) -> bool {
-    !p.contains("..") && !p.contains('\\') && !p.starts_with('/') && !p.contains(':') && (p == ".noviq/vault.json" || ROOTS.iter().any(|r| p.starts_with(&format!("{r}/"))))
+    !p.contains("..") && !p.contains('\\') && !p.starts_with('/') && !p.contains(':') && (p == ".noviq/vault.json" || (ROOTS.iter().any(|r| p.starts_with(&format!("{r}/"))) && (!p.starts_with("databases/") || crate::database::safe_database_rel(p))))
 }
 
 /// Settings files that two devices change independently are merged instead of letting the newer file win:
@@ -460,6 +460,26 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                         write_atomic(&root.join(p), &theirs)?;
                         state.files.insert(p.clone(), Entry { base: r.md5.clone(), remote_id: r.id.clone(), ..Default::default() });
                         rep.downloaded += 1;
+                    } else if p.starts_with("databases/") && p.ends_with(".json") {
+                        // a database record changed on both devices: keep both complete versions (the loser goes to history), upload the merge
+                        let mine = fs::read(root.join(p)).map_err(err)?;
+                        let theirs = remote.download(r)?;
+                        match (serde_json::from_slice::<serde_json::Value>(&mine), serde_json::from_slice::<serde_json::Value>(&theirs)) {
+                            (Ok(a), Ok(b)) => {
+                                let (merged, losers) = crate::database::merge::merge_records(&a, &b);
+                                crate::database::keep_losers(root, p, &losers)?;
+                                let bytes = merged.to_string().into_bytes();
+                                write_atomic(&root.join(p), &bytes)?;
+                                let up = verified_upload(remote, p, Some(&r.id), &bytes)?;
+                                state.files.insert(p.clone(), Entry { base: md5_hex(&bytes), remote_id: up.id, ..Default::default() });
+                                rep.uploaded += 1;
+                            }
+                            _ => {
+                                // one side is unreadable: never pick silently. The remote bytes are kept next to the file and the local one is uploaded later.
+                                write_atomic(&root.join(format!("{} (cloud).json", p.trim_end_matches(".json"))), &theirs)?;
+                                state.files.insert(p.clone(), Entry { base: r.md5.clone(), remote_id: r.id.clone(), ..Default::default() });
+                            }
+                        }
                     } else if p.starts_with("pages/") && p.ends_with(".json") {
                         // keep both: the remote copy lands as a conflict copy, which the vault merges (newer wins, older goes to history)
                         let stem = p.trim_start_matches("pages/").trim_end_matches(".json");
@@ -767,6 +787,84 @@ mod tests {
     fn remote_paths_cannot_escape_the_vault() {
         assert!(safe_rel("pages/x.json") && safe_rel(".noviq/vault.json"));
         assert!(!safe_rel("../x") && !safe_rel("pages/../../x") && !safe_rel("C:/x") && !safe_rel("other/x") && !safe_rel("/etc/x"));
+    }
+
+    // ───── database records (handoff §23) ─────
+
+    fn db_write(d: &Device, kind_dir: &str, id: &str, v: Value) {
+        write_atomic(&d.vault.root.join("databases").join(kind_dir).join(format!("{id}.json")), v.to_string().as_bytes()).unwrap();
+    }
+    fn db_read(d: &Device, kind_dir: &str, id: &str) -> Option<Value> {
+        fs::read(d.vault.root.join("databases").join(kind_dir).join(format!("{id}.json"))).ok().and_then(|b| serde_json::from_slice(&b).ok())
+    }
+    fn view(rev: i64, at: i64, name: &str, op: &str) -> Value {
+        json!({ "format": 1, "id": "v1", "vaultId": "v", "revision": rev, "createdAt": 1, "updatedAt": at, "createdBy": "U1", "updatedBy": "U1", "deletedAt": null, "lastOperationId": op, "name": name })
+    }
+
+    #[test]
+    fn database_records_travel_and_stay_out_of_the_local_runtime_files() {
+        let (mut a, mut b) = pair();
+        db_write(&a, "views", "v1", view(1, 10, "one", "a1"));
+        // device-local state must never be uploaded
+        write_atomic(&a.vault.root.join(".noviq/database-journal/x.json"), b"{}").unwrap();
+        write_atomic(&a.vault.root.join(".noviq/database-ops/x.json"), b"{}").unwrap();
+        a.sync();
+        b.sync();
+        assert_eq!(db_read(&b, "views", "v1").unwrap()["name"], "one");
+        assert!(!b.vault.root.join(".noviq/database-journal/x.json").exists() && !b.vault.root.join(".noviq/database-ops/x.json").exists());
+        assert!(!a.sync().changed() && !b.sync().changed());
+    }
+
+    #[test]
+    fn a_true_database_conflict_keeps_both_complete_versions() {
+        let (mut a, mut b) = pair();
+        db_write(&a, "views", "v1", view(1, 10, "base", "a1"));
+        a.sync();
+        b.sync();
+        db_write(&a, "views", "v1", view(2, 20, "from A", "a2"));
+        db_write(&b, "views", "v1", view(2, 30, "from B", "b2"));
+        a.sync(); // uploads A
+        b.sync(); // B conflicts: merges, keeps the loser, uploads the merge
+        a.sync();
+        b.sync();
+        let (ma, mb) = (db_read(&a, "views", "v1").unwrap(), db_read(&b, "views", "v1").unwrap());
+        assert_eq!(ma, mb, "both devices converge on the same record");
+        assert_eq!(ma["revision"], 3);
+        // the version that did not win is still available, complete, in the record's history
+        let hist = crate::database::history(&b.vault.root, "view", "v1").unwrap();
+        assert!(hist.iter().any(|h| h["conflict"] == true && h["body"]["name"] != ma["name"]), "{hist:?}");
+    }
+
+    #[test]
+    fn database_row_cells_edited_on_two_devices_merge_without_loss() {
+        let (mut a, mut b) = pair();
+        let cell = |v: i64, counter: i64, dev: &str| json!({ "value": { "kind": "number", "value": v }, "stamp": { "counter": counter, "deviceId": dev, "opId": "o" } });
+        let row = |rev: i64, at: i64, cells: Value| json!({ "id": P1, "title": "T1", "content": {"type":"doc","content":[]}, "updatedAt": at, "deletedAt": null,
+            "recordMeta": { "format": 1, "revision": rev, "createdAt": 1, "createdBy": "U1", "updatedBy": "U1", "lastOperationId": format!("op{rev}") },
+            "database": { "format": 1, "sourceId": "s", "schemaRevision": 1, "revision": rev, "sortKey": "V", "parentItemId": null, "cells": cells, "allocatedIds": {}, "archivedCells": {} } });
+        let put = |d: &Device, p: Value| write_atomic(&d.vault.root.join("pages").join(format!("{P1}.json")), p.to_string().as_bytes()).unwrap();
+        put(&a, row(1, 100, json!({})));
+        a.sync();
+        b.sync();
+        put(&a, row(2, 200, json!({ "cost": cell(10, 2, "D1") })));
+        put(&b, row(2, 210, json!({ "notes": cell(7, 2, "D2") })));
+        a.sync();
+        b.sync();
+        a.sync();
+        b.sync();
+        for d in [&a, &b] {
+            let p = d.page(P1).unwrap();
+            assert_eq!(p["database"]["cells"]["cost"]["value"]["value"], 10, "A's edit survives");
+            assert_eq!(p["database"]["cells"]["notes"]["value"]["value"], 7, "B's edit survives");
+        }
+        assert_eq!(a.page(P1).unwrap()["database"], b.page(P1).unwrap()["database"]);
+    }
+
+    #[test]
+    fn remote_database_paths_are_validated() {
+        assert!(safe_rel("databases/views/abc.json") && safe_rel("databases/events/rep~3atpl~7c1.json") && safe_rel("history/records/view/v1/0000000001.json"));
+        assert!(!safe_rel("databases/views/../../x.json") && !safe_rel("databases/nope/x.json") && !safe_rel("databases/views/sub/x.json") && !safe_rel("databases/views/x.exe") && !safe_rel("databases/x.json"));
+        assert!(!safe_rel(".noviq/database-journal/x.json") && !safe_rel(".noviq/index.db"));
     }
 
     #[test]

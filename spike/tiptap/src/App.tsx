@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react'
 import { repo, gcFiles, TRASH_DAYS } from './store'
 import type { Cover, Page, PageStatus } from './repo'
 import { SettingsView } from './SettingsPage'
@@ -7,6 +7,7 @@ import { Drawings } from './Drawings'
 import { SideTip } from './SideTip'
 import { removeInlineDrawing, type DrawingInfo } from './drawingData'
 import { BoardView } from './BoardView'
+const DatabasePage = lazy(() => import('./database/ui/DatabasePage').then((m) => ({ default: m.DatabasePage })))
 import { warmDrawing } from './editor/excalidraw'
 import { CoverBanner, CoverPicker } from './Cover'
 import { PagePanel } from './PagePanel'
@@ -236,6 +237,14 @@ export default function App() {
   const settings = useSettings()
 
   const refresh = useCallback(() => setPages(repo.list()), [])
+  useEffect(() => {
+    const on = (e: Event) => {
+      const r = (e as CustomEvent<{ title: string; propertyName: string }>).detail
+      setToast({ msg: t('Reminder: {title} ({prop})', { title: r.title || t('Untitled'), prop: r.propertyName }) })
+    }
+    window.addEventListener('db-reminder', on)
+    return () => window.removeEventListener('db-reminder', on)
+  }, [])
   const current = pages.find((p) => p.id === currentId && p.kind !== 'folder') ?? pages.find((p) => p.kind !== 'folder')
 
   useEffect(() => {
@@ -331,6 +340,13 @@ export default function App() {
     return () => window.removeEventListener('keydown', key, true)
   }, [])
 
+  const addDatabase = (parentId: string | null) => {
+    void import('./database/runtime').then((m) => m.getDatabase()).then((svc) => svc.one<{ hostPageId: string }>('database.create', { parentPageId: parentId, title: t('Untitled database') })).then((r) => {
+      if (parentId) expand(parentId)
+      refresh()
+      setCurrentId(r.hostPageId)
+    }).catch((e) => setToast({ msg: String(e?.message ?? e) }))
+  }
   const add = (parentId: string | null, kind?: 'board' | 'todo') => {
     const p = repo.create(parentId, kind)
     if (kind === 'todo') repo.update(p.id, { title: t('To-do list') }, { history: false })
@@ -514,6 +530,7 @@ export default function App() {
     { id: 'new-folder', label: t('New folder'), icon: <Ic.Folder />, keywords: 'create add پوشه', run: () => addFolder(null) },
     { id: 'compact-pages', label: settings.pagesView === 'compact' ? t('Show pages as a tree') : t('Show pages as a compact list'), icon: <Ic.Layers />, keywords: 'compact flat list tree pages sidebar intellij فشرده لیست درخت صفحه', run: () => updateSettings({ pagesView: settings.pagesView === 'compact' ? 'tree' : 'compact' }) },
     { id: 'new-todo', label: t('New to-do list'), icon: <Ic.Checklist />, keywords: 'create add todo task list checklist لیست کار تسک چک‌لیست جدید', run: () => add(null, 'todo') },
+    { id: 'new-database', label: t('New database'), icon: <Ic.Table />, keywords: 'create add table database board calendar پایگاه داده جدول جدید', run: () => addDatabase(null) },
     { id: 'new-board', label: t('New board'), icon: <Ic.Pencil />, keywords: 'create add whiteboard drawing canvas sketch بوم نقاشی طراحی جدید', run: () => add(null, 'board') },
     ...(current && view === 'page' ? [
       { id: 'subpage', label: t('Add subpage'), icon: <Ic.Plus />, keywords: 'زیرصفحه', run: () => add(current.id) },
@@ -645,6 +662,9 @@ export default function App() {
           <button className="row plain" onPointerEnter={warmDrawing} onFocus={warmDrawing} onClick={() => add(null, 'board')}>
             <span className="ic"><Ic.Pencil /></span><span className="ntitle">{t('New board')}</span>
           </button>
+          <button className="row plain" onClick={() => addDatabase(null)}>
+            <span className="ic"><Ic.Table /></span><span className="ntitle">{t('New database')}</span>
+          </button>
           <button className="row plain" onClick={() => add(null, 'todo')}>
             <span className="ic"><Ic.Checklist /></span><span className="ntitle">{t('New to-do list')}</span>
           </button>
@@ -721,6 +741,8 @@ export default function App() {
             <Drawings onOpen={setCurrentId} onNew={() => add(null, 'board')} onDelete={delDrawing} />
           ) : view === 'settings' ? (
             <SettingsView data={{ importMarkdown: doImport, importVault: () => void doVault(), exportAll: doExportAll, backup: doBackup, restore: doRestore, autoBackup: () => setBackupOpen(true), workspaces: () => setFolderOpen(true), account: isTauri ? () => setAccountOpen(true) : undefined, syncNow: isTauri ? () => void syncNow() : undefined }} />
+          ) : current?.dbHost ? (
+            <Suspense fallback={<div className="page-skeleton" aria-busy="true" />}><DatabasePage key={current.id} page={current} onOpenPage={setCurrentId} onMeta={refresh} readOnly={reader} /></Suspense>
           ) : current?.kind === 'board' ? (
             <BoardView key={current.id} page={current} onSave={setSave} onMeta={refresh} readOnly={reader} />
           ) : current ? (
@@ -786,6 +808,7 @@ export default function App() {
             <MenuItem icon={<Ic.Plus />} label={t('New page')} onClick={() => (add(null), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Folders />} label={t('New folder')} onClick={() => (addFolder(null), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Pencil />} label={t('New board')} onClick={() => (add(null, 'board'), setBlankMenu(null))} />
+            <MenuItem icon={<Ic.Table />} label={t('New database')} onClick={() => (addDatabase(null), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Checklist />} label={t('New to-do list')} onClick={() => (add(null, 'todo'), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Blocks />} label={t('New from template…')} onClick={() => (setTplOpen(true), setBlankMenu(null))} />
             <MenuSep />
