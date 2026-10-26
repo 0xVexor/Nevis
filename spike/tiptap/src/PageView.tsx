@@ -1,5 +1,6 @@
 import { shortcutLabel } from './shortcuts'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { registerUpdateSave } from './updateSave'
 import { createPortal } from 'react-dom'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { getFind, scrollToMatch } from './editor/find'
@@ -89,6 +90,8 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
       onSave('saved')
     }
   }, [page.id, onSave])
+
+  useEffect(() => registerUpdateSave(flush), [flush])
 
   const editor = useEditor(
     {

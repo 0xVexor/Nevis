@@ -112,6 +112,8 @@ export class Coordinator {
     return run
   }
 
+  async flushed(): Promise<void> { await this.chain }
+
   private async run(env: CommandEnvelope): Promise<Commit> {
     if (this.locked) fail('RECOVERY_REQUIRED', 'the database needs repair before it can be written')
     if (env.vaultId !== this.state.vaultId) fail('SCHEMA_MISMATCH', 'command belongs to another vault')

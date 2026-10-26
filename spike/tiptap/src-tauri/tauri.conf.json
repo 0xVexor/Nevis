@@ -25,6 +25,9 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": { "pubkey": "", "windows": { "installMode": "passive" } }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

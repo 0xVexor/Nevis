@@ -1,0 +1,34 @@
+/* Uses the same card, modal, switch and accent tokens as account/settings. */
+.update-notice { position: fixed; inset-inline-end: 24px; bottom: 24px; z-index: 190; display: flex; align-items: flex-start; gap: 12px; width: min(360px, calc(100vw - 32px)); padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--pop); color: var(--text); box-shadow: var(--shadow); animation: pop-in .2s var(--ease); }
+.update-icon { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border-radius: var(--radius); background: var(--accent-bg); color: var(--accent); }
+.update-notice-text { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 5px; font-size: 13px; }
+.update-notice-text > span { color: var(--muted); overflow-wrap: anywhere; }
+.update-notice .icon-btn { flex: none; width: 26px; height: 26px; }
+.update-link { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; padding: 4px 0 0; border: 0; background: none; color: var(--accent); font: inherit; font-weight: 700; cursor: var(--cursor-hand, pointer); }
+.update-link svg { transform: rotate(-90deg); }
+:root[dir='rtl'] .update-link svg { transform: rotate(90deg); }
+.update-overlay { z-index: 650; padding: 20px; }
+.modal.update-dialog { width: min(500px, 94vw); max-height: 88vh; outline: none; }
+.update-body { overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 18px; }
+.update-versions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; color: var(--muted); font-size: 13px; }
+.update-versions > bdi { font-family: var(--mono); }
+:root[dir='rtl'] .update-versions > span[aria-hidden] { transform: scaleX(-1); }
+.update-channel { padding: 3px 9px; border-radius: 20px; background: var(--accent-bg); color: var(--accent); font-size: 11px; font-weight: 700; }
+.update-channel.preview { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--text); }
+.update-notes { padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); font-size: 13px; }
+.update-notes > b { color: var(--muted); font-size: 12px; }
+.update-notes p { margin: 10px 0 0; max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.85; }
+.update-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--border); }
+.update-actions button, .update-secondary { min-height: 36px; padding: 8px 14px; font: inherit; font-size: 13px; border-radius: var(--radius); cursor: var(--cursor-hand, pointer); }
+.update-secondary { border: 1px solid var(--border); background: var(--bg-raised); color: var(--text); }
+.update-secondary:hover:not(:disabled) { background: var(--hover); }
+.update-actions button:disabled, .update-settings button:disabled { opacity: .55; cursor: default; }
+.update-download { display: flex; flex-direction: column; gap: 8px; }
+.update-download-label { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.update-download progress { width: 100%; height: 6px; border: 0; border-radius: 8px; overflow: hidden; background: var(--hover); accent-color: var(--accent); }
+.update-download progress::-webkit-progress-bar { background: var(--hover); border-radius: 8px; }
+.update-download progress::-webkit-progress-value { background: var(--accent); border-radius: 8px; }
+.update-download small, .update-status { color: var(--muted); font-size: 12px; line-height: 1.8; }
+.update-status { margin: 12px 0 4px; }
+.update-settings .sx-row { padding-inline: 0; }
+@media (max-width: 480px) { .update-body { padding: 18px; } .update-actions { padding: 14px 18px; } .update-notice { inset-inline-end: 16px; bottom: 16px; } }

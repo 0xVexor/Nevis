@@ -1,4 +1,5 @@
 import { Brand } from './Brand'
+import { UpdateCenter } from './UpdateUI'
 import { shortcutLabel } from './shortcuts'
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react'
 import { repo, gcFiles, TRASH_DAYS } from './store'
@@ -879,6 +880,7 @@ export default function App() {
       {trashOpen && (
         <TrashModal key={trashTick} items={repo.trash()} days={TRASH_DAYS} onRestore={restore} onPurge={purge} onEmpty={emptyTrash} onClose={() => setTrashOpen(false)} />
       )}
+      <UpdateCenter />
       {toast && <Toast msg={toast.msg} action={toast.undo ? t('Undo') : undefined} onAction={toast.undo} onClose={() => setToast(null)} />}
 
       {searching && (
