@@ -14,7 +14,7 @@ const SERVER_SAYS: Record<string, string> = {
   bad_challenge: 'The sign-up check failed. Try again.',
   challenge_expired: 'The sign-up check took too long. Try again.',
   rate_limited: 'Too many attempts. Wait a few minutes and try again.',
-  upgrade_required: 'This version of Noviq is too old for the server. Update the app.',
+  upgrade_required: 'This version of Nevis is too old for the server. Update the app.',
   insecure_server: 'The server address must start with https://.',
   bad_server: 'This is not a valid server address.',
   quota_exceeded: 'Your storage on the server is full.',
@@ -27,9 +27,9 @@ const SERVER_SAYS: Record<string, string> = {
   conflict: 'Another device changed this at the same moment. It will be merged on the next sync.',
   internal: 'The server had a problem. Try again in a moment.',
   not_in_trash: 'Only a vault that is in the server trash can be deleted for good.',
-  not_noviq: 'This address does not answer like a Noviq sync server. Check the address, or the server may not be running yet.',
-  http_401: 'This address does not answer like a Noviq sync server. Check the address, or the server may not be running yet.',
-  http_404: 'This address does not answer like a Noviq sync server. Check the address, or the server may not be running yet.',
+  not_noviq: 'This address does not answer like a Nevis sync server. Check the address, or the server may not be running yet.',
+  http_401: 'This address does not answer like a Nevis sync server. Check the address, or the server may not be running yet.',
+  http_404: 'This address does not answer like a Nevis sync server. Check the address, or the server may not be running yet.',
 }
 
 /**

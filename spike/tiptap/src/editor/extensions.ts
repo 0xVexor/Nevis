@@ -10,9 +10,11 @@ import { CommandPalette } from './commandPalette'
 import { FindInPage } from './find'
 import { MermaidBlock } from './mermaid'
 import { DrawingBlock } from './drawing'
+import { DatabaseEmbed } from './databaseEmbed'
 import { AttImage, ImageFiles } from './image'
 import { InlineIcon } from './inlineIcon'
 import { HeadingDir } from './headingDir'
+import { FlowArrows } from './flowArrows'
 import { DragHandle } from './dragHandle'
 import { MarkdownPaste } from './markdownPaste'
 import { MarkdownTab } from './markdownTab'
@@ -212,6 +214,7 @@ export const extensions = [
   AttImage,
   InlineIcon,
   HeadingDir,
+  FlowArrows,
   MathAuto,
   ImageFiles,
   MarkdownPaste,
@@ -226,6 +229,7 @@ export const extensions = [
   FindInPage,
   MermaidBlock,
   DrawingBlock,
+  DatabaseEmbed,
   Placeholder.configure({ placeholder: ({ node }) => (node.type.name === 'paragraph' ? t('Start writing, or press / for commands…') : ''), showOnlyCurrent: true }),
   Direction,
   SlashCommand,

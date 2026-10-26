@@ -9,11 +9,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-/// The server the app talks to unless the user types another one (or the build sets NOVIQ_SERVER).
+/// NEVIS_SERVER selects the default server; NOVIQ_SERVER remains a compatible fallback.
 /// A build environment that defines NOVIQ_SERVER as an empty string (an unset CI variable does that) means "no choice", not "no server".
-pub const DEFAULT_SERVER: &str = match option_env!("NOVIQ_SERVER") {
+pub const DEFAULT_SERVER: &str = match option_env!("NEVIS_SERVER") {
     Some(s) if !s.is_empty() => s,
-    _ => "https://sync.manaz.pro",
+    _ => match option_env!("NOVIQ_SERVER") {
+        Some(s) if !s.is_empty() => s,
+        _ => "https://sync.manaz.pro",
+    },
 };
 
 const KEYRING_SERVICE: &str = "noviq";
@@ -86,7 +89,7 @@ pub fn normalize_server(s: &str) -> Res<String> {
 }
 
 pub fn device_name() -> String {
-    let host = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).or_else(|_| std::env::var("HOST")).unwrap_or_else(|_| "Noviq".to_string());
+    let host = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).or_else(|_| std::env::var("HOST")).unwrap_or_else(|_| "Nevis".to_string());
     format!("{host} ({})", std::env::consts::OS)
 }
 
@@ -102,7 +105,7 @@ pub fn api(app_data: &Path) -> Res<Api> {
 /// What the server says about itself: whether it takes new accounts, and whether they need an invite code.
 pub fn health(server: &str) -> Res<Value> {
     let h = Api::new(&normalize_server(server)?, None)?.quick().get("/v1/health")?;
-    // an address that answers, but is not a Noviq sync server (another app, a page of the hosting provider)
+    // an address that answers, but is not a Nevis sync server (another app, a page of the hosting provider)
     if h["name"] != "noviq-sync" {
         return Err("HUB:not_noviq".into());
     }

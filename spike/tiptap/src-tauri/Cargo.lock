@@ -2276,8 +2276,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "noviq"
-version = "0.2.1"
+name = "nevis"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "keyring",

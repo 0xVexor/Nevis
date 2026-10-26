@@ -1,25 +1,43 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { normalizeFa } from './normalize'
+import { createPortal } from 'react-dom'
 import type { Page } from './repo'
 import * as Ic from './icons'
 import { GLYPHS, GLYPH_NAMES, Glyph, ICON_PREFIX, iconNode, parseIcon } from './iconSet'
 import { t, locale } from './i18n'
+import { shortcutHint } from './shortcuts'
 
 /** Fixed-position popover anchored to a rect; closes on outside click / Escape. Arrow keys / Home / End move through its items. */
 export function Popover({ anchor, onClose, children, align = 'start' }: { anchor: DOMRect; onClose: () => void; children: ReactNode; align?: 'start' | 'end' }) {
   const ref = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState({ top: anchor.bottom + 6, left: anchor.left })
+  const [pos, setPos] = useState<{ top: number; left: number; maxH?: number }>({ top: anchor.bottom + 6, left: anchor.left })
 
+  // Placed under the anchor (above it when there is no room) and kept in view while its content grows or shrinks:
+  // a tall popover scrolls inside itself instead of running off the window.
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
-    const w = el.offsetWidth
-    const h = el.offsetHeight
-    let left = align === 'end' ? anchor.right - w : anchor.left
-    left = Math.max(8, Math.min(left, window.innerWidth - w - 8))
-    let top = anchor.bottom + 6
-    if (top + h > window.innerHeight - 8) top = Math.max(8, anchor.top - h - 6)
-    setPos({ top, left })
+    const place = () => {
+      const w = el.offsetWidth
+      const h = el.scrollHeight + 2
+      const below = window.innerHeight - anchor.bottom - 14
+      const above = anchor.top - 14
+      let left = align === 'end' ? anchor.right - w : anchor.left
+      left = Math.max(8, Math.min(left, window.innerWidth - w - 8))
+      let top: number
+      let maxH: number | undefined
+      if (h <= below) top = anchor.bottom + 6
+      else if (h <= above) top = anchor.top - h - 6
+      else if (Math.max(below, above) < 200) (top = 8, maxH = window.innerHeight - 16)
+      else if (below >= above) (top = anchor.bottom + 6, maxH = below)
+      else (top = anchor.top - 6 - above, maxH = above)
+      setPos((p) => (p.top === top && p.left === left && p.maxH === maxH ? p : { top, left, maxH }))
+    }
+    place()
+    const ro = new ResizeObserver(place)
+    ro.observe(el)
+    window.addEventListener('resize', place)
+    return () => (ro.disconnect(), window.removeEventListener('resize', place))
   }, [anchor, align])
 
   useEffect(() => {
@@ -41,48 +59,63 @@ export function Popover({ anchor, onClose, children, align = 'start' }: { anchor
     }
   }, [onClose])
 
-  return (
-    <div ref={ref} className="popover" style={{ top: pos.top, left: pos.left }}>
+  return createPortal(
+    <div ref={ref} className="popover" style={{ top: pos.top, left: pos.left, ...(pos.maxH ? { maxHeight: pos.maxH, overflowY: 'auto' } : null) }}>
       {children}
-    </div>
+    </div>, document.body,
   )
 }
 
 type SelectOption = { value: string; label: string; color?: string }
 
 /** Dropdown selector (replaces the native <select>): a field button that opens the shared menu, with a dot per option and a check on the current one. */
-export function Select({ value, options, onChange, className, title, style }: { value: string; options: SelectOption[]; onChange: (v: string) => void; className?: string; title?: string; style?: React.CSSProperties }) {
+export function Select({ value, options, onChange, className, title, style, disabled, id, ...aria }: { value: string; options: SelectOption[]; onChange: (v: string) => void; className?: string; title?: string; style?: React.CSSProperties; disabled?: boolean; id?: string; 'aria-label'?: string; 'aria-invalid'?: boolean; 'aria-describedby'?: string; dir?: 'auto' | 'ltr' | 'rtl' }) {
   const [rect, setRect] = useState<DOMRect | null>(null)
+  const [inline, setInline] = useState(false)
+  const btn = useRef<HTMLButtonElement>(null)
   const cur = options.find((o) => o.value === value) ?? options[0]
+  const open = !!rect || inline
+  const close = () => (setRect(null), setInline(false))
+  const list = (
+    <div className="menu sel-menu" role="listbox" style={inline ? undefined : { minWidth: Math.max(rect?.width ?? 0, 180) }} onClick={(e) => e.stopPropagation()}>
+      {options.map((o) => (
+        <button key={o.value} type="button" role="option" aria-selected={o.value === value} className={'menu-item' + (o.value === value ? ' on' : '')} onClick={() => (onChange(o.value), close())}>
+          <span className="menu-ic">{o.color ? <i className="sel-dot" style={{ background: o.color }} /> : null}</span>
+          <span className="menu-tx">{o.label}</span>
+          {o.value === value && <span className="sel-check"><Ic.Check size={14} /></span>}
+        </button>
+      ))}
+    </div>
+  )
   return (
     <>
       <button
+        ref={btn}
+        {...aria}
+        id={id}
+        disabled={disabled}
         type="button"
-        className={'selbox ' + (className ?? '') + (rect ? ' open' : '')}
+        className={'selbox ' + (className ?? '') + (open ? ' open' : '')}
         style={style}
         title={title}
+        aria-label={aria['aria-label'] ?? title}
         aria-haspopup="listbox"
-        aria-expanded={!!rect}
+        aria-expanded={open}
         onMouseDown={(e) => e.nativeEvent.stopPropagation()}
-        onClick={(e) => (e.stopPropagation(), setRect(rect ? null : e.currentTarget.getBoundingClientRect()))}
+        onClick={(e) => {
+          e.stopPropagation()
+          if (open) return close()
+          // inside a popover or a dialog the list opens in place, under the field, not as a second popup over it
+          if (btn.current?.closest('.popover, .modal, .db-modal-body')) setInline(true)
+          else setRect(e.currentTarget.getBoundingClientRect())
+        }}
       >
         {cur?.color && <i className="sel-dot" style={{ background: cur.color }} />}
         <span className="sel-label">{cur?.label}</span>
         <span className="sel-chev"><Ic.Chevron size={12} /></span>
       </button>
-      {rect && (
-        <Popover anchor={rect} onClose={() => setRect(null)}>
-          <div className="menu sel-menu" role="listbox" style={{ minWidth: Math.max(rect.width, 180) }} onClick={(e) => e.stopPropagation()}>
-            {options.map((o) => (
-              <button key={o.value} type="button" role="option" aria-selected={o.value === value} className={'menu-item' + (o.value === value ? ' on' : '')} onClick={() => (onChange(o.value), setRect(null))}>
-                <span className="menu-ic">{o.color ? <i className="sel-dot" style={{ background: o.color }} /> : null}</span>
-                <span className="menu-tx">{o.label}</span>
-                {o.value === value && <span className="sel-check"><Ic.Check size={14} /></span>}
-              </button>
-            ))}
-          </div>
-        </Popover>
-      )}
+      {inline && <div className="sel-inline">{list}</div>}
+      {rect && <Popover anchor={rect} onClose={close}>{list}</Popover>}
     </>
   )
 }
@@ -91,7 +124,7 @@ export const MenuItem = ({ icon, label, onClick, danger, hint, desc, disabled }:
   <button className={'menu-item' + (danger ? ' danger' : '')} onClick={onClick} disabled={disabled}>
     <span className="menu-ic">{icon}</span>
     {desc ? <span className="menu-tx"><b>{label}</b><small>{desc}</small></span> : <span className="menu-tx">{label}</span>}
-    {hint && <span className="menu-hint">{hint}</span>}
+    {hint && <span className="menu-hint" dir="ltr">{shortcutHint(hint)}</span>}
   </button>
 )
 
@@ -228,7 +261,7 @@ export function SearchModal({ pages, search, commands, onOpen, onClose, initialQ
             <button key={c.id} className={'result' + (i === sel ? ' sel' : '')} onMouseMove={() => setSel(i)} onClick={() => choose({ cmd: c })}>
               <span className="result-ic">{c.icon}</span>
               <span className="result-tx"><b dir="auto">{hl(c.label)}</b></span>
-              {c.hint ? <kbd className="result-kbd">{c.hint}</kbd> : <span className="result-go"><Ic.Arrow size={14} /></span>}
+              {c.hint ? <kbd className="result-kbd" dir="ltr">{shortcutHint(c.hint)}</kbd> : <span className="result-go"><Ic.Arrow size={14} /></span>}
             </button>
           ))}
           {found.length > 0 && <div className="modal-label">{term.trim() ? t('Pages') : t('Recent')}</div>}

@@ -231,7 +231,7 @@ export function Vaults({ onClose, onNew, onAccount }: { onClose: () => void; onN
             )}
           </div>
 
-          {!isTauri && <p className="wsd-note">{t('Your notes live locally. This preview uses its own sample content, separate from your Noviq workspace.')}</p>}
+          {!isTauri && <p className="wsd-note">{t('Your notes live locally. This preview uses its own sample content, separate from your Nevis workspace.')}</p>}
 
           {isTauri && (
             <>
@@ -265,7 +265,7 @@ export function Vaults({ onClose, onNew, onAccount }: { onClose: () => void; onN
               <h4>{t('Sync between devices')}</h4>
               {!acc?.signedIn ? (
                 <div className="wsd-card">
-                  <p>{t('Sign in and Noviq keeps this vault in sync on all your devices, within a second or two of each change. You need only a user name and a password: no email address.')}</p>
+                  <p>{t('Sign in and Nevis keeps this vault in sync on all your devices, within a second or two of each change. You need only a user name and a password: no email address.')}</p>
                   <button className="primary" disabled={busy} onClick={() => (onClose(), onAccount())}>{t('Sign in or create account')}</button>
                 </div>
               ) : (
