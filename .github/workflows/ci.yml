@@ -40,6 +40,8 @@ jobs:
         working-directory: spike/tiptap
       - run: npm run test:direction
         working-directory: spike/tiptap
+      - run: npm run test:documents
+        working-directory: spike/tiptap
       - run: npm run test:updates
         working-directory: spike/tiptap
       - run: npm run build
