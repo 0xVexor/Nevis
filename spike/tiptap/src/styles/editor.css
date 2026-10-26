@@ -100,9 +100,9 @@
 
 /* drag handle */
 /* 32×32 hit area; the ::before bridges the gap to the text so the pointer never loses the handle on its way */
-.block-handle { position: absolute; width: 32px; height: 32px; align-items: center; justify-content: center; color: var(--muted); cursor: var(--cursor-grab, grab); border-radius: 8px; user-select: none; z-index: 3; transition: background 0.15s, color 0.15s; }
-.block-handle::before { content: ''; position: absolute; top: 0; bottom: 0; right: -10px; width: 10px; }
-.block-handle.rtl::before { right: auto; left: -10px; }
+.block-handle { --block-handle-gap: 16px; position: absolute; width: 32px; height: 32px; align-items: center; justify-content: center; color: var(--muted); cursor: var(--cursor-grab, grab); border-radius: 8px; user-select: none; z-index: 3; transition: background 0.15s, color 0.15s; }
+.block-handle::before { content: ''; position: absolute; top: 0; bottom: 0; right: calc(-1 * var(--block-handle-gap) + 2px); width: calc(var(--block-handle-gap) - 2px); }
+.block-handle.rtl::before { right: auto; left: calc(-1 * var(--block-handle-gap) + 2px); }
 .block-handle svg { pointer-events: none; }
 .block-handle:hover { background: var(--accent-bg); color: var(--accent); }
 .block-handle:active { cursor: var(--cursor-grabbing, grabbing); background: var(--accent-bg); color: var(--accent); }
@@ -291,3 +291,13 @@
 /* Excalidraw's own loader says "Loading scene…" in English; the spinner alone is enough */
 .excalidraw.excalidraw .LoadingMessage .LoadingMessage-text { display: none; }
 :root[data-board-full] :is(.side, .topbar) { display: none; }
+
+
+/* A next-step separator in RTL prose points along the reading direction.
+   Decorations affect the display only; copy, search and storage keep the text. */
+.tiptap .rtl-flow-arrow {
+  display: inline-block;
+  direction: ltr;
+  unicode-bidi: isolate;
+  transform: scaleX(-1);
+}

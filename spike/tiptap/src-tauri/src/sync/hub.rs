@@ -1,4 +1,4 @@
-//! The Noviq sync server (`server/` in this repository) as a `Remote` for the sync engine in `mod.rs`.
+//! The Nevis sync server (`server/` in this repository) as a `Remote` for the sync engine in `mod.rs`.
 //!
 //! The server numbers every change of a vault (`seq`), and every path carries the number of its last change (`rev`).
 //! This file turns that into what the engine expects:
@@ -55,7 +55,7 @@ impl Api {
             .connect_timeout(Duration::from_secs(10)) // a connection that does not open in 10 s is a dead one
             .timeout(Duration::from_secs(60))
             .tcp_keepalive(Duration::from_secs(30))
-            .user_agent(concat!("Noviq/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("Nevis/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(err)?;
         Ok(Api { http, base: base.trim_end_matches('/').to_string(), token, attempts: 4 })
@@ -118,7 +118,7 @@ impl Api {
 
 /// `HUB:<code>` for what the server said (its own error codes), `AUTH:unauthorized` when the token of this device is not accepted.
 /// `authed`: the request carried a token. A 401 to a request without one (sign-in, sign-up) is not "you are signed out":
-/// it is a wrong password, or an address that is not a Noviq server at all.
+/// it is a wrong password, or an address that is not a Nevis server at all.
 pub fn status_error(r: Response, authed: bool) -> String {
     let code = r.status().as_u16();
     let body: Value = r.json().unwrap_or(Value::Null);

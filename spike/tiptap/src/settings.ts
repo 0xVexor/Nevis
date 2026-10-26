@@ -202,6 +202,7 @@ const toneOf = (hex: string, dL: number) => {
 const cursors = (hex: string) => ({
   arrow: `${shape(ARROW, hex)} 4 3, default`,
   hand: `${shape(HAND, hex)} 11 3, pointer`,
+  text: `${lines('M9 4h6M12 4v16M9 20h6', hex)} 12 12, text`,
   grab: `${shape(GRAB, hex)} 12 11, grab`,
   grabbing: `${shape(GRABBING, hex)} 12 12, grabbing`,
   zoom: `${zoomCursor(hex)} 10 10, zoom-in`,
@@ -232,6 +233,7 @@ export function apply(s: Settings = state) {
   const cur = cursors(toneOf(s.accent ?? (dark ? '#8479ff' : '#6a5cff'), dark ? 0.12 : -0.12))
   set('--cursor-arrow', cur.arrow)
   set('--cursor-hand', cur.hand)
+  set('--cursor-text', cur.text)
   set('--cursor-grab', cur.grab)
   set('--cursor-grabbing', cur.grabbing)
   set('--cursor-zoom', cur.zoom)

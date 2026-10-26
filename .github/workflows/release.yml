@@ -1,17 +1,48 @@
 name: Build installers
 
-# Builds the Windows (.exe/.msi) and macOS (.dmg) installers. Run it from the Actions tab, or push a tag like v0.1.0.
-# The installers are attached to the workflow run as artifacts (and to a draft release for tags).
 on:
   workflow_dispatch:
   push:
     tags: ['v*']
 
 permissions:
-  contents: write # the draft release is created with GITHUB_TOKEN
+  contents: write
+
+concurrency:
+  group: installers-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  release-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Allow final releases from main only
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" != tag && "$GITHUB_REF" != refs/heads/main ]]; then
+            echo 'Installer builds must use main or a final release tag on main.' >&2
+            exit 1
+          fi
+          git merge-base --is-ancestor HEAD origin/main
+          node .github/scripts/release-version.cjs
+      - name: Prepare the draft release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --draft --title "Nevis $TAG" --notes-file "docs/releases/$TAG.md"
+          fi
+
   build:
+    needs: release-source
     strategy:
       fail-fast: false
       matrix:
@@ -39,20 +70,31 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # the sync server compiled into the app (see src-tauri/src/sync/account.rs); unset = the default server
-          NOVIQ_SERVER: ${{ vars.NOVIQ_SERVER }}
+          NEVIS_SERVER: ${{ vars.NEVIS_SERVER || vars.NOVIQ_SERVER }}
         with:
           projectPath: spike/tiptap
           args: ${{ matrix.args }}
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-          releaseName: Noviq ${{ github.ref_name }}
+          releaseName: Nevis ${{ github.ref_name }}
           releaseDraft: true
+          prerelease: false
       - uses: actions/upload-artifact@v4
         with:
-          name: noviq-${{ matrix.os }}
-          # one pattern per line: the glob of this action does not expand {exe,msi,dmg}
+          name: Nevis-${{ matrix.os }}
           path: |
             spike/tiptap/src-tauri/target/**/release/bundle/**/*.exe
             spike/tiptap/src-tauri/target/**/release/bundle/**/*.msi
             spike/tiptap/src-tauri/target/**/release/bundle/**/*.dmg
           if-no-files-found: error
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish the completed stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release edit "$TAG" --draft=false --prerelease=false --latest --title "Nevis $TAG" --notes-file "docs/releases/$TAG.md"

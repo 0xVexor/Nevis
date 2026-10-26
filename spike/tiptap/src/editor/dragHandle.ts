@@ -64,10 +64,11 @@ export const DragHandle = Extension.create({
             const h = host.getBoundingClientRect()
             const rtl = getComputedStyle(dom).direction === 'rtl'
             const lineH = parseFloat(getComputedStyle(dom).lineHeight) || 28
+            const gap = parseFloat(getComputedStyle(handle).getPropertyValue('--block-handle-gap')) || 16
             handle.style.display = 'flex'
             handle.classList.toggle('rtl', rtl)
             handle.style.top = `${r.top - h.top + (lineH - 32) / 2}px`
-            handle.style.left = rtl ? `${r.right - h.left + 4}px` : `${r.left - h.left - 36}px`
+            handle.style.left = rtl ? `${r.right - h.left + gap}px` : `${r.left - h.left - 32 - gap}px`
           }
 
           handle.addEventListener('dragstart', (e) => {

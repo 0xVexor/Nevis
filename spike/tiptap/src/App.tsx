@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react'
+import { Brand } from './Brand'
+import { shortcutLabel } from './shortcuts'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react'
 import { repo, gcFiles, TRASH_DAYS } from './store'
 import type { Cover, Page, PageStatus } from './repo'
 import { SettingsView } from './SettingsPage'
 import { Tasks } from './Tasks'
 import { Drawings } from './Drawings'
+import { Databases } from './Databases'
 import { SideTip } from './SideTip'
 import { removeInlineDrawing, type DrawingInfo } from './drawingData'
 import { BoardView } from './BoardView'
+const DatabasePage = lazy(() => import('./database/ui/DatabasePage').then((m) => ({ default: m.DatabasePage })))
 import { warmDrawing } from './editor/excalidraw'
 import { CoverBanner, CoverPicker } from './Cover'
 import { PagePanel } from './PagePanel'
@@ -15,10 +19,11 @@ import { isDark, updateSettings, useSettings } from './settings'
 import { BackupError, buildBackup, download, pageToMarkdown, restoreBackup } from './backup'
 import { exportAllZip, importMarkdown, importVault, pickDirectory, pickFiles } from './io'
 import { PagesTable } from './PagesTable'
+import { HorizontalScroll } from './HorizontalScroll'
 import { Flashcards } from './Flashcards'
 import { SidebarTags } from './SidebarTags'
 import { Explorer } from './Explorer'
-import { Templates, TEMPLATE_GLYPH } from './TemplateGallery'
+import { Templates, TEMPLATE_GLYPH, BOARD_TEMPLATE, DATABASE_TEMPLATE } from './TemplateGallery'
 import { getTemplates } from './templates'
 import { PageView, type SaveState } from './PageView'
 import { buildIndex, type PageIndex } from './pageIndex'
@@ -185,7 +190,7 @@ function TreeRow(props: RowProps) {
 export default function App() {
   const [pages, setPages] = useState<Page[]>(() => repo.list())
   const [currentId, setCurrentIdRaw] = useState<string>(() => localStorage.getItem('not.current') || repo.pagesOnly()[0]?.id || '')
-  const [view, setView] = useState<'home' | 'page' | 'settings' | 'tasks' | 'drawings' | 'files'>('home')
+  const [view, setView] = useState<'home' | 'page' | 'settings' | 'tasks' | 'drawings' | 'databases' | 'files'>('home')
   const [panelOpen, setPanelOpen] = useState<boolean>(() => store('not.panel.v2', false))
   const [coverMenu, setCoverMenu] = useState<DOMRect | null>(null)
   // opening any page (sidebar, search, link, breadcrumb…) also leaves the settings view
@@ -236,6 +241,14 @@ export default function App() {
   const settings = useSettings()
 
   const refresh = useCallback(() => setPages(repo.list()), [])
+  useEffect(() => {
+    const on = (e: Event) => {
+      const r = (e as CustomEvent<{ title: string; propertyName: string }>).detail
+      setToast({ msg: t('Reminder: {title} ({prop})', { title: r.title || t('Untitled'), prop: r.propertyName }) })
+    }
+    window.addEventListener('db-reminder', on)
+    return () => window.removeEventListener('db-reminder', on)
+  }, [])
   const current = pages.find((p) => p.id === currentId && p.kind !== 'folder') ?? pages.find((p) => p.kind !== 'folder')
 
   useEffect(() => {
@@ -331,6 +344,13 @@ export default function App() {
     return () => window.removeEventListener('keydown', key, true)
   }, [])
 
+  const addDatabase = (parentId: string | null) => {
+    void import('./database/runtime').then((m) => m.getDatabase()).then((svc) => svc.one<{ hostPageId: string }>('database.create', { parentPageId: parentId, title: t('Untitled database') })).then((r) => {
+      if (parentId) expand(parentId)
+      refresh()
+      setCurrentId(r.hostPageId)
+    }).catch((e) => setToast({ msg: String(e?.message ?? e) }))
+  }
   const add = (parentId: string | null, kind?: 'board' | 'todo') => {
     const p = repo.create(parentId, kind)
     if (kind === 'todo') repo.update(p.id, { title: t('To-do list') }, { history: false })
@@ -346,7 +366,9 @@ export default function App() {
   const [tplOpen, setTplOpen] = useState(false)
   const addFromTemplate = (id: string) => {
     setTplOpen(false)
-    const p = repo.create(null)
+    if (id === BOARD_TEMPLATE) return add(null, 'board')
+    if (id === DATABASE_TEMPLATE) return addDatabase(null)
+    const p = repo.create(null, id === 'todo' ? 'todo' : 'page')
     const tp = getTemplates().find((x) => x.id === id)
     if (tp) {
       repo.update(p.id, { title: tp.pageTitle, icon: 'i:' + (TEMPLATE_GLYPH[tp.id] ?? 'page') })
@@ -514,6 +536,7 @@ export default function App() {
     { id: 'new-folder', label: t('New folder'), icon: <Ic.Folder />, keywords: 'create add پوشه', run: () => addFolder(null) },
     { id: 'compact-pages', label: settings.pagesView === 'compact' ? t('Show pages as a tree') : t('Show pages as a compact list'), icon: <Ic.Layers />, keywords: 'compact flat list tree pages sidebar intellij فشرده لیست درخت صفحه', run: () => updateSettings({ pagesView: settings.pagesView === 'compact' ? 'tree' : 'compact' }) },
     { id: 'new-todo', label: t('New to-do list'), icon: <Ic.Checklist />, keywords: 'create add todo task list checklist لیست کار تسک چک‌لیست جدید', run: () => add(null, 'todo') },
+    { id: 'new-database', label: t('New database'), icon: <Ic.Table />, keywords: 'create add table database board calendar پایگاه داده جدول جدید', run: () => addDatabase(null) },
     { id: 'new-board', label: t('New board'), icon: <Ic.Pencil />, keywords: 'create add whiteboard drawing canvas sketch بوم نقاشی طراحی جدید', run: () => add(null, 'board') },
     ...(current && view === 'page' ? [
       { id: 'subpage', label: t('Add subpage'), icon: <Ic.Plus />, keywords: 'زیرصفحه', run: () => add(current.id) },
@@ -526,6 +549,7 @@ export default function App() {
     { id: 'graph', label: t('Graph view'), icon: <Ic.Link />, keywords: 'graph links map backlinks گراف نقشه ارتباط پیوند', run: () => setGraphOpen(true) },
     { id: 'files', label: t('Files'), icon: <Ic.Folders />, keywords: 'files explorer folders manage فایل مدیریت پوشه فایل‌ها', run: () => setView('files') },
     { id: 'tasks', label: t('Tasks'), icon: <Ic.Checklist />, keywords: 'tasks todo checklist کارها وظایف چک لیست', run: () => setView('tasks') },
+    { id: 'databases', label: t('Databases'), icon: <Ic.Table />, keywords: 'databases tables projects all database پایگاه داده دیتابیس پروژه جدول', run: () => setView('databases') },
     { id: 'drawings', label: t('Drawings'), icon: <Ic.Pencil />, keywords: 'drawings boards whiteboard sketch canvas excalidraw نقاشی بوم طراحی ترسیم', run: () => setView('drawings') },
     { id: 'cards', label: t('Flashcards'), icon: <Ic.Cards />, keywords: 'review srs فلش‌کارت', run: () => setCardsOpen(true) },
     { id: 'trash', label: t('Trash'), icon: <Ic.Trash />, keywords: 'deleted سطل', run: () => setTrashOpen(true) },
@@ -568,13 +592,13 @@ export default function App() {
         />
         <div className="ws">
           <span className="ws-logo"><Ic.Logo size={32} /></span>
-          <span className="ws-name">Noviq.</span>
+          <Brand className="ws-name" />
           <button className="icon-btn" title={t('Close sidebar  Ctrl+\\')} onClick={() => setSideOpen(false)}><Ic.Sidebar /></button>
         </div>
 
         <div className="side-scroll">
           <button className="row plain search-row" onClick={() => setSearching(true)}>
-            <span className="ic"><Ic.Search /></span><span className="ntitle">{t('Search')}...</span><kbd>Ctrl K</kbd>
+            <span className="ic"><Ic.Search /></span><span className="ntitle">{t('Search')}...</span><kbd dir="ltr">{shortcutLabel(['Mod', 'K'])}</kbd>
           </button>
 
           <button className={'row plain' + (view === 'home' ? ' cur' : '')} onClick={() => setView('home')}>
@@ -587,6 +611,10 @@ export default function App() {
 
           <button className={'row plain' + (view === 'tasks' ? ' cur' : '')} onClick={() => setView('tasks')}>
             <span className="ic"><Ic.Checklist /></span><span className="ntitle">{t('Tasks')}</span>
+          </button>
+
+          <button className={'row plain' + (view === 'databases' ? ' cur' : '')} onClick={() => setView('databases')}>
+            <span className="ic"><Ic.Table /></span><span className="ntitle">{t('Databases')}</span>
           </button>
 
           <button className={'row plain' + (view === 'drawings' ? ' cur' : '')} onPointerEnter={warmDrawing} onClick={() => setView('drawings')}>
@@ -627,8 +655,8 @@ export default function App() {
           )}
 
           {<button className={"section" + (shut.pages ? " shut" : "")} onClick={() => setShut((s) => ({ ...s, pages: !s.pages }))}>{t('Pages')}<Ic.Chevron size={13} /></button>}
-          {!shut.pages && settings.pagesView === 'compact' && <div className="cmp-list"><CompactList {...rowProps} roots={roots} /></div>}
-          {!shut.pages && settings.pagesView !== 'compact' && <div className="tree-scroll"><div className="tree-in">{roots.map((p) => <TreeRow key={p.id} {...rowProps} page={p} depth={0} />)}</div></div>}
+          {!shut.pages && settings.pagesView === 'compact' && <HorizontalScroll className="tree-scroll" label={t('Pages')} followVisibleBottom><div className="tree-in cmp-list"><CompactList {...rowProps} roots={roots} /></div></HorizontalScroll>}
+          {!shut.pages && settings.pagesView !== 'compact' && <HorizontalScroll className="tree-scroll" label={t('Pages')} followVisibleBottom><div className="tree-in">{roots.map((p) => <TreeRow key={p.id} {...rowProps} page={p} depth={0} />)}</div></HorizontalScroll>}
           {!shut.pages && roots.length === 0 && <div className="empty-note">{t('No pages yet')}</div>}
 
           {tagList.length > 0 && (
@@ -644,6 +672,9 @@ export default function App() {
           </button>
           <button className="row plain" onPointerEnter={warmDrawing} onFocus={warmDrawing} onClick={() => add(null, 'board')}>
             <span className="ic"><Ic.Pencil /></span><span className="ntitle">{t('New board')}</span>
+          </button>
+          <button className="row plain" onClick={() => addDatabase(null)}>
+            <span className="ic"><Ic.Table /></span><span className="ntitle">{t('New database')}</span>
           </button>
           <button className="row plain" onClick={() => add(null, 'todo')}>
             <span className="ic"><Ic.Checklist /></span><span className="ntitle">{t('New to-do list')}</span>
@@ -676,6 +707,7 @@ export default function App() {
             {view === 'home' && <span className="crumb"><span className="crumb-cur"><Ic.Sidebar size={14} />{t('Home')}</span></span>}
             {view === 'files' && <span className="crumb"><span className="crumb-cur"><Ic.Folders size={14} />{t('Files')}</span></span>}
             {view === 'tasks' && <span className="crumb"><span className="crumb-cur"><Ic.Checklist size={14} />{t('Tasks')}</span></span>}
+            {view === 'databases' && <span className="crumb"><span className="crumb-cur"><Ic.Table size={14} />{t('Databases')}</span></span>}
             {view === 'drawings' && <span className="crumb"><span className="crumb-cur"><Ic.Pencil size={14} />{t('Drawings')}</span></span>}
             {view === 'settings' && <span className="crumb"><span className="crumb-cur"><Ic.Settings size={14} />{t('Settings')}</span></span>}
             {view === 'page' && crumbs.map((c, i) => (
@@ -712,15 +744,22 @@ export default function App() {
         {reader && view === 'page' && current && <ReaderBar cfg={readerCfg} onCfg={(c) => (setReaderCfg(c), localStorage.setItem('not.reader.cfg', JSON.stringify(c)))} onExit={() => setReader(false)} />}
         <div className="scroller">
           {view === 'home' ? (
-            <Home pages={pages} onOpen={setCurrentId} onNew={() => add(null)} onFolder={() => addFolder(null)} onTable={() => setTableOpen(true)} onCards={() => setCardsOpen(true)} onSearch={() => setSearching(true)} />
+            <Home pages={pages} onOpen={setCurrentId} onNew={() => add(null)} onFolder={() => addFolder(null)} onTable={() => setTableOpen(true)} onCards={() => setCardsOpen(true)} onSearch={() => setSearching(true)}
+              onNewDatabase={() => addDatabase(null)} onNewBoard={() => add(null, 'board')} onNewList={() => add(null, 'todo')}
+              onDatabases={() => setView('databases')} onDrawings={() => setView('drawings')} onTasks={() => setView('tasks')}
+              onTemplates={() => setTplOpen(true)} onWorkspaces={isTauri ? () => setFolderOpen(true) : undefined} />
           ) : view === 'files' ? (
             <Explorer pages={pages} onOpen={setCurrentId} onChange={refresh} onToast={(msg, undo) => setToast({ msg, undo })} />
           ) : view === 'tasks' ? (
             <Tasks onOpen={setCurrentId} onNewList={() => add(null, 'todo')} />
+          ) : view === 'databases' ? (
+            <Databases onOpen={setCurrentId} onNew={() => addDatabase(null)} onDelete={del} />
           ) : view === 'drawings' ? (
             <Drawings onOpen={setCurrentId} onNew={() => add(null, 'board')} onDelete={delDrawing} />
           ) : view === 'settings' ? (
             <SettingsView data={{ importMarkdown: doImport, importVault: () => void doVault(), exportAll: doExportAll, backup: doBackup, restore: doRestore, autoBackup: () => setBackupOpen(true), workspaces: () => setFolderOpen(true), account: isTauri ? () => setAccountOpen(true) : undefined, syncNow: isTauri ? () => void syncNow() : undefined }} />
+          ) : current?.dbHost ? (
+            <Suspense fallback={<div className="page-skeleton" aria-busy="true" />}><DatabasePage key={current.id} page={current} onOpenPage={setCurrentId} onMeta={refresh} readOnly={reader} /></Suspense>
           ) : current?.kind === 'board' ? (
             <BoardView key={current.id} page={current} onSave={setSave} onMeta={refresh} readOnly={reader} />
           ) : current ? (
@@ -786,12 +825,14 @@ export default function App() {
             <MenuItem icon={<Ic.Plus />} label={t('New page')} onClick={() => (add(null), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Folders />} label={t('New folder')} onClick={() => (addFolder(null), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Pencil />} label={t('New board')} onClick={() => (add(null, 'board'), setBlankMenu(null))} />
+            <MenuItem icon={<Ic.Table />} label={t('New database')} onClick={() => (addDatabase(null), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Checklist />} label={t('New to-do list')} onClick={() => (add(null, 'todo'), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Blocks />} label={t('New from template…')} onClick={() => (setTplOpen(true), setBlankMenu(null))} />
             <MenuSep />
             <MenuLabel>{t('Go to')}</MenuLabel>
             <MenuItem icon={<Ic.Home />} label={t('Home')} onClick={() => (setView('home'), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Folders />} label={t('Files')} onClick={() => (setView('files'), setBlankMenu(null))} />
+            <MenuItem icon={<Ic.Table />} label={t('Databases')} onClick={() => (setView('databases'), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Table />} label={t('Pages table')} onClick={() => (setTableOpen(true), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Cards />} label={t('Flashcards')} onClick={() => (setCardsOpen(true), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Link />} label={t('Graph view')} onClick={() => (setGraphOpen(true), setBlankMenu(null))} />

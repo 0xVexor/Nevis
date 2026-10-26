@@ -1,12 +1,13 @@
 {
-  "name": "tiptap",
+  "name": "nevis",
   "private": true,
-  "version": "0.2.1",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "test:db": "node --test \"../../db/tests/database/*.test.mjs\"",
     "preview": "vite preview",
     "tauri": "tauri"
   },

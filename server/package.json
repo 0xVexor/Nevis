@@ -1,8 +1,8 @@
 {
-  "name": "noviq-sync-server",
+  "name": "nevis-sync-server",
   "version": "0.1.0",
   "private": true,
-  "description": "Sync server for Noviq: accounts, per-vault revisions, content-addressed blobs on S3 and instant change notification.",
+  "description": "Sync server for Nevis: accounts, per-vault revisions, content-addressed blobs on S3 and instant change notification.",
   "type": "module",
   "engines": {
     "node": ">=22.13"
