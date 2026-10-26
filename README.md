@@ -127,6 +127,10 @@ Get the latest installer from the **[Releases](https://github.com/0xVexor/Nevis/
 > On **Windows**, SmartScreen may show *Unknown publisher*: choose *More info → Run anyway*.
 > On **macOS**, right-click the app and choose *Open* the first time.
 
+## In-app updates
+
+Desktop builds configured for signed updates check GitHub's Latest release automatically and show an in-app notice. Open **Settings → About → Updates** to check manually or enable **Receive pre-release updates** (off by default). Download the update, then choose **Install and restart**; pending edits are saved before installation. Existing users need one manual installation of a version with this feature. Release maintainers: [signing setup and publishing](docs/updates.md).
+
 ## Sync between devices
 
 Sync is optional. It needs a Nevis sync server: the app uses `https://sync.manaz.pro` by default, and the **Server** field of the sign-in form points it at your own.
@@ -236,7 +240,7 @@ The preferred build-time server variable is `NEVIS_SERVER`; existing `NOVIQ_SERV
 
 ## Roadmap
 
-- Code-signed installers (Windows and macOS) and automatic updates
+- Code-signed installers (Windows and macOS)
 - Mobile apps (iOS / Android) on the same vault format
 - Live co-editing of one page (CRDT) on top of the sync server, and end-to-end encryption of synced notes
 - A local SQLite index for full-text search and backlinks on very large vaults

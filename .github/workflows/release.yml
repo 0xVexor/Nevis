@@ -15,6 +15,9 @@ concurrency:
 jobs:
   release-source:
     runs-on: ubuntu-latest
+    outputs:
+      prerelease: ${{ steps.channel.outputs.prerelease }}
+      target: ${{ steps.channel.outputs.target }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,29 +25,43 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Allow final releases from main only
+      - name: Check release source and channel
+        id: channel
         shell: bash
         run: |
-          if [[ "$GITHUB_REF_TYPE" != tag && "$GITHUB_REF" != refs/heads/main ]]; then
-            echo 'Installer builds must use main or a final release tag on main.' >&2
-            exit 1
+          if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" == *-* ]]; then
+            git merge-base --is-ancestor HEAD origin/dev
+            echo 'prerelease=true' >> "$GITHUB_OUTPUT"
+            echo 'target=dev' >> "$GITHUB_OUTPUT"
+            ALLOW_PRERELEASE=1 node .github/scripts/release-version.cjs
+          else
+            if [[ "$GITHUB_REF_TYPE" != tag && "$GITHUB_REF" != refs/heads/main ]]; then
+              echo 'Stable installer builds must use main or a final release tag on main.' >&2
+              exit 1
+            fi
+            git merge-base --is-ancestor HEAD origin/main
+            echo 'prerelease=false' >> "$GITHUB_OUTPUT"
+            echo 'target=main' >> "$GITHUB_OUTPUT"
+            node .github/scripts/release-version.cjs
           fi
-          git merge-base --is-ancestor HEAD origin/main
-          node .github/scripts/release-version.cjs
       - name: Prepare the draft release
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
+          TARGET: ${{ steps.channel.outputs.target }}
+          PREVIEW: ${{ steps.channel.outputs.prerelease }}
         run: |
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --verify-tag --target main --draft --title "Nevis $TAG" --notes-file "docs/releases/$TAG.md"
+            gh release create "$TAG" --verify-tag --target "$TARGET" --draft --prerelease="$PREVIEW" --title "Nevis $TAG" --notes-file "docs/releases/$TAG.md"
           fi
 
   build:
     needs: release-source
     strategy:
       fail-fast: false
+      # Each build merges its platform into the same latest.json release asset.
+      max-parallel: 1
       matrix:
         include:
           - os: windows-latest
@@ -67,17 +84,26 @@ jobs:
           workspaces: spike/tiptap/src-tauri
       - run: npm ci
         working-directory: spike/tiptap
+      - name: Configure signed updates
+        env:
+          NEVIS_UPDATER_PUBLIC_KEY: ${{ vars.NEVIS_UPDATER_PUBLIC_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: node .github/scripts/updater-config.cjs
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEVIS_SERVER: ${{ vars.NEVIS_SERVER || vars.NOVIQ_SERVER }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: spike/tiptap
-          args: ${{ matrix.args }}
+          args: ${{ matrix.args }} --config src-tauri/tauri.updater.conf.json
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: Nevis ${{ github.ref_name }}
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ needs.release-source.outputs.prerelease == 'true' }}
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
       - uses: actions/upload-artifact@v4
         with:
           name: Nevis-${{ matrix.os }}
@@ -85,16 +111,36 @@ jobs:
             spike/tiptap/src-tauri/target/**/release/bundle/**/*.exe
             spike/tiptap/src-tauri/target/**/release/bundle/**/*.msi
             spike/tiptap/src-tauri/target/**/release/bundle/**/*.dmg
+            spike/tiptap/src-tauri/target/**/release/bundle/**/*.app.tar.gz
+            spike/tiptap/src-tauri/target/**/release/bundle/**/*.sig
           if-no-files-found: error
 
   publish:
     if: github.ref_type == 'tag'
-    needs: build
+    needs: [release-source, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Publish the completed stable release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify updater manifest
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release edit "$TAG" --target main --draft=false --prerelease=false --latest --title "Nevis $TAG" --notes-file "docs/releases/$TAG.md"
+        run: |
+          gh release download "$TAG" --pattern latest.json --dir "$RUNNER_TEMP/updater"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$RUNNER_TEMP/updater/release.json"
+          node .github/scripts/verify-updater.cjs "$RUNNER_TEMP/updater/latest.json" "$RUNNER_TEMP/updater/release.json"
+      - name: Publish the completed release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          TARGET: ${{ needs.release-source.outputs.target }}
+          PREVIEW: ${{ needs.release-source.outputs.prerelease }}
+        run: |
+          if [ "$PREVIEW" = true ]; then
+            gh release edit "$TAG" --target "$TARGET" --draft=false --prerelease --latest=false --title "Nevis $TAG" --notes-file "docs/releases/$TAG.md"
+          else
+            gh release edit "$TAG" --target "$TARGET" --draft=false --prerelease=false --latest --title "Nevis $TAG" --notes-file "docs/releases/$TAG.md"
+          fi

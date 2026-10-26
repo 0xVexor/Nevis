@@ -8,7 +8,9 @@ const cargo = fs.readFileSync(root + 'src-tauri/Cargo.toml', 'utf8');
 const cargoLock = fs.readFileSync(root + 'src-tauri/Cargo.lock', 'utf8');
 function requireThat(value, message) { if (!value) throw new Error(message); }
 const version = app.version;
-requireThat(/^\d+\.\d+\.\d+$/.test(version), 'Final releases need an X.Y.Z version without a prerelease suffix.');
+const stable = /^\d+\.\d+\.\d+$/.test(version);
+const preview = /^\d+\.\d+\.\d+-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*$/.test(version);
+requireThat(stable || (process.env.ALLOW_PRERELEASE === '1' && preview), 'Use X.Y.Z for stable releases, or an allowed X.Y.Z-beta.N prerelease.');
 requireThat(app.name === 'nevis' && tauri.productName === 'Nevis', 'Product metadata must use Nevis.');
 requireThat(lock.version === version && lock.packages[''].version === version && lock.name === app.name && lock.packages[''].name === app.name, 'App package lock is out of date.');
 requireThat(tauri.version === version, 'Tauri version does not match package.json.');
