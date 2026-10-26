@@ -38,7 +38,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --verify-tag --draft --title "Nevis $TAG" --notes-file "docs/releases/$TAG.md"
+            gh release create "$TAG" --verify-tag --target main --draft --title "Nevis $TAG" --notes-file "docs/releases/$TAG.md"
           fi
 
   build:
@@ -97,4 +97,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release edit "$TAG" --draft=false --prerelease=false --latest --title "Nevis $TAG" --notes-file "docs/releases/$TAG.md"
+        run: gh release edit "$TAG" --target main --draft=false --prerelease=false --latest --title "Nevis $TAG" --notes-file "docs/releases/$TAG.md"
