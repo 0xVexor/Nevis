@@ -253,6 +253,9 @@ button.wsd-row:hover:not(:disabled) { border-color: var(--accent-ring); transfor
 .cmp-path { font-style: normal; font-weight: 500; color: var(--faint); }
 .row.cmp-file { padding-inline-start: 30px; min-height: 32px; font-weight: 400; }
 .row.cmp-head .ntitle, .row.cmp-file .ntitle { min-width: 0; }
+/* the same horizontal scroll as the tree: long names keep their width instead of being cut */
+.tree-in.cmp-list .row.cmp-head .ntitle, .tree-in.cmp-list .row.cmp-file .ntitle { flex: 1 1 0; width: 0; min-width: 110px; }
+:root[data-side='icons'] .tree-in.cmp-list .row.cmp-head .ntitle, :root[data-side='icons'] .tree-in.cmp-list .row.cmp-file .ntitle { min-width: 0; }
 .row.cmp-head.cur { background: transparent; color: var(--accent); }
 .row.cmp-head.cur::before { display: none; }
 .row.cmp-file.cur::before { inset-inline-start: 18px; top: 8px; bottom: 8px; }

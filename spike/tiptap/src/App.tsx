@@ -4,6 +4,7 @@ import type { Cover, Page, PageStatus } from './repo'
 import { SettingsView } from './SettingsPage'
 import { Tasks } from './Tasks'
 import { Drawings } from './Drawings'
+import { Databases } from './Databases'
 import { SideTip } from './SideTip'
 import { removeInlineDrawing, type DrawingInfo } from './drawingData'
 import { BoardView } from './BoardView'
@@ -19,7 +20,7 @@ import { PagesTable } from './PagesTable'
 import { Flashcards } from './Flashcards'
 import { SidebarTags } from './SidebarTags'
 import { Explorer } from './Explorer'
-import { Templates, TEMPLATE_GLYPH } from './TemplateGallery'
+import { Templates, TEMPLATE_GLYPH, BOARD_TEMPLATE, DATABASE_TEMPLATE } from './TemplateGallery'
 import { getTemplates } from './templates'
 import { PageView, type SaveState } from './PageView'
 import { buildIndex, type PageIndex } from './pageIndex'
@@ -186,7 +187,7 @@ function TreeRow(props: RowProps) {
 export default function App() {
   const [pages, setPages] = useState<Page[]>(() => repo.list())
   const [currentId, setCurrentIdRaw] = useState<string>(() => localStorage.getItem('not.current') || repo.pagesOnly()[0]?.id || '')
-  const [view, setView] = useState<'home' | 'page' | 'settings' | 'tasks' | 'drawings' | 'files'>('home')
+  const [view, setView] = useState<'home' | 'page' | 'settings' | 'tasks' | 'drawings' | 'databases' | 'files'>('home')
   const [panelOpen, setPanelOpen] = useState<boolean>(() => store('not.panel.v2', false))
   const [coverMenu, setCoverMenu] = useState<DOMRect | null>(null)
   // opening any page (sidebar, search, link, breadcrumb…) also leaves the settings view
@@ -362,6 +363,8 @@ export default function App() {
   const [tplOpen, setTplOpen] = useState(false)
   const addFromTemplate = (id: string) => {
     setTplOpen(false)
+    if (id === BOARD_TEMPLATE) return add(null, 'board')
+    if (id === DATABASE_TEMPLATE) return addDatabase(null)
     const p = repo.create(null)
     const tp = getTemplates().find((x) => x.id === id)
     if (tp) {
@@ -543,6 +546,7 @@ export default function App() {
     { id: 'graph', label: t('Graph view'), icon: <Ic.Link />, keywords: 'graph links map backlinks گراف نقشه ارتباط پیوند', run: () => setGraphOpen(true) },
     { id: 'files', label: t('Files'), icon: <Ic.Folders />, keywords: 'files explorer folders manage فایل مدیریت پوشه فایل‌ها', run: () => setView('files') },
     { id: 'tasks', label: t('Tasks'), icon: <Ic.Checklist />, keywords: 'tasks todo checklist کارها وظایف چک لیست', run: () => setView('tasks') },
+    { id: 'databases', label: t('Databases'), icon: <Ic.Table />, keywords: 'databases tables projects all database پایگاه داده دیتابیس پروژه جدول', run: () => setView('databases') },
     { id: 'drawings', label: t('Drawings'), icon: <Ic.Pencil />, keywords: 'drawings boards whiteboard sketch canvas excalidraw نقاشی بوم طراحی ترسیم', run: () => setView('drawings') },
     { id: 'cards', label: t('Flashcards'), icon: <Ic.Cards />, keywords: 'review srs فلش‌کارت', run: () => setCardsOpen(true) },
     { id: 'trash', label: t('Trash'), icon: <Ic.Trash />, keywords: 'deleted سطل', run: () => setTrashOpen(true) },
@@ -606,6 +610,10 @@ export default function App() {
             <span className="ic"><Ic.Checklist /></span><span className="ntitle">{t('Tasks')}</span>
           </button>
 
+          <button className={'row plain' + (view === 'databases' ? ' cur' : '')} onClick={() => setView('databases')}>
+            <span className="ic"><Ic.Table /></span><span className="ntitle">{t('Databases')}</span>
+          </button>
+
           <button className={'row plain' + (view === 'drawings' ? ' cur' : '')} onPointerEnter={warmDrawing} onClick={() => setView('drawings')}>
             <span className="ic"><Ic.Pencil /></span><span className="ntitle">{t('Drawings')}</span>
           </button>
@@ -644,7 +652,7 @@ export default function App() {
           )}
 
           {<button className={"section" + (shut.pages ? " shut" : "")} onClick={() => setShut((s) => ({ ...s, pages: !s.pages }))}>{t('Pages')}<Ic.Chevron size={13} /></button>}
-          {!shut.pages && settings.pagesView === 'compact' && <div className="cmp-list"><CompactList {...rowProps} roots={roots} /></div>}
+          {!shut.pages && settings.pagesView === 'compact' && <div className="tree-scroll"><div className="tree-in cmp-list"><CompactList {...rowProps} roots={roots} /></div></div>}
           {!shut.pages && settings.pagesView !== 'compact' && <div className="tree-scroll"><div className="tree-in">{roots.map((p) => <TreeRow key={p.id} {...rowProps} page={p} depth={0} />)}</div></div>}
           {!shut.pages && roots.length === 0 && <div className="empty-note">{t('No pages yet')}</div>}
 
@@ -696,6 +704,7 @@ export default function App() {
             {view === 'home' && <span className="crumb"><span className="crumb-cur"><Ic.Sidebar size={14} />{t('Home')}</span></span>}
             {view === 'files' && <span className="crumb"><span className="crumb-cur"><Ic.Folders size={14} />{t('Files')}</span></span>}
             {view === 'tasks' && <span className="crumb"><span className="crumb-cur"><Ic.Checklist size={14} />{t('Tasks')}</span></span>}
+            {view === 'databases' && <span className="crumb"><span className="crumb-cur"><Ic.Table size={14} />{t('Databases')}</span></span>}
             {view === 'drawings' && <span className="crumb"><span className="crumb-cur"><Ic.Pencil size={14} />{t('Drawings')}</span></span>}
             {view === 'settings' && <span className="crumb"><span className="crumb-cur"><Ic.Settings size={14} />{t('Settings')}</span></span>}
             {view === 'page' && crumbs.map((c, i) => (
@@ -737,6 +746,8 @@ export default function App() {
             <Explorer pages={pages} onOpen={setCurrentId} onChange={refresh} onToast={(msg, undo) => setToast({ msg, undo })} />
           ) : view === 'tasks' ? (
             <Tasks onOpen={setCurrentId} onNewList={() => add(null, 'todo')} />
+          ) : view === 'databases' ? (
+            <Databases onOpen={setCurrentId} onNew={() => addDatabase(null)} onDelete={del} />
           ) : view === 'drawings' ? (
             <Drawings onOpen={setCurrentId} onNew={() => add(null, 'board')} onDelete={delDrawing} />
           ) : view === 'settings' ? (
@@ -815,6 +826,7 @@ export default function App() {
             <MenuLabel>{t('Go to')}</MenuLabel>
             <MenuItem icon={<Ic.Home />} label={t('Home')} onClick={() => (setView('home'), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Folders />} label={t('Files')} onClick={() => (setView('files'), setBlankMenu(null))} />
+            <MenuItem icon={<Ic.Table />} label={t('Databases')} onClick={() => (setView('databases'), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Table />} label={t('Pages table')} onClick={() => (setTableOpen(true), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Cards />} label={t('Flashcards')} onClick={() => (setCardsOpen(true), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Link />} label={t('Graph view')} onClick={() => (setGraphOpen(true), setBlankMenu(null))} />
