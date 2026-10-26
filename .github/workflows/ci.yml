@@ -21,6 +21,22 @@ jobs:
       - run: npm test
         working-directory: server
 
+  mcp-spike:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tools/mcp-spike/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: tools/mcp-spike
+      - run: npm run check
+        working-directory: tools/mcp-spike
+      - run: npm test
+        working-directory: tools/mcp-spike
+
   app:
     runs-on: windows-latest
     steps:
