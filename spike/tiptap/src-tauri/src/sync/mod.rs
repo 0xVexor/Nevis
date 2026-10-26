@@ -35,6 +35,8 @@ pub trait Remote {
     /// The cloud folder is there and usable; `Err(CLOUD_GONE)` when it is not.
     fn check(&mut self) -> Res<()>;
     fn list(&mut self) -> Res<Vec<RemoteFile>>;
+    /// Check protocol compatibility before any file is changed or removed.
+    fn validate_paths(&mut self, _paths: &[String]) -> Res<()> { Ok(()) }
     fn download(&mut self, f: &RemoteFile) -> Res<Vec<u8>>;
     /// Creates the file, or replaces its content when `existing` is the id of the current remote file.
     fn upload(&mut self, path: &str, existing: Option<&str>, bytes: &[u8]) -> Res<RemoteFile>;
@@ -171,13 +173,19 @@ fn scan(root: &Path, cache: &BTreeMap<String, Entry>) -> Res<(BTreeMap<String, L
     let mut unknown = BTreeSet::new();
     fn walk(root: &Path, dir: &Path, cache: &BTreeMap<String, Entry>, out: &mut BTreeMap<String, Local>, unknown: &mut BTreeSet<String>) -> Res<()> {
         // a folder we cannot list would make all its files look deleted: that is an error, not "unknown"
-        for e in fs::read_dir(dir).map_err(err)?.flatten() {
+        for e in fs::read_dir(dir).map_err(err)? {
+            let e = e.map_err(err)?;
             let path = e.path();
             let name = e.file_name().to_string_lossy().to_string();
             if name.starts_with('.') && name.ends_with(".tmp") {
                 continue; // a write in progress
             }
-            let rel = path.strip_prefix(root).map_err(err)?.to_string_lossy().replace('\\', "/");
+            let relative = path.strip_prefix(root).map_err(err)?;
+            let relative = relative.to_str().ok_or("HUB:unsafe_path\ndetail=invalid_utf8")?;
+            let rel = if cfg!(windows) { relative.replace('\\', "/") } else { relative.to_string() };
+            if e.file_type().map_err(err)?.is_symlink() {
+                return Err(format!("HUB:unsafe_path\npath={rel}\ndetail=symlink"));
+            }
             let Ok(meta) = e.metadata() else {
                 unknown.insert(rel);
                 continue;
@@ -203,11 +211,17 @@ fn scan(root: &Path, cache: &BTreeMap<String, Entry>) -> Res<(BTreeMap<String, L
     }
     for r in ROOTS {
         let d = root.join(r);
+        if fs::symlink_metadata(&d).is_ok_and(|m| m.file_type().is_symlink()) {
+            return Err(format!("HUB:unsafe_path\npath={r}\ndetail=symlink"));
+        }
         if d.exists() {
             walk(root, &d, cache, &mut out, &mut unknown)?;
         }
     }
     let marker = root.join(".noviq/vault.json");
+    if fs::symlink_metadata(&marker).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err("HUB:unsafe_path\npath=.noviq/vault.json\ndetail=symlink".into());
+    }
     match fs::read(&marker) {
         Ok(b) => {
             let m = fs::metadata(&marker).map_err(err)?;
@@ -221,9 +235,28 @@ fn scan(root: &Path, cache: &BTreeMap<String, Entry>) -> Res<(BTreeMap<String, L
 }
 
 /// Remote paths come from another device (or a hostile account): only known vault locations, no escaping.
-fn safe_rel(p: &str) -> bool {
-    !p.contains("..") && !p.contains('\\') && !p.starts_with('/') && !p.contains(':') && (p == ".noviq/vault.json" || (ROOTS.iter().any(|r| p.starts_with(&format!("{r}/"))) && (!p.starts_with("databases/") || crate::database::safe_database_rel(p))))
+fn path_problem(p: &str) -> Option<&'static str> {
+    use unicode_normalization::UnicodeNormalization;
+    if p.is_empty() { return Some("empty"); }
+    if p.encode_utf16().count() > 240 { return Some("too_long"); }
+    if !p.nfc().eq(p.chars()) { return Some("not_nfc"); }
+    if p.starts_with('/') { return Some("absolute"); }
+    if p.chars().any(|c| c <= '\u{1f}' || c == '\u{7f}' || "<>\"|?*:\\".contains(c)) { return Some("bad_char"); }
+    if p == ".noviq/vault.json" { return None; }
+    let parts: Vec<_> = p.split('/').collect();
+    if parts.len() < 2 || !ROOTS.contains(&parts[0]) { return Some("outside_vault"); }
+    for part in &parts {
+        if part.is_empty() || *part == "." || *part == ".." || part.ends_with('.') || part.ends_with(' ') { return Some("bad_segment"); }
+        let stem = part.split('.').next().unwrap_or("").to_ascii_lowercase();
+        if ["con", "prn", "aux", "nul"].contains(&stem.as_str()) ||
+            (stem.len() == 4 && (stem.starts_with("com") || stem.starts_with("lpt")) && matches!(stem.as_bytes()[3], b'1'..=b'9')) { return Some("reserved_name"); }
+        if part.starts_with('.') && part.ends_with(".tmp") { return Some("temp_file"); }
+    }
+    if parts[0] == "databases" && !crate::database::safe_database_rel(p) { return Some("bad_database_path"); }
+    None
 }
+
+fn safe_rel(p: &str) -> bool { path_problem(p).is_none() }
 
 /// Settings files that two devices change independently are merged instead of letting the newer file win:
 /// a review done on a phone must not be lost because the laptop saved its own schedule a minute later.
@@ -351,6 +384,16 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
     let (local, unknown) = scan(root, &state.files)?;
     let mut rep = Report::default();
     let listed = remote.list()?;
+    // Reject incompatible or unsafe snapshots before deduplication can remove anything.
+    let paths: Vec<String> = local.keys().cloned().chain(unknown.iter().cloned()).chain(listed.iter().map(|f| f.path.clone())).collect();
+    let mut folded = BTreeMap::new();
+    for path in &paths {
+        if let Some(detail) = path_problem(path) { return Err(format!("HUB:unsafe_path\npath={path}\ndetail={detail}")); }
+        if let Some(previous) = folded.insert(path.to_lowercase(), path) {
+            if previous != path { return Err(format!("HUB:path_case_clash\npath={path}\ndetail={previous}")); }
+        }
+    }
+    remote.validate_paths(&paths)?;
     let rmap = dedupe(vault, remote, listed, &mut rep);
     let mut actions = plan(&local, &rmap, &state.files, &unknown);
 
@@ -367,6 +410,8 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         state.files.insert(p.to_string(), Entry { base: base.to_string(), remote_id: rid.to_string(), size: l.size, mtime: l.mtime, md5: l.md5.clone() });
     };
 
+    // Resolve and upload merges before any deletion. Keep deletion bookkeeping on failure.
+    let (deletions, actions): (Vec<_>, Vec<_>) = actions.into_iter().partition(|a| matches!(a, Action::DeleteLocal(_) | Action::DeleteRemote(_)));
     let mut done = 0usize;
     for a in actions {
         let res: Res<()> = (|| {
@@ -413,37 +458,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                     cache(state, p, &Local { md5: md5_hex(&bytes), size: m.len(), mtime: mtime_of(&m) }, &md5_hex(&bytes), &r.id);
                     rep.downloaded += 1;
                 }
-                Action::DeleteLocal(p) => {
-                    if !safe_rel(p) {
-                        return Err(format!("refusing remote path {p}"));
-                    }
-                    if p == ".noviq/vault.json" {
-                        rep.skipped += 1; // the identity of the vault is never removed by a sync
-                        return Ok(());
-                    }
-                    // proof that it is really gone from the cloud, not just missing from a listing
-                    if let Some(e) = state.files.get(p).filter(|e| !e.remote_id.is_empty()) {
-                        if remote.get(&e.remote_id)?.is_some() {
-                            rep.skipped += 1;
-                            return Ok(());
-                        }
-                    }
-                    if changed_since(&root.join(p), local.get(p).map(|l| l.md5.as_str())) {
-                        rep.skipped += 1;
-                        return Ok(());
-                    }
-                    vault.sync_trash_move(p)?; // recoverable for 30 days; when it fails the file stays and so does `base`
-                    state.files.remove(p);
-                    rep.deleted += 1;
-                }
-                Action::DeleteRemote(p) => {
-                    let id = rmap.get(p).map(|r| r.id.clone()).or_else(|| state.files.get(p).map(|e| e.remote_id.clone())).unwrap_or_default();
-                    if !id.is_empty() {
-                        remote.trash(&id)?;
-                    }
-                    state.files.remove(p);
-                    rep.deleted += 1;
-                }
+                Action::DeleteLocal(_) | Action::DeleteRemote(_) => unreachable!(),
                 Action::Forget(p) => {
                     state.files.remove(p);
                 }
@@ -549,6 +564,50 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
             }
         }
     }
+    for a in deletions {
+        if !rep.errors.is_empty() {
+            rep.held += 1;
+            continue;
+        }
+        let res: Res<()> = (|| {
+            match &a {
+                Action::DeleteLocal(p) => {
+                    if !safe_rel(p) {
+                        return Err(format!("refusing remote path {p}"));
+                    }
+                    if p == ".noviq/vault.json" {
+                        rep.skipped += 1; // the identity of the vault is never removed by a sync
+                        return Ok(());
+                    }
+                    // proof that it is really gone from the cloud, not just missing from a listing
+                    if let Some(e) = state.files.get(p).filter(|e| !e.remote_id.is_empty()) {
+                        if remote.get(&e.remote_id)?.is_some() {
+                            rep.skipped += 1;
+                            return Ok(());
+                        }
+                    }
+                    if changed_since(&root.join(p), local.get(p).map(|l| l.md5.as_str())) {
+                        rep.skipped += 1;
+                        return Ok(());
+                    }
+                    vault.sync_trash_move(p)?; // recoverable for 30 days; when it fails the file stays and so does `base`
+                    state.files.remove(p);
+                    rep.deleted += 1;
+                }
+                Action::DeleteRemote(p) => {
+                    let id = rmap.get(p).map(|r| r.id.clone()).or_else(|| state.files.get(p).map(|e| e.remote_id.clone())).unwrap_or_default();
+                    if !id.is_empty() {
+                        remote.trash(&id)?;
+                    }
+                    state.files.remove(p);
+                    rep.deleted += 1;
+                }
+                _ => unreachable!(),
+            }
+            Ok(())
+        })();
+        if let Err(e) = res { rep.errors.push(format!("{a:?}: {e}")); }
+    }
     Ok(rep)
 }
 
@@ -573,6 +632,7 @@ mod tests {
         next: u32,
         gone: bool,            // the cloud folder does not exist any more
         hide_all: bool,        // the listing answers nothing (a broken listing)
+        reject_paths: bool,
         corrupt_uploads: bool, // the cloud reports another md5 than what was sent
         on_download: Option<Rc<dyn Fn()>>,
         on_get: Option<Rc<dyn Fn()>>,
@@ -593,6 +653,9 @@ mod tests {
     }
 
     impl Remote for Shared {
+        fn validate_paths(&mut self, _paths: &[String]) -> Res<()> {
+            if self.0.borrow().reject_paths { Err("HUB:server_upgrade_required".into()) } else { Ok(()) }
+        }
         fn check(&mut self) -> Res<()> {
             if self.0.borrow().gone { Err(CLOUD_GONE.into()) } else { Ok(()) }
         }
@@ -785,8 +848,62 @@ mod tests {
 
     #[test]
     fn remote_paths_cannot_escape_the_vault() {
-        assert!(safe_rel("pages/x.json") && safe_rel(".noviq/vault.json"));
+        assert!(safe_rel("pages/x.json") && safe_rel(".noviq/vault.json") && safe_rel("pages/a..b.json"));
+        for p in ["pages/CON.json", "pages/com1.txt", "pages/a?b.json", "pages/a//b", "pages/a."] { assert!(!safe_rel(p), "{p}"); }
         assert!(!safe_rel("../x") && !safe_rel("pages/../../x") && !safe_rel("C:/x") && !safe_rel("other/x") && !safe_rel("/etc/x"));
+    }
+
+    #[test]
+    fn incompatible_server_preserves_local_remote_and_baseline() {
+        let (mut a, _) = pair();
+        a.save(P1, "keep", 100);
+        a.sync();
+        let baseline = serde_json::to_vec(&a.state).unwrap();
+        a.save(P1, "edited", 200);
+        a.remote.0.borrow_mut().reject_paths = true;
+        assert!(a.try_sync().unwrap_err().contains("server_upgrade_required"));
+        assert_eq!(serde_json::to_vec(&a.state).unwrap(), baseline);
+        assert_eq!(a.page(P1).unwrap()["title"], "edited");
+        assert!(a.remote.0.borrow().trashed.is_empty());
+    }
+
+    #[test]
+    fn unsafe_snapshot_stops_before_uploads_or_deletions() {
+        let (mut a, _) = pair();
+        a.save(P1, "keep", 100);
+        a.sync();
+        a.remote.put("pages/../escape.json", b"bad", 200);
+        let baseline = serde_json::to_vec(&a.state).unwrap();
+        assert!(a.try_sync().unwrap_err().contains("unsafe_path"));
+        assert!(a.page(P1).is_some());
+        assert_eq!(serde_json::to_vec(&a.state).unwrap(), baseline);
+        assert!(a.remote.0.borrow().trashed.is_empty());
+    }
+
+    #[test]
+    fn failed_transfer_holds_deletes_even_after_user_confirmation() {
+        let (mut a, _) = pair();
+        a.save(P1, "keep remotely", 100);
+        a.save(P2, "base", 100);
+        a.sync();
+        fs::remove_file(a.vault.root.join(format!("pages/{P1}.json"))).unwrap();
+        a.save(P2, "edited", 200);
+        a.state.allow_deletes_once = true;
+        a.remote.0.borrow_mut().corrupt_uploads = true;
+        let rep = a.try_sync().unwrap();
+        assert!(!rep.errors.is_empty());
+        assert!(rep.held > 0);
+        assert!(a.state.files.contains_key(&format!("pages/{P1}.json")));
+        assert!(a.remote.0.borrow().trashed.is_empty());
+    }
+
+    #[test]
+    fn server_and_desktop_share_the_path_contract() {
+        let cases: Vec<(String, Option<String>)> = serde_json::from_str(include_str!("../../../../../server/test/fixtures/sync-paths.json")).unwrap();
+        for (path, expected) in cases {
+            assert_eq!(path_problem(&path), expected.as_deref(), "{path}");
+        }
+        assert_eq!(path_problem(&format!("files/{}", "a".repeat(240))), Some("too_long"));
     }
 
     // ───── database records (handoff §23) ─────

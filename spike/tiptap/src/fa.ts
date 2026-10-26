@@ -1,5 +1,14 @@
 // English → Persian UI strings (see i18n.ts). Generated once from the original Persian UI, edit freely.
 export const FA: Record<string, string> = {
+  "Error details": "جزئیات خطا",
+  "Copy error details": "کپی جزئیات خطا",
+  "This server could not process permanent deletion. The workspace remains in the server trash and can still be restored. The server may need an update.": "سرور نتوانست حذف دائمی را انجام دهد. فضای کاری در سطل زبالهٔ سرور باقی می‌ماند و همچنان قابل بازیابی است. ممکن است سرور به به‌روزرسانی نیاز داشته باشد.",
+  "This server does not support database sync yet. Update the server before syncing this workspace. No files were changed by this sync.": "این سرور هنوز از همگام‌سازی دیتابیس پشتیبانی نمی‌کند. پیش از همگام‌سازی این فضای کاری، سرور را به‌روز کنید. این همگام‌سازی هیچ فایلی را تغییر نداد.",
+  "Sync stopped because a file path is not supported. Check the error details. No files were changed by this sync.": "همگام‌سازی به‌دلیل پشتیبانی‌نشدن مسیر یک فایل متوقف شد. جزئیات خطا را بررسی کنید. این همگام‌سازی هیچ فایلی را تغییر نداد.",
+  "The server rejected a file path. Your local file is kept. Check the error details.": "سرور مسیر یک فایل را نپذیرفت. فایل محلی شما حفظ شده است. جزئیات خطا را بررسی کنید.",
+  "Two file paths differ only in letter case. Rename one before syncing. Check the error details.": "مسیر دو فایل تنها در بزرگی و کوچکی حروف تفاوت دارد. پیش از همگام‌سازی نام یکی را تغییر دهید. جزئیات خطا را بررسی کنید.",
+  "The server did not recognize this operation. It may need an update. Check the error details.": "سرور این عملیات را نمی‌شناسد و ممکن است به به‌روزرسانی نیاز داشته باشد. جزئیات خطا را بررسی کنید.",
+
   "The update could not be verified. It was not installed.": "اعتبار فایل به‌روزرسانی تأیید نشد و نصب انجام نشد.",
   "Updates": "به‌روزرسانی‌ها",
   "Updates are not configured in this build.": "به‌روزرسانی در این نسخه پیکربندی نشده است.",

@@ -1,32 +1,47 @@
 import { Extension } from '@tiptap/core'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 
-const RTL = /[֐-ࣿיִ-﷿ﹰ-ﻼ]/
-const LTR = /[A-Za-zÀ-ɏͰ-ϿЀ-ӿ]/
+import { firstTextDirection } from '../textDirection.ts'
+export { firstTextDirection } from '../textDirection.ts'
 
-/** Marks headings whose text runs right-to-left (first strong letter), so the CSS can place the accent rule on the right for them. */
+const LISTS = new Set(['bulletList', 'orderedList', 'taskList'])
+const BLOCKS = new Set(['paragraph', 'heading', 'listItem', 'taskItem', ...LISTS])
+const explicit = (dir: unknown): 'rtl' | 'ltr' | null => dir === 'rtl' || dir === 'ltr' ? dir : null
+
+/** Render-only direction: it never rewrites notes or adds automatic changes to undo history.
+ * A task's hidden checkbox label and nested lists must not decide its text direction. */
+export function blockDirections(doc: ProseMirrorNode): DecorationSet {
+  const out: Decoration[] = []
+  const walk = (parent: ProseMirrorNode, start: number, inherited: 'rtl' | 'ltr' | null) => {
+    parent.forEach((node, offset) => {
+      const pos = start + offset
+      const manual = explicit(node.attrs.dir) || inherited
+      if (BLOCKS.has(node.type.name)) {
+        const item = node.type.name === 'listItem' || node.type.name === 'taskItem'
+        const firstItem = LISTS.has(node.type.name) ? node.firstChild : null
+        const text = firstItem ? firstItem.firstChild?.textContent || '' : item ? node.firstChild?.textContent || '' : node.textContent
+        const childManual = firstItem ? explicit(firstItem.attrs.dir) || explicit(firstItem.firstChild?.attrs.dir) : item ? explicit(node.firstChild?.attrs.dir) : null
+        const dir = manual || childManual || firstTextDirection(text)
+        if (dir) out.push(Decoration.node(pos, pos + node.nodeSize, {
+          'data-dir': dir,
+          style: `direction: ${dir}; unicode-bidi: isolate;`,
+        }))
+      }
+      if (!node.isLeaf && !node.type.spec.code) walk(node, pos + 1, manual)
+    })
+  }
+  walk(doc, 0, null)
+  return DecorationSet.create(doc, out)
+}
+
 export const HeadingDir = Extension.create({
   name: 'headingDir',
   addProseMirrorPlugins() {
-    return [
-      new Plugin({
-        key: new PluginKey('headingDir'),
-        props: {
-          decorations(state) {
-            const out: Decoration[] = []
-            state.doc.descendants((node, pos) => {
-              if (node.type.name !== 'heading') return false
-              const text = node.textContent
-              const firstRtl = text.search(RTL)
-              const firstLtr = text.search(LTR)
-              if (firstRtl >= 0 && (firstLtr < 0 || firstRtl < firstLtr)) out.push(Decoration.node(pos, pos + node.nodeSize, { 'data-dir': 'rtl' }))
-              return false
-            })
-            return DecorationSet.create(state.doc, out)
-          },
-        },
-      }),
-    ]
+    return [new Plugin({
+      key: new PluginKey('headingDir'),
+      props: { decorations: state => blockDirections(state.doc) },
+    })]
   },
 })

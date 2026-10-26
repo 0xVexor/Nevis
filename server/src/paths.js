@@ -1,7 +1,9 @@
 // Which paths a vault may contain. The same places the desktop app syncs (spike/tiptap/src-tauri/src/sync/mod.rs, ROOTS),
 // refused early on the server so that a hostile or buggy client cannot make a path that breaks another operating system.
 
-const ROOTS = new Set(['pages', 'files', 'history', 'kv', '.trash'])
+export const SYNC_ROOTS = ['pages', 'files', 'history', 'kv', '.trash', 'databases']
+const ROOTS = new Set(SYNC_ROOTS)
+const DATABASE_DIRS = new Set(['containers', 'sources', 'properties', 'views', 'relations', 'edges', 'templates', 'workflows', 'comments', 'principals', 'grants', 'events', 'allocators'])
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i
 const BAD_CHARS = /[<>"|?*:\\\x00-\x1f\x7f]/
 
@@ -23,6 +25,8 @@ export function checkPath(p) {
     if (RESERVED.test(seg)) return 'reserved_name'
     if (seg.startsWith('.') && seg.endsWith('.tmp')) return 'temp_file'
   }
+  if (parts[0] === 'databases' && (parts.length !== 3 || !DATABASE_DIRS.has(parts[1]) ||
+    !parts[2].endsWith('.json') || parts[2].startsWith('.') || !/^[A-Za-z0-9_~. ()-]+$/.test(parts[2]))) return 'bad_database_path'
   return null
 }
 
