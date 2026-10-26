@@ -1,0 +1,23 @@
+{
+  "name": "nevis-mcp-spike",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "npm run build && node --test test/*.test.mjs",
+    "start": "node server.ts",
+    "build": "node build.mjs",
+    "check": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/server": "2.4.0",
+    "@modelcontextprotocol/inspector": "2.12.0",
+    "esbuild": "0.28.2",
+    "zod": "4.4.3",
+    "@types/node": "24.19.2",
+    "typescript": "6.0.3"
+  }
+}
