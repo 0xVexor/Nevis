@@ -7,6 +7,7 @@ import type { SaveState } from './PageView'
 import { loadScene, saveScene, type SceneData } from './editor/excalidraw'
 import { t } from './i18n'
 import * as Ic from './icons'
+import { registerUpdateSave } from './updateSave'
 
 const Canvas = lazy(() => import('./DrawingCanvas')) // the library loads only when a board is opened
 
@@ -21,6 +22,7 @@ export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Pa
   const timer = useRef(0)
   const queue = useRef<Promise<unknown>>(Promise.resolve())
   const dirty = useRef(false) // anything saved during this visit (then old files are garbage-collected on leaving)
+  const saveError = useRef<unknown>(null)
   const [full, setFull] = useState(false) // the board fills the whole window
   const root = useRef<HTMLDivElement>(null)
   const notify = useRef(onSave)
@@ -67,12 +69,14 @@ export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Pa
     queue.current = queue.current.then(async () => {
       const scene = latest.current
       if (!scene || signature(scene.elements) === saved.current) return notify.current('saved')
-      saved.current = signature(scene.elements)
       try {
         const ids = await saveScene(scene)
         repo.update(page.id, { content: boardDoc(ids ?? { scene: '', preview: '' }) })
+        saved.current = signature(scene.elements)
+        saveError.current = null
         dirty.current = true
       } catch (e) {
+        saveError.current = e
         console.error('board save', e)
       }
       notify.current('saved')
@@ -81,11 +85,17 @@ export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Pa
   }
 
   useEffect(() => {
+    const unregister = registerUpdateSave(async () => {
+      window.clearTimeout(timer.current)
+      await run()
+      if (saveError.current) throw saveError.current
+    })
     const flush = () => (window.clearTimeout(timer.current), void run())
     const hidden = () => document.visibilityState === 'hidden' && flush()
     window.addEventListener('pagehide', flush)
     document.addEventListener('visibilitychange', hidden)
     return () => {
+      unregister()
       window.removeEventListener('pagehide', flush)
       document.removeEventListener('visibilitychange', hidden)
       window.clearTimeout(timer.current)
