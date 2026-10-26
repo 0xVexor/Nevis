@@ -3,7 +3,7 @@
 @import '@fontsource/vazirmatn/700.css';
 @import '@fontsource/vazirmatn/800.css';
 
-/* Noviq "Aurora Paper" design system — see docs/design-language.md. Order matters: tokens first, print last. */
+/* Nevis "Aurora Paper" design system — see docs/design-language.md. Order matters: tokens first, print last. */
 @import './styles/tokens.css';
 @import './styles/base.css';
 @import './styles/shell.css';
@@ -21,4 +21,7 @@
 @import './styles/explorer.css';
 @import './styles/database.css';
 @import './styles/database-v6.css';
+@import './styles/database-layout.css';
+@import './styles/home-templates.css';
+@import './styles/scrollbars.css';
 @import './styles/print.css';

@@ -1,3 +1,4 @@
+import { shortcutLabel } from '../../shortcuts'
 // Rich text cell editor: a small contentEditable with bold / italic / code / strike / link / @page mention. The stored value is a
 // RichRun[] (handoff §5), so formatting and mentions survive reload; this component only converts DOM <-> runs.
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -104,8 +105,8 @@ export function RichTextEditor({ runs, pages, onCommit, onCancel, autoFocus = tr
   return (
     <div className="db-rich-ed" onMouseDown={(e) => e.stopPropagation()}>
       <div className="db-rich-bar" role="toolbar" aria-label={t('Text formatting')}>
-        <button type="button" title={t('Bold') + ' (Ctrl+B)'} onMouseDown={(e) => (e.preventDefault(), cmd('bold'))}><b>B</b></button>
-        <button type="button" title={t('Italic') + ' (Ctrl+I)'} onMouseDown={(e) => (e.preventDefault(), cmd('italic'))}><i>I</i></button>
+        <button type="button" title={t('Bold') + ' (' + shortcutLabel(['Mod', 'B']) + ')' } onMouseDown={(e) => (e.preventDefault(), cmd('bold'))}><b>B</b></button>
+        <button type="button" title={t('Italic') + ' (' + shortcutLabel(['Mod', 'I']) + ')' } onMouseDown={(e) => (e.preventDefault(), cmd('italic'))}><i>I</i></button>
         <button type="button" title={t('Strikethrough')} onMouseDown={(e) => (e.preventDefault(), cmd('strikeThrough'))}><s>S</s></button>
         <button type="button" title={t('Link')} onMouseDown={(e) => (e.preventDefault(), void link())}>🔗</button>
         <button type="button" title={t('Mention a page')} onMouseDown={(e) => (e.preventDefault(), setMention(''))}>@</button>

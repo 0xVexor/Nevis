@@ -58,7 +58,7 @@ export function validateBundle(b: unknown, opts: { pageIds?: Set<Id> } = {}): Bu
   const err = (code: string, detail: string, kind?: string, id?: Id) => p.push({ code, detail, kind, id, severity: 'error' })
   if (!b || typeof b !== 'object') return [{ code: 'FORMAT', detail: 'not an object', severity: 'error' }]
   const x = b as Bundle
-  if (x.format !== BUNDLE_FORMAT) return [{ code: 'FORMAT', detail: 'not a Noviq database bundle', severity: 'error' }]
+  if (x.format !== BUNDLE_FORMAT) return [{ code: 'FORMAT', detail: 'not a Nevis database bundle', severity: 'error' }]
   if (x.version !== BUNDLE_VERSION) return [{ code: 'VERSION', detail: `unsupported bundle version ${String(x.version)}`, severity: 'error' }]
   if (!x.records || typeof x.records !== 'object') return [{ code: 'FORMAT', detail: 'records missing', severity: 'error' }]
   const ids = new Map<RecordKind, Set<Id>>()

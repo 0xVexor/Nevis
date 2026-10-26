@@ -1,22 +1,22 @@
 <div align="center" dir="rtl">
 
-<img src="spike/tiptap/src-tauri/icons/128x128.png" alt="Noviq" width="96" height="96">
+<img src="spike/tiptap/src-tauri/icons/128x128.png" alt="Nevis" width="96" height="96">
 
-# Noviq.
+# Nevis.
 
 **فضای کار یادداشت‌برداری آفلاین با پشتیبانی کامل از فارسی و راست‌به‌چپ.**
 
 ادیتور بلاکی · بک‌لینک و گراف · فلش‌کارت با تکرار فاصله‌دار · همگام‌سازی اختیاری بین دستگاه‌ها · یادداشت‌ها فایل ساده می‌مانند کاربری.
 
-[![Build installers](https://img.shields.io/github/actions/workflow/status/AliMirzad/noviq/release.yml?label=build)](https://github.com/AliMirzad/noviq/actions/workflows/release.yml)
-[![Latest release](https://img.shields.io/github/v/release/AliMirzad/noviq?include_prereleases&label=release)](https://github.com/AliMirzad/noviq/releases)
+[![Build installers](https://img.shields.io/github/actions/workflow/status/0xVexor/Nevis/release.yml?label=build)](https://github.com/0xVexor/Nevis/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/0xVexor/Nevis?include_prereleases&label=release)](https://github.com/0xVexor/Nevis/releases)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS-6c72ff)
 
-[دانلود](https://github.com/AliMirzad/noviq/releases) · [وب‌سایت](https://alimirzad.github.io/noviq/) · [حریم خصوصی](https://alimirzad.github.io/noviq/privacy.html) · [English](README.md)
+[دانلود](https://github.com/0xVexor/Nevis/releases) · [وب‌سایت](https://0xvexor.github.io/Nevis/) · [حریم خصوصی](https://0xvexor.github.io/Nevis/privacy.html) · [English](README.md)
 
 <br>
 
-<img src="docs/screenshots/editor.png" alt="ادیتور Noviq با یک یادداشت فارسی" width="100%">
+<img src="docs/screenshots/editor.png" alt="ادیتور Nevis با یک یادداشت فارسی" width="100%">
 
 </div>
 
@@ -24,11 +24,11 @@
 
 ---
 
-## چرا Noviq
+## چرا Nevis
 
-بیشتر برنامه‌های یادداشت‌برداری راست‌به‌چپ را فراموش می‌کنند: خط‌هایی که فارسی و انگلیسی دارند علامت‌گذاری‌شان به‌هم می‌ریزد، جدول‌ها برعکس می‌شوند و بلوک کد جهت اشتباه می‌گیرد. Noviq از اول برای این ساخته شده: جهت متن **برای هر بلوک جدا** تعیین می‌شود، متن ترکیبی درست نمایش داده می‌شود و بقیه‌ی چیزها (جدول، لیست، Callout، فرمول، نمودار) از آن پیروی می‌کنند.
+بیشتر برنامه‌های یادداشت‌برداری راست‌به‌چپ را فراموش می‌کنند: خط‌هایی که فارسی و انگلیسی دارند علامت‌گذاری‌شان به‌هم می‌ریزد، جدول‌ها برعکس می‌شوند و بلوک کد جهت اشتباه می‌گیرد. Nevis از اول برای این ساخته شده: جهت متن **برای هر بلوک جدا** تعیین می‌شود، متن ترکیبی درست نمایش داده می‌شود و بقیه‌ی چیزها (جدول، لیست، Callout، فرمول، نمودار) از آن پیروی می‌کنند.
 
-یادداشت‌های شما فایل‌های ساده در پوشه‌ای هستند که مال خودتان است. برای کار کردن به هیچ حسابی نیاز نیست. اگر یادداشت‌ها را روی چند دستگاه می‌خواهید، Noviq می‌تواند همان پوشه را از طریق سرور همگام‌سازی Noviq همگام نگه دارد؛ سروری که خودتان هم می‌توانید راه بیندازید (پوشه‌ی [`server/`](server/)). حساب فقط یک نام کاربری و یک رمز عبور است: بدون ایمیل، بدون شماره تلفن.
+یادداشت‌های شما فایل‌های ساده در پوشه‌ای هستند که مال خودتان است. برای کار کردن به هیچ حسابی نیاز نیست. اگر یادداشت‌ها را روی چند دستگاه می‌خواهید، Nevis می‌تواند همان پوشه را از طریق سرور همگام‌سازی Nevis همگام نگه دارد؛ سروری که خودتان هم می‌توانید راه بیندازید (پوشه‌ی [`server/`](server/)). حساب فقط یک نام کاربری و یک رمز عبور است: بدون ایمیل، بدون شماره تلفن.
 
 ## قابلیت‌ها
 
@@ -107,7 +107,7 @@
 
 ## دانلود
 
-آخرین نصب‌کننده را از صفحه‌ی **[Releases](https://github.com/AliMirzad/noviq/releases)** بگیرید:
+آخرین نصب‌کننده را از صفحه‌ی **[Releases](https://github.com/0xVexor/Nevis/releases)** بگیرید:
 
 | سیستم‌عامل | فایل |
 |---|---|
@@ -120,11 +120,11 @@
 
 ## همگام‌سازی بین دستگاه‌ها
 
-همگام‌سازی اختیاری است و به یک سرور همگام‌سازی Noviq نیاز دارد: برنامه به‌طور پیش‌فرض از `https://sync.manaz.pro` استفاده می‌کند و با فیلد **سرور** در فرم ورود می‌توانید آن را به سرور خودتان وصل کنید.
+همگام‌سازی اختیاری است و به یک سرور همگام‌سازی Nevis نیاز دارد: برنامه به‌طور پیش‌فرض از `https://sync.manaz.pro` استفاده می‌کند و با فیلد **سرور** در فرم ورود می‌توانید آن را به سرور خودتان وصل کنید.
 
 1. دکمه‌ی همگام‌سازی نوار بالا (یا **تنظیمات ← داده ← حساب و همگام‌سازی**) را بزنید و **حساب بسازید**: یک نام کاربری و یک رمز عبور. **کلید بازیابی** را که فقط یک‌بار نشان داده می‌شود ذخیره کنید: اگر رمز عبور را فراموش کنید تنها راه انتخاب رمز تازه است.
 2. همگام‌سازی فضای کاری‌تان را روشن کنید. تغییر یک دستگاه ظرف حدود یک ثانیه به بقیه می‌رسد.
-3. Noviq را روی کامپیوتر دیگر نصب کنید، وارد شوید و Vault را دانلود کنید.
+3. Nevis را روی کامپیوتر دیگر نصب کنید، وارد شوید و Vault را دانلود کنید.
 
 نکته‌ها:
 
@@ -132,13 +132,13 @@
 - **روی اینترنت ناپایدار هم امن.** ویرایش‌هایتان اول روی دیسک خودتان نوشته می‌شود. وقتی اتصال قطع شود منتظر می‌مانند و با برگشتن اتصال می‌روند؛ فایلی که فقط «دیده نمی‌شود» هرگز «حذف‌شده» حساب نمی‌شود و فایل‌های حذف‌شده ۳۰ روز قابل بازیابی‌اند.
 - **دو دستگاه، یک صفحه.** هیچ چیز بی‌صدا رونویسی نمی‌شود: ویرایش جدیدتر می‌ماند و قدیمی‌تر در تاریخچه‌ی همان صفحه نگه داشته می‌شود. صفحه‌های مختلف هرگز با هم conflict ندارند.
 - توکن دستگاه در محل امن سیستم‌عامل ذخیره می‌شود (Windows Credential Manager / macOS Keychain).
-- یادداشت‌هایتان روی سرور و در حساب شما ذخیره می‌شود (هنوز رمزنگاری سرتاسری نیست). [سیاست حریم خصوصی](https://alimirzad.github.io/noviq/privacy.html) را ببینید.
+- یادداشت‌هایتان روی سرور و در حساب شما ذخیره می‌شود (هنوز رمزنگاری سرتاسری نیست). [سیاست حریم خصوصی](https://0xvexor.github.io/Nevis/privacy.html) را ببینید.
 
 سرور در [`server/`](server/) است (Node.js، فضای ذخیره‌ی سازگار با S3، SQLite): [راه‌اندازی](server/README.md).
 
 ## داده چطور ذخیره می‌شود
 
-**Vault** یک پوشه‌ی معمولی است (پیش‌فرض `Documents/Noviq`) و تنها منبع حقیقت؛ بقیه‌ی چیزها مشتق‌شده و قابل بازسازی‌اند.
+**Vault** یک پوشه‌ی معمولی است (پیش‌فرض `Documents/Nevis`) و تنها منبع حقیقت؛ بقیه‌ی چیزها مشتق‌شده و قابل بازسازی‌اند.
 
 </div>
 
@@ -165,7 +165,7 @@ MyVault/
 | ادیتور | [TipTap 3](https://tiptap.dev/) (ProseMirror) |
 | فرمول / نمودار | KaTeX، Mermaid |
 | ذخیره‌سازی | فایل ساده در پوشه‌ی Vault؛ IndexedDB هنگام اجرا در مرورگر |
-| سینک | سرور همگام‌سازی Noviq ([`server/`](server/): Node.js، S3، SQLite): نسخه‌بندی با compare-and-swap، اعلان لحظه‌ای با long-poll |
+| سینک | سرور همگام‌سازی Nevis ([`server/`](server/): Node.js، S3، SQLite): نسخه‌بندی با compare-and-swap، اعلان لحظه‌ای با long-poll |
 
 ## ساخت از سورس
 
@@ -174,8 +174,8 @@ MyVault/
 </div>
 
 ```bash
-git clone https://github.com/AliMirzad/noviq.git
-cd noviq/spike/tiptap
+git clone https://github.com/0xVexor/Nevis.git
+cd Nevis/spike/tiptap
 npm install
 ```
 
@@ -199,24 +199,13 @@ cd .. && npx tsc -b                            # بررسی نوع‌ها
 
 <div dir="rtl">
 
-## انتشار نسخه
+## توسعه و انتشار
 
-نصب‌کننده‌های ویندوز و مک با [GitHub Actions](.github/workflows/release.yml) ساخته می‌شوند.
+شاخهٔ `dev` برای توسعه است. تغییرات جدید ابتدا با Pull Request وارد `dev` می‌شوند و فقط نسخه‌های نهایی از `dev` به `main` مرج می‌شوند.
 
-1. `version` را در `tauri.conf.json`، `Cargo.toml` و `package.json` (در `spike/tiptap`) بالا ببرید.
-2. در صورت نیاز متغیر مخزن `NOVIQ_SERVER` را با نشانی سرور همگام‌سازی خودتان تنظیم کنید تا داخل برنامه کامپایل شود.
-3. تگ بزنید و push کنید:
+[روند کامل گیت](docs/git-flow.md) و [یادداشت انتشار نسخهٔ ۱](docs/releases/v1.0.0.md) را ببینید. نصب‌کننده‌های ویندوز و مک از تگ نسخهٔ نهایی روی `main` ساخته می‌شوند و انتشار پس از موفقیت هر دو بیلد انجام می‌شود.
 
-</div>
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-<div dir="rtl">
-
-4. Draft ساخته‌شده را بررسی کنید و منتشر کنید.
+متغیر سرور در بیلدهای جدید `NEVIS_SERVER` است؛ `NOVIQ_SERVER` قبلی هم پشتیبانی می‌شود. داده‌ها، Vaultها و حساب‌های سینک قبلی سازگار می‌مانند.
 
 ## ساختار مخزن
 
@@ -237,7 +226,7 @@ git push origin v0.1.0
 
 ## حریم خصوصی
 
-Noviq روی کامپیوتر شما اجرا می‌شود. تحلیل رفتار (analytics) و telemetry ندارد و یادداشت‌هایتان را جایی نمی‌فرستد مگر همگام‌سازی را روشن کنید؛ آن‌وقت به سرور همگام‌سازی‌ای می‌روند که وارد آن شده‌اید (پیش‌فرض `sync.manaz.pro` یا سرور خودتان). جزئیات: [سیاست حریم خصوصی](https://alimirzad.github.io/noviq/privacy.html).
+Nevis روی کامپیوتر شما اجرا می‌شود. تحلیل رفتار (analytics) و telemetry ندارد و یادداشت‌هایتان را جایی نمی‌فرستد مگر همگام‌سازی را روشن کنید؛ آن‌وقت به سرور همگام‌سازی‌ای می‌روند که وارد آن شده‌اید (پیش‌فرض `sync.manaz.pro` یا سرور خودتان). جزئیات: [سیاست حریم خصوصی](https://0xvexor.github.io/Nevis/privacy.html).
 
 ---
 

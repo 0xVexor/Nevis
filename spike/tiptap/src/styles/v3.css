@@ -76,11 +76,7 @@
 .row:hover .tree-count { display: none; }
 .tree-kids { position: relative; margin-inline-start: 17px; padding-inline-start: 8px; border-inline-start: 1px solid var(--border-strong); }
 /* a deep tree scrolls sideways instead of squeezing titles out; each title keeps at least 110px */
-.tree-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: 4px; scrollbar-width: auto; } /* the one visible scrollbar (v2.css hides the rest): a slim pill in the border tone */
-.tree-scroll::-webkit-scrollbar { display: block; height: 6px; }
-.tree-scroll::-webkit-scrollbar-track { background: transparent; }
-.tree-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
-.tree-scroll::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+.tree-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: 4px; }
 .tree-in { width: max-content; min-width: 100%; }
 .tree-in .row.tree .ntitle { flex: 1 1 0; width: 0; min-width: 110px; }
 :root[data-side='icons'] .tree-scroll { overflow: visible; padding-bottom: 0; }

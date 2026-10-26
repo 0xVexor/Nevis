@@ -1,3 +1,5 @@
+import { Brand } from './Brand'
+import { shortcutLabel } from './shortcuts'
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react'
 import { repo, gcFiles, TRASH_DAYS } from './store'
 import type { Cover, Page, PageStatus } from './repo'
@@ -17,6 +19,7 @@ import { isDark, updateSettings, useSettings } from './settings'
 import { BackupError, buildBackup, download, pageToMarkdown, restoreBackup } from './backup'
 import { exportAllZip, importMarkdown, importVault, pickDirectory, pickFiles } from './io'
 import { PagesTable } from './PagesTable'
+import { HorizontalScroll } from './HorizontalScroll'
 import { Flashcards } from './Flashcards'
 import { SidebarTags } from './SidebarTags'
 import { Explorer } from './Explorer'
@@ -365,7 +368,7 @@ export default function App() {
     setTplOpen(false)
     if (id === BOARD_TEMPLATE) return add(null, 'board')
     if (id === DATABASE_TEMPLATE) return addDatabase(null)
-    const p = repo.create(null)
+    const p = repo.create(null, id === 'todo' ? 'todo' : 'page')
     const tp = getTemplates().find((x) => x.id === id)
     if (tp) {
       repo.update(p.id, { title: tp.pageTitle, icon: 'i:' + (TEMPLATE_GLYPH[tp.id] ?? 'page') })
@@ -589,13 +592,13 @@ export default function App() {
         />
         <div className="ws">
           <span className="ws-logo"><Ic.Logo size={32} /></span>
-          <span className="ws-name">Noviq.</span>
+          <Brand className="ws-name" />
           <button className="icon-btn" title={t('Close sidebar  Ctrl+\\')} onClick={() => setSideOpen(false)}><Ic.Sidebar /></button>
         </div>
 
         <div className="side-scroll">
           <button className="row plain search-row" onClick={() => setSearching(true)}>
-            <span className="ic"><Ic.Search /></span><span className="ntitle">{t('Search')}...</span><kbd>Ctrl K</kbd>
+            <span className="ic"><Ic.Search /></span><span className="ntitle">{t('Search')}...</span><kbd dir="ltr">{shortcutLabel(['Mod', 'K'])}</kbd>
           </button>
 
           <button className={'row plain' + (view === 'home' ? ' cur' : '')} onClick={() => setView('home')}>
@@ -652,8 +655,8 @@ export default function App() {
           )}
 
           {<button className={"section" + (shut.pages ? " shut" : "")} onClick={() => setShut((s) => ({ ...s, pages: !s.pages }))}>{t('Pages')}<Ic.Chevron size={13} /></button>}
-          {!shut.pages && settings.pagesView === 'compact' && <div className="tree-scroll"><div className="tree-in cmp-list"><CompactList {...rowProps} roots={roots} /></div></div>}
-          {!shut.pages && settings.pagesView !== 'compact' && <div className="tree-scroll"><div className="tree-in">{roots.map((p) => <TreeRow key={p.id} {...rowProps} page={p} depth={0} />)}</div></div>}
+          {!shut.pages && settings.pagesView === 'compact' && <HorizontalScroll className="tree-scroll" label={t('Pages')} followVisibleBottom><div className="tree-in cmp-list"><CompactList {...rowProps} roots={roots} /></div></HorizontalScroll>}
+          {!shut.pages && settings.pagesView !== 'compact' && <HorizontalScroll className="tree-scroll" label={t('Pages')} followVisibleBottom><div className="tree-in">{roots.map((p) => <TreeRow key={p.id} {...rowProps} page={p} depth={0} />)}</div></HorizontalScroll>}
           {!shut.pages && roots.length === 0 && <div className="empty-note">{t('No pages yet')}</div>}
 
           {tagList.length > 0 && (
@@ -741,7 +744,10 @@ export default function App() {
         {reader && view === 'page' && current && <ReaderBar cfg={readerCfg} onCfg={(c) => (setReaderCfg(c), localStorage.setItem('not.reader.cfg', JSON.stringify(c)))} onExit={() => setReader(false)} />}
         <div className="scroller">
           {view === 'home' ? (
-            <Home pages={pages} onOpen={setCurrentId} onNew={() => add(null)} onFolder={() => addFolder(null)} onTable={() => setTableOpen(true)} onCards={() => setCardsOpen(true)} onSearch={() => setSearching(true)} />
+            <Home pages={pages} onOpen={setCurrentId} onNew={() => add(null)} onFolder={() => addFolder(null)} onTable={() => setTableOpen(true)} onCards={() => setCardsOpen(true)} onSearch={() => setSearching(true)}
+              onNewDatabase={() => addDatabase(null)} onNewBoard={() => add(null, 'board')} onNewList={() => add(null, 'todo')}
+              onDatabases={() => setView('databases')} onDrawings={() => setView('drawings')} onTasks={() => setView('tasks')}
+              onTemplates={() => setTplOpen(true)} onWorkspaces={isTauri ? () => setFolderOpen(true) : undefined} />
           ) : view === 'files' ? (
             <Explorer pages={pages} onOpen={setCurrentId} onChange={refresh} onToast={(msg, undo) => setToast({ msg, undo })} />
           ) : view === 'tasks' ? (

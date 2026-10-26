@@ -1,6 +1,7 @@
 // Side peek / center peek of a row. The body is the app's normal page editor (or the drawing board for drawing pages), so every
 // editor feature works here; the database properties are rendered above the body by PageView through RowProperties.
 import { Suspense, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { Id } from '../model/types.ts'
 import type { DatabaseService } from '../service.ts'
 import { repo } from '../../store'
@@ -23,15 +24,21 @@ export function RowPeek({ svc, pageId, mode, onClose, onOpenFull, onSwitch, noti
   const [save, setSave] = useState<SaveState>('saved')
   const [, tick] = useState(0)
   const prev = useRef<Element | null>(null)
+  const closeRef = useRef(onClose)
+  useEffect(() => { closeRef.current = onClose }, [onClose])
   useEffect(() => {
     prev.current = document.activeElement
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && !(e.target as HTMLElement | null)?.closest?.('[role="dialog"], .popover, .slash-menu, .db-pop') && onClose()
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.popover, .db-modal, .slash-menu')) return
+      if ((e.target as HTMLElement | null)?.closest('input, textarea, [contenteditable="true"]')) return
+      closeRef.current()
+    }
     document.addEventListener('keydown', key)
     return () => {
       document.removeEventListener('keydown', key)
-      ;(prev.current as HTMLElement | null)?.focus?.() // selection and scroll of the table behind are untouched; focus returns to it
+      ;(prev.current as HTMLElement | null)?.focus?.({ preventScroll: true }) // selection and scroll of the table behind are untouched; focus returns to it
     }
-  }, [onClose])
+  }, [])
   useEffect(() => {
     const f = () => tick((x) => x + 1)
     window.addEventListener('external-change', f)
@@ -39,17 +46,18 @@ export function RowPeek({ svc, pageId, mode, onClose, onOpenFull, onSwitch, noti
   }, [])
   if (!page || page.deletedAt) {
     return (
-      <div className={'db-peek ' + mode} role="dialog" aria-modal="true" aria-label={t('Item')}>
+      createPortal(<div className={'db-peek-wrap is-' + mode} onMouseDown={(e) => e.target === e.currentTarget && onClose()}><div className={'db-peek is-' + mode} role="dialog" aria-modal="true" aria-label={t('Item')}>
         <div className="db-peek-bar"><button type="button" className="icon-btn" aria-label={t('Close')} onClick={onClose}><Ic.Close size={14} /></button></div>
         <div className="db-error-box">{t('This item is no longer here.')}</div>
-      </div>
+      </div></div>, document.body)
     )
   }
   void svc
   void notify
-  return (
-    <div className={'db-peek-wrap ' + mode} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={'db-peek ' + mode} role="dialog" aria-modal="true" aria-label={page.title || t('Untitled')}>
+  // portalled to <body>: inside the page, an ancestor with a transform or filter would make "fixed" relative to it and the peek would open inside the page frame
+  return createPortal(
+    <div className={'db-peek-wrap is-' + mode} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className={'db-peek is-' + mode} role="dialog" aria-modal="true" aria-label={page.title || t('Untitled')}>
         <div className="db-peek-bar">
           <button type="button" className="icon-btn" aria-label={t('Close')} title={t('Close  Esc')} onClick={onClose}><Ic.Close size={14} /></button>
           <button type="button" className="icon-btn" aria-label={t('Open as full page')} title={t('Open as full page')} onClick={() => onOpenFull(pageId)}><Ic.Enlarge size={14} /></button>
@@ -57,7 +65,7 @@ export function RowPeek({ svc, pageId, mode, onClose, onOpenFull, onSwitch, noti
           <span className="spacer" />
           <span className={'status' + (save === 'saving' ? ' busy' : '')}><i className="dot" />{save === 'saving' ? t('Saving…') : t('Saved')}</span>
         </div>
-        <div className="db-peek-body">
+        <div className="db-peek-body scroller">
           <Suspense fallback={<div className="page-skeleton" aria-busy="true" />}>
             {page.kind === 'board' ? (
               <BoardView key={page.id} page={page} onSave={setSave} onMeta={() => tick((x) => x + 1)} />
@@ -67,6 +75,7 @@ export function RowPeek({ svc, pageId, mode, onClose, onOpenFull, onSwitch, noti
           </Suspense>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

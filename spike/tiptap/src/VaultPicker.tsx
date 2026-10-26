@@ -15,7 +15,7 @@ const pickFolder = async (title: string) => {
 /**
  * Shown when no vault is open: the first run, or after “All workspaces…”. The user always chooses where a vault lives.
  * Signing in is optional and comes first only when nothing is here yet, because that is what someone who already
- * uses Noviq on another device wants: their notes, here.
+ * uses Nevis on another device wants: their notes, here.
  */
 export function VaultPicker({ onOpened }: { onOpened: () => void }) {
   const lang = useSettings().lang
@@ -88,7 +88,7 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
     <div className="acct-invite">
       <span className="acct-hero-ic"><Ic.Cloud size={20} /></span>
       <div>
-        <b>{firstRun ? t('Already use Noviq on another device?') : t('Keep your notes in sync')}</b>
+        <b>{firstRun ? t('Already use Nevis on another device?') : t('Keep your notes in sync')}</b>
         <small>{t('Sign in to get your notes here and keep every device up to date. It is optional: your notes live in a folder on this computer either way.')}</small>
       </div>
       <button className="primary" disabled={!!busy} onClick={() => setView('auth')}>{t('Sign in or create account')}</button>
@@ -100,7 +100,7 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
       <div className="modal backup-modal" style={{ maxWidth: 560 }}>
         <div className="modal-head">
           <div>
-            <b>{view === 'auth' ? t('Account and sync') : firstRun ? t('Welcome to Noviq') : t('Choose a vault')}</b>
+            <b>{view === 'auth' ? t('Account and sync') : firstRun ? t('Welcome to Nevis') : t('Choose a vault')}</b>
             <small>{view === 'auth' ? t('Your notes stay in a folder on this computer; the account only keeps your devices in step.') : t('A vault is a folder that holds all the pages, images and history of one workspace.')}</small>
           </div>
           <div className="segmented acct-lang" role="group" aria-label={t('Interface language')}>

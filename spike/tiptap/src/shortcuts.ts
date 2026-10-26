@@ -5,6 +5,7 @@
 export interface Shortcut {
   label: string // English source string, translated at render time
   keys: string[][] // alternatives; each is one chord, e.g. [['Mod', 'K']]
+  macKeys?: string[][]
 }
 export interface ShortcutGroup {
   title: string
@@ -43,7 +44,7 @@ export const SHORTCUTS: ShortcutGroup[] = [
       sc('Line break', ['Shift', 'Enter']),
       sc('Select all', ['Mod', 'A']),
       sc('Undo', ['Mod', 'Z']),
-      sc('Redo', ['Mod', 'Y'], ['Mod', 'Shift', 'Z']),
+      { ...sc('Redo', ['Mod', 'Y'], ['Mod', 'Shift', 'Z']), macKeys: [['Mod', 'Shift', 'Z']] },
     ],
   },
   {
@@ -85,9 +86,40 @@ export const SHORTCUTS: ShortcutGroup[] = [
   },
 ]
 
-export const isMac = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+/** Tauri's macOS WebView and browser previews both expose an Apple platform. */
+export const isMac = () => {
+  if (typeof navigator === 'undefined') return false
+  const nav = navigator as Navigator & { userAgentData?: { platform?: string } }
+  return /Mac|iPhone|iPad|iPod/i.test(nav.userAgentData?.platform || nav.platform || nav.userAgent)
+}
 
-const MAC: Record<string, string> = { Mod: '⌘', Alt: '⌥', Shift: '⇧', Enter: '↵', Esc: 'Esc', Tab: '⇥' }
+const MAC: Record<string, string> = {
+  Mod: '⌘', Cmd: '⌘', Command: '⌘', Meta: '⌘', Ctrl: '⌃', Control: '⌃',
+  Alt: '⌥', Option: '⌥', Shift: '⇧', Enter: '↵', Return: '↵', Esc: '⎋', Escape: '⎋',
+  Tab: '⇥', Backspace: '⌫', Delete: '⌦', Del: '⌦',
+  ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓',
+}
+const labelFor = (key: string, mac: boolean) => mac ? (MAC[key] ?? key) : key === 'Mod' ? 'Ctrl' : key
 
-/** One key as it is printed on the keyboard of this platform. */
-export const keyLabel = (k: string) => (isMac() ? (MAC[k] ?? k) : k === 'Mod' ? 'Ctrl' : k)
+/** One actual key; keep the single-argument API safe to pass directly to Array.map. */
+export const keyLabel = (key: string) => labelFor(key, isMac())
+export const shortcutLabel = (keys: readonly string[], mac = isMac()) => keys.map((key) => labelFor(key, mac)).join(mac ? '' : '+')
+export const shortcutKeys = (shortcut: Shortcut) => isMac() && shortcut.macKeys ? shortcut.macKeys : shortcut.keys
+
+// Legacy UI strings use Ctrl to mean the cross-platform Mod binding. Only match key chords,
+// so ordinary phrases such as "Enter your name" and translated prose are preserved.
+const CHORD = /\b(?:Ctrl|Mod|Cmd|Command|Control|Meta|Alt|Option|Shift)(?:[ +]+(?:Ctrl|Mod|Cmd|Command|Control|Meta|Alt|Option|Shift))*[ +]+(?:ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Enter|Return|Backspace|Delete|Escape|Space|Tab|Esc|Del|F\d{1,2}|[A-Z0-9./\\=←→↑↓-])(?![A-Za-z0-9])/g
+export function formatShortcutText(text: string, mac = isMac()): string {
+  if (!mac) return text
+  const rtl = /[֐-ࣿ]/.test(text)
+  const display = (value: string) => rtl ? '⁦' + value + '⁩' : value
+  const family = text.replace(/\b(?:Ctrl|Mod)\+([A-Z](?:\/[A-Z])+)(?![A-Za-z0-9])/g, (_match, letters: string) => display(letters.split('/').map((key) => shortcutLabel(['Mod', key], true)).join(' / ')))
+  return family.replace(CHORD, (chord) => {
+    let keys = chord.trim().split(/[ +]+/).map((key) => ['Ctrl', 'Cmd', 'Command', 'Meta'].includes(key) ? 'Mod' : key === 'Option' ? 'Alt' : key)
+    if (keys.length === 2 && keys[0] === 'Mod' && keys[1] === 'Y') keys = ['Mod', 'Shift', 'Z']
+    return display(shortcutLabel(keys, true))
+  })
+}
+
+/** Menu hints may also be one navigation key; action labels are never passed here. */
+export const shortcutHint = (hint: string) => isMac() && MAC[hint] ? MAC[hint] : formatShortcutText(hint)

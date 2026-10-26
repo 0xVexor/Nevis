@@ -145,4 +145,5 @@ const EN: Record<string, Pick<Template, 'title' | 'desc' | 'pageTitle' | 'html'>
   },
 }
 
-export const getTemplates = (): Template[] => (getLang() === 'fa' ? TEMPLATES : TEMPLATES.map((tp) => ({ ...tp, ...EN[tp.id] })))
+const EN_TEMPLATES: Template[] = TEMPLATES.map((tp) => ({ ...tp, ...EN[tp.id] }))
+export const getTemplates = (): Template[] => (getLang() === 'fa' ? TEMPLATES : EN_TEMPLATES)

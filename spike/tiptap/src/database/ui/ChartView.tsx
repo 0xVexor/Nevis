@@ -76,7 +76,7 @@ export function ChartView({ svc, view, ctl }: ViewProps) {
   const measure = cfg.measure ?? { kind: 'count' as const }
   return (
     <div className="db-chart">
-      <div className="db-chart-cfg">
+      {ctl.canSchema && <div className="db-chart-cfg">
         <Seg value={cfg.type ?? 'bar_vertical'} onChange={(v) => set({ type: v })} label={t('Chart type')} options={[{ value: 'bar_vertical', label: t('Bars') }, { value: 'bar_horizontal', label: t('Horizontal') }, { value: 'line', label: t('Line') }, { value: 'donut', label: t('Donut') }, { value: 'number', label: t('Number') }]} />
         {(cfg.type ?? 'bar_vertical') !== 'number' && (
           <>
@@ -91,9 +91,10 @@ export function ChartView({ svc, view, ctl }: ViewProps) {
         {measure.kind === 'agg' && <Field label={t('Calculate')}><Select value={measure.op} options={MEASURE_OPS.map((o) => ({ value: o, label: aggLabel(o) }))} onChange={(v) => set({ measure: { ...measure, op: v as never } })} /></Field>}
         {(cfg.type ?? 'bar_vertical') !== 'number' && <Field label={t('Order')}><Seg value={cfg.order ?? 'category'} onChange={(v) => set({ order: v })} options={[{ value: 'category', label: t('Natural') }, { value: 'value_desc', label: t('Largest first') }, { value: 'value_asc', label: t('Smallest first') }]} /></Field>}
         <Switch label={t('Hide “No value”')} on={!!cfg.hideEmpty} onChange={(v) => set({ hideEmpty: v })} />
-        <span className="spacer" />
-        <button type="button" className="db-tool" disabled={!svg} onClick={exportSvg}><Ic.Download size={13} /> SVG</button>
-        <button type="button" className="db-tool" disabled={!svg} onClick={exportPng}><Ic.Image size={13} /> PNG</button>
+      </div>}
+      <div className="db-view-actions db-chart-actions">
+        <button type="button" className="db-btn" disabled={!svg} onClick={exportSvg}><Ic.Download size={13} /> SVG</button>
+        <button type="button" className="db-btn" disabled={!svg} onClick={exportPng}><Ic.Image size={13} /> PNG</button>
       </div>
       {q.error && <div className="db-error-box" role="alert">{errorText(q.error.code, q.error.message)}</div>}
       {result.error && <div className="db-error-box" role="alert">{result.error}</div>}

@@ -451,6 +451,9 @@ function autoConfigure(cx: Ctx, v: View) {
     const c = first(['status', 'select', 'multi_select', 'date', 'checkbox', 'people'])
     if (c) cfg.chart = { type: 'bar_vertical', categoryPropertyId: c.id, measure: { kind: 'count' } } as unknown as Json
   }
+  // Creating a required property replaces this view's configuration to add it to visibleProperties.
+  // Commit the chosen layout keys onto that current configuration, rather than the stale object above.
+  v.configuration = { ...(v.configuration as Record<string, Json>), ...cfg, visibleProperties: cx.d.props(src).filter((p) => p.kind !== 'button').map((p) => p.id) }
 }
 
 register('view.patch', (cx, p: { viewId: Id; name?: string; filter?: any; sorts?: any; configurationPatch?: Record<string, Json>; defaultTemplateId?: Id | null }) => {

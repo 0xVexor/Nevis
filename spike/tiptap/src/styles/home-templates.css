@@ -1,0 +1,107 @@
+/* Home and the template chooser share Aurora Paper's surfaces and spacing. */
+.hm { max-inline-size: 1460px; padding: 12px clamp(16px, 3vw, 36px) 56px; container-type: inline-size; }
+.hm-grid { grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; }
+.hm-main { min-inline-size: 0; }
+.hm-bar { gap: 12px; margin-block-end: 20px; }
+.hm-search, .hm-new { border-radius: var(--radius); box-shadow: none; }
+.hm-overview { min-block-size: 0; display: block; background: var(--grad-soft); border-radius: var(--radius-lg); box-shadow: none; }
+.hm-overview::before, .hm-overview::after { display: none; }
+.hm-overview .hm-hero-tx { padding: 28px 28px 24px; color: var(--text); }
+.hm-overview h1 { font-size: clamp(28px, 3vw, 40px); line-height: 1.35; }
+.hm-overview p { max-inline-size: 44em; line-height: 1.8; font-size: 14px; opacity: 1; color: var(--muted); margin-block-end: 20px; }
+.hm-overview .hm-cta { min-block-size: 38px; height: auto; padding: 9px 14px; border-radius: var(--radius); box-shadow: none; background: var(--bg-raised); color: var(--accent); backdrop-filter: none; }
+.hm-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-block-start: 1px solid var(--border); background: color-mix(in srgb, var(--bg-raised) 55%, transparent); }
+.hm-stats button { display: flex; align-items: baseline; justify-content: center; flex-wrap: wrap; gap: 8px; padding: 14px 10px; border: 0; border-inline-end: 1px solid var(--border); background: none; text-align: center; cursor: var(--cursor-hand, pointer); }
+.hm-stats button:last-child { border-inline-end: 0; }
+.hm-stats button:hover { background: var(--hover); }
+.hm-stats b { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.hm-stats span { color: var(--muted); font-size: 12px; }
+.hm-acts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-block: 16px 28px; }
+.hm-act { min-inline-size: 0; min-block-size: 176px; padding: 16px; border-radius: var(--radius-lg); transition: border-color 150ms, background 150ms; }
+.hm-act:hover { transform: none; box-shadow: none; background: var(--accent-soft); }
+.hm-act::before { pointer-events: none; }
+.hm-act > svg { inset-block-start: 16px; inset-inline-end: 12px; }
+.hm-act b { line-height: 1.6; font-size: 14px; }
+.hm-act small { color: var(--muted); line-height: 1.7; }
+.hm-tile { inline-size: 40px; block-size: 40px; border-radius: var(--radius); }
+.hm-collections { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-block-end: 28px; }
+.hm-collection { display: flex; gap: 10px; align-items: flex-start; min-inline-size: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-raised); padding: 16px 12px; color: var(--text); text-align: start; cursor: var(--cursor-hand, pointer); }
+.hm-collection:hover { border-color: var(--accent-ring); background: var(--accent-soft); }
+.hm-collection > span:nth-child(2) { flex: 1; min-inline-size: 0; }
+.hm-collection b { display: block; font-size: 13px; padding-block: 3px 6px; }
+.hm-collection small { display: block; font-size: 12px; color: var(--muted); line-height: 1.8; }
+.hm-collection > svg { flex: none; margin-block-start: 8px; color: var(--faint); }
+.hm-collection .hm-box-ic { flex: none; }
+.hm-sec h2 { font-size: 17px; }
+.hm-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.hm-card { min-inline-size: 0; border-radius: var(--radius-lg); animation: none; transition: border-color 150ms; }
+.hm-card:hover { transform: none; box-shadow: none; }
+.hm-card-cover { height: 76px; }
+.hm-card-b { padding: 12px; gap: 8px; }
+.hm-card-t b { font-size: 13px; }
+.hm-card-t small { font-size: 11px; }
+.hm-box { border-radius: var(--radius-lg); box-shadow: none; }
+.hm-row { min-inline-size: 0; }
+.hm-row > svg { flex: none; color: var(--accent); }
+@container (max-width: 1050px) { .hm-grid { grid-template-columns: minmax(0, 1fr); } .hm-side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
+@container (max-width: 760px) { .hm-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 650px) { .hm-acts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 600px) { .hm-collections { grid-template-columns: minmax(0, 1fr); } .hm-side { grid-template-columns: minmax(0, 1fr); } .hm-stats button { flex-direction: column; align-items: center; gap: 2px; } .hm-overview .hm-hero-tx { padding: 22px; } .hm-search kbd { display: none; } }
+
+/* A light backdrop avoids re-blurring the entire active editor on every frame. */
+.tpl-overlay { align-items: center; padding: 24px; backdrop-filter: none; background: light-dark(rgb(24 16 70 / 0.38), rgb(2 2 8 / 0.7)); animation: fade-in 120ms var(--ease); }
+.tpl-modal { width: min(1180px, 100%); max-height: calc(100dvh - 48px); border-radius: var(--radius-xl); animation: fade-in 120ms var(--ease); container-type: inline-size; }
+.tpl-modal .modal-head { flex: none; padding: 20px 24px; }
+.tpl-modal .modal-head small { display: block; margin-block-start: 6px; line-height: 1.7; }
+.tpl-grid { display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch; align-content: start; gap: 16px; padding: 24px; min-block-size: 0; overflow: auto; overscroll-behavior: contain; }
+.tpl-card { flex: 0 0 calc((100% - 48px) / 4); min-inline-size: 0; min-block-size: 220px; padding: 20px; gap: 10px; border-radius: var(--radius-lg); transition: border-color 150ms, background 150ms; }
+.tpl-card:hover { transform: none; box-shadow: none; background: var(--accent-soft); }
+.tpl-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tpl-ic { flex: none; inline-size: 48px; block-size: 48px; margin: 0 0 4px; border-radius: var(--radius); }
+.tpl-card b { font-size: 15px; line-height: 1.6; }
+.tpl-card small { line-height: 1.8; overflow-wrap: anywhere; }
+.tpl-use { opacity: 1; transform: none; padding-block-start: 8px; transition: none; }
+@container (max-width: 1000px) { .tpl-card { flex-basis: calc((100% - 32px) / 3); } }
+@container (max-width: 740px) { .tpl-card { flex-basis: calc((100% - 16px) / 2); } }
+@container (max-width: 460px) { .tpl-card { flex-basis: 100%; min-block-size: 190px; } .tpl-grid { padding: 16px; gap: 12px; } }
+@media (max-width: 600px) { .tpl-overlay { padding: 12px; } .tpl-modal { max-height: calc(100dvh - 24px); } }
+@media (prefers-reduced-motion: reduce) { .tpl-overlay, .tpl-modal { animation: none; } }
+
+
+/* Local landscape photography follows the greeting's time of day. */
+.hm-overview { background: #142b36; }
+.hm-overview .hm-landscape {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  object-position: center 46%;
+  pointer-events: none;
+  animation: hm-landscape-in 650ms ease-out;
+}
+.hm-landscape-shade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgb(5 17 26 / .68), rgb(5 17 26 / .28) 70%), linear-gradient(0deg, rgb(5 17 26 / .48), transparent 65%);
+}
+:root[dir='rtl'] .hm-landscape-shade {
+  background: linear-gradient(270deg, rgb(5 17 26 / .68), rgb(5 17 26 / .28) 70%), linear-gradient(0deg, rgb(5 17 26 / .48), transparent 65%);
+}
+.hm-overview .hm-hero-tx { min-block-size: 264px; padding: 32px; color: #fff; }
+.hm-overview .hm-hero-tx small { opacity: .88; letter-spacing: .03em; }
+.hm-overview h1 { color: #fff; text-shadow: 0 2px 18px rgb(0 0 0 / .25); }
+.hm-overview p { color: rgb(255 255 255 / .88); }
+.hm-overview .hm-cta { border: 1px solid rgb(255 255 255 / .35); background: rgb(10 24 35 / .35); color: #fff; }
+.hm-overview .hm-cta:hover { background: rgb(255 255 255 / .16); transform: none; }
+.hm-overview .hm-stats { position: relative; border-color: rgb(255 255 255 / .18); background: rgb(5 17 26 / .38); }
+.hm-overview .hm-stats button { color: #fff; border-color: rgb(255 255 255 / .16); }
+.hm-overview .hm-stats button:hover { background: rgb(255 255 255 / .12); }
+.hm-overview .hm-stats span { color: rgb(255 255 255 / .8); }
+.hm-overview :is(button, .hm-cta):focus-visible { outline-color: #fff; outline-offset: -4px; }
+@keyframes hm-landscape-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .hm-overview .hm-landscape { animation: none; } }
+@container (max-width: 600px) { .hm-overview .hm-hero-tx { padding: 24px; min-block-size: 250px; } }

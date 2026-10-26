@@ -1,6 +1,7 @@
 // Cell editors. Inline kinds (text-like, number) use <InlineInput>; the rest open a popover. Every edit is a `row.patch` command:
 // the value is only shown as saved once the batch is durable, a failed save keeps the draft and says why.
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { Cell, Definition, Id, RichRun } from '../model/types.ts'
 import { civilOf } from '../dates.ts'
 import { cfgOf, optionsOf, OPTION_COLORS, statusConfig, type SelectOption } from '../props/config.ts'
@@ -16,6 +17,7 @@ import { Chip, COLOR_CLASS, errorText, plainTitle } from './common'
 import { useFileNames } from './CellView'
 import { DatePicker } from './DatePicker'
 import { RichTextEditor } from './RichText'
+import { Field } from './forms'
 
 export type Saver = (cell: Cell | null) => Promise<boolean>
 
@@ -38,17 +40,33 @@ export function useSaver(svc: DatabaseService, row: Row, def: Definition) {
 
 // ───── inline input (text-like, number, title) ─────
 
-export function InlineInput({ initial, kind, onCommit, onCancel, onNavigate, error, placeholder, ltr }: {
+export function InlineInput({ initial, kind, onCommit, onCancel, onNavigate, error, onDraftChange, placeholder, ltr }: {
   initial: string
   kind: 'text' | 'number' | 'url' | 'email' | 'phone' | 'title'
   onCommit: (text: string) => Promise<boolean> | boolean
   onCancel: () => void
   onNavigate?: (dir: 'next' | 'prev' | 'down' | 'up') => void
   error?: string | null
+  onDraftChange?: () => void
   placeholder?: string
   ltr?: boolean
 }) {
   const ref = useRef<HTMLInputElement>(null)
+  const errorId = useId()
+  const [errorPos, setErrorPos] = useState<{ top: number; left: number; width: number } | null>(null)
+  useLayoutEffect(() => {
+    if (!error) return
+    const place = () => {
+      const r = ref.current?.getBoundingClientRect()
+      if (!r) return
+      const width = Math.min(320, window.innerWidth - 24)
+      setErrorPos({ top: r.bottom + 100 <= window.innerHeight ? r.bottom + 6 : Math.max(12, r.top - 94), left: Math.max(12, Math.min(r.left, window.innerWidth - width - 12)), width })
+    }
+    place()
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    return () => { window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place) }
+  }, [error])
   const [v, setV] = useState(initial)
   const busy = useRef(false)
   useEffect(() => {
@@ -72,7 +90,8 @@ export function InlineInput({ initial, kind, onCommit, onCancel, onNavigate, err
         inputMode={kind === 'number' ? 'decimal' : undefined}
         placeholder={placeholder}
         aria-invalid={!!error}
-        onChange={(e) => setV(e.target.value)}
+        aria-describedby={error ? errorId : undefined}
+        onChange={(e) => { setV(e.target.value); onDraftChange?.() }}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing || e.key === 'Process') return // never act on Enter/Tab while a Persian IME composition is open
           if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCancel() }
@@ -81,17 +100,17 @@ export function InlineInput({ initial, kind, onCommit, onCancel, onNavigate, err
         }}
         onBlur={() => void commit()}
       />
-      {error && <div className="db-err" role="alert">{error}</div>}
+      {error && errorPos && createPortal(<div id={errorId} className="db-cell-error" role="alert" style={{ position: 'fixed', ...errorPos }}>{error}</div>, document.body)}
     </div>
   )
 }
 
 // ───── popover shell ─────
 
-function Shell({ anchor, onClose, children, wide }: { anchor: DOMRect; onClose: () => void; children: ReactNode; wide?: boolean }) {
+function Shell({ anchor, onClose, children, wide, className = '' }: { anchor: DOMRect; onClose: () => void; children: ReactNode; wide?: boolean; className?: string }) {
   return (
     <Popover anchor={anchor} onClose={onClose}>
-      <div className={'db-pop' + (wide ? ' wide' : '')} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>{children}</div>
+      <div className={'db-pop' + (wide ? ' wide' : '') + (className ? ' ' + className : '')} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>{children}</div>
     </Popover>
   )
 }
@@ -362,17 +381,17 @@ function PlaceEditor({ svc, row, def, anchor, onClose }: PopProps) {
     if (await save(empty ? null : { kind: 'place', value: { lat: la, lon: lo, name, address } })) onClose()
   }
   return (
-    <Shell anchor={anchor} onClose={() => void commit()} wide>
-      <div className="db-form">
-        <label>{t('Name')}<input className="db-input" value={name} onChange={(e) => setName(e.target.value)} dir="auto" /></label>
-        <label>{t('Address')}<input className="db-input" value={address} onChange={(e) => setAddress(e.target.value)} dir="auto" /></label>
-        <div className="db-row2">
-          <label>{t('Latitude')}<input className="db-input" dir="ltr" inputMode="decimal" value={lat} onChange={(e) => setLat(e.target.value)} /></label>
-          <label>{t('Longitude')}<input className="db-input" dir="ltr" inputMode="decimal" value={lon} onChange={(e) => setLon(e.target.value)} /></label>
+    <Shell anchor={anchor} onClose={() => void commit()} wide className="db-place-pop">
+      <div className="db-form db-place-form">
+        <Field label={t('Name')}><input className="db-input" value={name} onChange={(e) => setName(e.target.value)} dir="auto" /></Field>
+        <Field label={t('Address')}><input className="db-input" value={address} onChange={(e) => setAddress(e.target.value)} dir="auto" /></Field>
+        <div className="db-place-coordinates">
+          <Field label={t('Latitude')}><input className="db-input" dir="ltr" inputMode="decimal" value={lat} onChange={(e) => setLat(e.target.value)} /></Field>
+          <Field label={t('Longitude')}><input className="db-input" dir="ltr" inputMode="decimal" value={lon} onChange={(e) => setLon(e.target.value)} /></Field>
         </div>
-        <div className="db-date-hint">{t('Coordinates you type are saved on this device and work offline. Looking up an address needs a map provider (Settings → Database).')}</div>
-        {error && <div className="db-err" role="alert">{error}</div>}
-        <div className="db-date-foot"><button type="button" onClick={onClose}>{t('Cancel')}</button><button type="button" className="primary" onClick={() => void commit()}>{t('Save')}</button></div>
+        <div className="db-date-hint db-place-hint">{t('Coordinates you type are saved on this device and work offline. Looking up an address needs a map provider (Settings → Database).')}</div>
+        {error && <div className="db-err db-place-error" role="alert">{error}</div>}
+        <div className="db-date-foot db-place-actions"><button type="button" className="db-btn" onClick={onClose}>{t('Cancel')}</button><button type="button" className="db-btn primary" onClick={() => void commit()}>{t('Save')}</button></div>
       </div>
     </Shell>
   )
@@ -455,6 +474,7 @@ export function InlineCellEditor({ svc, row, def, onClose, onNavigate, initial }
       initial={start}
       kind={def.kind as 'number'}
       error={error}
+      onDraftChange={() => setError(null)}
       onCancel={onClose}
       onNavigate={onNavigate}
       onCommit={async (text) => {

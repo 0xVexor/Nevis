@@ -7,6 +7,7 @@ import {
 } from '../dates.ts'
 import type { DateConfig } from '../props/config.ts'
 import { locale, t } from '../../i18n'
+import { Select } from '../../ui'
 import * as Ic from '../../icons'
 
 type Props = {
@@ -162,9 +163,7 @@ export function DatePicker({ value, config, zone, weekStart, todayCivil, onChang
         <div className="db-date-time">
           <input type="time" aria-label={t('Start time')} value={timed()!.s} onChange={(e) => setTime('s', e.target.value)} />
           {isRange && <input type="time" aria-label={t('End time')} value={timed()!.e} onChange={(e) => setTime('e', e.target.value)} />}
-          <select aria-label={t('Time zone')} value={isValidZone(vz) ? vz : zone} onChange={(e) => value && value.kind === 'datetime' && startCivil && onChange(build(startCivil, endCivil, { ...timed()!, zone: e.target.value }))}>
-            {(zones.includes(vz) ? zones : [vz, ...zones]).map((z) => <option key={z} value={z}>{z}</option>)}
-          </select>
+          <Select title={t('Time zone')} value={isValidZone(vz) ? vz : zone} onChange={(nextZone) => { if (value?.kind === 'datetime' && startCivil) onChange(build(startCivil, endCivil, { ...timed()!, zone: nextZone })) }} options={(zones.includes(vz) ? zones : [vz, ...zones]).map((value) => ({ value, label: value }))} />
         </div>
       )}
       {value && (

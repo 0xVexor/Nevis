@@ -39,7 +39,7 @@ export const Up = (p: P) => <I {...p}><path d="M12 19V5m0 0-6 6m6-6 6 6" /></I>
 export const Palette = (p: P) => <I {...p}><path d="M12 3a9 9 0 1 0 0 18c1.2 0 1.8-.8 1.8-1.6 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4-4-7.2-9-7.2z" /><circle cx="7.5" cy="11" r="1" fill="currentColor" /><circle cx="10.5" cy="7" r="1" fill="currentColor" /><circle cx="15" cy="7.5" r="1" fill="currentColor" /></I>
 export const Type = (p: P) => <I {...p}><path d="M5 7V5h14v2M12 5v14M9 19h6" /></I>
 export const Panel = (p: P) => <I {...p}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M15 4v16" /></I>
-/** Noviq mark: a leaf; the veins are cut out of the body so it follows the text colour. */
+/** Nevis mark: a leaf; the veins are cut out of the body so it follows the text colour. */
 export const Logo = ({ size = 16 }: P) => (
   <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden>
     <mask id="noviq-leaf-veins"><rect width="100" height="100" fill="#fff" /><path d="M24 74.5L68 34M56 48L69 50M47 56L61 60M37 64L52 68M33.5 62L30 47M42 55L39 39M51 46L49 33" stroke="#000" strokeWidth="3.4" strokeLinecap="round" fill="none" /></mask>

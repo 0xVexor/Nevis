@@ -1,3 +1,5 @@
+import { useEffect, useId, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { getTemplates } from './templates'
 import { Glyph } from './iconSet'
 import * as Ic from './icons'
@@ -13,15 +15,31 @@ export const DATABASE_TEMPLATE = '__database'
 /** Template gallery: pick one and a new page is created from it. */
 export function Templates({ onPick, onClose }: { onPick: (id: string) => void; onClose: () => void }) {
   const list = getTemplates()
-  return (
-    <div className="overlay" onMouseDown={onClose}>
-      <div className="modal tpl-modal" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+  const titleId = useId()
+  const closeButton = useRef<HTMLButtonElement>(null)
+  const dialog = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null
+    closeButton.current?.focus({ preventScroll: true })
+    return () => { if (previous?.isConnected) previous.focus({ preventScroll: true }) }
+  }, [])
+  return createPortal(
+    <div className="overlay tpl-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div ref={dialog} className="modal tpl-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => {
+        if (e.key === 'Escape') { e.stopPropagation(); onClose() }
+        if (e.key === 'Tab') {
+          const buttons = [...(dialog.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])]
+          const first = buttons[0], last = buttons[buttons.length - 1]
+          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus() }
+          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus() }
+        }
+      }}>
         <div className="modal-head">
           <div>
-            <b>{t('Templates')}</b>
+            <b id={titleId}>{t('Templates')}</b>
             <small>{t('Start a new page from a ready-made structure.')}</small>
           </div>
-          <button className="icon-btn" title={t('Close')} onClick={onClose}><Ic.Close /></button>
+          <button ref={closeButton} type="button" className="icon-btn" title={t('Close')} aria-label={t('Close')} onClick={onClose}><Ic.Close /></button>
         </div>
         <div className="tpl-grid">
           <button className="tpl-card blank" onClick={() => onPick('')}>
@@ -32,7 +50,7 @@ export function Templates({ onPick, onClose }: { onPick: (id: string) => void; o
           <button className="tpl-card" style={{ ['--hue' as string]: 200 } as React.CSSProperties} onClick={() => onPick(DATABASE_TEMPLATE)}>
             <span className="tpl-ic"><Ic.Table size={24} /></span>
             <b>{t('Database')}</b>
-            <small>{t('A table you can also see as a board, calendar, list or chart.')}</small>
+            <small>{t('Tables, views, forms and dashboards in one database.')}</small>
             <span className="tpl-use">{t('Use template')}<Ic.Arrow size={14} /></span>
           </button>
           <button className="tpl-card" style={{ ['--hue' as string]: 20 } as React.CSSProperties} onClick={() => onPick(BOARD_TEMPLATE)}>
@@ -51,6 +69,6 @@ export function Templates({ onPick, onClose }: { onPick: (id: string) => void; o
           ))}
         </div>
       </div>
-    </div>
+    </div>, document.body,
   )
 }

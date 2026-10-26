@@ -117,8 +117,8 @@ export function KeyScreen({ keyText, username, onDone, doneLabel }: { keyText: s
     }
   }
   const save = async () => {
-    const name = `noviq-recovery-key-${username || 'account'}.txt`
-    const text = `Noviq recovery key
+    const name = `nevis-recovery-key-${username || 'account'}.txt`
+    const text = `Nevis recovery key
 User name: ${username}
 Key: ${keyText}
 
@@ -142,7 +142,7 @@ Keep this somewhere safe. With it you can choose a new password if you forget yo
       <div className="acct-hero">
         <span className="acct-hero-ic key"><Ic.Key size={22} /></span>
         <h3>{t('Save your recovery key')}</h3>
-        <p>{t('If you forget your password, this key is the only way back into your account. Noviq never asks for an email address, so there is no link to send. It is shown only now.')}</p>
+        <p>{t('If you forget your password, this key is the only way back into your account. Nevis never asks for an email address, so there is no link to send. It is shown only now.')}</p>
       </div>
       <div className="acct-key" dir="ltr" data-testid="recovery-key">{keyText}</div>
       <div className="acct-row">
@@ -306,7 +306,7 @@ export function AuthFlow({ status, initial = 'signin', onDone, onBack }: { statu
       )}
 
       {needsInvite && (
-        <Field label={t('Invite code')} hint={t('Ask the person who runs your Noviq server.')}>
+        <Field label={t('Invite code')} hint={t('Ask the person who runs your Nevis server.')}>
           <input dir="ltr" value={invite} autoComplete="off" spellCheck={false} onChange={(e) => setInvite(e.target.value)} />
         </Field>
       )}
@@ -325,7 +325,7 @@ export function AuthFlow({ status, initial = 'signin', onDone, onBack }: { statu
 
       {advanced && (
         <div className="acct-adv">
-          <Field label={t('Server address')} hint={t('Only change this if you run your own Noviq server.')}>
+          <Field label={t('Server address')} hint={t('Only change this if you run your own Nevis server.')}>
             <input dir="ltr" value={server} spellCheck={false} placeholder={status?.defaultServer} onChange={(e) => ((typedServer.current = true), setServer(e.target.value))} />
           </Field>
           <span className={'acct-reach ' + reach}>
