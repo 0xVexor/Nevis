@@ -3,7 +3,7 @@ name: Tests
 # Runs on every push and pull request: the sync server, the web UI and the Rust side.
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
 
 jobs:

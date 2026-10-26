@@ -1,19 +1,23 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { Brand } from './Brand'
+import appPackage from '../package.json'
+import { Suspense, lazy, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+const DatabaseSettings = lazy(() => import('./database/ui/DatabaseSettings').then((m) => ({ default: m.DatabaseSettings })))
 import { confirmDialog } from './dialog'
 import { ACCENTS, DEFAULTS, FONTS, PRESETS, TEXT_COLORS, loadFont, updateSettings, useSettings, type FontGroup, type FontId, type SidebarStyle, type Theme } from './settings'
 import { pickFiles } from './io'
 import { putFile } from './attachments'
 import * as Ic from './icons'
 import { t } from './i18n'
-import { SHORTCUTS, keyLabel } from './shortcuts'
+import { SHORTCUTS, keyLabel, shortcutKeys } from './shortcuts'
 
-type Tab = 'appearance' | 'editor' | 'language' | 'general' | 'data' | 'shortcuts' | 'about'
+type Tab = 'appearance' | 'editor' | 'language' | 'general' | 'data' | 'database' | 'shortcuts' | 'about'
 const TABS: { id: Tab; label: string; title: string; hint: string; icon: ReactNode }[] = [
   { id: 'appearance', label: 'Appearance', title: 'Appearance', hint: 'Colors, background, glass and the shape of the app.', icon: <Ic.Palette /> },
   { id: 'editor', label: 'Editor & font', title: 'Editor & font', hint: 'The typeface, size and color of your page text.', icon: <Ic.Type /> },
   { id: 'language', label: 'Language', title: 'Language & layout', hint: 'The interface language and which side things sit on.', icon: <Ic.Globe /> },
   { id: 'general', label: 'General', title: 'General', hint: 'Reminders and how files are stored.', icon: <Ic.Settings /> },
   { id: 'data', label: 'Data & backup', title: 'Data & backup', hint: 'Import, export, back up and sync your notes.', icon: <Ic.Archive /> },
+  { id: 'database', label: 'Database', title: 'Database', hint: 'Calendar defaults, maps and connected services.', icon: <Ic.Table /> },
   { id: 'shortcuts', label: 'Shortcuts', title: 'Keyboard shortcuts', hint: 'Everything you can do without leaving the keyboard.', icon: <Ic.Keyboard /> },
   { id: 'about', label: 'About', title: 'About', hint: 'What this app is.', icon: <Ic.Info /> },
 ]
@@ -32,7 +36,7 @@ const SIDEBAR_STYLES: { id: SidebarStyle; label: string }[] = [
 
 // ───── building blocks: a card holds rows; a row is "label + hint" on one side and its control on the other ─────
 
-const Card = ({ icon, title, hint, children }: { icon?: ReactNode; title: string; hint?: string; children: ReactNode }) => (
+const Card = ({ icon, title, hint, children }: { icon?: ReactNode; title: ReactNode; hint?: string; children: ReactNode }) => (
   <section className="sx-card">
     <header className="sx-card-head">
       {icon && <span className="sx-ic">{icon}</span>}
@@ -326,7 +330,7 @@ function Shortcuts() {
   const needle = q.trim().toLowerCase()
   const groups = SHORTCUTS.map((g) => ({
     ...g,
-    items: g.items.filter((i) => !needle || i.label.toLowerCase().includes(needle) || t(i.label).toLowerCase().includes(needle) || i.keys.some((k) => k.map(keyLabel).join('+').toLowerCase().includes(needle))),
+    items: g.items.filter((i) => !needle || i.label.toLowerCase().includes(needle) || t(i.label).toLowerCase().includes(needle) || shortcutKeys(i).some((k) => k.map(keyLabel).join('+').toLowerCase().includes(needle))),
   })).filter((g) => g.items.length)
   return (
     <>
@@ -341,8 +345,8 @@ function Shortcuts() {
               <li key={i.label}>
                 <span>{t(i.label)}</span>
                 <span className="sc-keys">
-                  {i.keys.map((chord, n) => (
-                    <span key={n} className="sc-chord">
+                  {shortcutKeys(i).map((chord, n) => (
+                    <span key={n} className="sc-chord" dir="ltr">
                       {n > 0 && <em>{t('or')}</em>}
                       {chord.map((k, j) => (
                         <kbd key={j}>{keyLabel(k)}</kbd>
@@ -407,12 +411,13 @@ function DataTab({ a }: { a: DataActions }) {
 
 function About() {
   return (
-    <Card icon={<Ic.Info />} title="Noviq.">
+    <Card icon={<Ic.Info />} title={<Brand />}>
       <div className="sx-about">
         <span className="sx-logo">
           <Ic.Logo size={34} />
         </span>
         <p>{t('Your notes, checklists and drawings in one calm place. Everything stays on your device unless you choose to sync it.')}</p>
+        <small>{t('Version {version}', { version: appPackage.version })}</small>
         <small>{t('Created by')} Vexor</small>
       </div>
     </Card>
@@ -451,7 +456,7 @@ export function SettingsView({ data }: { data: DataActions }) {
             <h3>{t(cur.title)}</h3>
             <p>{t(cur.hint)}</p>
           </header>
-          {tab === 'appearance' ? <Appearance /> : tab === 'editor' ? <Editor /> : tab === 'language' ? <LanguageTab /> : tab === 'general' ? <General /> : tab === 'data' ? <DataTab a={data} /> : tab === 'shortcuts' ? <Shortcuts /> : <About />}
+          {tab === 'appearance' ? <Appearance /> : tab === 'editor' ? <Editor /> : tab === 'language' ? <LanguageTab /> : tab === 'general' ? <General /> : tab === 'data' ? <DataTab a={data} /> : tab === 'database' ? <Suspense fallback={null}><DatabaseSettings /></Suspense> : tab === 'shortcuts' ? <Shortcuts /> : <About />}
         </div>
       </div>
     </div>

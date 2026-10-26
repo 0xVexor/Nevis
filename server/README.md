@@ -1,6 +1,6 @@
-# Noviq sync server
+# Nevis sync server
 
-The server behind Noviq's sync between devices. A change saved on one device reaches the others in about a second; only what changed travels; a lost connection costs time, never data.
+The server behind Nevis's sync between devices. A change saved on one device reaches the others in about a second; only what changed travels; a lost connection costs time, never data.
 
 - **Accounts without email or phone**: a user name, a password and a recovery key. An invite code, if you want one.
 - **Revisions and compare-and-swap**: every path has a `rev`; a write names the rev it was based on, and the server refuses it if the path moved on. Two devices never overwrite each other silently.

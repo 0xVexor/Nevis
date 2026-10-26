@@ -1,5 +1,5 @@
 /*
- * Noviq design tokens — "Aurora Paper".
+ * Nevis design tokens — "Aurora Paper".
  * One definition per token: light-dark() picks the palette from color-scheme, and
  * color-scheme itself follows the system unless the user chose a theme (data-theme on <html>).
  * Settings only override a few variables inline on :root (--accent, --radius*, --font, --editor-*).

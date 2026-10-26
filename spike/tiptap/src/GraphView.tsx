@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useDatabaseEdges, EdgeKindToggles, type ExtraKinds } from './database/ui/GraphEdges'
 import { repo } from './store'
 import { layoutAsync } from './graphLayout'
 import { toneOf } from './PageIcon'
@@ -106,7 +107,10 @@ const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v))
  * stays smooth with thousands of pages. The layout is computed in a worker.
  */
 export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; onOpen: (id: string) => void; onClose: () => void }) {
-  const g = useMemo(() => repo.linkGraph(), [])
+  const [kinds, setKinds] = useState<ExtraKinds>({ relation: false, dependency: false, hierarchy: false })
+  const extra = useDatabaseEdges(kinds)
+  const links = useMemo(() => repo.linkGraph(), [])
+  const g = useMemo(() => (extra.length ? { nodes: links.nodes, edges: [...links.edges, ...extra] as [string, string][] } : links), [links, extra])
   const [scope, setScope] = useState<'local' | 'all'>(currentId && g.edges.some(([a, b]) => a === currentId || b === currentId) ? 'local' : 'all')
   const [hover, setHover] = useState<string | null>(null)
   const [query, setQuery] = useState('')
@@ -617,6 +621,7 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
             <b>{t('Graph view')}</b>
             <small>{t('Pages linked with [[ or @ appear here. Click a page to open it.')}</small>
           </div>
+          <EdgeKindToggles kinds={kinds} onChange={setKinds} />
           <div className="segmented gv-scope">
             {currentId && <button className={scope === 'local' ? 'on' : ''} onClick={() => setScope('local')}>{t('Around this page')}</button>}
             <button className={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')}>{t('Whole vault')}</button>
