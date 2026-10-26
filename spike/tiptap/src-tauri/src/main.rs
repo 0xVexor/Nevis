@@ -4,6 +4,7 @@
 //! keep in sync, by itself, through the Noviq sync server (server/ in this repository). The web UI talks to it through the commands below
 //! (spike/tiptap/src/db.ts and attachments.ts); in a plain browser the same UI falls back to IndexedDB.
 
+mod database;
 mod index;
 mod legacy;
 mod registry;
@@ -368,6 +369,107 @@ fn files_clear(s: St) -> Res<()> {
     })?;
     kick(&s);
     Ok(())
+}
+
+
+// ───── database records (see database/mod.rs; the query engine itself runs in the UI) ─────
+
+/// Runs `f` on the derived database index of the open vault (created / versioned on first use).
+fn db_index<T>(s: &St, f: impl FnOnce(&mut rusqlite::Connection, &Path) -> Res<T>) -> Res<T> {
+    let root = with(s, |v| Ok(v.root.clone()))?;
+    with_index(s, |c| {
+        database::index::ensure_schema(c)?;
+        f(c, &root)
+    })
+}
+
+#[tauri::command]
+fn db_recover(s: St) -> Res<Value> {
+    with(&s, |v| database::recover(&v.root))
+}
+
+#[tauri::command]
+fn db_load_all(s: St) -> Res<Value> {
+    // files may have been changed by the sync tool: whatever the index says is no longer trustworthy
+    let _ = db_index(&s, |c, _| c.execute("INSERT OR REPLACE INTO db_index_meta(key,value) VALUES('needs_rebuild','1')", []).map(|_| ()).map_err(err));
+    with(&s, |v| database::load_all(&v.root))
+}
+
+#[tauri::command]
+fn db_commit(s: St, batch: Value) -> Res<()> {
+    with(&s, |v| database::commit(&v.root, &batch))?;
+    // the index is derived: a failure here never fails a durable commit, it only marks the index for a rebuild
+    let r = db_index(&s, |c, root| if database::index::needs_rebuild(c) { database::index::rebuild(c, root).map(|_| ()) } else { database::index::apply_batch(c, root, &batch) });
+    if r.is_err() {
+        let _ = db_index(&s, |c, _| c.execute("INSERT OR REPLACE INTO db_index_meta(key,value) VALUES('needs_rebuild','1')", []).map(|_| ()).map_err(err));
+    }
+    kick(&s);
+    Ok(())
+}
+
+#[tauri::command]
+fn db_get_operation(s: St, id: String) -> Res<Option<Value>> {
+    with(&s, |v| database::get_operation(&v.root, &id))
+}
+
+#[tauri::command]
+fn db_history(s: St, kind: String, id: String) -> Res<Vec<Value>> {
+    with(&s, |v| database::history(&v.root, &kind, &id))
+}
+
+#[tauri::command]
+fn db_undo_load(s: St) -> Res<Value> {
+    with(&s, |v| Ok(database::undo_load(&v.root)))
+}
+
+#[tauri::command]
+fn db_undo_save(s: St, groups: Value) -> Res<()> {
+    with(&s, |v| database::undo_save(&v.root, &groups))
+}
+
+#[tauri::command]
+fn db_runtime_get(s: St, key: String) -> Res<Option<Value>> {
+    with(&s, |v| database::runtime_get(&v.root, &key))
+}
+
+#[tauri::command]
+fn db_runtime_set(s: St, key: String, value: Value) -> Res<()> {
+    with(&s, |v| database::runtime_set(&v.root, &key, &value))
+}
+
+#[tauri::command]
+fn db_runtime_delete(s: St, key: String) -> Res<()> {
+    with(&s, |v| database::runtime_delete(&v.root, &key))
+}
+
+#[tauri::command]
+fn db_runtime_keys(s: St, prefix: String) -> Res<Vec<String>> {
+    with(&s, |v| Ok(database::runtime_keys(&v.root, &prefix)))
+}
+
+#[tauri::command]
+fn db_index_rebuild(s: St) -> Res<usize> {
+    db_index(&s, |c, root| database::index::rebuild(c, root))
+}
+
+#[tauri::command]
+fn db_index_candidates(s: St, source: String, property: String, op: String, operand: Value) -> Res<Vec<String>> {
+    db_index(&s, |c, root| {
+        if database::index::needs_rebuild(c) {
+            database::index::rebuild(c, root)?;
+        }
+        database::index::candidates(c, root, &source, &property, &op, &operand)
+    })
+}
+
+#[tauri::command]
+fn db_index_count(s: St, source: String) -> Res<i64> {
+    db_index(&s, |c, root| {
+        if database::index::needs_rebuild(c) {
+            database::index::rebuild(c, root)?;
+        }
+        database::index::count_items(c, root, &source)
+    })
 }
 
 
@@ -908,6 +1010,8 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
+            db_recover, db_load_all, db_commit, db_get_operation, db_history, db_undo_load, db_undo_save, db_runtime_get, db_runtime_set, db_runtime_delete,
+            db_runtime_keys, db_index_rebuild, db_index_candidates, db_index_count,
             vault_stamp, pages_all, pages_save, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list,
             file_delete, files_clear, account_status, server_health, account_register, account_login, account_recover, account_logout, account_info,
             account_revoke_device, account_change_password, account_new_recovery_key, account_delete, save_text_file, sync_set, sync_now, sync_confirm, cloud_vaults,

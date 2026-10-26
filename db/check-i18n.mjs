@@ -10,13 +10,13 @@ const walk = (d) => {
   for (const f of readdirSync(d)) {
     const p = join(d, f)
     if (statSync(p).isDirectory()) walk(p)
-    else if (/\.(ts|tsx)$/.test(f) && f !== 'fa.ts' && f !== 'i18n.ts') files.push(p) // i18n.ts only mentions t('…') in a comment
+    else if (/\.(ts|tsx)$/.test(f) && f !== 'fa.ts' && f !== 'fa-db.ts' && f !== 'i18n.ts') files.push(p) // i18n.ts only mentions t('…') in a comment
   }
 }
 walk(src)
 
 // keys are double-quoted JSON-ish strings at the start of lines in fa.ts
-const faText = readFileSync(join(src, 'fa.ts'), 'utf8')
+const faText = readFileSync(join(src, 'fa.ts'), 'utf8') + readFileSync(join(src, 'database/ui/fa-db.ts'), 'utf8')
 const have = new Set()
 for (const m of faText.matchAll(/^\s*"((?:[^"\\]|\\.)*)"\s*:/gm)) have.add(JSON.parse(`"${m[1]}"`))
 

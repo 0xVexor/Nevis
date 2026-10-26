@@ -9,6 +9,7 @@ export interface PageIndex {
 export function buildIndex(pages: Page[]): PageIndex {
   const kids = new Map<string | null, Page[]>()
   for (const p of pages) {
+    if (p.database) continue // database rows live inside their database, not in the page tree
     const key = p.parentId ?? null
     const list = kids.get(key)
     if (list) list.push(p)

@@ -220,8 +220,18 @@ impl Vault {
             let result = match read_json(&main) {
                 None => write_atomic(&main, copy.to_string().as_bytes()),
                 Some(cur) => {
-                    let (win, lose) = if updated_at(&copy) > updated_at(&cur) { (copy, cur) } else { (cur, copy) };
-                    let _ = self.keep_loser(id, &lose);
+                    // database rows merge cell by cell (stamps decide), and the complete losing version is kept in history
+                    let (win, losers) = if copy.get("database").is_some() && cur.get("database").is_some() {
+                        crate::database::merge::merge_pages(&copy, &cur)
+                    } else if updated_at(&copy) > updated_at(&cur) {
+                        (copy, vec![cur])
+                    } else {
+                        (cur, vec![copy])
+                    };
+                    for lose in &losers {
+                        let _ = self.keep_loser(id, lose);
+                        let _ = crate::database::keep_page_loser(&self.root, id, lose);
+                    }
                     write_atomic(&main, win.to_string().as_bytes())
                 }
             };
@@ -302,13 +312,18 @@ impl Vault {
     /// Cheap fingerprint of the pages folder, to notice changes made by the sync tool.
     pub fn stamp(&self) -> String {
         let (mut n, mut newest, mut size) = (0u64, 0u128, 0u64);
-        if let Ok(rd) = fs::read_dir(self.pages_dir()) {
-            for e in rd.flatten() {
-                if let Ok(m) = e.metadata() {
-                    n += 1;
-                    size += m.len();
-                    let t = m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
-                    newest = newest.max(t);
+        // pages plus the database record folders: a record changed by the sync tool must wake the UI as well
+        let mut dirs = vec![self.pages_dir()];
+        dirs.extend(crate::database::KINDS.iter().map(|(_, d)| self.root.join("databases").join(d)));
+        for dir in dirs {
+            if let Ok(rd) = fs::read_dir(dir) {
+                for e in rd.flatten() {
+                    if let Ok(m) = e.metadata() {
+                        n += 1;
+                        size += m.len();
+                        let t = m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
+                        newest = newest.max(t);
+                    }
                 }
             }
         }
