@@ -83,6 +83,8 @@ export function TableView({ svc, view, ctl }: ViewProps) {
   const [viewH, setViewH] = useState(600)
   const [dragRow, setDragRow] = useState<Id | null>(null)
   const [dragCol, setDragCol] = useState<Id | null>(null)
+  const dragColRef = useRef<Id | null>(null) // read by the drag handlers synchronously: state lags behind the first dragover
+  const [dropAt, setDropAt] = useState<{ id: Id; after: boolean } | null>(null)
   const [checked, setChecked] = useState<Set<Id>>(new Set())
   const mouseDown = useRef(false)
 
@@ -437,14 +439,22 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
   }
+  const endColDrag = () => (dragColRef.current = null, setDragCol(null), setDropAt(null))
+  /** Dragging forward drops after the target, backward before it, so a column can move one place in either direction. */
+  const dropsAfter = (target: Definition) => {
+    const from = cols.findIndex((c) => c.id === dragColRef.current)
+    return from >= 0 && from < cols.findIndex((c) => c.id === target.id)
+  }
   const dropColumn = (target: Definition) => {
-    if (!dragCol || dragCol === target.id || !ctl.canSchema) return
-    const ids = cols.map((c) => c.id).filter((id) => id !== dragCol)
-    ids.splice(ids.indexOf(target.id), 0, dragCol)
+    const drag = dragColRef.current
+    const after = dropsAfter(target)
+    endColDrag()
+    if (!drag || drag === target.id || !ctl.canSchema) return
+    const ids = cols.map((c) => c.id).filter((id) => id !== drag)
+    ids.splice(ids.indexOf(target.id) + (after ? 1 : 0), 0, drag)
     // the title stays the first column
     const tid = cols.find((c) => c.kind === 'title')!.id
     void ctl.patch({ visibleProperties: [tid, ...ids.filter((i) => i !== tid)] })
-    setDragCol(null)
   }
 
   // rows ------------------------------------------------------------------------------------------------------------------
@@ -519,13 +529,26 @@ export function TableView({ svc, view, ctl }: ViewProps) {
             <div
               key={d.id}
               role="columnheader"
-              className={'db-th' + (ci <= frozenIdx ? ' frozen' : '') + (dragCol === d.id ? ' dragging' : '')}
+              className={'db-th' + (ci <= frozenIdx ? ' frozen' : '') + (dragCol === d.id ? ' dragging' : '') + (dropAt?.id === d.id ? (dropAt.after ? ' drop-after' : ' drop-before') : '')}
               style={ci <= frozenIdx ? { insetInlineStart: offsets[ci] } : undefined}
               draggable={ctl.canSchema && d.kind !== 'title'}
-              onDragStart={() => setDragCol(d.id)}
-              onDragOver={(e) => dragCol && e.preventDefault()}
-              onDrop={() => dropColumn(d)}
-              onDragEnd={() => setDragCol(null)}
+              onDragStart={(e) => {
+                dragColRef.current = d.id
+                e.dataTransfer.effectAllowed = 'move'
+                e.dataTransfer.setData('application/x-noviq-column', d.id)
+                e.dataTransfer.setData('text/plain', d.name)
+                window.setTimeout(() => dragColRef.current === d.id && setDragCol(d.id), 0) // after the browser took its drag image
+              }}
+              onDragOver={(e) => {
+                if (!dragColRef.current) return
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                const after = dropsAfter(d)
+                if (dragColRef.current !== d.id) setDropAt((cur) => (cur?.id === d.id && cur.after === after ? cur : { id: d.id, after }))
+              }}
+              onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setDropAt((cur) => (cur?.id === d.id ? null : cur))}
+              onDrop={(e) => (e.preventDefault(), dropColumn(d))}
+              onDragEnd={endColDrag}
               onClick={(e) => setMenu({ def: d, rect: e.currentTarget.getBoundingClientRect() })}
             >
               <KindIcon kind={d.kind} />

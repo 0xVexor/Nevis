@@ -74,13 +74,13 @@ export function OptionsManager({ svc, def }: { svc: DatabaseService; def: Defini
       </div>
       {err && <div className="db-err" role="alert">{err}</div>}
       {colorFor && (
-        <Popover anchor={colorFor.rect} onClose={() => setColorFor(null)}>
+        <div className="db-colors-in">
           <div className="db-colors">
             {OPTION_COLOR_LIST.map((c) => (
               <button key={c} type="button" className={'db-swatch dbc-' + c} aria-label={c} onClick={() => (void run([{ type: 'option.upsert', payload: { propertyId: def.id, optionId: colorFor.id, name: opts.find((o) => o.id === colorFor.id)!.name, color: c } }]), setColorFor(null))} />
             ))}
           </div>
-        </Popover>
+        </div>
       )}
     </div>
   )

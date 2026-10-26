@@ -1,9 +1,10 @@
 // Settings → Database: workspace calendar defaults, the optional map tile provider and the status of the connected services.
 // Nothing here ships a key or a default provider: a map needs a tile URL the person chooses, the gateway a URL the person runs.
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { GatewayClient, GATEWAY_TOKEN_KEY, GATEWAY_URL_KEY, type GatewayStatus } from '../gateway/client'
 import { t } from '../../i18n'
-import { Field } from './forms'
+import { Select } from '../../ui'
+import * as Ic from '../../icons'
 import { MAP_KEY, loadTileConfig } from './MapView'
 
 export const WEEK_KEY = 'not.db.weekStart'
@@ -33,35 +34,56 @@ export function DatabaseSettings() {
     setSaved(true)
   }
   return (
-    <div className="set-card db-settings">
-      <Field label={t('First day of the week')} hint={t('Used by calendars, week filters and week charts. Reload the app after changing it.')}>
-        <select value={week} onChange={(e) => (setWeek(e.target.value), setSaved(false))}>{DAYS.map((d, i) => <option key={d} value={i}>{t(d)}</option>)}</select>
-      </Field>
-      <Field label={t('Map tile URL')} hint={t('An https address with {z}, {x} and {y}. No provider or key is built in; choose one whose terms you accept.')}>
-        <input dir="ltr" value={tpl} placeholder="https://tiles.example.com/{z}/{x}/{y}.png" aria-invalid={tplBad} onChange={(e) => (setTpl(e.target.value), setSaved(false))} />
-      </Field>
-      <Field label={t('Map attribution')}>
-        <input dir="auto" value={attr} onChange={(e) => (setAttr(e.target.value), setSaved(false))} />
-      </Field>
-      <Field label={t('Gateway address')} hint={t('The Noviq gateway publishes forms and runs scheduled messages. Without it, everything stays on this device.')}>
-        <input dir="ltr" value={gw} placeholder="https://gateway.example.com" aria-invalid={gwBad} onChange={(e) => (setGw(e.target.value), setSaved(false))} />
-      </Field>
-      <Field label={t('Gateway owner token')} hint={t('Kept on this device only, outside your notes and never synced. Created when you set up the gateway.')}>
-        <input type="password" dir="ltr" autoComplete="off" value={token} onChange={(e) => (setToken(e.target.value), setSaved(false))} />
-      </Field>
-      <div className="db-form-actions">
+    <div className="db-settings">
+      <Card icon={<Ic.Clock />} title={t('Calendar')}>
+        <Row label={t('First day of the week')} hint={t('Used by calendars, week filters and week charts. Reload the app after changing it.')}>
+          <Select value={week} options={DAYS.map((d, n) => ({ value: String(n), label: t(d) }))} onChange={(v) => (setWeek(v), setSaved(false))} />
+        </Row>
+      </Card>
+      <Card icon={<Ic.Link />} title={t('Maps')}>
+        <Row label={t('Map tile URL')} hint={t('An https address with {z}, {x} and {y}. No provider or key is built in; choose one whose terms you accept.')} wide>
+          <input className="sx-input" dir="ltr" value={tpl} placeholder="https://tiles.example.com/{z}/{x}/{y}.png" aria-invalid={tplBad} onChange={(e) => (setTpl(e.target.value), setSaved(false))} />
+        </Row>
+        <Row label={t('Map attribution')} wide>
+          <input className="sx-input" dir="auto" value={attr} onChange={(e) => (setAttr(e.target.value), setSaved(false))} />
+        </Row>
+      </Card>
+      <Card icon={<Ic.Share />} title={t('Gateway')}>
+        <Row label={t('Gateway address')} hint={t('The Noviq gateway publishes forms and runs scheduled messages. Without it, everything stays on this device.')} wide>
+          <input className="sx-input" dir="ltr" value={gw} placeholder="https://gateway.example.com" aria-invalid={gwBad} onChange={(e) => (setGw(e.target.value), setSaved(false))} />
+        </Row>
+        <Row label={t('Gateway owner token')} hint={t('Kept on this device only, outside your notes and never synced. Created when you set up the gateway.')} wide>
+          <input className="sx-input" type="password" dir="ltr" autoComplete="off" value={token} onChange={(e) => (setToken(e.target.value), setSaved(false))} />
+        </Row>
+      </Card>
+      <div className="sx-actions">
         <button type="button" className="primary" disabled={tplBad || gwBad} onClick={save}>{t('Save')}</button>
-        <button type="button" disabled={!gw || !token || gwBad} onClick={() => { setCheck('checking'); void new GatewayClient({ url: gw, token }).status().then(setCheck) }}>{t('Check connection')}</button>
-        {saved && <span role="status">{t('Saved')}</span>}
-        {check && <span role="status">{check === 'checking' ? t('Checking…') : t(CHECK_TEXT[check])}</span>}
+        <button type="button" className="ghost-btn" disabled={!gw || !token || gwBad} onClick={() => { setCheck('checking'); void new GatewayClient({ url: gw, token }).status().then(setCheck) }}>{t('Check connection')}</button>
+        {saved && <span role="status" className="sx-note ok">{t('Saved')}</span>}
+        {check && <span role="status" className="sx-note">{check === 'checking' ? t('Checking…') : t(CHECK_TEXT[check])}</span>}
       </div>
-      <h4>{t('Status')}</h4>
-      <ul className="db-status">
-        <li><b>{t('On this device')}</b> — {t('Working')}</li>
-        <li><b>{t('Sync between devices')}</b> — {t('Not checked: needs a connected vault')}</li>
-        <li><b>{t('Gateway (public forms, outbound messages)')}</b> — {gw && !gwBad ? t('Address saved; not verified from here') : t('Not set up')}</li>
-        <li><b>{t('Connected providers')}</b> — {t('Not connected')}</li>
-      </ul>
+      <Card icon={<Ic.Check />} title={t('Status')}>
+        <ul className="db-status">
+          <li><b>{t('On this device')}</b><span>{t('Working')}</span></li>
+          <li><b>{t('Sync between devices')}</b><span>{t('Not checked: needs a connected vault')}</span></li>
+          <li><b>{t('Gateway (public forms, outbound messages)')}</b><span>{gw && !gwBad ? t('Address saved; not verified from here') : t('Not set up')}</span></li>
+          <li><b>{t('Connected providers')}</b><span>{t('Not connected')}</span></li>
+        </ul>
+      </Card>
     </div>
   )
 }
+
+const Card = ({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) => (
+  <section className="sx-card">
+    <header className="sx-card-head"><span className="sx-ic">{icon}</span><div><h3>{title}</h3></div></header>
+    <div className="sx-card-body">{children}</div>
+  </section>
+)
+
+const Row = ({ label, hint, children, wide }: { label: string; hint?: string; children: ReactNode; wide?: boolean }) => (
+  <div className={'sx-row' + (wide ? ' wide' : '')}>
+    <div className="sx-tx"><b>{label}</b>{hint && <small>{hint}</small>}</div>
+    <div className="sx-ctl">{children}</div>
+  </div>
+)
