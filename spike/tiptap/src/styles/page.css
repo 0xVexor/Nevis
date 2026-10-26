@@ -58,8 +58,7 @@
 .page-meta .meta-cell.tags .meta-body { flex: 1; }
 .page-meta .meta-label { font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; color: var(--faint); }
 .page-meta .meta-val { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 30px; }
-.page-meta .meta-cell.tags .meta-val { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-.page-meta .meta-cell.tags .meta-val::-webkit-scrollbar { display: none; }
+.page-meta .meta-cell.tags .meta-val { flex-wrap: nowrap; overflow-x: auto; }
 .page-meta .meta-cell.tags :is(.tag-chip, .tag-input) { flex: none; }
 .page-meta .meta-text { font-size: 14px; font-weight: 600; color: var(--text); }
 .page-meta .meta-row + .meta-row .meta-body { flex-direction: row; align-items: center; gap: 8px; }

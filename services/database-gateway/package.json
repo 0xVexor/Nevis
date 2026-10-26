@@ -1,0 +1,13 @@
+{
+  "name": "nevis-database-gateway",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Optional reference gateway for Nevis databases: public forms, owner inbox, scheduled jobs and outbound messages. Single instance, SQLite.",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node src/main.ts",
+    "dev": "node --env-file-if-exists=.env.dev src/main.ts",
+    "test": "node --test --test-force-exit \"test/*.test.mjs\""
+  }
+}

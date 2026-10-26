@@ -22,6 +22,9 @@ export interface Page {
   content: any // TipTap JSON doc
   updatedAt: number
   deletedAt: number | null
+  database?: any // present when the page is a database row (src/database); the editor never touches it
+  recordMeta?: any // revision / provenance of the record, see src/database/model/types.ts
+  dbHost?: string // id of the database container this page is the home of (src/database)
 }
 
 type Patch = Partial<Pick<Page, 'title' | 'icon' | 'cover' | 'titleDir' | 'tags' | 'status' | 'favorite' | 'content' | 'parentId'>>
@@ -298,6 +301,7 @@ export class Repo implements PageRepo {
     if (!p) return
     if (patch.content !== undefined && opts?.history !== false) this.snapshot(p)
     Object.assign(p, patch, { updatedAt: Date.now() })
+    if (p.database) p.recordMeta = { ...(p.recordMeta ?? { format: 1, revision: 0, createdAt: p.updatedAt, createdBy: '', updatedBy: '', lastOperationId: '', inferred: true }), revision: (p.recordMeta?.revision ?? 0) + 1 } // row edits through the editor are revisions too
     if (patch.content !== undefined) this.indexLinks(p)
     this.touch(id)
   }
@@ -413,6 +417,78 @@ export class Repo implements PageRepo {
   flushed(): Promise<void> {
     this.writeNow()
     return this.queue
+  }
+
+  // ───── database rows (src/database) ─────
+  // A database row is an ordinary Page with a `database` extension. The database coordinator works on the same page objects.
+
+  private rawIdx: Map<string, Page> | null = null
+  private rawIdxFor: Page[] | null = null
+  private rawIdxLen = -1
+  private rawIndex() {
+    if (!this.rawIdx || this.rawIdxFor !== this.pages || this.rawIdxLen !== this.pages.length) {
+      this.rawIdx = new Map(this.pages.map((p) => [p.id, p]))
+      this.rawIdxFor = this.pages
+      this.rawIdxLen = this.pages.length
+    }
+    return this.rawIdx
+  }
+
+  /** Every page including the trash (a trashed row keeps its values and its links). */
+  allRaw = (): Page[] => this.pages
+  getRaw = (id: string): Page | undefined => this.rawIndex().get(id)
+
+  /** Page bodies are always in memory here; kept so database views can ask for the bodies they are about to show. */
+  async ensureContent(_ids: string | string[]): Promise<void> {}
+
+  /** Resolves when pending page writes reached the store, so the database coordinator compares revisions against what is stored. */
+  async flushForDatabase() {
+    await this.flushed()
+  }
+
+  /** The database coordinator already made these post-images durable: take them over in memory without writing them again. */
+  adoptDatabase(upserts: Page[], removed: string[]) {
+    const idx = this.rawIndex()
+    for (const u of upserts) {
+      const cur = idx.get(u.id)
+      if (cur) {
+        const body = cur.content
+        for (const k of Object.keys(cur)) if (!(k in u)) delete (cur as unknown as Record<string, unknown>)[k] // e.g. the extension was removed
+        Object.assign(cur, u)
+        if (u.content === undefined) cur.content = body // a bodyless post-image keeps the body that is in memory
+        this.indexLinks(cur)
+        this.dirty.delete(u.id)
+        this.diskAt.set(u.id, u.updatedAt)
+      } else {
+        this.pages.push(u)
+        idx.set(u.id, u)
+        this.rawIdxLen = this.pages.length
+        this.dirty.delete(u.id)
+        this.diskAt.set(u.id, u.updatedAt)
+        if (u.content !== undefined) this.indexLinks(u)
+      }
+    }
+    if (removed.length) {
+      const gone = new Set(removed)
+      this.pages = this.pages.filter((p) => !gone.has(p.id))
+      gone.forEach((g) => (this.unindexLinks(g), this.dirty.delete(g)))
+    }
+    window.dispatchEvent(new Event('data-changed'))
+  }
+
+  /** Another tab / device changed the stored pages: read them again, unless there are unsaved edits here (then the next poll retries). */
+  async refreshFromStore(): Promise<boolean> {
+    if (!this.idle()) return false
+    await this.queue
+    const rows = await allPages()
+    if (!this.idle()) return false
+    const old = new Map(this.pages.map((p) => [p.id, p]))
+    const changed = rows.filter((r) => old.get(r.id)?.updatedAt !== r.updatedAt || old.get(r.id)?.deletedAt !== r.deletedAt || (r.recordMeta?.revision ?? 0) !== ((old.get(r.id) as Page | undefined)?.recordMeta?.revision ?? 0))
+    this.pages = rows
+    this.noteDisk(rows)
+    this.rebuildLinks()
+    window.dispatchEvent(new CustomEvent('external-change', { detail: changed.map((c) => c.id) }))
+    return true
   }
 }
 

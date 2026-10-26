@@ -1,0 +1,57 @@
+/* All horizontal scrollbars share the Pages rail's slim, rounded treatment.
+   Vertical scrollbar visibility is unchanged. Overflow and sticky positioning
+   remain with each section; synchronized viewports never render a second bar. */
+:root {
+  --scrollbar-horizontal-size: 6px;
+  --scrollbar-thumb: var(--border-strong);
+  --scrollbar-thumb-hover: var(--faint);
+}
+
+/* Firefox fallback for horizontal surfaces; WebKit uses the precise axis rules below. */
+:is(.hscroll-rail, .tree-scroll, .db-tabs, .db-cal-weeks, .db-chart-svg,
+    .tiptap pre, .tiptap .tableWrapper, .math-block, .math-live,
+    .mermaid-view, .drawing-view, .fx-path, .set-tabs, .fc-a table,
+    .page-meta .meta-cell.tags .meta-val) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+@supports selector(::-webkit-scrollbar) {
+  /* Native scrollbar-width/color would override the WebKit pseudo elements. */
+  *, :is(.hscroll-rail, .tree-scroll, .db-tabs, .db-cal-weeks, .db-chart-svg,
+         .tiptap pre, .tiptap .tableWrapper, .math-block, .math-live,
+         .mermaid-view, .drawing-view, .fx-path, .set-tabs, .fc-a table,
+         .page-meta .meta-cell.tags .meta-val) {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+}
+*::-webkit-scrollbar:horizontal {
+  display: block;
+  height: var(--scrollbar-horizontal-size);
+}
+*::-webkit-scrollbar-track:horizontal { background: transparent; border: 0; }
+*::-webkit-scrollbar-thumb:horizontal {
+  background: var(--scrollbar-thumb);
+  background-clip: border-box;
+  border: 0;
+  border-radius: 999px;
+  box-shadow: none;
+}
+*::-webkit-scrollbar-thumb:horizontal:hover { background: var(--scrollbar-thumb-hover); }
+*::-webkit-scrollbar-button:horizontal { display: none; width: 0; }
+*::-webkit-scrollbar-corner { background: transparent; }
+
+.hscroll-rail { block-size: var(--scrollbar-horizontal-size); }
+.hscroll > .hscroll-viewport { scrollbar-width: none; }
+.hscroll > .hscroll-viewport::-webkit-scrollbar,
+.hscroll > .hscroll-viewport::-webkit-scrollbar:horizontal { display: none; }
+
+
+/* Pages has one vertical owner (the sidebar); only its horizontal rail follows it. */
+.tree-scroll.hscroll.hscroll-follow { padding-block-end: var(--scrollbar-horizontal-size); }
+.hscroll-follow > .hscroll-rail {
+  position: absolute;
+  inset-block-end: auto;
+  inset-inline: 0;
+}

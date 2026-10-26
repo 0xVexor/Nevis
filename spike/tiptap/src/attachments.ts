@@ -110,3 +110,19 @@ export async function urlFor(src: string): Promise<string | null> {
   urls.set(id, u)
   return u
 }
+
+/** Name, type and size of the given files, without their bytes (database file properties list names before anything is opened). */
+export async function fileMeta(ids: string[]): Promise<Map<string, { name: string; type: string; size: number }>> {
+  const out = new Map<string, { name: string; type: string; size: number }>()
+  if (!ids.length) return out
+  if (isTauri) {
+    const want = new Set(ids)
+    for (const m of await invoke<{ id: string; type: string; name: string; size: number }[]>('files_list')) if (want.has(m.id)) out.set(m.id, { name: decodeURIComponent(m.name), type: m.type, size: m.size })
+  } else {
+    for (const id of ids) {
+      const r = await tx<FileRec | undefined>('readonly', (s) => s.get(id))
+      if (r) out.set(id, { name: r.name, type: r.type, size: r.size })
+    }
+  }
+  return out
+}

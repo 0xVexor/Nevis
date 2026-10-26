@@ -28,7 +28,7 @@ async function notify(n: number) {
   try {
     const { isPermissionGranted, requestPermission, sendNotification } = await import('@tauri-apps/plugin-notification')
     if (!(await isPermissionGranted()) && (await requestPermission()) !== 'granted') return
-    sendNotification({ title: 'Noviq.', body: t('{n} flashcards are ready to review.', { n }) })
+    sendNotification({ title: 'Nevis.', body: t('{n} flashcards are ready to review.', { n }) })
   } catch (e) {
     console.error('notification', e)
   }

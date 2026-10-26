@@ -34,9 +34,13 @@ kbd {
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--dot-c, var(--ok)) 22%, transparent); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--dot-c, var(--ok)) 0%, transparent); } }
 
-/* the pointer: accent-coloured arrow and hand (set from the accent in settings.ts), the usual text caret stays */
+/* Accent-coloured cursors share the same edge, halo and theme colour (settings.ts). */
 html, body { cursor: var(--cursor-arrow, default); }
 button, summary, select, [role='button'], [role='option'], [role='menuitem'], label[for], a[href], input[type='checkbox'], input[type='radio'], input[type='range'], input[type='color'] { cursor: var(--cursor-hand, pointer); }
 button:disabled, [aria-disabled='true'] { cursor: var(--cursor-arrow, default); }
-input:not([type]), input[type='text'], input[type='search'], input[type='url'], input[type='email'], textarea, .tiptap { cursor: text; }
+input:not([type]), input[type='text'], input[type='search'], input[type='url'], input[type='email'], input[type='tel'], input[type='password'], input[type='number'], textarea, [contenteditable='true'], .tiptap { cursor: var(--cursor-text, text); }
 .tiptap a, .tiptap .page-link { cursor: var(--cursor-hand, pointer); }
+
+/* The product full stop follows the configured accent in every theme. */
+.brand { display: inline-block; unicode-bidi: isolate; white-space: nowrap; }
+.brand-dot { color: var(--accent); }

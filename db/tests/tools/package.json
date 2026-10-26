@@ -1,0 +1,1 @@
+{ "name": "noviq-test-tools", "private": true, "type": "module", "description": "Test-only dependencies, kept apart from the app's package.json", "devDependencies": { "fake-indexeddb": "^6.2.6" } }

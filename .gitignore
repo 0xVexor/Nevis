@@ -16,3 +16,5 @@ db/*.db-shm
 
 # the zip of the sync server made for uploading to a host
 /noviq-sync-server.zip
+
+/nevis-sync-server.zip
