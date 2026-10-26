@@ -34,7 +34,13 @@ Fixes follow the same route through `dev`. Keep unfinished work out of the relea
 5. The installer workflow checks that the tag is on `main` and matches all version files. It builds Windows EXE/MSI and universal macOS DMG packages, then publishes the final release only after both platforms succeed. A failed platform leaves the release as a draft.
 6. Merge `main` back into `dev` so development includes the release merge. Do not squash release merges or the merge back into `dev`; preserving ancestry keeps future release comparisons clear.
 
-Manual installer builds are available only from `main` and do not publish a release. Tags beginning with `v` are reserved for final releases. Publishing a tag does not replace the required `dev` to `main` pull request.
+Manual installer builds are available only from `main` and do not publish a release. Final tags use `vX.Y.Z`; publishing a final tag does not replace the required `dev` to `main` pull request.
+
+## Pre-releases and desktop updates
+
+Pre-release tags such as `v1.3.0-beta.1` must point to commits on `dev`. Update the same version files and add the tag's release notes before tagging. The installer workflow publishes these as pre-releases without changing the stable Latest release. Users receive them only when they enable pre-release updates in Settings → About → Updates.
+
+Both release channels require the updater signing configuration described in [desktop updates](updates.md). Platform builds finish and the signed update manifest is checked before publication. Feature pull requests still target `dev`; final releases still flow from `dev` to `main`.
 
 ## Compatibility
 

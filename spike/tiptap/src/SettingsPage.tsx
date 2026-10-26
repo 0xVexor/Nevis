@@ -1,4 +1,5 @@
 import { Brand } from './Brand'
+import { UpdateSettings } from './UpdateUI'
 import appPackage from '../package.json'
 import { Suspense, lazy, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 const DatabaseSettings = lazy(() => import('./database/ui/DatabaseSettings').then((m) => ({ default: m.DatabaseSettings })))
@@ -411,16 +412,19 @@ function DataTab({ a }: { a: DataActions }) {
 
 function About() {
   return (
-    <Card icon={<Ic.Info />} title={<Brand />}>
-      <div className="sx-about">
-        <span className="sx-logo">
-          <Ic.Logo size={34} />
-        </span>
-        <p>{t('Your notes, checklists and drawings in one calm place. Everything stays on your device unless you choose to sync it.')}</p>
-        <small>{t('Version {version}', { version: appPackage.version })}</small>
-        <small>{t('Created by')} Vexor</small>
-      </div>
-    </Card>
+    <>
+      <Card icon={<Ic.Info />} title={<Brand />}>
+        <div className="sx-about">
+          <span className="sx-logo">
+            <Ic.Logo size={34} />
+          </span>
+          <p>{t('Your notes, checklists and drawings in one calm place. Everything stays on your device unless you choose to sync it.')}</p>
+          <small>{t('Version {version}', { version: appPackage.version })}</small>
+          <small>{t('Created by')} Vexor</small>
+        </div>
+      </Card>
+      <Card icon={<Ic.Download />} title={t('Updates')}><UpdateSettings /></Card>
+    </>
   )
 }
 

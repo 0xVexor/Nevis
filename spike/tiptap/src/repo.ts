@@ -92,6 +92,7 @@ export class Repo implements PageRepo {
   private full = false
   private timer = 0
   private queue: Promise<void> = Promise.resolve()
+  private persistenceError: unknown = null
   private lastSnap = new Map<string, number>()
   /** `updatedAt` of every page as last read from or written to the vault folder: the version our next edit of it starts from. */
   private diskAt = new Map<string, number>()
@@ -173,10 +174,18 @@ export class Repo implements PageRepo {
       // desktop: tell the vault which version each edit started from, so that a newer version brought by the sync is kept in the history, not overwritten
       .then(() => savePages(isTauri && !full ? upserts.map((p) => ({ ...p, _base: this.diskAt.get(p.id) ?? null })) : upserts, removed, full))
       .then(async () => {
+        this.persistenceError = null
         for (const p of upserts) this.diskAt.set(p.id, p.updatedAt)
         if (isTauri) this.stamp = await vaultStamp() // our own writes are not "external" changes
       })
-      .catch((e) => this.fail(e))
+      .catch((e) => {
+        this.persistenceError = e
+        // Keep failed writes pending so they can be retried before installation.
+        if (full) this.full = true
+        for (const p of upserts) if (!this.gone.has(p.id)) this.dirty.add(p.id)
+        for (const id of removed) if (!this.dirty.has(id)) this.gone.add(id)
+        this.fail(e)
+      })
     window.dispatchEvent(new Event('data-changed'))
     return this.queue
   }
@@ -417,6 +426,11 @@ export class Repo implements PageRepo {
   flushed(): Promise<void> {
     this.writeNow()
     return this.queue
+  }
+
+  async flushBeforeUpdate() {
+    await this.flushed()
+    if (this.persistenceError) throw this.persistenceError
   }
 
   // ───── database rows (src/database) ─────
