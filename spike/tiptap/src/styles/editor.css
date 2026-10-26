@@ -33,6 +33,7 @@
 .tiptap { outline: none; line-height: 1.8; font-size: var(--editor-size, 16px); color: var(--editor-color, inherit); min-height: 50vh; }
 /* Auto direction only: an explicit dir (set via /rtl, /ltr) must win, plaintext would ignore it. */
 .tiptap p:not([dir]), .tiptap h1:not([dir]), .tiptap h2:not([dir]), .tiptap h3:not([dir]) { unicode-bidi: plaintext; }
+.tiptap [data-dir] { text-align: start; }
 .tiptap p { margin: 4px 0; }
 .tiptap h1, .tiptap h2, .tiptap h3 { font-weight: 800; letter-spacing: -0.015em; line-height: 1.3; margin: 1.1em 0 0.25em; }
 .tiptap h1 { font-size: 1.95em; margin-top: 1.5em; }
