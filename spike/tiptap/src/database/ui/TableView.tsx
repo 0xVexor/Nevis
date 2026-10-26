@@ -19,6 +19,7 @@ import { useViewQuery } from './useViewQuery'
 import type { ViewProps } from './viewTypes'
 import { PageIcon } from '../../PageIcon'
 import { repo } from '../../store'
+import { HorizontalScroll } from '../../HorizontalScroll'
 
 const DEFAULT_W = 200
 const TITLE_W = 280
@@ -155,21 +156,30 @@ export function TableView({ svc, view, ctl }: ViewProps) {
 
   // virtualization (fixed row height, no grouping / wrapping) ---------------------------------------------------------------
   const virtual = !wrap && !q.groups.length && rowCount > 150
-  const start = virtual ? Math.max(0, Math.floor(scrollTop / rowH) - 8) : 0
+  const start = virtual ? Math.min(Math.max(0, items.length - 1), Math.max(0, Math.floor(scrollTop / rowH) - 8)) : 0
   const end = virtual ? Math.min(items.length, Math.ceil((scrollTop + viewH) / rowH) + 8) : items.length
-  useLayoutEffect(() => {
+  // The table never scrolls vertically itself: the page does. Rows are windowed against the page's scroller.
+  const hostOf = () => scroller.current?.closest<HTMLElement>('.scroller, .db-peek-body') ?? null
+  const tableTop = (host: HTMLElement) => scroller.current!.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop
+  const measure = useCallback(() => {
     const el = scroller.current
-    if (!el) return
-    setViewH(el.clientHeight)
-    const ro = new ResizeObserver(() => setViewH(el.clientHeight))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-  const onScroll = useCallback(() => {
-    const el = scroller.current!
-    setScrollTop(el.scrollTop)
-    if (q.hasMore && el.scrollTop + el.clientHeight > el.scrollHeight - 400) setWant((w) => w + 500)
-  }, [q.hasMore])
+    const host = hostOf()
+    if (!el || !host) return
+    const top = tableTop(host)
+    setScrollTop(Math.max(0, host.scrollTop - top))
+    setViewH(host.clientHeight)
+    if (q.hasMore && host.scrollTop + host.clientHeight > top + el.offsetHeight - 400) setWant((w) => w + 500)
+  }, [q.hasMore]) // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    const host = hostOf()
+    if (!host) return
+    measure()
+    host.addEventListener('scroll', measure, { passive: true })
+    const ro = new ResizeObserver(measure)
+    ro.observe(host)
+    if (scroller.current) ro.observe(scroller.current)
+    return () => (host.removeEventListener('scroll', measure), ro.disconnect())
+  }, [measure, items.length])
 
   // helpers ---------------------------------------------------------------------------------------------------------------
   const rowAt = (r: number): Row | undefined => {
@@ -179,21 +189,29 @@ export function TableView({ svc, view, ctl }: ViewProps) {
   const cellEl = (r: number, c: number) => scroller.current?.querySelector<HTMLElement>(`[data-r="${r}"][data-c="${c}"]`) ?? null
   const rtl = () => (scroller.current ? getComputedStyle(scroller.current).direction === 'rtl' : false)
   const focusGrid = () => scroller.current?.focus({ preventScroll: true })
-  const reveal = (r: number) => {
+  const reveal = (r: number, c: number) => {
     const el = scroller.current
     if (!el) return
-    const top = r * rowH
-    if (virtual) {
-      if (top < el.scrollTop) el.scrollTop = top
-      else if (top + rowH > el.scrollTop + el.clientHeight - 48) el.scrollTop = top + rowH - el.clientHeight + 48
-    } else cellEl(r, 0)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    const host = hostOf()
+    if (virtual && host) {
+      const top = tableTop(host) + 38 + r * rowH // 38 = header
+      if (top < host.scrollTop + 8) host.scrollTop = top - 8
+      else if (top + rowH > host.scrollTop + host.clientHeight - 48) host.scrollTop = top + rowH - host.clientHeight + 48
+    } else cellEl(r, c)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    // Virtual rows may not be mounted yet; reveal the selected column without waiting for their DOM.
+    if (c > frozenIdx) {
+      const x = offsets[c], w = wOf(cols[c]), left = Math.abs(el.scrollLeft)
+      const frozenWidth = frozenIdx >= 0 ? offsets[frozenIdx] + wOf(cols[frozenIdx]) : 0
+      const next = x < left + frozenWidth ? x - frozenWidth : x + w > left + el.clientWidth ? x + w - el.clientWidth : left
+      el.scrollLeft = (rtl() ? -1 : 1) * Math.max(0, next)
+    }
   }
   const moveTo = (r: number, c: number, extend = false) => {
     const rr = Math.max(0, Math.min(rowCount - 1, r))
     const cc = Math.max(0, Math.min(cols.length - 1, c))
     setActive({ r: rr, c: cc })
     setSel((s) => (extend && s ? { ...s, r2: rr, c2: cc } : { r1: rr, c1: cc, r2: rr, c2: cc }))
-    reveal(rr)
+    reveal(rr, cc)
   }
   const sorted = (s: Sel) => ({ r1: Math.min(s.r1, s.r2), r2: Math.max(s.r1, s.r2), c1: Math.min(s.c1, s.c2), c2: Math.max(s.c1, s.c2) })
   const selected = sel ? sorted(sel) : null
@@ -509,19 +527,21 @@ export function TableView({ svc, view, ctl }: ViewProps) {
           <button type="button" onClick={() => setChecked(new Set())}>{t('Clear selection')}</button>
         </div>
       )}
-      <div
-        ref={scroller}
-        className="db-table"
-        role="grid"
-        aria-rowcount={rowCount + 1}
-        aria-colcount={colCount}
-        tabIndex={0}
-        onScroll={onScroll}
-        onKeyDown={onKeyDown}
-        onCopy={(e) => onCopy(e)}
-        onCut={(e) => onCopy(e, true)}
-        onPaste={(e) => void onPaste(e)}
-        data-density={density}
+      <HorizontalScroll
+        viewportRef={scroller}
+        viewportClassName="db-table"
+        label={t('Database')}
+        viewportProps={{
+          role: 'grid',
+          'aria-rowcount': rowCount + 1,
+          'aria-colcount': colCount,
+          tabIndex: 0,
+          onKeyDown,
+          onCopy: (e) => onCopy(e),
+          onCut: (e) => onCopy(e, true),
+          onPaste: (e) => void onPaste(e),
+          'data-density': density,
+        }}
       >
         <div className="db-thead" role="row" style={{ gridTemplateColumns: gridCols, minWidth: totalW }}>
           <div className="db-th handle" />
@@ -689,7 +709,7 @@ export function TableView({ svc, view, ctl }: ViewProps) {
             )
           })}
         </div>
-      </div>
+      </HorizontalScroll>
       {menu && (
         <PropertyMenu
           svc={svc}

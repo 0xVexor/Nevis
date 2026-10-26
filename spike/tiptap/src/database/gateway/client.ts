@@ -1,4 +1,4 @@
-// Client of the optional Noviq gateway (services/database-gateway). Everything here is a plain HTTP call with an injectable fetch, so it is
+// Client of the optional Nevis gateway (services/database-gateway). Everything here is a plain HTTP call with an injectable fetch, so it is
 // tested against the real gateway code. The owner token is a secret of this device: it is kept apart from the Vault (and from sync).
 import type { Id, Json } from '../model/types.ts'
 import type { DatabaseService } from '../service.ts'

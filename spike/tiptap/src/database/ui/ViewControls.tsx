@@ -39,7 +39,7 @@ const defaultOperand = (svc: DatabaseService, def: Definition, op: string): Json
   }
 }
 
-function Operand({ svc, def, op, value, onChange }: { svc: DatabaseService; def: Definition; op: string; value: Json | undefined; onChange: (v: Json) => void }) {
+export function FilterOperand({ svc, def, op, value, onChange }: { svc: DatabaseService; def: Definition; op: string; value: Json | undefined; onChange: (v: Json) => void }) {
   const cls = filterClass(svc.state, def)
   if (op === 'is_empty' || op === 'is_not_empty') return null
   if (cls === 'number') return <input className="db-input sm" type="number" dir="ltr" value={typeof value === 'number' ? value : 0} onChange={(e) => onChange(Number(e.target.value))} />
@@ -108,7 +108,7 @@ function Group({ svc, sourceId, f, onChange, onRemove, depth }: { svc: DatabaseS
           <div className="db-frow" key={i}>
             <Select value={c.propertyId} options={props.map((p) => ({ value: p.id, label: p.name }))} onChange={(id) => { const d = svc.state.prop(id)!; const op = OPS[filterClass(svc.state, d)][0]; setChild({ kind: 'predicate', propertyId: id, op, operand: defaultOperand(svc, d, op) }) }} />
             <Select value={c.op} options={ops.map((o) => ({ value: o, label: t(OP_LABEL[o] ?? o) }))} onChange={(op) => setChild({ ...c, op, operand: defaultOperand(svc, def!, op) })} />
-            {def && <Operand svc={svc} def={def} op={c.op} value={c.operand} onChange={(v) => setChild({ ...c, operand: v })} />}
+            {def && <FilterOperand svc={svc} def={def} op={c.op} value={c.operand} onChange={(v) => setChild({ ...c, operand: v })} />}
             <button type="button" className="icon-btn" aria-label={t('Remove rule')} onClick={remove}><Ic.Close size={13} /></button>
           </div>
         )
@@ -135,13 +135,19 @@ export function FilterEditor({ svc, sourceId, filter, onChange }: { svc: Databas
 export function SortEditor({ svc, sourceId, sorts, onChange }: { svc: DatabaseService; sourceId: Id; sorts: Sort[]; onChange: (s: Sort[]) => void }) {
   const props = svc.state.props(sourceId).filter((p) => isSortable(svc.state, p) && svc.access().canReadProperty(svc.principalId, p))
   return (
-    <div className="db-filter">
+    <div className="db-filter db-sort">
+      <div className="db-panel-title"><Ic.UpDown size={15} /><b>{t('Sort')}</b><span className="db-count">{sorts.length}</span></div>
       {sorts.map((s, i) => (
-        <div className="db-frow" key={i}>
-          <Select value={s.propertyId} options={props.map((p) => ({ value: p.id, label: p.name }))} onChange={(id) => onChange(sorts.map((x, j) => (j === i ? { ...x, propertyId: id } : x)))} />
-          <Select value={s.direction} options={[{ value: 'asc', label: t('Ascending') }, { value: 'desc', label: t('Descending') }]} onChange={(d) => onChange(sorts.map((x, j) => (j === i ? { ...x, direction: d as 'asc' | 'desc' } : x)))} />
+        <div className="db-sort-rule" key={i}>
+          <span className="db-sort-order">{i + 1}</span>
+          <div className="db-sort-fields">
+          <Select title={t('Property')} value={s.propertyId} options={props.map((p) => ({ value: p.id, label: p.name }))} onChange={(id) => onChange(sorts.map((x, j) => (j === i ? { ...x, propertyId: id } : x)))} />
+          <Select title={t('Direction')} value={s.direction} options={[{ value: 'asc', label: t('Ascending') }, { value: 'desc', label: t('Descending') }]} onChange={(d) => onChange(sorts.map((x, j) => (j === i ? { ...x, direction: d as 'asc' | 'desc' } : x)))} />
+          </div>
+          <div className="db-sort-actions">
           <button type="button" className="icon-btn" aria-label={t('Move up')} disabled={i === 0} onClick={() => { const n = [...sorts]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; onChange(n) }}><Ic.Up size={13} /></button>
           <button type="button" className="icon-btn" aria-label={t('Remove sort')} onClick={() => onChange(sorts.filter((_, j) => j !== i))}><Ic.Close size={13} /></button>
+          </div>
         </div>
       ))}
       <button type="button" className="db-linkbtn" onClick={() => props[0] && onChange([...sorts, { propertyId: (props.find((p) => !sorts.some((s) => s.propertyId === p.id)) ?? props[0]).id, direction: 'asc' }])}><Ic.Plus size={12} /> {t('Add a sort')}</button>
@@ -171,3 +177,6 @@ export function GroupEditor({ svc, sourceId, group, onChange, allowNone = true }
 }
 
 export const PropBadge = ({ def }: { def: Definition }) => <span className="db-pb"><KindIcon kind={def.kind} /> {def.name}</span>
+
+export { defaultOperand as defaultFilterOperand }
+export const filterOperatorLabel = (op: string) => t(OP_LABEL[op] ?? op)

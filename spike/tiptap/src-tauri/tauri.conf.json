@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Noviq",
-  "version": "0.2.1",
+  "productName": "Nevis",
+  "version": "1.0.0",
   "identifier": "com.vexor.noviq",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -10,12 +10,30 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{ "label": "main", "title": "Noviq.", "width": 1280, "height": 820, "minWidth": 820, "minHeight": 560, "dragDropEnabled": false }],
-    "security": { "csp": null }
+    "windows": [
+      {
+        "label": "main",
+        "title": "Nevis.",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 820,
+        "minHeight": 560,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   }
 }

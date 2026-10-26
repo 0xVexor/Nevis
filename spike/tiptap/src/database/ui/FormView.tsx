@@ -7,6 +7,7 @@ import { validateFormConfig, visibleQuestions, answerToCell, evaluateSubmission,
 import { optionsOf } from '../props/config.ts'
 import { randomId } from '../model/ids.ts'
 import { t } from '../../i18n'
+import { Select } from '../../ui'
 import * as Ic from '../../icons'
 import { errorText } from './common'
 import { Field, Seg, Switch } from './forms'
@@ -26,7 +27,7 @@ function Answer({ def, q, value, onChange, svc, err }: { def: Definition; q: Que
     case 'select': case 'status':
       input = q.inputStyle === 'radio'
         ? <div role="radiogroup" aria-labelledby={id + '-l'}>{opts.map((o) => <label key={o.id} className="db-radio"><input type="radio" name={id} checked={value === o.id} onChange={() => onChange(o.id)} /> {o.name}</label>)}</div>
-        : <select {...common} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value || null)}><option value="">{t('Choose…')}</option>{opts.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select>
+        : <Select {...common} value={(value as string) ?? ''} onChange={(v) => onChange(v || null)} options={[{ value: '', label: t('Choose…') }, ...opts.map((o) => ({ value: o.id, label: o.name }))]} />
       break
     case 'multi_select': {
       const cur = (Array.isArray(value) ? value : []) as string[]
@@ -125,7 +126,7 @@ export function FormView({ svc, view, ctl }: ViewProps) {
         <div className="db-form-build">
           <div className="db-form-status">
             <b>{cfg.open ? t('Open — accepting answers here') : t('Closed')}</b>
-            {!gatewayConfig() && <small>{t('A public link needs the Noviq gateway. It is not set up in this workspace, so answers can only be entered here by people who can edit this database.')}</small>}
+            {!gatewayConfig() && <small>{t('A public link needs the Nevis gateway. It is not set up in this workspace, so answers can only be entered here by people who can edit this database.')}</small>}
           </div>
           {gatewayConfig() && <PublishPanel svc={svc} viewId={view.id} dirty={dirty} />}
           <ol className="db-fq-list">
@@ -151,10 +152,7 @@ export function FormView({ svc, view, ctl }: ViewProps) {
             })}
           </ol>
           <Field label={t('Add a question')}>
-            <select value="" onChange={(e) => { const p = props.find((x) => x.id === e.target.value); if (p) add(p) }}>
-              <option value="">{t('Choose a property…')}</option>
-              {props.filter((p) => !draft.questions.some((q) => q.propertyId === p.id)).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            <Select title={t('Add a question')} value="" onChange={(v) => { const p = props.find((x) => x.id === v); if (p) add(p) }} options={[{ value: '', label: t('Choose a property…') }, ...props.filter((p) => !draft.questions.some((q) => q.propertyId === p.id)).map((p) => ({ value: p.id, label: p.name }))]} />
           </Field>
           <Field label={t('Message after sending')}><input dir="auto" value={draft.submitMessage} onChange={(e) => set({ submitMessage: e.target.value })} /></Field>
           <div className="db-form-actions">
@@ -170,7 +168,7 @@ export function FormView({ svc, view, ctl }: ViewProps) {
         <form className="db-form-fill" noValidate onSubmit={(e) => { e.preventDefault(); void submit() }}>
           {shown.map((q) => {
             const d = svc.state.prop(q.propertyId)
-            return d ? <Answer key={q.id} def={d} q={q} svc={svc} value={answers[q.id]} err={errors[q.id]} onChange={(v) => setAnswers({ ...answers, [q.id]: v })} /> : null
+            return d ? <Answer key={q.id} def={d} q={q} svc={svc} value={answers[q.id]} err={errors[q.id]} onChange={(v) => { setAnswers({ ...answers, [q.id]: v }); setErrors((prev) => { const next = { ...prev }; delete next[q.id]; return next }) }} /> : null
           })}
           <div className="db-form-actions"><button type="submit" className="primary" disabled={busy}>{t('Send')}</button></div>
         </form>
@@ -223,10 +221,8 @@ function ConditionEditor({ q, all, svc, onChange }: { q: Question; all: Question
       <Switch label={t('Show only when…')} on={!!c} onChange={(v) => onChange(v ? { questionId: earlier[0].id, op: 'is_not_empty' } : null)} />
       {c && (
         <div className="db-cond-row">
-          <select aria-label={t('Question')} value={c.questionId} onChange={(e) => onChange({ ...c, questionId: e.target.value })}>{earlier.map((x) => <option key={x.id} value={x.id}>{x.title || svc.state.prop(x.propertyId)?.name}</option>)}</select>
-          <select aria-label={t('Condition')} value={c.op} onChange={(e) => onChange({ ...c, op: e.target.value as Condition['op'] })}>
-            {(['equals', 'not_equals', 'contains', 'is_empty', 'is_not_empty'] as const).map((o) => <option key={o} value={o}>{t(o.replace('_', ' '))}</option>)}
-          </select>
+          <Select title={t('Question')} value={c.questionId} onChange={(v) => onChange({ ...c, questionId: v })} options={earlier.map((x) => ({ value: x.id, label: x.title || svc.state.prop(x.propertyId)?.name || t('Deleted property') }))} />
+          <Select title={t('Condition')} value={c.op} onChange={(v) => onChange({ ...c, op: v as Condition['op'] })} options={['equals', 'not_equals', 'contains', 'is_empty', 'is_not_empty'].map((o) => ({ value: o, label: t(o.replace(/_/g, ' ')) }))} />
           {(c.op === 'equals' || c.op === 'not_equals' || c.op === 'contains') && <input dir="auto" aria-label={t('Value')} value={(c.value as string) ?? ''} onChange={(e) => onChange({ ...c, value: e.target.value })} />}
         </div>
       )}

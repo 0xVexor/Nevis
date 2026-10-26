@@ -1,4 +1,4 @@
-//! Sync of a vault with a remote copy (the Noviq sync server, see hub.rs) without any help from the user.
+//! Sync of a vault with a remote copy (the Nevis sync server, see hub.rs) without any help from the user.
 //! The engine is independent of the remote: it only needs the `Remote` trait, so it is tested with an in-memory one.
 //!
 //! Method: a file-level three-way comparison. For every path the engine knows the local content hash, the remote
@@ -310,7 +310,7 @@ fn verified_upload(remote: &mut dyn Remote, path: &str, existing: Option<&str>, 
     Ok(up)
 }
 
-/// A remote may hold several files of the same name (Drive did; the Noviq server cannot). Pick one
+/// A remote may hold several files of the same name (Drive did; the Nevis server cannot). Pick one
 /// the same way on every device, keep the content of the others in the sync trash and trash them in the cloud.
 fn dedupe(vault: &Vault, remote: &mut dyn Remote, listed: Vec<RemoteFile>, rep: &mut Report) -> BTreeMap<String, RemoteFile> {
     let mut groups: BTreeMap<String, Vec<RemoteFile>> = BTreeMap::new();

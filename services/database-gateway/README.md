@@ -1,6 +1,6 @@
-# Noviq database gateway
+# Nevis database gateway
 
-Optional, single-instance reference service for the Noviq database feature (handoff §24–26). A Vault never needs it: without a gateway every
+Optional, single-instance reference service for the Nevis database feature (handoff §24–26). A Vault never needs it: without a gateway every
 database works locally, and the app says so ("needs setup") instead of showing controls that do nothing.
 
 What it does today (private-publication mode):

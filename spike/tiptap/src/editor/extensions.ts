@@ -14,6 +14,7 @@ import { DatabaseEmbed } from './databaseEmbed'
 import { AttImage, ImageFiles } from './image'
 import { InlineIcon } from './inlineIcon'
 import { HeadingDir } from './headingDir'
+import { FlowArrows } from './flowArrows'
 import { DragHandle } from './dragHandle'
 import { MarkdownPaste } from './markdownPaste'
 import { MarkdownTab } from './markdownTab'
@@ -213,6 +214,7 @@ export const extensions = [
   AttImage,
   InlineIcon,
   HeadingDir,
+  FlowArrows,
   MathAuto,
   ImageFiles,
   MarkdownPaste,

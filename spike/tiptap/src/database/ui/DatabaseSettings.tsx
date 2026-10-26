@@ -49,7 +49,7 @@ export function DatabaseSettings() {
         </Row>
       </Card>
       <Card icon={<Ic.Share />} title={t('Gateway')}>
-        <Row label={t('Gateway address')} hint={t('The Noviq gateway publishes forms and runs scheduled messages. Without it, everything stays on this device.')} wide>
+        <Row label={t('Gateway address')} hint={t('The Nevis gateway publishes forms and runs scheduled messages. Without it, everything stays on this device.')} wide>
           <input className="sx-input" dir="ltr" value={gw} placeholder="https://gateway.example.com" aria-invalid={gwBad} onChange={(e) => (setGw(e.target.value), setSaved(false))} />
         </Row>
         <Row label={t('Gateway owner token')} hint={t('Kept on this device only, outside your notes and never synced. Created when you set up the gateway.')} wide>

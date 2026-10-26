@@ -46,7 +46,7 @@ and 4 sync), plus the existing `db/test-*.mjs` and `node db/check-i18n.mjs`.
 | DB-GRAPH | §20 typed graph, budgets | `graph.ts`, `ui/GraphEdges.tsx`, `src/GraphView.tsx` | tasks-graph.test | selector done; UI toggles added | n/a | the graph layout worker belongs to another change; no database-specific worker |
 | DB-WORKFLOWS | §21 buttons, automations, outbox, schedules, leases | `workflows/*`, `ui/WorkflowPanel.tsx` | workflows.test (12) | done | adapter_tested (stub receiver) | the desktop outbox has no built-in HTTP sender; external effects go through the gateway adapter interface |
 | DB-ACCESS | §22 principals, grants, comments | `access.ts`, `commands/{records,comments}.ts` | query.test, views.test | done for the local owner + grants model | none | single local owner in practice; no multi-user identity |
-| DB-SYNC-COMPAT | §23 sync compatibility (the app now syncs through the Noviq server + S3, not Drive) | `src-tauri/src/sync/mod.rs`, `vault.rs`, `src-tauri/src/database/merge.rs` | cargo (merge + 4 sync tests) | done at unit level | **none** | no run through the real server between two devices; the mock-sync TypeScript fixtures (row-before-schema, duplicate edge delivery) were not written |
+| DB-SYNC-COMPAT | §23 sync compatibility (the app now syncs through the Nevis server + S3, not Drive) | `src-tauri/src/sync/mod.rs`, `vault.rs`, `src-tauri/src/database/merge.rs` | cargo (merge + 4 sync tests) | done at unit level | **none** | no run through the real server between two devices; the mock-sync TypeScript fixtures (row-before-schema, duplicate edge delivery) were not written |
 | DB-GATEWAY-PUBLICATION | §24–25 publications, forms, inbox | `services/database-gateway/src/publications.ts`, `gateway/client.ts` | gateway.test (19), gateway-client.test (5) | done (private-publication mode) | **none** (never deployed) | owner auth is an API token, not OIDC |
 | DB-GATEWAY-JOBS | §25 hosted runner | `services/database-gateway/src/{jobs,outbox}.ts` | gateway.test | done | adapter_tested | |
 | DB-GATEWAY-SHARED | §24 shared-workspace mode | `services/database-gateway/src/server.ts` (501 stubs) | gateway.test (capabilities) | **not done** | none | endpoints answer `501 unsupported` |
@@ -66,7 +66,7 @@ and 4 sync), plus the existing `db/test-*.mjs` and `node db/check-i18n.mjs`.
 ## Not done
 
 * Shared-workspace service mode, OIDC, public-form file uploads.
-* Two-device verification through the Noviq server; mock-sync fixtures in TypeScript.
+* Two-device verification through the Nevis server; mock-sync fixtures in TypeScript.
 * UI for linking an imported source, refreshing a connected cell, and for reviewing rejected public submissions beyond the counts shown in the form panel.
 * Automated UI tests; accessibility and RTL audit; Worker for heavy queries (not needed at the measured sizes).
 * Owner token for the gateway is kept in `localStorage`, not the OS credential store.

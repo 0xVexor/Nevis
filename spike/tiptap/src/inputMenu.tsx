@@ -1,3 +1,4 @@
+import { shortcutLabel } from './shortcuts'
 import { createRoot, type Root } from 'react-dom/client'
 import { MenuItem, MenuSep, Popover } from './ui'
 import * as Ic from './icons'
@@ -18,10 +19,10 @@ function FieldMenu({ el, at }: { el: Field; at: DOMRect }) {
     <Popover anchor={at} onClose={close}>
       <div className="menu ctx-menu">
         <div className="menu-quick">
-          <button title={t('Cut') + '  Ctrl+X'} disabled={!hasSel || !editable} onClick={run(() => document.execCommand('cut'))}><Ic.Cut size={16} /></button>
-          <button title={t('Copy') + '  Ctrl+C'} disabled={!hasSel} onClick={run(() => document.execCommand('copy'))}><Ic.Copy size={16} /></button>
+          <button title={t('Cut') + '  ' + shortcutLabel(['Mod', 'X'])} disabled={!hasSel || !editable} onClick={run(() => document.execCommand('cut'))}><Ic.Cut size={16} /></button>
+          <button title={t('Copy') + '  ' + shortcutLabel(['Mod', 'C'])} disabled={!hasSel} onClick={run(() => document.execCommand('copy'))}><Ic.Copy size={16} /></button>
           <button
-            title={t('Paste') + '  Ctrl+V'}
+            title={t('Paste') + '  ' + shortcutLabel(['Mod', 'V'])}
             disabled={!editable}
             onClick={run(() => void navigator.clipboard?.readText().then((s) => s && document.execCommand('insertText', false, s)).catch(() => {}))}
           >

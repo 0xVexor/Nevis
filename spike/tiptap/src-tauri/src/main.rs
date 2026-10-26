@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-//! Storage for Noviq: Vault folders (pages, attachments, history as plain files; see ADR-0003) that the app can
-//! keep in sync, by itself, through the Noviq sync server (server/ in this repository). The web UI talks to it through the commands below
+//! Storage for Nevis: Vault folders (pages, attachments, history as plain files; see ADR-0003) that the app can
+//! keep in sync, by itself, through the Nevis sync server (server/ in this repository). The web UI talks to it through the commands below
 //! (spike/tiptap/src/db.ts and attachments.ts); in a plain browser the same UI falls back to IndexedDB.
 
 mod database;
@@ -141,7 +141,7 @@ fn vault_create(s: St, parent: String, name: String) -> Res<String> {
     Ok(e.id)
 }
 
-/// Opens a folder as a vault (an existing Noviq vault, e.g. one copied from another computer).
+/// Opens a folder as a vault (an existing Nevis vault, e.g. one copied from another computer).
 #[tauri::command]
 fn vault_add(s: St, path: String) -> Res<String> {
     let root = PathBuf::from(&path);
@@ -1018,5 +1018,5 @@ fn main() {
             cloud_trashed, cloud_restore, cloud_purge, cloud_download, cloud_delete, cloud_reupload, index_state, index_update, index_search
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Noviq");
+        .expect("error while running Nevis");
 }

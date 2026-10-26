@@ -2,6 +2,7 @@
 // A string without a Persian entry simply shows in English, so new UI text can ship before it is translated.
 import { getSettings, type Lang } from './settings'
 import { FA as FA_APP } from './fa'
+import { formatShortcutText } from './shortcuts'
 import { FA_DB } from './database/ui/fa-db'
 
 const FA: Record<string, string> = { ...FA_DB, ...FA_APP }
@@ -14,6 +15,8 @@ export const getLang = (): Lang => getSettings().lang
 /** t('Hello {name}', { name }) — placeholders are filled after translating. */
 export function t(key: string, vars?: Record<string, string | number>): string {
   let out = getLang() === 'fa' ? (FA[key] ?? key) : key
+  // Format source UI text before interpolation: user-provided titles and values stay untouched.
+  out = formatShortcutText(out)
   if (vars) out = out.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ''))
   return out
 }

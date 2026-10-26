@@ -31,7 +31,7 @@ export function ImportExportMenu({ svc, container, source, view, anchor, onClose
     onClose()
   }
   const exportBundle = () => {
-    download(`${name}.noviq-database.json`, new Blob([JSON.stringify(buildBundle(svc.state))], { type: 'application/json' }))
+    download(`${name}.nevis-database.json`, new Blob([JSON.stringify(buildBundle(svc.state))], { type: 'application/json' }))
     onClose()
   }
   const duplicate = async (withRows: boolean) => {
@@ -162,7 +162,7 @@ function RestoreDialog({ svc, bundle, onClose, notify }: { svc: DatabaseService;
     if (mode === 'replace' && !(await confirmDialog({ title: t('Replace the current database records?'), message: t('A snapshot of the current records is downloaded first. Current sharing permissions are kept.'), danger: true, confirmLabel: t('Replace') }))) return
     setBusy(true)
     // pre-restore snapshot: always before anything changes
-    download(`pre-restore-${Date.now()}.noviq-database.json`, new Blob([JSON.stringify(buildBundle(svc.state))], { type: 'application/json' }))
+    download(`pre-restore-${Date.now()}.nevis-database.json`, new Blob([JSON.stringify(buildBundle(svc.state))], { type: 'application/json' }))
     const r = await svc.tryExec([{ type: 'backup.restore', payload: { bundle: bundle as unknown as Json, expectedManifestHash: bundle.manifestHash, mode, retainCurrentGrants: true } }])
     setBusy(false)
     if (r.ok) { notify(t('Restored {n} records.', { n: (r.result as { restored: number }).restored })); onClose() } else setErr(errorText(r.code, r.message))

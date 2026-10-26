@@ -1,3 +1,4 @@
+import { shortcutLabel } from './shortcuts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useEditor, EditorContent } from '@tiptap/react'
@@ -608,11 +609,11 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
           <div className="menu ctx-menu">
             {!readOnly && (
               <div className="menu-quick">
-                <button title={t('Undo') + '  Ctrl+Z'} onClick={() => (setCtx(null), editor.chain().focus().undo().run())}><Ic.Undo size={16} /></button>
-                <button title={t('Redo') + '  Ctrl+Y'} onClick={() => (setCtx(null), editor.chain().focus().redo().run())}><Ic.Redo size={16} /></button>
-                {hasSel && <button title={t('Cut') + '  Ctrl+X'} onClick={() => (setCtx(null), document.execCommand('cut'))}><Ic.Cut size={16} /></button>}
-                {hasSel && <button title={t('Copy') + '  Ctrl+C'} onClick={() => (setCtx(null), document.execCommand('copy'))}><Ic.Copy size={16} /></button>}
-                <button title={t('Paste') + '  Ctrl+V'} onClick={() => (setCtx(null), void paste(false))}><Ic.Paste size={16} /></button>
+                <button title={t('Undo') + '  ' + shortcutLabel(['Mod', 'Z'])} onClick={() => (setCtx(null), editor.chain().focus().undo().run())}><Ic.Undo size={16} /></button>
+                <button title={t('Redo  Ctrl+Y')} onClick={() => (setCtx(null), editor.chain().focus().redo().run())}><Ic.Redo size={16} /></button>
+                {hasSel && <button title={t('Cut') + '  ' + shortcutLabel(['Mod', 'X'])} onClick={() => (setCtx(null), document.execCommand('cut'))}><Ic.Cut size={16} /></button>}
+                {hasSel && <button title={t('Copy') + '  ' + shortcutLabel(['Mod', 'C'])} onClick={() => (setCtx(null), document.execCommand('copy'))}><Ic.Copy size={16} /></button>}
+                <button title={t('Paste') + '  ' + shortcutLabel(['Mod', 'V'])} onClick={() => (setCtx(null), void paste(false))}><Ic.Paste size={16} /></button>
               </div>
             )}
             {!readOnly && hasSel && (

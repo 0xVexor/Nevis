@@ -1,33 +1,33 @@
 <div align="center">
 
-<img src="spike/tiptap/src-tauri/icons/128x128.png" alt="Noviq" width="96" height="96">
+<img src="spike/tiptap/src-tauri/icons/128x128.png" alt="Nevis" width="96" height="96">
 
-# Noviq.
+# Nevis.
 
 **A local-first notes workspace with first-class Persian and right-to-left support.**
 
 Block editor · backlinks and graph · spaced-repetition flashcards · optional sync between devices · your notes stay in plain files.
 
-[![Build installers](https://img.shields.io/github/actions/workflow/status/AliMirzad/noviq/release.yml?label=build)](https://github.com/AliMirzad/noviq/actions/workflows/release.yml)
-[![Latest release](https://img.shields.io/github/v/release/AliMirzad/noviq?include_prereleases&label=release)](https://github.com/AliMirzad/noviq/releases)
+[![Build installers](https://img.shields.io/github/actions/workflow/status/0xVexor/Nevis/release.yml?label=build)](https://github.com/0xVexor/Nevis/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/0xVexor/Nevis?include_prereleases&label=release)](https://github.com/0xVexor/Nevis/releases)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS-6c72ff)
 ![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24c8db)
 
-[Download](https://github.com/AliMirzad/noviq/releases) · [Website](https://alimirzad.github.io/noviq/) · [Privacy](https://alimirzad.github.io/noviq/privacy.html) · [فارسی](README.fa.md)
+[Download](https://github.com/0xVexor/Nevis/releases) · [Website](https://0xvexor.github.io/Nevis/) · [Privacy](https://0xvexor.github.io/Nevis/privacy.html) · [فارسی](README.fa.md)
 
 <br>
 
-<img src="docs/screenshots/editor.png" alt="Noviq editor with a Persian note, tags, status and the formatting toolbar" width="100%">
+<img src="docs/screenshots/editor.png" alt="Nevis editor with a Persian note, tags, status and the formatting toolbar" width="100%">
 
 </div>
 
 ---
 
-## Why Noviq
+## Why Nevis
 
-Most note apps treat right-to-left text as an afterthought: mixed Persian and English lines scramble punctuation, tables flip the wrong way, and code blocks inherit the wrong direction. Noviq was built the other way round. Direction is decided **per block**, mixed-language text renders correctly, and everything else (tables, lists, callouts, formulas, diagrams) follows.
+Most note apps treat right-to-left text as an afterthought: mixed Persian and English lines scramble punctuation, tables flip the wrong way, and code blocks inherit the wrong direction. Nevis was built the other way round. Direction is decided **per block**, mixed-language text renders correctly, and everything else (tables, lists, callouts, formulas, diagrams) follows.
 
-Your notes are plain files in a folder you own. Nothing needs an account to work. If you want your notes on more than one device, Noviq can keep that folder in sync through the Noviq sync server, which you can run yourself (see [`server/`](server/)). An account is just a user name and a password: no email address, no phone number.
+Your notes are plain files in a folder you own. Nothing needs an account to work. If you want your notes on more than one device, Nevis can keep that folder in sync through the Nevis sync server, which you can run yourself (see [`server/`](server/)). An account is just a user name and a password: no email address, no phone number.
 
 ## Features
 
@@ -112,11 +112,11 @@ Your notes are plain files in a folder you own. Nothing needs an account to work
 </tr>
 </table>
 
-<img src="docs/screenshots/home.png" alt="Noviq home screen with recent pages, pinned pages and quick actions" width="100%">
+<img src="docs/screenshots/home.png" alt="Nevis home screen with recent pages, pinned pages and quick actions" width="100%">
 
 ## Download
 
-Get the latest installer from the **[Releases](https://github.com/AliMirzad/noviq/releases)** page:
+Get the latest installer from the **[Releases](https://github.com/0xVexor/Nevis/releases)** page:
 
 | Platform | File |
 |---|---|
@@ -129,11 +129,11 @@ Get the latest installer from the **[Releases](https://github.com/AliMirzad/novi
 
 ## Sync between devices
 
-Sync is optional. It needs a Noviq sync server: the app uses `https://sync.manaz.pro` by default, and the **Server** field of the sign-in form points it at your own.
+Sync is optional. It needs a Nevis sync server: the app uses `https://sync.manaz.pro` by default, and the **Server** field of the sign-in form points it at your own.
 
 1. Click the sync button in the top bar (or **Settings → Data → Account and sync**) and **create an account**: a user name and a password. Save the **recovery key** that is shown once: it is the only way to choose a new password if you forget yours.
 2. Turn on sync for your workspace. A change on one device reaches your other devices within about a second.
-3. Install Noviq on another computer, sign in, and download the vault.
+3. Install Nevis on another computer, sign in, and download the vault.
 
 What to know:
 
@@ -141,13 +141,13 @@ What to know:
 - **Safe on a bad connection.** Your edits are written to your disk first. When the connection drops they wait and go out when it is back; a file that is merely missing is never read as "deleted", and deleted files stay recoverable for 30 days.
 - **Two devices, one page.** Nothing is silently overwritten: the newer edit wins and the older one is kept in that page's history. Different pages never conflict.
 - The device token is stored in the operating system's credential store (Windows Credential Manager / macOS Keychain).
-- Your notes are stored on the server in your account (not yet end-to-end encrypted). See the **[Privacy Policy](https://alimirzad.github.io/noviq/privacy.html)**.
+- Your notes are stored on the server in your account (not yet end-to-end encrypted). See the **[Privacy Policy](https://0xvexor.github.io/Nevis/privacy.html)**.
 
 The server is in [`server/`](server/) (Node.js, S3-compatible storage, SQLite): [how to run it](server/README.md).
 
 ## How your data is stored
 
-A **vault** is an ordinary folder (default `Documents/Noviq`), the single source of truth. Everything else is derived and rebuildable.
+A **vault** is an ordinary folder (default `Documents/Nevis`), the single source of truth. Everything else is derived and rebuildable.
 
 ```
 MyVault/
@@ -170,15 +170,15 @@ Design notes: file names are IDs, not titles, so renames and moves never create 
 | Editor | [TipTap 3](https://tiptap.dev/) (ProseMirror) |
 | Math / diagrams | KaTeX, Mermaid |
 | Storage | Plain files in a vault folder; IndexedDB when run in a browser |
-| Sync | Noviq sync server ([`server/`](server/): Node.js, S3, SQLite): revisions with compare-and-swap, long-poll notifications |
+| Sync | Nevis sync server ([`server/`](server/): Node.js, S3, SQLite): revisions with compare-and-swap, long-poll notifications |
 
 ## Build from source
 
 **Prerequisites:** Node.js 22.18+, Rust (stable), and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS (on Windows: Visual Studio Build Tools with *Desktop development with C++*; on macOS: Xcode Command Line Tools).
 
 ```bash
-git clone https://github.com/AliMirzad/noviq.git
-cd noviq/spike/tiptap
+git clone https://github.com/0xVexor/Nevis.git
+cd Nevis/spike/tiptap
 npm install
 ```
 
@@ -216,18 +216,13 @@ cd server && npm test                          # the sync server (Node 22.13+)
 cd .. && npx tsc -b                            # type check
 ```
 
-## Releasing
+## Development and releases
 
-Installers for Windows and macOS are built by [GitHub Actions](.github/workflows/release.yml).
+`dev` is the development branch. Feature and fix pull requests target `dev`; final releases reach `main` through a release pull request from `dev`.
 
-1. Bump `version` in `spike/tiptap/src-tauri/tauri.conf.json`, `Cargo.toml` and `package.json`.
-2. Optionally set the repository variable `NOVIQ_SERVER` to compile in the address of your own sync server.
-3. Tag and push:
-   ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
-   ```
-4. Review the draft release that the workflow creates, then publish it.
+See [the Git workflow](docs/git-flow.md) for the complete process. The installer workflow builds Windows and universal macOS packages from final version tags on `main` and publishes a release after both platforms succeed. [Nevis 1.0.0 release notes](docs/releases/v1.0.0.md).
+
+The preferred build-time server variable is `NEVIS_SERVER`; existing `NOVIQ_SERVER` configurations remain compatible. Existing vault formats, application storage and sync accounts are preserved.
 
 ## Repository layout
 
@@ -248,7 +243,7 @@ Installers for Windows and macOS are built by [GitHub Actions](.github/workflows
 
 ## Privacy
 
-Noviq runs on your computer. It has no analytics or telemetry and sends your notes nowhere unless you turn on sync; then they go to the sync server you signed in to (by default `sync.manaz.pro`, or your own). Full details: [Privacy Policy](https://alimirzad.github.io/noviq/privacy.html).
+Nevis runs on your computer. It has no analytics or telemetry and sends your notes nowhere unless you turn on sync; then they go to the sync server you signed in to (by default `sync.manaz.pro`, or your own). Full details: [Privacy Policy](https://0xvexor.github.io/Nevis/privacy.html).
 
 ---
 

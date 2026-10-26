@@ -4,7 +4,7 @@ import { Suspense, lazy, useCallback, useEffect, useRef, useState, type Componen
 import type { Container, Definition, Filter, Id, Json, Sort, View, ViewType } from '../model/types.ts'
 import { matchesFilter } from '../query/engine.ts'
 import type { DatabaseService } from '../service.ts'
-import { Popover, MenuItem, MenuLabel, MenuSep } from '../../ui'
+import { Popover, MenuItem, MenuLabel, MenuSep, Select } from '../../ui'
 import { confirmDialog, promptDialog } from '../../dialog'
 import { t } from '../../i18n'
 import * as Ic from '../../icons'
@@ -85,7 +85,7 @@ function Inner({ svc, container, fixedViewId, onOpenPage, inline }: { svc: Datab
 
   const src = view?.sourceId ? svc.state.get('source', view.sourceId) : null
   const caps = src ? svc.access().sourceCaps(svc.principalId, src.id) : new Set<string>()
-  const canSchema = caps.has('edit_schema')
+  const canSchema = src ? caps.has('edit_schema') : svc.access().isOwner(svc.principalId) || container.sourceLinks.some((link) => svc.access().sourceCaps(svc.principalId, link.sourceId).has('edit_schema'))
   const canEditRows = caps.has('edit_rows')
 
   const setPersonal = (p: Personal | null) => {
@@ -215,7 +215,7 @@ function Inner({ svc, container, fixedViewId, onOpenPage, inline }: { svc: Datab
         )}
         {panel?.kind === 'sort' && src && (
           <Popover anchor={panel.rect} onClose={() => setPanel(null)}>
-            <div className="db-pop wide" onClick={(e) => e.stopPropagation()}><SortEditor svc={svc} sourceId={src.id} sorts={effSorts} onChange={(s) => setPersonal({ ...(personal ?? {}), sorts: s })} /></div>
+            <div className="db-pop db-sort-pop" onClick={(e) => e.stopPropagation()}><SortEditor svc={svc} sourceId={src.id} sorts={effSorts} onChange={(s) => setPersonal({ ...(personal ?? {}), sorts: s })} /></div>
           </Popover>
         )}
         {panel?.kind === 'group' && src && (
@@ -365,7 +365,7 @@ function NewViewMenu({ svc, container, anchor, onClose, onCreated, source, sourc
     <Popover anchor={anchor} onClose={onClose}>
       <div className="menu">
         <MenuLabel>{t('Add a view')}</MenuLabel>
-        {sources.length > 1 && <div className="db-form"><select className="db-input" value={src ?? ''} onChange={(e) => setSrc(e.target.value)} aria-label={t('Data source')}>{sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>}
+        {sources.length > 1 && <div className="db-form"><Select value={src ?? ''} onChange={setSrc} title={t('Data source')} options={sources.map((source) => ({ value: source.id, label: source.name }))} /></div>}
         {types.map((ty) => <MenuItem key={ty} icon={VIEW_ICON[ty]()} label={t(VIEW_LABEL[ty])} onClick={() => void create(ty)} />)}
         {err && <div className="db-err" role="alert">{err}</div>}
       </div>

@@ -103,7 +103,7 @@ impl Vault {
             return Err(VAULT_MISSING.into());
         }
         if !root.join(".noviq/vault.json").is_file() {
-            let name = root.file_name().and_then(|n| n.to_str()).unwrap_or("Noviq").to_string();
+            let name = root.file_name().and_then(|n| n.to_str()).unwrap_or("Nevis").to_string();
             fs::create_dir_all(root.join(".noviq")).map_err(err)?;
             write_atomic(&root.join(".noviq/vault.json"), json!({ "format": 1, "id": uuid::Uuid::new_v4().to_string(), "name": name }).to_string().as_bytes())?;
         }
@@ -151,7 +151,7 @@ impl Vault {
     }
 
     pub fn name(&self) -> String {
-        self.meta_value().get("name").and_then(Value::as_str).unwrap_or("Noviq").to_string()
+        self.meta_value().get("name").and_then(Value::as_str).unwrap_or("Nevis").to_string()
     }
 
     /// A new vault in `root` with the given display name.

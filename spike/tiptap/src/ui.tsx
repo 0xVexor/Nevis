@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { normalizeFa } from './normalize'
+import { createPortal } from 'react-dom'
 import type { Page } from './repo'
 import * as Ic from './icons'
 import { GLYPHS, GLYPH_NAMES, Glyph, ICON_PREFIX, iconNode, parseIcon } from './iconSet'
 import { t, locale } from './i18n'
+import { shortcutHint } from './shortcuts'
 
 /** Fixed-position popover anchored to a rect; closes on outside click / Escape. Arrow keys / Home / End move through its items. */
 export function Popover({ anchor, onClose, children, align = 'start' }: { anchor: DOMRect; onClose: () => void; children: ReactNode; align?: 'start' | 'end' }) {
@@ -57,17 +59,17 @@ export function Popover({ anchor, onClose, children, align = 'start' }: { anchor
     }
   }, [onClose])
 
-  return (
+  return createPortal(
     <div ref={ref} className="popover" style={{ top: pos.top, left: pos.left, ...(pos.maxH ? { maxHeight: pos.maxH, overflowY: 'auto' } : null) }}>
       {children}
-    </div>
+    </div>, document.body,
   )
 }
 
 type SelectOption = { value: string; label: string; color?: string }
 
 /** Dropdown selector (replaces the native <select>): a field button that opens the shared menu, with a dot per option and a check on the current one. */
-export function Select({ value, options, onChange, className, title, style }: { value: string; options: SelectOption[]; onChange: (v: string) => void; className?: string; title?: string; style?: React.CSSProperties }) {
+export function Select({ value, options, onChange, className, title, style, disabled, id, ...aria }: { value: string; options: SelectOption[]; onChange: (v: string) => void; className?: string; title?: string; style?: React.CSSProperties; disabled?: boolean; id?: string; 'aria-label'?: string; 'aria-invalid'?: boolean; 'aria-describedby'?: string; dir?: 'auto' | 'ltr' | 'rtl' }) {
   const [rect, setRect] = useState<DOMRect | null>(null)
   const [inline, setInline] = useState(false)
   const btn = useRef<HTMLButtonElement>(null)
@@ -89,10 +91,14 @@ export function Select({ value, options, onChange, className, title, style }: { 
     <>
       <button
         ref={btn}
+        {...aria}
+        id={id}
+        disabled={disabled}
         type="button"
         className={'selbox ' + (className ?? '') + (open ? ' open' : '')}
         style={style}
         title={title}
+        aria-label={aria['aria-label'] ?? title}
         aria-haspopup="listbox"
         aria-expanded={open}
         onMouseDown={(e) => e.nativeEvent.stopPropagation()}
@@ -118,7 +124,7 @@ export const MenuItem = ({ icon, label, onClick, danger, hint, desc, disabled }:
   <button className={'menu-item' + (danger ? ' danger' : '')} onClick={onClick} disabled={disabled}>
     <span className="menu-ic">{icon}</span>
     {desc ? <span className="menu-tx"><b>{label}</b><small>{desc}</small></span> : <span className="menu-tx">{label}</span>}
-    {hint && <span className="menu-hint">{hint}</span>}
+    {hint && <span className="menu-hint" dir="ltr">{shortcutHint(hint)}</span>}
   </button>
 )
 
@@ -255,7 +261,7 @@ export function SearchModal({ pages, search, commands, onOpen, onClose, initialQ
             <button key={c.id} className={'result' + (i === sel ? ' sel' : '')} onMouseMove={() => setSel(i)} onClick={() => choose({ cmd: c })}>
               <span className="result-ic">{c.icon}</span>
               <span className="result-tx"><b dir="auto">{hl(c.label)}</b></span>
-              {c.hint ? <kbd className="result-kbd">{c.hint}</kbd> : <span className="result-go"><Ic.Arrow size={14} /></span>}
+              {c.hint ? <kbd className="result-kbd" dir="ltr">{shortcutHint(c.hint)}</kbd> : <span className="result-go"><Ic.Arrow size={14} /></span>}
             </button>
           ))}
           {found.length > 0 && <div className="modal-label">{term.trim() ? t('Pages') : t('Recent')}</div>}

@@ -8,6 +8,7 @@ import { planBoardDrop } from '../viewLogic.ts'
 import { repo } from '../../store'
 import { urlFor } from '../../attachments'
 import { t } from '../../i18n'
+import { HorizontalScroll } from '../../HorizontalScroll'
 import * as Ic from '../../icons'
 import { CellView, useFileNames, useNav } from './CellView'
 import { Chip, errorText, plainTitle } from './common'
@@ -145,7 +146,8 @@ export function DatabaseBoardView({ svc, view, ctl }: ViewProps) {
   }
 
   return (
-    <div className="db-board" data-size={cardSize} role="group" aria-label={t('Board')}>
+    <HorizontalScroll className="db-board-scroll" viewportClassName="db-board" label={t('Board')} viewportProps={{ role: 'group', 'aria-label': t('Board') }}>
+      <div className="db-board-lanes" data-size={cardSize}>
       {readOnly && <div className="db-date-hint">{t('This board is grouped by a calculated value, so cards cannot be moved between columns.')}</div>}
       {lanes.map((lane) => (
         <div className="db-lane" key={lane.key || 'all'}>
@@ -188,7 +190,8 @@ export function DatabaseBoardView({ svc, view, ctl }: ViewProps) {
         </div>
       ))}
       {hidden.size > 0 && <button type="button" className="db-linkbtn" onClick={() => void ctl.patch({ hiddenGroups: [] })}>{t('Show {n} hidden group(s)', { n: hidden.size })}</button>}
-    </div>
+      </div>
+    </HorizontalScroll>
   )
 }
 

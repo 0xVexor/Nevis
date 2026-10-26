@@ -1,11 +1,12 @@
 // Calendar and Timeline. Both read one date property (or a range), show undated items in an explicit tray, and turn drags into the
 // same `row.patch` / `date.shift` commands the table uses (viewLogic.planDateDrag), so dependency shifting and DST rules apply everywhere.
-import { useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Definition, Id, Json } from '../model/types.ts'
 import { addDays, addMonths, civilOf, civilToJalali, diffDays, formatCivil, jalaliMonthLength, jalaliToCivil, parseCivil, startOfDayMs, startOfWeek, toIso, weekdayOf, dateInterval, JALALI_MONTHS } from '../dates.ts'
 import { cfgOf } from '../props/config.ts'
 import { dependencyArrows, planDateDrag, scheduleModel, type ScheduleItem } from '../viewLogic.ts'
 import { locale, t } from '../../i18n'
+import { HorizontalScroll } from '../../HorizontalScroll'
 import * as Ic from '../../icons'
 import { Chip, errorText, plainTitle } from './common'
 import { useNav } from './CellView'
@@ -201,6 +202,20 @@ export function TimelineView({ svc, view, ctl }: ViewProps) {
   const q = useViewQuery(svc, view, { search: ctl.search, personal: ctl.personal, want: 5000 })
   const [scroll, setScroll] = useState({ x: 0, y: 0, w: 900, h: 500 })
   const box = useRef<HTMLDivElement>(null)
+  const [pageWindow, setPageWindow] = useState({ top: 0, height: 800 })
+  useLayoutEffect(() => {
+    const el = box.current, host = el?.closest<HTMLElement>('.scroller, .db-peek-body')
+    if (!el || !host) return
+    const measure = () => {
+      setPageWindow({ top: Math.max(0, host.getBoundingClientRect().top - el.getBoundingClientRect().top - HEAD_H), height: host.clientHeight })
+      setScroll((s) => s.w === el.clientWidth && s.h === el.clientHeight ? s : { ...s, w: el.clientWidth, h: el.clientHeight })
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(host); ro.observe(el)
+    host.addEventListener('scroll', measure, { passive: true })
+    return () => { ro.disconnect(); host.removeEventListener('scroll', measure) }
+  }, [q.matchIds.length, def?.id, showTable])
   const [drag, setDrag] = useState<{ id: Id; mode: 'move' | 'start' | 'end'; x0: number; dx: number } | null>(null)
   const today = civilOf(svc.now(), zone)
   const px = UNIT_PX[scale] / UNIT_MS[scale] // pixels per millisecond
@@ -218,8 +233,8 @@ export function TimelineView({ svc, view, ctl }: ViewProps) {
   const xOf = (ms: number) => (ms - origin) * px
   const editable = model.editable && ctl.canEditRows
   const rows = items
-  const first = Math.max(0, Math.floor(scroll.y / ROW_H) - 4)
-  const last = Math.min(rows.length, Math.ceil((scroll.y + scroll.h) / ROW_H) + 4)
+  const first = Math.min(Math.max(0, rows.length - 1), Math.max(0, Math.floor(pageWindow.top / ROW_H) - 6))
+  const last = Math.min(rows.length, Math.ceil((pageWindow.top + pageWindow.height) / ROW_H) + 6)
   // axis ticks (only those on screen)
   const tickMs = UNIT_MS[scale]
   const t0 = Math.floor((scroll.x / px + origin - tickMs) / tickMs) * tickMs
@@ -283,7 +298,7 @@ export function TimelineView({ svc, view, ctl }: ViewProps) {
             </div>
           </div>
         )}
-        <div className="db-tl-scroll" ref={box} onScroll={(e) => { const el = e.currentTarget; setScroll({ x: el.scrollLeft, y: el.scrollTop, w: el.clientWidth, h: el.clientHeight }) }}>
+        <HorizontalScroll className="db-tl-track" viewportClassName="db-tl-scroll" viewportRef={box} label={t('Timeline')} viewportProps={{ onScroll: (e) => { const el = e.currentTarget; setScroll({ x: Math.abs(el.scrollLeft), y: 0, w: el.clientWidth, h: el.clientHeight }) } }}>
           <div className="db-tl-canvas" style={{ width: total, height: HEAD_H + rows.length * ROW_H }}>
             <div className="db-tl-axis" style={{ height: HEAD_H }}>{ticks.map((tk) => <span key={tk.x} style={{ insetInlineStart: tk.x }}>{tk.label}</span>)}</div>
             {ticks.map((tk) => <i key={'g' + tk.x} className="db-tl-grid" style={{ insetInlineStart: tk.x, top: HEAD_H }} />)}
@@ -317,7 +332,7 @@ export function TimelineView({ svc, view, ctl }: ViewProps) {
               </svg>
             )}
           </div>
-        </div>
+        </HorizontalScroll>
       </div>
       <div className="db-tray" aria-label={t('Items without a date')}>
         <b>{t('No date')} <span className="db-count">{model.unscheduled.length}</span></b>
