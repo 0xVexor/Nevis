@@ -253,13 +253,57 @@ describe('vaults and commits', () => {
     assert.equal(keep.body.error, 'not_in_trash')
     await call(s, 'DELETE', `/v1/vaults/${v}`, { token: a.token })
     const other = await register(s, 'mallory')
-    assert.equal((await call(s, 'DELETE', `/v1/vaults/${v}/permanent`, { token: other.token })).status, 404)
+    // A missing vault and another account's vault are indistinguishable; neither is removed.
+    assert.equal((await call(s, 'DELETE', `/v1/vaults/${v}/permanent`, { token: other.token })).status, 200)
+    assert.equal((await call(s, 'GET', '/v1/vaults?trashed=1', { token: a.token })).body.vaults.length, 1)
     assert.equal((await call(s, 'DELETE', `/v1/vaults/${v}/permanent`, { token: a.token })).status, 200)
     assert.equal((await call(s, 'GET', '/v1/vaults?trashed=1', { token: a.token })).body.vaults.length, 0)
+    assert.equal((await call(s, 'DELETE', `/v1/vaults/${v}/permanent`, { token: a.token })).status, 200)
     assert.equal(await s.storage.has(`v/${v}/b/${sha('gone for good').slice(0, 2)}/${sha('gone for good')}`), false)
     assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM files').get().n, 0)
     assert.equal((await call(s, 'GET', '/v1/account', { token: a.token })).body.quota.used, 0)
     assert.equal((await call(s, 'POST', `/v1/vaults/${v}/undelete`, { token: a.token })).status, 404)
+  })
+
+  it('advertises supported sync paths and keeps database records through trash and restore', async () => {
+    const health = (await call(s, 'GET', '/v1/health')).body
+    assert.ok(health.capabilities.includes('database_sync'))
+    assert.ok(health.capabilities.includes('permanent_delete'))
+    assert.ok(health.sync_roots.includes('databases'))
+    const dirs = ['containers', 'sources', 'properties', 'views', 'relations', 'edges', 'templates', 'workflows', 'comments', 'principals', 'grants', 'events', 'allocators']
+    for (const dir of dirs) {
+      const r = await commit(s, a.token, v, [{ put: [`databases/${dir}/item~3a1.json`, '{"revision":1}'] }])
+      assert.equal(r.body.results[0].ok, true, dir)
+    }
+    const before = await files()
+    await call(s, 'DELETE', `/v1/vaults/${v}`, { token: a.token })
+    await call(s, 'POST', `/v1/vaults/${v}/undelete`, { token: a.token })
+    assert.deepEqual(await files(), before)
+    for (const f of before) {
+      const data = await call(s, 'GET', `/v1/vaults/${v}/rev/${f.rev}`, { token: a.token })
+      assert.equal(data.raw.toString(), '{"revision":1}')
+    }
+  })
+
+  it('rejects unsafe database paths without changing existing records', async () => {
+    await commit(s, a.token, v, [{ put: ['databases/views/v1.json', 'keep'] }])
+    const before = await files()
+    for (const path of ['databases/nope/a.json', 'databases/views/sub/a.json', 'databases/views/a.exe', 'databases/views/.hidden.json', 'databases/views/../a.json']) {
+      const r = await commit(s, a.token, v, [{ put: [path, 'bad'] }])
+      assert.equal(r.body.results[0].error, 'bad_path', path)
+      assert.ok(r.body.results[0].detail)
+    }
+    assert.deepEqual(await files(), before)
+  })
+
+  it('schedules durable backups for vault metadata changes', async () => {
+    let before = s.writes.n
+    await call(s, 'PATCH', `/v1/vaults/${v}`, { token: a.token, body: { name: 'renamed' } })
+    assert.equal(s.writes.n, ++before)
+    await call(s, 'DELETE', `/v1/vaults/${v}`, { token: a.token })
+    assert.equal(s.writes.n, ++before)
+    await call(s, 'POST', `/v1/vaults/${v}/undelete`, { token: a.token })
+    assert.equal(s.writes.n, ++before)
   })
 
   it('limits the number of vaults per account', async () => {

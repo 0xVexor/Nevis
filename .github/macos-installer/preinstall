@@ -1,0 +1,17 @@
+#!/bin/bash
+set -euo pipefail
+# Only replace this product, and require it to be closed before replacing files.
+target="${3:-/}"
+for name in Nevis Noviq; do
+  app="${target%/}/Applications/$name.app"
+  if [[ -e "$app" || -L "$app" ]]; then
+    if [[ -L "$app" ]] || [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" 2>/dev/null || true)" != com.vexor.noviq ]]; then
+      echo "Cannot replace $app: it is not a recognized Nevis installation." >&2
+      exit 1
+    fi
+    if /bin/ps -axo command= | /usr/bin/grep -F "$app/Contents/MacOS/" | /usr/bin/grep -v grep >/dev/null; then
+      echo 'Close Nevis and Noviq before installing this update. Your notes will be kept.' >&2
+      exit 1
+    fi
+  fi
+done

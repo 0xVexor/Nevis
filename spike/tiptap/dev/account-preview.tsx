@@ -1,6 +1,6 @@
 // Dev only: the account screens against a fake desktop backend, so that they can be looked at (and clicked through) in a plain browser.
 //   npm run dev, then open /dev/account-preview.html?scene=<scene>&lang=fa&theme=dark
-// Scenes: picker-first, picker-signed, signin, signup, recover, key, account, offline, paused, signedout
+// Scenes: picker-first, picker-signed, signin, signup, recover, key, account, sync-error, offline, paused, signedout
 // The fake answers like the real backend does (src-tauri/src/main.rs) but keeps everything in memory.
 
 const q = new URLSearchParams(location.search)
@@ -12,7 +12,7 @@ const mock = {
   signedIn,
   username: 'sara',
   registration: (q.get('registration') ?? 'invite') as 'open' | 'invite' | 'closed',
-  state: scene === 'offline' ? 'offline' : scene === 'paused' ? 'paused' : 'idle',
+  state: scene === 'sync-error' ? 'error' : scene === 'offline' ? 'offline' : scene === 'paused' ? 'paused' : 'idle',
   reason: scene === 'paused' ? 'SIGNED_OUT' : '',
   syncOn: true,
   devices: [
@@ -32,7 +32,7 @@ const handlers: Record<string, (a: any) => unknown> = {
     syncOn: mock.syncOn,
     state: mock.signedIn ? mock.state : 'off',
     lastAt: now - 4000,
-    error: '',
+    error: scene === 'sync-error' ? 'HUB:bad_path\npath=databases/views/example.json\ndetail=outside_vault\noperation=commit\nendpoint=https://sync.example.com/v1/vaults/example/commit' : '',
     reason: mock.reason,
   }),
   server_health: async () => (await wait(250), { ok: true, registration: mock.registration, pow_bits: 18, api: 1 }),

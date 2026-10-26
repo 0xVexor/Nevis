@@ -88,7 +88,7 @@ impl Api {
                     }
                     return Ok(r);
                 }
-                Err(e) if last => return Err(format!("{NETWORK}{e}")),
+                Err(e) if last => return Err(format!("{NETWORK}{}", e.without_url())),
                 Err(_) => std::thread::sleep(Duration::from_millis(400u64 << attempt)),
             }
         }
@@ -121,16 +121,17 @@ impl Api {
 /// it is a wrong password, or an address that is not a Nevis server at all.
 pub fn status_error(r: Response, authed: bool) -> String {
     let code = r.status().as_u16();
+    let endpoint = format!("{}{}", r.url().origin().ascii_serialization(), r.url().path());
     let body: Value = r.json().unwrap_or(Value::Null);
     let name = body.get("error").and_then(Value::as_str).unwrap_or("");
     if code == 401 && authed {
-        return format!("{AUTH}unauthorized");
+        return format!("{AUTH}unauthorized\nhttp={code}\nendpoint={endpoint}");
     }
     // only the server's own codes (lower case, underscores) are passed on; any other text is another program talking
     if name.is_empty() || !name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_') {
-        format!("HUB:http_{code}")
+        format!("HUB:http_{code}\nhttp={code}\nendpoint={endpoint}")
     } else {
-        format!("HUB:{name}")
+        format!("HUB:{name}\nhttp={code}\nendpoint={endpoint}")
     }
 }
 
@@ -253,7 +254,7 @@ impl Hub {
         let mut out = Preflight::default();
         let state = match self.api.get(&self.v("/state")) {
             Ok(s) => s,
-            Err(e) if e == "HUB:no_such_vault" => {
+            Err(e) if e.lines().next() == Some("HUB:no_such_vault") => {
                 if !self.cache.epoch.is_empty() {
                     return Err(CLOUD_GONE.into()); // it was there and is gone: the user decides, nothing is created or deleted
                 }
@@ -297,7 +298,7 @@ impl Hub {
             let url = self.v(&format!("/changes?since={}&limit=500", self.cache.seq));
             let page = match self.api.get(&url) {
                 Ok(p) => p,
-                Err(e) if e == "HUB:since_too_old" && !rebuilt => {
+                Err(e) if e.lines().next() == Some("HUB:since_too_old") && !rebuilt => {
                     let epoch = self.cache.epoch.clone();
                     self.cache = Cache { epoch, ..Default::default() };
                     rebuilt = true;
@@ -394,11 +395,23 @@ impl Hub {
         if code == "conflict" {
             self.absorb_current(path, &r["current"]);
         }
-        Err(format!("HUB:{code}"))
+        let detail = r["detail"].as_str().unwrap_or("");
+        let endpoint = self.api.url(&self.v("/commit"));
+        Err(format!("HUB:{code}\npath={path}\ndetail={detail}\noperation=commit\nendpoint={endpoint}"))
     }
 }
 
 impl Remote for Hub {
+    fn validate_paths(&mut self, paths: &[String]) -> Res<()> {
+        if let Some(path) = paths.iter().find(|p| p.starts_with("databases/")) {
+            let health = self.api.get("/v1/health")?;
+            if !health["capabilities"].as_array().is_some_and(|a| a.iter().any(|v| v == "database_sync")) {
+                return Err(format!("HUB:server_upgrade_required\npath={path}\noperation=sync"));
+            }
+        }
+        Ok(())
+    }
+
     fn check(&mut self) -> Res<()> {
         if self.prepared {
             Ok(())
@@ -468,6 +481,27 @@ mod tests {
 
     fn md5_of(bytes: &[u8]) -> String {
         hex(&Md5::digest(bytes))
+    }
+
+    #[test]
+    fn http_diagnostics_preserve_status_and_route_without_credentials_or_query() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 4096];
+            let _ = stream.read(&mut request).unwrap();
+            let body = r#"{"error":"not_found"}"#;
+            write!(stream, "HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+        });
+        let response = reqwest::blocking::get(format!("http://user:password@{address}/v1/example?token=secret")).unwrap();
+        let message = status_error(response, true);
+        server.join().unwrap();
+        assert_eq!(message.lines().next(), Some("HUB:not_found"));
+        assert!(message.contains("http=404"));
+        assert!(message.contains("/v1/example"));
+        assert!(!message.contains("password") && !message.contains("token") && !message.contains("secret") && !message.contains("user"));
     }
 
     #[test]
@@ -650,6 +684,27 @@ mod e2e {
         b.sync();
         assert_eq!(b.titles(), vec!["stays"]);
         assert!(b.vault.pages_all().unwrap().iter().all(|p| p["id"] != P1));
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_database_records_survive_client_state_reload_and_sync_between_devices() {
+        use std::fs;
+        let (mut a, mut b) = pair();
+        let path = "databases/views/view1.json";
+        let first = br#"{"id":"view1","revision":1,"name":"original"}"#;
+        crate::vault::write_atomic(&a.vault.root.join(path), first).unwrap();
+        a.sync();
+        b.sync();
+        assert_eq!(fs::read(b.vault.root.join(path)).unwrap(), first);
+        // A client upgrade reads its existing bookkeeping rather than resetting the account or baseline.
+        a.state = serde_json::from_slice(&serde_json::to_vec(&a.state).unwrap()).unwrap();
+        let edited = br#"{"id":"view1","revision":2,"name":"edited offline"}"#;
+        crate::vault::write_atomic(&a.vault.root.join(path), edited).unwrap();
+        a.sync();
+        b.sync();
+        assert_eq!(fs::read(b.vault.root.join(path)).unwrap(), edited);
+        assert_eq!(fs::read(a.vault.root.join(path)).unwrap(), edited);
     }
 
     #[test]

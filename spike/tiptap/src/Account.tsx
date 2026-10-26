@@ -11,6 +11,7 @@ import { explain } from './vaultErrors'
 import { ago } from './ui'
 import * as Ic from './icons'
 import { locale, t } from './i18n'
+import { version } from '../package.json'
 
 // ───── small helpers ─────
 
@@ -95,7 +96,18 @@ function Meter({ pw }: { pw: string }) {
   )
 }
 
-const Problem = ({ children }: { children: ReactNode }) => <p className="acct-err" role="alert" dir="auto">{children}</p>
+function Problem({ children, error }: { children: ReactNode; error?: string }) {
+  const [copied, setCopied] = useState(false)
+  useEffect(() => setCopied(false), [error])
+  const details = error ? `Nevis ${version}\n${error}` : ''
+  return <div className="acct-err" role="alert" dir="auto">
+    <p>{children}</p>
+    {details && <details className="acct-error-details"><summary><Ic.Chevron size={14} />{t('Error details')}</summary>
+      <pre dir="ltr">{details}</pre>
+      <div className="acct-row"><button type="button" onClick={() => { void navigator.clipboard.writeText(details).then(() => setCopied(true), () => setCopied(false)) }}>{copied ? <Ic.Check size={14} /> : <Ic.Copy size={14} />}{copied ? t('Copied') : t('Copy error details')}</button></div>
+    </details>}
+  </div>
+}
 const Note = ({ children }: { children: ReactNode }) => <p className="acct-note" dir="auto">{children}</p>
 
 function Busy({ on, children }: { on: boolean; children: ReactNode }) {
@@ -399,6 +411,7 @@ export function AccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: {
   const [info, setInfo] = useState<AccountInfo | null>(null)
   const [infoError, setInfoError] = useState('')
   const [trashed, setTrashed] = useState<TrashedVault[]>([])
+  const [trashedError, setTrashedError] = useState('')
   const [panel, setPanel] = useState<Panel>('')
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
@@ -414,9 +427,9 @@ export function AccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: {
     if (!signedIn) return
     accountInfo().then(
       (i) => (setInfo(i), setInfoError('')),
-      (e) => setInfoError(explain(e)),
+      (e) => setInfoError(String(e)),
     )
-    cloudTrashed().then(setTrashed, () => {})
+    cloudTrashed().then((v) => { setTrashed(v); setTrashedError('') }, (e) => setTrashedError(String(e)))
   }, [signedIn])
   useEffect(() => load(), [load])
   useEffect(() => {
@@ -432,7 +445,7 @@ export function AccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: {
     try {
       await f()
     } catch (e) {
-      setError(explain(e))
+      setError(String(e))
     } finally {
       setBusy(false)
       void refreshAcc()
@@ -517,7 +530,7 @@ export function AccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: {
               </div>
 
               {note && <Note>{note}</Note>}
-              {error && <Problem>{error}</Problem>}
+              {error && <Problem error={error}>{explain(error)}</Problem>}
 
               <Section title={t('Sync')}>
                 <dl className="wsd-info">
@@ -527,7 +540,7 @@ export function AccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: {
                   <dd>{when(acc.lastAt)}</dd>
                 </dl>
                 {acc.syncOn && acc.state === 'offline' && <Note>{t('You are offline. Everything you write is saved on this device and goes to the server by itself when the connection is back.')}</Note>}
-                {acc.syncOn && acc.state === 'error' && acc.error && <Problem>{explain(acc.error)}</Problem>}
+                {acc.syncOn && acc.state === 'error' && acc.error && <Problem error={acc.error}>{explain(acc.error)}</Problem>}
                 {paused === 'SIGNED_OUT' && <Problem>{t('You are signed out of this device. Sign in again to keep syncing.')}</Problem>}
                 {paused === 'VAULT_MISSING' && <Problem>{t('The vault folder was not found. Sync is paused and nothing in the cloud was changed. Use “Locate folder…” in the list above.')}</Problem>}
                 {paused === 'VAULT_MISMATCH' && <Problem>{t('A different vault is in the folder of this workspace. Sync is paused and nothing was changed.')}</Problem>}
@@ -557,9 +570,9 @@ export function AccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: {
                     </div>
                     <p className="acct-meta">{t('{used} of {limit} used · {n} vaults', { used: size(info.quota.used), limit: size(info.quota.limit), n: info.vaults })}</p>
                   </>
-                ) : (
-                  <p className="acct-meta">{infoError || t('Loading…')}</p>
-                )}
+                ) : !infoError && <p className="acct-meta">{t('Loading…')}</p>}
+                {infoError && <Problem error={infoError}>{explain(infoError)}</Problem>}
+                {trashedError && <Problem error={trashedError}>{explain(trashedError)}</Problem>}
                 {trashed.length > 0 && (
                   <div className="acct-trashed">
                     <h5>{t('Deleted from your account (kept for 30 days)')}</h5>
@@ -589,7 +602,7 @@ export function AccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: {
                       {!d.current && <span className="wsd-acts"><button className="danger" disabled={busy} onClick={() => void revoke(d.id, d.name)}>{t('Sign out')}</button></span>}
                     </div>
                   ))}
-                  {!info && <p className="acct-meta">{infoError || t('Loading…')}</p>}
+                  {!info && !infoError && <p className="acct-meta">{t('Loading…')}</p>}
                 </div>
               </Section>
 

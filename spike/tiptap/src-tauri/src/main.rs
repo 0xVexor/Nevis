@@ -739,7 +739,11 @@ async fn cloud_purge(s: St<'_>, id: String) -> Res<()> {
     blocking(move || {
         let api = account::api(&app_data)?;
         let url = api.url(&format!("/v1/vaults/{id}/permanent"));
-        api.send(|c| c.delete(&url)).map(|_| ())
+        api.send(|c| c.delete(&url)).map(|_| ()).map_err(|e| {
+            if matches!(e.lines().next(), Some("HUB:not_found" | "HUB:http_404")) {
+                format!("HUB:permanent_delete_unavailable\noperation=permanent_delete\n{e}")
+            } else { e }
+        })
     })
     .await
 }
