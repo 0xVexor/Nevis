@@ -104,12 +104,30 @@ jobs:
           prerelease: ${{ needs.release-source.outputs.prerelease == 'true' }}
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
+      - name: Verify macOS installer scripts
+        if: matrix.os == 'macos-latest'
+        run: python3 .github/scripts/test-macos-installer.py
+      - name: Build macOS replacement installer
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          bash .github/scripts/build-macos-installer.sh \
+            spike/tiptap/src-tauri/target/universal-apple-darwin/release/bundle/macos/Nevis.app \
+            spike/tiptap/src-tauri/target/universal-apple-darwin/release/bundle/Nevis-macOS.pkg
+      - name: Attach macOS installer
+        if: matrix.os == 'macos-latest' && github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: gh release upload "$TAG" spike/tiptap/src-tauri/target/universal-apple-darwin/release/bundle/Nevis-macOS.pkg --clobber
       - uses: actions/upload-artifact@v4
         with:
           name: Nevis-${{ matrix.os }}
           path: |
             spike/tiptap/src-tauri/target/**/release/bundle/**/*.exe
             spike/tiptap/src-tauri/target/**/release/bundle/**/*.msi
+            spike/tiptap/src-tauri/target/**/release/bundle/**/*.pkg
             spike/tiptap/src-tauri/target/**/release/bundle/**/*.dmg
             spike/tiptap/src-tauri/target/**/release/bundle/**/*.app.tar.gz
             spike/tiptap/src-tauri/target/**/release/bundle/**/*.sig

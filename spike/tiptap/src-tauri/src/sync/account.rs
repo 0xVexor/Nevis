@@ -85,6 +85,13 @@ pub fn normalize_server(s: &str) -> Res<String> {
     if rest.is_empty() || rest.contains(char::is_whitespace) || rest.contains('?') || rest.contains('#') {
         return Err("HUB:bad_server".into());
     }
+    let parsed = reqwest::Url::parse(&s).map_err(|_| "HUB:bad_server")?;
+    if parsed.scheme() == "http" && !matches!(parsed.host_str(), Some("localhost" | "127.0.0.1" | "[::1]")) {
+        return Err("HUB:insecure_server".into());
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("HUB:bad_server".into());
+    }
     Ok(s)
 }
 
@@ -217,6 +224,8 @@ mod tests {
         assert_eq!(normalize_server("   ").unwrap(), DEFAULT_SERVER);
         assert!(!DEFAULT_SERVER.is_empty());
         assert!(normalize_server("https://bad host").is_err());
+        assert!(normalize_server("https://user:secret@sync.example.com").is_err());
+        assert!(normalize_server("http://localhost.example.com").is_err());
     }
 
     #[test]

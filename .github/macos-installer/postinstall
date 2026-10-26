@@ -1,0 +1,15 @@
+#!/bin/bash
+set -euo pipefail
+target="${3:-/}"
+current="${target%/}/Applications/Nevis.app"
+legacy="${target%/}/Applications/Noviq.app"
+# Remove only the former application bundle after the replacement is present.
+# Account data, credentials and workspace folders are never part of this package.
+if [[ ! -L "$current" && "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$current/Contents/Info.plist" 2>/dev/null || true)" == com.vexor.noviq ]]; then
+  if [[ -d "$legacy" && ! -L "$legacy" && "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$legacy/Contents/Info.plist" 2>/dev/null || true)" == com.vexor.noviq ]]; then
+    /bin/rm -rf -- "$legacy"
+  fi
+else
+  echo 'The new application could not be verified. The previous application was kept.' >&2
+  exit 1
+fi
