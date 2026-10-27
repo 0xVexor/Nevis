@@ -4,7 +4,7 @@ export const BLOCK_TYPES = [
   'paragraph', 'heading', 'blockquote', 'bulletList', 'orderedList', 'listItem',
   'taskList', 'taskItem', 'codeBlock', 'horizontalRule', 'table', 'tableRow',
   'tableCell', 'tableHeader', 'image', 'callout', 'toggle', 'mathBlock',
-  'mermaid', 'drawing', 'databaseEmbed',
+  'mermaid', 'drawing', 'databaseEmbed', 'layoutGroup', 'layoutColumn',
 ] as const
 const blocks = new Set<string>(BLOCK_TYPES)
 export const isBlockId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id)

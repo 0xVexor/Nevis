@@ -54,6 +54,8 @@ jobs:
         working-directory: spike/tiptap
       - run: npx tsc -b
         working-directory: spike/tiptap
+      - run: npm run test:layout
+        working-directory: spike/tiptap
       - run: npm run test:direction
         working-directory: spike/tiptap
       - run: npm ci --ignore-scripts

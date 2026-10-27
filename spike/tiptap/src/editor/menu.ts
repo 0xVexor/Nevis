@@ -5,6 +5,7 @@ interface MenuView {
   icon: string
   title: string
   desc: string
+  disabled?: boolean
 }
 
 export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T) => MenuView; empty?: string }) {
@@ -35,6 +36,7 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
       items.forEach((it, i) => {
         const v = cfg.view(it)
         const b = document.createElement('button')
+        b.disabled = !!v.disabled
         b.className = 'slash-item' + (i === selected ? ' sel' : '')
         b.innerHTML = '<span class="slash-ic"></span><span class="slash-tx"><b></b><small></small></span>'
         ;const ic = b.querySelector('.slash-ic') as HTMLElement
@@ -46,7 +48,7 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
         ;(b.querySelector('small') as HTMLElement).textContent = v.desc
         b.onmousedown = (e) => {
           e.preventDefault()
-          cmd?.(it)
+          if (!v.disabled) cmd?.(it)
         }
         b.onmousemove = () => {
           if (selected !== i) {
@@ -84,14 +86,14 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
         el.className = 'slash-menu'
         document.body.append(el)
         items = props.items
-        selected = 0
+        selected = Math.max(0, items.findIndex((item) => !cfg.view(item).disabled))
         cmd = (i) => props.command(i)
         draw()
         place(props)
       },
       onUpdate: (props: any) => {
         items = props.items
-        selected = 0
+        selected = Math.max(0, items.findIndex((item) => !cfg.view(item).disabled))
         cmd = (i) => props.command(i)
         draw()
         place(props)
@@ -99,14 +101,17 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
       onKeyDown: ({ event }: any) => {
         if (!items.length) return false
         const move = (d: number) => {
-          selected = (selected + d + items.length) % items.length
+          for (let n = 0; n < items.length; n++) {
+            selected = (selected + d + items.length) % items.length
+            if (!cfg.view(items[selected]).disabled) break
+          }
           draw()
           return true
         }
         if (event.key === 'ArrowDown') return move(1)
         if (event.key === 'ArrowUp') return move(-1)
         if (event.key === 'Enter' || event.key === 'Tab') {
-          cmd?.(items[selected])
+          if (!cfg.view(items[selected]).disabled) cmd?.(items[selected])
           return true
         }
         return false
