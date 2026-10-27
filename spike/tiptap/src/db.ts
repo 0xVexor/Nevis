@@ -3,6 +3,9 @@
 // store for page history, and a small key-value store.
 import { invoke } from '@tauri-apps/api/core'
 import { DB_SCHEMA_VERSION, upgradeDatabaseStores } from './database/storage/idb'
+import { IndexedDbDocumentStorage } from './platform/documents/indexedDb'
+import type { DocumentVersion } from './documents/ports'
+export type { DocumentVersion as Version } from './documents/ports'
 
 export const isTauri = '__TAURI_INTERNALS__' in window
 
@@ -50,9 +53,11 @@ const wrap = <T>(req: IDBRequest<T>) =>
     req.onerror = () => reject(req.error)
   })
 
+const browserDocuments = new IndexedDbDocumentStorage('browser:not.db', db, () => !frozen)
+
 export async function allPages(): Promise<any[]> {
   if (isTauri) return invoke('pages_all')
-  return wrap((await db()).transaction('pages').objectStore('pages').getAll())
+  return browserDocuments.load()
 }
 
 /** One transaction: either everything is written or nothing (crash safety). */
@@ -64,12 +69,7 @@ export async function savePages(upserts: any[], removed: string[], clearFirst: b
     if (kept.length) window.dispatchEvent(new CustomEvent('sync-conflict', { detail: kept }))
     return
   }
-  const tx = (await db()).transaction('pages', 'readwrite')
-  const s = tx.objectStore('pages')
-  if (clearFirst) s.clear()
-  upserts.forEach((p) => s.put(p))
-  removed.forEach((id) => s.delete(id))
-  await done(tx)
+  await browserDocuments.save({ upserts, removed, replaceAll: clearFirst, baseVersions: {} })
 }
 
 // a folder handle (backupDir) cannot be serialized, so it always stays in IndexedDB
@@ -90,43 +90,21 @@ export async function kvSet(key: string, value: unknown) {
 
 // ───── page history ─────
 
-export interface Version {
-  pageId: string
-  ts: number
-  title: string
-  content: any
-}
-
-const KEEP_VERSIONS = 40
-
-export async function listVersions(pageId: string): Promise<Version[]> {
+export async function listVersions(pageId: string): Promise<DocumentVersion[]> {
   if (isTauri) return invoke('versions_list', { pageId })
-  const rows: Version[] = await wrap((await db()).transaction('versions').objectStore('versions').index('byPage').getAll(pageId))
-  return rows.sort((a, b) => b.ts - a.ts)
+  return browserDocuments.listVersions(pageId)
 }
 
-export async function addVersion(v: Version) {
+export async function addVersion(version: DocumentVersion) {
   if (frozen) return
-  if (isTauri) return invoke<void>('version_add', { version: v })
-  const tx = (await db()).transaction('versions', 'readwrite')
-  tx.objectStore('versions').put(v)
-  await done(tx)
-  const all = await listVersions(v.pageId)
-  if (all.length > KEEP_VERSIONS) {
-    const t2 = (await db()).transaction('versions', 'readwrite')
-    all.slice(KEEP_VERSIONS).forEach((old) => t2.objectStore('versions').delete([old.pageId, old.ts]))
-    await done(t2)
-  }
+  if (isTauri) return invoke<void>('version_add', { version })
+  await browserDocuments.addVersion(version)
 }
 
 export async function deleteVersions(pageId: string) {
   if (frozen) return
   if (isTauri) return invoke<void>('versions_delete', { pageId })
-  const all = await listVersions(pageId)
-  if (!all.length) return
-  const tx = (await db()).transaction('versions', 'readwrite')
-  all.forEach((v) => tx.objectStore('versions').delete([v.pageId, v.ts]))
-  await done(tx)
+  await browserDocuments.deleteVersions(pageId)
 }
 
 // ───── vaults and account (desktop app only, ADR-0003) ─────
