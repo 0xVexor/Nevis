@@ -108,7 +108,8 @@ describe('backup', () => {
     const storage = new MemStorage()
     for (let h = 0; h < 30; h++) await snapshot(s.db, storage, s.cfg, new Date(Date.UTC(2026, 9, 25, 0, 0) + h * 3600 * 1000))
     const keys = await storage.list('_backup/')
-    assert.equal(keys.length, 25) // 24 dated copies and "latest"
+    assert.equal(keys.filter(k => k.endsWith('.gz')).length, 25) // 24 dated copies and latest
+    assert.equal(keys.filter(k => k.endsWith('.refs.json')).length, 25)
     assert.ok(!keys.some((k) => k.includes('20261025T00')))
   })
 

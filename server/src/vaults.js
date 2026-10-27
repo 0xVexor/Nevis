@@ -29,6 +29,7 @@ export const vaultRow = (db, id) => db.prepare('SELECT * FROM vaults WHERE id = 
 export function ownedVault(db, userId, id, { deleted = false } = {}) {
   const v = typeof id === 'string' ? vaultRow(db, id) : undefined
   if (!v || v.user_id !== userId || (!deleted && v.deleted_at)) throw new HttpError(404, 'no_such_vault')
+  if (v.deleting) throw new HttpError(409, 'vault_deleting')
   return v
 }
 
@@ -57,6 +58,7 @@ export function createVault(db, userId, { id, name }, cfg, now = Date.now()) {
     const have = vaultRow(db, vid)
     if (have) {
       if (have.user_id !== userId) throw new HttpError(409, 'vault_taken')
+      if (have.deleting) throw new HttpError(409, 'vault_deleting')
       if (have.deleted_at) throw new HttpError(409, 'vault_deleted')
       return { created: false, id: have.id, name: have.name, epoch: have.epoch }
     }
@@ -77,6 +79,7 @@ export function trashVault(db, vault, now = Date.now()) {
 }
 
 export function untrashVault(db, vault) {
+  if (vaultRow(db, vault.id)?.deleting) throw new HttpError(409, 'vault_deleting')
   db.prepare('UPDATE vaults SET deleted_at = NULL WHERE id = ?').run(vault.id)
 }
 
@@ -161,9 +164,10 @@ function applyOp(db, vault, device, op, state, now, allowDeletes) {
   }
 
   if (!HEX64.test(String(op.sha256 ?? ''))) return refuse('bad_sha')
-  const blob = db.prepare('SELECT md5, size FROM blobs WHERE vault_id = ? AND sha256 = ?').get(vault.id, op.sha256)
+  const blob = db.prepare('SELECT md5, size, deleting FROM blobs WHERE vault_id = ? AND sha256 = ?').get(vault.id, op.sha256)
   if (!blob) return refuse('blob_missing')
-  const clash = db.prepare('SELECT path FROM files WHERE vault_id = ? AND path_ci = ? AND path <> ?').get(vault.id, foldCase(op.path), op.path)
+  if (blob.deleting) return refuse('blob_deleting')
+  const clash = db.prepare('SELECT path FROM files WHERE vault_id = ? AND path_ci = ? AND path <> ? AND deleted = 0').get(vault.id, foldCase(op.path), op.path)
   if (clash) return refuse('path_case_clash', clash.path)
 
   if (row && !row.deleted) {
@@ -193,6 +197,7 @@ class Rollback extends Error {
  * The same `op_id` always answers the same way (`replay: true`), so a client that lost the answer can simply ask again.
  */
 export function commit(db, vault, deviceId, body, cfg, now = Date.now()) {
+  if (vaultRow(db, vault.id)?.deleting) throw new HttpError(409, 'vault_deleting')
   const opId = String(body?.op_id ?? '')
   if (opId.length < 8 || opId.length > 80) throw new HttpError(400, 'bad_op_id')
   const ops = body?.ops
@@ -208,11 +213,19 @@ export function commit(db, vault, deviceId, body, cfg, now = Date.now()) {
       // a mass deletion is the most expensive kind of mistake: it needs the client to say it means it
       const live = db.prepare('SELECT COUNT(*) AS n FROM files WHERE vault_id = ? AND deleted = 0').get(vault.id).n
       const deletes = ops.filter((o) => o?.op === 'delete').length
-      const allowDeletes = deletes <= Math.max(5, Math.floor(live * 0.2)) || body.confirm_bulk === true
+      const window = db.prepare('SELECT * FROM deletion_windows WHERE vault_id = ? AND device_id = ?').get(vault.id, deviceId)
+      const recent = window && now - window.started_at < 60000
+      const initial = recent ? window.initial_live : live
+      const previous = recent ? window.deleted : 0
+      const allowDeletes = previous + deletes <= Math.max(5, Math.floor(initial * 0.2)) || body.confirm_bulk === true
 
       const results = ops.map((op) => applyOp(db, vault, deviceId, op, state, now, allowDeletes))
       if (body.atomic === true && results.some((r) => !r.ok)) throw new Rollback(results.map((r) => (r.ok ? { ok: false, error: 'not_applied' } : r)))
 
+      const removed = results.filter(r => r.ok && r.deleted && !r.noop).length
+      if (removed) db.prepare(`INSERT INTO deletion_windows (vault_id, device_id, started_at, initial_live, deleted) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(vault_id, device_id) DO UPDATE SET started_at = excluded.started_at, initial_live = excluded.initial_live, deleted = excluded.deleted`)
+        .run(vault.id, deviceId, recent ? window.started_at : now, initial, body.confirm_bulk === true ? 0 : previous + removed)
       if (state.seq !== start) db.prepare('UPDATE vaults SET seq = ? WHERE id = ?').run(state.seq, vault.id)
       const out = { results, seq: state.seq, server_time: now }
       db.prepare('INSERT INTO ops (vault_id, op_id, result, created_at) VALUES (?, ?, ?, ?)').run(vault.id, opId, JSON.stringify(out), now)
@@ -228,7 +241,7 @@ export function commit(db, vault, deviceId, body, cfg, now = Date.now()) {
 export function restoreRevision(db, vault, deviceId, { path, rev }, now = Date.now()) {
   const old = revisionRow(db, vault.id, rev)
   if (!old || old.path !== path || old.deleted) throw new HttpError(404, 'no_such_revision')
-  const have = db.prepare('SELECT 1 FROM blobs WHERE vault_id = ? AND sha256 = ?').get(vault.id, old.sha256)
+  const have = db.prepare('SELECT 1 FROM blobs WHERE vault_id = ? AND sha256 = ? AND deleting = 0').get(vault.id, old.sha256)
   if (!have) throw new HttpError(410, 'content_expired')
   return tx(db, () => {
     const row = db.prepare('SELECT * FROM files WHERE vault_id = ? AND path = ?').get(vault.id, path)
@@ -237,4 +250,21 @@ export function restoreRevision(db, vault, deviceId, { path, rev }, now = Date.n
     if (res.ok && !res.noop) db.prepare('UPDATE vaults SET seq = ? WHERE id = ?').run(state.seq, vault.id)
     return { ...res, seq: state.seq, changed: res.ok && !res.noop }
   })
+}
+
+/** A complete live snapshot, with a fixed generation and head across pages.
+ * A changing server restarts the snapshot instead of combining two generations.
+ */
+export function snapshotPage(db, vault, { after = '', epoch, head, limit = 500 } = {}, now = Date.now()) {
+  const v = vaultRow(db, vault.id)
+  if ((epoch !== undefined && epoch !== v.epoch) || (head !== undefined && head !== v.seq)) {
+    throw new HttpError(409, 'snapshot_changed')
+  }
+  if (after && (epoch === undefined || head === undefined)) throw new HttpError(400, 'bad_snapshot_cursor')
+  const max = Math.min(Math.max(Number.isInteger(limit) ? limit : 500, 1), 1000)
+  const rows = db.prepare('SELECT * FROM files WHERE vault_id = ? AND deleted = 0 AND path > ? ORDER BY path LIMIT ?').all(v.id, after, max + 1)
+  const more = rows.length > max
+  const page = rows.slice(0, max)
+  return { epoch: v.epoch, head: v.seq, root: rootHash(db, v), files: page.map(publicFile),
+    has_more: more, after: more ? page.at(-1).path : '', server_time: now }
 }

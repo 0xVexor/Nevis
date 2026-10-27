@@ -99,3 +99,9 @@ Keep the S3 keys and `SESSION_SECRET` in the panel's environment variables only.
 | `POST /vaults/:id/restore` · `GET /vaults/:id/revisions?path=` | put an older revision back; list the revisions of a path |
 
 Errors are `{ "error": "<code>" }` with a fitting status: `401 unauthorized`, `404 no_such_vault` (also for someone else's vault), `410 since_too_old`, `422 hash_mismatch`, `426 upgrade_required`, `429 rate_limited` (with `Retry-After`), `507 quota_exceeded`.
+
+## Reliability protocol update
+
+See [sync reliability](../docs/sync-reliability.md) for the migration and safety contract. Deploy the server before distributing the client. The new `full_snapshot` capability enables `/v1/vaults/:id/snapshot?limit=500`; follow `after` with the returned `epoch` and `head`. A changed head/epoch is `409 snapshot_changed`; an expired incremental cursor remains `410 since_too_old`. Snapshots contain all live files, including those whose revisions predate compaction.
+
+SQLite migrations add deletion claims, upload reservations, deletion windows and a live-only case-folded path index. Cleanup rejects new references/restores after claiming an object, vault or account. Capacity includes unfinished uploads until completion or one day of inactivity. A 60-second per-device/per-vault deletion window also covers single-file requests; `confirm_bulk` is accepted only as explicit user confirmation. Retained index snapshots have `.refs.json` manifests that protect referenced objects from ordinary orphan collection. Permanent vault/account deletion is still permanent and independent storage backups remain necessary.
