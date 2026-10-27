@@ -7,12 +7,15 @@ import { LANGS } from './codeBlock'
 import { menuRender } from './menu'
 import { looksLikeMermaid } from './mermaidText'
 import { t } from '../i18n'
+import { ancestor, COLUMN } from './layoutModel'
+import { insertDatabase } from './databaseEmbed'
 
 interface Item {
   title: string
   desc: string
   icon: string
   keywords: string
+  disabled?: boolean
   vars?: Record<string, string> // fills {placeholders} in title/desc; values are translated too
   run: (chain: any, editor: any) => any
 }
@@ -28,6 +31,7 @@ export function linkSelection(c: any, editor: any) {
 }
 
 const ITEMS: Item[] = [
+  ...[2, 3].map((count) => ({ title: 'Layout: {n} columns', desc: 'Insert an independent layout with equal widths', vars: { n: String(count) }, icon: 'i:columns', keywords: 'layout columns ستون چیدمان', run: (c: any) => c.insertLayout(count) })),
   { title: 'Text', desc: 'Write with a plain paragraph', icon: 'Aa', keywords: 'paragraph text متن پاراگراف', run: (c) => c.setParagraph() },
   { title: 'Heading 1', desc: 'Large section heading', icon: 'H1', keywords: 'heading h1 عنوان تیتر', run: (c) => c.setHeading({ level: 1 }) },
   { title: 'Heading 2', desc: 'Medium heading', icon: 'H2', keywords: 'heading h2 عنوان تیتر', run: (c) => c.setHeading({ level: 2 }) },
@@ -39,7 +43,7 @@ const ITEMS: Item[] = [
   { title: 'Callout', desc: 'Highlighted box for a tip or warning', icon: 'i:callout', keywords: 'callout note tip warning نکته هشدار کادر', run: (c) => c.insertContent({ type: 'callout', content: [{ type: 'paragraph' }] }) },
   { title: 'Toggle', desc: 'A collapsible section', icon: 'i:toggle', keywords: 'toggle collapse details accordion جمع باز', run: (c) => c.insertContent({ type: 'toggle', attrs: { open: true }, content: [{ type: 'paragraph' }] }) },
   { title: 'Diagram (Mermaid)', desc: 'Flowcharts, UML, sequences and more from text', icon: 'i:diagram', keywords: 'mermaid diagram flowchart uml sequence graph نمودار فلوچارت', run: (c) => c.insertContent({ type: 'mermaid', attrs: { code: '' } }) },
-  { title: 'Database', desc: 'A table, board, calendar or other view of items', icon: 'i:table', keywords: 'database table board calendar list gallery پایگاه داده جدول برد تقویم', run: (c, editor) => (void import('./databaseEmbed').then((m) => m.insertDatabase(editor)), c) },
+  { title: 'Database', desc: 'A table, board, calendar or other view of items', icon: 'i:table', keywords: 'database table board calendar list gallery پایگاه داده جدول برد تقویم', run: (c, editor) => (void insertDatabase(editor), c) },
   { title: 'Drawing', desc: 'Sketch, draw shapes and arrows on a whiteboard', icon: 'i:pencil', keywords: 'drawing whiteboard sketch canvas excalidraw draw نقاشی بوم طراحی ترسیم', run: (c) => c.insertContent({ type: 'drawing' }) },
   { title: 'Formula (block)', desc: 'LaTeX math on its own line', icon: '∑', keywords: 'math latex formula equation فرمول ریاضی', run: (c) => c.insertContent({ type: 'mathBlock', attrs: { latex: '' } }) },
   { title: 'Formula (inline)', desc: 'A small formula inside a sentence, or type $x$', icon: 'x²', keywords: 'math inline latex formula فرمول ریاضی', run: (c) => c.insertContent({ type: 'mathInline', attrs: { latex: '' } }) },
@@ -76,6 +80,11 @@ function filter(query: string, list: Item[] = ITEMS): Item[] {
   return list.filter((i) => normalizeFa(`${shown(i).title} ${i.title} ${i.keywords}`).includes(q)).sort((a, b) => inTitle(b) - inTitle(a))
 }
 
+function layoutAvailability(items: Item[], editor: any): Item[] {
+  if (!ancestor(editor.state.selection.$from, COLUMN)) return items
+  return items.map((item) => item.title === 'Layout: {n} columns' ? { ...item, disabled: true, desc: 'Layouts cannot be nested. Add full-width text after this layout first.' } : item)
+}
+
 // ───────────── Ctrl+/ palette (see commandPalette.ts) ─────────────
 export type CommandItem = Item
 export const shownItem = shown
@@ -104,12 +113,13 @@ export function paletteItems(query: string, editor: any): Item[] {
     // the plain Callout / Toggle entries would insert empty boxes; with a selection the wrapping versions replace them
     list = [...onSelection, ...ITEMS.filter((i) => i.title !== 'Callout' && i.title !== 'Toggle')]
   }
-  return filter(query, list)
+  return layoutAvailability(filter(query, list), editor)
 }
 
 export const SlashCommand = Extension.create({
   name: 'slashCommand',
   addProseMirrorPlugins() {
+    const editor = this.editor
     return [
       Suggestion({
         editor: this.editor,
@@ -122,8 +132,9 @@ export const SlashCommand = Extension.create({
         char: '/',
         startOfLine: false,
         allowSpaces: false,
-        items: ({ query }: any) => filter(query),
+        items: ({ query }: any) => layoutAvailability(filter(query), editor),
         command: ({ editor, range, props }: any) => {
+          if (props.disabled) return
           props.run(editor.chain().focus().deleteRange(range), editor).run()
         },
         render: menuRender<Item>({ label: t('Blocks'), view: shown }),

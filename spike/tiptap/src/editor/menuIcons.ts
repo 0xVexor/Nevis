@@ -15,6 +15,7 @@ const ICONS: Record<string, (p: { size?: number }) => React.JSX.Element> = {
   quote: Ic.Quote,
   code: Ic.Code,
   table: Ic.Table,
+  columns: Ic.Columns,
   image: Ic.Image,
   divider: Ic.Divider,
   dir: Ic.Direction,
