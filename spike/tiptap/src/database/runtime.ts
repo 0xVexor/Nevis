@@ -40,6 +40,7 @@ const host: PageHost = {
   all: pages.all,
   adopt: (upserts, removed) => repo.adoptDatabase(upserts as unknown as Page[], removed),
   flush: () => repo.flushForDatabase(),
+  reserveCommit: () => repo.reserveCommit(),
 }
 
 const adapters: ExternalAdapter[] = []

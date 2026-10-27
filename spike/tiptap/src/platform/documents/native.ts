@@ -1,3 +1,4 @@
+import { cloneDocumentValue } from '../../documents/clone.ts'
 import type { Page } from '../../documents/model.ts'
 import type { DocumentStorage, DocumentVersion, DocumentWrite } from '../../documents/ports.ts'
 
@@ -6,14 +7,14 @@ export interface NativeDocumentBridge {
   currentVaultId(): Promise<string>
   active(): boolean
   load(): Promise<Page[]>
-  save(upserts: (Page & { _base?: number | null })[], removed: string[], replaceAll: boolean): Promise<void>
+  save(upserts: (Page & { _base?: number | null })[], removed: string[], replaceAll: boolean, preconditions?: { expectedVaultId: string; expectedPages?: DocumentWrite['expectedPages']; expectedAll?: Page[] }): Promise<void>
   stamp(): Promise<string>
   listVersions(pageId: string): Promise<DocumentVersion[]>
   addVersion(version: DocumentVersion): Promise<void>
   deleteVersions(pageId: string): Promise<void>
 }
 export class NativeDocumentStorage implements DocumentStorage {
-  readonly revisionPolicy = 'timestamp-history' as const
+  readonly revisionPolicy = 'exact-page' as const
   private binding: string | null = null
   readonly vaultHandle: string
   private readonly bridge: NativeDocumentBridge
@@ -36,10 +37,13 @@ export class NativeDocumentStorage implements DocumentStorage {
     return value
   }
   load() { return this.run(() => this.bridge.load()) }
-  save(write: DocumentWrite) {
+  save(input: DocumentWrite) {
+    const write = cloneDocumentValue(input)
     return this.run(() => this.bridge.save(write.replaceAll ? write.upserts : write.upserts.map(page => ({
       ...page, _base: write.baseVersions[page.id]?.updatedAt ?? null,
-    })), write.removed, write.replaceAll))
+    })), write.removed, write.replaceAll, {
+      expectedVaultId: this.binding!, expectedPages: write.expectedPages, expectedAll: write.expectedAll,
+    }))
   }
   stamp() { return this.run(() => this.bridge.stamp()) }
   listVersions(pageId: string) { return this.run(() => this.bridge.listVersions(pageId)) }

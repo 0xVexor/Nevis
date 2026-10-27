@@ -372,6 +372,15 @@ fn dedupe(vault: &Vault, remote: &mut dyn Remote, listed: Vec<RemoteFile>, rep: 
     out
 }
 
+/// Compare the exact scanned bytes and install only under the local commit lock.
+/// Downloads and uploads must finish outside this closure.
+fn commit_local(vault: &Vault, path: &str, expected: Option<&str>, apply: impl FnOnce() -> Res<()>) -> Res<bool> {
+    let _guard = crate::vault::commit_lock(&vault.root)?;
+    if changed_since(&vault.root.join(path), expected) { return Ok(false); }
+    apply()?;
+    Ok(true)
+}
+
 /// One synchronization. `progress` is called every now and then with the bookkeeping so far, so that a crash or a
 /// lost connection in the middle costs only the work since then.
 pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, progress: &mut dyn FnMut(&SyncState)) -> Res<Report> {
@@ -449,11 +458,10 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                         return Err(format!("download of {p} is corrupt"));
                     }
                     // an edit made here while we were downloading must not be overwritten: next round it is a conflict
-                    if changed_since(&root.join(p), local.get(p).map(|l| l.md5.as_str())) {
+                    if !commit_local(vault, p, local.get(p).map(|l| l.md5.as_str()), || write_atomic(&root.join(p), &bytes))? {
                         rep.skipped += 1;
                         return Ok(());
                     }
-                    write_atomic(&root.join(p), &bytes)?;
                     let m = fs::metadata(root.join(p)).map_err(err)?;
                     cache(state, p, &Local { md5: md5_hex(&bytes), size: m.len(), mtime: mtime_of(&m) }, &md5_hex(&bytes), &r.id);
                     rep.downloaded += 1;
@@ -472,7 +480,9 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                         if id_of(&theirs) != id_of(&fs::read(root.join(p)).map_err(err)?) {
                             return Err(VAULT_MISMATCH.into());
                         }
-                        write_atomic(&root.join(p), &theirs)?;
+                        if !commit_local(vault, p, Some(&l.md5), || write_atomic(&root.join(p), &theirs))? {
+                            rep.skipped += 1; return Ok(());
+                        }
                         state.files.insert(p.clone(), Entry { base: r.md5.clone(), remote_id: r.id.clone(), ..Default::default() });
                         rep.downloaded += 1;
                     } else if p.starts_with("databases/") && p.ends_with(".json") {
@@ -482,9 +492,11 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                         match (serde_json::from_slice::<serde_json::Value>(&mine), serde_json::from_slice::<serde_json::Value>(&theirs)) {
                             (Ok(a), Ok(b)) => {
                                 let (merged, losers) = crate::database::merge::merge_records(&a, &b);
-                                crate::database::keep_losers(root, p, &losers)?;
                                 let bytes = merged.to_string().into_bytes();
-                                write_atomic(&root.join(p), &bytes)?;
+                                if !commit_local(vault, p, Some(&md5_hex(&mine)), || {
+                                    crate::database::keep_losers(root, p, &losers)?;
+                                    write_atomic(&root.join(p), &bytes)
+                                })? { rep.skipped += 1; return Ok(()); }
                                 let up = verified_upload(remote, p, Some(&r.id), &bytes)?;
                                 state.files.insert(p.clone(), Entry { base: md5_hex(&bytes), remote_id: up.id, ..Default::default() });
                                 rep.uploaded += 1;
@@ -499,7 +511,9 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                         // keep both: the remote copy lands as a conflict copy, which the vault merges (newer wins, older goes to history)
                         let stem = p.trim_start_matches("pages/").trim_end_matches(".json");
                         let bytes = remote.download(r)?;
-                        write_atomic(&root.join(format!("pages/{stem} (cloud).json")), &bytes)?;
+                        if !commit_local(vault, p, Some(&l.md5), || write_atomic(&root.join(format!("pages/{stem} (cloud).json")), &bytes))? {
+                            rep.skipped += 1; return Ok(());
+                        }
                         merged.push((p.clone(), r.clone()));
                         // from now on the remote content is the base: the merged result counts as a local change and is uploaded next round
                         state.files.insert(p.clone(), Entry { base: r.md5.clone(), remote_id: r.id.clone(), ..Default::default() });
@@ -509,7 +523,9 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                         merge_kv(p, &mine, &theirs)
                     } {
                         // flashcard schedule and review log: keep what either device did
-                        write_atomic(&root.join(p), &both)?;
+                        if !commit_local(vault, p, Some(&l.md5), || write_atomic(&root.join(p), &both))? {
+                            rep.skipped += 1; return Ok(());
+                        }
                         let up = verified_upload(remote, p, Some(&r.id), &both)?;
                         state.files.insert(p.clone(), Entry { base: md5_hex(&both), remote_id: up.id, ..Default::default() });
                         rep.uploaded += 1;
@@ -519,8 +535,10 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                         if r.modified_ms > local_ms {
                             let mine = fs::read(root.join(p)).map_err(err)?;
                             let bytes = remote.download(r)?;
-                            vault.sync_trash_put(p, &mine)?;
-                            write_atomic(&root.join(p), &bytes)?;
+                            if !commit_local(vault, p, Some(&md5_hex(&mine)), || {
+                                vault.sync_trash_put(p, &mine)?;
+                                write_atomic(&root.join(p), &bytes)
+                            })? { rep.skipped += 1; return Ok(()); }
                             state.files.insert(p.clone(), Entry { base: r.md5.clone(), remote_id: r.id.clone(), ..Default::default() });
                             rep.downloaded += 1;
                         } else {
@@ -586,11 +604,9 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                             return Ok(());
                         }
                     }
-                    if changed_since(&root.join(p), local.get(p).map(|l| l.md5.as_str())) {
-                        rep.skipped += 1;
-                        return Ok(());
-                    }
-                    vault.sync_trash_move(p)?; // recoverable for 30 days; when it fails the file stays and so does `base`
+                    if !commit_local(vault, p, local.get(p).map(|l| l.md5.as_str()), || vault.sync_trash_move(p))? {
+                        rep.skipped += 1; return Ok(());
+                    } // Recoverable for 30 days; on failure the file and base stay.
                     state.files.remove(p);
                     rep.deleted += 1;
                 }

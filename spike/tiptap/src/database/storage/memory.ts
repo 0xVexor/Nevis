@@ -4,6 +4,7 @@ import type { Commit, Id, Json, PageLike, RecordKind } from '../model/types.ts'
 import { fail } from '../model/errors.ts'
 import type { AnyRecord } from '../state.ts'
 import type { BatchWrite, DbStorage, LoadedDatabase, UndoGroup } from './types.ts'
+import { canonicalDocumentValue } from '../../documents/revision.ts'
 import { MemoryPages } from '../state.ts'
 
 export type CrashPoint = 'before_journal_commit' | 'after_journal_commit' | 'between_writes' | 'before_index'
@@ -58,7 +59,14 @@ export class MemoryStorage implements DbStorage {
       fail('RECOVERY_REQUIRED', `${what} does not match the journal`, { expected: base, actual: cur })
     }
     for (const w of b.records) check(this.files.get(this.key(w.kind, w.id))?.revision ?? 0, w.baseRevision, w.after?.revision ?? null, `${w.kind}/${w.id}`)
-    for (const w of b.pages) check(this.pages.get(w.id)?.recordMeta?.revision ?? (this.pages.get(w.id) ? 0 : 0), w.baseRevision, w.after?.recordMeta?.revision ?? null, `page/${w.id}`)
+    for (const w of b.pages) {
+      if (Object.hasOwn(w, 'before')) {
+        const actual = canonicalDocumentValue(this.pages.get(w.id) ?? null)
+        if (actual === canonicalDocumentValue(w.before) || (recovering && actual === canonicalDocumentValue(w.after))) continue
+        fail(recovering ? 'RECOVERY_REQUIRED' : 'REVISION_CONFLICT', `page/${w.id} content changed`)
+      }
+      check(this.pages.get(w.id)?.recordMeta?.revision ?? 0, w.baseRevision, w.after?.recordMeta?.revision ?? null, `page/${w.id}`)
+    }
   }
 
   private apply(b: BatchWrite) {

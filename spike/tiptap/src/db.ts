@@ -5,6 +5,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { DB_SCHEMA_VERSION, upgradeDatabaseStores } from './database/storage/idb'
 import { IndexedDbDocumentStorage } from './platform/documents/indexedDb'
 import { publishDocumentChange } from './platform/documents/changes'
+import type { Page } from './documents/model'
+import type { DocumentWrite } from './documents/ports'
 import type { DocumentVersion } from './documents/ports'
 export type { DocumentVersion as Version } from './documents/ports'
 
@@ -61,16 +63,17 @@ export async function allPages(): Promise<any[]> {
   return browserDocuments.load()
 }
 
-/** One transaction: either everything is written or nothing (crash safety). */
-export async function savePages(upserts: any[], removed: string[], clearFirst: boolean) {
-  if (frozen) return
+/** Browser batches are transactional; native page files are individually atomic. */
+export async function savePages(upserts: any[], removed: string[], clearFirst: boolean, preconditions?: { expectedVaultId: string; expectedPages?: DocumentWrite['expectedPages']; expectedAll?: Page[] }) {
+  if (frozen) throw new Error('Document storage is unavailable')
+  if (!preconditions || (!preconditions.expectedPages && !preconditions.expectedAll)) throw new Error('Missing document precondition')
   if (isTauri) {
     // ids of pages whose newer version on disk (another device's edit) was kept in the page history instead of being overwritten
-    const kept = await invoke<string[]>('pages_save', { upserts, removed, clearFirst })
+    const kept = await invoke<string[]>('pages_save', { upserts, removed, clearFirst, ...preconditions })
     if (kept.length) window.dispatchEvent(new CustomEvent('sync-conflict', { detail: kept }))
     return
   }
-  await browserDocuments.save({ upserts, removed, replaceAll: clearFirst, baseVersions: {} })
+  await browserDocuments.save({ upserts, removed, replaceAll: clearFirst, baseVersions: {}, ...preconditions })
 }
 
 // a folder handle (backupDir) cannot be serialized, so it always stays in IndexedDB

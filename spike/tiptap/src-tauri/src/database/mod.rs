@@ -204,6 +204,22 @@ fn post_revision(w: &Value, is_page: bool) -> Option<i64> {
 fn verify(root: &Path, b: &Batch, recovering: bool) -> Res<()> {
     for (list, is_page) in [(b.records, false), (b.pages, true)] {
         for w in list {
+            if is_page {
+                if let Some(before) = w.get("before") {
+                    let path = page_path(root, w["id"].as_str().unwrap_or_default())?;
+                    let actual = match fs::read(&path) {
+                        Ok(bytes) => serde_json::from_slice::<Value>(&bytes).map_err(err)?,
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Value::Null,
+                        Err(e) => return Err(err(e)),
+                    };
+                    let mut after = w.get("after").cloned().unwrap_or(Value::Null);
+                    if after.is_object() && after.get("content").map_or(true, Value::is_null) {
+                        if let Some(body) = before.get("content").filter(|b| !b.is_null()) { after["content"] = body.clone(); }
+                    }
+                    if actual == *before || (recovering && actual == after) { continue; }
+                    return Err(if recovering { "RECOVERY_REQUIRED:page content changed" } else { "REVISION_CONFLICT:page content changed" }.into());
+                }
+            }
             let cur = on_disk(root, w, is_page)?;
             let base = w.get("baseRevision").and_then(Value::as_i64).unwrap_or(0);
             let what = if is_page { format!("page/{}", w["id"].as_str().unwrap_or("?")) } else { format!("{}/{}", w["kind"].as_str().unwrap_or("?"), w["id"].as_str().unwrap_or("?")) };
@@ -310,6 +326,7 @@ fn prune_ops(root: &Path) {
 
 /// Durable, atomic from the app's point of view. Errors carry a code prefix the UI maps to its stable error codes.
 pub fn commit(root: &Path, batch: &Value) -> Res<()> {
+    let _guard = crate::vault::commit_lock(root)?;
     let b = parse(batch)?;
     if batch.to_string().len() > MAX_BATCH_BYTES {
         return Err("QUOTA:batch is larger than 64 MiB".into());
@@ -329,6 +346,7 @@ pub fn commit(root: &Path, batch: &Value) -> Res<()> {
 
 /// Replay committed journals; drop uncommitted ones (they have no visible effect). Fails closed on any mismatch.
 pub fn recover(root: &Path) -> Res<Value> {
+    let _guard = crate::vault::commit_lock(root)?;
     let dir = journal_dir(root);
     let mut replayed = 0;
     let mut files: Vec<PathBuf> = fs::read_dir(&dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().and_then(|x| x.to_str()) == Some("json")).collect();
@@ -434,9 +452,6 @@ pub fn keep_losers(root: &Path, rel_path: &str, losers: &[Value]) -> Res<()> {
 
 /// The complete losing version of a page (properties, stamps, extension), not just its title and body.
 pub fn keep_page_loser(root: &Path, id: &str, loser: &Value) -> Res<()> {
-    if loser.get("database").is_none() && loser.get("recordMeta").is_none() {
-        return Ok(()); // a plain page: the vault's own history entry (title + body) is complete
-    }
     let rev = page_revision(loser);
     let dir = root.join("history/records").join("page").join(enc(id)?);
     write_atomic(&dir.join(format!("{rev:010}-conflict-{}.json", short_hash(loser))), json!({ "revision": rev, "body": loser, "conflict": true }).to_string().as_bytes())?;

@@ -1,10 +1,11 @@
 import type { Page } from './model.ts'
 import { cloneDocumentValue } from './clone.ts'
 import type { DocumentStorage, DocumentVersion, DocumentWrite } from './ports.ts'
+import { canonicalDocumentValue } from './revision.ts'
 
 /** Reference adapter for shared-service conformance tests. */
 export class MemoryDocumentStorage implements DocumentStorage {
-  readonly revisionPolicy = 'unconditional' as const
+  readonly revisionPolicy = 'exact-page' as const
   private pages = new Map<string, Page>()
   private versions = new Map<string, DocumentVersion[]>()
   private generation = 0
@@ -17,6 +18,15 @@ export class MemoryDocumentStorage implements DocumentStorage {
   async load() { return cloneDocumentValue([...this.pages.values()]) }
   async save(write: DocumentWrite) {
     const copy = cloneDocumentValue(write)
+    if (copy.expectedAll) {
+      const ordered = (pages: Page[]) => [...pages].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+      if (canonicalDocumentValue(ordered([...this.pages.values()])) !== canonicalDocumentValue(ordered(copy.expectedAll))) throw new Error('Document revision conflict')
+    } else if (copy.expectedPages) {
+      for (const id of new Set([...copy.upserts.map(page => page.id), ...copy.removed])) {
+        if (!Object.hasOwn(copy.expectedPages, id)) throw new Error('Missing document precondition')
+        if (canonicalDocumentValue(this.pages.get(id) ?? null) !== canonicalDocumentValue(copy.expectedPages[id])) throw new Error('Document revision conflict')
+      }
+    }
     const pages = new Map(copy.replaceAll ? [] : this.pages)
     copy.upserts.forEach(page => pages.set(page.id, page))
     copy.removed.forEach(id => pages.delete(id))

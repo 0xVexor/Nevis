@@ -115,6 +115,11 @@ export class Coordinator {
   async flushed(): Promise<void> { await this.chain }
 
   private async run(env: CommandEnvelope): Promise<Commit> {
+    const release = await this.host.reserveCommit?.()
+    try { return await this.runReserved(env) } finally { release?.() }
+  }
+
+  private async runReserved(env: CommandEnvelope): Promise<Commit> {
     if (this.locked) fail('RECOVERY_REQUIRED', 'the database needs repair before it can be written')
     if (env.vaultId !== this.state.vaultId) fail('SCHEMA_MISMATCH', 'command belongs to another vault')
     await this.host.flush?.()
@@ -248,7 +253,7 @@ export class Coordinator {
       const base = this.state.pages.get(id)
       if (p === null) {
         if (!base) continue
-        pages.push({ id, baseRevision: base.recordMeta?.revision ?? 0, after: null })
+        pages.push({ id, baseRevision: base.recordMeta?.revision ?? 0, before: structuredClone(base), after: null })
         continue
       }
       if (base && same(stripPage(base), stripPage(p))) continue
@@ -263,7 +268,7 @@ export class Coordinator {
         if (extChanged) p.database.revision = (bext?.revision ?? 0) + 1
         for (const c of Object.values(p.database.cells)) if (c.stamp.opId === env.operationId) c.stamp.counter = rev
       }
-      pages.push({ id, baseRevision: baseRev, after: p })
+      pages.push({ id, baseRevision: baseRev, before: base ? structuredClone(base) : null, after: p })
       changed.push({ recordKind: 'page', id, revision: rev })
       if (base) {
         const snap: PageLike = { ...base }

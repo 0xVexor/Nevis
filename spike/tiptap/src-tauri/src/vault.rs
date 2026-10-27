@@ -48,6 +48,23 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Res<()> {
     })
 }
 
+/// Cross-process local commit lock. Never hold this guard during remote I/O.
+/// File locks are released by the OS on close or process exit.
+pub fn commit_lock(root: &Path) -> Res<fs::File> {
+    let file = fs::OpenOptions::new().read(true).write(true).create(true).truncate(false)
+        .open(root.join(".noviq/document-commit.lock")).map_err(err)?;
+    file.lock().map_err(err)?;
+    Ok(file)
+}
+
+fn strict_page(path: &Path) -> Res<Value> {
+    match fs::read(path) {
+        Ok(bytes) => serde_json::from_slice(&bytes).map_err(err),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Value::Null),
+        Err(e) => Err(err(e)),
+    }
+}
+
 fn read_json(path: &Path) -> Option<Value> {
     serde_json::from_slice(&fs::read(path).ok()?).ok()
 }
@@ -187,7 +204,8 @@ impl Vault {
 
     /// All pages. Conflict copies made by the sync tool are merged first (rule 5 of ADR-0003).
     pub fn pages_all(&self) -> Res<Vec<Value>> {
-        self.resolve_conflicts();
+        let _guard = commit_lock(&self.root)?;
+        self.resolve_conflicts_locked();
         let mut out = vec![];
         for e in fs::read_dir(self.pages_dir()).map_err(err)?.flatten() {
             let path = e.path();
@@ -207,6 +225,11 @@ impl Vault {
     }
 
     pub fn resolve_conflicts(&self) {
+        let Ok(_guard) = commit_lock(&self.root) else { return };
+        self.resolve_conflicts_locked();
+    }
+
+    fn resolve_conflicts_locked(&self) {
         let Ok(rd) = fs::read_dir(self.pages_dir()) else { return };
         for e in rd.flatten() {
             let path = e.path();
@@ -228,11 +251,10 @@ impl Vault {
                     } else {
                         (cur, vec![copy])
                     };
-                    for lose in &losers {
-                        let _ = self.keep_loser(id, lose);
-                        let _ = crate::database::keep_page_loser(&self.root, id, lose);
-                    }
-                    write_atomic(&main, win.to_string().as_bytes())
+                    losers.iter().try_for_each(|lose| {
+                        self.keep_loser(id, lose)?;
+                        crate::database::keep_page_loser(&self.root, id, lose)
+                    }).and_then(|_| write_atomic(&main, win.to_string().as_bytes()))
                 }
             };
             if result.is_ok() {
@@ -260,6 +282,61 @@ impl Vault {
     /// Returns the ids of pages whose version on disk was not the one the edit started from (`_base`, the `updatedAt`
     /// the editor loaded): that version came from another device, so it is kept in the history before ours replaces it.
     pub fn save_pages(&self, upserts: &[Value], removed: &[String], clear_first: bool) -> Res<Vec<String>> {
+        let _guard = commit_lock(&self.root)?;
+        self.save_pages_locked(upserts, removed, clear_first, false)
+    }
+
+    /// All preconditions are checked before writing any page. The caller's vault ID is
+    /// checked under the same native command lock that protects vault switching.
+    pub fn save_pages_checked(&self, upserts: &[Value], removed: &[String], clear_first: bool,
+        expected_pages: Option<&serde_json::Map<String, Value>>, expected_all: Option<&[Value]>) -> Res<Vec<String>> {
+        let _guard = commit_lock(&self.root)?;
+        self.resolve_conflicts_locked();
+        for id in removed { check_id(id)?; }
+        if let Some(expected) = expected_all {
+            let mut actual = serde_json::Map::new();
+            for e in fs::read_dir(self.pages_dir()).map_err(err)? {
+                let e = e.map_err(err)?;
+                let path = e.path();
+                if let Some(id) = path.file_stem().and_then(|s| s.to_str()).filter(|id| is_id(id)) {
+                    if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                        actual.insert(id.to_string(), strict_page(&path)?);
+                    }
+                }
+            }
+            let expected: serde_json::Map<String, Value> = expected.iter().map(|p| {
+                let id = p.get("id").and_then(Value::as_str).ok_or("page without id")?;
+                check_id(id)?;
+                Ok((id.to_string(), p.clone()))
+            }).collect::<Res<_>>()?;
+            if actual != expected { return Err("Document revision conflict".into()); }
+        } else if let Some(expected) = expected_pages {
+            if clear_first { return Err("Missing whole-vault precondition".into()); }
+            for id in upserts.iter().map(|p| p.get("id").and_then(Value::as_str).unwrap_or_default()).chain(removed.iter().map(String::as_str)) {
+                let before = expected.get(id).ok_or("Missing document precondition")?;
+                if strict_page(&self.page_path(id)?)? != *before { return Err("Document revision conflict".into()); }
+            }
+        } else { return Err("Missing document precondition".into()); }
+        // A single-document failure leaves its original atomic file intact. Retain
+        // complete pre-images as well for a disk error during a multi-page UI save.
+        for p in upserts {
+            let id = p.get("id").and_then(Value::as_str).ok_or("page without id")?;
+            let before = strict_page(&self.page_path(id)?)?;
+            if !before.is_null() {
+                use sha2::{Digest, Sha256};
+                let hash = format!("{:x}", Sha256::digest(before.to_string().as_bytes()));
+                let dir = self.root.join(".noviq/document-preimages").join(id);
+                write_atomic(&dir.join(format!("{hash}.json")), before.to_string().as_bytes())?;
+                let mut files: Vec<_> = fs::read_dir(&dir).map_err(err)?.flatten().map(|e| e.path()).collect();
+                files.sort_by_key(|p| fs::metadata(p).and_then(|m| m.modified()).ok());
+                let excess = files.len().saturating_sub(KEEP_VERSIONS);
+                for old in files.into_iter().take(excess) { let _ = fs::remove_file(old); }
+            }
+        }
+        self.save_pages_locked(upserts, removed, clear_first, true)
+    }
+
+    fn save_pages_locked(&self, upserts: &[Value], removed: &[String], clear_first: bool, checked: bool) -> Res<Vec<String>> {
         let mut kept = vec![];
         for p in upserts {
             let id = p.get("id").and_then(Value::as_str).ok_or("page without id")?;
@@ -270,7 +347,7 @@ impl Vault {
             if let Some(o) = p.as_object_mut() {
                 o.remove("_base");
             }
-            if !clear_first {
+            if !clear_first && !checked {
                 if let Some(cur) = read_json(&path) {
                     if updated_at(&cur) > updated_at(&p) {
                         // another device saved a newer version of this page: ours must not overwrite it
@@ -503,6 +580,47 @@ mod tests {
 
     fn page(id: &str, title: &str, at: i64) -> Value {
         json!({ "id": id, "title": title, "content": { "type": "doc", "content": [] }, "updatedAt": at, "deletedAt": null })
+    }
+
+    #[test]
+    fn checked_revision_serializes_independent_vault_handles() {
+        let v = Vault::create(tmp("checked-race"), "T").unwrap();
+        let before = page(A, "base", 100);
+        v.save_pages(&[before.clone()], &[], false).unwrap();
+        let root = v.root.clone();
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let threads: Vec<_> = ["one", "two"].into_iter().map(|title| {
+            let root = root.clone(); let before = before.clone(); let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                let v = Vault::open(root).unwrap();
+                let expected = serde_json::Map::from_iter([(A.to_string(), before)]);
+                barrier.wait();
+                v.save_pages_checked(&[page(A, title, 100)], &[], false, Some(&expected), None)
+            })
+        }).collect();
+        let results: Vec<_> = threads.into_iter().map(|t| t.join().unwrap()).collect();
+        assert_eq!(results.iter().filter(|r| r.is_ok()).count(), 1);
+        assert_eq!(results.iter().filter(|r| r.as_ref().err().is_some_and(|e| e.contains("revision conflict"))).count(), 1);
+        assert!(v.root.join(".noviq/document-preimages").join(A).is_dir());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn checked_revision_refuses_stale_delete_replace_and_disk_failure() {
+        let v = Vault::create(tmp("checked-failure"), "T").unwrap();
+        let before = page(A, "base", 100);
+        v.save_pages(&[before.clone()], &[], false).unwrap();
+        let expected = serde_json::Map::from_iter([(A.to_string(), before.clone())]);
+        let fresh = page(A, "external", 100);
+        write_atomic(&v.page_path(A).unwrap(), fresh.to_string().as_bytes()).unwrap();
+        assert!(v.save_pages_checked(&[], &[A.to_string()], false, Some(&expected), None).unwrap_err().contains("revision conflict"));
+        assert!(v.save_pages_checked(&[], &[], true, None, Some(&[before])).unwrap_err().contains("revision conflict"));
+        let expected = serde_json::Map::from_iter([(A.to_string(), fresh.clone())]);
+        // Block the atomic temporary file, causing I/O failure before installation.
+        fs::create_dir(v.pages_dir().join(format!(".{A}.json.tmp"))).unwrap();
+        assert!(v.save_pages_checked(&[page(A, "new", 200)], &[], false, Some(&expected), None).is_err());
+        assert_eq!(v.pages_all().unwrap(), vec![fresh]);
+        fs::remove_dir_all(v.root).unwrap();
     }
 
     #[test]
