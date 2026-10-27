@@ -1,3 +1,4 @@
+import { setPreference } from '../preferenceEvents'
 import { putFile, urlFor } from '../attachments'
 import { hasArabicScript, loadPersianFont, persianFontCss } from './persianFont'
 
@@ -75,7 +76,7 @@ export function loadLibrary(): any[] {
 
 export function saveLibrary(items: readonly unknown[]) {
   try {
-    localStorage.setItem(LIBRARY_KEY, JSON.stringify(items))
+    setPreference(LIBRARY_KEY, JSON.stringify(items))
   } catch {
     /* storage full or blocked: the library is only a convenience */
   }

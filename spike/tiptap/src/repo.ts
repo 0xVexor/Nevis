@@ -29,9 +29,11 @@ export interface Page {
 
 type Patch = Partial<Pick<Page, 'title' | 'icon' | 'cover' | 'titleDir' | 'tags' | 'status' | 'favorite' | 'content' | 'parentId'>>
 
-/** Storage boundary. IndexedDB today; SQLite (ADR-0002) later, same shape. */
+/** Page boundary: canonical vault files on desktop, IndexedDB in the browser. */
 export interface PageRepo {
   init(): Promise<void>
+  flushBeforeUpdate(): Promise<void>
+  refreshFromStore(): Promise<boolean>
   list(): Page[] // pages and folders
   pagesOnly(): Page[] // without folders
   get(id: string): Page | undefined
@@ -110,6 +112,7 @@ export class Repo implements PageRepo {
       rows = await allPages()
     } catch (e) {
       this.fail(e)
+      throw e // A read failure is not an empty workspace; never seed over unreadable data.
     }
     if (!rows.length) {
       const legacy = readLegacy()
@@ -175,6 +178,7 @@ export class Repo implements PageRepo {
       .then(() => savePages(isTauri && !full ? upserts.map((p) => ({ ...p, _base: this.diskAt.get(p.id) ?? null })) : upserts, removed, full))
       .then(async () => {
         this.persistenceError = null
+        window.dispatchEvent(new CustomEvent('storage-saved', { detail: upserts.map((p) => p.id) }))
         for (const p of upserts) this.diskAt.set(p.id, p.updatedAt)
         if (isTauri) this.stamp = await vaultStamp() // our own writes are not "external" changes
       })
@@ -216,7 +220,7 @@ export class Repo implements PageRepo {
       const rows = await allPages() // also merges conflict copies, which changes the folder again
       if (!this.idle()) return // edited meanwhile: try again next round (the stamp is still different)
       const old = new Map(this.pages.map((p) => [p.id, p]))
-      const changed = rows.filter((r) => old.get(r.id)?.updatedAt !== r.updatedAt || old.get(r.id)?.deletedAt !== r.deletedAt)
+      const changed = rows.filter((r) => JSON.stringify(old.get(r.id)) !== JSON.stringify(r))
       const removed = this.pages.length + changed.filter((c) => !old.has(c.id)).length - rows.length
       this.pages = rows
       this.noteDisk(rows)
@@ -497,7 +501,7 @@ export class Repo implements PageRepo {
     const rows = await allPages()
     if (!this.idle()) return false
     const old = new Map(this.pages.map((p) => [p.id, p]))
-    const changed = rows.filter((r) => old.get(r.id)?.updatedAt !== r.updatedAt || old.get(r.id)?.deletedAt !== r.deletedAt || (r.recordMeta?.revision ?? 0) !== ((old.get(r.id) as Page | undefined)?.recordMeta?.revision ?? 0))
+    const changed = rows.filter((r) => JSON.stringify(old.get(r.id)) !== JSON.stringify(r))
     this.pages = rows
     this.noteDisk(rows)
     this.rebuildLinks()

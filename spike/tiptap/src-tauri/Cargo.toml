@@ -23,7 +23,12 @@ sha2 = "0.10"
 md-5 = "0.10"
 base64 = "0.22"
 keyring = { version = "3", features = ["windows-native", "apple-native"] }
+flate2 = "1"
+tar = "0.4"
 trash = "5" # moves a vault folder to the Recycle Bin / Trash instead of deleting it
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust", "vendored"] }
 
 [profile.release]
 lto = true

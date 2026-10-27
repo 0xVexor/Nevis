@@ -11,6 +11,7 @@ import { explain } from './vaultErrors'
 import { ago } from './ui'
 import * as Ic from './icons'
 import { locale, t } from './i18n'
+import { GitHubAccountDialog } from './GitHubSync'
 import { version } from '../package.json'
 
 // ───── small helpers ─────
@@ -406,7 +407,7 @@ type Panel = '' | 'password' | 'key' | 'delete'
  * The user's page: who is signed in, what the sync is doing, storage, devices, security. Signed out, it is the sign-in form instead.
  * Opened from the sync button, the workspaces dialog, the settings and the command palette.
  */
-export function AccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: { onClose: () => void; onWorkspaces?: () => void; startWith?: 'signin' | 'signup' }) {
+function LegacyAccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: { onClose: () => void; onWorkspaces?: () => void; startWith?: 'signin' | 'signup' }) {
   const [acc, refreshAcc] = useAccountStatus()
   const [info, setInfo] = useState<AccountInfo | null>(null)
   const [infoError, setInfoError] = useState('')
@@ -422,7 +423,7 @@ export function AccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: {
   const [pw, setPw] = useState('')
   const [pw2, setPw2] = useState('')
 
-  const signedIn = !!acc?.signedIn
+  const signedIn = !!acc?.signedIn && acc.provider !== 'github'
   const load = useCallback(() => {
     if (!signedIn) return
     accountInfo().then(
@@ -667,4 +668,9 @@ export function AccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: {
       </div>
     </div>
   )
+}
+
+export function AccountDialog(props: { onClose: () => void; onWorkspaces?: () => void; startWith?: 'signin' | 'signup' }) {
+  const [legacy, setLegacy] = useState(false)
+  return legacy ? <LegacyAccountDialog {...props} /> : <GitHubAccountDialog onClose={props.onClose} onLegacy={() => setLegacy(true)} />
 }

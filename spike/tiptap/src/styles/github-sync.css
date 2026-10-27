@@ -1,0 +1,49 @@
+.gh-dialog { inline-size: min(780px, calc(100vw - 40px)); max-inline-size: 780px; }
+.gh-body { display: flex; flex-direction: column; gap: 16px; }
+.gh-intro { display: flex; gap: 14px; align-items: center; padding-block: 4px 8px; }
+.gh-intro h3 { margin: 0 0 5px; font-size: 18px; }
+.gh-intro p, .gh-card p { margin: 7px 0 12px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.gh-mark { display: grid; place-items: center; inline-size: 48px; block-size: 48px; flex-shrink: 0; background: var(--accent-bg); color: var(--accent); border-radius: var(--radius-lg); }
+.gh-card { padding: 18px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-raised); }
+.gh-card h4 { margin: 0 0 12px; font-size: 14px; }
+.gh-card small { display: block; color: var(--muted); line-height: 1.65; margin-block: 8px; }
+.gh-card button, .gh-legacy { min-block-size: 34px; }
+.gh-card .acct-row { flex-wrap: wrap; gap: 8px; margin-block: 12px; }
+.gh-card .segmented { margin-block: 12px; flex-wrap: wrap; }
+.gh-account { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.gh-account h4 { margin: 0; margin-inline-end: auto; }
+.gh-account > span { margin-inline-start: auto; color: var(--muted); font-size: 12px; }
+.gh-state { border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; background: var(--bg); }
+.gh-notice { padding: 12px 14px; margin: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--accent-bg); font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.gh-device { margin-block-start: 14px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+.gh-device > code { display: block; font-size: 26px; letter-spacing: .14em; font-weight: 700; text-align: center; padding: 12px; color: var(--accent); user-select: all; }
+.gh-progress { display: flex; gap: 10px; align-items: center; font-size: 13px; margin: 0; }
+.gh-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px 18px; font-size: 12px; }
+.gh-facts dt { color: var(--muted); }
+.gh-facts dd { margin: 0; overflow-wrap: anywhere; }
+.gh-policy { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; padding-block: 12px; }
+.gh-policy label { display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
+.gh-policy select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px; }
+.gh-vaults { list-style: none; padding: 0; margin: 14px 0 0; }
+.gh-vaults li { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding-block: 12px; border-block-start: 1px solid var(--border); }
+.gh-vaults code { font-size: 11px; overflow-wrap: anywhere; }
+.gh-conflict { padding-block: 12px; border-block-start: 1px solid var(--border); }
+.gh-conflict summary { cursor: pointer; font-size: 12px; }
+.gh-versions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-block-start: 12px; }
+.gh-versions > div { min-inline-size: 0; padding: 10px; background: var(--bg); border-radius: var(--radius-sm); border: 1px solid var(--border); }
+.gh-versions b { font-size: 12px; }
+.gh-versions pre { max-block-size: 240px; overflow: auto; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.gh-body .acct-err pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.gh-legacy { align-self: flex-start; font-size: 12px; }
+@media (max-width: 640px) { .gh-versions { grid-template-columns: 1fr; } .gh-card { padding: 12px; } .gh-vaults li { align-items: start; flex-direction: column; } }
+/* Keep the full modal and every control consistent with Aurora Paper, including standalone fixtures. */
+.modal.wsd.acct.gh-dialog { width: min(780px, calc(100vw - 40px)); inline-size: min(780px, calc(100vw - 40px)); max-width: 780px; max-inline-size: 780px; }
+.gh-dialog button:not(.icon-btn):not(.primary) { appearance: none; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); padding: 7px 12px; font: inherit; font-size: 12px; cursor: pointer; transition: background .15s var(--ease); }
+.gh-dialog button:not(.icon-btn):not(.primary):hover { background: var(--hover); }
+.gh-dialog button:disabled { cursor: default; opacity: .5; }
+.gh-dialog :is(button, input, select, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.gh-dialog .segmented button.on { background: var(--accent-bg); color: var(--accent); }
+.gh-version-title { margin: 12px 0 8px; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.gh-version-text { white-space: pre-wrap; overflow-wrap: anywhere; max-block-size: 180px; overflow: auto; font-size: 12px; line-height: 1.7; }
+.gh-versions details { margin-block: 12px; font-size: 11px; }
+@media (prefers-reduced-motion: reduce) { .gh-dialog button { transition: none; } }

@@ -7,8 +7,9 @@ import App from './App.tsx'
 import { initStore, repo } from './store'
 import { initBackup } from './autobackup'
 import { initSearchIndex } from './searchIndex'
-import { isTauri, vaultList } from './db'
+import { isTauri, vaultList, vaultClose } from './db'
 import { VaultPicker } from './VaultPicker'
+import { initPreferences } from './sharedPreferences'
 import { initInputMenu } from './inputMenu'
 
 initInputMenu()
@@ -18,7 +19,7 @@ function start() {
   // the workspace is loaded before the first render
   const bench = import.meta.env.DEV && !isTauri ? Number(new URLSearchParams(location.search).get('bench')) : 0
   const seeded = bench > 0 ? import('./devBench').then((m) => m.seedBench(bench)) : Promise.resolve()
-  seeded.then(initStore).then(() => {
+  seeded.then(initPreferences).then(initStore).then(() => {
     void initBackup()
     void repo.watch()
     initSearchIndex()
@@ -27,6 +28,8 @@ function start() {
         <App />
       </StrictMode>,
     )
+  }).catch((e) => {
+    root.render(<div className="overlay"><div className="modal acct"><h2>Unable to open workspace / باز کردن فضای کاری ممکن نشد</h2><p role="alert">{String(e)}</p><p>The original files were kept. / فایل‌های اصلی حفظ شده‌اند.</p><button onClick={() => location.reload()}>Retry / تلاش دوباره</button>{isTauri && <button onClick={() => void vaultClose().then(() => location.reload()).catch(console.error)}>Choose workspace / انتخاب فضای کاری</button>}</div></div>)
   })
 }
 

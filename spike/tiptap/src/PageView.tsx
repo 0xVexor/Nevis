@@ -5,7 +5,8 @@ import { createPortal } from 'react-dom'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { getSchema } from '@tiptap/core'
 import { EditorState } from '@tiptap/pm/state'
-import { addVersion } from './db'
+import { invoke } from '@tauri-apps/api/core'
+import { addVersion, isTauri } from './db'
 import { LayoutControls } from './LayoutControls'
 import { contentProblem } from './editor/contentSafety'
 import { LAYOUT_CANCEL } from './editor/layout'
@@ -102,7 +103,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
       const content = ed.getJSON()
       if (JSON.stringify(repo.get(page.id)?.content) !== JSON.stringify(content)) repo.update(page.id, { content })
       dirty.current = false
-      onSave('saved')
+      void repo.flushBeforeUpdate().then(() => { if (!dirty.current) onSave('saved') }, () => onSave('saving'))
     }
   }, [page.id, onSave])
 
@@ -225,14 +226,26 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
 
   // another device changed this page (arrived through the synced vault folder): show its content without saving it back
   useEffect(() => {
-    const onExternal = (e: Event) => {
+    const onExternal = async (e: Event) => {
       if (!editor || editor.isDestroyed || !(e as CustomEvent<string[]>).detail.includes(page.id)) return
       const fresh = repo.get(page.id)?.content
       if (!fresh || typeof fresh === 'string' || JSON.stringify(fresh) === JSON.stringify(editor.getJSON())) return
       editor.view.dom.dispatchEvent(new Event(LAYOUT_CANCEL))
       window.clearTimeout(timer.current)
       if (dirty.current && !protectedContent.current) {
-        void addVersion({ pageId: page.id, ts: Date.now(), title: page.title, content: editor.getJSON() })
+        const local = { ...page, content: editor.getJSON() }
+        try {
+          if (isTauri) await invoke('archive_editor_conflict', { page: local, base: { ...page, content: originalContent } })
+          else await addVersion({ pageId: page.id, ts: Date.now(), title: page.title, content: local.content })
+        } catch (error) {
+          setOriginalContent(local.content)
+          setContentIssue(t('The unsaved version could not be archived. Copy or export it before reloading.'))
+          protectedContent.current = true
+          editor.setEditable(false)
+          window.dispatchEvent(new CustomEvent('storage-error', { detail: String(error) }))
+          return
+        }
+        if (editor.isDestroyed) return
         window.dispatchEvent(new Event('sync-conflict'))
       }
       dirty.current = false

@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub type Res<T> = Result<T, String>;
 
 pub const KEEP_VERSIONS: usize = 40;
-pub const TRASH_KEEP_MS: i64 = 30 * 24 * 3600 * 1000;
+pub const TRASH_KEEP_MS: i64 = 7 * 24 * 3600 * 1000;
 
 pub fn err<E: ToString>(e: E) -> String {
     e.to_string()
@@ -37,7 +37,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Res<()> {
     let dir = path.parent().ok_or("bad path")?;
     fs::create_dir_all(dir).map_err(err)?;
     let name = path.file_name().and_then(|n| n.to_str()).ok_or("bad path")?;
-    let tmp = dir.join(format!(".{name}.tmp"));
+    let tmp = dir.join(format!(".{name}.{}.tmp", uuid::Uuid::new_v4()));
     let mut f = fs::File::create(&tmp).map_err(err)?;
     f.write_all(bytes).map_err(err)?;
     f.sync_all().map_err(err)?;
@@ -45,7 +45,10 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Res<()> {
     fs::rename(&tmp, path).map_err(|e| {
         let _ = fs::remove_file(&tmp);
         err(e)
-    })
+    })?;
+    #[cfg(unix)]
+    fs::File::open(dir).and_then(|d|d.sync_all()).map_err(err)?;
+    Ok(())
 }
 
 fn read_json(path: &Path) -> Option<Value> {
@@ -79,6 +82,9 @@ impl Vault {
     pub fn open(root: PathBuf) -> Res<Vault> {
         if !root.is_dir() || !root.join(".noviq/vault.json").is_file() {
             return Err(VAULT_MISSING.into());
+        }
+        for p in [&root, &root.join(".noviq"), &root.join(".noviq/vault.json"), &root.join("pages"), &root.join("files"), &root.join("databases"), &root.join("kv"), &root.join("history"), &root.join("conflicts")] {
+            if fs::symlink_metadata(p).is_ok_and(|m|m.file_type().is_symlink()){return Err("STORAGE:symlink".into());}
         }
         let v = Vault { root };
         if v.id().is_empty() {
@@ -114,10 +120,12 @@ impl Vault {
         for d in ["pages", "files", "history", "kv", ".noviq", ".trash/pages", ".trash/files"] {
             fs::create_dir_all(self.root.join(d)).map_err(err)?;
         }
+        let workspace=self.root.join("kv/workspace.json");
+        if !workspace.exists() { write_atomic(&workspace, &serde_json::to_vec(&json!({"name":self.meta_value().get("name").and_then(Value::as_str).unwrap_or("Nevis")})).map_err(err)?)?; }
         Ok(())
     }
 
-    /// Where files go that the sync would otherwise drop (deleted or overwritten by another device). Not synced, emptied after 30 days.
+    /// Where files go that the sync would otherwise drop (deleted or overwritten by another device). Not synced, retained for the local trash window.
     pub fn sync_trash_dir(&self) -> PathBuf {
         self.root.join(".noviq/sync-trash")
     }
@@ -171,6 +179,7 @@ impl Vault {
 
     /// New display name, stored in the marker (it travels through sync like the id).
     pub fn rename(&self, name: &str) -> Res<()> {
+        write_atomic(&self.root.join("kv/workspace.json"), &serde_json::to_vec(&json!({"name":name})).map_err(err)?)?;
         let mut meta = self.meta_value();
         meta["name"] = Value::String(name.to_string());
         write_atomic(&self.root.join(".noviq/vault.json"), meta.to_string().as_bytes())
@@ -187,12 +196,14 @@ impl Vault {
 
     /// All pages. Conflict copies made by the sync tool are merged first (rule 5 of ADR-0003).
     pub fn pages_all(&self) -> Res<Vec<Value>> {
-        self.resolve_conflicts();
+        self.resolve_conflicts()?;
+        let dead=crate::sync::snapshot::tombstones(self)?;
         let mut out = vec![];
-        for e in fs::read_dir(self.pages_dir()).map_err(err)?.flatten() {
+        for e in fs::read_dir(self.pages_dir()).map_err(err)? {
+            let e=e.map_err(err)?;
             let path = e.path();
             let Some(stem) = path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_suffix(".json")) else { continue };
-            if !is_id(stem) {
+            if !is_id(stem) || dead.contains(&format!("pages/{stem}.json")) {
                 continue;
             }
             match read_json(&path) {
@@ -200,14 +211,14 @@ impl Vault {
                     v["id"] = Value::String(stem.to_string()); // the file name is the identity
                     out.push(v);
                 }
-                _ => eprintln!("unreadable page file: {}", path.display()),
+                _ => return Err(format!("STORAGE:unreadable_page:{}",path.display())),
             }
         }
         Ok(out)
     }
 
-    pub fn resolve_conflicts(&self) {
-        let Ok(rd) = fs::read_dir(self.pages_dir()) else { return };
+    pub fn resolve_conflicts(&self) -> Res<()> {
+        let rd = fs::read_dir(self.pages_dir()).map_err(err)?;
         for e in rd.flatten() {
             let path = e.path();
             let Some(stem) = path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_suffix(".json")) else { continue };
@@ -217,6 +228,8 @@ impl Vault {
             let Some(copy) = read_json(&path) else { continue };
             let main = self.pages_dir().join(format!("{}.json", &stem[..36]));
             let id = &stem[..36];
+            if crate::sync::snapshot::tombstones(self)?.contains(&format!("pages/{id}.json")){continue;}
+            if main.exists() && read_json(&main).is_none() { return Err("STORAGE:unreadable_page".into()); }
             let result = match read_json(&main) {
                 None => write_atomic(&main, copy.to_string().as_bytes()),
                 Some(cur) => {
@@ -229,23 +242,26 @@ impl Vault {
                         (cur, vec![copy])
                     };
                     for lose in &losers {
-                        let _ = self.keep_loser(id, lose);
-                        let _ = crate::database::keep_page_loser(&self.root, id, lose);
+                        self.keep_loser(id, lose)?;
+                        crate::database::keep_page_loser(&self.root, id, lose)?;
                     }
                     write_atomic(&main, win.to_string().as_bytes())
                 }
             };
-            if result.is_ok() {
-                let _ = fs::remove_file(&path);
-            }
+            result?;
+            fs::remove_file(&path).map_err(err)?;
         }
+        Ok(())
     }
 
     /// A page version that lost against a newer one is not dropped: it becomes a history entry.
     fn keep_loser(&self, id: &str, page: &Value) -> Res<()> {
-        if page.get("kind").and_then(Value::as_str) == Some("folder") {
-            return Ok(());
-        }
+        use base64::Engine;
+        let cid=uuid::Uuid::new_v4().to_string();
+        let bytes=serde_json::to_vec(page).map_err(err)?;
+        let remote=fs::read(self.page_path(id)?).ok().map(|b|base64::engine::general_purpose::STANDARD.encode(b));
+        let archive=json!({"id":cid,"path":format!("pages/{id}.json"),"createdAt":now_ms(),"base":null,"local":base64::engine::general_purpose::STANDARD.encode(&bytes),"remote":remote});
+        write_atomic(&self.root.join("conflicts").join(format!("{cid}.json")),&serde_json::to_vec(&archive).map_err(err)?)?;
         let mut ts = updated_at(page);
         let dir = self.root.join("history").join(check_id(id)?);
         while dir.join(format!("{ts}.json")).exists() {
@@ -264,6 +280,8 @@ impl Vault {
         for p in upserts {
             let id = p.get("id").and_then(Value::as_str).ok_or("page without id")?;
             let path = self.page_path(id)?;
+            if crate::sync::snapshot::tombstones(self)?.contains(&format!("pages/{id}.json")) { return Err("SYNC:permanently_deleted".into()); }
+            if path.exists() && read_json(&path).is_none() { return Err("STORAGE:unreadable_page".into()); }
             // `_base` is bookkeeping of the editor, not part of the page file
             let base = p.get("_base").and_then(Value::as_i64);
             let mut p = p.clone();
@@ -299,12 +317,12 @@ impl Vault {
         }
         for id in gone {
             let path = self.page_path(&id)?;
-            if path.exists() {
-                let dest = self.root.join(".trash/pages").join(format!("{id}.json"));
-                let _ = fs::remove_file(&dest);
-                fs::rename(&path, &dest).map_err(err)?;
-                write_atomic(&self.root.join(".trash/pages").join(format!("{id}.del")), now_ms().to_string().as_bytes())?;
+            crate::sync::snapshot::tombstone(self,&format!("pages/{id}.json"))?;
+            if path.exists() { fs::remove_file(&path).map_err(err)?; }
+            for p in [self.root.join(".trash/pages").join(format!("{id}.json")), self.root.join(".trash/pages").join(format!("{id}.del"))] {
+                if p.exists(){fs::remove_file(p).map_err(err)?;}
             }
+            self.versions_delete(&id)?;
         }
         Ok(kept)
     }
@@ -392,10 +410,14 @@ impl Vault {
 
     pub fn file_put(&self, id: &str, bytes: &[u8], mime: &str, name: &str, added_at: i64) -> Res<()> {
         let path = self.file_path(id)?;
-        let same = fs::metadata(&path).is_ok_and(|m| m.len() == bytes.len() as u64);
+        if crate::sync::snapshot::hash(bytes) != id { return Err("FILE:hash_mismatch".into()); }
+        crate::sync::snapshot::restore_asset(self,id)?;
+        let same = fs::read(&path).is_ok_and(|b|crate::sync::snapshot::hash(&b)==id);
         if !same {
             write_atomic(&path, bytes)?;
         }
+        // Keep the first name/timestamp for content-addressed duplicate imports.
+        if same && path.with_extension("json").is_file() { return Ok(()); }
         // the sidecar is written after the bytes, so a synced sidecar always has its file
         let meta = json!({ "id": id, "type": mime, "size": bytes.len(), "name": name, "addedAt": added_at });
         write_atomic(&path.with_extension("json"), meta.to_string().as_bytes())
@@ -424,6 +446,9 @@ impl Vault {
     pub fn file_delete(&self, id: &str) -> Res<()> {
         let path = self.file_path(id)?;
         let trash = self.root.join(".trash/files");
+        let rel=format!("files/{}/{id}",&id[..2]);
+        crate::sync::snapshot::tombstone(self,&rel)?;
+        crate::sync::snapshot::tombstone(self,&format!("{rel}.json"))?;
         if path.exists() {
             let _ = fs::remove_file(trash.join(id));
             fs::rename(&path, trash.join(id)).map_err(err)?;
@@ -435,7 +460,7 @@ impl Vault {
 
     /// Permanently drops trash entries older than TRASH_KEEP_MS.
     pub fn purge_trash(&self) {
-        for sub in [".trash/pages", ".trash/files"] {
+        for sub in [".trash/pages"] { // Retain trashed assets until the complete history/conflict reference index can prove them unused.
             let dir = self.root.join(sub);
             for e in fs::read_dir(&dir).into_iter().flatten().flatten() {
                 let path = e.path();
@@ -536,9 +561,11 @@ mod tests {
         v.save_pages(&[page(A, "x", 1)], &[], false).unwrap();
         v.save_pages(&[], &[A.to_string()], false).unwrap();
         assert!(v.pages_all().unwrap().is_empty());
-        assert!(v.root.join(".trash/pages").join(format!("{A}.json")).exists());
+        assert!(!v.root.join(".trash/pages").join(format!("{A}.json")).exists());
+        assert!(crate::sync::snapshot::tombstones(&v).unwrap().contains(&format!("pages/{A}.json")));
+        assert!(v.save_pages(&[page(A,"stale resurrection",2)],&[],false).is_err());
 
-        let id = "ab".repeat(32);
+        let id = crate::sync::snapshot::hash(b"hello");
         v.file_put(&id, b"hello", "text/plain", "a.txt", 5).unwrap();
         assert_eq!(v.file_get(&id).unwrap(), b"hello");
         assert_eq!(v.files_list().len(), 1);
