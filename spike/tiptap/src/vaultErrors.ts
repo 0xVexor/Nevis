@@ -2,6 +2,12 @@ import { t } from './i18n'
 
 /** What the server says (`HUB:<code>`), in words for the user. The keys are the English source strings of `t()`. */
 const SERVER_SAYS: Record<string, string> = {
+  permanent_delete_unavailable: 'This server could not process permanent deletion. The workspace remains in the server trash and can still be restored. The server may need an update.',
+  server_upgrade_required: 'This server does not support database sync yet. Update the server before syncing this workspace. No files were changed by this sync.',
+  unsafe_path: 'Sync stopped because a file path is not supported. Check the error details. No files were changed by this sync.',
+  bad_path: 'The server rejected a file path. Your local file is kept. Check the error details.',
+  path_case_clash: 'Two file paths differ only in letter case. Rename one before syncing. Check the error details.',
+  not_found: 'The server did not recognize this operation. It may need an update. Check the error details.',
   bad_credentials: 'The user name or the password is not right.',
   bad_recovery_key: 'The recovery key is not right.',
   username_taken: 'This user name is taken. Choose another one.',

@@ -47,3 +47,9 @@ cd src-tauri && cargo test updates::tests
 The controller tests cover channel changes during requests, explicit approval, session dismissal, concurrent requests, failed downloads and save-before-install failures. Rust tests cover semantic version ordering, Latest/preview selection, drafts and missing manifests.
 
 Reference: [Tauri updater documentation](https://v2.tauri.app/plugin/updater/).
+
+## macOS replacement installer
+
+Releases include `Nevis-macOS.pkg` alongside the DMG and signed updater archive. Use the PKG for the first manual upgrade: it installs at `/Applications/Nevis.app` and removes `/Applications/Noviq.app` only after confirming both application identifiers match the existing product. The installer refuses symbolic links and unrelated applications at these paths, and asks for running copies to be closed. The component is not relocatable, so a copy mounted from a DMG cannot redirect the installation. Account files, Keychain entries and workspace folders are not packaged or removed. Later signed updates use the existing in-app updater.
+
+The package build and scripts are checked using temporary directories by `.github/scripts/test-macos-installer.py`. A real system installation and signed update between releases still require release smoke testing. The PKG is currently unsigned, matching the existing distribution's lack of an Installer signing identity.
