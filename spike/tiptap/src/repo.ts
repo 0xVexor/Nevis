@@ -1,5 +1,6 @@
 import { normalizeFa } from './normalize'
 import { addVersion, allPages, deleteVersions, isTauri, listVersions, savePages, vaultStamp } from './db'
+import { identifyBlocks, identityVersion, BLOCK_IDENTITY_VERSION } from './documents/blockIdentity'
 
 const WATCH_EVERY = 3000 // how often the vault folder is checked for changes made by the sync tool
 
@@ -36,7 +37,7 @@ export interface PageRepo {
   pagesOnly(): Page[] // without folders
   get(id: string): Page | undefined
   create(parentId: string | null, kind?: PageKind): Page
-  update(id: string, patch: Patch, opts?: { history?: boolean }): void // history: false = this edit is machine-made (import, link fix-up) and leaves no history entry
+  update(id: string, patch: Patch, opts?: { history?: boolean; copyContent?: boolean }): void // copyContent allocates new block identities for a document copy
   remove(id: string): void // soft delete, includes descendants
   search(query: string): Page[]
   backlinks(id: string): Page[] // pages that contain a pageLink to `id`
@@ -114,6 +115,7 @@ export class Repo implements PageRepo {
     if (!rows.length) {
       const legacy = readLegacy()
       this.pages = legacy ?? this.seed()
+      this.migrateIdentities()
       this.rebuildLinks()
       this.full = true
       await this.writeNow()
@@ -128,13 +130,29 @@ export class Repo implements PageRepo {
     } else {
       this.pages = rows
       this.noteDisk(rows)
+      this.migrateIdentities()
       this.rebuildLinks()
+      await this.flushed()
     }
     navigator.storage?.persist?.().catch(() => {})
   }
 
   private noteDisk(rows: Page[]) {
     this.diskAt = new Map(rows.map((r) => [r.id, r.updatedAt]))
+  }
+
+  /** Re-run on imported/synced rows too. Identical legacy JSON converges to the
+   * same document-local IDs on every device; persisted IDs are never positional. */
+  private migrateIdentities() {
+    for (const page of this.pages) {
+      if (identityVersion(page.content) > BLOCK_IDENTITY_VERSION) continue
+      const migration = identifyBlocks(page.content)
+      if (!migration.changed) continue
+      page.content = migration.content
+      page.updatedAt = Math.max(Date.now(), page.updatedAt + 1)
+      if (page.recordMeta) page.recordMeta = { ...page.recordMeta, revision: (page.recordMeta.revision ?? 0) + 1 }
+      this.touch(page.id)
+    }
   }
 
   private fail(e: unknown) {
@@ -216,10 +234,11 @@ export class Repo implements PageRepo {
       const rows = await allPages() // also merges conflict copies, which changes the folder again
       if (!this.idle()) return // edited meanwhile: try again next round (the stamp is still different)
       const old = new Map(this.pages.map((p) => [p.id, p]))
-      const changed = rows.filter((r) => old.get(r.id)?.updatedAt !== r.updatedAt || old.get(r.id)?.deletedAt !== r.deletedAt)
-      const removed = this.pages.length + changed.filter((c) => !old.has(c.id)).length - rows.length
       this.pages = rows
       this.noteDisk(rows)
+      this.migrateIdentities()
+      const changed = rows.filter((r) => old.get(r.id)?.updatedAt !== r.updatedAt || old.get(r.id)?.deletedAt !== r.deletedAt)
+      const removed = old.size + changed.filter((c) => !old.has(c.id)).length - rows.length
       this.rebuildLinks()
       this.stamp = await vaultStamp()
       if (changed.length || removed) window.dispatchEvent(new CustomEvent('external-change', { detail: changed.map((c) => c.id) }))
@@ -296,7 +315,7 @@ export class Repo implements PageRepo {
       title: '',
       favorite: false,
       sort: sibs.length ? Math.max(...sibs.map((s) => s.sort)) + 1 : 0,
-      content: kind === 'board' ? EMPTY_BOARD : kind === 'todo' ? EMPTY_TODO : EMPTY_DOC,
+      content: identifyBlocks(kind === 'board' ? EMPTY_BOARD : kind === 'todo' ? EMPTY_TODO : EMPTY_DOC).content,
       updatedAt: Date.now(),
       deletedAt: null,
     }
@@ -305,9 +324,11 @@ export class Repo implements PageRepo {
     return page
   }
 
-  update(id: string, patch: Patch, opts?: { history?: boolean }) {
+  update(id: string, patch: Patch, opts?: { history?: boolean; copyContent?: boolean }) {
     const p = this.pages.find((x) => x.id === id)
     if (!p) return
+    if (patch.content !== undefined && identityVersion(p.content) > BLOCK_IDENTITY_VERSION) throw new Error('Unsupported block identity version')
+    if (patch.content !== undefined) patch = { ...patch, content: identifyBlocks(patch.content, opts?.copyContent ? () => crypto.randomUUID() : undefined).content }
     if (patch.content !== undefined && opts?.history !== false) this.snapshot(p)
     Object.assign(p, patch, { updatedAt: Date.now() })
     if (p.database) p.recordMeta = { ...(p.recordMeta ?? { format: 1, revision: 0, createdAt: p.updatedAt, createdBy: '', updatedBy: '', lastOperationId: '', inferred: true }), revision: (p.recordMeta?.revision ?? 0) + 1 } // row edits through the editor are revisions too
@@ -417,6 +438,7 @@ export class Repo implements PageRepo {
 
   restore(pages: Page[]) {
     this.pages = structuredClone(pages)
+    this.migrateIdentities()
     this.rebuildLinks()
     this.full = true
     this.schedule()
@@ -497,9 +519,10 @@ export class Repo implements PageRepo {
     const rows = await allPages()
     if (!this.idle()) return false
     const old = new Map(this.pages.map((p) => [p.id, p]))
-    const changed = rows.filter((r) => old.get(r.id)?.updatedAt !== r.updatedAt || old.get(r.id)?.deletedAt !== r.deletedAt || (r.recordMeta?.revision ?? 0) !== ((old.get(r.id) as Page | undefined)?.recordMeta?.revision ?? 0))
     this.pages = rows
     this.noteDisk(rows)
+    this.migrateIdentities()
+    const changed = rows.filter((r) => old.get(r.id)?.updatedAt !== r.updatedAt || old.get(r.id)?.deletedAt !== r.deletedAt || (r.recordMeta?.revision ?? 0) !== ((old.get(r.id) as Page | undefined)?.recordMeta?.revision ?? 0))
     this.rebuildLinks()
     window.dispatchEvent(new CustomEvent('external-change', { detail: changed.map((c) => c.id) }))
     return true
