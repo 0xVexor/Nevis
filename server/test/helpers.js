@@ -42,7 +42,7 @@ export async function setup(over = {}) {
 
 /** Calls the API in-process. Returns `{ status, body, headers, raw }`. */
 export async function call(s, method, url, { token, body, headers = {}, ip } = {}) {
-  const h = { ...headers }
+  const h = { 'x-noviq-api': '2', ...headers }
   if (token) h.authorization = `Bearer ${token}`
   let payload
   if (Buffer.isBuffer(body)) {

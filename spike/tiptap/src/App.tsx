@@ -1,5 +1,6 @@
 import { Brand } from './Brand'
 import { UpdateCenter } from './UpdateUI'
+import { useUpdates } from './updates'
 import { shortcutLabel } from './shortcuts'
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react'
 import { repo, gcFiles, TRASH_DAYS } from './store'
@@ -208,6 +209,8 @@ export default function App() {
   })
   const [shut, setShut] = useState<{ favs: boolean; pages: boolean; tags: boolean; saved: boolean }>({ favs: false, pages: false, tags: false, saved: false })
   const [save, setSave] = useState<SaveState>('saved')
+  const updateState = useUpdates()
+  const updateLocked = updateState.phase === 'saving' || updateState.phase === 'installing'
   const [sideOpen, setSideOpen] = useState<boolean>(() => store('not.side', true))
   const [sideW, setSideW] = useState<number | null>(() => store<number | null>('not.sideW', null)) // null: the width of the chosen sidebar style
   const [sideDrag, setSideDrag] = useState(false)
@@ -295,6 +298,18 @@ export default function App() {
   useEffect(() => {
     const open = (e: Event) => setCurrentId((e as CustomEvent<string>).detail)
     const changed = () => refresh()
+    let active = true, saveGeneration = 0
+    const pending = () => { ++saveGeneration; setSave('saving') }
+    const writing = () => {
+      const observed = ++saveGeneration
+      setSave('saving')
+      void repo.flushed().then(
+        () => { if (active && observed === saveGeneration) setSave('saved') },
+        () => { if (active && observed === saveGeneration) setSave('error') },
+      )
+    }
+    window.addEventListener('storage-pending', pending)
+    window.addEventListener('data-changed', writing)
     window.addEventListener(OPEN_PAGE, open)
     window.addEventListener(PAGES_CHANGED, changed)
     window.addEventListener('external-change', changed)
@@ -302,6 +317,7 @@ export default function App() {
     const kept = () => setToast({ msg: t('This page changed on another device. Both versions are kept; the page will refresh after saving.') })
     // desktop: the vault folder vanished while the app was open (moved, deleted, drive unplugged): nothing is written until it is back
     const storageError = (e: Event) => {
+      setSave('error')
       if (String((e as CustomEvent).detail).includes('VAULT_MISSING')) setToast({ msg: t('The vault folder was not found. Open Workspaces to locate it or download it again.') })
     }
     const layoutNotice = (e: Event) => setToast({ msg: String((e as CustomEvent).detail) })
@@ -309,6 +325,9 @@ export default function App() {
     window.addEventListener('sync-conflict', kept)
     window.addEventListener('storage-error', storageError)
     return () => {
+      active = false
+      window.removeEventListener('storage-pending', pending)
+      window.removeEventListener('data-changed', writing)
       window.removeEventListener(OPEN_PAGE, open)
       window.removeEventListener(PAGES_CHANGED, changed)
       window.removeEventListener('external-change', changed)
@@ -728,7 +747,7 @@ export default function App() {
             ))}
           </nav>
           <span className="spacer" />
-          <span className={'status' + (save === 'saving' ? ' busy' : '')}><i className="dot" />{save === 'saving' ? t('Saving…') : t('Saved')}</span>
+          <span className={'status' + (save === 'saving' ? ' busy' : '')}><i className="dot" />{save === 'saving' ? t('Saving…') : save === 'error' ? t('Save failed. Your changes are still pending.') : t('Saved')}</span>
           <div className="tb-group">
             {isTauri && <SyncButton onSetup={() => setFolderOpen(true)} onSignIn={() => setAccountOpen(true)} />}
             {current && view === 'page' && (
@@ -763,14 +782,14 @@ export default function App() {
           ) : view === 'settings' ? (
             <SettingsView data={{ importMarkdown: doImport, importVault: () => void doVault(), exportAll: doExportAll, backup: doBackup, restore: doRestore, autoBackup: () => setBackupOpen(true), workspaces: () => setFolderOpen(true), account: isTauri ? () => setAccountOpen(true) : undefined, syncNow: isTauri ? () => void syncNow() : undefined }} />
           ) : current?.dbHost ? (
-            <Suspense fallback={<div className="page-skeleton" aria-busy="true" />}><DatabasePage key={current.id} page={current} onOpenPage={setCurrentId} onMeta={refresh} readOnly={reader} /></Suspense>
+            <Suspense fallback={<div className="page-skeleton" aria-busy="true" />}><DatabasePage key={current.id} page={current} onOpenPage={setCurrentId} onMeta={refresh} readOnly={reader || updateLocked} /></Suspense>
           ) : current?.kind === 'board' ? (
-            <BoardView key={current.id} page={current} onSave={setSave} onMeta={refresh} readOnly={reader} />
+            <BoardView key={current.id} page={current} onSave={setSave} onMeta={refresh} readOnly={reader || updateLocked} />
           ) : current ? (
             <>
               {current.cover && <CoverBanner cover={current.cover} onChange={setCoverMenu} onRemove={() => setCover(undefined)} />}
               <div className={'page-cols' + (current.cover ? ' has-cover' : '')}>
-                <PageView key={current.id} page={current} onSave={setSave} onMeta={refresh} onCover={setCoverMenu} readOnly={reader} />
+                <PageView key={current.id} page={current} onSave={setSave} onMeta={refresh} onCover={setCoverMenu} readOnly={reader || updateLocked} />
               </div>
             </>
           ) : (

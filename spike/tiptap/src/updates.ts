@@ -4,7 +4,11 @@ import { getSettings } from './settings'
 import { createUpdateController, type AvailableUpdate, type UpdateProgress } from './updateController'
 import { saveBeforeUpdate } from './updateSave'
 import { repo } from './store'
+import { freezeStorage, thawStorage } from './db'
 import { peekDatabase } from './database/runtime'
+import { prepareStorageTransition } from './storageTransition'
+
+let resumeStorage: (() => void) | undefined
 
 export const updates = createUpdateController({
   includePrerelease: () => getSettings().prereleaseUpdates === true,
@@ -15,10 +19,14 @@ export const updates = createUpdateController({
     return invoke('updates_download', { version, onProgress })
   },
   save: async () => {
-    await saveBeforeUpdate()
-    await peekDatabase()?.coord.flushed()
-    await repo.flushBeforeUpdate()
+    resumeStorage = await prepareStorageTransition({
+      saveEditors: saveBeforeUpdate, repository: repo, coordinator: peekDatabase()?.coord,
+      freeze: freezeStorage, thaw: thawStorage,
+    })
   },
-  install: (version) => invoke('updates_install', { version }),
+  install: async (version) => {
+    try { await invoke('updates_install', { version }) }
+    catch (error) { resumeStorage?.(); resumeStorage = undefined; throw error }
+  },
 })
 export const useUpdates = () => useSyncExternalStore(updates.subscribe, updates.getSnapshot)

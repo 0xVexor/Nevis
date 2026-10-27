@@ -43,6 +43,8 @@ struct Store {
     index: Mutex<Option<(PathBuf, rusqlite::Connection)>>, // search index of the open vault
 }
 
+struct DesktopLease { _file: std::fs::File }
+
 type St<'a> = State<'a, Store>;
 
 fn lock_vault<'a>(s: &'a St) -> Res<MutexGuard<'a, Option<Vault>>> {
@@ -51,6 +53,7 @@ fn lock_vault<'a>(s: &'a St) -> Res<MutexGuard<'a, Option<Vault>>> {
 
 /// Runs `f` on the open vault; errors when the picker is showing.
 fn with<T>(s: &St, f: impl FnOnce(&Vault) -> Res<T>) -> Res<T> {
+    if vault::writes_paused() { return Err("UPDATE_BUSY".into()); }
     match &*lock_vault(s)? {
         Some(v) => {
             // a vault whose folder vanished while it was open is not written to: that would re-create half of it
@@ -59,7 +62,9 @@ fn with<T>(s: &St, f: impl FnOnce(&Vault) -> Res<T>) -> Res<T> {
             }
             let mutex = vault::local_lock(&v.root);
             let _guard = mutex.lock();
+            if vault::writes_paused() { return Err("UPDATE_BUSY".into()); }
             vault::safe_local(&v.root, ".noviq/vault.json")?;
+            if vault::probe(&v.root, &v.id()) != "ok" { return Err(VAULT_MISMATCH.into()); }
             f(v)
         }
         None => Err("no vault open".into()),
@@ -130,6 +135,7 @@ fn clean_name(name: &str) -> Res<String> {
 /// New vault `<parent>/<name>`. The user picks the parent folder; there is no hidden default location.
 #[tauri::command]
 fn vault_create(s: St, parent: String, name: String) -> Res<String> {
+    if vault::writes_paused() { return Err("UPDATE_BUSY".into()); }
     let name = clean_name(&name)?;
     let root = PathBuf::from(&parent).join(&name);
     if !PathBuf::from(&parent).is_absolute() {
@@ -140,7 +146,7 @@ fn vault_create(s: St, parent: String, name: String) -> Res<String> {
     }
     let first = s.reg.lock().map_err(err)?.vaults.is_empty();
     let v = Vault::create(root.clone(), &name)?;
-    let e = Entry { id: v.id(), name, path: root.to_string_lossy().into(), sync: auto_sync(&s) };
+    let e = Entry { id: v.id(), name, path: root.to_string_lossy().into(), sync: auto_sync(&s), owner: account::current_identity(&s.app_data) };
     activate(&s, &e, first)?;
     Ok(e.id)
 }
@@ -148,12 +154,13 @@ fn vault_create(s: St, parent: String, name: String) -> Res<String> {
 /// Opens a folder as a vault (an existing Nevis vault, e.g. one copied from another computer).
 #[tauri::command]
 fn vault_add(s: St, path: String) -> Res<String> {
+    if vault::writes_paused() { return Err("UPDATE_BUSY".into()); }
     let root = PathBuf::from(&path);
     if !root.is_dir() || !root.is_absolute() {
         return Err("not a folder".into());
     }
     let v = Vault::adopt(root.clone())?;
-    let e = Entry { id: v.id(), name: v.name(), path, sync: auto_sync(&s) };
+    let e = Entry { id: v.id(), name: v.name(), path, sync: auto_sync(&s), owner: account::current_identity(&s.app_data) };
     activate(&s, &e, false)?;
     Ok(e.id)
 }
@@ -539,6 +546,8 @@ fn kick_as(s: &St, k: Kick) {
 }
 
 fn set_off(ctx: &SyncCtx) {
+    if let Ok(mut synced) = ctx.synced.lock() { *synced = (String::new(), -1); }
+    if let Ok(mut confirm) = ctx.confirm.lock() { confirm.clear(); }
     if let Ok(mut st) = ctx.status.lock() {
         *st = SyncStatus { state: "off", ..Default::default() };
     }
@@ -577,16 +586,20 @@ async fn server_health(server: String) -> Res<Value> {
 /// Creates an account and signs in. Returns the recovery key (shown once).
 #[tauri::command]
 async fn account_register(s: St<'_>, server: String, username: String, password: String, invite: String) -> Res<String> {
+    let ticket = account::begin_transition();
     let app_data = s.app_data.clone();
-    let key = blocking(move || account::register(&app_data, &server, username.trim(), &password, invite.trim())).await?;
+    let key = blocking(move || account::transition(ticket, || account::register(&app_data, &server, username.trim(), &password, invite.trim()))).await?;
+    set_off(&s.ctx);
     kick_as(&s, Kick::User);
     Ok(key)
 }
 
 #[tauri::command]
 async fn account_login(s: St<'_>, server: String, username: String, password: String) -> Res<()> {
+    let ticket = account::begin_transition();
     let app_data = s.app_data.clone();
-    blocking(move || account::login(&app_data, &server, username.trim(), &password)).await?;
+    blocking(move || account::transition(ticket, || account::login(&app_data, &server, username.trim(), &password))).await?;
+    set_off(&s.ctx);
     kick_as(&s, Kick::User);
     Ok(())
 }
@@ -594,19 +607,19 @@ async fn account_login(s: St<'_>, server: String, username: String, password: St
 /// A forgotten password: the recovery key sets a new one. Returns the new recovery key.
 #[tauri::command]
 async fn account_recover(s: St<'_>, server: String, username: String, recovery_key: String, new_password: String) -> Res<String> {
+    let ticket = account::begin_transition();
     let app_data = s.app_data.clone();
-    let key = blocking(move || account::recover(&app_data, &server, username.trim(), &recovery_key, &new_password)).await?;
+    let key = blocking(move || account::transition(ticket, || account::recover(&app_data, &server, username.trim(), &recovery_key, &new_password))).await?;
+    set_off(&s.ctx);
     kick_as(&s, Kick::User);
     Ok(key)
 }
 
 #[tauri::command]
 async fn account_logout(s: St<'_>) -> Res<()> {
+    let ticket = account::begin_transition();
     let app_data = s.app_data.clone();
-    blocking(move || {
-        account::logout(&app_data);
-        Ok(())
-    })
+    blocking(move || account::transition(ticket, || account::logout(&app_data)))
     .await?;
     set_off(&s.ctx);
     Ok(())
@@ -615,33 +628,38 @@ async fn account_logout(s: St<'_>) -> Res<()> {
 /// The account page: devices, storage used.
 #[tauri::command]
 async fn account_info(s: St<'_>) -> Res<Value> {
+    let ticket = account::generation();
     let app_data = s.app_data.clone();
-    blocking(move || account::info(&app_data)).await
+    blocking(move || account::transition(ticket, || account::info(&app_data))).await
 }
 
 #[tauri::command]
 async fn account_revoke_device(s: St<'_>, id: String) -> Res<()> {
+    let ticket = account::generation();
     let app_data = s.app_data.clone();
-    blocking(move || account::revoke_device(&app_data, &id)).await
+    blocking(move || account::transition(ticket, || account::revoke_device(&app_data, &id))).await
 }
 
 #[tauri::command]
 async fn account_change_password(s: St<'_>, old_password: String, new_password: String) -> Res<()> {
+    let ticket = account::generation();
     let app_data = s.app_data.clone();
-    blocking(move || account::change_password(&app_data, &old_password, &new_password)).await
+    blocking(move || account::transition(ticket, || account::change_password(&app_data, &old_password, &new_password))).await
 }
 
 #[tauri::command]
 async fn account_new_recovery_key(s: St<'_>, password: String) -> Res<String> {
+    let ticket = account::generation();
     let app_data = s.app_data.clone();
-    blocking(move || account::new_recovery_key(&app_data, &password)).await
+    blocking(move || account::transition(ticket, || account::new_recovery_key(&app_data, &password))).await
 }
 
 /// Schedules the deletion of the account on the server (30 days of grace) and signs out here.
 #[tauri::command]
 async fn account_delete(s: St<'_>, password: String) -> Res<i64> {
+    let ticket = account::begin_transition();
     let app_data = s.app_data.clone();
-    let after = blocking(move || account::delete_account(&app_data, &password)).await?;
+    let after = blocking(move || account::transition(ticket, || account::delete_account(&app_data, &password))).await?;
     set_off(&s.ctx);
     Ok(after)
 }
@@ -659,16 +677,23 @@ fn save_text_file(path: String, text: String) -> Res<()> {
 
 /// Turns sync of the open vault on or off.
 #[tauri::command]
-fn sync_set(s: St, on: bool) -> Res<()> {
-    let id = with(&s, |v| Ok(v.id()))?;
-    let mut r = s.reg.lock().map_err(err)?;
-    if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
-        e.sync = on;
-    }
-    r.save(&s.app_data)?;
-    drop(r);
-    kick_as(&s, Kick::User);
-    Ok(())
+async fn sync_set(app: AppHandle, on: bool) -> Res<()> {
+    blocking(move || {
+        let s = app.state::<Store>();
+        let _session = account::guard()?;
+        let owner = account::current_identity(&s.app_data);
+        if on && owner.is_none() { return Err("AUTH:signed_out".into()); }
+        let id = with(&s, |v| Ok(v.id()))?;
+        let mut r = s.reg.lock().map_err(err)?;
+        if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
+            e.sync = on;
+            if on { e.owner = owner; }
+        }
+        r.save(&s.app_data)?;
+        drop(r);
+        kick_as(&s, Kick::User);
+        Ok(())
+    }).await
 }
 
 #[tauri::command]
@@ -687,64 +712,75 @@ fn sync_confirm(s: St) -> Res<()> {
 
 /// The cloud copy of a vault goes to the server's trash (30 days); the vault on this device stays and its sync is turned off here.
 #[tauri::command]
-async fn cloud_delete(s: St<'_>, id: String) -> Res<()> {
-    {
-        let mut r = s.reg.lock().map_err(err)?;
-        if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
-            e.sync = false;
-        }
-        r.save(&s.app_data)?;
-    }
-    let app_data = s.app_data.clone();
-    let vault_id = id.clone();
+async fn cloud_delete(app: AppHandle, id: String) -> Res<()> {
+    let ticket = account::generation();
     blocking(move || {
-        let api = account::api(&app_data)?;
-        let url = api.url(&format!("/v1/vaults/{vault_id}"));
-        api.send(|c| c.delete(&url)).map(|_| ())
-    })
-    .await?;
-    // a later upload starts from a clean slate: a missing cloud must never be read as "deleted there"
-    let _ = std::fs::remove_file(state_file(&s.app_data, &id));
-    set_off(&s.ctx);
-    Ok(())
+        let _session = account::guard()?;
+        if ticket != account::generation() { return Err("AUTH:session_changed".into()); }
+        let s = app.state::<Store>();
+        {
+            let mut r = s.reg.lock().map_err(err)?;
+            if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) { e.sync = false; }
+            r.save(&s.app_data)?;
+        }
+        let api = account::api(&s.app_data)?;
+        let url = api.url(&format!("/v1/vaults/{id}"));
+        api.send(|c| c.delete(&url))?;
+        // Keep account identity stable through local cleanup as well.
+        let _ = std::fs::remove_file(state_file(&s.app_data, &id));
+        set_off(&s.ctx);
+        Ok(())
+    }).await
 }
 
 /// The cloud copy is gone but the vault here is kept: sync it again as a new cloud copy (everything is uploaded, nothing is deleted).
 #[tauri::command]
-fn cloud_reupload(s: St, id: String) -> Res<()> {
-    let _ = std::fs::remove_file(state_file(&s.app_data, &id));
-    let mut r = s.reg.lock().map_err(err)?;
-    if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
-        e.sync = true;
-    }
-    r.save(&s.app_data)?;
-    drop(r);
-    kick_as(&s, Kick::User);
-    Ok(())
+async fn cloud_reupload(app: AppHandle, id: String) -> Res<()> {
+    blocking(move || {
+        let s = app.state::<Store>();
+        let _session = account::guard()?;
+        let owner = account::current_identity(&s.app_data).ok_or("AUTH:signed_out")?;
+        let _ = std::fs::remove_file(state_file(&s.app_data, &id));
+        let mut r = s.reg.lock().map_err(err)?;
+        if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
+            e.sync = true;
+            e.owner = Some(owner);
+        }
+        r.save(&s.app_data)?;
+        drop(r);
+        kick_as(&s, Kick::User);
+        Ok(())
+    }).await
 }
 
 /// Every vault stored in the account. The UI hides the ones that are on this device with their folder in place; those whose
 /// folder is gone stay in the list, so that they can be downloaded again.
+
 #[tauri::command]
 async fn cloud_vaults(s: St<'_>) -> Res<Vec<Value>> {
+    let ticket = account::generation();
     let app_data = s.app_data.clone();
-    let r = blocking(move || account::api(&app_data)?.get("/v1/vaults")).await?;
+    let r = blocking(move || { let _session = account::guard()?; if ticket != account::generation() { return Err("AUTH:session_changed".into()); } account::api(&app_data)?.get("/v1/vaults") }).await?;
     Ok(r["vaults"].as_array().cloned().unwrap_or_default().into_iter().map(|v| json!({ "id": v["id"], "name": v["name"], "files": v["files"], "bytes": v["bytes"] })).collect())
 }
 
 /// Vaults deleted from the account in the last 30 days, which can still be brought back.
 #[tauri::command]
 async fn cloud_trashed(s: St<'_>) -> Res<Vec<Value>> {
+    let ticket = account::generation();
     let app_data = s.app_data.clone();
-    let r = blocking(move || account::api(&app_data)?.get("/v1/vaults?trashed=1")).await?;
+    let r = blocking(move || { let _session = account::guard()?; if ticket != account::generation() { return Err("AUTH:session_changed".into()); } account::api(&app_data)?.get("/v1/vaults?trashed=1") }).await?;
     Ok(r["vaults"].as_array().cloned().unwrap_or_default().into_iter().map(|v| json!({ "id": v["id"], "name": v["name"], "deletedAt": v["deleted_at"] })).collect())
 }
 
 /// Deletes a vault that is in the server's trash for good. The server refuses a vault that is not in the trash.
 #[tauri::command]
 async fn cloud_purge(s: St<'_>, id: String) -> Res<()> {
+    let ticket = account::generation();
     let app_data = s.app_data.clone();
     blocking(move || {
+        let _session = account::guard()?;
+        if ticket != account::generation() { return Err("AUTH:session_changed".into()); }
         let api = account::api(&app_data)?;
         let url = api.url(&format!("/v1/vaults/{id}/permanent"));
         api.send(|c| c.delete(&url)).map(|_| ()).map_err(|e| {
@@ -758,34 +794,40 @@ async fn cloud_purge(s: St<'_>, id: String) -> Res<()> {
 
 #[tauri::command]
 async fn cloud_restore(s: St<'_>, id: String) -> Res<()> {
+    let ticket = account::generation();
     let app_data = s.app_data.clone();
-    blocking(move || account::api(&app_data)?.post(&format!("/v1/vaults/{id}/undelete"), &json!({})).map(|_| ())).await
+    blocking(move || { let _session = account::guard()?; if ticket != account::generation() { return Err("AUTH:session_changed".into()); } account::api(&app_data)?.post(&format!("/v1/vaults/{id}/undelete"), &json!({})).map(|_| ()) }).await
 }
 
 /// Creates `<parent>/<name>` for a vault that exists in the cloud and downloads it.
 #[tauri::command]
 async fn cloud_download(s: St<'_>, id: String, name: String, parent: String) -> Res<()> {
+    let ticket = account::generation();
     let name = clean_name(&name)?;
     let root = PathBuf::from(&parent).join(&name);
     let v = Vault::create_with_id(root.clone(), &name, &id)?;
     if v.id() != id {
         return Err(VAULT_MISMATCH.into()); // the folder already holds another vault
     }
-    let e = Entry { id: v.id(), name, path: root.to_string_lossy().into(), sync: true };
+    let e = Entry { id: v.id(), name, path: root.to_string_lossy().into(), sync: true, owner: account::current_identity(&s.app_data) };
     drop(v);
     let ctx = s.ctx.clone();
     let e2 = e.clone();
-    blocking(move || run_sync(&ctx, &e2, true)).await?;
+    blocking(move || { let _session = account::guard()?; if ticket != account::generation() { return Err("AUTH:session_changed".into()); } run_sync(&ctx, &e2, true) }).await?;
     activate(&s, &e, false)
 }
 
 /// One synchronization of one vault: bring the mirror of the server up to date, then let the engine compare and move files.
 /// Background transfers attempt each request once; the worker owns retry timing.
 fn run_sync(ctx: &SyncCtx, e: &Entry, _patient: bool) -> Res<()> {
+    // Account -> worker -> vault is the shared lock order, including downloads.
+    let _session = account::guard()?;
+    let session_generation = account::generation();
     // A download command and the worker must not concurrently publish the same state file.
     let worker_mutex = vault::local_lock(&ctx.app_data.join("sync-worker").join(&e.id));
     let _worker_guard = worker_mutex.lock();
     let set = |state: &'static str, reason: &str, error: String, done: bool| {
+        if session_generation != account::generation() { return; }
         if let Some(app) = &ctx.app {
             let store = app.state::<Store>();
             if current_entry(&store).is_none_or(|current| current.id != e.id) { return; }
@@ -805,11 +847,13 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, _patient: bool) -> Res<()> {
         // delete the cloud copy, and nothing is created here.
         let vault = Vault::open_as(PathBuf::from(&e.path), &e.id)?;
         let acct = account::load(&ctx.app_data).ok_or("AUTH:signed_out")?;
+        let identity = account::identity(&acct);
+        if e.owner.as_deref() != Some(identity.as_str()) { return Err("ACCOUNT_MISMATCH".into()); }
         let api = account::api(&ctx.app_data)?;
         let api = api.quick();
         let state_file = state_file(&ctx.app_data, &e.id);
         let mut state = SyncState::load(&state_file);
-        let who = format!("{}@{}", acct.username.to_lowercase(), acct.server);
+        let who = identity;
         if state.account != who {
             // another account or server is another cloud: start over, with no `base` there is nothing to delete
             state.files.clear();
@@ -862,7 +906,7 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, _patient: bool) -> Res<()> {
                 Ok(())
             }
         }
-        Err(m) if [VAULT_MISSING, VAULT_MISMATCH, sync::CLOUD_GONE].contains(&m.as_str()) => {
+        Err(m) if [VAULT_MISSING, VAULT_MISMATCH, sync::CLOUD_GONE, "ACCOUNT_MISMATCH"].contains(&m.as_str()) => {
             set("paused", &m, String::new(), false);
             Err(m)
         }
@@ -947,6 +991,7 @@ fn watcher(app: AppHandle) {
             std::thread::sleep(Duration::from_secs(2));
             continue;
         };
+        let watching_generation = account::generation();
         let Ok(api) = account::api(&ctx.app_data) else {
             std::thread::sleep(Duration::from_secs(2));
             continue;
@@ -961,6 +1006,7 @@ fn watcher(app: AppHandle) {
         let wait = if failures > 0 { 0 } else { 25 };
         let url = api.url(&format!("/v1/vaults/{}/state?since={since}&wait={wait}", e.id));
         let answer = api.send(|c| c.get(&url).timeout(Duration::from_secs(40))).and_then(|r| r.json::<Value>().map_err(err));
+        if watching_generation != account::generation() { failures = 0; hold = Duration::from_secs(4); continue; }
         match answer {
             Ok(v) => {
                 if failures > 0 {
@@ -1010,6 +1056,10 @@ fn main() {
         .setup(|app| {
             let app_data = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data)?;
+            let app_lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(app_data.join("desktop.lock"))?;
+            app_lock.try_lock().map_err(|_| std::io::Error::other("Another window of Nevis is using this profile. Close it before opening this version."))?;
+            app.manage(DesktopLease { _file: app_lock });
+            account::upgrade_session(&app_data);
             account::forget_google(&app_data); // the sign-in of earlier versions is gone
             let (tx, rx) = channel();
             let ctx = SyncCtx {

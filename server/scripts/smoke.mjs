@@ -10,7 +10,7 @@ const sha = (s) => createHash('sha256').update(s).digest('hex')
 const api = async (method, path, { token, body, raw, headers } = {}) => {
   const res = await fetch(base + path, {
     method,
-    headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(body && !raw ? { 'content-type': 'application/json' } : {}), ...(raw ? { 'content-type': 'application/octet-stream' } : {}), ...headers },
+    headers: { 'x-noviq-api': '2', ...(token ? { authorization: `Bearer ${token}` } : {}), ...(body && !raw ? { 'content-type': 'application/json' } : {}), ...(raw ? { 'content-type': 'application/octet-stream' } : {}), ...headers },
     body: raw ?? (body ? JSON.stringify(body) : undefined),
   })
   const text = await res.text()

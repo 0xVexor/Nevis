@@ -1,5 +1,5 @@
 import { normalizeFa } from './normalize'
-import { addVersion, allPages, deleteVersions, isTauri, listVersions, savePages, vaultStamp } from './db'
+import { addVersion, allPages, deleteVersions, isTauri, listVersions, savePages, vaultStamp, storageFrozen } from './db'
 
 const WATCH_EVERY = 3000 // how often the vault folder is checked for changes made by the sync tool
 
@@ -93,6 +93,7 @@ export class Repo implements PageRepo {
   private timer = 0
   private queue: Promise<void> = Promise.resolve()
   private persistenceError: unknown = null
+  private writesPaused = false
   private lastSnap = new Map<string, number>()
   /** `updatedAt` of every page as last read from or written to the vault folder: the version our next edit of it starts from. */
   private diskAt = new Map<string, number>()
@@ -147,11 +148,13 @@ export class Repo implements PageRepo {
 
   private touch(...ids: string[]) {
     ids.forEach((i) => this.dirty.add(i))
+    window.dispatchEvent(new Event('storage-pending'))
     this.schedule()
   }
 
   private drop(ids: Iterable<string>) {
     for (const i of ids) (this.dirty.delete(i), this.gone.add(i))
+    window.dispatchEvent(new Event('storage-pending'))
     this.schedule()
   }
 
@@ -217,7 +220,13 @@ export class Repo implements PageRepo {
     window.addEventListener('focus', () => void this.poll())
   }
 
-  private idle = () => !this.dirty.size && !this.gone.size && !this.full
+  private refreshHolds = new Set<symbol>()
+  holdRefresh() {
+    const token = Symbol()
+    this.refreshHolds.add(token)
+    return () => { this.refreshHolds.delete(token) }
+  }
+  private idle = () => !this.refreshHolds.size && !this.dirty.size && !this.gone.size && !this.full
 
   private async poll() {
     if (this.polling || !this.idle()) return
@@ -248,7 +257,27 @@ export class Repo implements PageRepo {
 
   // ───── queries ─────
 
-  list = () => this.pages.filter((p) => !p.deletedAt)
+  // Present orphaned/cyclic pages at the root without rewriting their saved
+  // parent metadata. A later explicit move is the only persisted tree change.
+  list = () => {
+    const rows = this.pages.filter(p => !p.deletedAt)
+    const byId = new Map(rows.map(p => [p.id, p]))
+    const roots = new Set<string>(), complete = new Set<string>()
+    for (const row of rows) {
+      const path: string[] = [], seen = new Map<string, number>()
+      let p: Page | undefined = row
+      while (p?.parentId && !complete.has(p.id)) {
+        const at = seen.get(p.id)
+        if (at !== undefined) { roots.add(path.slice(at).sort()[0]); break }
+        seen.set(p.id, path.length)
+        path.push(p.id)
+        if (!byId.has(p.parentId)) { roots.add(p.id); break }
+        p = byId.get(p.parentId)
+      }
+      path.forEach(id => complete.add(id))
+    }
+    return rows.map(p => roots.has(p.id) ? { ...p, parentId: null } : p)
+  }
   pagesOnly = () => this.list().filter((p) => p.kind !== 'folder')
   get = (id: string) => this.pages.find((p) => p.id === id && !p.deletedAt)
 
@@ -301,9 +330,14 @@ export class Repo implements PageRepo {
     })
   }
 
+  private assertWritable() {
+    if (this.writesPaused || storageFrozen()) throw new Error('Storage is paused.')
+  }
+
   // ───── mutations ─────
 
   create(parentId: string | null, kind: PageKind = 'page'): Page {
+    this.assertWritable()
     const sibs = this.pages.filter((p) => p.parentId === parentId)
     const page: Page = {
       id: crypto.randomUUID(),
@@ -322,6 +356,7 @@ export class Repo implements PageRepo {
   }
 
   update(id: string, patch: Patch, opts?: { history?: boolean }) {
+    this.assertWritable()
     const p = this.pages.find((x) => x.id === id)
     if (!p) return
     if (patch.content !== undefined && opts?.history !== false) this.snapshot(p)
@@ -346,25 +381,44 @@ export class Repo implements PageRepo {
       .catch((e) => console.error('history', e))
   }
 
-  remove(id: string) {
-    const now = Date.now()
-    const hit: string[] = []
-    const walk = (pid: string) => {
-      const p = this.pages.find((x) => x.id === pid)
-      if (p && !p.deletedAt) p.deletedAt = now // keep the time of an earlier, separate delete
-      hit.push(pid)
-      this.pages.filter((c) => c.parentId === pid).forEach((c) => walk(c.id))
+  private subtree(id: string, include: (p: Page) => boolean = () => true): Page[] {
+    const byId = new Map(this.pages.map(p => [p.id, p]))
+    const kids = new Map<string, string[]>()
+    for (const p of this.pages) if (p.parentId) {
+      const ids = kids.get(p.parentId) ?? []
+      ids.push(p.id); kids.set(p.parentId, ids)
     }
-    walk(id)
-    this.touch(...hit)
+    const stack = [id], seen = new Set<string>(), out: Page[] = []
+    while (stack.length) {
+      const id = stack.pop()!
+      if (seen.has(id)) continue
+      seen.add(id)
+      const p = byId.get(id)
+      if (!p || !include(p)) continue
+      out.push(p)
+      for (const child of kids.get(id) ?? []) stack.push(child)
+    }
+    return out
+  }
+
+  remove(id: string) {
+    this.assertWritable()
+    const now = Date.now()
+    const hit = this.subtree(id)
+    for (const p of hit) if (!p.deletedAt) p.deletedAt = now
+    for (const p of hit) this.touch(p.id)
   }
 
   move(id: string, parentId: string | null, beforeId: string | null): boolean {
+    this.assertWritable()
     const page = this.pages.find((p) => p.id === id)
     if (!page || id === beforeId) return false
     // refuse to move a page into itself or one of its descendants
-    for (let p = parentId ? this.pages.find((x) => x.id === parentId) : undefined; p; p = p.parentId ? this.pages.find((x) => x.id === p!.parentId) : undefined)
-      if (p.id === id) return false
+    const seen = new Set<string>()
+    for (let p = parentId ? this.pages.find((x) => x.id === parentId) : undefined; p; p = p.parentId ? this.pages.find((x) => x.id === p!.parentId) : undefined) {
+      if (p.id === id || seen.has(p.id)) return false
+      seen.add(p.id)
+    }
     const sibs = this.pages.filter((p) => p.parentId === parentId && p.id !== id && !p.deletedAt).sort((a, b) => a.sort - b.sort)
     const at = beforeId ? sibs.findIndex((s) => s.id === beforeId) : sibs.length
     sibs.splice(at < 0 ? sibs.length : at, 0, page)
@@ -388,32 +442,22 @@ export class Repo implements PageRepo {
   }
 
   restoreFromTrash(id: string) {
+    this.assertWritable()
     const page = this.pages.find((p) => p.id === id)
     if (!page?.deletedAt) return
     const t = page.deletedAt
-    const hit: string[] = []
-    const walk = (pid: string) => {
-      const p = this.pages.find((x) => x.id === pid)
-      if (!p || p.deletedAt !== t) return
-      p.deletedAt = null
-      hit.push(pid)
-      this.pages.filter((c) => c.parentId === pid).forEach((c) => walk(c.id))
-    }
-    walk(id)
+    const hit = this.subtree(id, p => p.deletedAt === t)
+    for (const p of hit) p.deletedAt = null
     const parent = page.parentId ? this.pages.find((p) => p.id === page.parentId) : undefined
     if (page.parentId && (!parent || parent.deletedAt)) page.parentId = null // original parent is gone: restore at top level
     const sibs = this.pages.filter((p) => p.parentId === page.parentId && p.id !== id && !p.deletedAt)
     page.sort = sibs.length ? Math.max(...sibs.map((s) => s.sort)) + 1 : 0
-    this.touch(...hit)
+    for (const p of hit) this.touch(p.id)
   }
 
   purge(id: string) {
-    const gone = new Set<string>()
-    const walk = (pid: string) => {
-      gone.add(pid)
-      this.pages.filter((c) => c.parentId === pid).forEach((c) => walk(c.id))
-    }
-    walk(id)
+    this.assertWritable()
+    const gone = new Set(this.subtree(id).map(p => p.id))
     this.pages = this.pages.filter((p) => !gone.has(p.id))
     gone.forEach((g) => this.unindexLinks(g))
     this.drop(gone)
@@ -421,10 +465,12 @@ export class Repo implements PageRepo {
   }
 
   emptyTrash() {
+    this.assertWritable()
     this.trash().forEach((p) => this.purge(p.id))
   }
 
   autoPurge(maxAgeMs: number): number {
+    this.assertWritable()
     const old = this.trash().filter((p) => Date.now() - p.deletedAt! > maxAgeMs)
     old.forEach((p) => this.purge(p.id))
     return old.length
@@ -433,6 +479,7 @@ export class Repo implements PageRepo {
   dump = () => structuredClone(this.pages)
 
   restore(pages: Page[]) {
+    this.assertWritable()
     this.pages = structuredClone(pages)
     this.rebuildLinks()
     this.full = true
@@ -441,6 +488,7 @@ export class Repo implements PageRepo {
 
   /** Restores complete snapshots when available; legacy versions retain their content-only behavior. */
   restoreVersion(id: string, version: { title: string; content: any; page?: Partial<Page> }) {
+    this.assertWritable()
     const current = this.get(id)
     if (!current) return
     const snapshot = version.page ? structuredClone(version.page) : structuredClone(current)
@@ -460,9 +508,19 @@ export class Repo implements PageRepo {
   }
 
   /** Resolves when every pending change has reached IndexedDB (used by tests and before exports). */
-  flushed(): Promise<void> {
-    this.writeNow()
-    return this.queue
+  pauseWrites() {
+    this.writesPaused = true
+    return () => { this.writesPaused = false }
+  }
+
+  async flushed(): Promise<void> {
+    for (;;) {
+      this.writeNow()
+      const observed = this.queue
+      await observed
+      if (this.persistenceError) throw this.persistenceError
+      if (observed === this.queue && !this.dirty.size && !this.gone.size && !this.full) return
+    }
   }
 
   async flushBeforeUpdate() {
@@ -510,19 +568,21 @@ export class Repo implements PageRepo {
         this.indexLinks(cur)
         this.dirty.delete(u.id)
         this.diskAt.set(u.id, u.updatedAt)
+        this.diskPages.set(u.id, structuredClone(cur))
       } else {
         this.pages.push(u)
         idx.set(u.id, u)
         this.rawIdxLen = this.pages.length
         this.dirty.delete(u.id)
         this.diskAt.set(u.id, u.updatedAt)
+        this.diskPages.set(u.id, structuredClone(u))
         if (u.content !== undefined) this.indexLinks(u)
       }
     }
     if (removed.length) {
       const gone = new Set(removed)
       this.pages = this.pages.filter((p) => !gone.has(p.id))
-      gone.forEach((g) => (this.unindexLinks(g), this.dirty.delete(g)))
+      gone.forEach((g) => (this.unindexLinks(g), this.dirty.delete(g), this.diskAt.delete(g), this.diskPages.delete(g)))
     }
     window.dispatchEvent(new Event('data-changed'))
   }

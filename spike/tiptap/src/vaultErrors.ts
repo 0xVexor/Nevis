@@ -2,6 +2,8 @@ import { t } from './i18n'
 
 /** What the server says (`HUB:<code>`), in words for the user. The keys are the English source strings of `t()`. */
 const SERVER_SAYS: Record<string, string> = {
+  session_server_upgrade_required: 'Update the sync server before syncing with this version. Your local files are kept.',
+  credentials_changed: 'The account credentials changed during this request. Sign in again and retry.',
   permanent_delete_unavailable: 'This server could not process permanent deletion. The workspace remains in the server trash and can still be restored. The server may need an update.',
   server_upgrade_required: 'This server does not support database sync yet. Update the server before syncing this workspace. No files were changed by this sync.',
   unsafe_path: 'Sync stopped because a file path is not supported. Check the error details. No files were changed by this sync.',
@@ -45,6 +47,8 @@ const SERVER_SAYS: Record<string, string> = {
 export const explain = (e: unknown) => {
   const m = String(e)
   if (m.includes('NETWORK:')) return t('The server cannot be reached. Your changes are saved on this device and are sent when the connection is back.')
+  if (m.includes('AUTH:session_changed')) return t('The account changed while this request was running. Please try again.')
+  if (m.includes('VAULT_IN_USE')) return t('This workspace is open in another copy of the app. Close that copy before continuing.')
   if (m.includes('AUTH:')) return t('You are signed out of this device. Sign in again to keep syncing.')
   if (m.includes('VAULT_MISSING')) return t('The vault folder was not found.')
   if (m.includes('VAULT_MISMATCH')) return t('A different vault is in this folder.')

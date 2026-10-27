@@ -1,6 +1,6 @@
 // App wiring of the database feature: which storage adapter, which pages, which device. Everything else is in service.ts.
 import { invoke } from '@tauri-apps/api/core'
-import { db, isTauri, vaultInfo } from '../db'
+import { db, isTauri, vaultInfo, storageFrozen } from '../db'
 import { repo } from '../store'
 import type { Page } from '../repo'
 import { DatabaseService } from './service'
@@ -53,7 +53,10 @@ let starting: Promise<DatabaseService> | null = null
 export function getDatabase(): Promise<DatabaseService> {
   return (starting ??= (async () => {
     const vaultId = isTauri ? (await vaultInfo()).id : 'browser'
-    const storage = isTauri ? new TauriStorage((cmd, args) => invoke(cmd, args)) : new IdbStorage(db)
+    const storage = isTauri ? new TauriStorage((cmd, args) => {
+      if (storageFrozen()) return Promise.reject(new Error('Storage is paused.'))
+      return invoke(cmd, args)
+    }) : new IdbStorage(db)
     const svc = new DatabaseService({
       vaultId, storage, pages, host, deviceId: deviceId(), zone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
       runtime: storage.runtime(), adapters, weekStart: weekStart(),

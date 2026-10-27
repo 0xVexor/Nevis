@@ -1,3 +1,6 @@
+import { prepareStorageTransition } from './storageTransition'
+import { saveBeforeUpdate } from './updateSave'
+import { peekDatabase } from './database/runtime'
 import { useCallback, useEffect, useState } from 'react'
 import { open } from '@tauri-apps/plugin-dialog'
 import {
@@ -75,12 +78,14 @@ export function Vaults({ onClose, onNew, onAccount }: { onClose: () => void; onN
 
   /** Leaves the workspace that is open: nothing may stay unsaved in it, and nothing may be written into the next one. */
   const switching = async (f: () => Promise<unknown>) => {
-    await repo.flushed()
-    freezeStorage()
+    const resume = await prepareStorageTransition({
+      saveEditors: saveBeforeUpdate, repository: repo, coordinator: peekDatabase()?.coord,
+      freeze: freezeStorage, thaw: thawStorage,
+    })
     try {
       await f()
     } catch (e) {
-      thawStorage() // it did not happen: the workspace stays as it was
+      resume() // it did not happen: the workspace stays as it was
       throw e
     }
     window.location.reload()

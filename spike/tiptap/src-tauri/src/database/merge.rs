@@ -4,6 +4,17 @@
 //! decided deterministically (higher stamp counter, then device id) and the other value stays in history.
 
 use serde_json::{json, Map, Value};
+use sha2::{Digest, Sha256};
+
+fn fingerprint(v: &Value) -> String {
+    format!("{:x}", Sha256::digest(serde_json::to_vec(v).unwrap_or_default()))
+}
+
+fn merge_id(a: &Value, b: &Value) -> String {
+    let mut ids = [fingerprint(a), fingerprint(b)];
+    ids.sort();
+    format!("merge:{:x}", Sha256::digest(ids.join(":").as_bytes()))
+}
 
 fn rev(v: &Value, page: bool) -> i64 {
     if page {
@@ -22,12 +33,12 @@ fn op(v: &Value, page: bool) -> String {
 
 /// true when `a` wins over `b`: higher revision, then newer update, then the larger operation id (so both devices agree).
 pub fn wins(a: &Value, b: &Value, page: bool) -> bool {
-    (rev(a, page), updated(a), op(a, page)) >= (rev(b, page), updated(b), op(b, page))
+    (rev(a, page), updated(a), op(a, page), fingerprint(a)) >= (rev(b, page), updated(b), op(b, page), fingerprint(b))
 }
 
-fn stamp_rank(c: &Value) -> (i64, String) {
+fn stamp_rank(c: &Value) -> (i64, String, String, String) {
     let s = c.get("stamp");
-    (s.and_then(|s| s.get("counter")).and_then(Value::as_i64).unwrap_or(0), s.and_then(|s| s.get("deviceId")).and_then(Value::as_str).unwrap_or_default().to_string())
+    (s.and_then(|s| s.get("counter")).and_then(Value::as_i64).unwrap_or(0), s.and_then(|s| s.get("deviceId")).and_then(Value::as_str).unwrap_or_default().to_string(), s.and_then(|s| s.get("opId")).and_then(Value::as_str).unwrap_or_default().to_string(), fingerprint(c))
 }
 
 /// Merge two versions of the same record. Returns the merged record and the complete versions that must be preserved.
@@ -40,7 +51,7 @@ pub fn merge_records(a: &Value, b: &Value) -> (Value, Vec<Value>) {
     let mut merged = win.clone();
     merged["revision"] = json!(rev(a, false).max(rev(b, false)) + 1);
     merged["updatedAt"] = json!(updated(a).max(updated(b)));
-    merged["lastOperationId"] = json!(format!("merge:{}:{}", op(a, false), op(b, false)).chars().take(120).collect::<String>());
+    merged["lastOperationId"] = json!(merge_id(a, b));
     (merged, vec![lose.clone()])
 }
 
@@ -82,7 +93,7 @@ pub fn merge_pages(a: &Value, b: &Value) -> (Value, Vec<Value>) {
         merged["recordMeta"] = json!({ "format": 1, "createdAt": updated(win), "createdBy": "", "updatedBy": "", "inferred": true });
     }
     merged["recordMeta"]["revision"] = json!(new_rev);
-    merged["recordMeta"]["lastOperationId"] = json!(format!("merge:{}:{}", op(a, true), op(b, true)).chars().take(120).collect::<String>());
+    merged["recordMeta"]["lastOperationId"] = json!(merge_id(a, b));
     merged["updatedAt"] = json!(updated(a).max(updated(b)));
     (merged, vec![lose.clone()])
 }
@@ -90,6 +101,21 @@ pub fn merge_pages(a: &Value, b: &Value) -> (Value, Vec<Value>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn complete_merges_are_identical_in_both_orders_even_with_equal_ranks() {
+        let a = json!({"id":"r", "revision":1,"updatedAt":100,"lastOperationId":"same","name":"A"});
+        let mut b = a.clone();
+        b["name"] = json!("B");
+        assert_eq!(merge_records(&a, &b).0, merge_records(&b, &a).0);
+        b["lastOperationId"] = json!("another");
+        assert_eq!(merge_records(&a, &b).0, merge_records(&b, &a).0);
+        let p = page(1, 100, json!({"x":cell(1, 1, "cloned-device")}), "same");
+        let q = page(1, 100, json!({"x":cell(2, 1, "cloned-device")}), "same");
+        let merged = merge_pages(&p, &q).0;
+        assert_eq!(merged, merge_pages(&q, &p).0);
+        assert_eq!(merge_pages(&merged, &merged).0, merged);
+    }
 
     fn page(rev: i64, at: i64, cells: Value, title: &str) -> Value {
         json!({ "id": "p1", "title": title, "updatedAt": at, "recordMeta": { "format": 1, "revision": rev, "lastOperationId": format!("op{rev}") },

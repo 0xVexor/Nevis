@@ -12,7 +12,7 @@
 //!
 //! A `RemoteFile` id is `"<rev>:<path>"`: the engine keeps it as an opaque string, and we get back both parts.
 
-use super::{Remote, RemoteFile, CLOUD_GONE};
+use super::{PendingUpload, Remote, RemoteFile, CLOUD_GONE};
 use crate::vault::{err, now_ms, Res};
 use reqwest::blocking::{Client, RequestBuilder, Response};
 use serde::{Deserialize, Serialize};
@@ -20,6 +20,8 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::time::Duration;
+use std::path::Path;
+use std::io::{Read, Seek, SeekFrom, Write};
 
 /// Errors that mean "the network is not there right now", as opposed to "the server said no".
 pub const NETWORK: &str = "NETWORK:";
@@ -34,7 +36,7 @@ pub fn is_auth(m: &str) -> bool {
     m.contains(AUTH)
 }
 
-const API_VERSION: &str = "1";
+const API_VERSION: &str = "2";
 /// Contents up to this size travel in one request; bigger ones in pieces that can be resumed.
 const SINGLE: usize = 2 << 20;
 const PIECE: usize = 1 << 20;
@@ -47,6 +49,7 @@ pub struct Api {
     base: String,
     token: Option<String>,
     attempts: u32,
+    session: Option<u64>,
 }
 
 impl Api {
@@ -58,7 +61,8 @@ impl Api {
             .user_agent(concat!("Nevis/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(err)?;
-        Ok(Api { http, base: base.trim_end_matches('/').to_string(), token, attempts: 4 })
+        let session = token.as_ref().map(|_| super::account::generation());
+        Ok(Api { http, base: base.trim_end_matches('/').to_string(), token, attempts: 4, session })
     }
 
     /// One attempt per request: for checks that run in the background and must not hold anything up when the network is bad.
@@ -74,13 +78,16 @@ impl Api {
     /// Sends the request and returns whatever the server answered. Lost connections and busy servers (429, 502-504) are retried.
     pub fn send_any(&self, build: impl Fn(&Client) -> RequestBuilder) -> Res<Response> {
         for attempt in 0..self.attempts {
+            self.check_session()?;
             let mut rb = build(&self.http).header("x-noviq-api", API_VERSION);
+            if self.attempts == 1 { rb = rb.timeout(Duration::from_secs(30)); }
             if let Some(t) = &self.token {
                 rb = rb.bearer_auth(t);
             }
             let last = attempt + 1 == self.attempts;
             match rb.send() {
                 Ok(r) => {
+                    self.check_session()?;
                     if matches!(r.status().as_u16(), 429 | 502 | 503 | 504) && !last {
                         let wait = r.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok()).map_or(500u64 << attempt, |s| s.min(8) * 1000);
                         std::thread::sleep(Duration::from_millis(wait));
@@ -93,6 +100,11 @@ impl Api {
             }
         }
         Err(format!("{NETWORK}no attempt was made"))
+    }
+
+    fn check_session(&self) -> Res<()> {
+        if self.session.is_some_and(|n| n != super::account::generation()) { return Err("AUTH:session_changed".into()); }
+        Ok(())
     }
 
     /// Like `send_any`, but anything but 2xx is an error (see `status_error`).
@@ -253,6 +265,10 @@ impl Hub {
     /// data, pulls what changed, and checks the mirror against the server's own hash of its files.
     pub fn preflight(&mut self, name: &str) -> Res<Preflight> {
         let mut out = Preflight::default();
+        let health = self.api.get("/v1/health")?;
+        if health["api"].as_u64().unwrap_or(0) < 2 || !health["capabilities"].as_array().is_some_and(|caps| caps.iter().any(|v| v == "session_safe_writes")) {
+            return Err("HUB:session_server_upgrade_required".into());
+        }
         let state = match self.api.get(&self.v("/state")) {
             Ok(s) => s,
             Err(e) if e.lines().next() == Some("HUB:no_such_vault") => {
@@ -383,6 +399,7 @@ impl Hub {
             return Ok(()); // the server has all of it already
         }
         let mut at = head.headers().get("x-received").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<usize>().ok()).unwrap_or(0).min(bytes.len());
+        if at == bytes.len() && at > 0 { at = at.saturating_sub(PIECE); }
         let mut rounds = 0;
         while at < bytes.len() {
             rounds += 1;
@@ -398,12 +415,13 @@ impl Hub {
                 409 => {
                     // the server holds a different amount than we thought: continue from what it says
                     let body: Value = r.json().unwrap_or(Value::Null);
-                    at = body["received"].as_u64().unwrap_or(0) as usize;
+                    at = body["received"].as_u64().filter(|n| *n <= bytes.len() as u64).ok_or("HUB:bad_answer")? as usize;
+                    if at == bytes.len() && at > 0 { at = at.saturating_sub(PIECE); }
                 }
                 _ => return Err(status_error(r, true)),
             }
         }
-        Ok(())
+        Err("HUB:incomplete_upload".into())
     }
 
     /// One conditional write. The result is the server's answer for that one operation.
@@ -450,6 +468,93 @@ impl Hub {
 }
 
 impl Remote for Hub {
+    fn upload_batch(&mut self, files: &[PendingUpload]) -> Res<Vec<Res<RemoteFile>>> {
+        if files.is_empty() { return Ok(vec![]); }
+        if files.len() > 200 { return Err("HUB:batch_too_large".into()); }
+        let mut ops = Vec::with_capacity(files.len());
+        for file in files {
+            let sha = hex(&Sha256::digest(&file.bytes));
+            self.put_blob(&sha, &file.bytes)?;
+            let base = file.existing.as_deref().map(split_id).transpose()?.map_or(0, |p| p.0);
+            ops.push(json!({"op":"put", "path":file.path, "sha256":sha, "base_rev":base}));
+        }
+        let result = self.api.post(&self.v("/commit"), &json!({"op_id":uuid::Uuid::new_v4().to_string(), "ops":ops, "atomic":false}))?;
+        let rows = result["results"].as_array().filter(|rows| rows.len() == files.len()).ok_or("HUB:bad_answer")?;
+        Ok(files.iter().zip(rows).map(|(file, row)| self.answer(&file.path, row)).collect())
+    }
+
+    fn download_to(&mut self, f: &RemoteFile, destination: &Path) -> Res<()> {
+        let (rev, _) = split_id(&f.id)?;
+        let url = self.api.url(&self.v(&format!("/rev/{rev}")));
+        let mut response = self.api.send(|c| c.get(&url))?;
+        let header = response.headers().get("x-sha256").and_then(|h| h.to_str().ok()).unwrap_or("").to_string();
+        let expected = self.cache.files.get(&f.path).filter(|entry| entry.rev == rev).map(|entry| entry.sha.as_str()).unwrap_or(&header);
+        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(destination).map_err(err)?;
+        let mut sha = Sha256::new();
+        let mut md5 = md5::Md5::new();
+        let mut buffer = [0u8; 64 * 1024];
+        loop {
+            self.api.check_session()?;
+            let n = response.read(&mut buffer).map_err(|e| format!("{NETWORK}{e}"))?;
+            if n == 0 { break; }
+            sha.update(&buffer[..n]); md5.update(&buffer[..n]);
+            file.write_all(&buffer[..n]).map_err(err)?;
+        }
+        if (!expected.is_empty() && hex(&sha.finalize()) != expected) || (!f.md5.is_empty() && hex(&md5.finalize()) != f.md5) {
+            return Err("HUB:corrupt_download".into());
+        }
+        file.sync_all().map_err(err)
+    }
+
+    fn upload_file(&mut self, path: &str, existing: Option<&str>, file: &mut std::fs::File) -> Res<RemoteFile> {
+        // Keep one file handle: an atomic local replacement cannot change the
+        // inode whose hashes and pieces are being uploaded.
+        let mut sha = Sha256::new(); let mut md5 = md5::Md5::new();
+        let mut buffer = [0u8; 64 * 1024]; let mut size = 0u64;
+        loop {
+            let n = file.read(&mut buffer).map_err(err)?;
+            if n == 0 { break; }
+            sha.update(&buffer[..n]); md5.update(&buffer[..n]); size += n as u64;
+        }
+        let sha = hex(&sha.finalize()); let digest = hex(&md5.finalize());
+        if size == 0 { self.put_blob(&sha, &[])?; }
+        let url = self.api.url(&self.v(&format!("/blobs/{sha}")));
+        let head = self.api.send_any(|c| c.head(&url))?;
+        if !head.status().is_success() {
+            if head.status().as_u16() != 404 { return Err(status_error(head, true)); }
+            let mut at = head.headers().get("x-received").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0).min(size);
+            if at == size && at > 0 { at = at.saturating_sub(PIECE as u64); }
+            let mut complete = false;
+            let mut rounds = 0u64;
+            while at < size {
+                rounds += 1;
+                if rounds > size / PIECE as u64 + 8 { return Err("HUB:upload_stuck".into()); }
+                let end = (at + PIECE as u64).min(size);
+                file.seek(SeekFrom::Start(at)).map_err(err)?;
+                let mut piece = vec![0u8; (end - at) as usize];
+                file.read_exact(&mut piece).map_err(err)?;
+                let range = format!("bytes {at}-{}/{size}", end - 1);
+                let r = self.api.send_any(|c| c.put(&url).header("content-type", "application/octet-stream").header("content-range", &range).body(piece.clone()))?;
+                match r.status().as_u16() {
+                    200 | 201 => { complete = true; break; },
+                    202 => at = end,
+                    409 => {
+                        let body: Value = r.json().unwrap_or(Value::Null);
+                        at = body["received"].as_u64().filter(|n| *n <= size).ok_or("HUB:bad_answer")?;
+                        if at == size && at > 0 { at = at.saturating_sub(PIECE as u64); }
+                    }
+                    _ => return Err(status_error(r, true)),
+                }
+            }
+            if !complete { return Err("HUB:incomplete_upload".into()); }
+        }
+        let base = existing.map(split_id).transpose()?.map_or(0, |p| p.0);
+        let r = self.commit_one(json!({"op":"put", "path":path, "sha256":sha, "base_rev":base}))?;
+        let answer = self.answer(path, &r)?;
+        if answer.md5 != digest { return Err("HUB:corrupt_upload".into()); }
+        Ok(answer)
+    }
+
     fn confirm_deletes(&mut self, confirmed: bool) { self.confirm_bulk = confirmed; }
     fn validate_paths(&mut self, paths: &[String]) -> Res<()> {
         if let Some(path) = paths.iter().find(|p| p.starts_with("databases/")) {
@@ -535,6 +640,27 @@ mod tests {
     use super::*;
     use md5::Md5;
 
+    #[test]
+    fn an_old_server_is_rejected_before_a_vault_can_be_created() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut request = [0u8; 8192];
+            let n = socket.read(&mut request).unwrap();
+            assert!(String::from_utf8_lossy(&request[..n]).starts_with("GET /v1/health "));
+            let body = r#"{"api":1,"capabilities":["full_snapshot"]}"#;
+            write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+        });
+        let api = Api::new(&format!("http://{address}"), None).unwrap().quick();
+        let mut hub = Hub::new(api, "test-vault", Cache::default());
+        assert_eq!(hub.preflight("test").err().as_deref(), Some("HUB:session_server_upgrade_required"));
+        server.join().unwrap();
+        assert!(!hub.prepared);
+    }
+
     fn md5_of(bytes: &[u8]) -> String {
         hex(&Md5::digest(bytes))
     }
@@ -617,14 +743,14 @@ mod e2e {
     }
 
     /// A new account (so that tests never see each other's vaults); returns its device token.
-    fn signup() -> String {
+    fn signup_account() -> (String, String) {
         let api = Api::new(&server(), None).unwrap();
         let ch = api.get("/v1/auth/challenge").unwrap();
         let challenge = ch["challenge"].as_str().unwrap().to_string();
         let counter = solve_pow(&challenge, ch["bits"].as_u64().unwrap() as u32);
         let name = format!("e2e{}", uuid::Uuid::new_v4().simple());
         let r = api.post("/v1/auth/register", &json!({ "username": &name[..20], "password": "an end to end password", "device_name": "test", "challenge": challenge, "counter": counter })).unwrap();
-        r["token"].as_str().unwrap().to_string()
+        (r["token"].as_str().unwrap().to_string(), name[..20].to_string())
     }
 
     struct Dev {
@@ -669,9 +795,118 @@ mod e2e {
     }
 
     fn pair() -> (Dev, Dev) {
-        let token = signup();
+        let (token, username) = signup_account();
+        let second = Api::new(&server(), None).unwrap().post("/v1/auth/login", &json!({"username":username,"password":"an end to end password","device_name":"second device"})).unwrap();
+        let token2 = second["token"].as_str().unwrap();
+        assert_ne!(token, token2);
         let id = uuid::Uuid::new_v4().to_string();
-        (Dev::new(&token, &id), Dev::new(&token, &id))
+        (Dev::new(&token, &id), Dev::new(token2, &id))
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_an_untouched_offline_copy_cannot_replace_a_published_edit() {
+        let (mut a, mut b) = pair();
+        a.save(P1, "shared baseline", 100); a.sync(); b.sync();
+        a.save(P1, "published while b was offline", 200); a.sync();
+        b.sync(); a.sync(); b.sync();
+        assert_eq!(a.page(P1).unwrap()["title"], "published while b was offline");
+        assert_eq!(a.page(P1), b.page(P1));
+        assert_eq!(b.sync().uploaded, 0);
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_independent_offline_edits_to_different_files_both_survive() {
+        let (mut a, mut b) = pair();
+        a.save(P1, "first", 100); a.save(P2, "second", 100); a.sync(); b.sync();
+        a.save(P1, "edited on a", 200); b.save(P2, "edited offline on b", 200);
+        a.sync(); b.sync(); a.sync(); b.sync();
+        assert_eq!(a.page(P1), b.page(P1)); assert_eq!(a.page(P2), b.page(P2));
+        assert_eq!(a.page(P1).unwrap()["title"], "edited on a");
+        assert_eq!(a.page(P2).unwrap()["title"], "edited offline on b");
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_revoked_offline_device_keeps_its_edit_and_can_reauthenticate() {
+        let (mut a, mut b) = pair();
+        a.save(P1, "baseline", 100); a.sync(); b.sync();
+        let user = a.api.get("/v1/account").unwrap()["user"]["username"].as_str().unwrap().to_string();
+        b.save(P1, "offline edit", 300);
+        b.api.post("/v1/auth/logout", &json!({})).unwrap();
+        a.save(P1, "online edit", 200); a.sync();
+        assert!(b.try_sync().is_err());
+        assert_eq!(b.page(P1).unwrap()["title"], "offline edit");
+        let login = Api::new(&server(), None).unwrap().post("/v1/auth/login", &json!({"username":user,"password":"an end to end password","device_name":"reauthenticated"})).unwrap();
+        b.api = Api::new(&server(), Some(login["token"].as_str().unwrap().to_string())).unwrap().quick();
+        b.sync(); a.sync(); b.sync(); a.sync();
+        assert_eq!(a.page(P1), b.page(P1));
+        let mut titles = vec![b.page(P1).unwrap()["title"].as_str().unwrap().to_string()];
+        titles.extend(b.vault.versions_list(P1).unwrap().iter().filter_map(|v| v["title"].as_str().map(str::to_string)));
+        assert!(titles.contains(&"offline edit".into()));
+        assert!(titles.contains(&"online edit".into()));
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_a_real_offline_edit_survives_a_remote_delete() {
+        let (mut a, mut b) = pair();
+        a.save(P1, "baseline", 100); a.sync(); b.sync();
+        b.save(P1, "edited while offline", 300);
+        a.vault.save_pages(&[], &[P1.to_string()], false).unwrap(); a.sync();
+        b.sync(); a.sync(); b.sync();
+        assert_eq!(a.page(P1), b.page(P1));
+        assert_eq!(a.page(P1).unwrap()["title"], "edited while offline");
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_three_independent_sessions_keep_all_equal_time_versions() {
+        let (mut a, mut b) = pair();
+        let user = a.api.get("/v1/account").unwrap()["user"]["username"].as_str().unwrap().to_string();
+        let third = Api::new(&server(), None).unwrap().post("/v1/auth/login", &json!({"username":user,"password":"an end to end password","device_name":"third device"})).unwrap();
+        let mut c = Dev::new(third["token"].as_str().unwrap(), &a.id);
+        a.save(P1, "baseline", 100); a.sync(); b.sync(); c.sync();
+        a.save(P1, "version a", 200); b.save(P1, "version b", 200); c.save(P1, "version c", 200);
+        for _ in 0..3 { a.sync(); b.sync(); c.sync(); }
+        assert_eq!(a.page(P1), b.page(P1)); assert_eq!(a.page(P1), c.page(P1));
+        for d in [&a, &b, &c] {
+            let mut titles = vec![d.page(P1).unwrap()["title"].as_str().unwrap().to_string()];
+            titles.extend(d.vault.versions_list(P1).unwrap().iter().filter_map(|v| v["title"].as_str().map(str::to_string)));
+            for title in ["version a", "version b", "version c"] { assert!(titles.contains(&title.to_string()), "{titles:?}"); }
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_a_stale_batch_member_cannot_replace_a_newer_file_or_block_an_unrelated_file() {
+        let (mut a, mut b) = pair();
+        a.save(P1, "baseline", 100); a.sync(); b.sync();
+        let path = format!("pages/{P1}.json");
+        let stale = b.state.hub.files[&path].rev;
+        a.save(P1, "newer remote content", 200); a.sync();
+        let mut hub = Hub::new(b.api.clone(), &b.id, b.state.hub.clone());
+        hub.preflight("E2E").unwrap();
+        let results = hub.upload_batch(&[
+            PendingUpload { path: path.clone(), existing: Some(make_id(stale, &path)), bytes: b"stale bytes".to_vec() },
+            PendingUpload { path:"kv/unrelated.json".into(), existing:None, bytes:b"{}".to_vec() },
+        ]).unwrap();
+        assert!(results[0].is_err()); assert!(results[1].is_ok());
+        a.sync();
+        assert_eq!(a.page(P1).unwrap()["title"], "newer remote content");
+        assert_eq!(std::fs::read(a.vault.root.join("kv/unrelated.json")).unwrap(), b"{}");
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_a_large_first_upload_uses_batches_and_every_file_reaches_another_session() {
+        let (mut a, mut b) = pair();
+        for i in 0..405 { crate::vault::write_atomic(&a.vault.root.join(format!("kv/batch-{i:04}.json")), format!("{{\"n\":{i}}}").as_bytes()).unwrap(); }
+        assert_eq!(a.sync().uploaded, 406); // files plus vault marker
+        b.sync();
+        for i in 0..405 { assert_eq!(std::fs::read(b.vault.root.join(format!("kv/batch-{i:04}.json"))).unwrap(), format!("{{\"n\":{i}}}").as_bytes()); }
+        assert_eq!(a.sync().uploaded, 0);
     }
 
     #[test]

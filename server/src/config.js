@@ -48,8 +48,8 @@ export function loadConfig(env = process.env) {
     registerPerHour: int(env.REGISTER_PER_HOUR, 30),
     backupDelaySec: int(env.BACKUP_DELAY_SEC, 20),
     /** the oldest client protocol this server still talks to */
-    minApi: 1,
-    api: 1,
+    minApi: 2,
+    api: 2,
   }
 }
 

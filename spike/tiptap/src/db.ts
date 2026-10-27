@@ -57,7 +57,7 @@ export async function allPages(): Promise<any[]> {
 
 /** One transaction: either everything is written or nothing (crash safety). */
 export async function savePages(upserts: any[], removed: string[], clearFirst: boolean) {
-  if (frozen) return
+  if (frozen) throw new Error('Storage is paused while the workspace is changing or an update is installing.')
   if (isTauri) {
     // ids of pages whose newer version on disk (another device's edit) was kept in the page history instead of being overwritten
     const result = await invoke<{ kept: string[]; pages: any[] }>('pages_save', { upserts, removed, clearFirst })
@@ -81,7 +81,7 @@ export async function kvGet<T>(key: string): Promise<T | undefined> {
 }
 
 export async function kvSet(key: string, value: unknown) {
-  if (frozen) return
+  if (frozen) throw new Error('Storage is paused while the workspace is changing or an update is installing.')
   if (inSqlite(key)) return invoke<void>('kv_set', { key, value })
   const tx = (await db()).transaction('kv', 'readwrite')
   tx.objectStore('kv').put(value, key)
@@ -108,7 +108,7 @@ export async function listVersions(pageId: string): Promise<Version[]> {
 }
 
 export async function addVersion(v: Version) {
-  if (frozen) return
+  if (frozen) throw new Error('Storage is paused while the workspace is changing or an update is installing.')
   if (isTauri) return invoke<void>('version_add', { version: v })
   const tx = (await db()).transaction('versions', 'readwrite')
   tx.objectStore('versions').put(v)
@@ -123,7 +123,7 @@ export async function addVersion(v: Version) {
 }
 
 export async function deleteVersions(pageId: string) {
-  if (frozen) return
+  if (frozen) throw new Error('Storage is paused while the workspace is changing or an update is installing.')
   if (isTauri) return invoke<void>('versions_delete', { pageId })
   const all = await listVersions(pageId)
   if (!all.length) return

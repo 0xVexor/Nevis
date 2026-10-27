@@ -179,7 +179,7 @@ type Mode = 'signin' | 'signup' | 'recover' | 'key'
  * Everything a person does to get into an account: sign in, create one (user name and password, an invite code when the server wants one),
  * and recover with the recovery key. There is no email anywhere in it. `onDone` is called once they are signed in.
  */
-export function AuthFlow({ status, initial = 'signin', onDone, onBack }: { status: AccountStatus | null; initial?: 'signin' | 'signup'; onDone: () => void; onBack?: () => void }) {
+export function AuthFlow({ status, initial = 'signin', onDone, onBack, onPending }: { status: AccountStatus | null; initial?: 'signin' | 'signup'; onDone: () => void; onBack?: () => void; onPending?: (value: boolean) => void }) {
   const [mode, setMode] = useState<Mode>(initial)
   const [server, setServer] = useState('')
   const [advanced, setAdvanced] = useState(false)
@@ -223,6 +223,7 @@ export function AuthFlow({ status, initial = 'signin', onDone, onBack }: { statu
   const closed = mode === 'signup' && health?.registration === 'closed'
   const needsInvite = mode === 'signup' && health?.registration === 'invite'
   const switchTo = (m: Mode) => {
+    if (busy) return
     setMode(m)
     setError('')
     setPw('')
@@ -241,9 +242,12 @@ export function AuthFlow({ status, initial = 'signin', onDone, onBack }: { statu
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
+    if (busy) return
     const bad = problem()
     if (bad) return setError(bad)
     setBusy(true)
+    onPending?.(true)
+    let needsKey = false
     setError('')
     try {
       const name = user.trim()
@@ -252,19 +256,22 @@ export function AuthFlow({ status, initial = 'signin', onDone, onBack }: { statu
         onDone()
       } else if (mode === 'signup') {
         setKey(await accountRegister(address, name, pw, invite))
+        needsKey = true
         setMode('key')
       } else {
         setKey(await accountRecover(address, name, recovery, pw))
+        needsKey = true
         setMode('key')
       }
     } catch (err) {
       setError(explain(err))
     } finally {
       setBusy(false)
+      if (!needsKey) onPending?.(false)
     }
   }
 
-  if (mode === 'key') return <KeyScreen keyText={key} username={user.trim().toLowerCase()} onDone={onDone} />
+  if (mode === 'key') return <KeyScreen keyText={key} username={user.trim().toLowerCase()} onDone={() => { onPending?.(false); onDone() }} />
 
   const title = mode === 'signin' ? t('Welcome back') : mode === 'signup' ? t('Create your account') : t('Reset your password')
   const sub =
@@ -277,7 +284,7 @@ export function AuthFlow({ status, initial = 'signin', onDone, onBack }: { statu
   return (
     <form className="acct-form" onSubmit={submit} noValidate>
       {onBack && (
-        <button type="button" className="acct-back" onClick={onBack}>
+        <button type="button" className="acct-back" disabled={busy} onClick={onBack}>
           <Ic.Arrow size={14} />{t('Back')}
         </button>
       )}
@@ -289,8 +296,8 @@ export function AuthFlow({ status, initial = 'signin', onDone, onBack }: { statu
 
       {mode !== 'recover' && (
         <div className="segmented acct-seg" role="tablist">
-          <button type="button" role="tab" aria-selected={mode === 'signin'} className={mode === 'signin' ? 'on' : ''} onClick={() => switchTo('signin')}>{t('Sign in')}</button>
-          <button type="button" role="tab" aria-selected={mode === 'signup'} className={mode === 'signup' ? 'on' : ''} onClick={() => switchTo('signup')}>{t('Create account')}</button>
+          <button type="button" role="tab" disabled={busy} aria-selected={mode === 'signin'} className={mode === 'signin' ? 'on' : ''} onClick={() => switchTo('signin')}>{t('Sign in')}</button>
+          <button type="button" role="tab" disabled={busy} aria-selected={mode === 'signup'} className={mode === 'signup' ? 'on' : ''} onClick={() => switchTo('signup')}>{t('Create account')}</button>
         </div>
       )}
 
@@ -416,6 +423,7 @@ export function AccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: {
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [authPending, setAuthPending] = useState(false)
   const [newKey, setNewKey] = useState('')
   const [reauth, setReauth] = useState(false)
   const [oldPw, setOldPw] = useState('')
@@ -433,10 +441,10 @@ export function AccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: {
   }, [signedIn])
   useEffect(() => load(), [load])
   useEffect(() => {
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && !busy && !authPending && onClose()
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [onClose])
+  }, [onClose, busy, authPending])
 
   const run = async (f: () => Promise<unknown>) => {
     setBusy(true)
@@ -504,18 +512,18 @@ export function AccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: {
   const dot = !sync?.syncOn ? 'off' : sync.state
 
   return (
-    <div className="overlay" onMouseDown={onClose}>
+    <div className="overlay" onMouseDown={() => !busy && !authPending && onClose()}>
       <div className="modal wsd acct" role="dialog" aria-modal="true" aria-label={t('Account')} onMouseDown={(e) => e.stopPropagation()}>
         <div className="wsd-head">
           <b>{signedIn ? t('Account') : t('Account and sync')}</b>
-          <button className="icon-btn" title={t('Close  Esc')} onClick={onClose}><Ic.Close size={16} /></button>
+          <button className="icon-btn" title={t('Close  Esc')} disabled={busy || authPending} onClick={onClose}><Ic.Close size={16} /></button>
         </div>
 
         <div className="wsd-body">
           {acc === null ? (
             <p className="wsd-note">{t('Loading…')}</p>
-          ) : !signedIn || reauth ? (
-            <AuthFlow status={acc} initial={startWith} onDone={() => (setReauth(false), void refreshAcc())} onBack={reauth ? () => setReauth(false) : undefined} />
+          ) : !signedIn || reauth || authPending ? (
+            <AuthFlow status={acc} initial={startWith} onPending={setAuthPending} onDone={() => (setReauth(false), void refreshAcc())} onBack={reauth ? () => setReauth(false) : undefined} />
           ) : newKey ? (
             <KeyScreen keyText={newKey} username={acc.username ?? ''} onDone={() => (setNewKey(''), setNote(t('Your new recovery key is the only one that works now.')))} />
           ) : (
@@ -544,9 +552,13 @@ export function AccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: {
                 {paused === 'SIGNED_OUT' && <Problem>{t('You are signed out of this device. Sign in again to keep syncing.')}</Problem>}
                 {paused === 'VAULT_MISSING' && <Problem>{t('The vault folder was not found. Sync is paused and nothing in the cloud was changed. Use “Locate folder…” in the list above.')}</Problem>}
                 {paused === 'VAULT_MISMATCH' && <Problem>{t('A different vault is in the folder of this workspace. Sync is paused and nothing was changed.')}</Problem>}
+                {paused === 'ACCOUNT_MISMATCH' && <Problem>{t('This workspace is not linked to the signed-in account. Sync is paused until you choose to link it.')}</Problem>}
                 {paused === 'CLOUD_GONE' && <Problem>{t('The cloud copy of this vault is gone (deleted from another device or from the server). Your files here are untouched.')}</Problem>}
                 {paused === 'NEEDS_CONFIRM' && <Problem>{t('{n} files would be deleted by this sync. If you deleted them on purpose, confirm; otherwise turn sync off and check the folder.', { n: acc.error })}</Problem>}
                 <div className="wsd-acts">
+                  {paused === 'ACCOUNT_MISMATCH' && <button className="primary" disabled={busy} onClick={() => void run(async () => {
+                    if (await confirmDialog({ title: t('Link this workspace'), message: t('The local files in this workspace will sync with the signed-in account. Continue?'), confirmLabel: t('Link workspace') })) await syncSet(true)
+                  })}>{t('Link workspace')}</button>}
                   {paused === 'NEEDS_CONFIRM' && <button className="primary" disabled={busy} onClick={() => void run(syncConfirm)}>{t('Yes, delete them')}</button>}
                   {paused === 'SIGNED_OUT' && <button className="primary" disabled={busy} onClick={() => setReauth(true)}>{t('Sign in again')}</button>}
                   {paused === 'CLOUD_GONE' && <button className="primary" disabled={busy} onClick={() => void run(async () => cloudReupload((await vaultInfo()).id))}>{t('Upload this vault again')}</button>}
