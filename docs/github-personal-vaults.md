@@ -91,3 +91,9 @@ Do not stop or delete a live server merely because this branch builds. Complete 
 ## Validation evidence
 
 See [the validation record](github-sync-validation.md) for commands, counts, mocked UI coverage and the remaining live-account/multi-device verification gate. CI now runs the app and Rust suites on Windows, macOS and Linux; those hosted jobs have not run until this branch is pushed/reviewed.
+
+## Test installers without merging
+
+`npm run build:preview -- --bundles nsis` builds the Windows test installer; on macOS use `npm run build:preview -- --target universal-apple-darwin --bundles app` and package it with `.github/scripts/build-github-preview-installer.sh`. Rust needs the two Apple targets for a Universal build. The preview wrapper always sets its own GitHub credential service. Its app identifier is `com.vexor.noviq.githubpreview`, so it installs beside production with separate app data.
+
+The branch-specific `github-sync-preview.yml` workflow builds macOS Universal and Windows x64 installers as Actions artifacts only. It cannot merge branches, create releases or sign updater artifacts. Each download contains the exact source commit, SHA-256 checksum, test instructions and a boolean indicating whether publisher GitHub App configuration was supplied. Build outputs are unsigned test packages; no installer is run automatically. Use a fresh or copied vault when testing, and never open one vault folder concurrently in the preview and production apps.

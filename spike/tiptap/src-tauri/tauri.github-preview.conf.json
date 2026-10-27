@@ -1,0 +1,25 @@
+{
+  "productName": "Nevis GitHub Preview",
+  "identifier": "com.vexor.noviq.githubpreview",
+  "app": {
+    "windows": [{
+      "label": "main",
+      "title": "Nevis — GitHub Preview",
+      "width": 1280,
+      "height": 820,
+      "minWidth": 820,
+      "minHeight": 560,
+      "dragDropEnabled": false
+    }]
+  },
+  "bundle": {
+    "createUpdaterArtifacts": false,
+    "shortDescription": "Isolated test build of GitHub personal vault sync",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "startMenuFolder": "Nevis GitHub Preview"
+      }
+    }
+  }
+}
