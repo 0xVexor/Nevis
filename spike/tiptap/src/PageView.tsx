@@ -1,11 +1,10 @@
 import { shortcutLabel } from './shortcuts'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { registerUpdateSave } from './updateSave'
 import { createPortal } from 'react-dom'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { getSchema } from '@tiptap/core'
 import { EditorState } from '@tiptap/pm/state'
-import { addVersion } from './db'
 import { LayoutControls } from './LayoutControls'
 import { contentProblem } from './editor/contentSafety'
 import { LAYOUT_CANCEL } from './editor/layout'
@@ -35,7 +34,8 @@ import { t } from './i18n'
 import { lazy, Suspense } from 'react'
 const RowProperties = lazy(() => import('./database/ui/RowProperties').then((m) => ({ default: m.RowProperties })))
 
-export type SaveState = 'saved' | 'saving'
+export type SaveState = 'saved' | 'saving' | 'error'
+const contentSchema = getSchema(extensions)
 
 const TITLE_CMDS = [
   { id: 'rtl', title: 'Right-to-left (RTL)', desc: 'Make the title right-to-left', kw: 'rtl direction right to left جهت راست چین' },
@@ -44,14 +44,14 @@ const TITLE_CMDS = [
 ]
 
 export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly = false }: { page: Page; onSave: (s: SaveState) => void; onMeta: () => void; onCover: (anchor: DOMRect) => void; readOnly?: boolean }) {
-  const schema = useMemo(() => getSchema(extensions), [])
-  const [contentIssue, setContentIssue] = useState(() => contentProblem(page.content, schema))
-  const protectedContent = useRef(!!contentIssue)
   const [originalContent, setOriginalContent] = useState(page.content)
-  const dirty = useRef(false)
-  const readOnly = readerOnly || !!contentIssue
   const timer = useRef<number>(0)
-  const editorRef = useRef<any>(null)
+  const editSequence = useRef(0)
+  const alive = useRef(true)
+  const [problem, setProblem] = useState(() => contentProblem(page.content, contentSchema))
+  const problemRef = useRef(problem)
+  problemRef.current = problem
+  const readOnly = readerOnly || !!problem
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const [picker, setPicker] = useState<DOMRect | null>(null)
   const [icon, setIcon] = useState(page.icon)
@@ -95,14 +95,15 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
     })
   }
 
-  const flush = useCallback(() => {
+  const flush = useCallback(async () => {
     window.clearTimeout(timer.current)
-    const ed = editorRef.current
-    if (ed && !ed.isDestroyed && dirty.current && !protectedContent.current) {
-      const content = ed.getJSON()
-      if (JSON.stringify(repo.get(page.id)?.content) !== JSON.stringify(content)) repo.update(page.id, { content })
-      dirty.current = false
-      onSave('saved')
+    const sequence = editSequence.current
+    try {
+      await repo.flushed()
+      if (alive.current && sequence === editSequence.current) onSave('saved')
+    } catch (e) {
+      if (alive.current) onSave('error')
+      throw e
     }
   }, [page.id, onSave])
 
@@ -111,25 +112,31 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
   const editor = useEditor(
     {
       extensions,
-      content: contentIssue ? { type: 'doc', content: [{ type: 'paragraph' }] } : page.content,
-      editable: !readOnly,
+      content: problem ? { type: 'doc', content: [{ type: 'paragraph' }] } : page.content,
+      editable: !readOnly && !problem,
+      enableContentCheck: true,
+      onContentError: () => {
+        const message = 'This page uses unsupported content. Update the app to edit it. The original content has been kept.'
+        problemRef.current = message
+        setProblem(message)
+      },
       shouldRerenderOnTransaction: true,
       editorProps: { attributes: { spellcheck: 'false' } },
-      onUpdate: () => {
-        if (protectedContent.current) return
-        dirty.current = true
+      onUpdate: ({ editor: current }) => {
+        if (readOnly || problemRef.current) return
+        // Capture every transaction before a remote refresh or React unmount.
+        ++editSequence.current
         onSave('saving')
-        window.clearTimeout(timer.current)
-        timer.current = window.setTimeout(flush, 400)
+        repo.update(page.id, { content: current.getJSON() })
+        void flush().catch(() => {}) // the repository retains failed writes
       },
     },
     [page.id],
   )
-  editorRef.current = editor
   // reader mode: the same editor, locked (no typing, no editing widgets), so scrolling and selecting still work
   useEffect(() => {
-    if (editor && editor.isEditable === readOnly) editor.setEditable(!readOnly, false)
-  }, [editor, readOnly])
+    if (editor) editor.setEditable(!readOnly && !problem, false)
+  }, [editor, readOnly, problem])
   // the page picker (`[[`, `@`) must not offer the page you are on
   useEffect(() => {
     if (editor) (editor.storage as any).currentPageId = page.id
@@ -228,39 +235,31 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
     const onExternal = (e: Event) => {
       if (!editor || editor.isDestroyed || !(e as CustomEvent<string[]>).detail.includes(page.id)) return
       const fresh = repo.get(page.id)?.content
-      if (!fresh || typeof fresh === 'string' || JSON.stringify(fresh) === JSON.stringify(editor.getJSON())) return
+      if (!fresh || typeof fresh === 'string') return
       editor.view.dom.dispatchEvent(new Event(LAYOUT_CANCEL))
-      window.clearTimeout(timer.current)
-      if (dirty.current && !protectedContent.current) {
-        void addVersion({ pageId: page.id, ts: Date.now(), title: page.title, content: editor.getJSON() })
-        window.dispatchEvent(new Event('sync-conflict'))
-      }
-      dirty.current = false
-      onSave('saved')
-      const issue = contentProblem(fresh, schema)
       setOriginalContent(fresh)
-      protectedContent.current = !!issue
-      setContentIssue(issue)
-      editor.setEditable(!readerOnly && !issue, false)
-      if (!issue) {
-        // Replace the complete editor state: old undo entries and selection positions belong to the old document.
+      const issue = contentProblem(fresh, contentSchema)
+      problemRef.current = issue
+      setProblem(issue)
+      if (issue) { editor.setEditable(false); return }
+      editor.setEditable(!readerOnly, false)
+      if (JSON.stringify(fresh) !== JSON.stringify(editor.getJSON())) {
         editor.view.updateState(EditorState.create({ schema: editor.schema, doc: editor.schema.nodeFromJSON(fresh), plugins: editor.state.plugins }))
         editor.commands.setTextSelection(1)
       }
     }
     window.addEventListener('external-change', onExternal)
     return () => window.removeEventListener('external-change', onExternal)
-  }, [editor, page.id, page.title, readerOnly, schema, onSave])
+  }, [editor, page.id, page.title, readerOnly, onSave])
 
   useEffect(() => {
-    if (editor && !protectedContent.current && typeof page.content === 'string') repo.update(page.id, { content: editor.getJSON() })
-  }, [editor, page.id, page.content])
-
-  useEffect(() => {
-    window.addEventListener('beforeunload', flush)
+    alive.current = true
+    const save = () => { void flush().catch(() => {}) }
+    window.addEventListener('beforeunload', save)
     return () => {
-      window.removeEventListener('beforeunload', flush)
-      flush() // switching pages must not lose the last keystrokes
+      alive.current = false
+      window.removeEventListener('beforeunload', save)
+      save() // content is already in the repository; no destroyed editor access
     }
   }, [flush])
 
@@ -466,7 +465,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
         )}
         <textarea
           ref={titleRef}
-          readOnly={readOnly}
+          readOnly={readOnly || !!problem}
           className="title"
           dir={titleDir ?? 'auto'}
           rows={1}
@@ -629,7 +628,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
         </div>
       </div>
 
-      {!readOnly && editor.isEmpty && !editor.isFocused && (
+      {!readOnly && !problem && editor.isEmpty && !editor.isFocused && (
         <div className="templates">
           <span className="templates-label">{t('Quick start with a template')}</span>
           {getTemplates().map((t) => (
@@ -641,11 +640,11 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
         </div>
       )}
 
-      {!readOnly && <Toolbar editor={editor} diagram={diagram} />}
+      {!readOnly && !problem && <Toolbar editor={editor} diagram={diagram} />}
       {ctx && editor && (
         <Popover anchor={ctx} onClose={() => setCtx(null)}>
           <div className="menu ctx-menu">
-            {!readOnly && (
+            {!readOnly && !problem && (
               <div className="menu-quick">
                 <button title={t('Undo') + '  ' + shortcutLabel(['Mod', 'Z'])} onClick={() => (setCtx(null), editor.chain().focus().undo().run())}><Ic.Undo size={16} /></button>
                 <button title={t('Redo  Ctrl+Y')} onClick={() => (setCtx(null), editor.chain().focus().redo().run())}><Ic.Redo size={16} /></button>
@@ -654,7 +653,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
                 <button title={t('Paste') + '  ' + shortcutLabel(['Mod', 'V'])} onClick={() => (setCtx(null), void paste(false))}><Ic.Paste size={16} /></button>
               </div>
             )}
-            {!readOnly && hasSel && (
+            {!readOnly && !problem && hasSel && (
               <>
                 <MenuLabel>{t('Format')}</MenuLabel>
                 <MenuItem icon={<Ic.Bold />} label={t('Bold')} hint="Ctrl+B" onClick={() => (setCtx(null), editor.chain().focus().toggleBold().run())} />
@@ -665,8 +664,8 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
               </>
             )}
             {!readOnly && <MenuItem icon={<Ic.Arrow />} label={t('Move to Column')} hint="Ctrl+Alt+M" onClick={() => { setCtx(null); editor.view.dom.dispatchEvent(new CustomEvent('layout-move-menu', { detail: ctx })) }} />}
-            {!readOnly && <MenuItem icon={<Ic.Paste />} label={t('Paste as plain text')} hint="Ctrl+Shift+V" onClick={() => (setCtx(null), void paste(true))} />}
-            {!readOnly && <MenuItem icon={<Ic.Code />} label={t('Convert $…$ to formulas')} onClick={() => (setCtx(null), (editor.commands as any).convertFormulas())} />}
+            {!readOnly && !problem && <MenuItem icon={<Ic.Paste />} label={t('Paste as plain text')} hint="Ctrl+Shift+V" onClick={() => (setCtx(null), void paste(true))} />}
+            {!readOnly && !problem && <MenuItem icon={<Ic.Code />} label={t('Convert $…$ to formulas')} onClick={() => (setCtx(null), (editor.commands as any).convertFormulas())} />}
             <MenuItem icon={<Ic.SelectAll />} label={t('Select all')} hint="Ctrl+A" onClick={() => (setCtx(null), editor.chain().focus().selectAll().run())} />
             <MenuSep />
             <MenuItem icon={<Ic.Search />} label={t('Find in page')} hint="Ctrl+F" onClick={() => (setCtx(null), window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true })))} />
@@ -681,8 +680,8 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
         const group = activeGroup(editor.state)
         return group && !validWidths(group.node.attrs.widths, group.node.childCount) ? <p className="layout-width-warning" role="status">{t('Invalid column widths are displayed equally. Choose a width preset to repair this layout.')}</p> : null
       })()}
-      {contentIssue ? <div className="layout-protection" role="status">
-        <p>{t(contentIssue)}</p>
+      {problem ? <div className="layout-protection" role="status">
+        <p>{t(problem)}</p>
         <details><summary>{t('View original page data')}</summary><pre>{JSON.stringify(originalContent, null, 2)}</pre></details>
       </div> : <EditorContent editor={editor} className="ec" />}
 

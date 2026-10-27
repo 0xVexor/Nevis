@@ -41,8 +41,9 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
   // ───── authentication of every request that is not public ─────
   app.decorateRequest('auth', null)
   app.addHook('onRequest', async (req, reply) => {
-    const api = Number.parseInt(String(req.headers['x-noviq-api'] ?? cfg.api), 10)
-    if (api < cfg.minApi) return reply.code(426).send({ error: 'upgrade_required', min: cfg.minApi })
+    const api = Number(req.headers['x-noviq-api'] ?? 1)
+    const discovery = ['/', '/v1/health', '/v1/auth/challenge'].includes(req.routeOptions.url)
+    if ((!discovery || req.headers['x-noviq-api'] !== undefined) && (!Number.isInteger(api) || api < cfg.minApi)) return reply.code(426).send({ error: 'upgrade_required', min: cfg.minApi })
     if (req.routeOptions.config?.public) return
     const m = /^Bearer (nvq_[A-Za-z0-9_-]{20,})$/.exec(req.headers.authorization ?? '')
     const row = m
@@ -62,12 +63,34 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
     req.auth = { user: { id: row.user_id, username: row.username }, device: { id: row.device_id, name: row.device_name } }
   })
 
+  // Parsing an upload body can yield after authentication. Revocation that
+  // completed in that interval must take effect before the operation starts.
+  app.addHook('preHandler', async req => {
+    if (!req.auth) return
+    const row = db.prepare('SELECT d.revoked_at, u.deleting FROM devices d JOIN users u ON u.id = d.user_id WHERE d.id = ? AND u.id = ?').get(req.auth.device.id, req.auth.user.id)
+    if (!row || row.revoked_at !== null) throw new HttpError(401, 'unauthorized')
+    if (row.deleting) throw new HttpError(409, 'account_deleting')
+  })
+
   const vaultOf = (req, opts) => ownedVault(db, req.auth.user.id, req.params.id, opts)
+
+  // Password verification yields to other requests. Revalidate its snapshot at
+  // the transaction boundary, including the calling device for protected work.
+  const unchangedCredentials = (snapshot, req = null) => {
+    const current = db.prepare('SELECT * FROM users WHERE id = ?').get(snapshot.id)
+    if (!current || current.deleting) throw new HttpError(409, 'account_deleting')
+    if (current.pass !== snapshot.pass || current.recovery !== snapshot.recovery) throw new HttpError(409, 'credentials_changed')
+    if (req) {
+      const device = db.prepare('SELECT revoked_at FROM devices WHERE id = ? AND user_id = ?').get(req.auth.device.id, snapshot.id)
+      if (!device || device.revoked_at !== null) throw new HttpError(401, 'unauthorized')
+    }
+    return current
+  }
 
   // ───── public ─────
   const pub = { config: { public: true } }
   app.get('/', pub, async (_req, reply) => reply.type('text/plain').send('noviq-sync'))
-  app.get('/v1/health', pub, async () => ({ ok: true, name: 'noviq-sync', api: cfg.api, min_api: cfg.minApi, capabilities: ['permanent_delete', 'database_sync', 'full_snapshot'], sync_roots: SYNC_ROOTS, registration: cfg.registration, pow_bits: cfg.powBits, server_time: now() }))
+  app.get('/v1/health', pub, async () => ({ ok: true, name: 'noviq-sync', api: cfg.api, min_api: cfg.minApi, capabilities: ['permanent_delete', 'database_sync', 'full_snapshot', 'session_safe_writes'], sync_roots: SYNC_ROOTS, registration: cfg.registration, pow_bits: cfg.powBits, server_time: now() }))
 
   app.get('/v1/auth/challenge', pub, async (req, reply) => {
     const lim = limiter.hit(`ch:${req.ip}`, 120, HOUR)
@@ -150,10 +173,9 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
       failed(req, username)
       throw new HttpError(401, 'bad_credentials')
     }
-    const current = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id)
-    if (!current || current.deleting) throw new HttpError(409, 'account_deleting')
+    const current = unchangedCredentials(user)
     limiter.clear(`fail:u:${username}`)
-    const restored = !!user.delete_after
+    const restored = !!current.delete_after
     if (restored) db.prepare('UPDATE users SET delete_after = NULL WHERE id = ?').run(user.id)
     const out = issueDevice(user.id, deviceName(b.device_name))
     return { user: { id: user.id, username: user.username }, ...out, restored }
@@ -175,8 +197,7 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
     const pass = await hashPassword(next)
     const recovery = newRecoveryKey()
     const out = tx(db, () => {
-      const current = db.prepare('SELECT deleting FROM users WHERE id = ?').get(user.id)
-      if (!current || current.deleting) throw new HttpError(409, 'account_deleting')
+      unchangedCredentials(user)
       db.prepare('UPDATE users SET pass = ?, recovery = ?, delete_after = NULL WHERE id = ?').run(pass, recoveryHash(recovery), user.id)
       db.prepare('UPDATE devices SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL').run(now(), user.id)
       return issueDevice(user.id, deviceName(b.device_name))
@@ -204,6 +225,7 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
   app.post('/v1/auth/password', async (req, reply) => {
     const b = req.body ?? {}
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.auth.user.id)
+    if (!user || user.deleting) throw new HttpError(409, 'account_deleting')
     const next = str(b.new_password, 200)
     if (next.length < 8) throw new HttpError(400, 'weak_password')
     const wait = guard(req, user.username)
@@ -214,6 +236,7 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
     }
     const pass = await hashPassword(next)
     tx(db, () => {
+      unchangedCredentials(user, req)
       db.prepare('UPDATE users SET pass = ? WHERE id = ?').run(pass, user.id)
       db.prepare('UPDATE devices SET revoked_at = ? WHERE user_id = ? AND id <> ? AND revoked_at IS NULL').run(now(), user.id, req.auth.device.id)
     })
@@ -222,6 +245,7 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
 
   app.post('/v1/auth/recovery-key', async (req, reply) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.auth.user.id)
+    if (!user || user.deleting) throw new HttpError(409, 'account_deleting')
     const wait = guard(req, user.username)
     if (wait) return tooMany(reply, wait)
     if (!(await verifyPassword(str(req.body?.password, 200), user.pass))) {
@@ -229,7 +253,10 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
       throw new HttpError(401, 'bad_credentials')
     }
     const key = newRecoveryKey()
-    db.prepare('UPDATE users SET recovery = ? WHERE id = ?').run(recoveryHash(key), user.id)
+    tx(db, () => {
+      unchangedCredentials(user, req)
+      db.prepare('UPDATE users SET recovery = ? WHERE id = ?').run(recoveryHash(key), user.id)
+    })
     return { recovery_key: key }
   })
 
@@ -241,6 +268,7 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
 
   app.delete('/v1/account', async (req, reply) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.auth.user.id)
+    if (!user || user.deleting) throw new HttpError(409, 'account_deleting')
     const wait = guard(req, user.username)
     if (wait) return tooMany(reply, wait)
     if (!(await verifyPassword(str(req.body?.password, 200), user.pass))) {
@@ -249,6 +277,7 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
     }
     const after = now() + cfg.retentionDays * 24 * HOUR
     tx(db, () => {
+      unchangedCredentials(user, req)
       db.prepare('UPDATE users SET delete_after = ? WHERE id = ?').run(after, user.id)
       db.prepare('UPDATE devices SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL').run(now(), user.id)
     })

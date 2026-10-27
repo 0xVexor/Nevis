@@ -9,7 +9,7 @@
     "lint": "oxlint",
     "test:layout": "node --import ./tests/register.mjs --test \"./tests/*.test.mjs\"",
     "test:updates": "node --test ../../db/test-updates.mjs",
-    "test:sync-repo": "node --test src/repo.sync.test.mjs",
+    "test:sync-repo": "node --test src/repo.sync.test.mjs src/editor/contentSafety.test.mjs src/updateSave.test.mjs src/storageTransition.test.mjs",
     "test:direction": "node --test src/editor/direction.test.mjs",
     "test:db": "node --test \"../../db/tests/database/*.test.mjs\"",
     "preview": "vite preview",

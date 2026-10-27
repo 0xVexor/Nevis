@@ -46,6 +46,10 @@ jobs:
         working-directory: spike/tiptap
       - run: npm run test:updates
         working-directory: spike/tiptap
+      - run: npm ci
+        working-directory: db/tests/tools
+      - run: npm run test:db
+        working-directory: spike/tiptap
       - run: npm run build
         working-directory: spike/tiptap
       - run: cargo test

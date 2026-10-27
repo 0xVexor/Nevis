@@ -6,6 +6,53 @@ const { createHarness, seedFixture, MemoryPageHost, VAULT } = await import('../.
 const { Coordinator } = await import('../../../spike/tiptap/src/database/commands/index.ts')
 const { DbState } = await import('../../../spike/tiptap/src/database/state.ts')
 
+test('a transition drains accepted commands but rejects new commands until resumed', async () => {
+  const h = createHarness()
+  const f = await seedFixture(h)
+  const original = h.storage.commit.bind(h.storage)
+  let release, entered
+  const blocked = new Promise(resolve => { release = resolve })
+  const started = new Promise(resolve => { entered = resolve })
+  h.storage.commit = async batch => { entered(); await blocked; return original(batch) }
+  const accepted = h.one('view.patch', { viewId: f.viewId, name: 'accepted before transition' })
+  await started
+  const resume = h.coord.pauseWrites()
+  await assert.rejects(h.one('view.patch', { viewId: f.viewId, name: 'too late' }), e => e.code === 'READ_ONLY')
+  release()
+  await accepted
+  await h.coord.flushed()
+  assert.equal(h.state.get('view', f.viewId).name, 'accepted before transition')
+  resume()
+  await h.one('view.patch', { viewId: f.viewId, name: 'resumed' })
+  assert.equal(h.state.get('view', f.viewId).name, 'resumed')
+})
+
+test('a failed durable database write blocks an update drain until a successful retry', async () => {
+  const h = createHarness()
+  const f = await seedFixture(h)
+  const original = h.storage.commit.bind(h.storage)
+  h.storage.commit = async () => { throw new Error('disk full') }
+  await assert.rejects(h.one('view.patch', { viewId: f.viewId, name: 'pending' }), /disk full/)
+  await assert.rejects(h.coord.flushed(), /disk full/)
+  h.storage.commit = original
+  await h.one('view.patch', { viewId: f.viewId, name: 'pending' })
+  await h.coord.flushed()
+  assert.equal(h.state.get('view', f.viewId).name, 'pending')
+})
+
+test('undo persistence finishes or blocks the transition without undoing an acknowledged document', async () => {
+  const h = createHarness()
+  const f = await seedFixture(h)
+  const original = h.storage.saveUndo.bind(h.storage)
+  h.storage.saveUndo = async () => { throw new Error('undo disk unavailable') }
+  await h.one('view.patch', { viewId: f.viewId, name: 'document saved' })
+  assert.equal(h.state.get('view', f.viewId).name, 'document saved')
+  await assert.rejects(h.coord.flushed(), /undo disk unavailable/)
+  h.storage.saveUndo = original
+  await h.coord.flushed()
+  assert.ok((await h.storage.loadUndo()).length)
+})
+
 /** "Restart the process": fresh state + coordinator over the same durable storage and pages. */
 async function restart(h) {
   const state = new DbState(VAULT, h.pages)

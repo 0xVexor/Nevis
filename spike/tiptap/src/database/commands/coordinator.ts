@@ -71,6 +71,9 @@ export class Coordinator {
   undoLimit: number
   undoStack: UndoGroup[] = []
   private chain: Promise<unknown> = Promise.resolve()
+  private writesPaused = false
+  private writeError: DbError | null = null
+  private undoError: unknown = null
   private subs = new Set<(e: ChangeEvent) => void>()
   private opCache = new Map<Id, Commit>()
   locked = false // set when recovery failed: read-only until the user repairs
@@ -107,12 +110,33 @@ export class Coordinator {
   }
 
   execute(env: CommandEnvelope): Promise<Commit> {
-    const run = this.chain.then(() => this.run(env))
-    this.chain = run.catch(() => undefined)
+    if (this.writesPaused) return Promise.reject(new DbError('READ_ONLY', 'writes are paused for a workspace switch or update'))
+    const snapshot = structuredClone(env)
+    const run = this.chain.then(() => this.run(snapshot))
+    this.chain = run.then(() => { this.writeError = null }, error => {
+      const e = toDbError(error)
+      if (['IO', 'QUOTA', 'RECOVERY_REQUIRED'].includes(e.code)) this.writeError = e
+    })
     return run
   }
 
-  async flushed(): Promise<void> { await this.chain }
+  pauseWrites() {
+    this.writesPaused = true
+    return () => { this.writesPaused = false }
+  }
+
+  async flushed(): Promise<void> {
+    for (;;) {
+      const observed = this.chain
+      await observed
+      if (observed === this.chain) break
+    }
+    if (this.writeError) throw this.writeError
+    if (this.undoError) {
+      await this.storage.saveUndo(this.undoStack)
+      this.undoError = null
+    }
+  }
 
   private async run(env: CommandEnvelope): Promise<Commit> {
     if (this.locked) fail('RECOVERY_REQUIRED', 'the database needs repair before it can be written')
@@ -161,7 +185,8 @@ export class Coordinator {
     if (fin.batch.undo && env.origin !== 'sync') {
       this.undoStack.push(fin.batch.undo)
       if (this.undoStack.length > this.undoLimit) this.undoStack.splice(0, this.undoStack.length - this.undoLimit)
-      void this.storage.saveUndo(this.undoStack).catch(() => undefined)
+      try { await this.storage.saveUndo(this.undoStack); this.undoError = null }
+      catch (error) { this.undoError = error }
     }
     const ev: ChangeEvent = { commit: fin.batch.commit, envelope: env, pages: fin.pageChanges, records: fin.events }
     for (const s of this.subs) s(ev)

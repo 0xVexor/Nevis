@@ -1,30 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
-import ts from 'typescript'
 
-// Load the repository against a storage seam without opening a browser or a real
-// user vault. Keep the production repository implementation intact in the test.
-const source = readFileSync(new URL('./repo.ts', import.meta.url), 'utf8')
-  .replace(/^import .* from '\.\/normalize'\n/m, 'const normalizeFa = s => s\n')
-  .replace(/^import .* from '\.\/db'\n/m, 'const { addVersion, allPages, deleteVersions, isTauri, listVersions, savePages, vaultStamp } = storage\n')
-  .replace(/^export /gm, '')
-const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText
-const load = new Function('storage', 'window', 'localStorage', 'navigator', `${compiled}; return Repo`)
-const page = (title = 'local', at = 100) => ({ id: 'p', parentId: null, title, favorite: false, sort: 0, content: { type: 'doc', content: [] }, updatedAt: at, deletedAt: null })
-
-function harness(overrides = {}) {
-  let rows = [page()], stamp = 'one'
-  const events = [], writes = []
-  const storage = {
-    isTauri: true, allPages: async () => structuredClone(rows), vaultStamp: async () => stamp,
-    savePages: async upserts => { writes.push(structuredClone(upserts)); rows = structuredClone(upserts); stamp += '!'; return { pages: rows } },
-    addVersion: async () => {}, deleteVersions: async () => {}, listVersions: async () => [], ...overrides,
-  }
-  const window = { setTimeout: () => 1, dispatchEvent: e => { events.push(e); return true } }
-  const Repo = load(storage, window, { getItem: () => null }, {})
-  return { repo: new Repo(() => [page('seed')]), events, writes, setRows: r => { rows = r; stamp += '!' } }
-}
+import { harness, page } from './repoHarness.mjs'
 
 test('a failed initial read never writes a replacement workspace', async () => {
   const h = harness({ allPages: async () => { throw new Error('read failed') } })
@@ -80,4 +58,96 @@ test('an in-flight refresh cannot replace an edit queued after it began', async 
   release([page('stale read')])
   await refreshing
   assert.equal(h.repo.get('p').title, 'typed while refreshing')
+})
+
+test('failed storage never acknowledges a successful flush and can be retried', async () => {
+  let fail = true
+  const h = harness({ savePages: async rows => { if (fail) throw new Error('disk unavailable'); return { pages: rows } } })
+  await h.repo.init()
+  h.repo.update('p', { content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'keep this draft' }] }] } })
+  await assert.rejects(h.repo.flushed(), /disk unavailable/)
+  assert.ok(JSON.stringify(h.repo.get('p').content).includes('keep this draft'))
+  fail = false
+  await h.repo.flushed()
+})
+
+test('concurrent parent moves remain visible and deletions cannot recurse forever', async () => {
+  const h = harness({ allPages: async () => [{ ...page('A'), id: 'a', parentId: 'b' }, { ...page('B'), id: 'b', parentId: 'a' }] })
+  await h.repo.init()
+  const rows = h.repo.list()
+  assert.equal(rows.find(p => p.id === 'a').parentId, null)
+  assert.equal(rows.find(p => p.id === 'b').parentId, 'a')
+  assert.equal(h.repo.get('a').parentId, 'b', 'presentation must not silently rewrite saved metadata')
+  h.repo.remove('a')
+  assert.equal(h.repo.list().length, 0)
+})
+
+test('a drawing buffer holds refresh until its save is acknowledged', async () => {
+  const h = harness()
+  await h.repo.init()
+  const release = h.repo.holdRefresh()
+  h.setRows([page('remote')])
+  await h.repo.poll()
+  assert.equal(h.repo.get('p').title, 'local')
+  release()
+  await h.repo.poll()
+  assert.equal(h.repo.get('p').title, 'remote')
+})
+
+test('a frozen workspace rejects a mutation before changing its in-memory pages', async () => {
+  let frozen = false
+  const h = harness({ storageFrozen: () => frozen })
+  await h.repo.init()
+  frozen = true
+  assert.throws(() => h.repo.update('p', { title: 'must not apply' }), /paused/)
+  assert.equal(h.repo.get('p').title, 'local')
+})
+
+test('live editor changes enter the repository before refresh and survive reopening', async () => {
+  let release
+  const blocked = new Promise(resolve => { release = resolve })
+  let written
+  const h = harness({ savePages: async rows => { written = rows; await blocked; return { pages: rows } } })
+  await h.repo.init()
+  const view = readFileSync(new URL('./PageView.tsx', import.meta.url), 'utf8')
+  const body = view.match(/onUpdate: \(\{ editor: current \}\) => \{([\s\S]*?)\n      \},/)?.[1]
+  assert.ok(body, 'load the live production edit handler')
+  const onEdit = new Function('repo', 'page', 'readOnly', 'problemRef', 'editSequence', 'onSave', 'flush', `return ({editor:current})=>{${body}
+}`)(h.repo, { id: 'p' }, false, { current: null }, { current: 0 }, () => {}, async () => {})
+  const content = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'typed before visiting two other pages' }] }] }
+  onEdit({ editor: { getJSON: () => content } })
+  h.setRows([page('remote')])
+  await h.repo.poll()
+  assert.deepEqual(h.repo.get('p').content, content)
+  const saving = h.repo.flushed()
+  release()
+  await saving
+  const reopened = harness({ allPages: async () => structuredClone(written) })
+  await reopened.repo.init()
+  assert.deepEqual(reopened.repo.get('p').content, content)
+})
+
+test('flush also waits for a write queued while the previous write was finishing', async () => {
+  let releaseFirst, releaseSecond, enterFirst, enterSecond, writes = 0
+  const first = new Promise(resolve => { releaseFirst = resolve })
+  const second = new Promise(resolve => { releaseSecond = resolve })
+  const startedFirst = new Promise(resolve => { enterFirst = resolve })
+  const startedSecond = new Promise(resolve => { enterSecond = resolve })
+  const h = harness({ savePages: async rows => {
+    if (++writes === 1) { enterFirst(); await first } else { enterSecond(); await second }
+    return { pages: rows }
+  } })
+  await h.repo.init()
+  h.repo.update('p', { title: 'first' })
+  let acknowledged = false
+  const flushing = h.repo.flushed().then(() => { acknowledged = true })
+  await startedFirst
+  h.repo.update('p', { title: 'queued meanwhile' })
+  void h.repo.flushed()
+  releaseFirst()
+  await startedSecond
+  assert.equal(acknowledged, false)
+  releaseSecond()
+  await flushing
+  assert.equal(writes, 2)
 })

@@ -49,7 +49,7 @@ export async function putFile(original: File | Blob, name = (original as File).n
 }
 
 export async function putRecord(rec: FileRec) {
-  if (storageFrozen()) return
+  if (storageFrozen()) throw new Error('Storage is paused.')
   if (isTauri) {
     const headers = { 'x-file-id': rec.id, 'x-file-type': rec.type, 'x-file-name': encodeURIComponent(rec.name), 'x-added-at': String(rec.addedAt ?? Date.now()) }
     await invoke('file_put', new Uint8Array(await rec.blob.arrayBuffer()), { headers })
@@ -59,7 +59,7 @@ export async function putRecord(rec: FileRec) {
 }
 
 export const deleteFile = async (id: string) => {
-  if (storageFrozen()) return
+  if (storageFrozen()) throw new Error('Storage is paused.')
   if (isTauri) await invoke('file_delete', { id })
   else await tx('readwrite', (s) => s.delete(id))
   const u = urls.get(id)

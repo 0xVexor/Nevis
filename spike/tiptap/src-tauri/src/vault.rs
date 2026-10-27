@@ -3,7 +3,33 @@
 
 use serde_json::{json, Value};
 use std::fs;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static INSTALLING: AtomicBool = AtomicBool::new(false);
+pub fn writes_paused() -> bool { INSTALLING.load(Ordering::SeqCst) }
+pub struct WritePause { keep: bool }
+impl WritePause {
+    pub fn new() -> Self { INSTALLING.store(true, Ordering::SeqCst); Self { keep: false } }
+    pub fn keep_until_restart(&mut self) { self.keep = true; }
+}
+impl Drop for WritePause {
+    fn drop(&mut self) { if !self.keep { INSTALLING.store(false, Ordering::SeqCst); } }
+}
+
+/// Kernel locks release on process death and cannot be stolen by deleting a marker.
+pub fn process_lease(root: &Path) -> Res<Arc<fs::File>> {
+    static LEASES: OnceLock<Mutex<BTreeMap<PathBuf, Weak<fs::File>>>> = OnceLock::new();
+    let key = root.canonicalize().map_err(err)?;
+    safe_local(&key, ".noviq/writer.lock")?;
+    let mut leases = LEASES.get_or_init(Default::default).lock().map_err(err)?;
+    if let Some(file) = leases.get(&key).and_then(Weak::upgrade) { return Ok(file); }
+    let file = fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(key.join(".noviq/writer.lock")).map_err(err)?;
+    file.try_lock().map_err(|_| "VAULT_IN_USE: close the other app using this workspace".to_string())?;
+    let file = Arc::new(file);
+    leases.insert(key, Arc::downgrade(&file));
+    Ok(file)
+}
 use std::collections::BTreeMap;
 use parking_lot::ReentrantMutex;
 use std::io::Write;
@@ -61,6 +87,7 @@ pub fn safe_local(root: &Path, rel: &str) -> Res<()> {
 
 /// Unique temporary files prevent simultaneous writers from sharing an inode.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Res<()> {
+    if writes_paused() { return Err("UPDATE_BUSY".into()); }
     let dir = path.parent().ok_or("bad path")?;
     fs::create_dir_all(dir).map_err(err)?;
     let name = path.file_name().and_then(|n| n.to_str()).ok_or("bad path")?;
@@ -77,6 +104,17 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Res<()> {
     })();
     if result.is_err() { let _ = fs::remove_file(&tmp); }
     result
+}
+
+/// Publish a fully written, verified file on the same volume.
+pub fn publish_temporary(source: &Path, destination: &Path) -> Res<()> {
+    if writes_paused() { return Err("UPDATE_BUSY".into()); }
+    let parent = destination.parent().ok_or("bad path")?;
+    fs::create_dir_all(parent).map_err(err)?;
+    fs::rename(source, destination).map_err(err)?;
+    #[cfg(unix)]
+    fs::File::open(parent).and_then(|f| f.sync_all()).map_err(err)?;
+    Ok(())
 }
 
 fn read_json(path: &Path) -> Option<Value> {
@@ -98,6 +136,8 @@ pub fn probe(root: &Path, id: &str) -> &'static str {
 
 pub struct Vault {
     pub root: PathBuf,
+    pub(crate) _lease: Arc<fs::File>,
+    identity: String,
 }
 
 /// Error codes the UI knows (see `explain` in the web app). They are plain strings because commands return `Res<T>`.
@@ -111,11 +151,39 @@ impl Vault {
         if !root.is_dir() || !root.join(".noviq/vault.json").is_file() {
             return Err(VAULT_MISSING.into());
         }
-        let v = Vault { root };
-        if v.id().is_empty() {
-            return Err(VAULT_MISSING.into());
-        }
+        let identity = read_json(&root.join(".noviq/vault.json")).and_then(|v| v["id"].as_str().map(str::to_string)).ok_or(VAULT_MISSING)?;
+        check_id(&identity)?;
+        let v = Vault { _lease: process_lease(&root)?, root, identity };
+        v.protect_legacy_conflicts()?;
         Ok(v)
+    }
+
+    fn protect_legacy_conflicts(&self) -> Res<()> {
+        let mutex = local_lock(&self.root);
+        let _guard = mutex.lock();
+        let done = self.root.join(".noviq/history-format-2");
+        if done.exists() { return Ok(()); }
+        let history = self.root.join("history");
+        if history.is_dir() {
+            for dir in fs::read_dir(history).map_err(err)? {
+                let dir = dir.map_err(err)?;
+                if !dir.file_type().map_err(err)?.is_dir() { continue; }
+                let id = dir.file_name().to_string_lossy().to_string();
+                if !is_id(&id) { continue; }
+                for entry in fs::read_dir(dir.path()).map_err(err)? {
+                    let entry = entry.map_err(err)?;
+                    let path = entry.path();
+                    if path.file_stem().and_then(|s| s.to_str()).and_then(|s| s.parse::<i64>().ok()).is_none() { continue; }
+                    if let Some(v) = read_json(&path).filter(|v| v["conflict"] == true) {
+                        // Copy before removing the legacy name; an interrupted
+                        // migration leaves an extra recoverable version.
+                        self.keep_loser(&id, v.get("page").unwrap_or(&v))?;
+                        fs::remove_file(path).map_err(err)?;
+                    }
+                }
+            }
+        }
+        write_atomic(&done, b"2")
     }
 
     /// Like `open`, and also checks that the folder is the vault `id`.
@@ -181,7 +249,7 @@ impl Vault {
     }
 
     pub fn id(&self) -> String {
-        self.meta_value().get("id").and_then(Value::as_str).unwrap_or_default().to_string()
+        self.identity.clone()
     }
 
     pub fn name(&self) -> String {
@@ -294,14 +362,16 @@ impl Vault {
 
     /// A page version that lost against a newer one is not dropped: it becomes a history entry.
     fn keep_loser(&self, id: &str, page: &Value) -> Res<()> {
-        let mut ts = updated_at(page);
+        let ts = updated_at(page);
         let dir = self.root.join("history").join(check_id(id)?);
-        while dir.join(format!("{ts}.json")).exists() {
-            ts += 1;
-        }
-        safe_local(&self.root, &format!("history/{id}/{ts}.json"))?;
+        // Older clients trim only numeric names. A content-addressed conflict
+        // survives their ordinary retention and repeated delivery is idempotent.
+        use sha2::{Digest, Sha256};
+        let hash = format!("{:x}", Sha256::digest(page.to_string().as_bytes()));
+        let name = format!("conflict-{hash}.json");
+        safe_local(&self.root, &format!("history/{id}/{name}"))?;
         let v = json!({ "pageId": id, "ts": ts, "title": page.get("title").cloned().unwrap_or(json!("")), "content": page.get("content").cloned().unwrap_or(Value::Null), "page": page, "conflict": true });
-        write_atomic(&dir.join(format!("{ts}.json")), v.to_string().as_bytes())?;
+        write_atomic(&dir.join(name), v.to_string().as_bytes())?;
         Ok(())
     }
 
@@ -550,6 +620,36 @@ impl Vault {
 mod tests {
     use super::*;
 
+    #[test]
+    fn process_lock_child() {
+        let Some(root) = std::env::var_os("NEVIS_LEASE_TEST_ROOT") else { return };
+        let result = Vault::open(PathBuf::from(root));
+        assert!(result.err().is_some_and(|e| e.contains("VAULT_IN_USE")));
+    }
+
+    #[test]
+    fn another_process_cannot_open_a_workspace_for_writing() {
+        let v = Vault::create(tmp("lease"), "T").unwrap();
+        let child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "vault::tests::process_lock_child", "--nocapture"])
+            .env("NEVIS_LEASE_TEST_ROOT", &v.root).output().unwrap();
+        assert!(child.status.success(), "{}", String::from_utf8_lossy(&child.stdout));
+    }
+
+    #[test]
+    fn conflict_names_survive_numeric_retention_used_by_older_clients() {
+        let v = Vault::create(tmp("legacy-retention"), "T").unwrap();
+        v.save_pages(&[page(A, "original", 100)], &[], false).unwrap();
+        v.keep_loser(A, &page(A, "preserved conflict", 50)).unwrap();
+        for n in 0..60 { v.version_add(&json!({"pageId":A,"ts":1000+n,"title":"ordinary","content":{}})).unwrap(); }
+        let dir = v.root.join("history").join(A);
+        let mut numeric: Vec<_> = fs::read_dir(&dir).unwrap().flatten()
+            .filter_map(|e| e.path().file_stem()?.to_str()?.parse::<i64>().ok()).collect();
+        numeric.sort_by(|a,b| b.cmp(a));
+        for ts in numeric.into_iter().skip(KEEP_VERSIONS) { fs::remove_file(dir.join(format!("{ts}.json"))).unwrap(); }
+        assert!(v.versions_list(A).unwrap().iter().any(|v| v["page"]["title"] == "preserved conflict"));
+    }
+
     fn tmp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("noviq-test-{name}-{}", now_ms()));
         let _ = fs::remove_dir_all(&d);
@@ -730,7 +830,7 @@ mod tests {
             let root = root.clone();
             let barrier = barrier.clone();
             std::thread::spawn(move || {
-                let v = Vault { root };
+                let v = Vault::open(root).unwrap();
                 barrier.wait();
                 let mut value = page(A, &format!("writer-{n}"), 100 + n);
                 value["_base"] = json!(0);
@@ -738,7 +838,7 @@ mod tests {
             })
         }).collect();
         for job in jobs { job.join().unwrap(); }
-        let v = Vault { root };
+        let v = Vault::open(root).unwrap();
         assert_eq!(v.pages_all().unwrap()[0]["title"], "writer-1");
         assert!(v.versions_list(A).unwrap().iter().any(|v| v["title"] == "writer-0"));
     }

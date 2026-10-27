@@ -1,4 +1,5 @@
 //! GitHub release discovery and signed, user-approved desktop updates.
+use tauri::Manager;
 use std::{cmp::Ordering, time::Duration};
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -124,8 +125,18 @@ pub async fn updates_install(app: AppHandle, state: State<'_, Updates>, version:
     let p = pending.as_mut().filter(|p| p.update.version == version).ok_or("UPDATE_EXPIRED")?;
     let bytes = p.bytes.take().ok_or("UPDATE_NOT_DOWNLOADED")?;
     let update = p.update.clone();
-    tauri::async_runtime::spawn_blocking(move || update.install(bytes)).await.map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
+    let install_app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        let _session = crate::sync::account::guard()?;
+        let store = install_app.state::<crate::Store>();
+        let open = store.vault.lock().map_err(|e| e.to_string())?;
+        let mutex = open.as_ref().map(|v| crate::vault::local_lock(&v.root));
+        let _vault = mutex.as_ref().map(|m| m.lock());
+        let mut pause = crate::vault::WritePause::new();
+        update.install(bytes).map_err(|e| e.to_string())?;
+        pause.keep_until_restart();
+        Ok(())
+    }).await.map_err(|e| e.to_string())??;
     app.restart();
 }
 

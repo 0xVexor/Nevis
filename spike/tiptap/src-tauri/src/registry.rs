@@ -9,9 +9,11 @@ pub struct Entry {
     pub id: String,
     pub name: String,
     pub path: String,
-    /// keep this vault in sync with the signed-in Google account
+    /// Keep this vault in sync only with the account identified by owner.
     #[serde(default)]
     pub sync: bool,
+    #[serde(default)]
+    pub owner: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
@@ -42,7 +44,7 @@ impl Registry {
             Some(p) if Path::new(p).join(".noviq/vault.json").exists() => {
                 let v = crate::vault::Vault::open(PathBuf::from(p)).ok();
                 match v {
-                    Some(v) => Registry { current: Some(v.id()), vaults: vec![Entry { id: v.id(), name: v.name(), path: p.to_string(), sync: false }] },
+                    Some(v) => Registry { current: Some(v.id()), vaults: vec![Entry { id: v.id(), name: v.name(), path: p.to_string(), sync: false, owner: None }] },
                     None => Registry::default(),
                 }
             }

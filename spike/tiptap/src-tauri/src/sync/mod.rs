@@ -17,6 +17,7 @@ use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::io::Read;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 
@@ -31,6 +32,12 @@ pub struct RemoteFile {
     pub modified_ms: i64,
 }
 
+pub struct PendingUpload {
+    pub path: String,
+    pub existing: Option<String>,
+    pub bytes: Vec<u8>,
+}
+
 pub trait Remote {
     /// The cloud folder is there and usable; `Err(CLOUD_GONE)` when it is not.
     fn check(&mut self) -> Res<()>;
@@ -39,8 +46,34 @@ pub trait Remote {
     fn validate_paths(&mut self, _paths: &[String]) -> Res<()> { Ok(()) }
     fn confirm_deletes(&mut self, _confirmed: bool) {}
     fn download(&mut self, f: &RemoteFile) -> Res<Vec<u8>>;
+    /// A temporary destination, never the user's live file.
+    fn download_to(&mut self, f: &RemoteFile, destination: &Path) -> Res<()> {
+        use std::io::Write;
+        let bytes = self.download(f)?;
+        let mut file = fs::OpenOptions::new().write(true).create_new(true).open(destination).map_err(err)?;
+        file.write_all(&bytes).map_err(err)?;
+        file.sync_all().map_err(err)
+    }
     /// Creates the file, or replaces its content when `existing` is the id of the current remote file.
     fn upload(&mut self, path: &str, existing: Option<&str>, bytes: &[u8]) -> Res<RemoteFile>;
+    fn upload_file(&mut self, path: &str, existing: Option<&str>, source: &mut fs::File) -> Res<RemoteFile> {
+        let mut bytes = Vec::new();
+        source.read_to_end(&mut bytes).map_err(err)?;
+        verified_upload(self, path, existing, &bytes)
+    }
+    fn upload_batch(&mut self, files: &[PendingUpload]) -> Res<Vec<Res<RemoteFile>>> {
+        let mut results = Vec::with_capacity(files.len());
+        let mut stopped: Option<String> = None;
+        for file in files {
+            let result = match &stopped {
+                Some(error) => Err(error.clone()),
+                None => verified_upload(self, &file.path, file.existing.as_deref(), &file.bytes),
+            };
+            if let Err(error) = &result { if hub::is_auth(error) || hub::is_network(error) { stopped = Some(error.clone()); } }
+            results.push(result);
+        }
+        Ok(results)
+    }
     /// The file as it is right now; `None` when it is gone or in the trash.
     fn get(&mut self, id: &str) -> Res<Option<RemoteFile>>;
     /// Moves the file to the trash of the remote (never an outright delete).
@@ -157,6 +190,19 @@ fn hold_deletes(deletes: usize, tracked: usize, local_empty: bool, remote_empty:
     deletes > 0 && (deletes > 5usize.max(tracked / 5) || (tracked >= 5 && deletes == tracked) || ((local_empty || remote_empty) && tracked > 0))
 }
 
+fn md5_file(path: &Path) -> Res<String> {
+    use std::io::Read;
+    let mut file = fs::File::open(path).map_err(err)?;
+    let mut hash = Md5::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buffer).map_err(err)?;
+        if n == 0 { break; }
+        hash.update(&buffer[..n]);
+    }
+    Ok(format!("{:x}", hash.finalize()))
+}
+
 fn md5_hex(bytes: &[u8]) -> String {
     Md5::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -193,15 +239,11 @@ fn scan(root: &Path, cache: &BTreeMap<String, Entry>) -> Res<(BTreeMap<String, L
                 continue;
             }
             let mtime = mtime_of(&meta);
-            let md5 = match cache.get(&rel) {
-                Some(c) if rel.starts_with("files/") && c.size == meta.len() && c.mtime == mtime && !c.md5.is_empty() => c.md5.clone(),
-                _ => match fs::read(&path) {
-                    Ok(b) => md5_hex(&b),
-                    Err(_) => {
-                        unknown.insert(rel);
-                        continue;
-                    }
-                },
+            // Metadata can be preserved by copy/restore tools. Verify content
+            // with bounded memory instead of treating mtime/size as identity.
+            let md5 = match md5_file(&path) {
+                Ok(hash) => hash,
+                Err(_) => { unknown.insert(rel); continue; }
             };
             out.insert(rel, Local { md5, size: meta.len(), mtime });
         }
@@ -274,7 +316,7 @@ fn merge_kv(path: &str, local: &[u8], remote: &[u8]) -> Option<Vec<u8>> {
             let rank = |v: &Value| (v.get("last").and_then(Value::as_i64).unwrap_or(0), v.get("reps").and_then(Value::as_i64).unwrap_or(0), v.get("due").and_then(Value::as_i64).unwrap_or(0));
             for k in a.keys().chain(b.keys()) {
                 let v = match (a.get(k), b.get(k)) {
-                    (Some(x), Some(y)) => if rank(y) > rank(x) { y } else { x },
+                    (Some(x), Some(y)) => if (rank(y), y.to_string()) > (rank(x), x.to_string()) { y } else { x },
                     (Some(x), None) => x,
                     (None, Some(y)) => y,
                     (None, None) => continue,
@@ -325,11 +367,12 @@ impl Report {
 
 /// True when the file is not what the scan saw any more (edited, deleted or created since).
 fn changed_since(path: &Path, md5: Option<&str>) -> bool {
-    match (fs::read(path), md5) {
-        (Ok(b), Some(m)) => md5_hex(&b) != m,
-        (Ok(_), None) => true,
-        (Err(_), Some(_)) => true,
-        (Err(_), None) => path.exists(),
+    match md5 {
+        Some(expected) => md5_file(path).map_or(true, |actual| actual != expected),
+        None => match fs::symlink_metadata(path) {
+            Ok(_) => true,
+            Err(e) => e.kind() != std::io::ErrorKind::NotFound,
+        },
     }
 }
 
@@ -340,7 +383,7 @@ fn validate_marker(vault: &Vault, bytes: &[u8]) -> Res<()> {
 }
 
 /// Uploads and checks that the cloud stored what we sent; one more try before giving up on a damaged upload.
-fn verified_upload(remote: &mut dyn Remote, path: &str, existing: Option<&str>, bytes: &[u8]) -> Res<RemoteFile> {
+fn verified_upload<R: Remote + ?Sized>(remote: &mut R, path: &str, existing: Option<&str>, bytes: &[u8]) -> Res<RemoteFile> {
     let want = md5_hex(bytes);
     let mut up = remote.upload(path, existing, bytes)?;
     if !up.md5.is_empty() && up.md5 != want {
@@ -381,13 +424,92 @@ fn dedupe(vault: &Vault, remote: &mut dyn Remote, listed: Vec<RemoteFile>, rep: 
     out
 }
 
+struct TemporaryDownload(std::path::PathBuf);
+impl Drop for TemporaryDownload {
+    fn drop(&mut self) { let _ = fs::remove_file(&self.0); }
+}
+
+const SMALL_UPLOAD: u64 = 2 * 1024 * 1024;
+const BATCH_BYTES: usize = 8 * 1024 * 1024;
+
+fn flush_upload_batch(remote: &mut dyn Remote, pending: &mut Vec<PendingUpload>, local: &BTreeMap<String, Local>, state: &mut SyncState, rep: &mut Report, progress: &mut dyn FnMut(&SyncState)) -> Res<()> {
+    if pending.is_empty() { return Ok(()); }
+    let results = remote.upload_batch(pending)?;
+    if results.len() != pending.len() { return Err("HUB:bad_answer".into()); }
+    let mut terminal = None;
+    for (file, result) in pending.iter().zip(results) {
+        match result {
+            Ok(up) if up.md5 == md5_hex(&file.bytes) => {
+                state.files.insert(file.path.clone(), Entry { base: up.md5.clone(), remote_id: up.id,
+                    size: file.bytes.len() as u64, mtime: local[&file.path].mtime, md5: up.md5 });
+                rep.uploaded += 1;
+            }
+            Ok(_) => rep.errors.push(format!("upload {}: HUB:corrupt_upload", file.path)),
+            Err(error) => {
+                if hub::is_network(&error) || hub::is_auth(&error) { terminal = Some(error.clone()); }
+                rep.errors.push(format!("upload {}: {error}", file.path));
+            }
+        }
+    }
+    pending.clear();
+    progress(state);
+    if let Some(error) = terminal { return Err(error); }
+    Ok(())
+}
+
+/// Bound payload memory while combining conditional commits. Blobs are staged
+/// first; each operation still carries its own baseline and result.
+fn upload_small_files(vault: &Vault, remote: &mut dyn Remote, actions: Vec<Action>, local: &BTreeMap<String, Local>, remote_files: &BTreeMap<String, RemoteFile>, state: &mut SyncState, rep: &mut Report, progress: &mut dyn FnMut(&SyncState)) -> Res<Vec<Action>> {
+    let mut remaining = Vec::new();
+    let mut pending = Vec::new();
+    let mut bytes = 0usize;
+    for action in actions {
+        let Action::Upload(path) = &action else { remaining.push(action); continue; };
+        if local[path].size > SMALL_UPLOAD { remaining.push(action); continue; }
+        let read: Res<Vec<u8>> = (|| {
+            let mutex = crate::vault::local_lock(&vault.root);
+            let _guard = mutex.lock();
+            if crate::vault::probe(&vault.root, &vault.id()) != "ok" { return Err(VAULT_MISMATCH.into()); }
+            crate::vault::safe_local(&vault.root, path)?;
+            let mut content = Vec::new();
+            fs::File::open(vault.root.join(path)).map_err(err)?.take(SMALL_UPLOAD + 1).read_to_end(&mut content).map_err(err)?;
+            Ok(content)
+        })();
+        let content = match read {
+            Ok(content) => content,
+            Err(error) => { rep.errors.push(format!("upload {path}: {error}")); continue; }
+        };
+        if content.len() as u64 > SMALL_UPLOAD { remaining.push(action); continue; }
+        if pending.len() == 200 || bytes + content.len() > BATCH_BYTES {
+            if crate::vault::probe(&vault.root, &vault.id()) != "ok" { return Err(VAULT_MISMATCH.into()); }
+            flush_upload_batch(remote, &mut pending, local, state, rep, progress)?;
+            bytes = 0;
+        }
+        let existing = match remote_files.get(path) {
+            Some(previous) => match remote.get(&previous.id)? {
+                Some(current) if current.md5 != previous.md5 => { rep.skipped += 1; continue; },
+                Some(_) => Some(previous.id.clone()),
+                None => None,
+            },
+            None => None,
+        };
+        bytes += content.len();
+        pending.push(PendingUpload { path: path.clone(), existing, bytes: content });
+    }
+    if crate::vault::probe(&vault.root, &vault.id()) != "ok" { return Err(VAULT_MISMATCH.into()); }
+    flush_upload_batch(remote, &mut pending, local, state, rep, progress)?;
+    Ok(remaining)
+}
+
 /// One synchronization. `progress` is called every now and then with the bookkeeping so far, so that a crash or a
 /// lost connection in the middle costs only the work since then.
 pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, progress: &mut dyn FnMut(&SyncState)) -> Res<Report> {
     let root = &vault.root;
     // preflight: nothing below may run against a vault or a cloud folder that is not there
-    if !root.is_dir() || vault.id().is_empty() {
-        return Err(VAULT_MISSING.into());
+    match crate::vault::probe(root, &vault.id()) {
+        "ok" => {},
+        "mismatch" => return Err(VAULT_MISMATCH.into()),
+        _ => return Err(VAULT_MISSING.into()),
     }
     remote.check()?;
     let (local, unknown) = {
@@ -426,9 +548,14 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
 
     // Resolve and upload merges before any deletion. Keep deletion bookkeeping on failure.
     let (deletions, actions): (Vec<_>, Vec<_>) = actions.into_iter().partition(|a| matches!(a, Action::DeleteLocal(_) | Action::DeleteRemote(_)));
+    let actions = match upload_small_files(vault, remote, actions, &local, &rmap, state, &mut rep, progress) {
+        Ok(actions) => actions,
+        Err(error) => { rep.errors.push(format!("batch uploads: {error}")); return Ok(rep); }
+    };
     let mut done = 0usize;
     for a in actions {
         let res: Res<()> = (|| {
+            if crate::vault::probe(root, &vault.id()) != "ok" { return Err(VAULT_MISMATCH.into()); }
             match &a {
                 Action::Record(p) => {
                     let (l, r) = (&local[p], &rmap[p]);
@@ -436,7 +563,6 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                 }
                 Action::Upload(p) => {
                     let l = &local[p];
-                    let bytes = fs::read(root.join(p)).map_err(err)?;
                     // the cloud copy may have been replaced since we listed it: then this is a conflict for the next round
                     let existing = match rmap.get(p) {
                         Some(r) => match remote.get(&r.id)? {
@@ -449,8 +575,23 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                         },
                         None => None,
                     };
-                    let up = verified_upload(remote, p, existing.as_deref(), &bytes)?;
-                    cache(state, p, l, &md5_hex(&bytes), &up.id);
+                    let (mut source, size) = {
+                        let mutex = crate::vault::local_lock(root);
+                        let _guard = mutex.lock();
+                        crate::vault::safe_local(root, p)?;
+                        if crate::vault::probe(root, &vault.id()) != "ok" { return Err(VAULT_MISMATCH.into()); }
+                        let source = fs::File::open(root.join(p)).map_err(err)?;
+                        let size = source.metadata().map_err(err)?.len();
+                        (source, size)
+                    };
+                    let up = if p.starts_with("files/") && size > 2 * 1024 * 1024 {
+                        remote.upload_file(p, existing.as_deref(), &mut source)?
+                    } else {
+                        let mut bytes = Vec::new();
+                        source.read_to_end(&mut bytes).map_err(err)?;
+                        verified_upload(remote, p, existing.as_deref(), &bytes)?
+                    };
+                    cache(state, p, l, &up.md5, &up.id);
                     rep.uploaded += 1;
                 }
                 Action::Download(p) => {
@@ -458,10 +599,28 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                         return Err(format!("refusing remote path {p}"));
                     }
                     let r = &rmap[p];
+                    if p.starts_with("files/") {
+                        let temporary = TemporaryDownload(root.join(".noviq").join(format!("download-{}.tmp", uuid::Uuid::new_v4())));
+                        crate::vault::safe_local(root, temporary.0.strip_prefix(root).map_err(err)?.to_str().ok_or("invalid path")?)?;
+                        remote.download_to(r, &temporary.0)?;
+                        let digest = md5_file(&temporary.0)?;
+                        if !r.md5.is_empty() && digest != r.md5 { return Err(format!("download of {p} is corrupt")); }
+                        let mutex = crate::vault::local_lock(root);
+                        let _guard = mutex.lock();
+                        if crate::vault::probe(root, &vault.id()) != "ok" { return Err(VAULT_MISSING.into()); }
+                        crate::vault::safe_local(root, p)?;
+                        if changed_since(&root.join(p), local.get(p).map(|l| l.md5.as_str())) { rep.skipped += 1; return Ok(()); }
+                        crate::vault::publish_temporary(&temporary.0, &root.join(p))?;
+                        let m = fs::metadata(root.join(p)).map_err(err)?;
+                        cache(state, p, &Local { md5: digest.clone(), size: m.len(), mtime: mtime_of(&m) }, &digest, &r.id);
+                        rep.downloaded += 1;
+                        return Ok(());
+                    }
                     let bytes = remote.download(r)?;
                     let mutex = crate::vault::local_lock(root);
                     let _guard = mutex.lock();
                     crate::vault::safe_local(root, p)?;
+                    if crate::vault::probe(root, &vault.id()) != "ok" { return Err(VAULT_MISMATCH.into()); }
                     if p == ".noviq/vault.json" { validate_marker(vault, &bytes)?; }
                     if md5_hex(&bytes) != r.md5 && !r.md5.is_empty() {
                         return Err(format!("download of {p} is corrupt"));
@@ -487,6 +646,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                     let mutex = crate::vault::local_lock(root);
                     let guard = mutex.lock();
                     crate::vault::safe_local(root, p)?;
+                    if crate::vault::probe(root, &vault.id()) != "ok" { return Err(VAULT_MISMATCH.into()); }
                     if changed_since(&root.join(p), local.get(p).map(|l| l.md5.as_str())) {
                         rep.skipped += 1;
                         return Ok(());
@@ -658,6 +818,7 @@ mod tests {
         corrupt_uploads: bool, // the cloud reports another md5 than what was sent
         on_download: Option<Rc<dyn Fn()>>,
         on_get: Option<Rc<dyn Fn()>>,
+        batches: Vec<(usize, usize)>,
     }
 
     #[derive(Clone, Default)]
@@ -675,6 +836,10 @@ mod tests {
     }
 
     impl Remote for Shared {
+        fn upload_batch(&mut self, files: &[PendingUpload]) -> Res<Vec<Res<RemoteFile>>> {
+            self.0.borrow_mut().batches.push((files.len(), files.iter().map(|f| f.bytes.len()).sum()));
+            Ok(files.iter().map(|file| verified_upload(self, &file.path, file.existing.as_deref(), &file.bytes)).collect())
+        }
         fn validate_paths(&mut self, _paths: &[String]) -> Res<()> {
             if self.0.borrow().reject_paths { Err("HUB:server_upgrade_required".into()) } else { Ok(()) }
         }
@@ -696,7 +861,7 @@ mod tests {
             let mut m = self.0.borrow_mut();
             m.clock += 1000;
             let at = m.clock;
-            let mut out = if let Some(i) = m.files.iter().position(|(f, _)| Some(f.id.as_str()) == existing) {
+            let mut out = if let Some(i) = existing.and_then(|id| m.files.iter().position(|(f, _)| f.id == id)) {
                 m.files[i] = (RemoteFile { id: m.files[i].0.id.clone(), path: path.into(), md5: md5_hex(bytes), modified_ms: at }, bytes.to_vec());
                 m.files[i].0.clone()
             } else {
@@ -738,10 +903,10 @@ mod tests {
             static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
             let root: PathBuf = std::env::temp_dir().join(format!("noviq-sync-{name}-{}-{}", now_ms(), N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)));
             let _ = fs::remove_dir_all(&root);
-            let vault = Vault::create(root, "T").unwrap();
-            if let Some(id) = id {
-                write_atomic(&vault.root.join(".noviq/vault.json"), json!({ "format": 1, "id": id, "name": "T" }).to_string().as_bytes()).unwrap();
-            }
+            let vault = match id {
+                Some(id) => Vault::create_with_id(root, "T", id).unwrap(),
+                None => Vault::create(root, "T").unwrap(),
+            };
             Device { vault, state: SyncState::default(), remote: remote.clone() }
         }
         fn try_sync(&mut self) -> Res<Report> {
@@ -1136,6 +1301,79 @@ mod tests {
     // ───── concurrency: a file that changed while we were busy is not overwritten ─────
 
     #[test]
+    fn small_uploads_are_batched_with_bounded_payloads_and_checkpointed() {
+        let (mut a, _b) = pair();
+        for i in 0..501 { write_atomic(&a.vault.root.join(format!("kv/item-{i}.json")), b"{}").unwrap(); }
+        a.sync();
+        let batches = a.remote.0.borrow().batches.clone();
+        assert_eq!(batches.len(), 3);
+        assert!(batches.iter().all(|(files, bytes)| *files <= 200 && *bytes <= BATCH_BYTES));
+        assert_eq!(a.state.files.len(), 502); // marker plus records
+        assert_eq!(a.sync().uploaded, 0);
+    }
+
+    #[test]
+    fn upload_batches_split_on_bytes_before_reaching_the_operation_limit() {
+        let (mut a, _b) = pair();
+        let payload = vec![9u8; 1536 * 1024];
+        for i in 0..10 { write_atomic(&a.vault.root.join(format!("files/picture-{i}.bin")), &payload).unwrap(); }
+        a.sync();
+        let batches = &a.remote.0.borrow().batches;
+        assert_eq!(batches.len(), 2);
+        assert!(batches.iter().all(|(n, bytes)| *n < 200 && *bytes <= BATCH_BYTES));
+    }
+
+    #[test]
+    #[ignore]
+    fn benchmark_workspace_batches() {
+        for count in [1000usize, 10_000, 50_000] {
+            let remote = Shared::default();
+            let mut d = Device::new("scale", &remote, None);
+            let root = d.vault.root.clone();
+            for i in 0..count { write_atomic(&root.join(format!("kv/item-{i:06}.json")), b"{\"value\":1}").unwrap(); }
+            let started = std::time::Instant::now();
+            let first = d.sync(); let first_ms = started.elapsed().as_millis();
+            let started = std::time::Instant::now();
+            let quiet = d.sync(); let quiet_ms = started.elapsed().as_millis();
+            let batches = remote.0.borrow().batches.clone();
+            assert_eq!(first.uploaded, count + 1); assert_eq!(quiet.uploaded, 0);
+            assert_eq!(batches.len(), (count + 200) / 200);
+            println!("{}", json!({"files":count,"first_sync_ms":first_ms,"quiet_sync_ms":quiet_ms,"conditional_batches":batches.len(),"max_batch_bytes":batches.iter().map(|b|b.1).max().unwrap_or(0),"remote":"in-memory, no network latency"}));
+            drop(d); drop(remote);
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_streamed_attachment_cannot_overwrite_an_edit_made_during_download() {
+        let (mut a, mut b) = pair();
+        let path = "files/attachment.bin";
+        write_atomic(&a.vault.root.join(path), b"baseline").unwrap(); a.sync(); b.sync();
+        write_atomic(&a.vault.root.join(path), b"remote edit").unwrap(); a.sync();
+        let root = b.vault.root.clone();
+        b.remote.0.borrow_mut().on_download = Some(Rc::new(move || { write_atomic(&root.join(path), b"local edit").unwrap(); }));
+        let report = b.sync();
+        assert!(report.skipped > 0);
+        assert_eq!(fs::read(b.vault.root.join(path)).unwrap(), b"local edit");
+        assert!(!fs::read_dir(b.vault.root.join(".noviq")).unwrap().flatten().any(|e| e.file_name().to_string_lossy().starts_with("download-")));
+    }
+
+    #[test]
+    fn changing_the_local_marker_during_download_never_changes_the_open_vaults_identity() {
+        let (mut a, mut b) = pair();
+        a.save(P1, "baseline", 100); a.sync(); b.sync();
+        a.save(P1, "remote edit", 200); a.sync();
+        let root = b.vault.root.clone(); let original = b.vault.id();
+        b.remote.0.borrow_mut().on_download = Some(Rc::new(move || {
+            write_atomic(&root.join(".noviq/vault.json"), br#"{"id":"another-vault","name":"other"}"#).unwrap();
+        }));
+        let report = b.try_sync().unwrap();
+        assert!(report.errors.iter().any(|e| e.contains(VAULT_MISMATCH)));
+        assert_eq!(b.vault.id(), original);
+        assert_eq!(b.page(P1).unwrap()["title"], "baseline");
+    }
+
+    #[test]
     fn an_edit_made_while_downloading_is_not_overwritten() {
         let (mut a, mut b) = pair();
         a.save(P1, "v1", 100);
@@ -1146,7 +1384,7 @@ mod tests {
         // while b downloads v2, the user edits the page on b
         let root = b.vault.root.clone();
         b.remote.0.borrow_mut().on_download = Some(Rc::new(move || {
-            let v = Vault { root: root.clone() };
+            let v = Vault::open(root.clone()).unwrap();
             v.save_pages(&[json!({ "id": P1, "title": "typed on b", "content": {"type":"doc","content":[]}, "updatedAt": 500, "deletedAt": null })], &[], false).unwrap();
         }));
         let r = b.sync();
