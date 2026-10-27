@@ -38,6 +38,8 @@ jobs:
         working-directory: spike/tiptap
       - run: npx tsc -b
         working-directory: spike/tiptap
+      - run: npm run test:layout
+        working-directory: spike/tiptap
       - run: npm run test:updates
         working-directory: spike/tiptap
       - run: npm run build

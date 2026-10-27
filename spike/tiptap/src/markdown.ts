@@ -43,6 +43,11 @@ async function block(n: Node, img: ImageResolver, indent = ''): Promise<string> 
       return `${'#'.repeat(n.attrs?.level ?? 1)} ${await inline(kids, img)}`
     case 'image':
       return await inline([n], img)
+    case 'databaseEmbed': {
+      // Markdown can carry the existing embed as HTML; retain its reference instead of omitting it.
+      const id = String(n.attrs?.containerId ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      return `<div data-type="database-embed" data-container="${id}">Database</div>`
+    }
     case 'horizontalRule':
       return '---'
     case 'drawing':
