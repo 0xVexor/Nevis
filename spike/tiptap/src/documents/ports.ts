@@ -1,4 +1,5 @@
 import type { Page } from './model.ts'
+import type { SearchIndexRuntime } from './searchLifecycle.ts'
 
 export interface DocumentVersion {
   pageId: string
@@ -41,8 +42,8 @@ export interface DocumentHost {
   createId(): string
   /** Defer asynchronously until after the current call stack; return cancellation. */
   defer(task: () => void): () => void
-  emit(event: 'data-changed' | 'external-change' | 'storage-error', detail?: string[] | string): void
-  report(context: 'storage' | 'history' | 'watch', error: unknown): void
+  emit(event: 'data-changed' | 'external-change' | 'storage-error' | 'search-state', detail?: string[] | string): void
+  report(context: 'storage' | 'history' | 'watch' | 'search', error: unknown): void
   readLegacy?(): Page[] | null
   clearLegacy?(): void
   requestPersistence?(): void
@@ -51,4 +52,5 @@ export interface DocumentHost {
 export interface DocumentEnvironment {
   storage: DocumentStorage
   host: DocumentHost
+  search?: SearchIndexRuntime
 }

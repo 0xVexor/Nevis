@@ -1,4 +1,3 @@
-import { normalizeFa } from './normalize.ts'
 import { cloneDocumentValue } from './clone.ts'
 import { identifyBlocks, identityVersion, BLOCK_IDENTITY_VERSION } from './blockIdentity.ts'
 import type { Page, PageKind, PageRepo, Patch } from './model.ts'
@@ -6,6 +5,9 @@ import { storedVersion } from './ports.ts'
 import { DocumentReader } from './reader.ts'
 import type { DocumentReadGrant, DocumentReadRuntime } from './reader.ts'
 import type { DocumentEnvironment, DocumentStorage, DocumentHost, StoredDocumentVersion } from './ports.ts'
+import { canonicalSnapshot, ManagedLexicalIndex, rankedSearchPages, SearchIndexUnavailable } from './searchLifecycle.ts'
+import { LexicalSearchError, PortableLexicalIndex } from './lexicalSearch.ts'
+import type { SearchIndexRuntime } from './searchLifecycle.ts'
 
 const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] }
 // a board is a page whose whole content is one drawing block (ids of its scene + picture files), so files, search, history and backup need nothing special
@@ -45,14 +47,20 @@ export class DocumentService implements PageRepo {
   private seed: () => Page[]
   private readonly storage: DocumentStorage
   private readonly host: DocumentHost
+  private readonly searchIndex: ManagedLexicalIndex
+  private readonly searchRuntime: SearchIndexRuntime
+  private searchGeneration = 0
+  private invalidateSearch() { this.searchGeneration++; this.searchIndex.invalidate() }
   get vaultHandle() { return this.storage.vaultHandle }
   /** Read persisted state after already-queued writes; never flush a dirty editor. */
   reader(grant: DocumentReadGrant, runtime: DocumentReadRuntime) {
-    return new DocumentReader({ vaultHandle: this.vaultHandle, load: async () => { await this.queue; return this.storage.load() } }, grant, runtime)
+    return new DocumentReader({ vaultHandle: this.vaultHandle, searchRuntime: this.searchRuntime, load: async () => { await this.queue; return this.storage.load() } }, grant, runtime)
   }
   constructor(environment: DocumentEnvironment, seed: () => Page[] = () => []) {
     this.storage = environment.storage
     this.host = environment.host
+    this.searchRuntime = environment.search ?? {}
+    this.searchIndex = new ManagedLexicalIndex(this.searchRuntime, state => this.host.emit('search-state', state))
     this.seed = seed
   }
 
@@ -89,6 +97,7 @@ export class DocumentService implements PageRepo {
       await this.flushed()
     }
     this.host.requestPersistence?.()
+    this.invalidateSearch()
   }
 
   private noteDisk(rows: Page[]) {
@@ -152,6 +161,7 @@ export class DocumentService implements PageRepo {
       .then(async () => {
         this.persistenceError = null
         for (const p of upserts) this.diskAt.set(p.id, storedVersion(p))
+        this.invalidateSearch() // committed content first; indexing is a separate, fallible concern
         if (this.storage.stamp) this.stamp = await this.storage.stamp() // our own writes are not "external" changes
       })
       .catch((e) => {
@@ -176,11 +186,11 @@ export class DocumentService implements PageRepo {
   private watchGeneration = 0
   /** Host owns timers, visibility and native subscriptions; core owns reload policy. */
   watch(): Promise<void> {
-    if (!this.storage.stamp || !this.host.watchExternal) return Promise.resolve()
+    if (!this.host.watchExternal) return Promise.resolve()
     if (this.watching) return this.watching
     const generation = ++this.watchGeneration
     return this.watching = (async () => {
-      this.stamp = await this.storage.stamp!()
+      this.stamp = this.storage.stamp ? await this.storage.stamp() : ''
       if (generation !== this.watchGeneration) return
       const stop = await this.host.watchExternal!(() => { if (generation === this.watchGeneration) void this.poll() })
       if (generation !== this.watchGeneration) stop()
@@ -202,18 +212,21 @@ export class DocumentService implements PageRepo {
     this.polling = true
     try {
       await this.queue
-      if ((await this.storage.stamp!()) === this.stamp) return
+      if (this.storage.stamp && (await this.storage.stamp()) === this.stamp) return
       const rows = await this.storage.load() // also merges conflict copies, which changes the folder again
       if (!this.idle()) return // edited meanwhile: try again next round (the stamp is still different)
       const old = new Map(this.pages.map((p) => [p.id, p]))
       this.pages = rows
       this.noteDisk(rows)
       this.migrateIdentities()
-      const changed = rows.filter((r) => old.get(r.id)?.updatedAt !== r.updatedAt || old.get(r.id)?.deletedAt !== r.deletedAt)
+      const changed = rows.filter(r => canonicalSnapshot(old.get(r.id)) !== canonicalSnapshot(r))
       const removed = old.size + changed.filter((c) => !old.has(c.id)).length - rows.length
       this.rebuildLinks()
-      this.stamp = await this.storage.stamp!()
-      if (changed.length || removed) this.host.emit('external-change', changed.map((c) => c.id))
+      this.stamp = this.storage.stamp ? await this.storage.stamp() : ''
+      if (changed.length || removed) {
+        this.invalidateSearch()
+        this.host.emit('external-change', [...changed.map(c => c.id), ...[...old.keys()].filter(id => !rows.some(row => row.id === id))])
+      }
     } catch (e) {
       this.host.report('watch', e)
     } finally {
@@ -268,12 +281,29 @@ export class DocumentService implements PageRepo {
   }
 
   search(query: string): Page[] {
-    const words = normalizeFa(query).split(/\s+/).filter(Boolean)
-    if (!words.length) return []
-    return this.pagesOnly().filter((p) => {
-      const hay = normalizeFa(`${p.title} ${(p.tags ?? []).join(' ')} ${textOf(p.content)}`)
-      return words.every((w) => hay.includes(w))
-    })
+    if (!query.trim()) return []
+    try { return rankedSearchPages(new PortableLexicalIndex(this.pagesOnly()), this.pagesOnly(), query) }
+    catch (error) { if (error instanceof LexicalSearchError && error.code === 'INVALID_ARGUMENT') return []; throw error }
+  }
+
+  searchStatus() { return this.searchIndex.status() }
+  async refreshSearchIndex() {
+    try {
+      await this.queue
+      const generation = this.searchGeneration
+      const pages = (await this.storage.load()).filter(page => page.deletedAt === null && page.kind !== 'folder')
+      if (generation !== this.searchGeneration) return { state: 'pending' as const, index: null, pages: [] as Page[], generation }
+      const snapshot = canonicalSnapshot([...pages].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      return { ...await this.searchIndex.prepare(pages, snapshot), pages, generation }
+    } catch { return { ...this.searchIndex.failed(), pages: [] as Page[], generation: this.searchGeneration } }
+  }
+  async searchPersisted(query: string): Promise<(Page & { searchPassage: string })[]> {
+    if (!query.trim()) return []
+    const prepared = await this.refreshSearchIndex()
+    if (prepared.generation !== this.searchGeneration || (prepared.index && !this.searchIndex.isCurrent(prepared.index))) throw new SearchIndexUnavailable(this.searchIndex.status() === 'failed' ? 'failed' : 'pending')
+    if (prepared.state !== 'fresh' || !prepared.index) throw new SearchIndexUnavailable(prepared.state === 'pending' ? 'pending' : 'failed')
+    try { return rankedSearchPages(prepared.index, prepared.pages, query) }
+    catch (error) { if (error instanceof LexicalSearchError && error.code === 'INVALID_ARGUMENT') return []; throw error }
   }
 
   // ───── mutations ─────
@@ -481,6 +511,7 @@ export class DocumentService implements PageRepo {
       this.pages = this.pages.filter((p) => !gone.has(p.id))
       gone.forEach((g) => (this.unindexLinks(g), this.dirty.delete(g)))
     }
+    this.invalidateSearch()
     this.host.emit('data-changed')
   }
 
@@ -494,9 +525,10 @@ export class DocumentService implements PageRepo {
     this.pages = rows
     this.noteDisk(rows)
     this.migrateIdentities()
-    const changed = rows.filter((r) => old.get(r.id)?.updatedAt !== r.updatedAt || old.get(r.id)?.deletedAt !== r.deletedAt || (r.recordMeta?.revision ?? 0) !== ((old.get(r.id) as Page | undefined)?.recordMeta?.revision ?? 0))
+    const changed = rows.filter(r => canonicalSnapshot(old.get(r.id)) !== canonicalSnapshot(r))
     this.rebuildLinks()
-    this.host.emit('external-change', changed.map((c) => c.id))
+    if (changed.length || [...old.keys()].some(id => !rows.some(row => row.id === id))) this.invalidateSearch()
+    this.host.emit('external-change', [...changed.map(c => c.id), ...[...old.keys()].filter(id => !rows.some(row => row.id === id))])
     return true
   }
 }

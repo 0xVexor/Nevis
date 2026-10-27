@@ -5,7 +5,9 @@ import { CONTRACT_VERSION, LIMITS } from './contracts.ts'
 import type { DocumentAccessContext } from './contracts.ts'
 import type { Page, PageKind } from './model.ts'
 import { readMarkdown } from './readMarkdown.ts'
-import { LexicalSearchError, PortableLexicalIndex, sourcePassage } from './lexicalSearch.ts'
+import { LEXICAL_PROJECTION_VERSION, LexicalSearchError, sourcePassage } from './lexicalSearch.ts'
+import { ManagedLexicalIndex } from './searchLifecycle.ts'
+import type { SearchIndexRuntime } from './searchLifecycle.ts'
 import type { SearchMode } from './lexicalSearch.ts'
 
 export interface DocumentReadGrant {
@@ -21,7 +23,7 @@ export interface DocumentReadRuntime {
   /** Host supplies SHA-256 (or stronger) over the exact canonical snapshot. */
   digest(canonicalSnapshot: string): Promise<string>
 }
-export interface DocumentReadSource { readonly vaultHandle: string; load(): Promise<Page[]> }
+export interface DocumentReadSource { readonly vaultHandle: string; searchRuntime?: SearchIndexRuntime; load(): Promise<Page[]> }
 export interface ListDocumentsInput {
   parentId?: string | null; recursive?: boolean; kinds?: PageKind[]; tags?: string[]
   favorite?: boolean; limit?: number; cursor?: string
@@ -74,9 +76,11 @@ export class DocumentReader {
   private readonly runtime: DocumentReadRuntime
   private readonly context: DocumentAccessContext
   private readonly cursors = new Map<string, Cursor>()
+  private readonly searchIndex: ManagedLexicalIndex
   constructor(source: DocumentReadSource, grant: DocumentReadGrant, runtime: DocumentReadRuntime) {
     this.source = source; this.grant = grant; this.runtime = runtime
     this.context = Object.freeze({ ...grant.context })
+    this.searchIndex = new ManagedLexicalIndex(source.searchRuntime)
     this.authorize()
   }
   private authorize(documentId?: string) {
@@ -287,13 +291,21 @@ export class DocumentReader {
     this.authorize()
     const revisions = new Map(await Promise.all(pages.map(async page => [page.id, await this.revision(page)] as const)))
     for (const page of pages) this.authorize(page.id)
-    let index: PortableLexicalIndex, matches: ReturnType<PortableLexicalIndex['search']>
-    try { index = new PortableLexicalIndex(pages); matches = index.search(input.query, input.mode) }
-    catch (error) { if (error instanceof LexicalSearchError) fail(error.code); return fail('APP_UNAVAILABLE') }
-    const snapshot = await this.runtime.digest(canonical([...revisions].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)))
+    const snapshot = await this.runtime.digest(canonical({ version: LEXICAL_PROJECTION_VERSION, revisions: [...revisions].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0) }))
     this.authorize()
     const binding = this.binding('search_documents', input)
     const start = this.offset(input.cursor, binding, snapshot)
+    const prepared = await this.searchIndex.prepare(pages, snapshot)
+    this.authorize()
+    for (const page of pages) this.authorize(page.id)
+    if (prepared.state !== 'fresh' || !prepared.index) {
+      return { hits: [], search: { state: prepared.state, indexedRevision: null },
+        warnings: [{ code: prepared.state === 'pending' ? 'INDEX_PENDING' as const : 'INDEX_FAILED' as const, message: 'Search index is ' + prepared.state + '; retry the query.', blockIds: [] as string[] }], nextCursor: null, truncated: false }
+    }
+    const index = prepared.index
+    let matches: ReturnType<typeof index.search>
+    try { matches = index.search(input.query, input.mode) }
+    catch (error) { if (error instanceof LexicalSearchError) fail(error.code); return fail('APP_UNAVAILABLE') }
     const warnings = index.unsupportedDocumentIds.size ? [{ code: 'UNSUPPORTED_CONTENT' as const, message: 'Some authorized content has no supported searchable projection.', blockIds: [] as string[] }] : []
     const search = { state: 'fresh' as const, indexedRevision: pages.length === 1 ? revisions.get(pages[0].id)! : null }
     type Hit = { documentId: string; revision: string; range: { fromBlockId: string; throughBlockId: string } | null; source: 'title' | 'tag' | 'body'; passage: string; score: number }

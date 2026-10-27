@@ -4,6 +4,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { DB_SCHEMA_VERSION, upgradeDatabaseStores } from './database/storage/idb'
 import { IndexedDbDocumentStorage } from './platform/documents/indexedDb'
+import { publishDocumentChange } from './platform/documents/changes'
 import type { DocumentVersion } from './documents/ports'
 export type { DocumentVersion as Version } from './documents/ports'
 
@@ -53,7 +54,7 @@ const wrap = <T>(req: IDBRequest<T>) =>
     req.onerror = () => reject(req.error)
   })
 
-const browserDocuments = new IndexedDbDocumentStorage('browser:not.db', db, () => !frozen)
+const browserDocuments = new IndexedDbDocumentStorage('browser:not.db', db, () => !frozen, publishDocumentChange)
 
 export async function allPages(): Promise<any[]> {
   if (isTauri) return invoke('pages_all')

@@ -18,14 +18,17 @@ export class IndexedDbDocumentStorage implements DocumentStorage {
   readonly vaultHandle: string
   private readonly open: () => Promise<IDBDatabase>
   private readonly active: () => boolean
+  private readonly changed: () => void
   constructor(
     vaultHandle: string,
     open: () => Promise<IDBDatabase>,
     active: () => boolean = () => true,
+    changed: () => void = () => {},
   ) {
     this.vaultHandle = vaultHandle
     this.open = open
     this.active = active
+    this.changed = changed
     if (!vaultHandle) throw new Error('A fixed document vault handle is required')
   }
   private async database() {
@@ -54,6 +57,7 @@ export class IndexedDbDocumentStorage implements DocumentStorage {
       throw error
     }
     await committed
+    try { this.changed() } catch { /* notification failure does not undo storage */ }
   }
   async listVersions(pageId: string): Promise<DocumentVersion[]> {
     const tx = (await this.database()).transaction('versions')
