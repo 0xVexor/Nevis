@@ -1,0 +1,92 @@
+import type { Page } from '../../documents/model.ts'
+import type { DocumentStorage, DocumentVersion, DocumentWrite } from '../../documents/ports.ts'
+
+const complete = (tx: IDBTransaction) => new Promise<void>((resolve, reject) => {
+  tx.oncomplete = () => resolve()
+  tx.onabort = () => reject(tx.error ?? new Error('Document transaction aborted'))
+  tx.onerror = () => reject(tx.error ?? new Error('Document transaction failed'))
+})
+const result = <T>(request: IDBRequest<T>) => new Promise<T>((resolve, reject) => {
+  request.onsuccess = () => resolve(request.result)
+  request.onerror = () => reject(request.error)
+})
+
+/** Uses existing pages/versions stores. No Tauri, window, singleton or native imports. */
+export class IndexedDbDocumentStorage implements DocumentStorage {
+  readonly revisionPolicy = 'unconditional' as const
+  private databaseName: string | null = null
+  readonly vaultHandle: string
+  private readonly open: () => Promise<IDBDatabase>
+  private readonly active: () => boolean
+  constructor(
+    vaultHandle: string,
+    open: () => Promise<IDBDatabase>,
+    active: () => boolean = () => true,
+  ) {
+    this.vaultHandle = vaultHandle
+    this.open = open
+    this.active = active
+    if (!vaultHandle) throw new Error('A fixed document vault handle is required')
+  }
+  private async database() {
+    if (!this.active()) throw new Error('Document storage is unavailable')
+    const db = await this.open()
+    if (!this.active()) throw new Error('Document storage is unavailable')
+    if (this.databaseName !== null && db.name !== this.databaseName) throw new Error('Document vault changed')
+    this.databaseName = db.name
+    return db
+  }
+  async load(): Promise<Page[]> {
+    const tx = (await this.database()).transaction('pages')
+    return result(tx.objectStore('pages').getAll())
+  }
+  async save(write: DocumentWrite): Promise<void> {
+    const tx = (await this.database()).transaction('pages', 'readwrite')
+    const committed = complete(tx)
+    try {
+      const store = tx.objectStore('pages')
+      if (write.replaceAll) store.clear()
+      write.upserts.forEach(page => store.put(page))
+      write.removed.forEach(id => store.delete(id))
+    } catch (error) {
+      tx.abort()
+      await committed.catch(() => {})
+      throw error
+    }
+    await committed
+  }
+  async listVersions(pageId: string): Promise<DocumentVersion[]> {
+    const tx = (await this.database()).transaction('versions')
+    const versions: DocumentVersion[] = await result(tx.objectStore('versions').index('byPage').getAll(pageId))
+    return versions.sort((a, b) => b.ts - a.ts)
+  }
+  async addVersion(version: DocumentVersion): Promise<void> {
+    const tx = (await this.database()).transaction('versions', 'readwrite')
+    const committed = complete(tx)
+    try {
+      const store = tx.objectStore('versions')
+      await result(store.put(version))
+      const versions: DocumentVersion[] = await result(store.index('byPage').getAll(version.pageId))
+      versions.sort((a, b) => b.ts - a.ts).slice(40).forEach(old => store.delete([old.pageId, old.ts]))
+      await committed
+    } catch (error) {
+      try { tx.abort() } catch { /* an IndexedDB request may already have aborted */ }
+      await committed.catch(() => {})
+      throw error
+    }
+  }
+  async deleteVersions(pageId: string): Promise<void> {
+    const tx = (await this.database()).transaction('versions', 'readwrite')
+    const committed = complete(tx)
+    try {
+      const store = tx.objectStore('versions')
+      const keys = await result(store.index('byPage').getAllKeys(pageId))
+      keys.forEach(key => store.delete(key))
+      await committed
+    } catch (error) {
+      try { tx.abort() } catch { /* already aborted */ }
+      await committed.catch(() => {})
+      throw error
+    }
+  }
+}
