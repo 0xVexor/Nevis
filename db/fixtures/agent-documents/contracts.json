@@ -1,0 +1,625 @@
+{
+  "tools": {
+    "list_documents": {
+      "input": {
+        "parentId": null,
+        "limit": 10
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "documents": [
+            {
+              "documentId": "d1",
+              "revision": "r1",
+              "parentId": null,
+              "kind": "page",
+              "metadata": {
+                "title": "یادداشت",
+                "tags": [
+                  "java"
+                ],
+                "favorite": false
+              },
+              "updatedAt": 1793059200000
+            }
+          ],
+          "nextCursor": null,
+          "truncated": false
+        }
+      }
+    },
+    "search_documents": {
+      "input": {
+        "query": "كلاس",
+        "mode": "keywords",
+        "limit": 10
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "hits": [
+            {
+              "documentId": "d1",
+              "revision": "r1",
+              "range": {
+                "fromBlockId": "b1",
+                "throughBlockId": "b1"
+              },
+              "passage": "كلاس ۱۲۳ برنامه‌نویسی",
+              "score": 1
+            }
+          ],
+          "search": {
+            "state": "fresh",
+            "indexedRevision": "r1"
+          },
+          "nextCursor": null,
+          "truncated": false,
+          "warnings": []
+        }
+      }
+    },
+    "read_document": {
+      "input": {
+        "documentId": "d1",
+        "target": {
+          "kind": "section",
+          "headingBlockId": "b1"
+        },
+        "format": "both"
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "documentId": "d1",
+          "revision": "r1",
+          "capabilities": {
+            "contractVersion": "1",
+            "blockIdentity": "stable",
+            "readableNodeTypes": [
+              "paragraph",
+              "heading",
+              "table"
+            ],
+            "writableNodeTypes": [
+              "paragraph",
+              "heading"
+            ],
+            "writableMarks": [
+              "bold"
+            ],
+            "writableAttributes": [
+              "dir"
+            ],
+            "operations": [
+              "insert_blocks"
+            ],
+            "preservesUntouchedUnsupportedNodes": true
+          },
+          "chunks": [
+            {
+              "range": {
+                "fromBlockId": "b1",
+                "throughBlockId": "b1"
+              },
+              "markdown": "كلاس ۱۲۳ برنامه‌نویسی",
+              "structured": [
+                {
+                  "type": "paragraph",
+                  "attrs": {
+                    "dir": "rtl"
+                  },
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "كلاس ۱۲۳ برنامه‌نویسی"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "nextCursor": null,
+          "truncated": false,
+          "warnings": []
+        }
+      }
+    },
+    "create_document": {
+      "input": {
+        "operationId": "op1",
+        "parentId": null,
+        "kind": "page",
+        "metadata": {
+          "title": "یادداشت",
+          "tags": [
+            "java"
+          ],
+          "favorite": false
+        },
+        "content": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "dir": "rtl"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "كلاس ۱۲۳ برنامه‌نویسی"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "documentId": "d1",
+          "revision": "r1",
+          "receipt": {
+            "operationId": "op1",
+            "documentId": "d1",
+            "beforeRevision": null,
+            "afterRevision": "r1",
+            "committedAt": 1793059200000,
+            "undoExpiresAt": 1793664000000
+          },
+          "affectedBlockIds": [
+            "b1"
+          ],
+          "savedContent": {
+            "documentId": "d1",
+            "revision": "r1",
+            "capabilities": {
+              "contractVersion": "1",
+              "blockIdentity": "stable",
+              "readableNodeTypes": [
+                "paragraph",
+                "heading",
+                "table"
+              ],
+              "writableNodeTypes": [
+                "paragraph",
+                "heading"
+              ],
+              "writableMarks": [
+                "bold"
+              ],
+              "writableAttributes": [
+                "dir"
+              ],
+              "operations": [
+                "insert_blocks"
+              ],
+              "preservesUntouchedUnsupportedNodes": true
+            },
+            "chunks": [
+              {
+                "range": {
+                  "fromBlockId": "b1",
+                  "throughBlockId": "b1"
+                },
+                "markdown": "كلاس ۱۲۳ برنامه‌نویسی",
+                "structured": [
+                  {
+                    "type": "paragraph",
+                    "attrs": {
+                      "dir": "rtl"
+                    },
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "كلاس ۱۲۳ برنامه‌نویسی"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "nextCursor": null,
+            "truncated": false,
+            "warnings": []
+          },
+          "search": {
+            "state": "pending",
+            "indexedRevision": null
+          },
+          "sync": "pending",
+          "replayed": false
+        }
+      }
+    },
+    "edit_document": {
+      "input": {
+        "documentId": "d1",
+        "expectedRevision": "r1",
+        "operationId": "op2",
+        "mode": "preview",
+        "operations": [
+          {
+            "kind": "insert_blocks",
+            "at": {
+              "position": "end",
+              "parent": null
+            },
+            "blocks": [
+              {
+                "temporaryId": "new-1",
+                "node": {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "جدید"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "kind": "set_attributes",
+            "target": {
+              "temporaryId": "new-1"
+            },
+            "attributes": {
+              "dir": "rtl"
+            }
+          }
+        ]
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "mode": "preview",
+          "documentId": "d1",
+          "baseRevision": "r1",
+          "persisted": false,
+          "changes": [
+            {
+              "kind": "insert",
+              "blockIds": [
+                "preview-b2"
+              ],
+              "before": "",
+              "after": "جدید"
+            }
+          ],
+          "truncated": false,
+          "warnings": []
+        }
+      }
+    },
+    "update_document_metadata": {
+      "input": {
+        "documentId": "d1",
+        "expectedRevision": "r1",
+        "operationId": "op2",
+        "patch": {
+          "title": "جدید",
+          "titleDir": "rtl"
+        }
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "documentId": "d1",
+          "revision": "r2",
+          "receipt": {
+            "operationId": "op2",
+            "documentId": "d1",
+            "beforeRevision": "r1",
+            "afterRevision": "r2",
+            "committedAt": 1793059200000,
+            "undoExpiresAt": 1793664000000
+          },
+          "affectedBlockIds": [
+            "b1"
+          ],
+          "savedContent": {
+            "documentId": "d1",
+            "revision": "r2",
+            "capabilities": {
+              "contractVersion": "1",
+              "blockIdentity": "stable",
+              "readableNodeTypes": [
+                "paragraph",
+                "heading",
+                "table"
+              ],
+              "writableNodeTypes": [
+                "paragraph",
+                "heading"
+              ],
+              "writableMarks": [
+                "bold"
+              ],
+              "writableAttributes": [
+                "dir"
+              ],
+              "operations": [
+                "insert_blocks"
+              ],
+              "preservesUntouchedUnsupportedNodes": true
+            },
+            "chunks": [
+              {
+                "range": {
+                  "fromBlockId": "b1",
+                  "throughBlockId": "b1"
+                },
+                "markdown": "كلاس ۱۲۳ برنامه‌نویسی",
+                "structured": [
+                  {
+                    "type": "paragraph",
+                    "attrs": {
+                      "dir": "rtl"
+                    },
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "كلاس ۱۲۳ برنامه‌نویسی"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "nextCursor": null,
+            "truncated": false,
+            "warnings": []
+          },
+          "search": {
+            "state": "pending",
+            "indexedRevision": null
+          },
+          "sync": "pending",
+          "replayed": false
+        }
+      }
+    },
+    "get_document_history": {
+      "input": {
+        "documentId": "d1",
+        "limit": 10
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "documentId": "d1",
+          "versions": [
+            {
+              "versionId": "v1",
+              "operationId": "op1",
+              "revision": "r1",
+              "committedAt": 1793059200000,
+              "expiresAt": 1793664000000
+            }
+          ],
+          "retainedContent": null,
+          "retention": {
+            "earliestAvailableAt": 1793059200000,
+            "complete": false
+          },
+          "nextCursor": null,
+          "truncated": false
+        }
+      }
+    },
+    "undo_document_edit": {
+      "input": {
+        "documentId": "d1",
+        "expectedRevision": "r1",
+        "operationId": "op2",
+        "undoOperationId": "op1"
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "documentId": "d1",
+          "revision": "r2",
+          "receipt": {
+            "operationId": "op2",
+            "documentId": "d1",
+            "beforeRevision": "r1",
+            "afterRevision": "r2",
+            "committedAt": 1793059200000,
+            "undoExpiresAt": 1793664000000
+          },
+          "affectedBlockIds": [
+            "b1"
+          ],
+          "savedContent": {
+            "documentId": "d1",
+            "revision": "r2",
+            "capabilities": {
+              "contractVersion": "1",
+              "blockIdentity": "stable",
+              "readableNodeTypes": [
+                "paragraph",
+                "heading",
+                "table"
+              ],
+              "writableNodeTypes": [
+                "paragraph",
+                "heading"
+              ],
+              "writableMarks": [
+                "bold"
+              ],
+              "writableAttributes": [
+                "dir"
+              ],
+              "operations": [
+                "insert_blocks"
+              ],
+              "preservesUntouchedUnsupportedNodes": true
+            },
+            "chunks": [
+              {
+                "range": {
+                  "fromBlockId": "b1",
+                  "throughBlockId": "b1"
+                },
+                "markdown": "كلاس ۱۲۳ برنامه‌نویسی",
+                "structured": [
+                  {
+                    "type": "paragraph",
+                    "attrs": {
+                      "dir": "rtl"
+                    },
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "كلاس ۱۲۳ برنامه‌نویسی"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "nextCursor": null,
+            "truncated": false,
+            "warnings": []
+          },
+          "search": {
+            "state": "pending",
+            "indexedRevision": null
+          },
+          "sync": "pending",
+          "replayed": false
+        }
+      }
+    }
+  },
+  "errors": [
+    {
+      "ok": false,
+      "error": {
+        "code": "INVALID_ARGUMENT",
+        "message": "invalid argument",
+        "retryable": false
+      }
+    },
+    {
+      "ok": false,
+      "error": {
+        "code": "LIMIT_EXCEEDED",
+        "message": "limit exceeded",
+        "retryable": false
+      }
+    },
+    {
+      "ok": false,
+      "error": {
+        "code": "ACCESS_DENIED",
+        "message": "access denied",
+        "retryable": false
+      }
+    },
+    {
+      "ok": false,
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "not found",
+        "retryable": false
+      }
+    },
+    {
+      "ok": false,
+      "error": {
+        "code": "REVISION_CONFLICT",
+        "message": "revision conflict",
+        "retryable": false,
+        "details": {
+          "currentRevision": "r2"
+        }
+      }
+    },
+    {
+      "ok": false,
+      "error": {
+        "code": "EDITOR_BUSY",
+        "message": "editor busy",
+        "retryable": true
+      }
+    },
+    {
+      "ok": false,
+      "error": {
+        "code": "UNSUPPORTED_CONTENT",
+        "message": "unsupported content",
+        "retryable": false
+      }
+    },
+    {
+      "ok": false,
+      "error": {
+        "code": "INVALID_TARGET",
+        "message": "invalid target",
+        "retryable": false
+      }
+    },
+    {
+      "ok": false,
+      "error": {
+        "code": "STALE_CURSOR",
+        "message": "stale cursor",
+        "retryable": false
+      }
+    },
+    {
+      "ok": false,
+      "error": {
+        "code": "OPERATION_ID_MISMATCH",
+        "message": "operation id mismatch",
+        "retryable": false
+      }
+    },
+    {
+      "ok": false,
+      "error": {
+        "code": "VERSION_EXPIRED",
+        "message": "version expired",
+        "retryable": false
+      }
+    },
+    {
+      "ok": false,
+      "error": {
+        "code": "PERSISTENCE_FAILED",
+        "message": "persistence failed",
+        "retryable": false
+      }
+    },
+    {
+      "ok": false,
+      "error": {
+        "code": "RECOVERY_REQUIRED",
+        "message": "recovery required",
+        "retryable": false
+      }
+    },
+    {
+      "ok": false,
+      "error": {
+        "code": "APP_UNAVAILABLE",
+        "message": "app unavailable",
+        "retryable": true
+      }
+    },
+    {
+      "ok": false,
+      "error": {
+        "code": "CAPABILITY_UNAVAILABLE",
+        "message": "capability unavailable",
+        "retryable": false
+      }
+    }
+  ]
+}
