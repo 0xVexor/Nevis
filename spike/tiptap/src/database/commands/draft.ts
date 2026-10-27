@@ -3,6 +3,7 @@
 import type { Definition, Id, PageLike, RecordKind, RelationEdge, RowExtension } from '../model/types.ts'
 import { compareKeys } from '../model/ids.ts'
 import type { DbState, Records, Row } from '../state.ts'
+import { identifyBlocks } from '../../documents/blockIdentity.ts'
 
 const k = (kind: RecordKind, id: Id) => `${kind}:${id}`
 
@@ -81,6 +82,7 @@ export class Draft {
     return c
   }
   addPage(p: PageLike): PageLike {
+    if (p.content !== undefined) p.content = identifyBlocks(p.content).content
     this.pgs.set(p.id, p)
     const st = p.database ? this.stats.get(p.database.sourceId) : undefined
     if (st) {

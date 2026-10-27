@@ -413,7 +413,7 @@ export default function App() {
     const p = repo.get(id)
     if (!p) return
     const c = repo.create(p.parentId, p.kind)
-    repo.update(c.id, { title: p.title ? p.title + ' ' + t('(copy)') : '', icon: p.icon, cover: p.cover, titleDir: p.titleDir, tags: p.tags ? [...p.tags] : undefined, status: p.status, content: structuredClone(p.content) })
+    repo.update(c.id, { title: p.title ? p.title + ' ' + t('(copy)') : '', icon: p.icon, cover: p.cover, titleDir: p.titleDir, tags: p.tags ? [...p.tags] : undefined, status: p.status, content: structuredClone(p.content) }, { copyContent: true })
     refresh()
     if (p.kind !== 'folder') setCurrentId(c.id)
   }

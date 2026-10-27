@@ -25,6 +25,7 @@ import { iconNode } from './iconSet'
 import * as Ic from './icons'
 import { Toolbar } from './Toolbar'
 import { t } from './i18n'
+import { identityVersion, BLOCK_IDENTITY_VERSION } from './documents/blockIdentity'
 import { lazy, Suspense } from 'react'
 const RowProperties = lazy(() => import('./database/ui/RowProperties').then((m) => ({ default: m.RowProperties })))
 
@@ -37,6 +38,8 @@ const TITLE_CMDS = [
 ]
 
 export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { page: Page; onSave: (s: SaveState) => void; onMeta: () => void; onCover: (anchor: DOMRect) => void; readOnly?: boolean }) {
+  const identitySupported = identityVersion(page.content) <= BLOCK_IDENTITY_VERSION
+  const editable = !readOnly && identitySupported
   const timer = useRef<number>(0)
   const editorRef = useRef<any>(null)
   const titleRef = useRef<HTMLTextAreaElement>(null)
@@ -85,11 +88,11 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
   const flush = useCallback(() => {
     window.clearTimeout(timer.current)
     const ed = editorRef.current
-    if (ed && !ed.isDestroyed) {
+    if (ed && !ed.isDestroyed && identitySupported) {
       repo.update(page.id, { content: ed.getJSON() })
       onSave('saved')
     }
-  }, [page.id, onSave])
+  }, [page.id, onSave, identitySupported])
 
   useEffect(() => registerUpdateSave(flush), [flush])
 
@@ -97,7 +100,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
     {
       extensions,
       content: page.content,
-      editable: !readOnly,
+      editable,
       shouldRerenderOnTransaction: true,
       editorProps: { attributes: { spellcheck: 'false' } },
       onUpdate: () => {
@@ -111,8 +114,8 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
   editorRef.current = editor
   // reader mode: the same editor, locked (no typing, no editing widgets), so scrolling and selecting still work
   useEffect(() => {
-    if (editor && editor.isEditable === readOnly) editor.setEditable(!readOnly)
-  }, [editor, readOnly])
+    if (editor && editor.isEditable !== editable) editor.setEditable(editable)
+  }, [editor, editable])
   // the page picker (`[[`, `@`) must not offer the page you are on
   useEffect(() => {
     if (editor) (editor.storage as any).currentPageId = page.id
