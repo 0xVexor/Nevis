@@ -3,6 +3,17 @@ import { IndexedDbDocumentStorage } from './documents/indexedDb'
 import { NativeDocumentStorage } from './documents/native'
 import type { DocumentEnvironment } from '../documents/ports'
 import type { Page } from '../documents/model'
+import type { DocumentReadRuntime } from '../documents/reader'
+
+export function createDocumentReadRuntime(): DocumentReadRuntime {
+  return {
+    now: () => Date.now(), cursorId: () => crypto.randomUUID(),
+    async digest(snapshot) {
+      const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(snapshot))
+      return [...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, '0')).join('')
+    },
+  }
+}
 
 const LEGACY_KEY = 'not.pages.v1'
 const WATCH_EVERY = 3000
