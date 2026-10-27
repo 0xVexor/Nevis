@@ -7,6 +7,14 @@ const I = ({ children, size = 16 }: { children: ReactNode; size?: number }) => (
 )
 type P = { size?: number }
 
+export const Columns = ({ count = 2, ...p }: P & { count?: number }) => (
+  <I {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    {count === 2 && <path d="M12 4v16" />}
+    {count === 3 && <path d="M9 4v16M15 4v16" />}
+  </I>
+)
+
 export const Search = (p: P) => <I {...p}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></I>
 export const Plus = (p: P) => <I {...p}><path d="M12 5v14M5 12h14" /></I>
 export const Dots = (p: P) => <I {...p}><circle cx="5" cy="12" r="1" fill="currentColor" /><circle cx="12" cy="12" r="1" fill="currentColor" /><circle cx="19" cy="12" r="1" fill="currentColor" /></I>

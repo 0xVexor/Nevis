@@ -23,6 +23,7 @@ function openPalette(editor: any) {
   const props = () => ({ items: paletteItems(query, editor), command: pick, clientRect: caret })
 
   function pick(item: CommandItem) {
+    if (item.disabled) return
     close()
     const { empty, to } = editor.state.selection
     let chain = editor.chain().focus()
