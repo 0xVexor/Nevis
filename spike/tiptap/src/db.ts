@@ -1,4 +1,4 @@
-// Storage boundary. In the desktop app (Tauri) every call goes to the SQLite database of ADR-0002 (src-tauri/src/main.rs);
+// Storage boundary. In the desktop app (Tauri), canonical pages/records/assets live in vault files (src-tauri/src/main.rs);
 // in a plain browser it falls back to IndexedDB: one record per page (so saving a page rewrites that page only), a versions
 // store for page history, and a small key-value store.
 import { invoke } from '@tauri-apps/api/core'
@@ -75,14 +75,28 @@ export async function savePages(upserts: any[], removed: string[], clearFirst: b
 // a folder handle (backupDir) cannot be serialized, so it always stays in IndexedDB
 const inSqlite = (key: string) => isTauri && key !== 'backupDir'
 
+const sharedKv = new Set(['srs', 'reviewlog', 'savedSearches', 'tasksInbox', 'templates', 'tags'])
+const kvBase = new Map<string, unknown>()
 export async function kvGet<T>(key: string): Promise<T | undefined> {
-  if (inSqlite(key)) return ((await invoke<T | null>('kv_get', { key })) ?? undefined) as T | undefined
+  if (inSqlite(key)) {
+    const value = (await invoke<T | null>('kv_get', { key })) ?? undefined
+    if (sharedKv.has(key)) kvBase.set(key, structuredClone(value ?? null))
+    return value as T | undefined
+  }
   return wrap((await db()).transaction('kv').objectStore('kv').get(key))
 }
 
 export async function kvSet(key: string, value: unknown) {
   if (frozen) return
-  if (inSqlite(key)) return invoke<void>('kv_set', { key, value })
+  if (inSqlite(key)) {
+    if (sharedKv.has(key)) {
+      await invoke('kv_merge_set', { key, base: kvBase.get(key) ?? null, next: value })
+      // This tracks what the UI has actually seen, so a later stale cache write cannot remove a merged remote key.
+      kvBase.set(key, structuredClone(value))
+      return
+    }
+    return invoke<void>('kv_set', { key, value })
+  }
   const tx = (await db()).transaction('kv', 'readwrite')
   tx.objectStore('kv').put(value, key)
   await done(tx)
@@ -142,6 +156,7 @@ export interface VaultEntry {
 }
 /** Signed in or not, and what the sync of the open vault is doing. */
 export interface AccountStatus {
+  provider?: 'github' | 'legacy'
   signedIn: boolean
   username: string | null
   /** the server of the account (or the default one when signed out) */

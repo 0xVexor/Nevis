@@ -1,3 +1,4 @@
+import { setPreference } from './preferenceEvents'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { repo } from './store'
 import type { Page } from './repo'
@@ -44,7 +45,7 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
   useEffect(() => {
     if (cwd && !byId.has(cwd)) setCwd(null)
   }, [cwd, byId])
-  useEffect(() => localStorage.setItem('not.explorer.mode', mode), [mode])
+  useEffect(() => setPreference('not.explorer.mode', mode), [mode])
 
   const kids = (id: string | null) => pages.filter((p) => p.parentId === id)
   const path = useMemo(() => {

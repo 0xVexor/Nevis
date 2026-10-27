@@ -36,7 +36,7 @@ export function Vaults({ onClose, onNew, onAccount }: { onClose: () => void; onN
 
   const refresh = useCallback(() => (isTauri ? accountStatus().then(setAcc, () => {}) : Promise.resolve()), [])
   const reloadVaults = useCallback(() => (isTauri ? vaultList().then((l) => setVaults(l.vaults), () => {}) : Promise.resolve()), [])
-  const signedIn = !!acc?.signedIn
+  const signedIn = !!acc?.signedIn && acc.provider !== 'github'
   const reloadCloud = useCallback(() => {
     if (!signedIn) return setCloud(null)
     cloudVaults().then(setCloud, (e) => (setCloud([]), setError(explain(e))))

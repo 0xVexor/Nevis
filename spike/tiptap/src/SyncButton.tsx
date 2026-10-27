@@ -38,6 +38,7 @@ export function SyncButton({ onSetup, onSignIn }: { onSetup: () => void; onSignI
               : t('Click to sync now')
 
   const click = () => {
+    if (st.provider === 'github' && (st.state === 'paused' || st.state === 'error' || !st.syncOn)) return onSignIn()
     if (!st.signedIn) return onSignIn()
     if (!st.syncOn) return onSetup()
     void syncNow().then(() => accountStatus().then(setSt))

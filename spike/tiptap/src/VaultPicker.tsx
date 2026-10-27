@@ -91,7 +91,7 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
         <b>{firstRun ? t('Already use Nevis on another device?') : t('Keep your notes in sync')}</b>
         <small>{t('Sign in to get your notes here and keep every device up to date. It is optional: your notes live in a folder on this computer either way.')}</small>
       </div>
-      <button className="primary" disabled={!!busy} onClick={() => setView('auth')}>{t('Sign in or create account')}</button>
+      <button className="primary" disabled={!!busy} onClick={() => setAccountOpen(true)}>{t('Sign in or create account')}</button>
     </div>
   )
 

@@ -1,12 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 //! Storage for Nevis: Vault folders (pages, attachments, history as plain files; see ADR-0003) that the app can
-//! keep in sync, by itself, through the Nevis sync server (server/ in this repository). The web UI talks to it through the commands below
+//! keep in sync through GitHub snapshots or the legacy Nevis server. The web UI talks to it through the commands below
 //! (spike/tiptap/src/db.ts and attachments.ts); in a plain browser the same UI falls back to IndexedDB.
 
 mod database;
 mod index;
 mod legacy;
+mod portable;
 mod registry;
 mod sync;
 mod vault;
@@ -20,7 +21,7 @@ use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use sync::hub::{self, Hub};
-use sync::{account, SyncState};
+use sync::{account, github, snapshot, SyncState};
 use tauri::ipc::{InvokeBody, Request, Response};
 use tauri::{AppHandle, Emitter, Manager, State};
 use vault::{err, now_ms, Res, Vault, VAULT_MISMATCH, VAULT_MISSING};
@@ -51,12 +52,15 @@ fn lock_vault<'a>(s: &'a St) -> Res<MutexGuard<'a, Option<Vault>>> {
 
 /// Runs `f` on the open vault; errors when the picker is showing.
 fn with<T>(s: &St, f: impl FnOnce(&Vault) -> Res<T>) -> Res<T> {
+    let expected=s.reg.lock().map_err(err)?.current.clone();
     match &*lock_vault(s)? {
         Some(v) => {
             // a vault whose folder vanished while it was open is not written to: that would re-create half of it
             if !v.root.join(".noviq/vault.json").is_file() {
                 return Err(VAULT_MISSING.into());
             }
+            if expected.as_deref()!=Some(v.id().as_str()){return Err(VAULT_MISMATCH.into());}
+            snapshot::recover(v)?;
             f(v)
         }
         None => Err("no vault open".into()),
@@ -69,7 +73,7 @@ fn kick(s: &St) {
 }
 
 // Settings that belong to this device and must not travel through the vault.
-const LOCAL_KEYS: [&str; 1] = ["backupCfg"];
+const LOCAL_KEYS: [&str; 2] = ["backupCfg", "graphLayouts"];
 
 // ───── vaults: list, create, open, switch ─────
 
@@ -100,6 +104,7 @@ fn activate(s: &St, e: &Entry, import_legacy: bool) -> Res<()> {
             Err(e) => eprintln!("legacy import failed: {e}"),
         }
     }
+    snapshot::recover(&v)?;
     v.purge_trash();
     let mut r = s.reg.lock().map_err(err)?;
     r.add(Entry { name: v.name(), ..e.clone() });
@@ -280,6 +285,49 @@ fn pages_save(s: St, upserts: Vec<Value>, removed: Vec<String>, clear_first: boo
     Ok(kept)
 }
 
+#[tauri::command]
+fn vault_backup_export(s: St) -> Res<Value> { with(&s,|v| { database::recover(&v.root)?; serde_json::to_value(portable::export(v)?).map_err(err) }) }
+#[tauri::command]
+fn vault_backup_save(s: St, path: String) -> Res<()> {
+    let p=PathBuf::from(path);
+    if !p.is_absolute() || p.extension().and_then(|e|e.to_str()).map(str::to_ascii_lowercase).as_deref()!=Some("json"){return Err("BACKUP:invalid_destination".into());}
+    with(&s,|v| {
+        let parent=p.parent().ok_or("BACKUP:invalid_destination")?.canonicalize().map_err(err)?;
+        if parent.starts_with(v.root.canonicalize().map_err(err)?) || parent.starts_with(s.app_data.canonicalize().map_err(err)?) {return Err("BACKUP:destination_inside_live_data".into());}
+        database::recover(&v.root)?;
+        let backup=portable::export(v)?;
+        let bytes=serde_json::to_vec(&backup).map_err(err)?;
+        vault::write_atomic(&p,&bytes)?;
+        if snapshot::hash(&std::fs::read(&p).map_err(err)?)!=snapshot::hash(&bytes){return Err("BACKUP:verification_failed".into());}
+        Ok(())
+    })
+}
+#[tauri::command]
+fn vault_backup_restore(s: St, data: Value) -> Res<Value> {
+    let _op=github::OPERATION.lock().map_err(err)?;
+    let v=with(&s,|v|portable::restore(v.root.parent().ok_or("no parent directory")?,data))?;
+    let entry=Entry{id:v.id(),name:v.name(),path:v.root.to_string_lossy().into(),sync:false};
+    activate(&s,&entry,false)?;
+    Ok(json!({"pages":v.pages_all()?.len(),"files":v.files_list().len()}))
+}
+
+#[tauri::command]
+fn archive_editor_conflict(s: St, page: Value, base: Value) -> Res<()> {
+    use base64::Engine;
+    with(&s,|v| {
+        let id=vault::check_id(page["id"].as_str().ok_or("page without id")?)?;
+        let path=format!("pages/{id}.json");
+        if snapshot::tombstones(v)?.contains(&path){return Err("SYNC:permanently_deleted".into());}
+        let local=serde_json::to_vec(&page).map_err(err)?;snapshot::validate(&path,&local)?;
+        let current=std::fs::read(v.root.join(&path)).map_err(err)?;
+        let cid=uuid::Uuid::new_v4().to_string();
+        let enc=|b:&[u8]|base64::engine::general_purpose::STANDARD.encode(b);
+        let c=json!({"id":cid,"path":path,"createdAt":now_ms(),"base":enc(&serde_json::to_vec(&base).map_err(err)?),"local":enc(&local),"remote":enc(&current)});
+        vault::write_atomic(&v.root.join("conflicts").join(format!("{cid}.json")),&serde_json::to_vec(&c).map_err(err)?)
+    })?;
+    kick(&s);Ok(())
+}
+
 // ───── key-value settings ─────
 
 fn kv_file(s: &St, v: &Vault, key: &str) -> Res<PathBuf> {
@@ -293,7 +341,23 @@ fn kv_file(s: &St, v: &Vault, key: &str) -> Res<PathBuf> {
 
 #[tauri::command]
 fn kv_get(s: St, key: String) -> Res<Option<Value>> {
-    with(&s, |v| Ok(std::fs::read(kv_file(&s, v, &key)?).ok().and_then(|b| serde_json::from_slice(&b).ok())))
+    with(&s, |v| match std::fs::read(kv_file(&s,v,&key)?) {
+        Ok(bytes)=>serde_json::from_slice(&bytes).map(Some).map_err(|_|format!("STORAGE:unreadable_setting:{key}")),
+        Err(e)if e.kind()==std::io::ErrorKind::NotFound=>Ok(None),
+        Err(e)=>Err(err(e))
+    })
+}
+
+#[tauri::command]
+fn preferences_save(s: St, base: Value, next: Value) -> Res<Value> {
+    let result=with(&s,|v|snapshot::save_preferences(v,&base,&next))?;
+    kick(&s);Ok(result)
+}
+
+#[tauri::command]
+fn kv_merge_set(s: St, key: String, base: Value, next: Value) -> Res<Value> {
+    let result=with(&s,|v|snapshot::save_user_kv(v,&key,&base,&next))?;
+    kick(&s);Ok(result)
 }
 
 #[tauri::command]
@@ -547,8 +611,10 @@ fn account_status(s: St) -> Value {
     let acct = account::load(&s.app_data);
     let st = s.ctx.status.lock().map(|x| x.clone()).unwrap_or_default();
     let sync_on = lock_vault(&s).ok().and_then(|g| g.as_ref().map(|v| v.id())).and_then(|id| s.reg.lock().ok()?.find(&id).map(|e| e.sync)).unwrap_or(false);
+    let git = lock_vault(&s).ok().and_then(|g|g.as_ref().map(|v|github::enabled(&s.app_data,&v.id()))).unwrap_or(false);
     json!({
-        "signedIn": acct.is_some(),
+        "provider": if git { "github" } else { "legacy" },
+        "signedIn": if git { true } else { acct.is_some() },
         "username": acct.as_ref().map(|a| a.username.clone()),
         "server": acct.as_ref().map_or_else(|| account::DEFAULT_SERVER.to_string(), |a| a.server.clone()),
         "defaultServer": account::DEFAULT_SERVER,
@@ -775,6 +841,9 @@ async fn cloud_download(s: St<'_>, id: String, name: String, parent: String) -> 
 /// `patient`: retry a lost request a few times. While the network is known to be down it is false: one try, then the back-off
 /// decides when to look again, so that a sync does not sit for ten seconds in retries when the connection has just come back.
 fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool) -> Res<()> {
+    if github::enabled(&ctx.app_data, &e.id) { return run_github(ctx, e); }
+    let legacy_guard = github::OPERATION.lock().map_err(err)?;
+    if github::enabled(&ctx.app_data, &e.id) { drop(legacy_guard); return run_github(ctx,e); }
     let set = |state: &'static str, reason: &str, error: String, done: bool| {
         if let Ok(mut st) = ctx.status.lock() {
             st.state = state;
@@ -860,6 +929,107 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool) -> Res<()> {
     }
 }
 
+fn run_github(ctx: &SyncCtx, e: &Entry) -> Res<()> {
+    let app = ctx.app.as_ref().ok_or("GITHUB:no_app")?;
+    let b = github::binding(&ctx.app_data, &e.id)?.ok_or("GITHUB:not_connected")?;
+    if let Ok(mut st) = ctx.status.lock() { st.state = "syncing"; st.error.clear(); st.reason.clear(); }
+    let result = github::run(&ctx.app_data, &b,
+        || { let s = app.state::<Store>(); with(&s, |v| { if v.id() != e.id { return Err("SYNC:workspace_changed".into()); } database::recover(&v.root)?; snapshot::capture(v) }) },
+        |before, after| { let s = app.state::<Store>(); with(&s, |v| { if v.id() != e.id { return Err("SYNC:workspace_changed".into()); } snapshot::apply(v,before,after) }) });
+    if let Ok(mut st) = ctx.status.lock() {
+        match &result {
+            Ok(conflicts) => { st.state = if *conflicts > 0 { "paused" } else { "idle" }; st.reason = if *conflicts > 0 { "CONFLICTS" } else { "" }.into(); st.error.clear(); st.last_at = now_ms(); },
+            Err(e) => { st.state = if e == "GITHUB:network" { "offline" } else { "error" }; st.error = e.clone(); st.reason = "GITHUB".into(); }
+        }
+    }
+    if result.is_ok() { let _ = app.emit("vault-changed", e.id.clone()); }
+    result.map(|_| ())
+}
+
+/// All authentication/provider mutations run off the UI thread and share one operation lock.
+#[tauri::command]
+async fn github_action(s: St<'_>, app: AppHandle, action: String, args: Value) -> Res<Value> {
+    let data = s.app_data.clone();
+    let result = blocking(move || {
+        if action == "status" { let s=app.state::<Store>(); let id=current_entry(&s).map(|e|e.id).unwrap_or_else(||"none".into()); return github::status(&data,&id); }
+        let _op = github::OPERATION.lock().map_err(err)?;
+        let s = app.state::<Store>();
+        let id = current_entry(&s).map(|e|e.id).unwrap_or_default();
+        match action.as_str() {
+            "status" => github::status(&data, &id),
+            "open" => { github::open_browser(args["target"].as_str().unwrap_or("device"))?; Ok(Value::Null) },
+            "begin" => github::begin(),
+            "poll" => github::poll(),
+            "cancel" => { github::cancel(); Ok(Value::Null) },
+            "disconnect" => { github::disconnect()?; Ok(Value::Null) },
+            "list" => {
+                let mut rows=github::list_vaults(&data,args["repo"].as_str().unwrap_or("noviq-data"))?;
+                let reg=s.reg.lock().map_err(err)?;
+                if let Some(rows)=rows.as_array_mut(){for row in rows {row["connectedHere"]=json!(row["id"].as_str().and_then(|id|reg.find(id)).is_some_and(|e|vault::probe(Path::new(&e.path),&e.id)=="ok"));}}
+                Ok(rows)
+            },
+            "download" => {
+                let remote_id=vault::check_id(args["id"].as_str().ok_or("missing vault id")?)?;
+                if s.reg.lock().map_err(err)?.find(remote_id).is_some_and(|e|vault::probe(Path::new(&e.path),&e.id)=="ok"){return Err("GITHUB:vault_already_local".into());}
+                let parent=PathBuf::from(args["parent"].as_str().ok_or("missing parent")?);
+                if !parent.is_absolute()||!parent.is_dir(){return Err("invalid parent directory".into());}
+                let name=clean_name(args["name"].as_str().unwrap_or("My notes"))?;
+                let target=parent.join(&name);if target.exists(){return Err("folder already exists".into());}
+                let stage=parent.join(format!(".noviq-download-{}",uuid::Uuid::new_v4()));
+                let v=Vault::create_with_id(stage.clone(),&name,remote_id)?;
+                let b=github::prepare(remote_id,args["repo"].as_str().unwrap_or("noviq-data"),false,false)?;
+                github::download_unlocked(&data,&b,||snapshot::capture(&v),|before,after|snapshot::apply(&v,before,after))?;
+                std::fs::rename(stage,&target).map_err(err)?;
+                github::save_binding(&data,&b)?;
+                let e=Entry{id:remote_id.into(),name,path:target.to_string_lossy().into(),sync:true};
+                activate(&s,&e,false)?;Ok(Value::Null)
+            },
+            "connect" => {
+                if id.is_empty() { return Err("no vault open".into()); }
+                if github::enabled(&data,&id) { return Err("GITHUB:already_connected".into()); }
+                let mut b = github::prepare(&id,args["repo"].as_str().unwrap_or("noviq-data"),args["create"].as_bool().unwrap_or(false),true)?;
+                let backup = data.join("github/backups").join(format!("{}-{}",id,now_ms()));
+                // Short local critical section: consistent complete backup + readback before switching active provider.
+                with(&s, |v| { if v.id()!=id { return Err("SYNC:workspace_changed".into()); } snapshot::backup(v,&backup) })?;
+                b.backup=backup.to_string_lossy().into();
+                // Single active provider. A durable binding is the worker's routing source of truth.
+                github::save_binding(&data,&b)?;
+                let mut reg=s.reg.lock().map_err(err)?;
+                if let Some(e)=reg.vaults.iter_mut().find(|e|e.id==id){e.sync=true;}
+                reg.save(&data)?;
+                kick_as(&s,Kick::User);
+                Ok(json!({"backup":b.backup}))
+            },
+            "detach" => {
+                // Paused, local data kept. Do not silently resume the legacy provider.
+                let mut reg=s.reg.lock().map_err(err)?;
+                if let Some(e)=reg.vaults.iter_mut().find(|e|e.id==id){e.sync=false;}
+                reg.save(&data)?;
+                github::detach(&data,&id)?;
+                Ok(Value::Null)
+            },
+            "policy" => {
+                let mut b=github::binding(&data,&id)?.ok_or("GITHUB:not_connected")?;
+                b.quiet_seconds=args["quietSeconds"].as_u64().unwrap_or(15).clamp(15,120);
+                b.poll_seconds=args["pollSeconds"].as_u64().unwrap_or(120).clamp(120,3600);
+                github::save_binding(&data,&b)?; Ok(Value::Null)
+            },
+            "conflicts" => with(&s,|v| {
+                let mut rows=vec![];
+                for (p,b) in snapshot::read(v)? { if p.starts_with("conflicts/") {rows.push(serde_json::from_slice::<Value>(&b).map_err(err)?);} }
+                Ok(json!(rows))
+            }),
+            "resolve" => {
+                with(&s,|v|snapshot::resolve_conflict(v,args["id"].as_str().ok_or("missing conflict id")?,args["choice"].as_str().ok_or("missing choice")?))?;
+                let _=app.emit("vault-changed",id);
+                kick_as(&s,Kick::User);Ok(Value::Null)
+            },
+            _ => Err("GITHUB:unknown_action".into())
+        }
+    }).await?;
+    Ok(result)
+}
+
 fn current_entry(s: &Store) -> Option<Entry> {
     let cur = s.reg.lock().ok().and_then(|r| r.current.clone());
     cur.and_then(|id| s.reg.lock().ok()?.find(&id).cloned())
@@ -874,34 +1044,55 @@ fn backoff(fails: u32) -> Duration {
 fn sync_thread(app: AppHandle, rx: Receiver<Kick>) {
     let mut fails = 0u32;
     let mut retry_at = Instant::now();
+    let mut mandatory_retry = false;
     loop {
         // an edit, the server, or the user wakes us at once; the long wait is only a safety net
-        let first = match rx.recv_timeout(Duration::from_secs(300)) {
+        let poll = { let s=app.state::<Store>(); current_entry(&s).and_then(|e|github::binding(&s.app_data,&e.id).ok().flatten()).map_or(120,|b|b.poll_seconds) };
+        let first = match rx.recv_timeout(Duration::from_secs(poll)) {
             Ok(k) => Some(k),
             Err(RecvTimeoutError::Timeout) => None,
             Err(RecvTimeoutError::Disconnected) => return,
         };
         let mut urgent = matches!(first, Some(Kick::User | Kick::Remote));
         if first == Some(Kick::Edit) {
-            std::thread::sleep(Duration::from_millis(250)); // let a burst of saves finish; a change from the server is not a burst and goes at once
-            while let Ok(k) = rx.try_recv() {
-                urgent |= matches!(k, Kick::User | Kick::Remote);
+            let s = app.state::<Store>();
+            let policy = current_entry(&s).and_then(|e| github::binding(&s.app_data,&e.id).ok().flatten());
+            if let Some(b) = policy {
+                let started=Instant::now(); let mut last=Instant::now();
+                loop {
+                    let wait=Duration::from_secs(b.quiet_seconds).saturating_sub(last.elapsed()).min(Duration::from_secs(120).saturating_sub(started.elapsed()));
+                    if wait.is_zero(){break;}
+                    match rx.recv_timeout(wait) {
+                        Ok(Kick::Edit)=>last=Instant::now(),
+                        Ok(_)=>{urgent=true;break;},
+                        Err(RecvTimeoutError::Timeout)=>break,
+                        Err(RecvTimeoutError::Disconnected)=>return,
+                    }
+                }
+            } else {
+                std::thread::sleep(Duration::from_millis(250));
+                while let Ok(k)=rx.try_recv(){urgent |= matches!(k,Kick::User | Kick::Remote) ;}
             }
         }
         // while the network is down an edit does not try again before the back-off is over; the server speaking to us, or the user, does
-        if fails > 0 && !urgent && Instant::now() < retry_at {
+        if fails > 0 && (!urgent || mandatory_retry) && Instant::now() < retry_at {
             continue;
         }
         let s = app.state::<Store>();
         let ctx = s.ctx.clone();
         let entry = current_entry(&s);
-        let ready = entry.as_ref().is_some_and(|e| e.sync) && account::load(&ctx.app_data).is_some();
+        let ready = entry.as_ref().is_some_and(|e| e.sync) && entry.as_ref().is_some_and(|e| github::enabled(&ctx.app_data,&e.id) || account::load(&ctx.app_data).is_some());
         match entry {
             Some(e) if ready => match run_sync(&ctx, &e, fails == 0) {
                 Ok(()) => fails = 0,
-                Err(_) => {
+                Err(message) => {
                     fails += 1;
-                    retry_at = Instant::now() + backoff(fails);
+                    mandatory_retry=message.starts_with("GITHUB:rate_limited:");
+                    let delay=if github::enabled(&ctx.app_data,&e.id) {
+                        let rate=message.strip_prefix("GITHUB:rate_limited:").and_then(|s|s.parse::<u64>().ok());
+                        Duration::from_secs(rate.unwrap_or((15u64 << fails.min(6)).min(900)) + (now_ms() as u64 % 11))
+                    } else { backoff(fails) };
+                    retry_at = Instant::now() + delay;
                 }
             },
             _ => {
@@ -926,6 +1117,7 @@ fn watcher(app: AppHandle) {
             std::thread::sleep(Duration::from_secs(2));
             continue;
         };
+        if github::enabled(&ctx.app_data,&e.id) { std::thread::sleep(Duration::from_secs(2)); continue; }
         let Ok(api) = account::api(&ctx.app_data) else {
             std::thread::sleep(Duration::from_secs(2));
             continue;
@@ -1017,7 +1209,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             updates::updates_check, updates::updates_download, updates::updates_install,
-            vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
+            kv_merge_set, preferences_save, archive_editor_conflict, vault_backup_save, vault_backup_export, vault_backup_restore, github_action, vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
             db_recover, db_load_all, db_commit, db_get_operation, db_history, db_undo_load, db_undo_save, db_runtime_get, db_runtime_set, db_runtime_delete,
             db_runtime_keys, db_index_rebuild, db_index_candidates, db_index_count,
             vault_stamp, pages_all, pages_save, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list,

@@ -22,7 +22,11 @@ jobs:
         working-directory: server
 
   app:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,7 +38,14 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: spike/tiptap/src-tauri
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - run: npm ci
+        working-directory: spike/tiptap
+      - run: npm ci
+        working-directory: db/tests/tools
+      - run: npm run test:db
         working-directory: spike/tiptap
       - run: npx tsc -b
         working-directory: spike/tiptap

@@ -402,7 +402,7 @@ function DataTab({ a }: { a: DataActions }) {
         <Action icon={<Ic.Save />} label={t('Automatic backup to folder…')} onClick={a.autoBackup} />
       </Card>
       <Card icon={<Ic.Cloud />} title={t('Workspaces')}>
-        {a.account && <Action icon={<Ic.Cloud />} label={t('Account and sync…')} hint={t('Sign in, devices, password and recovery key')} onClick={a.account} />}
+        {a.account && <Action icon={<Ic.Cloud />} label={t('Account and sync…')} hint={t('GitHub private repository, devices and conflicts')} onClick={a.account} />}
         {a.syncNow && <Action icon={<Ic.Cloud />} label={t('Sync now')} onClick={a.syncNow} />}
         <Action icon={<Ic.Layers />} label={t('Workspaces and sync…')} onClick={a.workspaces} />
       </Card>

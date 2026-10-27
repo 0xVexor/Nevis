@@ -1,3 +1,4 @@
+import { setPreference } from './preferenceEvents'
 import { Brand } from './Brand'
 import { UpdateCenter } from './UpdateUI'
 import { shortcutLabel } from './shortcuts'
@@ -36,6 +37,10 @@ import { SyncButton } from './SyncButton'
 import { WorkspaceCard } from './VaultSwitcher'
 import { GraphView } from './GraphView'
 import { searchPages } from './searchIndex'
+import { save as saveDialog } from '@tauri-apps/plugin-dialog'
+import { invoke } from '@tauri-apps/api/core'
+import { saveBeforeUpdate } from './updateSave'
+import { flushPreferences } from './sharedPreferences'
 import { isTauri, kvGet, kvSet, syncNow } from './db'
 import { watchDueCards } from './cardsDue'
 import { normalizeFa } from './normalize'
@@ -60,7 +65,7 @@ const store = <T,>(k: string, fallback: T): T => {
 }
 const put = (k: string, v: unknown) => {
   try {
-    localStorage.setItem(k, JSON.stringify(v))
+    setPreference(k, JSON.stringify(v))
   } catch {
     /* private mode etc. — preferences are optional */
   }
@@ -253,7 +258,7 @@ export default function App() {
   const current = pages.find((p) => p.id === currentId && p.kind !== 'folder') ?? pages.find((p) => p.kind !== 'folder')
 
   useEffect(() => {
-    if (current) localStorage.setItem('not.current', current.id)
+    if (current) setPreference('not.current', current.id)
   }, [current])
   useEffect(() => put('not.side', sideOpen), [sideOpen])
   // views lay themselves out by the width of the main panel (window minus sidebar), not the window: data-main on .app is lg / md / sm / xs
@@ -325,8 +330,8 @@ export default function App() {
       if (e.altKey && !mod && !e.shiftKey && (e.code === 'Equal' || e.code === 'Minus')) {
         e.preventDefault()
         const d = e.code === 'Equal' ? PAGE_W.step : -PAGE_W.step
-        if (readerRef.current) setReaderCfg((c) => { const n = { ...c, width: Math.min(1400, Math.max(480, c.width + d)) }; localStorage.setItem('not.reader.cfg', JSON.stringify(n)); return n })
-        else setPageW((w) => { const n = Math.min(PAGE_W.max, Math.max(PAGE_W.min, w + d)); localStorage.setItem('not.page.width', String(n)); return n })
+        if (readerRef.current) setReaderCfg((c) => { const n = { ...c, width: Math.min(1400, Math.max(480, c.width + d)) }; setPreference('not.reader.cfg', JSON.stringify(n)); return n })
+        else setPageW((w) => { const n = Math.min(PAGE_W.max, Math.max(PAGE_W.min, w + d)); setPreference('not.page.width', String(n)); return n })
       }
       if (mod && !e.altKey && !e.shiftKey && e.code === 'Period') (e.preventDefault(), setReader((r) => !r)) // physical key: works with the Persian layout
       if (e.key === 'Escape' && !document.querySelector('.lightbox')) setReader(false)
@@ -455,7 +460,15 @@ export default function App() {
     }
   }
   const stamp = () => new Date().toISOString().slice(0, 10)
-  const doBackup = async () => download(`notes-backup-${stamp()}.json`, await buildBackup(repo))
+  const doBackup = async () => {
+    const name = `notes-backup-${stamp()}.json`
+    try {
+      if (!isTauri) return download(name, await buildBackup(repo))
+      await saveBeforeUpdate(); await repo.flushBeforeUpdate(); await flushPreferences()
+      const path = await saveDialog({ defaultPath: name, filters: [{ name: 'JSON', extensions: ['json'] }] })
+      if (path) await invoke('vault_backup_save', { path })
+    } catch (error) { setToast({ msg: t('Backup failed') + ': ' + String(error) }) }
+  }
   const doExportAll = async () => {
     try {
       const r = await exportAllZip()
@@ -498,7 +511,7 @@ export default function App() {
   }
   const doRestore = async () => {
     const [f] = await pickFiles('application/json')
-    if (!f || !(await confirmDialog({ title: t('Restore from backup'), message: t('All current pages will be replaced by the backup. Continue?'), confirmLabel: t('Restore'), danger: true }))) return
+    if (!f || !(await confirmDialog({ title: t('Restore from backup'), message: isTauri ? t('The backup will open in a new disconnected workspace. Current files stay intact. Continue?') : t('All current pages will be replaced by the backup. Continue?'), confirmLabel: t('Restore'), danger: true }))) return
     try {
       const r = await restoreBackup(repo, await f.text())
       refresh()
@@ -745,7 +758,7 @@ export default function App() {
           {current && view === 'page' && <button className="share-btn" title={t('Share & export')} onClick={(e) => setDataMenu(e.currentTarget.getBoundingClientRect())}><Ic.Share size={15} />{t('Share')}</button>}
         </header>
 
-        {reader && view === 'page' && current && <ReaderBar cfg={readerCfg} onCfg={(c) => (setReaderCfg(c), localStorage.setItem('not.reader.cfg', JSON.stringify(c)))} onExit={() => setReader(false)} />}
+        {reader && view === 'page' && current && <ReaderBar cfg={readerCfg} onCfg={(c) => (setReaderCfg(c), setPreference('not.reader.cfg', JSON.stringify(c)))} onExit={() => setReader(false)} />}
         <div className="scroller">
           {view === 'home' ? (
             <Home pages={pages} onOpen={setCurrentId} onNew={() => add(null)} onFolder={() => addFolder(null)} onTable={() => setTableOpen(true)} onCards={() => setCardsOpen(true)} onSearch={() => setSearching(true)}

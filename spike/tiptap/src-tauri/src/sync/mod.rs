@@ -11,6 +11,9 @@
 
 pub mod account;
 pub mod hub;
+pub mod snapshot;
+pub mod provider;
+pub mod github;
 
 use crate::vault::{err, now_ms, write_atomic, Res, Vault, VAULT_MISMATCH, VAULT_MISSING};
 use md5::{Digest, Md5};
@@ -545,7 +548,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         }
     }
     if !merged.is_empty() {
-        vault.resolve_conflicts();
+        vault.resolve_conflicts()?;
         // the merged page is the new truth: send it right away unless it is exactly what the cloud already has
         for (p, r) in merged {
             let res: Res<()> = (|| {
@@ -590,6 +593,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                         rep.skipped += 1;
                         return Ok(());
                     }
+                    if snapshot::safe_path(p).is_ok(){snapshot::tombstone(vault,p)?;}
                     vault.sync_trash_move(p)?; // recoverable for 30 days; when it fails the file stays and so does `base`
                     state.files.remove(p);
                     rep.deleted += 1;
@@ -815,7 +819,8 @@ mod tests {
         a.sync();
         b.sync();
         assert!(b.page(P1).is_none());
-        assert!(b.vault.root.join(".trash/pages").join(format!("{P1}.json")).exists()); // still recoverable
+        assert!(!b.vault.root.join(".trash/pages").join(format!("{P1}.json")).exists()); // permanent deletion has no app restore path
+        assert!(snapshot::tombstones(&b.vault).unwrap().contains(&format!("pages/{P1}.json")));
         // the page file itself went to the sync trash, not into the void
         assert!(fs::read_dir(b.vault.sync_trash_dir()).unwrap().count() >= 1);
     }
