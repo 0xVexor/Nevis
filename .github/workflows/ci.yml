@@ -56,6 +56,8 @@ jobs:
         working-directory: spike/tiptap
       - run: npm run test:direction
         working-directory: spike/tiptap
+      - run: npm ci --ignore-scripts
+        working-directory: db/tests/tools
       - run: npm run test:documents
         working-directory: spike/tiptap
       - run: npm run test:updates
