@@ -1,3 +1,4 @@
+import { canonicalDocumentValue, documentRevision } from './revision.ts'
 import { cloneDocumentValue } from './clone.ts'
 import { identifyBlocks, identityVersion, BLOCK_IDENTITY_VERSION } from './blockIdentity.ts'
 import type { Page, PageKind, PageRepo, Patch } from './model.ts'
@@ -43,6 +44,46 @@ export class DocumentService implements PageRepo {
   private lastSnap = new Map<string, number>()
   /** Last loaded/durable compatibility version; not a strong document revision. */
   private diskAt = new Map<string, StoredDocumentVersion>()
+  private diskPages = new Map<string, Page>()
+
+  private drafts = new Set<string>()
+  private commitLocked = false
+  private editGeneration = 0
+  isWriteLocked = () => this.commitLocked
+  setEditorDirty(id: string, dirty: boolean) {
+    if (dirty) { this.assertWritable(); this.drafts.add(id); this.editGeneration++ }
+    else this.drafts.delete(id)
+  }
+  private assertWritable() {
+    if (this.commitLocked) throw new Error('Document commit in progress')
+  }
+  /** Reserve only the local persistence interval. Planners and network calls run before this. */
+  async reserveCommit(): Promise<() => void> {
+    this.assertWritable()
+    const generation = this.editGeneration
+    if (this.drafts.size) throw new Error('Document editor has unsaved changes')
+    await this.flushBeforeUpdate()
+    this.assertWritable()
+    if (this.drafts.size || generation !== this.editGeneration || !this.idle()) throw new Error('Document editor changed')
+    this.commitLocked = true
+    this.host.emit('commit-state')
+    return () => { this.commitLocked = false; this.host.emit('commit-state') }
+  }
+  /** Internal commit boundary for the later validated edit planner. No transport or access grant is exposed here. */
+  async commitDocument(expected: Page, next: Page, expectedRevision: string, digest: (value: string) => Promise<string>) {
+    const before = cloneDocumentValue(expected), after = cloneDocumentValue(next)
+    if (before.id !== after.id) throw new Error('Document identity changed')
+    if (await documentRevision(before, digest) !== expectedRevision) throw new Error('Document revision conflict')
+    const revision = await documentRevision(after, digest)
+    const release = await this.reserveCommit()
+    try {
+      if (canonicalDocumentValue(this.getRaw(before.id)) !== canonicalDocumentValue(before)) throw new Error('Document revision conflict')
+      await this.storage.save({ upserts: [after], removed: [], replaceAll: false, baseVersions: { [before.id]: storedVersion(before) }, expectedPages: { [before.id]: before } })
+      this.adoptDatabase([after], [])
+      this.host.emit('external-change', [after.id])
+      return { documentId: after.id, revision }
+    } finally { release() }
+  }
 
   private seed: () => Page[]
   private readonly storage: DocumentStorage
@@ -81,6 +122,7 @@ export class DocumentService implements PageRepo {
       this.rebuildLinks()
       this.full = true
       await this.writeNow()
+      if (this.persistenceError) throw this.persistenceError
       if (legacy) {
         // remove the old copy only once the new store demonstrably holds everything
         try {
@@ -102,6 +144,7 @@ export class DocumentService implements PageRepo {
 
   private noteDisk(rows: Page[]) {
     this.diskAt = new Map(rows.map((r) => [r.id, storedVersion(r)]))
+    this.diskPages = new Map(rows.map(r => [r.id, cloneDocumentValue(r)]))
   }
 
   /** Re-run on imported/synced rows too. Identical legacy JSON converges to the
@@ -124,6 +167,7 @@ export class DocumentService implements PageRepo {
   }
 
   private touch(...ids: string[]) {
+    this.editGeneration++
     ids.forEach((i) => this.dirty.add(i))
     this.schedule()
   }
@@ -154,13 +198,17 @@ export class DocumentService implements PageRepo {
     this.full = false
     if (!full && !upserts.length && !removed.length) return this.queue
     this.queue = this.queue
-      // desktop: tell the vault which version each edit started from, so that a newer version brought by the sync is kept in the history, not overwritten
+      // Compare detached durable pre-images, including same-timestamp metadata changes.
       .then(() => this.storage.save({ upserts, removed, replaceAll: full,
         baseVersions: Object.fromEntries(upserts.map(p => [p.id, this.diskAt.get(p.id) ?? null])),
+        ...(full ? { expectedAll: [...this.diskPages.values()].map(cloneDocumentValue) }
+          : { expectedPages: Object.fromEntries([...upserts.map(p => p.id), ...removed].map(id => [id, cloneDocumentValue(this.diskPages.get(id) ?? null)])) }),
       }))
       .then(async () => {
-        this.persistenceError = null
-        for (const p of upserts) this.diskAt.set(p.id, storedVersion(p))
+        if (this.idle()) this.persistenceError = null
+        if (full) { this.diskAt.clear(); this.diskPages.clear() }
+        for (const p of upserts) { this.diskAt.set(p.id, storedVersion(p)); this.diskPages.set(p.id, cloneDocumentValue(p)) }
+        for (const id of removed) { this.diskAt.delete(id); this.diskPages.delete(id) }
         this.invalidateSearch() // committed content first; indexing is a separate, fallible concern
         if (this.storage.stamp) this.stamp = await this.storage.stamp() // our own writes are not "external" changes
       })
@@ -206,15 +254,16 @@ export class DocumentService implements PageRepo {
   }
 
   private idle = () => !this.dirty.size && !this.gone.size && !this.full
+  private canReload = () => this.idle() && !this.drafts.size && !this.commitLocked
 
   private async poll() {
-    if (this.polling || !this.idle()) return
+    if (this.polling || !this.canReload()) return
     this.polling = true
     try {
       await this.queue
       if (this.storage.stamp && (await this.storage.stamp()) === this.stamp) return
       const rows = await this.storage.load() // also merges conflict copies, which changes the folder again
-      if (!this.idle()) return // edited meanwhile: try again next round (the stamp is still different)
+      if (!this.canReload()) return // edited meanwhile: try again next round (the stamp is still different)
       const old = new Map(this.pages.map((p) => [p.id, p]))
       this.pages = rows
       this.noteDisk(rows)
@@ -309,6 +358,7 @@ export class DocumentService implements PageRepo {
   // ───── mutations ─────
 
   create(parentId: string | null, kind: PageKind = 'page'): Page {
+    this.assertWritable()
     const sibs = this.pages.filter((p) => p.parentId === parentId)
     const page: Page = {
       id: this.host.createId(),
@@ -327,6 +377,7 @@ export class DocumentService implements PageRepo {
   }
 
   update(id: string, patch: Patch, opts?: { history?: boolean; copyContent?: boolean }) {
+    this.assertWritable()
     const p = this.pages.find((x) => x.id === id)
     if (!p) return
     if (patch.content !== undefined && identityVersion(p.content) > BLOCK_IDENTITY_VERSION) throw new Error('Unsupported block identity version')
@@ -353,6 +404,7 @@ export class DocumentService implements PageRepo {
   }
 
   remove(id: string) {
+    this.assertWritable()
     const now = this.host.now()
     const hit: string[] = []
     const walk = (pid: string) => {
@@ -366,6 +418,7 @@ export class DocumentService implements PageRepo {
   }
 
   move(id: string, parentId: string | null, beforeId: string | null): boolean {
+    this.assertWritable()
     const page = this.pages.find((p) => p.id === id)
     if (!page || id === beforeId) return false
     // refuse to move a page into itself or one of its descendants
@@ -394,6 +447,7 @@ export class DocumentService implements PageRepo {
   }
 
   restoreFromTrash(id: string) {
+    this.assertWritable()
     const page = this.pages.find((p) => p.id === id)
     if (!page?.deletedAt) return
     const t = page.deletedAt
@@ -414,6 +468,7 @@ export class DocumentService implements PageRepo {
   }
 
   purge(id: string) {
+    this.assertWritable()
     const gone = new Set<string>()
     const walk = (pid: string) => {
       gone.add(pid)
@@ -439,6 +494,7 @@ export class DocumentService implements PageRepo {
   dump = () => cloneDocumentValue(this.pages)
 
   restore(pages: Page[]) {
+    this.assertWritable()
     this.pages = cloneDocumentValue(pages)
     this.migrateIdentities()
     this.rebuildLinks()
@@ -481,7 +537,7 @@ export class DocumentService implements PageRepo {
 
   /** Resolves when pending page writes reached the store, so the database coordinator compares revisions against what is stored. */
   async flushForDatabase() {
-    await this.flushed()
+    await this.flushBeforeUpdate()
   }
 
   /** The database coordinator already made these post-images durable: take them over in memory without writing them again. */
@@ -497,19 +553,21 @@ export class DocumentService implements PageRepo {
         this.indexLinks(cur)
         this.dirty.delete(u.id)
         this.diskAt.set(u.id, storedVersion(u))
+        this.diskPages.set(u.id, cloneDocumentValue(cur))
       } else {
         this.pages.push(u)
         idx.set(u.id, u)
         this.rawIdxLen = this.pages.length
         this.dirty.delete(u.id)
         this.diskAt.set(u.id, storedVersion(u))
+        this.diskPages.set(u.id, cloneDocumentValue(u))
         if (u.content !== undefined) this.indexLinks(u)
       }
     }
     if (removed.length) {
       const gone = new Set(removed)
       this.pages = this.pages.filter((p) => !gone.has(p.id))
-      gone.forEach((g) => (this.unindexLinks(g), this.dirty.delete(g)))
+      gone.forEach((g) => (this.unindexLinks(g), this.dirty.delete(g), this.diskAt.delete(g), this.diskPages.delete(g)))
     }
     this.invalidateSearch()
     this.host.emit('data-changed')
@@ -517,10 +575,10 @@ export class DocumentService implements PageRepo {
 
   /** Another tab / device changed the stored pages: read them again, unless there are unsaved edits here (then the next poll retries). */
   async refreshFromStore(): Promise<boolean> {
-    if (!this.idle()) return false
+    if (!this.canReload()) return false
     await this.queue
     const rows = await this.storage.load()
-    if (!this.idle()) return false
+    if (!this.canReload()) return false
     const old = new Map(this.pages.map((p) => [p.id, p]))
     this.pages = rows
     this.noteDisk(rows)

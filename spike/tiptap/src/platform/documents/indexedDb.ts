@@ -1,5 +1,7 @@
 import type { Page } from '../../documents/model.ts'
 import type { DocumentStorage, DocumentVersion, DocumentWrite } from '../../documents/ports.ts'
+import { cloneDocumentValue } from '../../documents/clone.ts'
+import { canonicalDocumentValue } from '../../documents/revision.ts'
 
 const complete = (tx: IDBTransaction) => new Promise<void>((resolve, reject) => {
   tx.oncomplete = () => resolve()
@@ -13,7 +15,7 @@ const result = <T>(request: IDBRequest<T>) => new Promise<T>((resolve, reject) =
 
 /** Uses existing pages/versions stores. No Tauri, window, singleton or native imports. */
 export class IndexedDbDocumentStorage implements DocumentStorage {
-  readonly revisionPolicy = 'unconditional' as const
+  readonly revisionPolicy = 'exact-page' as const
   private databaseName: string | null = null
   readonly vaultHandle: string
   private readonly open: () => Promise<IDBDatabase>
@@ -43,11 +45,25 @@ export class IndexedDbDocumentStorage implements DocumentStorage {
     const tx = (await this.database()).transaction('pages')
     return result(tx.objectStore('pages').getAll())
   }
-  async save(write: DocumentWrite): Promise<void> {
+  async save(input: DocumentWrite): Promise<void> {
+    const write = cloneDocumentValue(input)
     const tx = (await this.database()).transaction('pages', 'readwrite')
     const committed = complete(tx)
     try {
       const store = tx.objectStore('pages')
+      if (write.expectedAll) {
+        const actual = await result(store.getAll()) as Page[]
+        const ordered = (pages: Page[]) => [...pages].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+        if (canonicalDocumentValue(ordered(actual)) !== canonicalDocumentValue(ordered(write.expectedAll))) throw new Error('Document revision conflict')
+      } else if (write.expectedPages) {
+        for (const id of new Set([...write.upserts.map(page => page.id), ...write.removed])) {
+          if (!Object.hasOwn(write.expectedPages, id)) throw new Error('Missing document precondition')
+          const current = await result(store.get(id)) as Page | undefined
+          const expected = write.expectedPages[id]
+          if (canonicalDocumentValue(current ?? null) !== canonicalDocumentValue(expected)) throw new Error('Document revision conflict')
+        }
+      }
+      if (!this.active()) throw new Error('Document storage is unavailable')
       if (write.replaceAll) store.clear()
       write.upserts.forEach(page => store.put(page))
       write.removed.forEach(id => store.delete(id))
@@ -59,6 +75,12 @@ export class IndexedDbDocumentStorage implements DocumentStorage {
     await committed
     try { this.changed() } catch { /* notification failure does not undo storage */ }
   }
+  /** Compare and write in the same IndexedDB transaction shared with ordinary page saves. */
+  async compareAndSave(expected: Page, next: Page): Promise<void> {
+    if (expected.id !== next.id) throw new Error('Document identity changed')
+    await this.save({ upserts: [next], removed: [], replaceAll: false, baseVersions: {}, expectedPages: { [expected.id]: expected } })
+  }
+
   async listVersions(pageId: string): Promise<DocumentVersion[]> {
     const tx = (await this.database()).transaction('versions')
     const versions: DocumentVersion[] = await result(tx.objectStore('versions').index('byPage').getAll(pageId))

@@ -21,14 +21,17 @@ export interface DocumentWrite {
   removed: string[]
   replaceAll: boolean
   baseVersions: Record<string, StoredDocumentVersion | null>
+  /** Full persisted pre-images checked in the same storage transaction or native commit lock. */
+  expectedPages?: Record<string, Page | null>
+  expectedAll?: Page[]
 }
 
 /** One adapter instance is permanently bound to one host-owned vault handle.
  * Saves resolve after durable completion or reject; a frozen/skipped write must
- * never acknowledge success. Strong compare-and-commit is a later capability. */
+ * never acknowledge success. Supplied full-page preconditions must be checked in the same transaction or lock as writes. */
 export interface DocumentStorage {
   readonly vaultHandle: string
-  readonly revisionPolicy: 'timestamp-history' | 'unconditional'
+  readonly revisionPolicy: 'exact-page'
   load(): Promise<Page[]>
   save(write: DocumentWrite): Promise<void>
   listVersions(pageId: string): Promise<DocumentVersion[]>
@@ -42,7 +45,7 @@ export interface DocumentHost {
   createId(): string
   /** Defer asynchronously until after the current call stack; return cancellation. */
   defer(task: () => void): () => void
-  emit(event: 'data-changed' | 'external-change' | 'storage-error' | 'search-state', detail?: string[] | string): void
+  emit(event: 'data-changed' | 'external-change' | 'storage-error' | 'search-state' | 'commit-state', detail?: string[] | string): void
   report(context: 'storage' | 'history' | 'watch' | 'search', error: unknown): void
   readLegacy?(): Page[] | null
   clearLegacy?(): void

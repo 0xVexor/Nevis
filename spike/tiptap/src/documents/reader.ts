@@ -9,6 +9,7 @@ import { LEXICAL_PROJECTION_VERSION, LexicalSearchError, sourcePassage } from '.
 import { ManagedLexicalIndex } from './searchLifecycle.ts'
 import type { SearchIndexRuntime } from './searchLifecycle.ts'
 import type { SearchMode } from './lexicalSearch.ts'
+import { canonicalDocumentValue as canonical, documentRevision } from './revision.ts'
 
 export interface DocumentReadGrant {
   readonly context: DocumentAccessContext
@@ -51,8 +52,6 @@ export class DocumentReadError extends Error {
   }
 }
 function fail(code: ReadCode): never { throw new DocumentReadError(code) }
-const canonical = (value: unknown): string => JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
-  ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item)
 const chars = (value: string) => [...value].length
 const bytes = (value: string) => { let size = 0; for (const char of value) { const cp = char.codePointAt(0)!; size += cp < 128 ? 1 : cp < 2048 ? 2 : cp < 65536 ? 3 : 4 } return size }
 const fields = (value: object, allowed: string[]) => { if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !allowed.includes(key))) fail('INVALID_ARGUMENT') }
@@ -89,9 +88,8 @@ export class DocumentReader {
       || (documentId !== undefined && !this.grant.canRead(documentId))) fail('ACCESS_DENIED')
   }
   private async revision(page: Page) {
-    const digest = await this.runtime.digest(canonical(page))
-    if (!/^[a-f0-9]{64,128}$/i.test(digest)) fail('APP_UNAVAILABLE')
-    return `r1:${digest}`
+    try { return await documentRevision(page, snapshot => this.runtime.digest(snapshot)) }
+    catch { return fail('APP_UNAVAILABLE') }
   }
   private async load() {
     try { return await this.source.load() }

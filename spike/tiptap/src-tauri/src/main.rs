@@ -273,9 +273,14 @@ fn pages_all(s: St) -> Res<Vec<Value>> {
 
 /// `clear_first` = the upserts are the whole workspace. Every page is its own atomic file write.
 #[tauri::command]
-fn pages_save(s: St, upserts: Vec<Value>, removed: Vec<String>, clear_first: bool) -> Res<Vec<String>> {
+fn pages_save(s: St, upserts: Vec<Value>, removed: Vec<String>, clear_first: bool, expected_vault_id: Option<String>, expected_pages: Option<serde_json::Map<String, Value>>, expected_all: Option<Vec<Value>>) -> Res<Vec<String>> {
     // ids of pages whose newer version on disk (another device's edit) went to the page history before ours replaced it
-    let kept = with(&s, |v| v.save_pages(&upserts, &removed, clear_first))?;
+    let kept = with(&s, |v| {
+        if let Some(id) = &expected_vault_id {
+            if v.id() != *id { return Err("Document vault changed".into()); }
+            v.save_pages_checked(&upserts, &removed, clear_first, expected_pages.as_ref(), expected_all.as_deref())
+        } else { Err("Missing document vault precondition".into()) }
+    })?;
     kick(&s);
     Ok(kept)
 }
@@ -398,7 +403,10 @@ fn db_load_all(s: St) -> Res<Value> {
 
 #[tauri::command]
 fn db_commit(s: St, batch: Value) -> Res<()> {
-    with(&s, |v| database::commit(&v.root, &batch))?;
+    with(&s, |v| {
+        if batch.get("vaultId").and_then(Value::as_str) != Some(v.id().as_str()) { return Err("Document vault changed".into()); }
+        database::commit(&v.root, &batch)
+    })?;
     // the index is derived: a failure here never fails a durable commit, it only marks the index for a rebuild
     let r = db_index(&s, |c, root| if database::index::needs_rebuild(c) { database::index::rebuild(c, root).map(|_| ()) } else { database::index::apply_batch(c, root, &batch) });
     if r.is_err() {
