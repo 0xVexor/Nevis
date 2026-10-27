@@ -109,7 +109,7 @@ export const documentToolContracts = Object.freeze({
   search_documents: tool(obj({
     query: str(2048), mode: choice('keywords', 'phrase', 'literal'), documentIds: array(id, 100, 1),
     tags: array(str(128), 50), budget, ...pageRequest,
-  }, ['query', 'mode']), obj({ hits: array(obj({ ...docRef, range, passage: str(4096), score: { type: 'number', minimum: 0 } })),
+  }, ['query', 'mode']), obj({ hits: array(obj({ ...docRef, range: nullable(range), source: choice('title', 'tag', 'body'), passage: str(4096), score: { type: 'number', minimum: 0 } }, ['documentId', 'revision', 'range', 'passage', 'score'])),
     search: freshness, ...pageResult, warnings: array(warning) })),
   read_document: tool(obj({ documentId: id, expectedRevision: revision,
     target: union(obj({ kind: literal('outline') }), obj({ kind: literal('full') }),

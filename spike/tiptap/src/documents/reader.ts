@@ -5,6 +5,8 @@ import { CONTRACT_VERSION, LIMITS } from './contracts.ts'
 import type { DocumentAccessContext } from './contracts.ts'
 import type { Page, PageKind } from './model.ts'
 import { readMarkdown } from './readMarkdown.ts'
+import { LexicalSearchError, PortableLexicalIndex, sourcePassage } from './lexicalSearch.ts'
+import type { SearchMode } from './lexicalSearch.ts'
 
 export interface DocumentReadGrant {
   readonly context: DocumentAccessContext
@@ -29,6 +31,10 @@ export interface ReadDocumentInput {
   target: { kind: 'outline' | 'full' } | { kind: 'section'; headingBlockId: string } | { kind: 'blocks'; blockIds: string[] }
   format: 'markdown' | 'structured' | 'both'
   budget?: { maxChars: number; maxBlocks: number }; cursor?: string
+}
+export interface SearchDocumentsInput {
+  query: string; mode: SearchMode; documentIds?: string[]; tags?: string[]
+  budget?: { maxChars: number; maxBlocks: number }; limit?: number; cursor?: string
 }
 type ReadCode = 'ACCESS_DENIED' | 'NOT_FOUND' | 'INVALID_ARGUMENT' | 'INVALID_TARGET' | 'LIMIT_EXCEEDED' | 'STALE_CURSOR' | 'REVISION_CONFLICT' | 'CAPABILITY_UNAVAILABLE' | 'APP_UNAVAILABLE'
 export class DocumentReadError extends Error {
@@ -261,5 +267,51 @@ export class DocumentReader {
     const truncated = offset < selected.length
     return { documentId: page.id, revision, capabilities: cloneDocumentValue(capabilities), chunks, warnings,
       nextCursor: truncated ? this.continuation(binding, revision, offset) : null, truncated }
+  }
+
+  async searchDocuments(input: SearchDocumentsInput) {
+    this.authorize()
+    fields(input, ['query', 'mode', 'documentIds', 'tags', 'budget', 'limit', 'cursor'])
+    this.request(input)
+    if (typeof input.query !== 'string' || !input.query.trim() || chars(input.query) > 2048 || !['keywords', 'phrase', 'literal'].includes(input.mode)) fail('INVALID_ARGUMENT')
+    if (input.cursor !== undefined && !id(input.cursor)) fail('INVALID_ARGUMENT')
+    if (input.documentIds !== undefined && (!Array.isArray(input.documentIds) || !input.documentIds.length || input.documentIds.length > 100 || input.documentIds.some(value => !id(value)))) fail('INVALID_ARGUMENT')
+    for (const documentId of input.documentIds ?? []) this.authorize(documentId)
+    if (input.tags !== undefined && (!Array.isArray(input.tags) || input.tags.length > 50 || input.tags.some(tag => !id(tag) || chars(tag) > 128))) fail('INVALID_ARGUMENT')
+    const limit = integer(input.limit ?? 20, LIMITS.pageSize)
+    const budget = input.budget ?? { maxChars: 8000, maxBlocks: 50 }
+    fields(budget, ['maxChars', 'maxBlocks'])
+    integer(budget.maxChars, LIMITS.textChars); integer(budget.maxBlocks, 100)
+    const pages = (await this.load()).filter(page => page.deletedAt === null && page.kind !== 'folder' && this.grant.canRead(page.id)
+      && (!input.documentIds || input.documentIds.includes(page.id)) && (!input.tags || input.tags.every(tag => page.tags?.includes(tag))))
+    this.authorize()
+    const revisions = new Map(await Promise.all(pages.map(async page => [page.id, await this.revision(page)] as const)))
+    for (const page of pages) this.authorize(page.id)
+    let index: PortableLexicalIndex, matches: ReturnType<PortableLexicalIndex['search']>
+    try { index = new PortableLexicalIndex(pages); matches = index.search(input.query, input.mode) }
+    catch (error) { if (error instanceof LexicalSearchError) fail(error.code); return fail('APP_UNAVAILABLE') }
+    const snapshot = await this.runtime.digest(canonical([...revisions].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)))
+    this.authorize()
+    const binding = this.binding('search_documents', input)
+    const start = this.offset(input.cursor, binding, snapshot)
+    const warnings = index.unsupportedDocumentIds.size ? [{ code: 'UNSUPPORTED_CONTENT' as const, message: 'Some authorized content has no supported searchable projection.', blockIds: [] as string[] }] : []
+    const search = { state: 'fresh' as const, indexedRevision: pages.length === 1 ? revisions.get(pages[0].id)! : null }
+    type Hit = { documentId: string; revision: string; range: { fromBlockId: string; throughBlockId: string } | null; source: 'title' | 'tag' | 'body'; passage: string; score: number }
+    const hits: Hit[] = []
+    let offset = start, usedChars = 0
+    while (offset < matches.length && hits.length < Math.min(limit, budget.maxBlocks)) {
+      const match = matches[offset]
+      const passage = sourcePassage(match, budget.maxChars - usedChars)
+      if (passage === null || !passage) break
+      const hit: Hit = { documentId: match.documentId, revision: revisions.get(match.documentId)!, source: match.source,
+        range: match.blockId ? { fromBlockId: match.blockId, throughBlockId: match.blockId } : null, passage, score: match.score }
+      if (!this.fits({ hits: [...hits, hit], search, warnings, nextCursor: 'x'.repeat(256), truncated: true })) break
+      hits.push(hit); offset++; usedChars += chars(passage)
+    }
+    if (offset < matches.length && !hits.length) fail('LIMIT_EXCEEDED')
+    this.authorize()
+    for (const hit of hits) this.authorize(hit.documentId)
+    const truncated = offset < matches.length
+    return { hits, search, warnings, nextCursor: truncated ? this.continuation(binding, snapshot, offset) : null, truncated }
   }
 }
