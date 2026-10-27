@@ -512,11 +512,9 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         _ => return Err(VAULT_MISSING.into()),
     }
     remote.check()?;
-    let (local, unknown) = {
-        let mutex = crate::vault::local_lock(root);
-        let _guard = mutex.lock();
-        scan(root, &state.files)?
-    };
+    // Scanning only observes immutable file replacements. Every mutation is
+    // revalidated under the path lock later; do not block typing for a full scan.
+    let (local, unknown) = scan(root, &state.files)?;
     let mut rep = Report::default();
     let listed = remote.list()?;
     // Reject incompatible or unsafe snapshots before deduplication can remove anything.
@@ -1356,6 +1354,24 @@ mod tests {
         assert!(report.skipped > 0);
         assert_eq!(fs::read(b.vault.root.join(path)).unwrap(), b"local edit");
         assert!(!fs::read_dir(b.vault.root.join(".noviq")).unwrap().flatten().any(|e| e.file_name().to_string_lossy().starts_with("download-")));
+    }
+
+    #[test]
+    fn scanning_while_local_saves_continue_keeps_the_final_edit() {
+        let (mut a, _b) = pair();
+        a.save(P1, "baseline", 100); a.sync();
+        let vault = a.vault.clone();
+        let writer = std::thread::spawn(move || {
+            for n in 0..100 {
+                vault.save_pages(&[json!({"id":P1,"title":format!("edit-{n}"),"content":{"type":"doc","content":[]},"updatedAt":1000+n,"deletedAt":null})], &[], false).unwrap();
+            }
+        });
+        for _ in 0..5 { a.sync(); }
+        writer.join().unwrap();
+        assert_eq!(a.page(P1).unwrap()["title"], "edit-99");
+        a.sync();
+        let cloud = a.remote.0.borrow().files.iter().find(|(f, _)| f.path == format!("pages/{P1}.json")).unwrap().1.clone();
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&cloud).unwrap()["title"], "edit-99");
     }
 
     #[test]

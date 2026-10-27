@@ -44,4 +44,4 @@ Both release channels require the updater signing configuration described in [de
 
 ## Compatibility
 
-Nevis retains the existing application identifier, vault marker format, local database names, credentials service and sync protocol. Renaming the product must not relocate user data, forget accounts or disconnect existing devices. The legacy `NOVIQ_SERVER` build variable is still accepted; new builds may use `NEVIS_SERVER` instead.
+Product renaming retains the application identifier, vault marker format and local database names and must not relocate user data. The sync reliability follow-up separately introduces protocol 2 and profile-scoped session credentials for safety; shared legacy credentials require a fresh sign-in. See [sync reliability](sync-reliability.md) for the deliberate compatibility boundary and coordinated rollout requirements. The legacy `NOVIQ_SERVER` build variable is still accepted; new builds may use `NEVIS_SERVER` instead.
