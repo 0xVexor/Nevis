@@ -11,7 +11,7 @@ Register a GitHub App under the publisher's GitHub account. Enable **Device Flow
 - Install on selected repositories. An App user token acts within both the user's access and the App installation's access. Creating a repository does not justify assuming installation access: the app verifies the created repository/ref before activating sync. If GitHub requires granting installation access to the newly created repo, choose it using the installation button, select **Use existing repository**, and retry. A created but inaccessible repository is left intact.
 - No webhook, callback server, private key or embedded client secret is required by this flow.
 
-Set these **public build-time values**, then build the desktop app:
+The publisher's public client ID and slug can be committed in `spike/tiptap/src-tauri/github-app.public.json`; this file accepts no secrets. Environment/repository Actions variables override those defaults. For a custom build, set these **public build-time values**, then build the desktop app:
 
 ```sh
 NOVIQ_GITHUB_CLIENT_ID=Iv1.your_public_client_id \

@@ -34,7 +34,8 @@ const hash = createHash('sha256')
 for await (const chunk of createReadStream(path.join(folder, name))) hash.update(chunk)
 const checksum = hash.digest('hex')
 await fs.writeFile(path.join(folder, 'SHA256SUMS.txt'), `${checksum}  ${name}\n`)
-const configured = !!(process.env.NOVIQ_GITHUB_CLIENT_ID && process.env.NOVIQ_GITHUB_APP_SLUG)
+const publicApp = JSON.parse(await fs.readFile(path.join(root, 'spike/tiptap/src-tauri/github-app.public.json'), 'utf8'))
+const configured = !!((process.env.NOVIQ_GITHUB_CLIENT_ID?.trim() || publicApp.clientId) && (process.env.NOVIQ_GITHUB_APP_SLUG?.trim() || publicApp.slug))
 await fs.writeFile(path.join(folder, 'BUILD-INFO.json'), JSON.stringify({
   commit, platform: label, builtAt: new Date().toISOString(),
   identifier: 'com.vexor.noviq.githubpreview', credentialService: 'app.noviq.github.preview',

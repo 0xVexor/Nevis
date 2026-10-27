@@ -5,6 +5,7 @@ description = "Nevis: offline notes with full Persian/RTL support"
 edition = "2021"
 
 [build-dependencies]
+serde_json = "1"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
