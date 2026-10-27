@@ -1,5 +1,7 @@
 // English → Persian UI strings (see i18n.ts). Generated once from the original Persian UI, edit freely.
 export const FA: Record<string, string> = {
+  "Searching…": "در حال جست‌وجو…",
+  "Search is unavailable. Try again.": "جست‌وجو در دسترس نیست. دوباره تلاش کنید.",
   "Column {n}": "ستون {n}",
   "The database was created. Open it from Databases.": "دیتابیس ساخته شد. آن را از بخش دیتابیس‌ها باز کنید.",
   "The database could not be inserted. Please try again.": "درج دیتابیس انجام نشد. دوباره تلاش کنید.",
