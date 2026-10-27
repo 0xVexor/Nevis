@@ -6,6 +6,7 @@ import { DUMMY_HASH, Limiter, checkPow, hashPassword, makeChallenge, newId, newR
 import { blobRow, receiveBlob, receivedBytes, usedBytes } from './blobs.js'
 import { tx } from './db.js'
 import { purgeVault } from './gc.js'
+import { SYNC_ROOTS } from './paths.js'
 import { Hub } from './hub.js'
 import { blobKey } from './storage.js'
 import { HttpError, changesSince, commit, createVault, listVaults, ownedVault, publicFile, renameVault, restoreRevision, revisionRow, revisionsOf, stateOf, trashVault, untrashVault, vaultRow } from './vaults.js'
@@ -65,7 +66,7 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
   // ───── public ─────
   const pub = { config: { public: true } }
   app.get('/', pub, async (_req, reply) => reply.type('text/plain').send('noviq-sync'))
-  app.get('/v1/health', pub, async () => ({ ok: true, name: 'noviq-sync', api: cfg.api, min_api: cfg.minApi, registration: cfg.registration, pow_bits: cfg.powBits, server_time: now() }))
+  app.get('/v1/health', pub, async () => ({ ok: true, name: 'noviq-sync', api: cfg.api, min_api: cfg.minApi, capabilities: ['permanent_delete', 'database_sync'], sync_roots: SYNC_ROOTS, registration: cfg.registration, pow_bits: cfg.powBits, server_time: now() }))
 
   app.get('/v1/auth/challenge', pub, async (req, reply) => {
     const lim = limiter.hit(`ch:${req.ip}`, 120, HOUR)
@@ -254,24 +255,29 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
 
   app.post('/v1/vaults', async (req, reply) => {
     const r = createVault(db, req.auth.user.id, { id: req.body?.id, name: req.body?.name }, cfg, now())
+    if (r.created) onWrite()
     return reply.code(r.created ? 201 : 200).send(r)
   })
 
   app.patch('/v1/vaults/:id', async (req) => {
     renameVault(db, vaultOf(req), req.body?.name)
+    onWrite()
     return { ok: true }
   })
 
   app.delete('/v1/vaults/:id', async (req) => {
     const v = vaultOf(req)
     trashVault(db, v, now())
+    onWrite()
     hub.notify(v.id)
     return { ok: true }
   })
 
   /** Deletes a vault that is already in the trash for good, without waiting for the retention period. Not undoable. */
   app.delete('/v1/vaults/:id/permanent', async (req) => {
-    const v = vaultOf(req, { deleted: true })
+    // A retry after a lost success response is still a success. Never touch another owner's vault.
+    const v = vaultRow(db, req.params.id)
+    if (!v || v.user_id !== req.auth.user.id) return { ok: true }
     if (!v.deleted_at) throw new HttpError(409, 'not_in_trash')
     await purgeVault(db, storage, v.id)
     hub.notify(v.id)
@@ -281,6 +287,7 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
 
   app.post('/v1/vaults/:id/undelete', async (req) => {
     untrashVault(db, vaultOf(req, { deleted: true }))
+    onWrite()
     return { ok: true }
   })
 

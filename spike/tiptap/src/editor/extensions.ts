@@ -50,8 +50,8 @@ function DirTableView(this: any, node: any, ...rest: any[]) {
 const LEAF = ['paragraph', 'heading']
 const CONTAINER = ['blockquote', 'tableCell', 'tableHeader', 'table', 'listItem', 'taskItem']
 
-// dir="auto" lets the browser pick direction per block from the first strong
-// character (Word-like); the `dir` attribute overrides it manually.
+// Automatic block directions are rendered by HeadingDir. Persisted `dir` attributes
+// remain manual overrides; container dir=auto also works in exported HTML.
 const Direction = Extension.create({
   name: 'direction',
   addGlobalAttributes() {
