@@ -18,6 +18,7 @@ use std::collections::{BTreeSet, BTreeMap};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use sync::hub::{self, Hub};
 use sync::{account, SyncState};
@@ -73,6 +74,10 @@ fn with<T>(s: &St, f: impl FnOnce(&Vault) -> Res<T>) -> Res<T> {
 
 /// A change was written: let the sync thread know (it waits a moment so bursts become one sync).
 fn kick(s: &St) {
+    s.ctx.edits.fetch_add(1, Ordering::SeqCst);
+    if let Ok(mut status) = s.ctx.status.lock() {
+        if status.state == "idle" { status.state = "syncing"; status.reason = "CHANGES_PENDING".into(); }
+    }
     kick_as(s, Kick::Edit);
 }
 
@@ -270,8 +275,15 @@ fn vault_forget(s: St, id: String) -> Res<()> {
 
 /// Changes whenever a page file is added, removed or rewritten, by us or by the sync.
 #[tauri::command]
-fn vault_stamp(s: St) -> Res<String> {
-    with(&s, |v| Ok(v.stamp()))
+async fn vault_stamp(app: AppHandle) -> Res<String> {
+    blocking(move || {
+        let s = app.state::<Store>();
+        let vault = lock_vault(&s)?.as_ref().cloned().ok_or("no vault open")?;
+        if vault::probe(&vault.root, &vault.id()) != "ok" { return Err(VAULT_MISMATCH.into()); }
+        // Fingerprints are checked around pages_all by the repository. A full
+        // read does not need to own the UI's vault or writer mutex.
+        Ok(vault.stamp())
+    }).await
 }
 
 // ───── pages ─────
@@ -536,6 +548,7 @@ struct SyncCtx {
     confirm: Arc<Mutex<BTreeSet<String>>>,
     /// (vault id, server `seq` this device has applied): what the watcher compares the server with
     synced: Arc<Mutex<(String, i64)>>,
+    edits: Arc<AtomicU64>,
     app: Option<AppHandle>,
 }
 
@@ -823,6 +836,7 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, _patient: bool) -> Res<()> {
     // Account -> worker -> vault is the shared lock order, including downloads.
     let _session = account::guard()?;
     let session_generation = account::generation();
+    let edits_at_start = ctx.edits.load(Ordering::SeqCst);
     // A download command and the worker must not concurrently publish the same state file.
     let worker_mutex = vault::local_lock(&ctx.app_data.join("sync-worker").join(&e.id));
     let _worker_guard = worker_mutex.lock();
@@ -833,6 +847,10 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, _patient: bool) -> Res<()> {
             if current_entry(&store).is_none_or(|current| current.id != e.id) { return; }
         }
         if let Ok(mut st) = ctx.status.lock() {
+            if state == "idle" && ctx.edits.load(Ordering::SeqCst) != edits_at_start {
+                st.state = "syncing"; st.reason = "CHANGES_PENDING".into(); st.error.clear();
+                return;
+            }
             st.state = state;
             st.reason = reason.to_string();
             st.error = error;
@@ -901,6 +919,9 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, _patient: bool) -> Res<()> {
             } else if rep.held > 0 {
                 set("paused", "NEEDS_CONFIRM", rep.held.to_string(), false);
                 Ok(())
+            } else if rep.skipped > 0 || ctx.edits.load(Ordering::SeqCst) != edits_at_start {
+                set("syncing", "CHANGES_PENDING", String::new(), false);
+                Err("HUB:changes_pending".into())
             } else {
                 set("idle", "", String::new(), true);
                 Ok(())
@@ -968,6 +989,9 @@ fn sync_thread(app: AppHandle, rx: Receiver<Kick>) {
             if !store.reg.lock().ok().and_then(|reg| reg.find(&entry.id).map(|e| e.sync)).unwrap_or(false) { continue; }
             match run_sync(&ctx, &entry, false) {
                 Ok(()) => { retries.remove(&entry.id); }
+                Err(m) if m == "HUB:changes_pending" => {
+                    retries.insert(entry.id.clone(), (0, Instant::now() + Duration::from_secs(1)));
+                }
                 Err(_) => {
                     let failures = retries.get(&entry.id).map_or(1, |(n, _)| n.saturating_add(1));
                     retries.insert(entry.id.clone(), (failures, Instant::now() + backoff(failures)));
@@ -1067,6 +1091,7 @@ fn main() {
                 status: Arc::new(Mutex::new(SyncStatus { state: "off", ..Default::default() })),
                 confirm: Arc::new(Mutex::new(BTreeSet::new())),
                 synced: Arc::new(Mutex::new((String::new(), -1))),
+                edits: Arc::new(AtomicU64::new(0)),
                 app: Some(app.handle().clone()),
             };
             app.manage(Store { reg: Mutex::new(Registry::load(&app_data)), app_data, vault: Mutex::new(None), ctx, kick: Mutex::new(tx), index: Mutex::new(None) });

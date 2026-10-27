@@ -134,6 +134,7 @@ pub fn probe(root: &Path, id: &str) -> &'static str {
     }
 }
 
+#[derive(Clone)]
 pub struct Vault {
     pub root: PathBuf,
     pub(crate) _lease: Arc<fs::File>,
@@ -224,6 +225,9 @@ impl Vault {
 
     /// Keeps `bytes` (the content of vault file `rel`) in the sync trash.
     pub fn sync_trash_put(&self, rel: &str, bytes: &[u8]) -> Res<()> {
+        let mutex = local_lock(&self.root);
+        let _guard = mutex.lock();
+        match probe(&self.root, &self.id()) { "ok" => {}, "mismatch" => return Err(VAULT_MISMATCH.into()), _ => return Err(VAULT_MISSING.into()) }
         safe_local(&self.root, ".noviq/sync-trash")?;
         let mut ts = now_ms();
         while self.sync_trash_dir().join(ts.to_string()).join(rel).exists() {
