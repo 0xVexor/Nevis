@@ -8,6 +8,7 @@ import { appendFile, mkdir, readFile, readdir, rm, stat, truncate, writeFile } f
 import path from 'node:path'
 import { HttpError } from './vaults.js'
 import { blobKey } from './storage.js'
+import { tx } from './db.js'
 
 const HEX64 = /^[0-9a-f]{64}$/
 
@@ -31,17 +32,28 @@ export async function receivedBytes(cfg, vaultId, sha) {
  * Stores one piece of a blob. `range` is `{ start, end, total }` (inclusive end) or null for the whole body.
  * Returns `{ complete: true, size, md5 }` or `{ complete: false, received }`.
  */
-export async function receiveBlob({ db, storage, cfg, user, vault, sha, range, body, now = Date.now() }) {
+async function receiveBlobPart({ db, storage, cfg, user, vault, sha, range, body, now = Date.now() }) {
   if (!HEX64.test(sha)) throw new HttpError(400, 'bad_sha')
   const have = blobRow(db, vault.id, sha)
+  if (have?.deleting) throw new HttpError(503, 'blob_deleting')
   if (have) return { complete: true, size: have.size, md5: have.md5, existed: true }
 
   const buf = Buffer.isBuffer(body) ? body : Buffer.alloc(0)
   const r = range ?? { start: 0, end: buf.length - 1, total: buf.length }
-  if (r.end - r.start + 1 !== buf.length || r.start < 0 || r.end < r.start) throw new HttpError(400, 'bad_range')
+  const empty = range === null && buf.length === 0
+  if (![r.start, r.end, r.total].every(Number.isSafeInteger) || (!empty &&
+    (r.end - r.start + 1 !== buf.length || r.start < 0 || r.end < r.start || r.end >= r.total))) throw new HttpError(400, 'bad_range')
   if (r.total > cfg.maxBlobBytes) throw new HttpError(413, 'too_large', { limit: cfg.maxBlobBytes })
   if (r.total === 0 && sha !== createHash('sha256').update('').digest('hex')) throw new HttpError(422, 'hash_mismatch')
-  if (usedBytes(db, user.id) + r.total > cfg.quotaBytes) throw new HttpError(507, 'quota_exceeded', { limit: cfg.quotaBytes })
+  tx(db, () => {
+    requireWritable(db, user.id, vault.id)
+    const reservation = db.prepare('SELECT size FROM upload_reservations WHERE vault_id = ? AND sha256 = ?').get(vault.id, sha)
+    if (reservation && reservation.size !== r.total) throw new HttpError(409, 'upload_size_changed')
+    const held = db.prepare('SELECT COALESCE(SUM(size), 0) AS n FROM upload_reservations WHERE user_id = ?').get(user.id).n
+    if (usedBytes(db, user.id) + held + (reservation ? 0 : r.total) > cfg.quotaBytes) throw new HttpError(507, 'quota_exceeded', { limit: cfg.quotaBytes })
+    db.prepare(`INSERT INTO upload_reservations (vault_id, user_id, sha256, size, updated_at) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(vault_id, sha256) DO UPDATE SET updated_at = excluded.updated_at`).run(vault.id, user.id, sha, r.total, now)
+  })
 
   const file = stagingFile(cfg, vault.id, sha)
   await mkdir(path.dirname(file), { recursive: true })
@@ -57,18 +69,65 @@ export async function receiveBlob({ db, storage, cfg, user, vault, sha, range, b
   const all = await readFile(file)
   if (all.length !== r.total) {
     await rm(file, { force: true })
+    db.prepare('DELETE FROM upload_reservations WHERE vault_id = ? AND sha256 = ?').run(vault.id, sha)
     throw new HttpError(422, 'size_mismatch')
   }
   const sum = createHash('sha256').update(all).digest('hex')
   if (sum !== sha) {
     await rm(file, { force: true })
+    db.prepare('DELETE FROM upload_reservations WHERE vault_id = ? AND sha256 = ?').run(vault.id, sha)
     throw new HttpError(422, 'hash_mismatch')
   }
   const md5 = createHash('md5').update(all).digest('hex')
-  await storage.put(blobKey(vault.id, sha), all) // only now does the blob exist for the server
-  db.prepare('INSERT OR IGNORE INTO blobs (vault_id, sha256, md5, size, created_at) VALUES (?, ?, ?, ?, ?)').run(vault.id, sha, md5, all.length, now)
+  requireWritable(db, user.id, vault.id)
+  await storage.put(blobKey(vault.id, sha), all)
+  try {
+    tx(db, () => {
+      requireWritable(db, user.id, vault.id)
+      db.prepare('INSERT OR IGNORE INTO blobs (vault_id, sha256, md5, size, created_at) VALUES (?, ?, ?, ?, ?)').run(vault.id, sha, md5, all.length, now)
+      db.prepare('DELETE FROM upload_reservations WHERE vault_id = ? AND sha256 = ?').run(vault.id, sha)
+    })
+  } catch (e) {
+    await storage.del(blobKey(vault.id, sha))
+    throw e
+  }
   await rm(file, { force: true })
   return { complete: true, size: all.length, md5 }
+}
+
+
+const uploads = new WeakMap()
+const activeStaging = new Set()
+
+function requireWritable(db, userId, vaultId) {
+  const u = db.prepare('SELECT deleting FROM users WHERE id = ?').get(userId)
+  const v = db.prepare('SELECT deleting FROM vaults WHERE id = ?').get(vaultId)
+  if (!u || u.deleting) throw new HttpError(409, 'account_deleting')
+  if (!v || v.deleting) throw new HttpError(409, 'vault_deleting')
+}
+
+/** Requests for the same immutable object share one staging writer. Capacity is
+ * reserved durably before yielding, including between pieces and restarts. */
+export async function receiveBlob(args) {
+  let queue = uploads.get(args.db)
+  if (!queue) uploads.set(args.db, queue = new Map())
+  const key = `${args.vault.id}:${args.sha}`
+  const prior = queue.get(key) ?? Promise.resolve()
+  const file = stagingFile(args.cfg, args.vault.id, args.sha)
+  const task = prior.catch(() => {}).then(async () => {
+    activeStaging.add(file)
+    try { return await receiveBlobPart(args) } finally { activeStaging.delete(file) }
+  })
+  queue.set(key, task)
+  try { return await task } finally { if (queue.get(key) === task) queue.delete(key) }
+}
+
+export function expireReservations(db, cfg, now) {
+  for (const row of db.prepare('SELECT vault_id, sha256 FROM upload_reservations WHERE updated_at < ?').all(now - 86400000)) {
+    if (!activeStaging.has(stagingFile(cfg, row.vault_id, row.sha256))) {
+      db.prepare('DELETE FROM upload_reservations WHERE vault_id = ? AND sha256 = ?').run(row.vault_id, row.sha256)
+    }
+  }
 }
 
 /** Half-uploaded files nobody finished within a day. */
@@ -83,6 +142,7 @@ export async function sweepStaging(cfg, now = Date.now(), maxAgeMs = 24 * 3600 *
   }
   for (const name of names) {
     const f = path.join(dir, name)
+    if (activeStaging.has(f)) continue
     try {
       if (now - (await stat(f)).mtimeMs > maxAgeMs) {
         await rm(f, { force: true })

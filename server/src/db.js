@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS files (
   server_time INTEGER NOT NULL,
   PRIMARY KEY (vault_id, path)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS files_ci ON files(vault_id, path_ci);
+CREATE UNIQUE INDEX IF NOT EXISTS files_ci ON files(vault_id, path_ci) WHERE deleted = 0;
 CREATE INDEX IF NOT EXISTS files_rev ON files(vault_id, rev);
 CREATE TABLE IF NOT EXISTS revisions (
   vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
@@ -82,8 +82,27 @@ CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
 
 export function openDb(file = ':memory:') {
   const db = new DatabaseSync(file)
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
+  db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
   db.exec(SCHEMA)
+  // Additive migrations preserve existing accounts, vaults and object hashes.
+  for (const table of ['users', 'vaults', 'blobs']) {
+    if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === 'deleting')) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN deleting INTEGER NOT NULL DEFAULT 0`)
+    }
+  }
+  db.exec(`DROP INDEX IF EXISTS files_ci;
+    CREATE UNIQUE INDEX files_ci ON files(vault_id, path_ci) WHERE deleted = 0;
+    CREATE TABLE IF NOT EXISTS deletion_windows (
+      vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+      device_id TEXT NOT NULL, started_at INTEGER NOT NULL, initial_live INTEGER NOT NULL, deleted INTEGER NOT NULL,
+      PRIMARY KEY (vault_id, device_id)
+    );
+    CREATE TABLE IF NOT EXISTS upload_reservations (
+      vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      sha256 TEXT NOT NULL, size INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (vault_id, sha256)
+    );`)
   return db
 }
 

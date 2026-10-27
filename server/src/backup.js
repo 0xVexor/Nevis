@@ -7,6 +7,8 @@
 import { randomBytes } from 'node:crypto'
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { maintenance } from './maintenance.js'
+import { blobKey } from './storage.js'
 import { gunzipSync, gzipSync } from 'node:zlib'
 
 const LATEST = '_backup/index-latest.db.gz'
@@ -14,17 +16,35 @@ const KEEP = 24
 
 export const dbFile = (cfg) => path.join(cfg.dataDir, 'noviq.db')
 
-export async function snapshot(db, storage, cfg, now = new Date()) {
+export function snapshot(db, storage, cfg, now = new Date()) {
+  return maintenance(db, () => makeSnapshot(db, storage, cfg, now))
+}
+
+async function makeSnapshot(db, storage, cfg, now) {
   const tmp = path.join(cfg.dataDir, 'backup.tmp.db')
   await rm(tmp, { force: true })
   db.exec(`VACUUM INTO '${tmp.replaceAll("'", "''")}'`)
+  const refs = db.prepare('SELECT vault_id, sha256 FROM blobs').all().map(b => blobKey(b.vault_id, b.sha256))
   const gz = gzipSync(await readFile(tmp))
   await rm(tmp, { force: true })
+  const previous = await storage.read(`${LATEST}.refs.json`)
+  const oldRefs = previous ? JSON.parse(previous.toString()) : []
+  // A failed latest publication leaves a conservative union, never a manifest
+  // that loses references belonging to the still-current backup.
+  await storage.put(`${LATEST}.refs.json`, Buffer.from(JSON.stringify([...new Set([...oldRefs, ...refs])])))
   await storage.put(LATEST, gz)
+  await storage.put(`${LATEST}.refs.json`, Buffer.from(JSON.stringify(refs)))
   const hourly = `_backup/index-${now.toISOString().slice(0, 13).replaceAll(/[-:]/g, '')}.db.gz`
+  const previousHourly = await storage.read(`${hourly}.refs.json`)
+  const hourlyRefs = previousHourly ? JSON.parse(previousHourly.toString()) : []
+  await storage.put(`${hourly}.refs.json`, Buffer.from(JSON.stringify([...new Set([...hourlyRefs, ...refs])])))
   await storage.put(hourly, gz)
-  const old = (await storage.list('_backup/index-2')).sort() // the dated copies; "latest" sorts elsewhere
-  for (const k of old.slice(0, Math.max(0, old.length - KEEP))) await storage.del(k)
+  await storage.put(`${hourly}.refs.json`, Buffer.from(JSON.stringify(refs)))
+  const old = (await storage.list('_backup/index-2')).filter(k => k.endsWith('.gz')).sort() // the dated copies; "latest" sorts elsewhere
+  for (const k of old.slice(0, Math.max(0, old.length - KEEP))) {
+    await storage.del(k)
+    await storage.del(`${k}.refs.json`)
+  }
   return { bytes: gz.length, key: hourly }
 }
 
@@ -83,4 +103,18 @@ export function debouncedBackup(run, delayMs, log = () => {}) {
     await go()
   }
   return { trigger, flush }
+}
+
+/** Null means a legacy or incomplete backup has no usable manifest: retain all
+ * unreferenced objects rather than make that retained backup unrecoverable. */
+export async function protectedBlobs(storage) {
+  const refs = new Set()
+  for (const key of (await storage.list('_backup/index-')).filter(k => k.endsWith('.gz'))) {
+    const raw = await storage.read(`${key}.refs.json`)
+    if (!raw) return null
+    const parsed = JSON.parse(raw.toString())
+    if (!Array.isArray(parsed) || parsed.some(p => typeof p !== 'string')) return null
+    for (const path of parsed) refs.add(path)
+  }
+  return refs
 }

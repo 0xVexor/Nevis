@@ -9,7 +9,7 @@ import { purgeVault } from './gc.js'
 import { SYNC_ROOTS } from './paths.js'
 import { Hub } from './hub.js'
 import { blobKey } from './storage.js'
-import { HttpError, changesSince, commit, createVault, listVaults, ownedVault, publicFile, renameVault, restoreRevision, revisionRow, revisionsOf, stateOf, trashVault, untrashVault, vaultRow } from './vaults.js'
+import { HttpError, changesSince, commit, createVault, listVaults, ownedVault, publicFile, renameVault, restoreRevision, revisionRow, revisionsOf, snapshotPage, stateOf, trashVault, untrashVault, vaultRow } from './vaults.js'
 
 const MB = 1024 * 1024
 const USERNAME = /^[a-z0-9][a-z0-9_.-]{2,31}$/
@@ -48,12 +48,13 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
     const row = m
       ? db
           .prepare(
-            `SELECT d.id AS device_id, d.name AS device_name, d.last_seen, u.id AS user_id, u.username
+            `SELECT d.id AS device_id, d.name AS device_name, d.last_seen, u.id AS user_id, u.username, u.deleting
                FROM devices d JOIN users u ON u.id = d.user_id WHERE d.token_hash = ? AND d.revoked_at IS NULL`,
           )
           .get(sha256hex(m[1]))
       : null
     if (!row) return reply.code(401).send({ error: 'unauthorized' })
+    if (row.deleting) throw new HttpError(409, 'account_deleting')
     const t = now()
     if (t - row.last_seen > 60_000) db.prepare('UPDATE devices SET last_seen = ? WHERE id = ?').run(t, row.device_id)
     const lim = limiter.hit(`t:${row.device_id}`, 1500, 60_000)
@@ -66,7 +67,7 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
   // ───── public ─────
   const pub = { config: { public: true } }
   app.get('/', pub, async (_req, reply) => reply.type('text/plain').send('noviq-sync'))
-  app.get('/v1/health', pub, async () => ({ ok: true, name: 'noviq-sync', api: cfg.api, min_api: cfg.minApi, capabilities: ['permanent_delete', 'database_sync'], sync_roots: SYNC_ROOTS, registration: cfg.registration, pow_bits: cfg.powBits, server_time: now() }))
+  app.get('/v1/health', pub, async () => ({ ok: true, name: 'noviq-sync', api: cfg.api, min_api: cfg.minApi, capabilities: ['permanent_delete', 'database_sync', 'full_snapshot'], sync_roots: SYNC_ROOTS, registration: cfg.registration, pow_bits: cfg.powBits, server_time: now() }))
 
   app.get('/v1/auth/challenge', pub, async (req, reply) => {
     const lim = limiter.hit(`ch:${req.ip}`, 120, HOUR)
@@ -149,6 +150,8 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
       failed(req, username)
       throw new HttpError(401, 'bad_credentials')
     }
+    const current = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id)
+    if (!current || current.deleting) throw new HttpError(409, 'account_deleting')
     limiter.clear(`fail:u:${username}`)
     const restored = !!user.delete_after
     if (restored) db.prepare('UPDATE users SET delete_after = NULL WHERE id = ?').run(user.id)
@@ -172,6 +175,8 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
     const pass = await hashPassword(next)
     const recovery = newRecoveryKey()
     const out = tx(db, () => {
+      const current = db.prepare('SELECT deleting FROM users WHERE id = ?').get(user.id)
+      if (!current || current.deleting) throw new HttpError(409, 'account_deleting')
       db.prepare('UPDATE users SET pass = ?, recovery = ?, delete_after = NULL WHERE id = ?').run(pass, recoveryHash(recovery), user.id)
       db.prepare('UPDATE devices SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL').run(now(), user.id)
       return issueDevice(user.id, deviceName(b.device_name))
@@ -304,6 +309,12 @@ export async function buildApp({ cfg, db, storage, hub = new Hub(), limiter = ne
     }
     return stateOf(db, v, now())
   })
+
+  app.get('/v1/vaults/:id/snapshot', async (req) => snapshotPage(db, vaultOf(req), {
+    after: str(req.query?.after, 300), epoch: req.query?.epoch,
+    head: req.query?.head === undefined ? undefined : Number(req.query.head),
+    limit: Number(req.query?.limit ?? 500),
+  }, now()))
 
   app.get('/v1/vaults/:id/changes', async (req) => {
     const since = Number.parseInt(String(req.query?.since ?? '0'), 10)
