@@ -3,6 +3,9 @@
 
 use serde_json::{json, Value};
 use std::fs;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::collections::BTreeMap;
+use parking_lot::ReentrantMutex;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -32,20 +35,48 @@ pub fn check_id(s: &str) -> Res<&str> {
     if is_id(s) { Ok(s) } else { Err(format!("bad id: {s}")) }
 }
 
-/// Write a file so that a reader (or a crash, or the sync client) never sees half of it.
+/// In-process serialization shared by commands, the sync worker and database writes.
+/// Reentrant because a command can call several Vault operations under one guard.
+pub fn local_lock(root: &Path) -> Arc<ReentrantMutex<()>> {
+    static LOCKS: OnceLock<Mutex<BTreeMap<PathBuf, Arc<ReentrantMutex<()>>>>> = OnceLock::new();
+    let key = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    LOCKS.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner())
+        .entry(key).or_insert_with(|| Arc::new(ReentrantMutex::new(()))).clone()
+}
+
+/// Reject links under the vault, including parents introduced after the scan.
+pub fn safe_local(root: &Path, rel: &str) -> Res<()> {
+    let mut path = root.to_path_buf();
+    for part in Path::new(rel).components() {
+        if !matches!(part, std::path::Component::Normal(_)) { return Err("unsafe local path".into()); }
+        path.push(part);
+        match fs::symlink_metadata(&path) {
+            Ok(m) if m.file_type().is_symlink() => return Err("HUB:unsafe_path\ndetail=symlink".into()),
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(err(e)),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Unique temporary files prevent simultaneous writers from sharing an inode.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Res<()> {
     let dir = path.parent().ok_or("bad path")?;
     fs::create_dir_all(dir).map_err(err)?;
     let name = path.file_name().and_then(|n| n.to_str()).ok_or("bad path")?;
-    let tmp = dir.join(format!(".{name}.tmp"));
-    let mut f = fs::File::create(&tmp).map_err(err)?;
-    f.write_all(bytes).map_err(err)?;
-    f.sync_all().map_err(err)?;
-    drop(f);
-    fs::rename(&tmp, path).map_err(|e| {
-        let _ = fs::remove_file(&tmp);
-        err(e)
-    })
+    let tmp = dir.join(format!(".{name}.{}.tmp", uuid::Uuid::new_v4()));
+    let result = (|| {
+        let mut f = fs::OpenOptions::new().write(true).create_new(true).open(&tmp).map_err(err)?;
+        f.write_all(bytes).map_err(err)?;
+        f.sync_all().map_err(err)?;
+        drop(f);
+        fs::rename(&tmp, path).map_err(err)?;
+        #[cfg(unix)]
+        fs::File::open(dir).and_then(|f| f.sync_all()).map_err(err)?;
+        Ok(())
+    })();
+    if result.is_err() { let _ = fs::remove_file(&tmp); }
+    result
 }
 
 fn read_json(path: &Path) -> Option<Value> {
@@ -84,7 +115,6 @@ impl Vault {
         if v.id().is_empty() {
             return Err(VAULT_MISSING.into());
         }
-        v.make_dirs()?;
         Ok(v)
     }
 
@@ -107,7 +137,9 @@ impl Vault {
             fs::create_dir_all(root.join(".noviq")).map_err(err)?;
             write_atomic(&root.join(".noviq/vault.json"), json!({ "format": 1, "id": uuid::Uuid::new_v4().to_string(), "name": name }).to_string().as_bytes())?;
         }
-        Vault::open(root)
+        let v = Vault::open(root)?;
+        v.make_dirs()?;
+        Ok(v)
     }
 
     fn make_dirs(&self) -> Res<()> {
@@ -124,6 +156,7 @@ impl Vault {
 
     /// Keeps `bytes` (the content of vault file `rel`) in the sync trash.
     pub fn sync_trash_put(&self, rel: &str, bytes: &[u8]) -> Res<()> {
+        safe_local(&self.root, ".noviq/sync-trash")?;
         let mut ts = now_ms();
         while self.sync_trash_dir().join(ts.to_string()).join(rel).exists() {
             ts += 1;
@@ -133,6 +166,7 @@ impl Vault {
 
     /// Moves vault file `rel` into the sync trash instead of deleting it.
     pub fn sync_trash_move(&self, rel: &str) -> Res<()> {
+        safe_local(&self.root, ".noviq/sync-trash")?;
         let mut ts = now_ms();
         while self.sync_trash_dir().join(ts.to_string()).join(rel).exists() {
             ts += 1;
@@ -166,7 +200,9 @@ impl Vault {
         if !marker.exists() {
             write_atomic(&marker, json!({ "format": 1, "id": id, "name": name }).to_string().as_bytes())?;
         }
-        Vault::open(root)
+        let v = Vault::open(root)?;
+        v.make_dirs()?;
+        Ok(v)
     }
 
     /// New display name, stored in the marker (it travels through sync like the id).
@@ -187,9 +223,12 @@ impl Vault {
 
     /// All pages. Conflict copies made by the sync tool are merged first (rule 5 of ADR-0003).
     pub fn pages_all(&self) -> Res<Vec<Value>> {
-        self.resolve_conflicts();
+        let mutex = local_lock(&self.root);
+        let _guard = mutex.lock();
+        self.resolve_conflicts()?;
         let mut out = vec![];
-        for e in fs::read_dir(self.pages_dir()).map_err(err)?.flatten() {
+        for e in fs::read_dir(self.pages_dir()).map_err(err)? {
+            let e = e.map_err(err)?;
             let path = e.path();
             let Some(stem) = path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_suffix(".json")) else { continue };
             if !is_id(stem) {
@@ -200,84 +239,102 @@ impl Vault {
                     v["id"] = Value::String(stem.to_string()); // the file name is the identity
                     out.push(v);
                 }
-                _ => eprintln!("unreadable page file: {}", path.display()),
+                _ => return Err(format!("unreadable page file: {}", path.display())),
             }
         }
         Ok(out)
     }
 
-    pub fn resolve_conflicts(&self) {
-        let Ok(rd) = fs::read_dir(self.pages_dir()) else { return };
-        for e in rd.flatten() {
+    pub fn resolve_conflicts(&self) -> Res<()> {
+        let mutex = local_lock(&self.root);
+        let _guard = mutex.lock();
+        let rd = fs::read_dir(self.pages_dir()).map_err(err)?;
+        for e in rd {
+            let e = e.map_err(err)?;
             let path = e.path();
             let Some(stem) = path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_suffix(".json")) else { continue };
-            if is_id(stem) || stem.len() <= 36 || !stem.is_char_boundary(36) || !looks_like_uuid(&stem[..36]) {
-                continue;
-            }
-            let Some(copy) = read_json(&path) else { continue };
-            let main = self.pages_dir().join(format!("{}.json", &stem[..36]));
-            let id = &stem[..36];
-            let result = match read_json(&main) {
+            if is_id(stem) { continue; }
+            let id = stem.split_once(" (").map(|(id, _)| id).filter(|id| is_id(id))
+                .or_else(|| (stem.len() > 36 && stem.is_char_boundary(36) && looks_like_uuid(&stem[..36])).then(|| &stem[..36]));
+            let Some(id) = id else { continue };
+            let copy = read_json(&path).filter(Value::is_object).ok_or_else(|| format!("unreadable conflict file: {}", path.display()))?;
+            let main = self.pages_dir().join(format!("{id}.json"));
+            safe_local(&self.root, &format!("pages/{id}.json"))?;
+            let current = match fs::read(&main) {
+                Ok(raw) => match serde_json::from_slice::<Value>(&raw) {
+                    Ok(v) if v.is_object() => Some(v),
+                    _ => { self.sync_trash_put(&format!("pages/{id}.json"), &raw)?; None }
+                },
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                Err(e) => return Err(err(e)),
+            };
+            let result = match current {
                 None => write_atomic(&main, copy.to_string().as_bytes()),
                 Some(cur) => {
                     // database rows merge cell by cell (stamps decide), and the complete losing version is kept in history
                     let (win, losers) = if copy.get("database").is_some() && cur.get("database").is_some() {
                         crate::database::merge::merge_pages(&copy, &cur)
-                    } else if updated_at(&copy) > updated_at(&cur) {
+                    } else if (updated_at(&copy), copy.to_string()) > (updated_at(&cur), cur.to_string()) {
                         (copy, vec![cur])
                     } else {
                         (cur, vec![copy])
                     };
                     for lose in &losers {
-                        let _ = self.keep_loser(id, lose);
-                        let _ = crate::database::keep_page_loser(&self.root, id, lose);
+                        self.keep_loser(id, lose)?;
+                        crate::database::keep_page_loser(&self.root, id, lose)?;
                     }
                     write_atomic(&main, win.to_string().as_bytes())
                 }
             };
-            if result.is_ok() {
-                let _ = fs::remove_file(&path);
-            }
+            result?;
+            fs::remove_file(&path).map_err(err)?;
         }
+        Ok(())
     }
 
     /// A page version that lost against a newer one is not dropped: it becomes a history entry.
     fn keep_loser(&self, id: &str, page: &Value) -> Res<()> {
-        if page.get("kind").and_then(Value::as_str) == Some("folder") {
-            return Ok(());
-        }
         let mut ts = updated_at(page);
         let dir = self.root.join("history").join(check_id(id)?);
         while dir.join(format!("{ts}.json")).exists() {
             ts += 1;
         }
-        let v = json!({ "pageId": id, "ts": ts, "title": page.get("title").cloned().unwrap_or(json!("")), "content": page.get("content").cloned().unwrap_or(Value::Null) });
+        safe_local(&self.root, &format!("history/{id}/{ts}.json"))?;
+        let v = json!({ "pageId": id, "ts": ts, "title": page.get("title").cloned().unwrap_or(json!("")), "content": page.get("content").cloned().unwrap_or(Value::Null), "page": page, "conflict": true });
         write_atomic(&dir.join(format!("{ts}.json")), v.to_string().as_bytes())?;
-        self.trim_history(id);
         Ok(())
     }
 
     /// Returns the ids of pages whose version on disk was not the one the edit started from (`_base`, the `updatedAt`
     /// the editor loaded): that version came from another device, so it is kept in the history before ours replaces it.
     pub fn save_pages(&self, upserts: &[Value], removed: &[String], clear_first: bool) -> Res<Vec<String>> {
+        let mutex = local_lock(&self.root);
+        let _guard = mutex.lock();
         let mut kept = vec![];
         for p in upserts {
             let id = p.get("id").and_then(Value::as_str).ok_or("page without id")?;
+            safe_local(&self.root, &format!("pages/{id}.json"))?;
             let path = self.page_path(id)?;
             // `_base` is bookkeeping of the editor, not part of the page file
             let base = p.get("_base").and_then(Value::as_i64);
+            let base_page = p.get("_basePage").filter(|v| !v.is_null()).cloned();
             let mut p = p.clone();
             if let Some(o) = p.as_object_mut() {
                 o.remove("_base");
+                o.remove("_basePage");
+            }
+            if path.exists() && read_json(&path).is_none() {
+                return Err(format!("unreadable page file: {}", path.display()));
             }
             if !clear_first {
                 if let Some(cur) = read_json(&path) {
                     if updated_at(&cur) > updated_at(&p) {
                         // another device saved a newer version of this page: ours must not overwrite it
                         self.keep_loser(id, &p)?;
+                        kept.push(id.to_string());
                         continue;
                     }
-                    if base.is_some_and(|b| updated_at(&cur) != b && updated_at(&cur) != updated_at(&p)) {
+                    if (base_page.as_ref().map_or_else(|| base.is_some_and(|b| updated_at(&cur) != b), |b| b != &cur)) && cur != p {
                         // the file changed under the editor (the sync brought another device's edit): do not lose that version
                         self.keep_loser(id, &cur)?;
                         kept.push(id.to_string());
@@ -309,25 +366,23 @@ impl Vault {
         Ok(kept)
     }
 
-    /// Cheap fingerprint of the pages folder, to notice changes made by the sync tool.
+    /// Content fingerprint: equal timestamps and equal-sized replacements still
+    /// refresh the editor. Paths and each file's bytes participate in the hash.
     pub fn stamp(&self) -> String {
-        let (mut n, mut newest, mut size) = (0u64, 0u128, 0u64);
-        // pages plus the database record folders: a record changed by the sync tool must wake the UI as well
+        use sha2::{Digest, Sha256};
+        let mut hash = Sha256::new();
         let mut dirs = vec![self.pages_dir()];
         dirs.extend(crate::database::KINDS.iter().map(|(_, d)| self.root.join("databases").join(d)));
         for dir in dirs {
-            if let Ok(rd) = fs::read_dir(dir) {
-                for e in rd.flatten() {
-                    if let Ok(m) = e.metadata() {
-                        n += 1;
-                        size += m.len();
-                        let t = m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
-                        newest = newest.max(t);
-                    }
-                }
+            let mut entries: Vec<_> = fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).collect();
+            entries.sort_by_key(|e| e.file_name());
+            for entry in entries {
+                if entry.path().extension().and_then(|e| e.to_str()) != Some("json") { continue; }
+                hash.update(entry.path().strip_prefix(&self.root).unwrap_or(&entry.path()).to_string_lossy().as_bytes());
+                match fs::read(entry.path()) { Ok(bytes) => hash.update(sha2::Sha256::digest(&bytes)), Err(e) => hash.update(e.to_string().as_bytes()) }
             }
         }
-        format!("{n}:{newest}:{size}")
+        hash.finalize().iter().map(|b| format!("{b:02x}")).collect()
     }
 
     // ───── history ─────
@@ -338,6 +393,7 @@ impl Vault {
             .into_iter()
             .flatten()
             .flatten()
+            .filter(|e| !read_json(&e.path()).is_some_and(|v| v["conflict"] == true))
             .filter_map(|e| e.file_name().to_str()?.strip_suffix(".json")?.parse().ok())
             .collect();
         ts.sort_unstable_by(|a, b| b.cmp(a));
@@ -392,7 +448,8 @@ impl Vault {
 
     pub fn file_put(&self, id: &str, bytes: &[u8], mime: &str, name: &str, added_at: i64) -> Res<()> {
         let path = self.file_path(id)?;
-        let same = fs::metadata(&path).is_ok_and(|m| m.len() == bytes.len() as u64);
+        safe_local(&self.root, &format!("files/{}/{id}", &id[..2]))?;
+        let same = fs::read(&path).is_ok_and(|existing| existing == bytes);
         if !same {
             write_atomic(&path, bytes)?;
         }
@@ -611,4 +668,110 @@ mod tests {
         assert!(!old.exists(), "older than the retention time");
         assert_eq!(fs::read_dir(v.sync_trash_dir()).unwrap().count(), 2, "recent entries stay");
     }
+    #[test]
+    fn a_failed_conflict_archive_leaves_both_source_files_untouched() {
+        let v = Vault::create(tmp("archive-failure"), "T").unwrap();
+        v.save_pages(&[page(A, "mine", 200)], &[], false).unwrap();
+        let cloud = v.pages_dir().join(format!("{A} (cloud).json"));
+        write_atomic(&cloud, page(A, "theirs", 100).to_string().as_bytes()).unwrap();
+        fs::write(v.root.join("history").join(A), b"blocks the history directory").unwrap();
+        assert!(v.resolve_conflicts().is_err());
+        assert!(cloud.exists());
+        assert_eq!(read_json(&v.page_path(A).unwrap()).unwrap()["title"], "mine");
+    }
+
+    #[test]
+    fn a_conflict_retains_the_complete_page_and_is_not_trimmed_by_normal_history() {
+        let v = Vault::create(tmp("full-history"), "T").unwrap();
+        let mut old = page(A, "old", 100);
+        old["parentId"] = json!("folder");
+        old["tags"] = json!(["important"]);
+        old["cover"] = json!({"kind":"image","file":"abcdef123456"});
+        v.save_pages(&[old.clone()], &[], false).unwrap();
+        write_atomic(&v.pages_dir().join(format!("{A} (cloud).json")), page(A, "new", 200).to_string().as_bytes()).unwrap();
+        v.resolve_conflicts().unwrap();
+        for n in 0..50 {
+            v.version_add(&json!({"pageId":A,"ts":1000+n,"title":"snapshot","content":{}})).unwrap();
+        }
+        let versions = v.versions_list(A).unwrap();
+        assert!(versions.iter().any(|version| version["conflict"] == true && version["page"] == old));
+        assert_eq!(versions.iter().filter(|v| v["conflict"] != true).count(), KEEP_VERSIONS);
+    }
+
+    #[test]
+    fn equal_timestamp_conflicts_choose_the_same_page_in_both_orders() {
+        let x = page(A, "alpha", 100);
+        let y = page(A, "zulu", 100);
+        let mut winners = vec![];
+        for (n, (main, cloud)) in [(x.clone(), y.clone()), (y, x)].into_iter().enumerate() {
+            let v = Vault::create(tmp(&format!("tie-{n}")), "T").unwrap();
+            v.save_pages(&[main], &[], false).unwrap();
+            write_atomic(&v.pages_dir().join(format!("{A} (cloud).json")), cloud.to_string().as_bytes()).unwrap();
+            winners.push(v.pages_all().unwrap()[0].clone());
+        }
+        assert_eq!(winners[0], winners[1]);
+    }
+
+    #[test]
+    fn a_corrupt_main_is_quarantined_before_a_conflict_replaces_it() {
+        let v = Vault::create(tmp("corrupt-main"), "T").unwrap();
+        fs::write(v.page_path(A).unwrap(), b"{partial original").unwrap();
+        write_atomic(&v.pages_dir().join(format!("{A} (cloud).json")), page(A, "valid", 200).to_string().as_bytes()).unwrap();
+        v.resolve_conflicts().unwrap();
+        assert_eq!(v.pages_all().unwrap()[0]["title"], "valid");
+        assert!(fs::read_dir(v.sync_trash_dir()).unwrap().flatten().any(|e| fs::read(e.path().join(format!("pages/{A}.json"))).is_ok_and(|b| b == b"{partial original")));
+    }
+
+    #[test]
+    fn concurrent_saves_publish_complete_json_and_keep_the_other_version() {
+        let root = Vault::create(tmp("parallel"), "T").unwrap().root;
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let jobs: Vec<_> = (0..2).map(|n| {
+            let root = root.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                let v = Vault { root };
+                barrier.wait();
+                let mut value = page(A, &format!("writer-{n}"), 100 + n);
+                value["_base"] = json!(0);
+                v.save_pages(&[value], &[], false).unwrap();
+            })
+        }).collect();
+        for job in jobs { job.join().unwrap(); }
+        let v = Vault { root };
+        assert_eq!(v.pages_all().unwrap()[0]["title"], "writer-1");
+        assert!(v.versions_list(A).unwrap().iter().any(|v| v["title"] == "writer-0"));
+    }
+
+    #[test]
+    fn opening_a_vault_does_not_recreate_a_missing_subtree() {
+        let v = Vault::create(tmp("missing-subtree"), "T").unwrap();
+        fs::remove_dir(v.pages_dir()).unwrap();
+        assert!(Vault::open_as(v.root.clone(), &v.id()).is_ok());
+        assert!(!v.pages_dir().exists());
+    }
+
+    #[test]
+    fn equal_timestamp_external_changes_are_detected_with_a_complete_baseline() {
+        let v = Vault::create(tmp("baseline-page"), "T").unwrap();
+        let original = page(A, "original", 100);
+        v.save_pages(&[original.clone()], &[], false).unwrap();
+        write_atomic(&v.page_path(A).unwrap(), page(A, "remote", 100).to_string().as_bytes()).unwrap();
+        let mut edit = page(A, "local", 200);
+        edit["_base"] = json!(100);
+        edit["_basePage"] = original;
+        assert_eq!(v.save_pages(&[edit], &[], false).unwrap(), vec![A.to_string()]);
+        assert!(v.versions_list(A).unwrap().iter().any(|v| v["page"]["title"] == "remote"));
+        assert!(read_json(&v.page_path(A).unwrap()).unwrap().get("_basePage").is_none());
+    }
+
+    #[test]
+    fn short_legacy_ids_also_resolve_conflicts_into_visible_history() {
+        let v = Vault::create(tmp("short-id"), "T").unwrap();
+        v.save_pages(&[page("row1", "old", 100)], &[], false).unwrap();
+        write_atomic(&v.pages_dir().join("row1 (cloud-copy).json"), page("row1", "new", 200).to_string().as_bytes()).unwrap();
+        assert_eq!(v.pages_all().unwrap()[0]["title"], "new");
+        assert_eq!(v.versions_list("row1").unwrap()[0]["page"]["title"], "old");
+    }
+
 }

@@ -299,7 +299,7 @@ export default function App() {
     window.addEventListener(PAGES_CHANGED, changed)
     window.addEventListener('external-change', changed)
     // desktop: a save found a newer version on disk (another device's edit) and put it in the page history first
-    const kept = () => setToast({ msg: t('Another device changed this page while you were editing. Its version is kept in the page history.') })
+    const kept = () => setToast({ msg: t('This page changed on another device. Both versions are kept; the page will refresh after saving.') })
     // desktop: the vault folder vanished while the app was open (moved, deleted, drive unplugged): nothing is written until it is back
     const storageError = (e: Event) => {
       if (String((e as CustomEvent).detail).includes('VAULT_MISSING')) setToast({ msg: t('The vault folder was not found. Open Workspaces to locate it or download it again.') })

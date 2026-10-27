@@ -8,6 +8,7 @@ import { confirmDialog, alertDialog } from './dialog'
 import { contentProblem } from './editor/contentSafety'
 import { structural } from './editor/layoutModel'
 import * as Ic from './icons'
+import { repo } from './store'
 
 const words = (n: any): number => {
   const text = (x: any): string => (!x || typeof x === 'string' ? '' : (x.text ?? (x.content ?? []).map(text).join(' ')))
@@ -29,15 +30,18 @@ export function History({ page, editor, onClose }: { page: Page; editor: any; on
   }, [html])
 
   const restore = async () => {
-    if (!v || !editor.isEditable) return
-    const issue = contentProblem(v.content, editor.schema)
-    if (issue) return void alertDialog({ title: t('Restore this version'), message: t(issue) })
+    if (!v || !editor.isEditable || editor.isDestroyed) return
     const before = editor.state.doc
-    if (!(await confirmDialog({ title: t('Restore this version'), message: t('Replace the current content of this page with this version? The current content is saved as a version first.'), confirmLabel: t('Restore') }))) return
+    const issue = contentProblem(v.content, editor.schema)
+    if (issue) { await alertDialog({ title: t('Version history'), message: t(issue) }); return }
+    if (!(await confirmDialog({ title: t('Restore this version'), message: v.page ? t('Restore the saved content and page properties? The current version is kept first.') : t('Replace the current content of this page with this version? The current content is saved as a version first.'), confirmLabel: t('Restore') }))) return
     if (!editor.isEditable || editor.isDestroyed) return
     if (editor.state.doc !== before) return void alertDialog({ title: t('Restore this version'), message: t('The page changed while the dialog was open. Please try again.') })
-    await addVersion({ pageId: page.id, ts: Date.now(), title: page.title, content: editor.getJSON() })
-    editor.chain().command(({ tr }: any) => { structural(tr); return true }).setContent(v.content).run()
+    await addVersion({ pageId: page.id, ts: Date.now(), title: page.title, content: page.content, page: structuredClone(page) })
+    repo.restoreVersion(page.id, v)
+    editor.chain().command(({ tr }: any) => { structural(tr); return true }).setContent(v.content, { emitUpdate: false }).run()
+    await repo.flushed()
+    window.dispatchEvent(new CustomEvent('external-change', { detail: [page.id] }))
     onClose()
   }
 
@@ -57,7 +61,7 @@ export function History({ page, editor, onClose }: { page: Page; editor: any; on
               <div className="modal-empty">{t('No earlier versions yet.')}</div>
             ) : (
               versions.map((x, i) => (
-                <button key={x.ts} className={'hist-row' + (i === sel ? ' sel' : '')} onClick={() => setSel(i)}>
+                <button key={`${x.ts}:${i}`} className={'hist-row' + (i === sel ? ' sel' : '')} onClick={() => setSel(i)}>
                   <b>{new Date(x.ts).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</b>
                   <small>{ago(x.ts)} · {t('{n} words', { n: words(x.content) })}</small>
                 </button>

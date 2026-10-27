@@ -96,6 +96,7 @@ export class Repo implements PageRepo {
   private lastSnap = new Map<string, number>()
   /** `updatedAt` of every page as last read from or written to the vault folder: the version our next edit of it starts from. */
   private diskAt = new Map<string, number>()
+  private diskPages = new Map<string, Page>()
 
   private seed: () => Page[]
   constructor(seed: () => Page[]) {
@@ -110,6 +111,7 @@ export class Repo implements PageRepo {
       rows = await allPages()
     } catch (e) {
       this.fail(e)
+      throw e // a failed read is not an empty workspace and must never trigger replacement
     }
     if (!rows.length) {
       const legacy = readLegacy()
@@ -135,6 +137,7 @@ export class Repo implements PageRepo {
 
   private noteDisk(rows: Page[]) {
     this.diskAt = new Map(rows.map((r) => [r.id, r.updatedAt]))
+    this.diskPages = new Map(rows.map(r => [r.id, structuredClone(r)]))
   }
 
   private fail(e: unknown) {
@@ -164,7 +167,7 @@ export class Repo implements PageRepo {
   private writeNow(): Promise<void> {
     const full = this.full
     const byId = new Map(this.pages.map((p) => [p.id, p]))
-    const upserts = full ? this.pages.slice() : [...this.dirty].map((id) => byId.get(id)).filter((p): p is Page => !!p)
+    const upserts = structuredClone(full ? this.pages : [...this.dirty].map((id) => byId.get(id)).filter((p): p is Page => !!p))
     const removed = full ? [] : [...this.gone]
     this.dirty.clear()
     this.gone.clear()
@@ -172,11 +175,16 @@ export class Repo implements PageRepo {
     if (!full && !upserts.length && !removed.length) return this.queue
     this.queue = this.queue
       // desktop: tell the vault which version each edit started from, so that a newer version brought by the sync is kept in the history, not overwritten
-      .then(() => savePages(isTauri && !full ? upserts.map((p) => ({ ...p, _base: this.diskAt.get(p.id) ?? null })) : upserts, removed, full))
-      .then(async () => {
+      .then(() => savePages(isTauri && !full ? upserts.map((p) => ({ ...p, _base: this.diskAt.get(p.id) ?? null, _basePage: this.diskPages.get(p.id) ?? null })) : upserts, removed, full))
+      .then(async (result) => {
         this.persistenceError = null
-        for (const p of upserts) this.diskAt.set(p.id, p.updatedAt)
-        if (isTauri) this.stamp = await vaultStamp() // our own writes are not "external" changes
+        for (const p of result?.pages ?? upserts) {
+          this.diskAt.set(p.id, p.updatedAt)
+          this.diskPages.set(p.id, structuredClone(p))
+        }
+        // Keep the previous read fingerprint. A concurrent remote write must not
+        // be acknowledged by sampling the folder after our own unrelated save.
+        if (isTauri) window.setTimeout(() => void this.poll(), 0)
       })
       .catch((e) => {
         this.persistenceError = e
@@ -198,10 +206,14 @@ export class Repo implements PageRepo {
   /** Desktop app: reload pages when the sync tool changes the vault, as long as there is nothing unsaved here. */
   async watch() {
     if (!isTauri) return
-    this.stamp = await vaultStamp()
+    this.stamp = ''
+    void this.poll() // a fingerprint is acknowledged only together with the rows it describes
     window.setInterval(() => !document.hidden && void this.poll(), WATCH_EVERY) // nothing to refresh while the window is not shown; the next tick catches up
     // the sync brought another device's change: show it now instead of at the next tick
-    void import('@tauri-apps/api/event').then(({ listen }) => listen('vault-changed', () => void this.poll())).catch(() => {})
+    void import('@tauri-apps/api/event').then(({ listen }) => {
+      void listen('vault-changed', () => void this.poll())
+      void listen('vault-conflict', () => window.dispatchEvent(new CustomEvent('sync-conflict')))
+    }).catch(() => {})
     window.addEventListener('focus', () => void this.poll())
   }
 
@@ -211,17 +223,21 @@ export class Repo implements PageRepo {
     if (this.polling || !this.idle()) return
     this.polling = true
     try {
-      await this.queue
+      const observedQueue = this.queue
+      await observedQueue
+      if (observedQueue !== this.queue || !this.idle()) return
       if ((await vaultStamp()) === this.stamp) return
-      const rows = await allPages() // also merges conflict copies, which changes the folder again
-      if (!this.idle()) return // edited meanwhile: try again next round (the stamp is still different)
+      const before = await vaultStamp()
+      const rows = await allPages()
+      const after = await vaultStamp()
+      if (before !== after || observedQueue !== this.queue || !this.idle()) return // edited meanwhile: try again next round (the stamp is still different)
       const old = new Map(this.pages.map((p) => [p.id, p]))
-      const changed = rows.filter((r) => old.get(r.id)?.updatedAt !== r.updatedAt || old.get(r.id)?.deletedAt !== r.deletedAt)
+      const changed = rows.filter((r) => JSON.stringify(old.get(r.id)) !== JSON.stringify(r))
       const removed = this.pages.length + changed.filter((c) => !old.has(c.id)).length - rows.length
       this.pages = rows
       this.noteDisk(rows)
       this.rebuildLinks()
-      this.stamp = await vaultStamp()
+      this.stamp = after
       if (changed.length || removed) window.dispatchEvent(new CustomEvent('external-change', { detail: changed.map((c) => c.id) }))
     } catch (e) {
       console.error('vault watch', e)
@@ -309,7 +325,7 @@ export class Repo implements PageRepo {
     const p = this.pages.find((x) => x.id === id)
     if (!p) return
     if (patch.content !== undefined && opts?.history !== false) this.snapshot(p)
-    Object.assign(p, patch, { updatedAt: Date.now() })
+    Object.assign(p, patch, { updatedAt: Math.max(Date.now(), p.updatedAt + 1) })
     if (p.database) p.recordMeta = { ...(p.recordMeta ?? { format: 1, revision: 0, createdAt: p.updatedAt, createdBy: '', updatedBy: '', lastOperationId: '', inferred: true }), revision: (p.recordMeta?.revision ?? 0) + 1 } // row edits through the editor are revisions too
     if (patch.content !== undefined) this.indexLinks(p)
     this.touch(id)
@@ -324,8 +340,9 @@ export class Repo implements PageRepo {
     this.lastSnap.set(p.id, now)
     const json = JSON.stringify(old)
     const copy = structuredClone(old)
+    const page = structuredClone(p)
     void listVersions(p.id)
-      .then((vs) => (vs[0] && JSON.stringify(vs[0].content) === json ? undefined : addVersion({ pageId: p.id, ts: now, title: p.title, content: copy })))
+      .then((vs) => (vs[0] && JSON.stringify(vs[0].content) === json ? undefined : addVersion({ pageId: p.id, ts: now, title: p.title, content: copy, page })))
       .catch((e) => console.error('history', e))
   }
 
@@ -420,6 +437,26 @@ export class Repo implements PageRepo {
     this.rebuildLinks()
     this.full = true
     this.schedule()
+  }
+
+  /** Restores complete snapshots when available; legacy versions retain their content-only behavior. */
+  restoreVersion(id: string, version: { title: string; content: any; page?: Partial<Page> }) {
+    const current = this.get(id)
+    if (!current) return
+    const snapshot = version.page ? structuredClone(version.page) : structuredClone(current)
+    const restored: Page = { ...snapshot, id, parentId: snapshot.parentId ?? null, favorite: snapshot.favorite ?? false,
+      sort: snapshot.sort ?? current.sort, deletedAt: snapshot.deletedAt ?? null, title: version.title,
+      content: structuredClone(version.content), updatedAt: Math.max(Date.now(), current.updatedAt + 1) }
+    const seen = new Set([id])
+    let parent = restored.parentId
+    while (parent) {
+      if (seen.has(parent) || !this.get(parent)) { restored.parentId = null; break }
+      seen.add(parent)
+      parent = this.get(parent)?.parentId ?? null
+    }
+    this.pages = this.pages.map(p => p.id === id ? restored : p)
+    this.rebuildLinks()
+    this.touch(id)
   }
 
   /** Resolves when every pending change has reached IndexedDB (used by tests and before exports). */

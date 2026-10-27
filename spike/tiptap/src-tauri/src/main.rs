@@ -14,7 +14,7 @@ mod updates;
 
 use registry::{Entry, Registry};
 use serde_json::{json, Value};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, BTreeMap};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -57,6 +57,9 @@ fn with<T>(s: &St, f: impl FnOnce(&Vault) -> Res<T>) -> Res<T> {
             if !v.root.join(".noviq/vault.json").is_file() {
                 return Err(VAULT_MISSING.into());
             }
+            let mutex = vault::local_lock(&v.root);
+            let _guard = mutex.lock();
+            vault::safe_local(&v.root, ".noviq/vault.json")?;
             f(v)
         }
         None => Err("no vault open".into()),
@@ -273,11 +276,16 @@ fn pages_all(s: St) -> Res<Vec<Value>> {
 
 /// `clear_first` = the upserts are the whole workspace. Every page is its own atomic file write.
 #[tauri::command]
-fn pages_save(s: St, upserts: Vec<Value>, removed: Vec<String>, clear_first: bool) -> Res<Vec<String>> {
+fn pages_save(s: St, upserts: Vec<Value>, removed: Vec<String>, clear_first: bool) -> Res<Value> {
     // ids of pages whose newer version on disk (another device's edit) went to the page history before ours replaced it
-    let kept = with(&s, |v| v.save_pages(&upserts, &removed, clear_first))?;
+    let result = with(&s, |v| {
+        let kept = v.save_pages(&upserts, &removed, clear_first)?;
+        let ids: BTreeSet<_> = upserts.iter().filter_map(|p| p["id"].as_str()).collect();
+        let pages: Vec<_> = v.pages_all()?.into_iter().filter(|p| p["id"].as_str().is_some_and(|id| ids.contains(id))).collect();
+        Ok(json!({ "kept": kept, "pages": pages }))
+    })?;
     kick(&s);
-    Ok(kept)
+    Ok(result)
 }
 
 // ───── key-value settings ─────
@@ -772,10 +780,16 @@ async fn cloud_download(s: St<'_>, id: String, name: String, parent: String) -> 
 }
 
 /// One synchronization of one vault: bring the mirror of the server up to date, then let the engine compare and move files.
-/// `patient`: retry a lost request a few times. While the network is known to be down it is false: one try, then the back-off
-/// decides when to look again, so that a sync does not sit for ten seconds in retries when the connection has just come back.
-fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool) -> Res<()> {
+/// Background transfers attempt each request once; the worker owns retry timing.
+fn run_sync(ctx: &SyncCtx, e: &Entry, _patient: bool) -> Res<()> {
+    // A download command and the worker must not concurrently publish the same state file.
+    let worker_mutex = vault::local_lock(&ctx.app_data.join("sync-worker").join(&e.id));
+    let _worker_guard = worker_mutex.lock();
     let set = |state: &'static str, reason: &str, error: String, done: bool| {
+        if let Some(app) = &ctx.app {
+            let store = app.state::<Store>();
+            if current_entry(&store).is_none_or(|current| current.id != e.id) { return; }
+        }
         if let Ok(mut st) = ctx.status.lock() {
             st.state = state;
             st.reason = reason.to_string();
@@ -792,7 +806,7 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool) -> Res<()> {
         let vault = Vault::open_as(PathBuf::from(&e.path), &e.id)?;
         let acct = account::load(&ctx.app_data).ok_or("AUTH:signed_out")?;
         let api = account::api(&ctx.app_data)?;
-        let api = if patient { api } else { api.quick() };
+        let api = api.quick();
         let state_file = state_file(&ctx.app_data, &e.id);
         let mut state = SyncState::load(&state_file);
         let who = format!("{}@{}", acct.username.to_lowercase(), acct.server);
@@ -826,10 +840,17 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool) -> Res<()> {
             if rep.downloaded + rep.deleted + rep.conflicts > 0 {
                 if let Some(app) = &ctx.app {
                     let _ = app.emit("vault-changed", e.id.clone());
+                    if rep.conflicts > 0 && current_entry(&app.state::<Store>()).is_some_and(|current| current.id == e.id) {
+                        let _ = app.emit("vault-conflict", e.id.clone());
+                    }
                 }
             }
             if !rep.errors.is_empty() {
                 let m = rep.errors.join("; ");
+                if m.contains("HUB:bulk_delete") {
+                    set("paused", "NEEDS_CONFIRM", (rep.held + 1).to_string(), false);
+                    return Ok(());
+                }
                 let (state, reason) = if hub::is_network(&m) { ("offline", "NETWORK") } else if hub::is_auth(&m) { ("paused", "SIGNED_OUT") } else { ("error", "ERROR") };
                 set(state, reason, m.clone(), false);
                 Err(m)
@@ -872,41 +893,41 @@ fn backoff(fails: u32) -> Duration {
 }
 
 fn sync_thread(app: AppHandle, rx: Receiver<Kick>) {
-    let mut fails = 0u32;
-    let mut retry_at = Instant::now();
+    let mut retries: BTreeMap<String, (u32, Instant)> = BTreeMap::new();
     loop {
-        // an edit, the server, or the user wakes us at once; the long wait is only a safety net
-        let first = match rx.recv_timeout(Duration::from_secs(300)) {
+        let wait = retries.values().map(|(_, at)| at.saturating_duration_since(Instant::now()))
+            .min().unwrap_or(Duration::from_secs(300));
+        let first = match rx.recv_timeout(wait) {
             Ok(k) => Some(k),
             Err(RecvTimeoutError::Timeout) => None,
             Err(RecvTimeoutError::Disconnected) => return,
         };
         let mut urgent = matches!(first, Some(Kick::User | Kick::Remote));
         if first == Some(Kick::Edit) {
-            std::thread::sleep(Duration::from_millis(250)); // let a burst of saves finish; a change from the server is not a burst and goes at once
-            while let Ok(k) = rx.try_recv() {
-                urgent |= matches!(k, Kick::User | Kick::Remote);
-            }
+            std::thread::sleep(Duration::from_millis(250));
+            while let Ok(k) = rx.try_recv() { urgent |= matches!(k, Kick::User | Kick::Remote); }
         }
-        // while the network is down an edit does not try again before the back-off is over; the server speaking to us, or the user, does
-        if fails > 0 && !urgent && Instant::now() < retry_at {
-            continue;
-        }
-        let s = app.state::<Store>();
-        let ctx = s.ctx.clone();
-        let entry = current_entry(&s);
-        let ready = entry.as_ref().is_some_and(|e| e.sync) && account::load(&ctx.app_data).is_some();
-        match entry {
-            Some(e) if ready => match run_sync(&ctx, &e, fails == 0) {
-                Ok(()) => fails = 0,
+        let store = app.state::<Store>();
+        let ctx = store.ctx.clone();
+        if account::load(&ctx.app_data).is_none() { retries.clear(); set_off(&ctx); continue; }
+        // Saved files are the durable queue. Switching or closing a workspace
+        // cannot strand its edits; every enabled registered vault is visited.
+        let (mut entries, current) = match store.reg.lock() {
+            Ok(reg) => (reg.vaults.iter().filter(|e| e.sync).cloned().collect::<Vec<_>>(), reg.current.clone()),
+            Err(_) => continue,
+        };
+        entries.sort_by_key(|e| (Some(e.id.clone()) != current, e.id.clone()));
+        retries.retain(|id, _| entries.iter().any(|e| &e.id == id));
+        for entry in entries {
+            if !urgent && retries.get(&entry.id).is_some_and(|(_, at)| Instant::now() < *at) { continue; }
+            // Recheck opt-out after a prior vault's network request finished.
+            if !store.reg.lock().ok().and_then(|reg| reg.find(&entry.id).map(|e| e.sync)).unwrap_or(false) { continue; }
+            match run_sync(&ctx, &entry, false) {
+                Ok(()) => { retries.remove(&entry.id); }
                 Err(_) => {
-                    fails += 1;
-                    retry_at = Instant::now() + backoff(fails);
+                    let failures = retries.get(&entry.id).map_or(1, |(n, _)| n.saturating_add(1));
+                    retries.insert(entry.id.clone(), (failures, Instant::now() + backoff(failures)));
                 }
-            },
-            _ => {
-                fails = 0;
-                set_off(&ctx);
             }
         }
     }
@@ -946,7 +967,8 @@ fn watcher(app: AppHandle) {
                     failures = 0;
                     let _ = tx.send(Kick::Remote); // the network is back
                 }
-                if v["seq"].as_i64().unwrap_or(0) > since {
+                let saved = SyncState::load(&state_file(&ctx.app_data, &e.id));
+                if v["seq"].as_i64().unwrap_or(0) != since || v["epoch"].as_str() != Some(saved.hub.epoch.as_str()) {
                     let _ = tx.send(Kick::Remote);
                     // wait until that sync has moved us forward; if it cannot (the server is failing), ask less and less often
                     let start = Instant::now();

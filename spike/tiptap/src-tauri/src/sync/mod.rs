@@ -37,6 +37,7 @@ pub trait Remote {
     fn list(&mut self) -> Res<Vec<RemoteFile>>;
     /// Check protocol compatibility before any file is changed or removed.
     fn validate_paths(&mut self, _paths: &[String]) -> Res<()> { Ok(()) }
+    fn confirm_deletes(&mut self, _confirmed: bool) {}
     fn download(&mut self, f: &RemoteFile) -> Res<Vec<u8>>;
     /// Creates the file, or replaces its content when `existing` is the id of the current remote file.
     fn upload(&mut self, path: &str, existing: Option<&str>, bytes: &[u8]) -> Res<RemoteFile>;
@@ -186,17 +187,14 @@ fn scan(root: &Path, cache: &BTreeMap<String, Entry>) -> Res<(BTreeMap<String, L
             if e.file_type().map_err(err)?.is_symlink() {
                 return Err(format!("HUB:unsafe_path\npath={rel}\ndetail=symlink"));
             }
-            let Ok(meta) = e.metadata() else {
-                unknown.insert(rel);
-                continue;
-            };
+            let meta = e.metadata().map_err(err)?;
             if meta.is_dir() {
                 walk(root, &path, cache, out, unknown)?;
                 continue;
             }
             let mtime = mtime_of(&meta);
             let md5 = match cache.get(&rel) {
-                Some(c) if c.size == meta.len() && c.mtime == mtime && !c.md5.is_empty() => c.md5.clone(),
+                Some(c) if rel.starts_with("files/") && c.size == meta.len() && c.mtime == mtime && !c.md5.is_empty() => c.md5.clone(),
                 _ => match fs::read(&path) {
                     Ok(b) => md5_hex(&b),
                     Err(_) => {
@@ -214,8 +212,13 @@ fn scan(root: &Path, cache: &BTreeMap<String, Entry>) -> Res<(BTreeMap<String, L
         if fs::symlink_metadata(&d).is_ok_and(|m| m.file_type().is_symlink()) {
             return Err(format!("HUB:unsafe_path\npath={r}\ndetail=symlink"));
         }
-        if d.exists() {
-            walk(root, &d, cache, &mut out, &mut unknown)?;
+        match fs::symlink_metadata(&d) {
+            Ok(_) => walk(root, &d, cache, &mut out, &mut unknown)?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // A vanished subtree is not a list of deliberate file removals.
+                unknown.extend(cache.keys().filter(|p| p.starts_with(&format!("{r}/"))).cloned());
+            }
+            Err(e) => return Err(err(e)),
         }
     }
     let marker = root.join(".noviq/vault.json");
@@ -330,6 +333,12 @@ fn changed_since(path: &Path, md5: Option<&str>) -> bool {
     }
 }
 
+fn validate_marker(vault: &Vault, bytes: &[u8]) -> Res<()> {
+    let marker: serde_json::Value = serde_json::from_slice(bytes).map_err(err)?;
+    if marker["id"].as_str() != Some(vault.id().as_str()) { return Err(VAULT_MISMATCH.into()); }
+    Ok(())
+}
+
 /// Uploads and checks that the cloud stored what we sent; one more try before giving up on a damaged upload.
 fn verified_upload(remote: &mut dyn Remote, path: &str, existing: Option<&str>, bytes: &[u8]) -> Res<RemoteFile> {
     let want = md5_hex(bytes);
@@ -381,7 +390,11 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         return Err(VAULT_MISSING.into());
     }
     remote.check()?;
-    let (local, unknown) = scan(root, &state.files)?;
+    let (local, unknown) = {
+        let mutex = crate::vault::local_lock(root);
+        let _guard = mutex.lock();
+        scan(root, &state.files)?
+    };
     let mut rep = Report::default();
     let listed = remote.list()?;
     // Reject incompatible or unsafe snapshots before deduplication can remove anything.
@@ -402,6 +415,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         rep.held = deletes;
         actions.retain(|a| !matches!(a, Action::DeleteLocal(_) | Action::DeleteRemote(_)));
     }
+    remote.confirm_deletes(state.allow_deletes_once);
     state.allow_deletes_once = false;
 
     let mut merged: Vec<(String, RemoteFile)> = vec![];
@@ -445,6 +459,10 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                     }
                     let r = &rmap[p];
                     let bytes = remote.download(r)?;
+                    let mutex = crate::vault::local_lock(root);
+                    let _guard = mutex.lock();
+                    crate::vault::safe_local(root, p)?;
+                    if p == ".noviq/vault.json" { validate_marker(vault, &bytes)?; }
                     if md5_hex(&bytes) != r.md5 && !r.md5.is_empty() {
                         return Err(format!("download of {p} is corrupt"));
                     }
@@ -463,81 +481,75 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                     state.files.remove(p);
                 }
                 Action::Conflict(p) => {
-                    let (l, r) = (&local[p], &rmap[p]);
+                    let r = &rmap[p];
+                    let theirs = remote.download(r)?;
+                    if !r.md5.is_empty() && md5_hex(&theirs) != r.md5 { return Err(format!("download of {p} is corrupt")); }
+                    let mutex = crate::vault::local_lock(root);
+                    let guard = mutex.lock();
+                    crate::vault::safe_local(root, p)?;
+                    if changed_since(&root.join(p), local.get(p).map(|l| l.md5.as_str())) {
+                        rep.skipped += 1;
+                        return Ok(());
+                    }
+                    let mine = fs::read(root.join(p)).map_err(err)?;
                     rep.conflicts += 1;
-                    if p == ".noviq/vault.json" && !state.files.contains_key(p) {
-                        // first sync of a vault that was downloaded: its identity and name are the cloud's
-                        let theirs = remote.download(r)?;
-                        let id_of = |b: &[u8]| serde_json::from_slice::<serde_json::Value>(b).ok().and_then(|v| v.get("id").and_then(|i| i.as_str().map(String::from)));
-                        if id_of(&theirs) != id_of(&fs::read(root.join(p)).map_err(err)?) {
-                            return Err(VAULT_MISMATCH.into());
-                        }
+                    if p == ".noviq/vault.json" {
+                        validate_marker(vault, &theirs)?;
+                        vault.sync_trash_put(p, &mine)?;
                         write_atomic(&root.join(p), &theirs)?;
                         state.files.insert(p.clone(), Entry { base: r.md5.clone(), remote_id: r.id.clone(), ..Default::default() });
                         rep.downloaded += 1;
                     } else if p.starts_with("databases/") && p.ends_with(".json") {
-                        // a database record changed on both devices: keep both complete versions (the loser goes to history), upload the merge
-                        let mine = fs::read(root.join(p)).map_err(err)?;
-                        let theirs = remote.download(r)?;
-                        match (serde_json::from_slice::<serde_json::Value>(&mine), serde_json::from_slice::<serde_json::Value>(&theirs)) {
+                        let (a, b) = (serde_json::from_slice::<serde_json::Value>(&mine), serde_json::from_slice::<serde_json::Value>(&theirs));
+                        match (a, b) {
                             (Ok(a), Ok(b)) => {
                                 let (merged, losers) = crate::database::merge::merge_records(&a, &b);
                                 crate::database::keep_losers(root, p, &losers)?;
                                 let bytes = merged.to_string().into_bytes();
                                 write_atomic(&root.join(p), &bytes)?;
+                                drop(guard);
                                 let up = verified_upload(remote, p, Some(&r.id), &bytes)?;
                                 state.files.insert(p.clone(), Entry { base: md5_hex(&bytes), remote_id: up.id, ..Default::default() });
                                 rep.uploaded += 1;
                             }
                             _ => {
-                                // one side is unreadable: never pick silently. The remote bytes are kept next to the file and the local one is uploaded later.
-                                write_atomic(&root.join(format!("{} (cloud).json", p.trim_end_matches(".json"))), &theirs)?;
-                                state.files.insert(p.clone(), Entry { base: r.md5.clone(), remote_id: r.id.clone(), ..Default::default() });
+                                vault.sync_trash_put(p, &theirs)?;
+                                return Err(format!("unreadable conflict at {p}; remote version kept in sync trash"));
                             }
                         }
                     } else if p.starts_with("pages/") && p.ends_with(".json") {
-                        // keep both: the remote copy lands as a conflict copy, which the vault merges (newer wins, older goes to history)
                         let stem = p.trim_start_matches("pages/").trim_end_matches(".json");
-                        let bytes = remote.download(r)?;
-                        write_atomic(&root.join(format!("pages/{stem} (cloud).json")), &bytes)?;
+                        // A unique copy survives a prior unresolved conflict and a failed history write.
+                        write_atomic(&root.join(format!("pages/{stem} (cloud-{}).json", uuid::Uuid::new_v4())), &theirs)?;
                         merged.push((p.clone(), r.clone()));
-                        // from now on the remote content is the base: the merged result counts as a local change and is uploaded next round
-                        state.files.insert(p.clone(), Entry { base: r.md5.clone(), remote_id: r.id.clone(), ..Default::default() });
-                    } else if let Some(both) = {
-                        let mine = fs::read(root.join(p)).map_err(err)?;
-                        let theirs = remote.download(r)?;
-                        merge_kv(p, &mine, &theirs)
-                    } {
-                        // flashcard schedule and review log: keep what either device did
+                    } else if let Some(both) = merge_kv(p, &mine, &theirs) {
+                        vault.sync_trash_put(p, &mine)?;
+                        vault.sync_trash_put(p, &theirs)?;
                         write_atomic(&root.join(p), &both)?;
+                        drop(guard);
                         let up = verified_upload(remote, p, Some(&r.id), &both)?;
                         state.files.insert(p.clone(), Entry { base: md5_hex(&both), remote_id: up.id, ..Default::default() });
                         rep.uploaded += 1;
                     } else {
-                        // anything else: the newer file wins, the other version waits in the sync trash
-                        let local_ms = (l.mtime / 1_000_000) as i64;
-                        if r.modified_ms > local_ms {
-                            let mine = fs::read(root.join(p)).map_err(err)?;
-                            let bytes = remote.download(r)?;
-                            vault.sync_trash_put(p, &mine)?;
-                            write_atomic(&root.join(p), &bytes)?;
-                            state.files.insert(p.clone(), Entry { base: r.md5.clone(), remote_id: r.id.clone(), ..Default::default() });
-                            rep.downloaded += 1;
-                        } else {
-                            let theirs = remote.download(r)?;
-                            vault.sync_trash_put(p, &theirs)?;
-                            let bytes = fs::read(root.join(p)).map_err(err)?;
-                            let up = verified_upload(remote, p, Some(&r.id), &bytes)?;
-                            state.files.insert(p.clone(), Entry { base: md5_hex(&bytes), remote_id: up.id, ..Default::default() });
-                            rep.uploaded += 1;
-                        }
+                        // No trustworthy edit clock exists for arbitrary files. Both devices
+                        // make the same choice and the complete other bytes remain recoverable.
+                        let (winner, loser) = if md5_hex(&theirs) > md5_hex(&mine) { (&theirs, &mine) } else { (&mine, &theirs) };
+                        vault.sync_trash_put(p, loser)?;
+                        write_atomic(&root.join(p), winner)?;
+                        let bytes = winner.clone();
+                        drop(guard);
+                        let up = verified_upload(remote, p, Some(&r.id), &bytes)?;
+                        state.files.insert(p.clone(), Entry { base: md5_hex(&bytes), remote_id: up.id, ..Default::default() });
+                        rep.uploaded += 1;
                     }
                 }
             }
             Ok(())
         })();
         if let Err(e) = res {
+            let stop = hub::is_network(&e) || hub::is_auth(&e);
             rep.errors.push(format!("{a:?}: {e}"));
+            if stop { break; }
         }
         done += 1;
         if done % 25 == 0 {
@@ -545,7 +557,10 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         }
     }
     if !merged.is_empty() {
-        vault.resolve_conflicts();
+        if let Err(e) = vault.resolve_conflicts() {
+            rep.errors.push(e);
+            return Ok(rep);
+        }
         // the merged page is the new truth: send it right away unless it is exactly what the cloud already has
         for (p, r) in merged {
             let res: Res<()> = (|| {
@@ -586,6 +601,9 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                             return Ok(());
                         }
                     }
+                    let mutex = crate::vault::local_lock(root);
+                    let _guard = mutex.lock();
+                    crate::vault::safe_local(root, p)?;
                     if changed_since(&root.join(p), local.get(p).map(|l| l.md5.as_str())) {
                         rep.skipped += 1;
                         return Ok(());
@@ -595,6 +613,10 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                     rep.deleted += 1;
                 }
                 Action::DeleteRemote(p) => {
+                    let mutex = crate::vault::local_lock(root);
+                    let _guard = mutex.lock();
+                    crate::vault::safe_local(root, p)?;
+                    if changed_since(&root.join(p), None) { rep.skipped += 1; return Ok(()); }
                     let id = rmap.get(p).map(|r| r.id.clone()).or_else(|| state.files.get(p).map(|e| e.remote_id.clone())).unwrap_or_default();
                     if !id.is_empty() {
                         remote.trash(&id)?;
@@ -1245,4 +1267,62 @@ mod tests {
         assert_eq!(r.uploaded, 1);
         assert!(a.remote.0.borrow().files.iter().any(|(f, _)| f.path == format!("pages/{P1}.json")));
     }
+    #[test]
+    fn editing_kv_during_a_conflict_download_is_not_overwritten() {
+        let (mut a, mut b) = pair();
+        let path = "kv/srs.json";
+        write_atomic(&a.vault.root.join(path), br#"{"one":{"last":1}}"#).unwrap();
+        a.sync(); b.sync();
+        write_atomic(&a.vault.root.join(path), br#"{"one":{"last":2}}"#).unwrap();
+        write_atomic(&b.vault.root.join(path), br#"{"two":{"last":2}}"#).unwrap();
+        a.sync();
+        let root = b.vault.root.clone();
+        b.remote.0.borrow_mut().on_download = Some(Rc::new(move || {
+            write_atomic(&root.join(path), br#"{"third":{"last":3}}"#).unwrap();
+        }));
+        let report = b.sync();
+        assert!(report.skipped > 0);
+        assert_eq!(fs::read(b.vault.root.join(path)).unwrap(), br#"{"third":{"last":3}}"#);
+    }
+
+    #[test]
+    fn a_missing_pages_subtree_is_unknown_instead_of_a_cloud_delete() {
+        let (mut a, _b) = pair();
+        a.save(P1, "one", 100); a.sync();
+        fs::remove_dir_all(a.vault.pages_dir()).unwrap();
+        let before = a.remote.0.borrow().files.len();
+        let report = a.sync();
+        assert_eq!(report.deleted, 0);
+        assert_eq!(a.remote.0.borrow().files.len(), before);
+    }
+
+    #[test]
+    fn a_wrong_identity_is_rejected_on_an_ordinary_marker_download() {
+        let (mut a, _b) = pair();
+        a.sync();
+        let id = a.vault.id();
+        let marker = ".noviq/vault.json";
+        let remote_id = a.remote.0.borrow().files.iter().find(|(f, _)| f.path == marker).unwrap().0.id.clone();
+        a.remote.upload(marker, Some(&remote_id), br#"{"id":"wrong","name":"other"}"#).unwrap();
+        let report = a.try_sync().unwrap();
+        assert!(report.errors.iter().any(|e| e.contains(VAULT_MISMATCH)));
+        assert_eq!(a.vault.id(), id);
+    }
+
+    #[test]
+    fn a_recreated_file_is_not_deleted_from_the_cloud_by_a_stale_plan() {
+        let (mut a, _b) = pair();
+        a.save(P1, "restore me", 100); a.save(P2, "other", 100); a.sync();
+        let saved = fs::read(a.vault.pages_dir().join(format!("{P1}.json"))).unwrap();
+        fs::remove_file(a.vault.pages_dir().join(format!("{P1}.json"))).unwrap();
+        a.save(P2, "upload triggers recreation", 200);
+        let root = a.vault.root.clone();
+        a.remote.0.borrow_mut().on_get = Some(Rc::new(move || {
+            write_atomic(&root.join(format!("pages/{P1}.json")), &saved).unwrap();
+        }));
+        let report = a.sync();
+        assert!(report.skipped > 0);
+        assert!(a.remote.0.borrow().files.iter().any(|(f, _)| f.path == format!("pages/{P1}.json")));
+    }
+
 }
