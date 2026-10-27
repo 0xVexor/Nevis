@@ -92,7 +92,10 @@ export const AttImage = Image.extend({
         }
         const startX = e.clientX
         const startW = img.getBoundingClientRect().width
-        const col = (editor.view.dom as HTMLElement).getBoundingClientRect().width || 1
+        const column = fig.closest<HTMLElement>('[data-type="layout-column"]')
+        const container = column || editor.view.dom
+        const padding = getComputedStyle(container)
+        const col = column ? Math.max(1, container.clientWidth - (parseFloat(padding.paddingLeft) || 0) - (parseFloat(padding.paddingRight) || 0)) : container.getBoundingClientRect().width || 1
         const sign = getComputedStyle(fig).direction === 'rtl' ? -1 : 1 // the handle is on the inline-end side
         let pct = cur.attrs.width ?? 100
         const move = (ev: PointerEvent) => {

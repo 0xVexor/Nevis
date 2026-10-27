@@ -2,11 +2,28 @@ import { Extension } from '@tiptap/core'
 import { Fragment, Slice } from '@tiptap/pm/model'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
+import type { Transaction } from '@tiptap/pm/state'
+import type { EditorState } from '@tiptap/pm/state'
 import { Mapping } from '@tiptap/pm/transform'
 import { BLOCK_TYPES, BLOCK_IDENTITY_VERSION, isBlockId } from '../documents/blockIdentity.ts'
 
 const key = new PluginKey('blockIdentity')
+export const isBlockIdentityTransaction = (transaction: Transaction) => transaction.getMeta(key) === true
 const types = new Set<string>(BLOCK_TYPES)
+
+/** Layout history must close only after identity repairs join the same event. */
+export function blockIdentityPending(state: EditorState): boolean {
+  if (!key.get(state)) return false
+  const seen = new Set<string>()
+  let pending = state.doc.attrs.blockIdentityVersion !== BLOCK_IDENTITY_VERSION
+  state.doc.descendants(node => {
+    if (!types.has(node.type.name)) return
+    const id = node.attrs.blockId
+    if (!isBlockId(id) || seen.has(id)) pending = true
+    else seen.add(id)
+  })
+  return pending
+}
 
 /** Clipboard copies get fresh IDs, including all nested table/list blocks. */
 function copyFragment(fragment: Fragment): Fragment {

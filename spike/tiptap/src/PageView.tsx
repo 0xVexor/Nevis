@@ -1,8 +1,15 @@
 import { shortcutLabel } from './shortcuts'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { registerUpdateSave } from './updateSave'
 import { createPortal } from 'react-dom'
 import { useEditor, EditorContent } from '@tiptap/react'
+import { getSchema } from '@tiptap/core'
+import { EditorState } from '@tiptap/pm/state'
+import { addVersion } from './db'
+import { LayoutControls } from './LayoutControls'
+import { contentProblem } from './editor/contentSafety'
+import { LAYOUT_CANCEL } from './editor/layout'
+import { activeGroup, validWidths } from './editor/layoutModel'
 import { getFind, scrollToMatch } from './editor/find'
 import { looksLikeMermaid } from './editor/mermaid'
 import { TableBubble } from './TableBubble'
@@ -25,7 +32,6 @@ import { iconNode } from './iconSet'
 import * as Ic from './icons'
 import { Toolbar } from './Toolbar'
 import { t } from './i18n'
-import { identityVersion, BLOCK_IDENTITY_VERSION } from './documents/blockIdentity'
 import { lazy, Suspense } from 'react'
 const RowProperties = lazy(() => import('./database/ui/RowProperties').then((m) => ({ default: m.RowProperties })))
 
@@ -37,9 +43,13 @@ const TITLE_CMDS = [
   { id: 'auto', title: 'Auto direction', desc: 'Detect direction from the text', kw: 'auto direction خودکار جهت' },
 ]
 
-export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { page: Page; onSave: (s: SaveState) => void; onMeta: () => void; onCover: (anchor: DOMRect) => void; readOnly?: boolean }) {
-  const identitySupported = identityVersion(page.content) <= BLOCK_IDENTITY_VERSION
-  const editable = !readOnly && identitySupported
+export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly = false }: { page: Page; onSave: (s: SaveState) => void; onMeta: () => void; onCover: (anchor: DOMRect) => void; readOnly?: boolean }) {
+  const schema = useMemo(() => getSchema(extensions), [])
+  const [contentIssue, setContentIssue] = useState(() => contentProblem(page.content, schema))
+  const protectedContent = useRef(!!contentIssue)
+  const [originalContent, setOriginalContent] = useState(page.content)
+  const dirty = useRef(false)
+  const readOnly = readerOnly || !!contentIssue
   const timer = useRef<number>(0)
   const editorRef = useRef<any>(null)
   const titleRef = useRef<HTMLTextAreaElement>(null)
@@ -88,22 +98,26 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
   const flush = useCallback(() => {
     window.clearTimeout(timer.current)
     const ed = editorRef.current
-    if (ed && !ed.isDestroyed && identitySupported) {
-      repo.update(page.id, { content: ed.getJSON() })
+    if (ed && !ed.isDestroyed && dirty.current && !protectedContent.current) {
+      const content = ed.getJSON()
+      if (JSON.stringify(repo.get(page.id)?.content) !== JSON.stringify(content)) repo.update(page.id, { content })
+      dirty.current = false
       onSave('saved')
     }
-  }, [page.id, onSave, identitySupported])
+  }, [page.id, onSave])
 
   useEffect(() => registerUpdateSave(flush), [flush])
 
   const editor = useEditor(
     {
       extensions,
-      content: page.content,
-      editable,
+      content: contentIssue ? { type: 'doc', content: [{ type: 'paragraph' }] } : page.content,
+      editable: !readOnly,
       shouldRerenderOnTransaction: true,
       editorProps: { attributes: { spellcheck: 'false' } },
       onUpdate: () => {
+        if (protectedContent.current) return
+        dirty.current = true
         onSave('saving')
         window.clearTimeout(timer.current)
         timer.current = window.setTimeout(flush, 400)
@@ -114,8 +128,8 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
   editorRef.current = editor
   // reader mode: the same editor, locked (no typing, no editing widgets), so scrolling and selecting still work
   useEffect(() => {
-    if (editor && editor.isEditable !== editable) editor.setEditable(editable)
-  }, [editor, editable])
+    if (editor && editor.isEditable === readOnly) editor.setEditable(!readOnly, false)
+  }, [editor, readOnly])
   // the page picker (`[[`, `@`) must not offer the page you are on
   useEffect(() => {
     if (editor) (editor.storage as any).currentPageId = page.id
@@ -214,14 +228,32 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
     const onExternal = (e: Event) => {
       if (!editor || editor.isDestroyed || !(e as CustomEvent<string[]>).detail.includes(page.id)) return
       const fresh = repo.get(page.id)?.content
-      if (fresh && typeof fresh !== 'string' && JSON.stringify(fresh) !== JSON.stringify(editor.getJSON())) editor.commands.setContent(fresh, { emitUpdate: false })
+      if (!fresh || typeof fresh === 'string' || JSON.stringify(fresh) === JSON.stringify(editor.getJSON())) return
+      editor.view.dom.dispatchEvent(new Event(LAYOUT_CANCEL))
+      window.clearTimeout(timer.current)
+      if (dirty.current && !protectedContent.current) {
+        void addVersion({ pageId: page.id, ts: Date.now(), title: page.title, content: editor.getJSON() })
+        window.dispatchEvent(new Event('sync-conflict'))
+      }
+      dirty.current = false
+      onSave('saved')
+      const issue = contentProblem(fresh, schema)
+      setOriginalContent(fresh)
+      protectedContent.current = !!issue
+      setContentIssue(issue)
+      editor.setEditable(!readerOnly && !issue, false)
+      if (!issue) {
+        // Replace the complete editor state: old undo entries and selection positions belong to the old document.
+        editor.view.updateState(EditorState.create({ schema: editor.schema, doc: editor.schema.nodeFromJSON(fresh), plugins: editor.state.plugins }))
+        editor.commands.setTextSelection(1)
+      }
     }
     window.addEventListener('external-change', onExternal)
     return () => window.removeEventListener('external-change', onExternal)
-  }, [editor, page.id])
+  }, [editor, page.id, page.title, readerOnly, schema, onSave])
 
   useEffect(() => {
-    if (editor && typeof page.content === 'string') repo.update(page.id, { content: editor.getJSON() })
+    if (editor && !protectedContent.current && typeof page.content === 'string') repo.update(page.id, { content: editor.getJSON() })
   }, [editor, page.id, page.content])
 
   useEffect(() => {
@@ -632,6 +664,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
                 <MenuItem icon={<Ic.Quote />} label={t('Quote')} onClick={() => (setCtx(null), editor.chain().focus().toggleBlockquote().run())} />
               </>
             )}
+            {!readOnly && <MenuItem icon={<Ic.Arrow />} label={t('Move to Column')} hint="Ctrl+Alt+M" onClick={() => { setCtx(null); editor.view.dom.dispatchEvent(new CustomEvent('layout-move-menu', { detail: ctx })) }} />}
             {!readOnly && <MenuItem icon={<Ic.Paste />} label={t('Paste as plain text')} hint="Ctrl+Shift+V" onClick={() => (setCtx(null), void paste(true))} />}
             {!readOnly && <MenuItem icon={<Ic.Code />} label={t('Convert $…$ to formulas')} onClick={() => (setCtx(null), (editor.commands as any).convertFormulas())} />}
             <MenuItem icon={<Ic.SelectAll />} label={t('Select all')} hint="Ctrl+A" onClick={() => (setCtx(null), editor.chain().focus().selectAll().run())} />
@@ -643,7 +676,15 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly = false }: { 
           </div>
         </Popover>
       )}
-      <EditorContent editor={editor} className="ec" />
+      {!readOnly && <LayoutControls editor={editor} />}
+      {!readOnly && (() => {
+        const group = activeGroup(editor.state)
+        return group && !validWidths(group.node.attrs.widths, group.node.childCount) ? <p className="layout-width-warning" role="status">{t('Invalid column widths are displayed equally. Choose a width preset to repair this layout.')}</p> : null
+      })()}
+      {contentIssue ? <div className="layout-protection" role="status">
+        <p>{t(contentIssue)}</p>
+        <details><summary>{t('View original page data')}</summary><pre>{JSON.stringify(originalContent, null, 2)}</pre></details>
+      </div> : <EditorContent editor={editor} className="ec" />}
 
       {historyOpen && <History page={page} editor={editor} onClose={() => setHistoryOpen(false)} />}
 

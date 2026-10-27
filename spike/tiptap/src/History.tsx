@@ -4,7 +4,9 @@ import { docToHtml, hydrate } from './render'
 import { ago } from './ui'
 import type { Page } from './repo'
 import { t } from './i18n'
-import { confirmDialog } from './dialog'
+import { confirmDialog, alertDialog } from './dialog'
+import { contentProblem } from './editor/contentSafety'
+import { structural } from './editor/layoutModel'
 import * as Ic from './icons'
 
 const words = (n: any): number => {
@@ -27,9 +29,15 @@ export function History({ page, editor, onClose }: { page: Page; editor: any; on
   }, [html])
 
   const restore = async () => {
-    if (!v || !(await confirmDialog({ title: t('Restore this version'), message: t('Replace the current content of this page with this version? The current content is saved as a version first.'), confirmLabel: t('Restore') }))) return
+    if (!v || !editor.isEditable) return
+    const issue = contentProblem(v.content, editor.schema)
+    if (issue) return void alertDialog({ title: t('Restore this version'), message: t(issue) })
+    const before = editor.state.doc
+    if (!(await confirmDialog({ title: t('Restore this version'), message: t('Replace the current content of this page with this version? The current content is saved as a version first.'), confirmLabel: t('Restore') }))) return
+    if (!editor.isEditable || editor.isDestroyed) return
+    if (editor.state.doc !== before) return void alertDialog({ title: t('Restore this version'), message: t('The page changed while the dialog was open. Please try again.') })
     await addVersion({ pageId: page.id, ts: Date.now(), title: page.title, content: editor.getJSON() })
-    editor.commands.setContent(v.content)
+    editor.chain().command(({ tr }: any) => { structural(tr); return true }).setContent(v.content).run()
     onClose()
   }
 
@@ -59,7 +67,7 @@ export function History({ page, editor, onClose }: { page: Page; editor: any; on
           <div className="hist-preview">
             {v && <div className="hist-title" dir="auto">{v.title || t('Untitled')}</div>}
             <div className="tiptap" ref={preview} dangerouslySetInnerHTML={{ __html: html }} />
-            {v && <button className="primary hist-restore" onClick={restore}>{t('Restore this version')}</button>}
+            {v && <button className="primary hist-restore" disabled={!editor.isEditable} onClick={restore}>{t('Restore this version')}</button>}
           </div>
         </div>
       </div>
