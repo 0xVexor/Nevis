@@ -60,9 +60,9 @@ export async function savePages(upserts: any[], removed: string[], clearFirst: b
   if (frozen) return
   if (isTauri) {
     // ids of pages whose newer version on disk (another device's edit) was kept in the page history instead of being overwritten
-    const kept = await invoke<string[]>('pages_save', { upserts, removed, clearFirst })
-    if (kept.length) window.dispatchEvent(new CustomEvent('sync-conflict', { detail: kept }))
-    return
+    const result = await invoke<{ kept: string[]; pages: any[] }>('pages_save', { upserts, removed, clearFirst })
+    if (result.kept.length) window.dispatchEvent(new CustomEvent('sync-conflict', { detail: result.kept }))
+    return result
   }
   const tx = (await db()).transaction('pages', 'readwrite')
   const s = tx.objectStore('pages')
@@ -95,6 +95,8 @@ export interface Version {
   ts: number
   title: string
   content: any
+  page?: Partial<import('./repo').Page>
+  conflict?: boolean
 }
 
 const KEEP_VERSIONS = 40
@@ -112,9 +114,10 @@ export async function addVersion(v: Version) {
   tx.objectStore('versions').put(v)
   await done(tx)
   const all = await listVersions(v.pageId)
-  if (all.length > KEEP_VERSIONS) {
+  const ordinary = all.filter(v => !v.conflict)
+  if (ordinary.length > KEEP_VERSIONS) {
     const t2 = (await db()).transaction('versions', 'readwrite')
-    all.slice(KEEP_VERSIONS).forEach((old) => t2.objectStore('versions').delete([old.pageId, old.ts]))
+    ordinary.slice(KEEP_VERSIONS).forEach((old) => t2.objectStore('versions').delete([old.pageId, old.ts]))
     await done(t2)
   }
 }

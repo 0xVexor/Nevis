@@ -16,6 +16,7 @@ tauri-plugin-notification = "2"
 tauri-plugin-updater = "2"
 semver = "1"
 unicode-normalization = "0.1"
+parking_lot = "0.12"
 uuid = { version = "1", features = ["v4"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls", "http2"] }
 serde = { version = "1", features = ["derive"] }

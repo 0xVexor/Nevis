@@ -237,11 +237,12 @@ pub struct Hub {
     /// server clock minus our clock, so that "newer" between a server time and a local file time means something
     offset: i64,
     prepared: bool,
+    confirm_bulk: bool,
 }
 
 impl Hub {
     pub fn new(api: Api, vault: &str, cache: Cache) -> Hub {
-        Hub { api, vault: vault.to_string(), cache, offset: 0, prepared: false }
+        Hub { api, vault: vault.to_string(), cache, offset: 0, prepared: false, confirm_bulk: false }
     }
 
     fn v(&self, tail: &str) -> String {
@@ -291,35 +292,82 @@ impl Hub {
         Ok(out)
     }
 
-    /// Applies every change after `cache.seq`. Returns true when the server no longer remembered that far back and the mirror was rebuilt.
-    fn pull(&mut self) -> Res<bool> {
-        let mut rebuilt = false;
-        loop {
-            let url = self.v(&format!("/changes?since={}&limit=500", self.cache.seq));
-            let page = match self.api.get(&url) {
-                Ok(p) => p,
-                Err(e) if e.lines().next() == Some("HUB:since_too_old") && !rebuilt => {
-                    let epoch = self.cache.epoch.clone();
-                    self.cache = Cache { epoch, ..Default::default() };
-                    rebuilt = true;
-                    continue;
+    /// Build a verified live snapshot without mixing pages from different heads.
+    fn snapshot(&mut self) -> Res<()> {
+        for _ in 0..3 {
+            let mut files = BTreeMap::new();
+            let mut after = String::new();
+            let mut epoch = String::new();
+            let mut head = 0i64;
+            loop {
+                let url = self.api.url(&self.v("/snapshot"));
+                let mut query = vec![("limit", "500".to_string())];
+                if !after.is_empty() {
+                    query.extend([("after", after.clone()), ("epoch", epoch.clone()), ("head", head.to_string())]);
                 }
+                let page: Value = match self.api.send(|c| c.get(&url).query(&query)).and_then(|r| r.json().map_err(err)) {
+                    Ok(v) => v,
+                    Err(e) if e.lines().next() == Some("HUB:snapshot_changed") => break,
+                    Err(e) => return Err(e),
+                };
+                let current_epoch = page["epoch"].as_str().filter(|s| !s.is_empty()).ok_or("HUB:bad_answer")?;
+                let current_head = page["head"].as_i64().filter(|n| *n >= 0).ok_or("HUB:bad_answer")?;
+                if after.is_empty() { epoch = current_epoch.to_string(); head = current_head; }
+                if epoch != current_epoch || head != current_head { break; }
+                for f in page["files"].as_array().ok_or("HUB:bad_answer")? {
+                    let (path, file) = file_of(f).ok_or("HUB:bad_answer")?;
+                    if file.rev > head || f["deleted"].as_bool() != Some(false) || files.insert(path, file).is_some() {
+                        return Err("HUB:bad_answer".into());
+                    }
+                }
+                self.offset = page["server_time"].as_i64().unwrap_or_else(now_ms) - now_ms();
+                if page["has_more"].as_bool() == Some(false) {
+                    if page["root"].as_str() != Some(root_of(&files).as_str()) { return Err("HUB:inconsistent".into()); }
+                    self.cache = Cache { epoch, seq: head, files };
+                    return Ok(());
+                }
+                let next = page["after"].as_str().filter(|s| !s.is_empty()).ok_or("HUB:bad_answer")?;
+                if next <= after.as_str() { return Err("HUB:bad_answer".into()); }
+                after = next.to_string();
+            }
+        }
+        Err("HUB:snapshot_changed".into())
+    }
+
+    /// Incremental reads are applied to a candidate mirror and published only
+    /// after the complete response sequence has been validated.
+    fn pull(&mut self) -> Res<bool> {
+        if self.cache.seq == 0 {
+            // Older servers can still serve uncompacted workspaces.
+            let health = self.api.get("/v1/health")?;
+            if health["capabilities"].as_array().is_some_and(|a| a.iter().any(|v| v == "full_snapshot")) {
+                // seq can still be zero immediately after this device's first
+                // uploads. Those acknowledged baselines remain valid: resetting
+                // them here would resurrect a local deletion on the next round.
+                let baseline = self.cache.files.is_empty();
+                self.snapshot()?;
+                return Ok(baseline);
+            }
+        }
+        let mut candidate = self.cache.clone();
+        loop {
+            let page = match self.api.get(&self.v(&format!("/changes?since={}&limit=500", candidate.seq))) {
+                Ok(p) => p,
+                Err(e) if e.lines().next() == Some("HUB:since_too_old") => { self.snapshot()?; return Ok(true); }
                 Err(e) => return Err(e),
             };
+            if page["epoch"].as_str() != Some(candidate.epoch.as_str()) { self.snapshot()?; return Ok(true); }
             self.offset = page["server_time"].as_i64().unwrap_or_else(now_ms) - now_ms();
-            for f in page["files"].as_array().into_iter().flatten() {
-                let Some((path, file)) = file_of(f) else { continue };
-                if f["deleted"].as_bool().unwrap_or(false) {
-                    self.cache.files.remove(&path);
-                } else {
-                    self.cache.files.insert(path, file);
-                }
+            for f in page["files"].as_array().ok_or("HUB:bad_answer")? {
+                let (path, file) = file_of(f).ok_or("HUB:bad_answer")?;
+                if f["deleted"].as_bool().ok_or("HUB:bad_answer")? { candidate.files.remove(&path); }
+                else { candidate.files.insert(path, file); }
             }
-            // only now has this page been applied; a connection lost before this point repeats the page, which changes nothing
-            self.cache.seq = page["next"].as_i64().unwrap_or(self.cache.seq).max(self.cache.seq);
-            if !page["has_more"].as_bool().unwrap_or(false) {
-                return Ok(rebuilt);
-            }
+            let next = page["next"].as_i64().ok_or("HUB:bad_answer")?;
+            let more = page["has_more"].as_bool().ok_or("HUB:bad_answer")?;
+            if next < candidate.seq || (more && next == candidate.seq) { return Err("HUB:bad_answer".into()); }
+            candidate.seq = next;
+            if !more { self.cache = candidate; return Ok(false); }
         }
     }
 
@@ -360,7 +408,7 @@ impl Hub {
 
     /// One conditional write. The result is the server's answer for that one operation.
     fn commit_one(&mut self, op: Value) -> Res<Value> {
-        let body = json!({ "op_id": uuid::Uuid::new_v4().to_string(), "ops": [op] });
+        let body = json!({ "op_id": uuid::Uuid::new_v4().to_string(), "ops": [op], "confirm_bulk": self.confirm_bulk });
         let r = self.api.post(&self.v("/commit"), &body)?;
         r["results"].get(0).cloned().ok_or_else(|| "HUB:bad_answer".to_string())
     }
@@ -402,6 +450,7 @@ impl Hub {
 }
 
 impl Remote for Hub {
+    fn confirm_deletes(&mut self, confirmed: bool) { self.confirm_bulk = confirmed; }
     fn validate_paths(&mut self, paths: &[String]) -> Res<()> {
         if let Some(path) = paths.iter().find(|p| p.starts_with("databases/")) {
             let health = self.api.get("/v1/health")?;
@@ -428,7 +477,14 @@ impl Remote for Hub {
         let (rev, _) = split_id(&f.id)?;
         let url = self.api.url(&self.v(&format!("/rev/{rev}")));
         let r = self.api.send(|c| c.get(&url))?;
-        r.bytes().map(|b| b.to_vec()).map_err(|e| format!("{NETWORK}{e}"))
+        let header_sha = r.headers().get("x-sha256").and_then(|h| h.to_str().ok()).unwrap_or("").to_string();
+        let bytes = r.bytes().map_err(|e| format!("{NETWORK}{e}"))?.to_vec();
+        let expected = self.cache.files.get(&f.path).filter(|entry| entry.rev == rev).map(|entry| entry.sha.as_str()).unwrap_or(&header_sha);
+        if (!expected.is_empty() && hex(&Sha256::digest(&bytes)) != expected) ||
+            (!f.md5.is_empty() && hex(&md5::Md5::digest(&bytes)) != f.md5) {
+            return Err("HUB:corrupt_download".into());
+        }
+        Ok(bytes)
     }
 
     fn upload(&mut self, path: &str, existing: Option<&str>, bytes: &[u8]) -> Res<RemoteFile> {
@@ -783,4 +839,28 @@ mod e2e {
         assert_eq!(m, CLOUD_GONE);
         assert_eq!(a.titles(), vec!["one"]);
     }
+    #[test]
+    #[ignore]
+    fn e2e_a_new_device_reads_every_page_of_a_large_snapshot() {
+        let (mut a, mut b) = pair();
+        a.sync();
+        let mut hub = Hub::new(a.api.clone(), &a.id, a.state.hub.clone());
+        hub.preflight("T").unwrap();
+        let bytes = b"{}";
+        let sha = hex(&Sha256::digest(bytes));
+        hub.put_blob(&sha, bytes).unwrap();
+        for start in (0..501).step_by(200) {
+            let ops: Vec<_> = (start..(start + 200).min(501)).map(|n| json!({
+                "op":"put", "path":format!("kv/item-{n:04}.json"), "sha256":sha, "base_rev":0
+            })).collect();
+            let result = a.api.post(&format!("/v1/vaults/{}/commit", a.id), &json!({"op_id":uuid::Uuid::new_v4().to_string(),"ops":ops})).unwrap();
+            assert!(result["results"].as_array().unwrap().iter().all(|r| r["ok"] == true));
+        }
+        b.sync();
+        for n in 0..501 {
+            assert_eq!(std::fs::read(b.vault.root.join(format!("kv/item-{n:04}.json"))).unwrap(), bytes);
+        }
+        assert_eq!(b.state.hub.files.len(), 502);
+    }
+
 }
