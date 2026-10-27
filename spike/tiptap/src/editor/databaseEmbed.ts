@@ -1,4 +1,5 @@
-import { Node, mergeAttributes } from '@tiptap/core'
+import { Node, mergeAttributes, type Editor } from '@tiptap/core'
+import { insertionAnchor } from './insertionAnchor'
 import { t } from '../i18n'
 import { OPEN_PAGE } from './pageLink'
 
@@ -29,32 +30,42 @@ export const DatabaseEmbed = Node.create({
       dom.className = 'db-embed'
       dom.contentEditable = 'false'
       let unmount: (() => void) | null = null
+      let destroyed = false
       const id = node.attrs.containerId as string
       if (!id) {
         dom.textContent = t('This database is not available.')
       } else {
         void Promise.all([import('react-dom/client'), import('react'), import('../database/ui/DatabaseContainer')]).then(([{ createRoot }, React, { DatabaseContainer }]) => {
+          if (destroyed) return
           const root = createRoot(dom)
           root.render(React.createElement(DatabaseContainer, { containerId: id, inline: true, onOpenPage: (pageId: string) => window.dispatchEvent(new CustomEvent(OPEN_PAGE, { detail: pageId })) }))
           unmount = () => root.unmount()
-        })
+        }).catch(() => { if (!destroyed) dom.textContent = t('This database is not available.') })
       }
       return {
         dom,
         stopEvent: () => true,
         ignoreMutation: () => true,
-        destroy: () => { const u = unmount; unmount = null; if (u) queueMicrotask(u) },
+        destroy: () => { destroyed = true; const u = unmount; unmount = null; if (u) queueMicrotask(u) },
       }
     }
   },
 })
 
 /** Slash command: create an inline database on the page being edited and put it at the cursor. */
-export async function insertDatabase(editor: { storage: unknown; chain: () => { focus: () => { insertContent: (c: unknown) => { run: () => boolean } } } }) {
+export async function insertDatabase(editor: Editor) {
   const pageId = (editor.storage as { currentPageId?: string }).currentPageId
-  if (!pageId) return
-  const { getDatabase } = await import('../database/runtime')
-  const svc = await getDatabase()
-  const made = await svc.one<{ containerId: string }>('database.create', { hostPageId: pageId, presentation: 'inline', title: t('Untitled database') })
-  editor.chain().focus().insertContent({ type: 'databaseEmbed', attrs: { containerId: made.containerId } }).run()
+  if (!pageId || editor.isDestroyed || !editor.isEditable) return
+  const anchor = insertionAnchor(editor)
+  try {
+    const { getDatabase } = await import('../database/runtime')
+    const svc = await getDatabase()
+    if (!anchor.isValid()) return
+    const made = await svc.one<{ containerId: string }>('database.create', { hostPageId: pageId, presentation: 'inline', title: t('Untitled database') })
+    if (!anchor.insert({ type: 'databaseEmbed', attrs: { containerId: made.containerId } })) {
+      window.dispatchEvent(new CustomEvent('layout-message', { detail: t('The database was created. Open it from Databases.') }))
+    }
+  } catch {
+    window.dispatchEvent(new CustomEvent('layout-message', { detail: t('The database could not be inserted. Please try again.') }))
+  } finally { anchor.release() }
 }

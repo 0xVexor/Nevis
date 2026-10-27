@@ -16,6 +16,7 @@ import { InlineIcon } from './inlineIcon'
 import { HeadingDir } from './headingDir'
 import { FlowArrows } from './flowArrows'
 import { DragHandle } from './dragHandle'
+import { LayoutGroup, LayoutColumn, LayoutSafety } from './layout'
 import { MarkdownPaste } from './markdownPaste'
 import { MarkdownTab } from './markdownTab'
 import { MathAuto, MathBlock, MathInline } from './math'
@@ -225,6 +226,9 @@ export const extensions = [
   MathBlock,
   PageLink,
   PageLinkSuggest,
+  LayoutGroup,
+  LayoutColumn,
+  LayoutSafety,
   DragHandle,
   FindInPage,
   MermaidBlock,

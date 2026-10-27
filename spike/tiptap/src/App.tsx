@@ -304,12 +304,15 @@ export default function App() {
     const storageError = (e: Event) => {
       if (String((e as CustomEvent).detail).includes('VAULT_MISSING')) setToast({ msg: t('The vault folder was not found. Open Workspaces to locate it or download it again.') })
     }
+    const layoutNotice = (e: Event) => setToast({ msg: String((e as CustomEvent).detail) })
+    window.addEventListener('layout-message', layoutNotice)
     window.addEventListener('sync-conflict', kept)
     window.addEventListener('storage-error', storageError)
     return () => {
       window.removeEventListener(OPEN_PAGE, open)
       window.removeEventListener(PAGES_CHANGED, changed)
       window.removeEventListener('external-change', changed)
+      window.removeEventListener('layout-message', layoutNotice)
       window.removeEventListener('sync-conflict', kept)
       window.removeEventListener('storage-error', storageError)
     }
