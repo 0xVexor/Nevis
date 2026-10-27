@@ -3,6 +3,8 @@ import { cloneDocumentValue } from './clone.ts'
 import { identifyBlocks, identityVersion, BLOCK_IDENTITY_VERSION } from './blockIdentity.ts'
 import type { Page, PageKind, PageRepo, Patch } from './model.ts'
 import { storedVersion } from './ports.ts'
+import { DocumentReader } from './reader.ts'
+import type { DocumentReadGrant, DocumentReadRuntime } from './reader.ts'
 import type { DocumentEnvironment, DocumentStorage, DocumentHost, StoredDocumentVersion } from './ports.ts'
 
 const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] }
@@ -44,6 +46,10 @@ export class DocumentService implements PageRepo {
   private readonly storage: DocumentStorage
   private readonly host: DocumentHost
   get vaultHandle() { return this.storage.vaultHandle }
+  /** Read persisted state after already-queued writes; never flush a dirty editor. */
+  reader(grant: DocumentReadGrant, runtime: DocumentReadRuntime) {
+    return new DocumentReader({ vaultHandle: this.vaultHandle, load: async () => { await this.queue; return this.storage.load() } }, grant, runtime)
+  }
   constructor(environment: DocumentEnvironment, seed: () => Page[] = () => []) {
     this.storage = environment.storage
     this.host = environment.host

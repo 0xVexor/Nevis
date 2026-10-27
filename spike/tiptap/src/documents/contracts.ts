@@ -57,7 +57,7 @@ const capabilities = obj({
   writableAttributes: array(str(80)), operations: array(choice('insert_blocks', 'replace_blocks', 'move_blocks', 'delete_blocks', 'set_attributes', 'set_internal_link')),
   preservesUntouchedUnsupportedNodes: bool,
 })
-const chunk = obj({ range, markdown: nullable(str(LIMITS.textChars, 0)), structured: nullable(array(node, 100)) })
+const chunk = obj({ range: nullable(range), markdown: nullable(str(LIMITS.textChars, 0)), structured: nullable(array(node, 100)) })
 const readResult = obj({ ...docRef, capabilities, chunks: array(chunk), ...pageResult, warnings: array(warning) })
 const receipt = obj({ operationId: id, documentId: id, beforeRevision: nullable(revision), afterRevision: revision,
   committedAt: integer(0, Number.MAX_SAFE_INTEGER), undoExpiresAt: nullable(integer(0, Number.MAX_SAFE_INTEGER)) })
