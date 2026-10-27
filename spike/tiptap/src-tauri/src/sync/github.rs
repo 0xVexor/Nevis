@@ -19,7 +19,10 @@ use std::{
 
 // Serialize provider transitions and refresh-token rotation, but never hold the vault lock over network I/O.
 pub static OPERATION: Mutex<()> = Mutex::new(());
-const SERVICE: &str = "app.noviq.github";
+const SERVICE: &str = match option_env!("NOVIQ_GITHUB_CREDENTIAL_SERVICE") {
+    Some(service) => service,
+    None => "app.noviq.github",
+};
 fn client_id() -> Res<&'static str> {
     option_env!("NOVIQ_GITHUB_CLIENT_ID")
         .filter(|s| !s.is_empty())
