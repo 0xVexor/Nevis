@@ -4,6 +4,7 @@ import type { DocumentOperationRequest, DocumentOperationReceipt } from './opera
 import { DocumentEditor } from './editor.ts'
 import type { DocumentEditGrant } from './editor.ts'
 import type { SavedEditEvidence, SavedSearch } from './savedEdit.ts'
+import type { CreationPosition } from './hierarchy.ts'
 import { cloneDocumentValue } from './clone.ts'
 import { identifyBlocks, identityVersion, BLOCK_IDENTITY_VERSION } from './blockIdentity.ts'
 import type { Page, PageKind, PageRepo, Patch } from './model.ts'
@@ -140,7 +141,8 @@ export class DocumentService implements PageRepo {
         }
         return receipt
       },
-      commit: (request, before, after, check, evidence) => this.commitPlannedEdit(request, before, after, digest, check, evidence),
+      commit: (request, before, after, check, evidence, creation) => this.commitPlannedEdit(request, before, after, digest, check, evidence, creation),
+      createId: () => this.host.createId(),
       search: receipt => this.savedSearch(receipt, digest), sync: async () => this.host.syncState?.() ?? 'pending',
     }, grant, digest)
   }
@@ -152,17 +154,18 @@ export class DocumentService implements PageRepo {
       || !this.searchIndex.isCurrent(prepared.index)) return { state: 'pending', indexedRevision: null }
     return { state: 'fresh', indexedRevision: receipt.revision }
   }
-  private async commitPlannedEdit(request: DocumentOperationRequest, expected: Page, next: Page, digest: (value: string) => Promise<string>,
-    check: () => void, evidence: (page: Page, receipt: DocumentOperationReceipt) => SavedEditEvidence) {
+  private async commitPlannedEdit(request: DocumentOperationRequest, expected: Page | null, next: Page, digest: (value: string) => Promise<string>,
+    check: () => void, evidence: (page: Page, receipt: DocumentOperationReceipt) => SavedEditEvidence, creation?: CreationPosition) {
     if (!this.storage.commitOperationResult) throw new Error('Document operation storage is unavailable')
     request = cloneDocumentValue(request)
     const before = cloneDocumentValue(expected), after = cloneDocumentValue(next), committedAt = this.host.now()
-    if (!Number.isSafeInteger(committedAt) || committedAt < 0 || !Number.isSafeInteger(before.updatedAt) || before.updatedAt >= Number.MAX_SAFE_INTEGER) throw new Error('Invalid document clock')
-    after.updatedAt = Math.max(committedAt, before.updatedAt + 1)
-    if (after.database) after.recordMeta = { ...(after.recordMeta ?? { format: 1, revision: 0, createdAt: before.updatedAt,
+    if (!Number.isSafeInteger(committedAt) || committedAt < 0 || (before && (!Number.isSafeInteger(before.updatedAt) || before.updatedAt >= Number.MAX_SAFE_INTEGER))) throw new Error('Invalid document clock')
+    after.updatedAt = Math.max(committedAt, before ? before.updatedAt + 1 : 0)
+    if (after.database) after.recordMeta = { ...(after.recordMeta ?? { format: 1, revision: 0, createdAt: before?.updatedAt ?? committedAt,
       createdBy: '', updatedBy: '', lastOperationId: '', inferred: true }), revision: (after.recordMeta?.revision ?? 0) + 1, lastOperationId: request.operationId }
-    const fingerprint = await operationFingerprint(request, digest), beforeRevision = await documentRevision(before, digest)
-    if (beforeRevision !== request.expectedRevision || before.id !== after.id || request.documentId !== before.id) throw new Error('Document revision conflict')
+    const fingerprint = await operationFingerprint(request, digest), beforeRevision = before ? await documentRevision(before, digest) : null
+    if (beforeRevision !== request.expectedRevision || (before ? before.id !== after.id || request.documentId !== before.id || request.kind !== 'edit'
+      : request.documentId !== null || request.kind !== 'create' || !creation)) throw new Error('Document revision conflict')
     const receipt: DocumentOperationReceipt = { operationId: request.operationId, documentId: after.id, beforeRevision,
       revision: await documentRevision(after, digest), committedAt }
     receipt.evidence = evidence(after, receipt) // a bounded response must be representable before any write
@@ -173,18 +176,25 @@ export class DocumentService implements PageRepo {
       if (!this.storage.findOperation) throw new Error('Document operation storage is unavailable')
       const prior = matchOperation(await this.storage.findOperation(request.scopeId, request.operationId), fingerprint)
       check()
-      if (prior) return { receipt: cloneDocumentValue(prior.receipt), replayed: true }
-      if (canonicalDocumentValue(this.getRaw(before.id)) !== canonicalDocumentValue(before)) throw new Error('Document revision conflict')
+      if (prior) {
+        await this.publishCommittedDocument(prior.receipt.documentId)
+        return { receipt: cloneDocumentValue(prior.receipt), replayed: true }
+      }
+      if (canonicalDocumentValue(this.getRaw(after.id) ?? null) !== canonicalDocumentValue(before)) throw new Error('Document revision conflict')
       const result = await this.storage.commitOperationResult({ format: 1, scopeId: request.scopeId, operationId: request.operationId,
-        fingerprint, before, after, receipt, history: { pageId: before.id, ts: after.updatedAt, title: before.title, content: cloneDocumentValue(before.content) } })
-      // Durable success survives failed reload/observers. Exact preconditions still protect subsequent UI saves.
-      try {
-        const current = (await this.storage.load()).find(page => page.id === result.receipt.documentId)
-        this.adoptDatabase(current ? [current] : [], current ? [] : [result.receipt.documentId])
-        this.host.emit('external-change', [result.receipt.documentId])
-      } catch (error) { this.invalidateSearch(); try { this.host.report('watch', error) } catch { /* saved receipt remains authoritative */ } }
+        fingerprint, before, after, receipt, ...(before ? { history: { pageId: before.id, ts: after.updatedAt, title: before.title, content: cloneDocumentValue(before.content) } } : {}),
+        ...(creation ? { creation: cloneDocumentValue(creation) } : {}) })
+      await this.publishCommittedDocument(result.receipt.documentId)
       return result
     } finally { release() }
+  }
+  private async publishCommittedDocument(documentId: string) {
+    // Publish the current winner, including concurrent duplicate creates with another generated ID.
+    try {
+      const current = (await this.storage.load()).find(page => page.id === documentId)
+      this.adoptDatabase(current ? [current] : [], current ? [] : [documentId])
+      this.host.emit('external-change', [documentId])
+    } catch (error) { this.invalidateSearch(); try { this.host.report('watch', error) } catch { /* saved receipt remains authoritative */ } }
   }
 
   private seed: () => Page[]

@@ -73,6 +73,7 @@ function json(value: unknown, limit: number, optionalUndefined = false) {
   visit(value, 0)
   if (bytes(JSON.stringify(value)) > limit) fail('LIMIT_EXCEEDED')
 }
+export function validateDocumentJson(value: unknown) { json(value, LIMITS.requestBytes) }
 function reference(ref: unknown) {
   if (!object(ref)) fail('INVALID_ARGUMENT')
   const key = Object.hasOwn(ref, 'blockId') ? 'blockId' : 'temporaryId'

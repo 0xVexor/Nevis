@@ -13,11 +13,12 @@
     "test:document-operations": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-operations.mjs",
     "test:document-planner": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-planner.mjs",
     "test:document-edit-commits": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-edit-commits.mjs",
+    "test:document-mutations": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-mutations.mjs",
     "test:document-reads": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-reads.mjs",
     "test:document-search": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-search.mjs",
     "test:search-freshness": "tsc -p tsconfig.documents.json && node --test ../../db/test-search-freshness.mjs",
     "test:direction": "node --test src/editor/direction.test.mjs",
-    "test:documents": "tsc -p tsconfig.documents.json && node --test ../../db/test-agent-documents.mjs ../../db/test-document-projection.mjs ../../db/test-document-contracts.mjs ../../db/test-block-identity.mjs ../../db/test-repo-identity.mjs ../../db/test-document-service.mjs ../../db/test-document-operations.mjs ../../db/test-document-planner.mjs ../../db/test-document-edit-commits.mjs ../../db/test-document-reads.mjs ../../db/test-document-search.mjs ../../db/test-search-freshness.mjs src/editor/blockIdentity.test.mjs src/editor/documentCommitGuard.test.mjs",
+    "test:documents": "tsc -p tsconfig.documents.json && node --test ../../db/test-agent-documents.mjs ../../db/test-document-projection.mjs ../../db/test-document-contracts.mjs ../../db/test-block-identity.mjs ../../db/test-repo-identity.mjs ../../db/test-document-service.mjs ../../db/test-document-operations.mjs ../../db/test-document-planner.mjs ../../db/test-document-edit-commits.mjs ../../db/test-document-mutations.mjs ../../db/test-document-reads.mjs ../../db/test-document-search.mjs ../../db/test-search-freshness.mjs src/editor/blockIdentity.test.mjs src/editor/documentCommitGuard.test.mjs",
     "test:db": "node --test \"../../db/tests/database/*.test.mjs\"",
     "preview": "vite preview",
     "tauri": "tauri"

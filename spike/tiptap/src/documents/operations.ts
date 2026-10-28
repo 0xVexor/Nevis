@@ -2,6 +2,7 @@ import type { Page } from './model.ts'
 import { canonicalDocumentValue } from './revision.ts'
 import type { SavedEditEvidence } from './savedEdit.ts'
 import type { DocumentVersion } from './ports.ts'
+import type { CreationPosition } from './hierarchy.ts'
 
 /** Host-owned scope (principal/grant), never an agent-supplied authorization. */
 export interface DocumentOperationRequest {
@@ -30,6 +31,7 @@ export interface DocumentOperationRecord {
   after: Page
   receipt: DocumentOperationReceipt
   history?: DocumentVersion
+  creation?: CreationPosition
 }
 export interface DocumentOperationCommitResult { receipt: DocumentOperationReceipt; replayed: boolean }
 export const operationKey = (scopeId: string, operationId: string) => {
@@ -62,4 +64,5 @@ export function validateOperationRecord(record: DocumentOperationRecord) {
     || (record.before === null ? record.receipt.beforeRevision !== null : !/^r1:[a-f0-9]{64,128}$/i.test(record.receipt.beforeRevision ?? ''))) throw new Error('Invalid document operation record')
   if (record.history && (!record.before || record.history.pageId !== record.before.id || !Number.isSafeInteger(record.history.ts)
     || record.history.title !== record.before.title || canonicalDocumentValue(record.history.content) !== canonicalDocumentValue(record.before.content))) throw new Error('Invalid document operation history')
+  if (record.creation && (record.before !== null || record.after.parentId !== record.creation.parentId)) throw new Error('Invalid document creation precondition')
 }

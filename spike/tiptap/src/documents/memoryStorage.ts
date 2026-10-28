@@ -4,6 +4,7 @@ import type { DocumentStorage, DocumentVersion, DocumentWrite } from './ports.ts
 import { canonicalDocumentValue } from './revision.ts'
 import { matchOperation, operationKey, validateOperationRecord } from './operations.ts'
 import type { DocumentOperationRecord } from './operations.ts'
+import { assertCreationPosition } from './hierarchy.ts'
 
 /** Reference adapter for shared-service conformance tests. */
 export class MemoryDocumentStorage implements DocumentStorage {
@@ -49,6 +50,7 @@ export class MemoryDocumentStorage implements DocumentStorage {
     const prior = matchOperation(this.operations.get(key) ?? null, record.fingerprint)
     if (prior) return { receipt: cloneDocumentValue(prior.receipt), replayed: true }
     if (canonicalDocumentValue(this.pages.get(record.after.id) ?? null) !== canonicalDocumentValue(record.before)) throw new Error('Document revision conflict')
+    if (record.creation) assertCreationPosition([...this.pages.values()], record.after, record.creation)
     if (record.history) {
       const history = this.versions.get(record.history.pageId) ?? []
       record.history.ts = Math.max(record.history.ts, ...history.map(v => v.ts + 1))

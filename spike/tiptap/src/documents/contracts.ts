@@ -62,7 +62,8 @@ const readResult = obj({ ...docRef, capabilities, chunks: array(chunk), ...pageR
 const receipt = obj({ operationId: id, documentId: id, beforeRevision: nullable(revision), afterRevision: revision,
   committedAt: integer(0, Number.MAX_SAFE_INTEGER), undoExpiresAt: nullable(integer(0, Number.MAX_SAFE_INTEGER)) })
 const saved = obj({ ...docRef, receipt, affectedBlockIds: array(id, LIMITS.maxNodes), savedContent: readResult,
-  search: freshness, sync: choice('pending', 'synced', 'failed', 'disabled'), replayed: bool })
+  search: freshness, sync: choice('pending', 'synced', 'failed', 'disabled'), replayed: bool, metadata },
+  ['documentId', 'revision', 'receipt', 'affectedBlockIds', 'savedContent', 'search', 'sync', 'replayed'])
 const location = union(
   obj({ position: choice('before', 'after'), target: editRef }),
   obj({ position: literal('end'), parent: nullable(editRef) }),

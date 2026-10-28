@@ -4,6 +4,7 @@ import { cloneDocumentValue } from '../../documents/clone.ts'
 import { canonicalDocumentValue } from '../../documents/revision.ts'
 import { matchOperation, operationKey, validateOperationRecord } from '../../documents/operations.ts'
 import type { DocumentOperationRecord } from '../../documents/operations.ts'
+import { assertCreationPosition } from '../../documents/hierarchy.ts'
 
 const complete = (tx: IDBTransaction) => new Promise<void>((resolve, reject) => {
   tx.oncomplete = () => resolve()
@@ -73,6 +74,7 @@ export class IndexedDbDocumentStorage implements DocumentStorage {
       else {
         const current = (await result(pages.get(record.after.id))) ?? null
         if (canonicalDocumentValue(current) !== canonicalDocumentValue(record.before)) throw new Error('Document revision conflict')
+        if (record.creation) assertCreationPosition(await result(pages.getAll()), record.after, record.creation)
         if (!this.active()) throw new Error('Document storage is unavailable')
         if (record.history) {
           const versions = tx.objectStore('versions')
