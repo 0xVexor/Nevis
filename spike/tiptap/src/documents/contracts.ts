@@ -129,8 +129,10 @@ export const documentToolContracts = Object.freeze({
   get_document_history: tool(obj({ documentId: id, versionId: id, format: choice('markdown', 'structured', 'both'), budget, ...pageRequest }, ['documentId']),
     obj({ documentId: id, versions: array(obj({ versionId: id, operationId: nullable(id), revision,
       committedAt: integer(0, Number.MAX_SAFE_INTEGER), expiresAt: nullable(integer(0, Number.MAX_SAFE_INTEGER)) })),
-    retainedContent: nullable(readResult), retention: obj({ earliestAvailableAt: nullable(integer(0, Number.MAX_SAFE_INTEGER)), complete: bool }), ...pageResult })),
-  undo_document_edit: tool(obj({ ...write, undoOperationId: id }), saved),
+    retainedContent: nullable(readResult), retainedMetadata: nullable(metadata), retention: obj({ earliestAvailableAt: nullable(integer(0, Number.MAX_SAFE_INTEGER)), complete: bool }), ...pageResult }, ['documentId', 'versions', 'retainedContent', 'retention', ...Object.keys(pageResult)])),
+  undo_document_edit: tool(obj({ ...write, undoOperationId: id, mode: choice('preview', 'apply') }, [...Object.keys(write), 'undoOperationId']), union(saved,
+    obj({ mode: literal('preview'), documentId: id, baseRevision: revision, undoOperationId: id,
+      restoresRevision: nullable(revision), deletesCreatedDocument: bool, persisted: literal(false) }))),
 })
 export type DocumentToolName = keyof typeof documentToolContracts
 

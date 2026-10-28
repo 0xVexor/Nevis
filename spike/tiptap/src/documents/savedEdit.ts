@@ -4,6 +4,7 @@ import { CONTRACT_VERSION, LIMITS } from './contracts.ts'
 import { EDIT_CAPABILITIES } from './editPlanner.ts'
 import type { EditNode } from './editPlanner.ts'
 import type { Page } from './model.ts'
+import { historyExpiresAt } from './operations.ts'
 import type { DocumentOperationReceipt } from './operations.ts'
 import type { DocumentMetadata } from './mutations.ts'
 
@@ -23,7 +24,7 @@ export interface SavedEditEvidence {
 export function savedEditResult(receipt: DocumentOperationReceipt, evidence: SavedEditEvidence, search: SavedSearch, sync: SyncState, replayed: boolean) {
   return { documentId: receipt.documentId, revision: receipt.revision,
     receipt: { operationId: receipt.operationId, documentId: receipt.documentId, beforeRevision: receipt.beforeRevision,
-      afterRevision: receipt.revision, committedAt: receipt.committedAt, undoExpiresAt: null },
+      afterRevision: receipt.revision, committedAt: receipt.committedAt, undoExpiresAt: historyExpiresAt(receipt.committedAt) },
     ...cloneDocumentValue(evidence), search, sync, replayed }
 }
 const bytes = (s: string) => { let n = 0; for (const c of s) { const cp = c.codePointAt(0)!; n += cp < 128 ? 1 : cp < 2048 ? 2 : cp < 65536 ? 3 : 4 } return n }

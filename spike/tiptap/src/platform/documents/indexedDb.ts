@@ -2,8 +2,8 @@ import type { Page } from '../../documents/model.ts'
 import type { DocumentStorage, DocumentVersion, DocumentWrite } from '../../documents/ports.ts'
 import { cloneDocumentValue } from '../../documents/clone.ts'
 import { canonicalDocumentValue } from '../../documents/revision.ts'
-import { matchOperation, operationKey, validateOperationRecord } from '../../documents/operations.ts'
-import type { DocumentOperationRecord } from '../../documents/operations.ts'
+import { matchOperation, operationKey, validateOperationRecord, operationSummary, retainOperationSummaries } from '../../documents/operations.ts'
+import type { DocumentOperationRecord, DocumentOperationSummary } from '../../documents/operations.ts'
 import { assertCreationPosition } from '../../documents/hierarchy.ts'
 
 const complete = (tx: IDBTransaction) => new Promise<void>((resolve, reject) => {
@@ -48,6 +48,26 @@ export class IndexedDbDocumentStorage implements DocumentStorage {
     const tx = (await this.database()).transaction('pages')
     return result(tx.objectStore('pages').getAll())
   }
+  async listOperations(scopeId: string, documentId: string): Promise<DocumentOperationSummary[]> {
+    operationKey(scopeId, 'history')
+    const prefix = `document-operation/${scopeId}/`
+    const tx = (await this.database()).transaction('kv')
+    const committed = complete(tx)
+    let rows: DocumentOperationSummary[] = [], failure: unknown
+    const request = tx.objectStore('kv').openCursor(IDBKeyRange.bound(prefix, `${prefix}\uffff`))
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor) return
+      try {
+        const record = cursor.value as DocumentOperationRecord
+        if (record.scopeId === scopeId && record.after.id === documentId) rows = retainOperationSummaries([...rows, operationSummary(record)])
+        cursor.continue()
+      } catch (error) { failure = error; tx.abort() }
+    }
+    try { await committed } catch (error) { throw failure ?? error }
+    if (!this.active()) throw new Error('Document storage is unavailable')
+    return rows
+  }
   async findOperation(scopeId: string, operationId: string): Promise<DocumentOperationRecord | null> {
     const key = `document-operation/${operationKey(scopeId, operationId)}`
     const tx = (await this.database()).transaction('kv')
@@ -74,6 +94,7 @@ export class IndexedDbDocumentStorage implements DocumentStorage {
       else {
         const current = (await result(pages.get(record.after.id))) ?? null
         if (canonicalDocumentValue(current) !== canonicalDocumentValue(record.before)) throw new Error('Document revision conflict')
+        if (record.requireNoChildren && (await result(pages.getAll()) as Page[]).some(page => page.parentId === record.after.id && page.deletedAt === null)) throw new Error('Document revision conflict')
         if (record.creation) assertCreationPosition(await result(pages.getAll()), record.after, record.creation)
         if (!this.active()) throw new Error('Document storage is unavailable')
         if (record.history) {

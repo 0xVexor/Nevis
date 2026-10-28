@@ -2,7 +2,7 @@ import type { Page } from './model.ts'
 import { cloneDocumentValue } from './clone.ts'
 import type { DocumentStorage, DocumentVersion, DocumentWrite } from './ports.ts'
 import { canonicalDocumentValue } from './revision.ts'
-import { matchOperation, operationKey, validateOperationRecord } from './operations.ts'
+import { matchOperation, operationKey, validateOperationRecord, operationSummary, retainOperationSummaries } from './operations.ts'
 import type { DocumentOperationRecord } from './operations.ts'
 import { assertCreationPosition } from './hierarchy.ts'
 
@@ -38,6 +38,10 @@ export class MemoryDocumentStorage implements DocumentStorage {
     this.generation++
   }
   async stamp() { return String(this.generation) }
+  async listOperations(scopeId: string, documentId: string) {
+    operationKey(scopeId, 'history')
+    return retainOperationSummaries([...this.operations.values()].filter(row => row.scopeId === scopeId && row.after.id === documentId).map(operationSummary))
+  }
   async findOperation(scopeId: string, operationId: string) {
     return cloneDocumentValue(this.operations.get(operationKey(scopeId, operationId)) ?? null)
   }
@@ -50,6 +54,7 @@ export class MemoryDocumentStorage implements DocumentStorage {
     const prior = matchOperation(this.operations.get(key) ?? null, record.fingerprint)
     if (prior) return { receipt: cloneDocumentValue(prior.receipt), replayed: true }
     if (canonicalDocumentValue(this.pages.get(record.after.id) ?? null) !== canonicalDocumentValue(record.before)) throw new Error('Document revision conflict')
+    if (record.requireNoChildren && [...this.pages.values()].some(page => page.parentId === record.after.id && page.deletedAt === null)) throw new Error('Document revision conflict')
     if (record.creation) assertCreationPosition([...this.pages.values()], record.after, record.creation)
     if (record.history) {
       const history = this.versions.get(record.history.pageId) ?? []

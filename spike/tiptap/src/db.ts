@@ -8,7 +8,7 @@ import { publishDocumentChange } from './platform/documents/changes'
 import type { Page } from './documents/model'
 import type { DocumentWrite } from './documents/ports'
 import type { DocumentVersion } from './documents/ports'
-import type { DocumentOperationRecord, DocumentOperationReceipt, DocumentOperationCommitResult } from './documents/operations'
+import type { DocumentOperationRecord, DocumentOperationReceipt, DocumentOperationCommitResult, DocumentOperationSummary } from './documents/operations'
 export type { DocumentVersion as Version } from './documents/ports'
 
 export const isTauri = '__TAURI_INTERNALS__' in window
@@ -59,6 +59,10 @@ const wrap = <T>(req: IDBRequest<T>) =>
 
 const browserDocuments = new IndexedDbDocumentStorage('browser:not.db', db, () => !frozen, publishDocumentChange)
 
+export async function listDocumentOperations(scopeId: string, documentId: string, expectedVaultId: string) {
+  if (frozen) throw new Error('Document storage is unavailable')
+  return invoke<DocumentOperationSummary[]>('document_operation_list', { scopeId, documentId, expectedVaultId })
+}
 export async function findDocumentOperation(scopeId: string, operationId: string, expectedVaultId: string) {
   if (frozen) throw new Error('Document storage is unavailable')
   return invoke<DocumentOperationRecord | null>('document_operation_find', { scopeId, operationId, expectedVaultId })

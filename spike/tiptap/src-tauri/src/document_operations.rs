@@ -63,7 +63,7 @@ fn validate(record: &Value) -> Res<(String, String)> {
     let fingerprint = record["fingerprint"].as_str().unwrap_or_default();
     if !record["after"].is_object() || (!before.is_null() && before["id"] != id)
         || receipt["documentId"] != id || receipt["operationId"] != operation
-        || !receipt["committedAt"].is_number() || !revision(&receipt["revision"])
+        || !receipt["committedAt"].as_u64().is_some_and(|n| n <= 9_007_199_254_740_991) || !revision(&receipt["revision"])
         || (if before.is_null() { !receipt["beforeRevision"].is_null() } else { !revision(&receipt["beforeRevision"]) })
         || fingerprint.len() != 67 || !fingerprint.starts_with("o1:") || !fingerprint[3..].bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err("Invalid document operation record".into());
@@ -73,6 +73,13 @@ fn validate(record: &Value) -> Res<(String, String)> {
             || history["title"] != before["title"] || history["content"] != before["content"] {
             return Err("Invalid document operation history".into());
         }
+    }
+    if record.get("undoOf").is_some() {
+        token(record, "undoOf")?;
+        if before.is_null() { return Err("Invalid undo origin".into()); }
+    }
+    if let Some(flag) = record.get("requireNoChildren") {
+        if flag != &Value::Bool(true) || before.is_null() || !record["after"]["deletedAt"].as_u64().is_some_and(|n| n <= 9_007_199_254_740_991) { return Err("Invalid undo precondition".into()); }
     }
     Ok((operation_name(&scope, &operation)?, id.to_string()))
 }
@@ -88,6 +95,19 @@ fn local_dir(root: &Path) -> Res<Option<PathBuf>> {
     let id = marker["id"].as_str().filter(|s| !s.is_empty()).ok_or("Missing vault identity")?;
     // Vault identity survives a folder move. Local records never travel with that folder.
     Ok(Some(base.join(format!("{:x}", Sha256::digest(id.as_bytes())))))
+}
+
+fn check_children(root: &Path, record: &Value) -> Res<()> {
+    if record.get("requireNoChildren") != Some(&Value::Bool(true)) { return Ok(()); }
+    if record["before"].is_null() || !record["after"]["deletedAt"].is_number() { return Err("Invalid undo precondition".into()); }
+    for entry in fs::read_dir(root.join("pages")).map_err(err)? {
+        let path = entry.map_err(err)?.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("json") { continue; }
+        if let Some(page) = read(&path)? {
+            if page["parentId"] == record["after"]["id"] && page.get("deletedAt") == Some(&Value::Null) { return Err("Document revision conflict".into()); }
+        }
+    }
+    Ok(())
 }
 
 fn check_creation(root: &Path, record: &Value) -> Res<()> {
@@ -143,6 +163,7 @@ fn recover_at(root: &Path, local: &Path) -> Res<()> {
             if current != record["after"] && current != record["before"] {
                 return Err("Document operation recovery conflict; snapshots retained".into());
             }
+            if current != record["after"] { check_children(root, &record).map_err(|_| "Document undo recovery conflict; snapshots retained".to_string())?; }
             if current != record["after"] { check_creation(root, &record).map_err(|_| "Document creation recovery conflict; snapshots retained".to_string())?; }
             if let Some(history) = record.get("history") {
                 let ts = history["ts"].as_i64().ok_or("Invalid operation history")?;
@@ -174,6 +195,33 @@ pub fn find(vault: &Vault, scope: &str, operation: &str) -> Res<Option<Value>> {
     let local = local_dir(&vault.root)?.ok_or("Document operation storage is unavailable")?;
     read(&local.join("committed").join(operation_name(scope, operation)?))
 }
+// Stream private records and retain at most 40 metadata entries; no snapshot bodies cross IPC.
+fn list_at(local: &Path, scope: &str, document_id: &str) -> Res<Value> {
+    operation_name(scope, "history")?;
+    check_id(document_id)?;
+    let dir = local.join("committed");
+    let mut rows = Vec::<Value>::new();
+    if !dir.exists() { return Ok(serde_json::json!([])); }
+    for entry in fs::read_dir(dir).map_err(err)? {
+        let path = entry.map_err(err)?.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("json") { continue; }
+        let record = read(&path)?.ok_or("Missing document operation")?;
+        if record["scopeId"] != scope || record["after"]["id"] != document_id { continue; }
+        validate(&record)?;
+        let receipt = &record["receipt"];
+        rows.push(serde_json::json!({"operationId":receipt["operationId"],"documentId":receipt["documentId"],
+            "beforeRevision":receipt["beforeRevision"],"revision":receipt["revision"],"committedAt":receipt["committedAt"]}));
+        rows.sort_by(|a, b| b["committedAt"].as_f64().partial_cmp(&a["committedAt"].as_f64()).unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a["operationId"].as_str().cmp(&b["operationId"].as_str())));
+        rows.truncate(40);
+    }
+    Ok(serde_json::json!(rows))
+}
+pub fn list(vault: &Vault, scope: &str, document_id: &str) -> Res<Value> {
+    let _guard = crate::vault::commit_lock(&vault.root)?;
+    let local = local_dir(&vault.root)?.ok_or("Document operation storage is unavailable")?;
+    list_at(&local, scope, document_id)
+}
 fn commit_at(root: &Path, local: &Path, record: &Value) -> Res<Value> {
     Ok(commit_at_result(root, local, record)?.0)
 }
@@ -187,6 +235,7 @@ fn commit_at_result(root: &Path, local: &Path, record: &Value) -> Res<(Value, bo
     }
     let page_path = root.join("pages").join(format!("{id}.json"));
     if read(&page_path)?.unwrap_or(Value::Null) != record["before"] { return Err("Document revision conflict".into()); }
+    check_children(root, record)?;
     check_creation(root, record)?;
     let mut record = record.clone();
     if record.get("history").is_some() {
@@ -238,6 +287,47 @@ mod tests {
             "receipt":{"operationId":"append","documentId":"note","beforeRevision":format!("r1:{}","b".repeat(64)),"revision":format!("r1:{}","c".repeat(64)),"committedAt":1}});
         durable_write(&root.join("pages/note.json"), &record["before"]).unwrap();
         (root, local, record)
+    }
+    #[test]
+    fn retained_history_lists_bounded_scoped_metadata_without_snapshot_bodies() {
+        let (root, local, record) = fixture();
+        for index in 0..42 {
+            let mut record = record.clone();
+            record["operationId"] = json!(format!("history-{index:02}"));
+            record["receipt"]["operationId"] = record["operationId"].clone();
+            record["receipt"]["committedAt"] = json!(index);
+            if index == 41 { record["scopeId"] = json!("other"); }
+            let name = validate(&record).unwrap().0;
+            durable_write(&local.join("committed").join(name), &record).unwrap();
+        }
+        let listed = list_at(&local, "grant", "note").unwrap();
+        let rows = listed.as_array().unwrap();
+        assert_eq!(rows.len(), 40);
+        assert_eq!(rows[0]["operationId"], "history-40");
+        assert_eq!(rows[39]["operationId"], "history-01");
+        assert!(rows.iter().all(|row| row.get("before").is_none() && row.get("after").is_none() && row.get("evidence").is_none()));
+        assert_eq!(list_at(&local, "grant", "missing").unwrap(), json!([]));
+        fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
+    #[test]
+    fn retained_history_creation_undo_guards_children_at_commit_and_recovery() {
+        let (root, local, mut record) = fixture();
+        record["requireNoChildren"] = json!(true);
+        record["after"]["deletedAt"] = json!(2);
+        let child = json!({"id":"child","parentId":"note","deletedAt":null});
+        durable_write(&root.join("pages/child.json"), &child).unwrap();
+        assert!(commit_at(&root, &local, &record).unwrap_err().contains("revision conflict"));
+        assert_eq!(read(&root.join("pages/note.json")).unwrap().unwrap(), record["before"]);
+        let pending = local.join("pending").join(validate(&record).unwrap().0);
+        durable_write(&pending, &record).unwrap();
+        assert!(recover_at(&root, &local).unwrap_err().contains("undo recovery conflict"));
+        assert!(pending.exists());
+        fs::remove_file(root.join("pages/child.json")).unwrap();
+        recover_at(&root, &local).unwrap();
+        assert_eq!(read(&root.join("pages/note.json")).unwrap().unwrap(), record["after"]);
+        assert_eq!(list_at(&local, "grant", "note").unwrap().as_array().unwrap().len(), 1);
+        assert!(commit_at_result(&root, &local, &record).unwrap().1);
+        fs::remove_dir_all(root.parent().unwrap()).unwrap();
     }
     #[test]
     fn receipt_recovery_handles_crash_before_and_after_page_install_and_later_edits() {

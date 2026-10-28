@@ -1,10 +1,14 @@
+import { DocumentHistory } from './history.ts'
+import type { DocumentHistoryInput, UndoDocumentInput } from './history.ts'
+import { failEdit as fail, translateEdit as translate } from './editErrors.ts'
+export { DocumentEditError } from './editErrors.ts'
 import { cloneDocumentValue } from './clone.ts'
 import { canonicalDocumentValue } from './revision.ts'
-import { DocumentPlanError, planDocumentEdit, validateEditRequest } from './editPlanner.ts'
+import { planDocumentEdit, validateEditRequest } from './editPlanner.ts'
 import type { EditDocumentInput } from './editPlanner.ts'
-import type { DocumentAccessContext, ERROR_CODES } from './contracts.ts'
+import type { DocumentAccessContext } from './contracts.ts'
 import type { Page } from './model.ts'
-import type { DocumentOperationRequest, DocumentOperationReceipt, DocumentOperationCommitResult } from './operations.ts'
+import type { DocumentOperationRequest, DocumentOperationReceipt, DocumentOperationCommitResult, DocumentOperationRecord, DocumentOperationSummary } from './operations.ts'
 import { savedEditEvidence, savedEditResult } from './savedEdit.ts'
 import type { SavedEditEvidence, SavedSearch, SyncState } from './savedEdit.ts'
 import { applyMetadata, metadataEvidence, prepareCreatedPage, validateCreate, validateMetadataUpdate } from './mutations.ts'
@@ -25,35 +29,17 @@ export interface DocumentEditSource {
   load(): Promise<Page[]>
   lookup(request: DocumentOperationRequest): Promise<DocumentOperationReceipt | null>
   commit(request: DocumentOperationRequest, before: Page | null, after: Page, check: () => void,
-    evidence: (page: Page, receipt: DocumentOperationReceipt) => SavedEditEvidence, creation?: CreationPosition): Promise<DocumentOperationCommitResult>
+    evidence: (page: Page, receipt: DocumentOperationReceipt) => SavedEditEvidence, creation?: CreationPosition, requireNoChildren?: boolean): Promise<DocumentOperationCommitResult>
+  now(): number
+  listOperations(scopeId: string, documentId: string): Promise<DocumentOperationSummary[]>
+  operationRecord(scopeId: string, operationId: string): Promise<DocumentOperationRecord | null>
   createId(): string
   search(receipt: DocumentOperationReceipt): Promise<SavedSearch>
   sync(): Promise<SyncState>
 }
-type EditCode = typeof ERROR_CODES[number]
-export class DocumentEditError extends Error {
-  readonly code: EditCode
-  readonly retryable: boolean
-  constructor(code: EditCode) { super(code.replaceAll('_', ' ').toLowerCase()); this.code = code; this.retryable = ['EDITOR_BUSY', 'APP_UNAVAILABLE'].includes(code) }
-}
-function fail(code: EditCode): never { throw new DocumentEditError(code) }
-function translate(error: unknown, fallback: EditCode): never {
-  if (error instanceof DocumentEditError) throw error
-  if (error instanceof DocumentPlanError) return fail(error.code)
-  const message = error instanceof Error ? error.message : String(error)
-  if (/ID reused/.test(message)) fail('OPERATION_ID_MISMATCH')
-  if (/revision conflict/i.test(message)) fail('REVISION_CONFLICT')
-  if (/editor (has unsaved|changed)|commit in progress/i.test(message)) fail('EDITOR_BUSY')
-  if (/recovery|prepared operation|Conflicting document operation/i.test(message)) fail('RECOVERY_REQUIRED')
-  if (/vault changed/i.test(message)) fail('ACCESS_DENIED')
-  if (/storage is unavailable/.test(message)) fail('APP_UNAVAILABLE')
-  if (/evidence limit/.test(message)) fail('LIMIT_EXCEEDED')
-  if (/too large/.test(message)) fail('LIMIT_EXCEEDED')
-  fail(fallback)
-}
-
 /** Internal scoped application service; pairing and MCP registration remain task 16. */
 export class DocumentEditor {
+  private readonly history: DocumentHistory
   private readonly source: DocumentEditSource
   private readonly grant: DocumentEditGrant
   private readonly context: DocumentAccessContext
@@ -61,6 +47,11 @@ export class DocumentEditor {
   constructor(source: DocumentEditSource, grant: DocumentEditGrant, digest: (value: string) => Promise<string>) {
     this.source = source; this.grant = grant; this.context = Object.freeze({ ...grant.context }); this.digest = digest
     this.authorize()
+    this.history = new DocumentHistory(source, grant, digest)
+  }
+  getDocumentHistory(input: DocumentHistoryInput) { return this.history.getDocumentHistory(input) }
+  async undoDocumentEdit(input: UndoDocumentInput) {
+    return this.history.undoDocumentEdit(input, async (receipt, replayed) => (await this.result(receipt, replayed)).saved)
   }
   private authorize(documentId?: string) {
     if (this.context.vaultHandle !== this.source.vaultHandle || !this.grant.isActive()

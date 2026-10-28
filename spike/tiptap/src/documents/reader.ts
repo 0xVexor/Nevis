@@ -24,7 +24,13 @@ export interface DocumentReadRuntime {
   /** Host supplies SHA-256 (or stronger) over the exact canonical snapshot. */
   digest(canonicalSnapshot: string): Promise<string>
 }
-export interface DocumentReadSource { readonly vaultHandle: string; searchRuntime?: SearchIndexRuntime; load(): Promise<Page[]> }
+export interface DocumentReadSource {
+  readonly vaultHandle: string
+  /** Only a trusted retained-snapshot source may opt in; live readers exclude tombstones. */
+  includeDeleted?: boolean
+  searchRuntime?: SearchIndexRuntime
+  load(): Promise<Page[]>
+}
 export interface ListDocumentsInput {
   parentId?: string | null; recursive?: boolean; kinds?: PageKind[]; tags?: string[]
   favorite?: boolean; limit?: number; cursor?: string
@@ -188,7 +194,7 @@ export class DocumentReader {
     fields(budget, ['maxChars', 'maxBlocks'])
     integer(budget.maxChars, LIMITS.textChars); integer(budget.maxBlocks, 100)
     if (input.expectedRevision !== undefined && !id(input.expectedRevision)) fail('INVALID_ARGUMENT')
-    const page = (await this.load()).find(row => row.id === input.documentId && row.deletedAt === null)
+    const page = (await this.load()).find(row => row.id === input.documentId && (this.source.includeDeleted || row.deletedAt === null))
     this.authorize(input.documentId)
     if (!page) fail('NOT_FOUND')
     const revision = await this.revision(page)
