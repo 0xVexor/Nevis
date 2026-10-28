@@ -1,6 +1,7 @@
 import type { Page } from './model.ts'
 import type { SearchIndexRuntime } from './searchLifecycle.ts'
-import type { DocumentOperationRecord, DocumentOperationReceipt } from './operations.ts'
+import type { DocumentOperationRecord, DocumentOperationReceipt, DocumentOperationCommitResult } from './operations.ts'
+import type { SyncState } from './savedEdit.ts'
 
 export interface DocumentVersion {
   pageId: string
@@ -42,6 +43,7 @@ export interface DocumentStorage {
   /** Local-only snapshots. Commit atomically with the page, or recover before any later writer. */
   findOperation?(scopeId: string, operationId: string): Promise<DocumentOperationRecord | null>
   commitOperation?(record: DocumentOperationRecord): Promise<DocumentOperationReceipt>
+  commitOperationResult?(record: DocumentOperationRecord): Promise<DocumentOperationCommitResult>
 }
 
 export interface DocumentHost {
@@ -55,6 +57,8 @@ export interface DocumentHost {
   clearLegacy?(): void
   requestPersistence?(): void
   watchExternal?(changed: () => void): Promise<() => void>
+  /** Local sync observation only; never infer per-operation remote durability from global idle. */
+  syncState?(): Promise<SyncState> | SyncState
 }
 export interface DocumentEnvironment {
   storage: DocumentStorage

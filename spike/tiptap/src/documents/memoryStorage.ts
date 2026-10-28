@@ -41,20 +41,35 @@ export class MemoryDocumentStorage implements DocumentStorage {
     return cloneDocumentValue(this.operations.get(operationKey(scopeId, operationId)) ?? null)
   }
   async commitOperation(input: DocumentOperationRecord) {
+    return (await this.commitOperationResult(input)).receipt
+  }
+  async commitOperationResult(input: DocumentOperationRecord) {
     const record = cloneDocumentValue(input), key = operationKey(record.scopeId, record.operationId)
     validateOperationRecord(record)
     const prior = matchOperation(this.operations.get(key) ?? null, record.fingerprint)
-    if (prior) return cloneDocumentValue(prior.receipt)
+    if (prior) return { receipt: cloneDocumentValue(prior.receipt), replayed: true }
     if (canonicalDocumentValue(this.pages.get(record.after.id) ?? null) !== canonicalDocumentValue(record.before)) throw new Error('Document revision conflict')
+    if (record.history) {
+      const history = this.versions.get(record.history.pageId) ?? []
+      record.history.ts = Math.max(record.history.ts, ...history.map(v => v.ts + 1))
+      if (!Number.isSafeInteger(record.history.ts)) throw new Error('Invalid operation history clock')
+      this.versions.set(record.history.pageId, [...history, cloneDocumentValue(record.history)].sort((a, b) => b.ts - a.ts).slice(0, 40))
+    }
     this.pages.set(record.after.id, record.after)
     this.operations.set(key, record)
     this.generation++
-    return cloneDocumentValue(record.receipt)
+    return { receipt: cloneDocumentValue(record.receipt), replayed: false }
   }
   async listVersions(pageId: string) { return cloneDocumentValue(this.versions.get(pageId) ?? []) }
   async addVersion(version: DocumentVersion) {
-    const versions = (this.versions.get(version.pageId) ?? []).filter(old => old.ts !== version.ts)
-    versions.push(cloneDocumentValue(version))
+    version = cloneDocumentValue(version)
+    const versions = [...(this.versions.get(version.pageId) ?? [])]
+    while (versions.some(old => old.ts === version.ts)) {
+      if (versions.some(old => canonicalDocumentValue(old) === canonicalDocumentValue(version))) return
+      version.ts++
+      if (!Number.isSafeInteger(version.ts)) throw new Error('Invalid operation history clock')
+    }
+    versions.push(version)
     this.versions.set(version.pageId, versions.sort((a, b) => b.ts - a.ts).slice(0, 40))
   }
   async deleteVersions(pageId: string) { this.versions.delete(pageId) }

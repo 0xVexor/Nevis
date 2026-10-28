@@ -55,21 +55,34 @@ export class IndexedDbDocumentStorage implements DocumentStorage {
     return record
   }
   async commitOperation(input: DocumentOperationRecord) {
+    return (await this.commitOperationResult(input)).receipt
+  }
+  async commitOperationResult(input: DocumentOperationRecord) {
     const record = cloneDocumentValue(input)
     validateOperationRecord(record)
     const key = `document-operation/${operationKey(record.scopeId, record.operationId)}`
     // The private kv entry is never included in page backups or database exports.
-    const tx = (await this.database()).transaction(['pages', 'kv'], 'readwrite', { durability: 'strict' })
+    const tx = (await this.database()).transaction(['pages', 'kv', ...(record.history ? ['versions'] : [])], 'readwrite', { durability: 'strict' })
     const committed = complete(tx)
     let receipt = record.receipt
+    let replayed = false
     try {
       const kv = tx.objectStore('kv'), pages = tx.objectStore('pages')
       const prior = matchOperation((await result(kv.get(key))) ?? null, record.fingerprint)
-      if (prior) receipt = prior.receipt
+      if (prior) { receipt = prior.receipt; replayed = true }
       else {
         const current = (await result(pages.get(record.after.id))) ?? null
         if (canonicalDocumentValue(current) !== canonicalDocumentValue(record.before)) throw new Error('Document revision conflict')
         if (!this.active()) throw new Error('Document storage is unavailable')
+        if (record.history) {
+          const versions = tx.objectStore('versions')
+          const previous: DocumentVersion[] = await result(versions.index('byPage').getAll(record.history.pageId))
+          record.history.ts = Math.max(record.history.ts, ...previous.map(v => v.ts + 1))
+          if (!Number.isSafeInteger(record.history.ts)) throw new Error('Invalid operation history clock')
+          versions.put(record.history)
+          previous.sort((a, b) => b.ts - a.ts).slice(39).forEach(v => versions.delete([v.pageId, v.ts]))
+          if (!this.active()) throw new Error('Document storage is unavailable')
+        }
         pages.put(record.after)
         kv.put(record, key)
       }
@@ -81,7 +94,7 @@ export class IndexedDbDocumentStorage implements DocumentStorage {
     await committed
     if (!this.active()) throw new Error('Document storage is unavailable')
     try { this.changed() } catch { /* advisory notification */ }
-    return cloneDocumentValue(receipt)
+    return { receipt: cloneDocumentValue(receipt), replayed }
   }
   async save(input: DocumentWrite): Promise<void> {
     const write = cloneDocumentValue(input)
@@ -125,12 +138,19 @@ export class IndexedDbDocumentStorage implements DocumentStorage {
     return versions.sort((a, b) => b.ts - a.ts)
   }
   async addVersion(version: DocumentVersion): Promise<void> {
+    version = cloneDocumentValue(version)
     const tx = (await this.database()).transaction('versions', 'readwrite')
     const committed = complete(tx)
     try {
       const store = tx.objectStore('versions')
-      await result(store.put(version))
       const versions: DocumentVersion[] = await result(store.index('byPage').getAll(version.pageId))
+      while (versions.some(old => old.ts === version.ts)) {
+        if (versions.some(old => canonicalDocumentValue(old) === canonicalDocumentValue(version))) { await committed; return }
+        version.ts++
+        if (!Number.isSafeInteger(version.ts)) throw new Error('Invalid operation history clock')
+      }
+      store.put(version)
+      versions.push(version)
       versions.sort((a, b) => b.ts - a.ts).slice(40).forEach(old => store.delete([old.pageId, old.ts]))
       await committed
     } catch (error) {

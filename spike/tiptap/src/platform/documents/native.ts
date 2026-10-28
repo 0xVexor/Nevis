@@ -1,7 +1,7 @@
 import { cloneDocumentValue } from '../../documents/clone.ts'
 import type { Page } from '../../documents/model.ts'
 import type { DocumentStorage, DocumentVersion, DocumentWrite } from '../../documents/ports.ts'
-import type { DocumentOperationRecord, DocumentOperationReceipt } from '../../documents/operations.ts'
+import type { DocumentOperationRecord, DocumentOperationReceipt, DocumentOperationCommitResult } from '../../documents/operations.ts'
 
 /** The app injects its existing bridge; this adapter itself imports no Tauri API. */
 export interface NativeDocumentBridge {
@@ -15,6 +15,7 @@ export interface NativeDocumentBridge {
   deleteVersions(pageId: string): Promise<void>
   findOperation?(scopeId: string, operationId: string, expectedVaultId: string): Promise<DocumentOperationRecord | null>
   commitOperation?(record: DocumentOperationRecord, expectedVaultId: string): Promise<DocumentOperationReceipt>
+  commitOperationResult?(record: DocumentOperationRecord, expectedVaultId: string): Promise<DocumentOperationCommitResult>
 }
 export class NativeDocumentStorage implements DocumentStorage {
   readonly revisionPolicy = 'exact-page' as const
@@ -63,6 +64,13 @@ export class NativeDocumentStorage implements DocumentStorage {
     return this.run(() => {
       if (!this.bridge.commitOperation) throw new Error('Document operation storage is unavailable')
       return this.bridge.commitOperation(record, this.binding!)
+    })
+  }
+  commitOperationResult(input: DocumentOperationRecord) {
+    const record = cloneDocumentValue(input)
+    return this.run(() => {
+      if (!this.bridge.commitOperationResult) throw new Error('Document operation storage is unavailable')
+      return this.bridge.commitOperationResult(record, this.binding!)
     })
   }
 }

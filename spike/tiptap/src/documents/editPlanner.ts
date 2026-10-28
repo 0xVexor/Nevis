@@ -107,20 +107,25 @@ export interface DocumentEditPlan {
   before: Page; after: Page; affectedBlockIds: string[]; temporaryIds: Record<string, string>; preview: EditPreview
 }
 
-/** Pure planning: no storage, timers, IDs from the UI, or editor singleton. Apply uses this same planner. */
-export async function planDocumentEdit(source: Page, input: EditDocumentInput, runtime: EditPlannerRuntime): Promise<DocumentEditPlan> {
-  json(input, LIMITS.requestBytes); json(source, LIMITS.requestBytes * 16, true)
-  if (!object(source) || !string(source.id)) fail('CAPABILITY_UNAVAILABLE')
-  input = cloneDocumentValue(input)
-  const before = cloneDocumentValue(source), after = cloneDocumentValue(source)
+export function validateEditRequest(input: EditDocumentInput) {
+  json(input, LIMITS.requestBytes)
   fields(input, ['documentId', 'expectedRevision', 'operationId', 'mode', 'operations', 'budget'], ['documentId', 'expectedRevision', 'operationId', 'mode', 'operations'])
-  if (!string(input.documentId) || input.documentId !== before.id || !string(input.expectedRevision) || !isBlockId(input.operationId)
+  if (!string(input.documentId) || !string(input.expectedRevision) || !isBlockId(input.operationId)
     || !['preview', 'apply'].includes(input.mode) || !Array.isArray(input.operations) || !input.operations.length) fail('INVALID_ARGUMENT')
   if (input.operations.length > LIMITS.operations) fail('LIMIT_EXCEEDED')
   if (input.budget !== undefined) {
     fields(input.budget, ['maxChars', 'maxBlocks'])
     if (!integer(input.budget.maxChars, LIMITS.textChars) || !integer(input.budget.maxBlocks, 100)) fail('INVALID_ARGUMENT')
   }
+}
+
+/** Pure planning: no storage, timers, IDs from the UI, or editor singleton. Apply uses this same planner. */
+export async function planDocumentEdit(source: Page, input: EditDocumentInput, runtime: EditPlannerRuntime): Promise<DocumentEditPlan> {
+  validateEditRequest(input); json(source, LIMITS.requestBytes * 16, true)
+  if (!object(source) || !string(source.id)) fail('CAPABILITY_UNAVAILABLE')
+  input = cloneDocumentValue(input)
+  const before = cloneDocumentValue(source), after = cloneDocumentValue(source)
+  if (input.documentId !== before.id) fail('INVALID_ARGUMENT')
   if (before.kind === 'folder' || before.deletedAt !== null || !object(after.content) || after.content.type !== 'doc'
     || identityVersion(after.content) !== BLOCK_IDENTITY_VERSION) fail('CAPABILITY_UNAVAILABLE')
   let revision: string, seed: string

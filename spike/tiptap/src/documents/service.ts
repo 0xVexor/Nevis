@@ -1,6 +1,9 @@
 import { canonicalDocumentValue, documentRevision } from './revision.ts'
 import { matchOperation, operationFingerprint } from './operations.ts'
-import type { DocumentOperationRequest } from './operations.ts'
+import type { DocumentOperationRequest, DocumentOperationReceipt } from './operations.ts'
+import { DocumentEditor } from './editor.ts'
+import type { DocumentEditGrant } from './editor.ts'
+import type { SavedEditEvidence, SavedSearch } from './savedEdit.ts'
 import { cloneDocumentValue } from './clone.ts'
 import { identifyBlocks, identityVersion, BLOCK_IDENTITY_VERSION } from './blockIdentity.ts'
 import type { Page, PageKind, PageRepo, Patch } from './model.ts'
@@ -51,6 +54,9 @@ export class DocumentService implements PageRepo {
   private drafts = new Set<string>()
   private commitLocked = false
   private editGeneration = 0
+  private commitState() {
+    try { this.host.emit('commit-state') } catch (error) { try { this.host.report('watch', error) } catch { /* observer only */ } }
+  }
   isWriteLocked = () => this.commitLocked
   setEditorDirty(id: string, dirty: boolean) {
     if (dirty) { this.assertWritable(); this.drafts.add(id); this.editGeneration++ }
@@ -68,8 +74,8 @@ export class DocumentService implements PageRepo {
     this.assertWritable()
     if (this.drafts.size || generation !== this.editGeneration || !this.idle()) throw new Error('Document editor changed')
     this.commitLocked = true
-    this.host.emit('commit-state')
-    return () => { this.commitLocked = false; this.host.emit('commit-state') }
+    this.commitState()
+    return () => { this.commitLocked = false; this.commitState() }
   }
   /** Internal commit boundary for the later validated edit planner. No transport or access grant is exposed here. */
   async commitDocument(expected: Page, next: Page, expectedRevision: string, digest: (value: string) => Promise<string>) {
@@ -119,6 +125,65 @@ export class DocumentService implements PageRepo {
       this.adoptDatabase(current ? [current] : [], current ? [] : [receipt.documentId])
       this.host.emit('external-change', [receipt.documentId])
       return receipt
+    } finally { release() }
+  }
+
+  editor(grant: DocumentEditGrant, runtime: Pick<DocumentReadRuntime, 'digest'>) {
+    const digest = (value: string) => runtime.digest(value)
+    return new DocumentEditor({ vaultHandle: this.vaultHandle, load: async () => { await this.queue; return this.storage.load() },
+      lookup: async request => {
+        const receipt = await this.operationReceipt(request, digest)
+        if (receipt) {
+          // Recover a lost publication from current storage, never from the historical post-image.
+          // refreshFromStore refuses dirty drafts and rechecks generation/commit state after I/O.
+          try { await this.refreshFromStore() } catch (error) { try { this.host.report('watch', error) } catch { /* receipt still durable */ } }
+        }
+        return receipt
+      },
+      commit: (request, before, after, check, evidence) => this.commitPlannedEdit(request, before, after, digest, check, evidence),
+      search: receipt => this.savedSearch(receipt, digest), sync: async () => this.host.syncState?.() ?? 'pending',
+    }, grant, digest)
+  }
+  private async savedSearch(receipt: DocumentOperationReceipt, digest: (value: string) => Promise<string>): Promise<SavedSearch> {
+    const prepared = await this.refreshSearchIndex()
+    if (prepared.state !== 'fresh' || !prepared.index) return { state: prepared.state, indexedRevision: null }
+    const page = prepared.pages.find(page => page.id === receipt.documentId)
+    if (!page || await documentRevision(page, digest) !== receipt.revision || prepared.generation !== this.searchGeneration
+      || !this.searchIndex.isCurrent(prepared.index)) return { state: 'pending', indexedRevision: null }
+    return { state: 'fresh', indexedRevision: receipt.revision }
+  }
+  private async commitPlannedEdit(request: DocumentOperationRequest, expected: Page, next: Page, digest: (value: string) => Promise<string>,
+    check: () => void, evidence: (page: Page, receipt: DocumentOperationReceipt) => SavedEditEvidence) {
+    if (!this.storage.commitOperationResult) throw new Error('Document operation storage is unavailable')
+    request = cloneDocumentValue(request)
+    const before = cloneDocumentValue(expected), after = cloneDocumentValue(next), committedAt = this.host.now()
+    if (!Number.isSafeInteger(committedAt) || committedAt < 0 || !Number.isSafeInteger(before.updatedAt) || before.updatedAt >= Number.MAX_SAFE_INTEGER) throw new Error('Invalid document clock')
+    after.updatedAt = Math.max(committedAt, before.updatedAt + 1)
+    if (after.database) after.recordMeta = { ...(after.recordMeta ?? { format: 1, revision: 0, createdAt: before.updatedAt,
+      createdBy: '', updatedBy: '', lastOperationId: '', inferred: true }), revision: (after.recordMeta?.revision ?? 0) + 1, lastOperationId: request.operationId }
+    const fingerprint = await operationFingerprint(request, digest), beforeRevision = await documentRevision(before, digest)
+    if (beforeRevision !== request.expectedRevision || before.id !== after.id || request.documentId !== before.id) throw new Error('Document revision conflict')
+    const receipt: DocumentOperationReceipt = { operationId: request.operationId, documentId: after.id, beforeRevision,
+      revision: await documentRevision(after, digest), committedAt }
+    receipt.evidence = evidence(after, receipt) // a bounded response must be representable before any write
+    check()
+    const release = await this.reserveCommit()
+    try {
+      check() // final authorization after queued UI saves/editor generation checks, before storage admission
+      if (!this.storage.findOperation) throw new Error('Document operation storage is unavailable')
+      const prior = matchOperation(await this.storage.findOperation(request.scopeId, request.operationId), fingerprint)
+      check()
+      if (prior) return { receipt: cloneDocumentValue(prior.receipt), replayed: true }
+      if (canonicalDocumentValue(this.getRaw(before.id)) !== canonicalDocumentValue(before)) throw new Error('Document revision conflict')
+      const result = await this.storage.commitOperationResult({ format: 1, scopeId: request.scopeId, operationId: request.operationId,
+        fingerprint, before, after, receipt, history: { pageId: before.id, ts: after.updatedAt, title: before.title, content: cloneDocumentValue(before.content) } })
+      // Durable success survives failed reload/observers. Exact preconditions still protect subsequent UI saves.
+      try {
+        const current = (await this.storage.load()).find(page => page.id === result.receipt.documentId)
+        this.adoptDatabase(current ? [current] : [], current ? [] : [result.receipt.documentId])
+        this.host.emit('external-change', [result.receipt.documentId])
+      } catch (error) { this.invalidateSearch(); try { this.host.report('watch', error) } catch { /* saved receipt remains authoritative */ } }
+      return result
     } finally { release() }
   }
 
@@ -210,6 +275,7 @@ export class DocumentService implements PageRepo {
   }
 
   private drop(ids: Iterable<string>) {
+    this.editGeneration++
     for (const i of ids) (this.dirty.delete(i), this.gone.add(i))
     this.schedule()
   }
@@ -295,13 +361,15 @@ export class DocumentService implements PageRepo {
 
   private async poll() {
     if (this.polling || !this.canReload()) return
+    const generation = this.editGeneration
     this.polling = true
     try {
       await this.queue
       if (this.storage.stamp && (await this.storage.stamp()) === this.stamp) return
       const rows = await this.storage.load() // also merges conflict copies, which changes the folder again
-      if (!this.canReload()) return // edited meanwhile: try again next round (the stamp is still different)
+      if (!this.canReload() || generation !== this.editGeneration) return // also reject drafts saved/cleared while reading
       const old = new Map(this.pages.map((p) => [p.id, p]))
+      this.editGeneration++
       this.pages = rows
       this.noteDisk(rows)
       this.migrateIdentities()
@@ -532,6 +600,7 @@ export class DocumentService implements PageRepo {
 
   restore(pages: Page[]) {
     this.assertWritable()
+    this.editGeneration++
     this.pages = cloneDocumentValue(pages)
     this.migrateIdentities()
     this.rebuildLinks()
@@ -579,6 +648,7 @@ export class DocumentService implements PageRepo {
 
   /** The database coordinator already made these post-images durable: take them over in memory without writing them again. */
   adoptDatabase(upserts: Page[], removed: string[]) {
+    this.editGeneration++
     const idx = this.rawIndex()
     for (const u of upserts) {
       const cur = idx.get(u.id)
@@ -613,10 +683,12 @@ export class DocumentService implements PageRepo {
   /** Another tab / device changed the stored pages: read them again, unless there are unsaved edits here (then the next poll retries). */
   async refreshFromStore(): Promise<boolean> {
     if (!this.canReload()) return false
+    const generation = this.editGeneration
     await this.queue
     const rows = await this.storage.load()
-    if (!this.canReload()) return false
+    if (!this.canReload() || generation !== this.editGeneration) return false
     const old = new Map(this.pages.map((p) => [p.id, p]))
+    this.editGeneration++
     this.pages = rows
     this.noteDisk(rows)
     this.migrateIdentities()
