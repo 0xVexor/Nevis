@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { getSchema } from '@tiptap/core'
 import { documentCommitGuard } from './editor/documentCommitGuard'
-import { EditorState } from '@tiptap/pm/state'
+import { EditorState, Selection, TextSelection } from '@tiptap/pm/state'
 import { LayoutControls } from './LayoutControls'
 import { contentProblem } from './editor/contentSafety'
 import { LAYOUT_CANCEL } from './editor/layout'
@@ -253,20 +253,30 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
         setStatus(current.status)
       }
       const fresh = current?.content
-      if (!fresh || typeof fresh === 'string' || JSON.stringify(fresh) === JSON.stringify(editor.getJSON())) return
+      if (!fresh || typeof fresh === 'string') return
+      const issue = contentProblem(fresh, schema)
+      const doc = issue ? null : editor.schema.nodeFromJSON(fresh)
+      // A disk acknowledgement can reorder JSON keys without changing the document.
+      if (doc?.eq(editor.state.doc) && !protectedContent.current) return
       editor.view.dom.dispatchEvent(new Event(LAYOUT_CANCEL))
       window.clearTimeout(timer.current)
       dirty.current = false
       onSave('saved')
-      const issue = contentProblem(fresh, schema)
       setOriginalContent(fresh)
       protectedContent.current = !!issue
       setContentIssue(issue)
       editor.setEditable(!readerOnly && !issue, false)
-      if (!issue) {
-        // Replace the complete editor state: old undo entries and selection positions belong to the old document.
-        editor.view.updateState(EditorState.create({ schema: editor.schema, doc: editor.schema.nodeFromJSON(fresh), plugins: editor.state.plugins }))
-        editor.commands.setTextSelection(1)
+      if (doc) {
+        // Clear stale undo history while retaining a valid caret and scroll position.
+        const previous = editor.state.selection
+        const at = (pos: number) => doc.resolve(Math.min(pos, doc.content.size))
+        const selection = previous instanceof TextSelection
+          ? TextSelection.between(at(previous.anchor), at(previous.head))
+          : Selection.near(at(previous.head))
+        const scroller = editor.view.dom.closest<HTMLElement>('.scroller')
+        const top = scroller?.scrollTop, left = scroller?.scrollLeft
+        editor.view.updateState(EditorState.create({ schema: editor.schema, doc, selection, plugins: editor.state.plugins }))
+        if (scroller) { scroller.scrollTop = top!; scroller.scrollLeft = left! }
       }
     }
     window.addEventListener('external-change', onExternal)
