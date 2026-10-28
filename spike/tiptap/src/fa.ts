@@ -1,5 +1,17 @@
 // English → Persian UI strings (see i18n.ts). Generated once from the original Persian UI, edit freely.
 export const FA: Record<string, string> = {
+  "Saved conflicts": "نسخه‌های تعارض",
+  "View versions": "مشاهدهٔ نسخه‌ها",
+  "A sync conflict was saved. Review the preserved versions in Saved conflicts.": "یک تعارض سینک حفظ شد. نسخه‌ها را در بخش «نسخه‌های تعارض» بررسی کنید.",
+  "Compare the current page with each version kept during a sync conflict. Nothing is overwritten here.": "نسخهٔ فعلی صفحه را کنار هر نسخهٔ حفظ‌شده هنگام تعارض سینک ببینید. در این بخش چیزی جایگزین نمی‌شود.",
+  "Open recovered files": "بازکردن فایل‌های حفظ‌شده",
+  "Saved page conflicts also appear in each page’s Version history.": "نسخه‌های تعارض در «تاریخچهٔ نسخه‌ها»ی همان صفحه نیز در دسترس‌اند.",
+  "No saved page conflicts in this workspace. Recovered non-page files can be opened separately.": "در این فضای کاری نسخهٔ تعارضی برای صفحه‌ها وجود ندارد. فایل‌های حفظ‌شده را می‌توانید جداگانه باز کنید.",
+  "Saved conflict": "نسخهٔ حفظ‌شدهٔ تعارض",
+  "Page properties": "ویژگی‌ها و دادهٔ کامل صفحه",
+  "The current page is no longer present. The saved conflict below is still available.": "صفحهٔ فعلی دیگر موجود نیست؛ نسخهٔ تعارض همچنان در دسترس است.",
+  "Saved conflict entries are preserved versions from another edit. The page outside this dialog is the current version.": "موارد برچسب‌دار «نسخهٔ حفظ‌شدهٔ تعارض» از ویرایش دیگری نگه داشته شده‌اند. صفحهٔ بیرون این پنجره، نسخهٔ فعلی است.",
+  "No recovered file copies are available in this workspace.": "در این فضای کاری نسخه‌ای از فایل‌های حفظ‌شده وجود ندارد.",
   "Column {n}": "ستون {n}",
   "The database was created. Open it from Databases.": "دیتابیس ساخته شد. آن را از بخش دیتابیس‌ها باز کنید.",
   "The database could not be inserted. Please try again.": "درج دیتابیس انجام نشد. دوباره تلاش کنید.",

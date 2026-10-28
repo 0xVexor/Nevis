@@ -338,6 +338,28 @@ fn versions_list(s: St, page_id: String) -> Res<Vec<Value>> {
 }
 
 #[tauri::command]
+fn conflicts_list(s: St) -> Res<Vec<Value>> {
+    with(&s, |v| v.conflicts_list())
+}
+
+#[tauri::command]
+fn open_conflict_files(s: St) -> Res<()> {
+    with(&s, |v| {
+        vault::safe_local(&v.root, ".noviq/sync-trash")?;
+        let path = v.sync_trash_dir();
+        if !path.is_dir() { return Err("No recovered file copies are available in this workspace.".into()); }
+        #[cfg(target_os = "macos")]
+        let mut command = std::process::Command::new("open");
+        #[cfg(target_os = "windows")]
+        let mut command = std::process::Command::new("explorer.exe");
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let mut command = std::process::Command::new("xdg-open");
+        command.arg(path).spawn().map_err(vault::err)?;
+        Ok(())
+    })
+}
+
+#[tauri::command]
 fn version_add(s: St, version: Value) -> Res<()> {
     with(&s, |v| v.version_add(&version))?;
     kick(&s);
@@ -1117,7 +1139,7 @@ fn main() {
             vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
             db_recover, db_load_all, db_commit, db_get_operation, db_history, db_undo_load, db_undo_save, db_runtime_get, db_runtime_set, db_runtime_delete,
             db_runtime_keys, db_index_rebuild, db_index_candidates, db_index_count,
-            vault_stamp, pages_all, pages_save, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list,
+            vault_stamp, pages_all, pages_save, kv_get, kv_set, versions_list, conflicts_list, open_conflict_files, version_add, versions_delete, file_put, file_get, files_list,
             file_delete, files_clear, account_status, server_health, account_register, account_login, account_recover, account_logout, account_info,
             account_revoke_device, account_change_password, account_new_recovery_key, account_delete, save_text_file, sync_set, sync_now, sync_confirm, cloud_vaults,
             cloud_trashed, cloud_restore, cloud_purge, cloud_download, cloud_delete, cloud_reupload, index_state, index_update, index_search

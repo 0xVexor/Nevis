@@ -4,7 +4,7 @@ import { registerUpdateSave } from './updateSave'
 import { createPortal } from 'react-dom'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { getSchema } from '@tiptap/core'
-import { EditorState } from '@tiptap/pm/state'
+import { EditorState, Selection, TextSelection } from '@tiptap/pm/state'
 import { LayoutControls } from './LayoutControls'
 import { contentProblem } from './editor/contentSafety'
 import { LAYOUT_CANCEL } from './editor/layout'
@@ -236,16 +236,31 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
       if (!editor || editor.isDestroyed || !(e as CustomEvent<string[]>).detail.includes(page.id)) return
       const fresh = repo.get(page.id)?.content
       if (!fresh || typeof fresh === 'string') return
-      editor.view.dom.dispatchEvent(new Event(LAYOUT_CANCEL))
-      setOriginalContent(fresh)
       const issue = contentProblem(fresh, contentSchema)
       problemRef.current = issue
       setProblem(issue)
-      if (issue) { editor.setEditable(false); return }
-      editor.setEditable(!readerOnly, false)
-      if (JSON.stringify(fresh) !== JSON.stringify(editor.getJSON())) {
-        editor.view.updateState(EditorState.create({ schema: editor.schema, doc: editor.schema.nodeFromJSON(fresh), plugins: editor.state.plugins }))
-        editor.commands.setTextSelection(1)
+      if (issue) {
+        editor.view.dom.dispatchEvent(new Event(LAYOUT_CANCEL))
+        setOriginalContent(fresh)
+        editor.setEditable(false, false)
+        return
+      }
+      if (editor.isEditable === readerOnly) editor.setEditable(!readerOnly, false)
+      const doc = editor.schema.nodeFromJSON(fresh)
+      // Disk serialization can reorder JSON keys without changing the document.
+      // In particular, acknowledging an Enter must not reset selection or undo.
+      if (!doc.eq(editor.state.doc)) {
+        editor.view.dom.dispatchEvent(new Event(LAYOUT_CANCEL))
+        setOriginalContent(fresh)
+        const previous = editor.state.selection
+        const at = (pos: number) => doc.resolve(Math.min(pos, doc.content.size))
+        const selection = previous instanceof TextSelection
+          ? TextSelection.between(at(previous.anchor), at(previous.head))
+          : Selection.near(at(previous.head))
+        const scroller = editor.view.dom.closest<HTMLElement>('.scroller')
+        const top = scroller?.scrollTop, left = scroller?.scrollLeft
+        editor.view.updateState(EditorState.create({ schema: editor.schema, doc, selection, plugins: editor.state.plugins }))
+        if (scroller) { scroller.scrollTop = top!; scroller.scrollLeft = left! }
       }
     }
     window.addEventListener('external-change', onExternal)

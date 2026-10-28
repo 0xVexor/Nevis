@@ -52,6 +52,7 @@ export function History({ page, editor, onClose }: { page: Page; editor: any; on
           <div>
             <b>{t('Version history')}</b>
             <small>{t('A version is saved automatically when you start editing, at most every 10 minutes.')}</small>
+            <small>{t('Saved conflict entries are preserved versions from another edit. The page outside this dialog is the current version.')}</small>
           </div>
           <button className="icon-btn" onClick={onClose} title={t('Close')}><Ic.Close size={16} /></button>
         </div>
@@ -63,6 +64,7 @@ export function History({ page, editor, onClose }: { page: Page; editor: any; on
               versions.map((x, i) => (
                 <button key={`${x.ts}:${i}`} className={'hist-row' + (i === sel ? ' sel' : '')} onClick={() => setSel(i)}>
                   <b>{new Date(x.ts).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</b>
+                  {x.conflict && <strong className="hist-conflict-label">{t('Saved conflict')}</strong>}
                   <small>{ago(x.ts)} · {t('{n} words', { n: words(x.content) })}</small>
                 </button>
               ))
