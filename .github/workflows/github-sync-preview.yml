@@ -2,7 +2,7 @@ name: GitHub sync test installers
 
 on:
   push:
-    branches: [sync/github-personal-vaults]
+    branches: ['build/desktop/**']
   workflow_dispatch:
 
 permissions:

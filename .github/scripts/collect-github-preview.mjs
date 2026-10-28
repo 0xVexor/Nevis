@@ -8,6 +8,8 @@ const root = fileURLToPath(new URL('../..', import.meta.url))
 const platform = process.argv[2]
 if (!['macos', 'windows'].includes(platform)) throw new Error('Expected macos or windows')
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
+const branch = execFileSync('git', ['branch', '--show-current'], { cwd: root, encoding: 'utf8' }).trim() || 'detached'
+const dirty = !!execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim()
 const folder = path.resolve(root, process.env.NOVIQ_PREVIEW_OUTPUT || 'artifacts/github-preview', platform)
 const bundle = process.env.NOVIQ_PREVIEW_TARGET_DIR || path.join(root, 'spike/tiptap/src-tauri/target')
 const executable = path.join(bundle, platform === 'macos' ? 'universal-apple-darwin/release/nevis' : 'release/nevis.exe')
@@ -22,12 +24,14 @@ async function walk(dir) {
 let input = process.argv[3]
 if (!input && platform === 'windows') {
   const matches = (await walk(path.join(bundle, 'release/bundle/nsis'))).filter((f) => /[-_]setup\.exe$/i.test(f))
-  if (matches.length !== 1) throw new Error('Expected exactly one NSIS installer')
-  input = matches[0]
+  if (!matches.length) throw new Error('No NSIS installer found')
+  const dated = await Promise.all(matches.map(async file => ({ file, modified: (await fs.stat(file)).mtimeMs })))
+  dated.sort((a, b) => b.modified - a.modified)
+  input = dated[0].file
 }
 if (!input) throw new Error('Installer path is required')
 const label = platform === 'macos' ? 'macOS-universal' : 'Windows-x64'
-const name = `Nevis-GitHub-Preview-${label}-${commit.slice(0, 7)}.${platform === 'macos' ? 'pkg' : 'exe'}`
+const name = `Nevis-GitHub-Preview-${label}-${commit.slice(0, 7)}${dirty ? '-dirty' : ''}.${platform === 'macos' ? 'pkg' : 'exe'}`
 await fs.mkdir(folder, { recursive: true })
 await fs.copyFile(path.resolve(input), path.join(folder, name))
 const hash = createHash('sha256')
@@ -37,7 +41,7 @@ await fs.writeFile(path.join(folder, 'SHA256SUMS.txt'), `${checksum}  ${name}\n`
 const publicApp = JSON.parse(await fs.readFile(path.join(root, 'spike/tiptap/src-tauri/github-app.public.json'), 'utf8'))
 const configured = !!((process.env.NOVIQ_GITHUB_CLIENT_ID?.trim() || publicApp.clientId) && (process.env.NOVIQ_GITHUB_APP_SLUG?.trim() || publicApp.slug))
 await fs.writeFile(path.join(folder, 'BUILD-INFO.json'), JSON.stringify({
-  commit, platform: label, builtAt: new Date().toISOString(),
+  commit, branch, dirty, platform: label, builtAt: new Date().toISOString(),
   identifier: 'com.vexor.noviq.githubpreview', credentialService: 'app.noviq.github.preview',
   githubAppConfigured: configured, unsignedTestBuild: true,
 }, null, 2) + '\n')
