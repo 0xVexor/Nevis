@@ -1,5 +1,7 @@
 // English → Persian UI strings (see i18n.ts). Generated once from the original Persian UI, edit freely.
 export const FA: Record<string, string> = {
+  "Highlighted blocks differ. Choose the complete version you want to keep.": "بخش‌های مشخص‌شده تفاوت دارند. نسخهٔ کاملی را که می‌خواهید نگه دارید انتخاب کنید.",
+  "Technical details": "جزئیات فنی",
   "Resolve sync conflicts": "رفع تداخل همگام‌سازی",
   "Compare both versions, then choose the version to keep.": "دو نسخه را مقایسه کنید و نسخه‌ای را که می‌خواهید نگه دارید انتخاب کنید.",
   "Back to workspace": "بازگشت به فضای کاری",

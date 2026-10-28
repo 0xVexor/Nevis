@@ -66,3 +66,11 @@ Validation: 100 Rust tests passed (11 external/legacy tests ignored); 39 fronten
 
 - [Persian workspace comparison](validation/github-sync/workspace-conflicts-fa.png)
 - [English workspace comparison](validation/github-sync/workspace-conflicts-en.png)
+
+## Rendered conflict documents and manual builds
+
+The workspace comparison now renders note content using the same schema, hydration and `.tiptap` styles as the editor/history preview. Headings, marks, lists, task state and document properties remain readable; the previews do not register save callbacks and task inputs are disabled. Differing blocks use the configured accent tokens. Raw data is behind a collapsed technical-details section. Both columns, paper surfaces, radii, typography and action controls use Aurora Paper tokens. Non-note records are shown as labeled fields, and selecting a side still resolves the original complete archived bytes.
+
+The preview workflow no longer builds on ordinary feature-branch pushes. `scripts/build-desktop.mjs` builds the current checkout locally, or explicitly creates a separate `build/desktop/` ref for both GitHub runner platforms. It supports dry runs, reports source SHA/branch/dirty state, and does not merge or install. See [desktop build instructions](desktop-builds.md). The preceding installer run had already completed when the user requested stopping builds. No new installer was built to validate this change.
+
+Validation: TypeScript checking, 39 structural tests, and two build-script tests passed. Mock-native Chrome checks passed for rendered headings, bold text, disabled task controls, changed-block highlighting, all version choices, raw-data access, installation continuation/cancellation and saving before manual sync. Persian dark and English light views were inspected. Script dry runs did not push, build or install; GitHub orchestration and native packaging were not executed for this revision.
