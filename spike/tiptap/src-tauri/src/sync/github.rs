@@ -453,6 +453,35 @@ fn prepare_with_api(
     }
     Ok(b)
 }
+// Read-only installation check: account login alone does not grant access to a selected repository.
+pub fn repository_access(name: &str) -> Res<bool> {
+    repository_access_with_api(&mut api()?, name)
+}
+fn repository_access_with_api(a: &mut Api, name: &str) -> Res<bool> {
+    component(name)?;
+    let user = a.get("/user")?;
+    let owner_id = user["id"].as_u64().ok_or("GITHUB:invalid_response")?;
+    for page in 1..=100 {
+        let result = a.get(&format!("/user/installations?per_page=100&page={page}"))?;
+        let installs = result["installations"].as_array().ok_or("GITHUB:invalid_response")?;
+        for install in installs {
+            if install["account"]["id"].as_u64() != Some(owner_id)
+                || install["permissions"]["contents"].as_str() != Some("write")
+                || !install["suspended_at"].is_null() { continue; }
+            let id = install["id"].as_u64().ok_or("GITHUB:invalid_response")?;
+            for repo_page in 1..=100 {
+                let result = a.get(&format!("/user/installations/{id}/repositories?per_page=100&page={repo_page}"))?;
+                let repos = result["repositories"].as_array().ok_or("GITHUB:invalid_response")?;
+                if repos.iter().any(|r| r["owner"]["id"].as_u64() == Some(owner_id)
+                    && r["name"].as_str().is_some_and(|n| n.eq_ignore_ascii_case(name))
+                    && r["private"] == true && r["archived"] != true) { return Ok(true); }
+                if repos.len() < 100 { break; }
+            }
+        }
+        if installs.len() < 100 { return Ok(false); }
+    }
+    Err("GITHUB:installation_list_too_large".into())
+}
 pub fn save_binding(data: &Path, b: &Binding) -> Res<()> {
     write_atomic(
         &dir(data, &b.vault).join("binding.json"),
@@ -913,6 +942,36 @@ mod tests {
         a.clear();
         a.insert("vaults/v/pages/p.json".into(), b"{}".to_vec());
         assert!(remote_bundle(&a, "v").is_err());
+    }
+    #[test]
+    fn installation_access_check_is_read_only_and_scoped_to_owner_repo_and_write_permission() {
+        let (mut a, thread) = server(vec![
+            (200, json!({"id":7})),
+            (200, json!({"installations":[{"id":4,"account":{"id":7},"permissions":{"contents":"read"}},{"id":5,"account":{"id":7},"permissions":{"contents":"write"}}]})),
+            (200, json!({"repositories":[{"name":"notes","owner":{"id":8},"private":true},{"name":"notes","owner":{"id":7},"private":true}]})),
+        ]);
+        assert!(repository_access_with_api(&mut a, "notes").unwrap());
+        let requests = thread.join().unwrap();
+        assert!(requests.iter().all(|(line,_)|line.starts_with("GET ")));
+        assert!(requests[2].0.contains("/user/installations/5/repositories"));
+        let (mut a, thread) = server(vec![(200,json!({"id":7})),(200,json!({"installations":[]}))]);
+        assert!(!repository_access_with_api(&mut a, "notes").unwrap());
+        thread.join().unwrap();
+        for repo in [json!({"name":"notes","owner":{"id":8},"private":true}), json!({"name":"notes","owner":{"id":7},"private":false}), json!({"name":"other","owner":{"id":7},"private":true})] {
+            let (mut a, thread) = server(vec![
+                (200,json!({"id":7})),
+                (200,json!({"installations":[{"id":5,"account":{"id":7},"permissions":{"contents":"write"}}]})),
+                (200,json!({"repositories":[repo]})),
+            ]);
+            assert!(!repository_access_with_api(&mut a, "notes").unwrap());
+            assert!(thread.join().unwrap().iter().all(|(line,_)|line.starts_with("GET ")));
+        }
+        let (mut a, thread) = server(vec![
+            (200,json!({"id":7})),
+            (200,json!({"installations":[{"id":5,"account":{"id":7},"permissions":{"contents":"read"}}]})),
+        ]);
+        assert!(!repository_access_with_api(&mut a, "notes").unwrap());
+        assert_eq!(thread.join().unwrap().len(),2);
     }
     #[test]
     fn setup_recovers_created_repository_after_installation_failure_without_another_create() {
