@@ -22,6 +22,7 @@ function start() {
     void initBackup()
     void repo.watch()
     initSearchIndex()
+    if (isTauri) void import('./mcp/bridge').then(module => module.startMcpBridge())
     root.render(
       <StrictMode>
         <App />
