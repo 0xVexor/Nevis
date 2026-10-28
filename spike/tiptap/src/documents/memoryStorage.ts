@@ -2,6 +2,8 @@ import type { Page } from './model.ts'
 import { cloneDocumentValue } from './clone.ts'
 import type { DocumentStorage, DocumentVersion, DocumentWrite } from './ports.ts'
 import { canonicalDocumentValue } from './revision.ts'
+import { matchOperation, operationKey, validateOperationRecord } from './operations.ts'
+import type { DocumentOperationRecord } from './operations.ts'
 
 /** Reference adapter for shared-service conformance tests. */
 export class MemoryDocumentStorage implements DocumentStorage {
@@ -9,6 +11,7 @@ export class MemoryDocumentStorage implements DocumentStorage {
   private pages = new Map<string, Page>()
   private versions = new Map<string, DocumentVersion[]>()
   private generation = 0
+  private operations = new Map<string, DocumentOperationRecord>()
   readonly vaultHandle: string
   constructor(vaultHandle: string, pages: Page[] = []) {
     this.vaultHandle = vaultHandle
@@ -34,6 +37,20 @@ export class MemoryDocumentStorage implements DocumentStorage {
     this.generation++
   }
   async stamp() { return String(this.generation) }
+  async findOperation(scopeId: string, operationId: string) {
+    return cloneDocumentValue(this.operations.get(operationKey(scopeId, operationId)) ?? null)
+  }
+  async commitOperation(input: DocumentOperationRecord) {
+    const record = cloneDocumentValue(input), key = operationKey(record.scopeId, record.operationId)
+    validateOperationRecord(record)
+    const prior = matchOperation(this.operations.get(key) ?? null, record.fingerprint)
+    if (prior) return cloneDocumentValue(prior.receipt)
+    if (canonicalDocumentValue(this.pages.get(record.after.id) ?? null) !== canonicalDocumentValue(record.before)) throw new Error('Document revision conflict')
+    this.pages.set(record.after.id, record.after)
+    this.operations.set(key, record)
+    this.generation++
+    return cloneDocumentValue(record.receipt)
+  }
   async listVersions(pageId: string) { return cloneDocumentValue(this.versions.get(pageId) ?? []) }
   async addVersion(version: DocumentVersion) {
     const versions = (this.versions.get(version.pageId) ?? []).filter(old => old.ts !== version.ts)

@@ -1,4 +1,6 @@
 import { canonicalDocumentValue, documentRevision } from './revision.ts'
+import { matchOperation, operationFingerprint } from './operations.ts'
+import type { DocumentOperationRequest } from './operations.ts'
 import { cloneDocumentValue } from './clone.ts'
 import { identifyBlocks, identityVersion, BLOCK_IDENTITY_VERSION } from './blockIdentity.ts'
 import type { Page, PageKind, PageRepo, Patch } from './model.ts'
@@ -82,6 +84,41 @@ export class DocumentService implements PageRepo {
       this.adoptDatabase([after], [])
       this.host.emit('external-change', [after.id])
       return { documentId: after.id, revision }
+    } finally { release() }
+  }
+
+  /** Internal only: the future authorized planner supplies the complete canonical request. */
+  async operationReceipt(request: DocumentOperationRequest, digest: (value: string) => Promise<string>) {
+    request = cloneDocumentValue(request)
+    if (!this.storage.findOperation) throw new Error('Document operation storage is unavailable')
+    const fingerprint = await operationFingerprint(cloneDocumentValue(request), digest)
+    const prior = matchOperation(await this.storage.findOperation(request.scopeId, request.operationId), fingerprint)
+    return prior ? cloneDocumentValue(prior.receipt) : null
+  }
+
+  async commitRetriableDocument(request: DocumentOperationRequest, expected: Page | null, next: Page, digest: (value: string) => Promise<string>) {
+    request = cloneDocumentValue(request)
+    const before = cloneDocumentValue(expected), after = cloneDocumentValue(next)
+    const fingerprint = await operationFingerprint(request, digest)
+    if (!this.storage.commitOperation || !this.storage.findOperation) throw new Error('Document operation storage is unavailable')
+    // Look up before revision/editor checks: a lost-response retry is a read of the original result.
+    const prior = matchOperation(await this.storage.findOperation(request.scopeId, request.operationId), fingerprint)
+    if (prior) return cloneDocumentValue(prior.receipt)
+    if (request.kind === 'edit' ? !before || before.id !== after.id || request.documentId !== before.id : before !== null) throw new Error('Document identity changed')
+    const beforeRevision = before ? await documentRevision(before, digest) : null
+    if (beforeRevision !== request.expectedRevision) throw new Error('Document revision conflict')
+    const revision = await documentRevision(after, digest)
+    const release = await this.reserveCommit()
+    try {
+      if (canonicalDocumentValue(this.getRaw(after.id) ?? null) !== canonicalDocumentValue(before)) throw new Error('Document revision conflict')
+      const receipt = await this.storage.commitOperation({ format: 1, scopeId: request.scopeId, operationId: request.operationId,
+        fingerprint, before, after, receipt: { operationId: request.operationId, documentId: after.id, beforeRevision, revision, committedAt: this.host.now() } })
+      // Another instance may have won the same operation ID (including a different generated create ID).
+      // Publish what is durable now, never a speculative/replayed post-image.
+      const current = (await this.storage.load()).find(page => page.id === receipt.documentId)
+      this.adoptDatabase(current ? [current] : [], current ? [] : [receipt.documentId])
+      this.host.emit('external-change', [receipt.documentId])
+      return receipt
     } finally { release() }
   }
 
