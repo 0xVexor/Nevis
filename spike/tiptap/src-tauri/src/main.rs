@@ -6,6 +6,7 @@
 
 mod database;
 mod document_operations;
+mod mcp;
 mod index;
 mod legacy;
 mod registry;
@@ -36,6 +37,7 @@ struct SyncStatus {
 }
 
 struct Store {
+    mcp: Arc<mcp::Host>,
     app_data: PathBuf, // per-device data: the list of vaults, sign-in, sync bookkeeping
     reg: Mutex<Registry>,
     vault: Mutex<Option<Vault>>,
@@ -94,6 +96,7 @@ fn vault_info(s: St) -> Res<Value> {
 fn activate(s: &St, e: &Entry, import_legacy: bool) -> Res<()> {
     // never creates anything: a folder that vanished, or holds another vault, is reported instead of replaced by an empty one
     let v = Vault::open_as(PathBuf::from(&e.path), &e.id)?;
+    s.mcp.stop();
     if import_legacy {
         match legacy::import(&s.app_data, &v) {
             Ok(n) if n > 0 => eprintln!("imported {n} pages from noviq.db"),
@@ -203,6 +206,7 @@ fn vault_trash_local(s: St, id: String) -> Res<()> {
     let mut r = s.reg.lock().map_err(err)?;
     r.vaults.retain(|x| x.id != id);
     if r.current.as_deref() == Some(&id) {
+        s.mcp.stop();
         r.current = None;
     }
     r.save(&s.app_data)?;
@@ -240,6 +244,7 @@ fn vault_open(s: St, id: String) -> Res<()> {
 /// Back to the picker (switching vaults).
 #[tauri::command]
 fn vault_close(s: St) -> Res<()> {
+    s.mcp.stop();
     let mut r = s.reg.lock().map_err(err)?;
     r.current = None;
     r.save(&s.app_data)?;
@@ -253,6 +258,7 @@ fn vault_forget(s: St, id: String) -> Res<()> {
     let mut r = s.reg.lock().map_err(err)?;
     r.vaults.retain(|e| e.id != id);
     if r.current.as_deref() == Some(&id) {
+        s.mcp.stop();
         r.current = None;
         *lock_vault(&s)? = None;
     }
@@ -263,6 +269,41 @@ fn vault_forget(s: St, id: String) -> Res<()> {
 #[tauri::command]
 fn vault_stamp(s: St) -> Res<String> {
     with(&s, |v| Ok(v.stamp()))
+}
+
+// MCP commands are local main-window controls, never protocol methods.
+fn mcp_window(window: &tauri::WebviewWindow) -> Res<()> {
+    if window.label() != "main" { return Err("Connection access denied".into()); }
+    Ok(())
+}
+#[tauri::command]
+fn mcp_ready(s: St, window: tauri::WebviewWindow, expected_vault_id: String, owner: String) -> Res<()> {
+    mcp_window(&window)?;
+    with(&s, |v| { if v.id() != expected_vault_id { return Err("Connection vault changed".into()); } s.mcp.ready(&expected_vault_id, &owner) })
+}
+#[tauri::command]
+fn mcp_status(s: St, window: tauri::WebviewWindow) -> Res<Value> { mcp_window(&window)?; s.mcp.status() }
+#[tauri::command]
+fn mcp_enable(s: St, window: tauri::WebviewWindow, expected_vault_id: String, policy: mcp::Policy) -> Res<Value> {
+    mcp_window(&window)?;
+    with(&s, |v| {
+        if v.id() != expected_vault_id { return Err("Connection vault changed".into()); }
+        let config_dir = s.app_data.join("mcp");
+        std::fs::create_dir_all(&config_dir).map_err(err)?;
+        if std::fs::canonicalize(&config_dir).map_err(err)?.starts_with(std::fs::canonicalize(&v.root).map_err(err)?) { return Err("Connection settings must be outside the vault".into()); }
+        s.mcp.enable(&s.app_data, &expected_vault_id, policy)
+    })
+}
+#[tauri::command]
+fn mcp_disable(s: St, window: tauri::WebviewWindow) -> Res<()> { mcp_window(&window)?; s.mcp.stop(); Ok(()) }
+#[tauri::command]
+fn mcp_credential(s: St, window: tauri::WebviewWindow, expected_vault_id: String) -> Res<String> {
+    mcp_window(&window)?;
+    with(&s, |v| { if v.id() != expected_vault_id { return Err("Connection vault changed".into()); } s.mcp.credential() })
+}
+#[tauri::command]
+fn mcp_reply(s: St, window: tauri::WebviewWindow, request_id: String, revision: String, result: Value) -> Res<()> {
+    mcp_window(&window)?; s.mcp.reply(&request_id, &revision, result)
 }
 
 // ───── pages ─────
@@ -1032,9 +1073,14 @@ fn main() {
                 synced: Arc::new(Mutex::new((String::new(), -1))),
                 app: Some(app.handle().clone()),
             };
-            app.manage(Store { reg: Mutex::new(Registry::load(&app_data)), app_data, vault: Mutex::new(None), ctx, kick: Mutex::new(tx), index: Mutex::new(None) });
+            app.manage(Store { mcp: Arc::new(mcp::Host::default()), reg: Mutex::new(Registry::load(&app_data)), app_data, vault: Mutex::new(None), ctx, kick: Mutex::new(tx), index: Mutex::new(None) });
             // reopen the vault that was open last time; if it is gone, the picker is shown
             let s = app.state::<Store>();
+            let emit_handle = app.handle().clone();
+            let vault_handle = app.handle().clone();
+            s.mcp.set_bridge(Arc::new(move |event, payload| {
+                emit_handle.get_webview_window("main").ok_or("App unavailable")?.emit(event, payload).map_err(|_| "App unavailable".into())
+            }), Arc::new(move || with(&vault_handle.state::<Store>(), |v| Ok(v.id())).ok()));
             let cur = s.reg.lock().ok().and_then(|r| r.current.clone().and_then(|id| r.find(&id).cloned()));
             if let Some(e) = cur {
                 if let Err(m) = activate(&s, &e, false) {
@@ -1051,6 +1097,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            mcp_ready, mcp_status, mcp_enable, mcp_disable, mcp_credential, mcp_reply,
             updates::updates_check, updates::updates_download, updates::updates_install,
             vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
             db_recover, db_load_all, db_commit, db_get_operation, db_history, db_undo_load, db_undo_save, db_runtime_get, db_runtime_set, db_runtime_delete,

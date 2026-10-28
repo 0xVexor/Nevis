@@ -217,6 +217,7 @@ export class DocumentService implements PageRepo {
   private invalidateSearch() { this.searchGeneration++; this.searchIndex.invalidate() }
   get vaultHandle() { return this.storage.vaultHandle }
   /** Read persisted state after already-queued writes; never flush a dirty editor. */
+  async persistedPages() { await this.queue; return this.storage.load() }
   reader(grant: DocumentReadGrant, runtime: DocumentReadRuntime) {
     return new DocumentReader({ vaultHandle: this.vaultHandle, searchRuntime: this.searchRuntime, load: async () => { await this.queue; return this.storage.load() } }, grant, runtime)
   }
