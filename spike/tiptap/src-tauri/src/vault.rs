@@ -489,6 +489,26 @@ impl Vault {
         Ok(out)
     }
 
+    pub fn conflicts_list(&self) -> Res<Vec<Value>> {
+        safe_local(&self.root, "history")?;
+        let mut out = vec![];
+        let entries = match fs::read_dir(self.root.join("history")) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+            Err(e) => return Err(err(e)),
+        };
+        for entry in entries {
+            let entry = entry.map_err(err)?;
+            if !entry.file_type().map_err(err)?.is_dir() { continue; }
+            let id = entry.file_name().to_string_lossy().to_string();
+            check_id(&id)?;
+            safe_local(&self.root, &format!("history/{id}"))?;
+            out.extend(self.versions_list(&id)?.into_iter().filter(|v| v["conflict"] == true));
+        }
+        out.sort_by_key(|v| std::cmp::Reverse(v["ts"].as_i64().unwrap_or(0)));
+        Ok(out)
+    }
+
     pub fn version_add(&self, version: &Value) -> Res<()> {
         let id = version.get("pageId").and_then(Value::as_str).ok_or("version without pageId")?;
         if !self.page_path(id)?.exists() {

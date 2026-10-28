@@ -107,6 +107,16 @@ export async function listVersions(pageId: string): Promise<Version[]> {
   return rows.sort((a, b) => b.ts - a.ts)
 }
 
+export async function listConflicts(): Promise<Version[]> {
+  if (isTauri) return invoke('conflicts_list')
+  const rows: Version[] = await wrap((await db()).transaction('versions').objectStore('versions').getAll())
+  return rows.filter(v => v.conflict).sort((a, b) => b.ts - a.ts)
+}
+
+export async function openConflictFiles() {
+  return invoke<void>('open_conflict_files')
+}
+
 export async function addVersion(v: Version) {
   if (frozen) throw new Error('Storage is paused while the workspace is changing or an update is installing.')
   if (isTauri) return invoke<void>('version_add', { version: v })

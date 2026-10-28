@@ -1,6 +1,14 @@
 # Sync reliability changes
 
-Branch: `fix/sync-reliability`, based on `dev` at `1812042`. Existing layout work is outside this branch. The audit dated 26–27 October described an older checkout; database path support and initial path/symlink validation were already present in this base.
+Branch: `fix/sync-reliability`, based on `dev` at `6856491`, including flexible page layouts. The audit dated 26–27 October described an older checkout; database path support and initial path/symlink validation were already present in the original base.
+
+## Conflict visibility and editor position — 28 October
+
+The persistent **Saved conflicts** toolbar button and the conflict notification's **View versions** action open a workspace-wide comparison of the current page and preserved conflict versions, including history for pages no longer present. Full page properties remain visible. Conflict entries are also labeled in each page's Version history; recovered non-page files have a separate folder action.
+
+External editor refresh compares parsed documents structurally, so a local save acknowledgement that only changes JSON key order does not replace the editor state. A real document replacement clears stale undo state while preserving a valid selection and the page scroll position, instead of sending the caret to position 1. This addresses the code path that could jump to the start after Enter in a layout; the reported interaction has not been run manually.
+
+No tests or installer builds were run for this follow-up, as requested. Earlier validation totals below describe the preceding implementation.
 
 ## Contract
 

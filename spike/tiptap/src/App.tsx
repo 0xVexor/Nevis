@@ -28,6 +28,7 @@ import { Explorer } from './Explorer'
 import { Templates, TEMPLATE_GLYPH, BOARD_TEMPLATE, DATABASE_TEMPLATE } from './TemplateGallery'
 import { getTemplates } from './templates'
 import { PageView, type SaveState } from './PageView'
+import { Conflicts } from './Conflicts'
 import { buildIndex, type PageIndex } from './pageIndex'
 import { ReaderBar, loadReaderCfg, type ReaderCfg } from './ReaderBar'
 import { BackupSettings } from './BackupSettings'
@@ -234,7 +235,8 @@ export default function App() {
   const [dataMenu, setDataMenu] = useState<DOMRect | null>(null)
   const [blankMenu, setBlankMenu] = useState<DOMRect | null>(null) // right-click on empty sidebar space
   const [trashTick, setTrashTick] = useState(0)
-  const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null)
+  const [toast, setToast] = useState<{ msg: string; undo?: () => void; action?: string; onAction?: () => void } | null>(null)
+  const [conflictsOpen, setConflictsOpen] = useState(false)
   const [menu, setMenu] = useState<{ id: string; rect: DOMRect } | null>(null)
   const [movingId, setMovingId] = useState<string | null>(null)
   const [reader, setReader] = useState(false)
@@ -314,7 +316,7 @@ export default function App() {
     window.addEventListener(PAGES_CHANGED, changed)
     window.addEventListener('external-change', changed)
     // desktop: a save found a newer version on disk (another device's edit) and put it in the page history first
-    const kept = () => setToast({ msg: t('This page changed on another device. Both versions are kept; the page will refresh after saving.') })
+    const kept = () => setToast({ msg: t('A sync conflict was saved. Review the preserved versions in Saved conflicts.'), action: t('View versions'), onAction: () => setConflictsOpen(true) })
     // desktop: the vault folder vanished while the app was open (moved, deleted, drive unplugged): nothing is written until it is back
     const storageError = (e: Event) => {
       setSave('error')
@@ -749,6 +751,7 @@ export default function App() {
           <span className="spacer" />
           <span className={'status' + (save === 'saving' ? ' busy' : '')}><i className="dot" />{save === 'saving' ? t('Saving…') : save === 'error' ? t('Save failed. Your changes are still pending.') : t('Saved')}</span>
           <div className="tb-group">
+            <button className="ghost-btn conflicts-trigger" title={t('Saved conflicts')} aria-haspopup="dialog" aria-expanded={conflictsOpen} onClick={() => setConflictsOpen(true)}><Ic.History size={16} />{t('Saved conflicts')}</button>
             {isTauri && <SyncButton onSetup={() => setFolderOpen(true)} onSignIn={() => setAccountOpen(true)} />}
             {current && view === 'page' && (
               <>
@@ -903,7 +906,8 @@ export default function App() {
         <TrashModal key={trashTick} items={repo.trash()} days={TRASH_DAYS} onRestore={restore} onPurge={purge} onEmpty={emptyTrash} onClose={() => setTrashOpen(false)} />
       )}
       <UpdateCenter />
-      {toast && <Toast msg={toast.msg} action={toast.undo ? t('Undo') : undefined} onAction={toast.undo} onClose={() => setToast(null)} />}
+      {conflictsOpen && <Conflicts onClose={() => setConflictsOpen(false)} onOpen={setCurrentId} />}
+      {toast && <Toast msg={toast.msg} action={toast.action ?? (toast.undo ? t('Undo') : undefined)} onAction={toast.onAction ?? toast.undo} onClose={() => setToast(null)} />}
 
       {searching && (
         <SearchModal
