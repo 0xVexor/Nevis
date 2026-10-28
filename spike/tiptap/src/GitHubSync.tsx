@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
 import { open as chooseFolder } from '@tauri-apps/plugin-dialog'
 import { accountStatus, syncNow, syncSet, type AccountStatus } from './db'
-import { repo } from './store'
-import { saveBeforeUpdate } from './updateSave'
-import { flushPreferences } from './sharedPreferences'
+import { githubAction as action, saveForSync as durable, openConflictReview, type SyncConflict as Conflict } from './syncActions'
 import { t, locale } from './i18n'
 import * as Ic from './icons'
 import './styles/github-sync.css'
@@ -12,21 +9,7 @@ import './styles/github-sync.css'
 interface Binding { owner: string; repo: string; branch: string; vault: string; repo_id: number; backup: string; quiet_seconds: number; poll_seconds: number }
 interface Status { configured: boolean; signedIn: boolean; login: string | null; binding: Binding | null; installationUrl: string | null }
 interface Device { userCode: string; verificationUri: string; interval: number; expiresIn: number }
-interface Conflict { id: string; path: string; createdAt: number; deleted?: boolean; base: string | null; local: string | null; remote: string | null }
 interface RemoteVault { id: string; name?: string; files: number; connectedHere: boolean }
-const action = <T,>(name: string, args: Record<string, unknown> = {}) => invoke<T>('github_action', { action: name, args })
-function decode(value: string | null): string {
-  if (value === null) return t('Version unavailable')
-  try { return JSON.stringify(JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(value), (c) => c.charCodeAt(0)))), null, 2) }
-  catch { return t('Binary attachment') }
-}
-function preview(value: string | null) {
-  try {
-    const v = JSON.parse(decode(value))
-    const text = (n: any): string => typeof n === 'string' ? n : n?.text ?? (n?.content ?? []).map(text).join('\n')
-    return { title: String(v.title ?? v.name ?? v.id ?? ''), text: text(v.content).slice(0, 2400) }
-  } catch { return { title: '', text: t('Version unavailable') } }
-}
 const messages: Record<string, string> = {
   repository_name_unavailable: 'This repository name is unavailable. Choose Use existing repository if it was already created, or enter another name.',
   app_not_configured: 'This build needs a GitHub App client ID. See the GitHub sync setup guide.',
@@ -58,7 +41,6 @@ function problem(e: unknown) {
   if (code === 'rate_limited') return t('GitHub rate limit reached. Sync will retry after the required delay.')
   return messages[code] ? t(messages[code]) : raw
 }
-async function durable() { await saveBeforeUpdate(); await repo.flushBeforeUpdate(); await flushPreferences() }
 
 export function GitHubAccountDialog({ onClose, onLegacy }: { onClose: () => void; onLegacy: () => void }) {
   const [st, setSt] = useState<Status | null>(null)
@@ -67,6 +49,7 @@ export function GitHubAccountDialog({ onClose, onLegacy }: { onClose: () => void
   const [repoName, setRepoName] = useState('noviq-data')
   const [create, setCreate] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [installation, setInstallation] = useState<{ repo: string; create: boolean } | null>(null)
   const [error, setError] = useState('')
   const [note, setNote] = useState('')
   const [diagnostics, setDiagnostics] = useState<Record<string, unknown> | null>(null)
@@ -134,21 +117,51 @@ export function GitHubAccountDialog({ onClose, onLegacy }: { onClose: () => void
   }
   const connect = () => run(async () => {
     await durable()
-    const result = await action<{ backup: string }>('connect', { repo: repoName, create })
-    setNote(t('A verified backup was saved before switching providers.') + '\n' + result.backup)
-    await loadConflicts()
+    try {
+      const result = await action<{ backup: string }>('connect', { repo: repoName, create })
+      setNote(t('A verified backup was saved before switching providers.') + '\n' + result.backup)
+      await loadConflicts()
+    } catch (e) {
+      if (String(e) !== 'GITHUB:installation_required') throw e
+      setInstallation({ repo: repoName, create })
+      // This is a normal setup step. The user confirms repository access on GitHub itself.
+      await action('open', { target: 'install' })
+    }
   })
+  useEffect(() => {
+    if (!installation) return
+    let cancelled = false, checking = false
+    const started = Date.now()
+    const check = async () => {
+      if (cancelled || checking) return
+      if (Date.now() - started > 15 * 60_000) { setInstallation(null); setNote(t('Repository setup timed out. You can continue setup again.')); return }
+      checking = true
+      try {
+        const result = await action<{ ready: boolean }>('repository-access', { repo: installation.repo })
+        if (cancelled || !result.ready) return
+        setBusy(true); setError('')
+        await durable()
+        if (cancelled) return
+        const connected = await action<{ backup: string }>('connect', installation)
+        if (cancelled) return
+        setBusy(false); setInstallation(null)
+        setNote(t('A verified backup was saved before switching providers.') + '\n' + connected.backup)
+        await refresh(); await loadConflicts()
+      } catch (e) {
+        if (!cancelled && String(e) !== 'GITHUB:installation_required') { setBusy(false); setInstallation(null); setError(String(e)) }
+      } finally { checking = false; if (!cancelled) setBusy(false) }
+    }
+    const timer = window.setInterval(() => void check(), 5000)
+    const focus = () => void check()
+    window.addEventListener('focus', focus)
+    return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener('focus', focus) }
+  }, [installation, refresh, loadConflicts])
   const download = (v: RemoteVault) => run(async () => {
     const parent = await chooseFolder({ directory: true, multiple: false, title: t('Choose a folder for the downloaded workspace') })
     if (typeof parent !== 'string') return
     await durable()
     await action('download', { repo: repoName, id: v.id, parent, name: v.name || 'Noviq-' + v.id.slice(0, 8) })
     window.location.reload()
-  })
-  const resolve = (c: Conflict, choice: string) => run(async () => {
-    await durable(); await action('resolve', { id: c.id, choice }); await loadConflicts()
-    await repo.refreshFromStore()
-    window.dispatchEvent(new Event('data-changed'))
   })
   const stateLabel = runtime?.state === 'syncing' ? 'Syncing…' : runtime?.state === 'offline' ? 'Offline' : runtime?.state === 'error' ? 'Sync needs attention' : runtime?.reason === 'CONFLICTS' ? 'Conflicts need review' : runtime?.syncOn ? 'Ready to sync' : 'Sync paused'
   const setupRecovery = ['GITHUB:installation_required', 'GITHUB:repository_creation_uncertain', 'GITHUB:repository_name_unavailable'].some((code) => error.includes(code))
@@ -162,11 +175,12 @@ export function GitHubAccountDialog({ onClose, onLegacy }: { onClose: () => void
         {busy && <p className="gh-progress" role="status"><i className="acct-spin" />{t('Working… Keep this window open.')}</p>}
         {(error || runtime?.error) && <div className="acct-err" role="alert"><p>{problem(error || runtime?.error)}</p><details><summary>{t('Error details')}</summary><pre dir="ltr">{error || runtime?.error}</pre></details><div className="acct-row"><button disabled={busy} onClick={() => run(async () => setDiagnostics(await action<Record<string, unknown>>('diagnostics')))}>{t('Check GitHub connection')}</button>{setupRecovery && <><button disabled={busy} onClick={() => run(() => action('open', { target: 'install' }))}>{t('Give App access to repository')}</button><button disabled={busy} onClick={() => { setCreate(false); setError(''); setNote(t('Existing repository selected. After granting App access, use Back up and connect this workspace.')) }}>{t('Continue with existing repository')}</button></>}</div></div>}
         {diagnostics && <details className="gh-card gh-diagnostics" open><summary>{t('Connection diagnostics')}</summary><pre dir="ltr">{JSON.stringify(diagnostics, null, 2)}</pre></details>}
+        {installation && <section className="gh-notice gh-installation" role="status"><h4>{t('Allow access to your data repository')}</h4><p>{t('Sign-in is complete. In GitHub, select this repository for the App. This window will continue automatically after access is confirmed.')}</p><b dir="ltr">{installation.repo}</b><div className="acct-row"><button disabled={busy} onClick={() => run(() => action('open', { target: 'install' }))}>{t('Open GitHub repository permissions')}</button><button disabled={busy} onClick={() => setInstallation(null)}>{t('Cancel setup')}</button></div><small>{t('Waiting for repository access…')}</small></section>}
         {note && <p className="gh-notice" role="status" dir="auto">{note}</p>}
         {!st ? <p role="status">{t('Loading…')}</p> : <>
           {!st.configured && <p className="gh-notice">{t(messages.app_not_configured)}</p>}
           <section className="gh-card"><h4>{t('1. GitHub account')}</h4>
-            {st.signedIn ? <><div className="gh-account"><Ic.Check size={17} /><b dir="ltr">{st.login}</b><span>{t('Connected')}</span></div><div className="acct-row"><button disabled={busy} onClick={() => run(async () => { await action('begin').then((d) => setDevice(d as Device)) })}>{t('Sign in again')}</button><button disabled={busy} onClick={() => run(async () => { await action('disconnect'); setDevice(null) })}>{t('Disconnect this account locally')}</button></div><small>{t('Disconnect keeps your files and repository. Revoke App access in GitHub settings separately.')}</small></> : <button className="primary" disabled={busy || !st.configured || !!device} onClick={() => run(async () => setDevice(await action<Device>('begin')))}>{t('Sign in with GitHub')}</button>}
+            {st.signedIn ? <><div className="gh-account"><Ic.Check size={17} /><b dir="ltr">{st.login}</b><span>{t('Connected')}</span></div><div className="acct-row"><button disabled={busy || !!installation} onClick={() => run(async () => { await action('begin').then((d) => setDevice(d as Device)) })}>{t('Sign in again')}</button><button disabled={busy || !!installation} onClick={() => run(async () => { await action('disconnect'); setDevice(null) })}>{t('Disconnect this account locally')}</button></div><small>{t('Disconnect keeps your files and repository. Revoke App access in GitHub settings separately.')}</small></> : <button className="primary" disabled={busy || !st.configured || !!device} onClick={() => run(async () => setDevice(await action<Device>('begin')))}>{t('Sign in with GitHub')}</button>}
             {device && <div className="gh-device"><p>{t('Enter this code on GitHub to authorize this device:')}</p><code dir="ltr">{device.userCode}</code><div className="acct-row"><button className="primary" disabled={busy} onClick={() => run(() => action('open', { target: 'device' }))}>{t('Open GitHub authorization')}</button><button disabled={busy} onClick={() => { setDevice(null); void action('cancel').catch((e) => setError(String(e))) }}>{t('Cancel')}</button></div><small role="status">{t('Waiting for authorization…')}</small></div>}
           </section>
           <section className="gh-card"><h4>{t('2. Private data repository')}</h4>
@@ -174,15 +188,15 @@ export function GitHubAccountDialog({ onClose, onLegacy }: { onClose: () => void
               <div className="acct-row"><button className="primary" disabled={busy || runtime?.state === 'syncing'} onClick={() => run(async () => { await durable(); await syncNow() })}>{t('Sync now')}</button><button disabled={busy} onClick={() => run(() => syncSet(!runtime?.syncOn))}>{runtime?.syncOn ? t('Pause sync') : t('Resume sync')}</button><button disabled={busy} onClick={() => run(() => action('detach'))}>{t('Disconnect workspace')}</button></div>
               <details><summary>{t('Sync frequency')}</summary><div className="gh-policy"><label>{t('Quiet period')}<select value={quietValue} onChange={(e) => setQuiet(Number(e.target.value))}><option value={15}>15 s</option><option value={30}>30 s</option><option value={60}>60 s</option></select></label><label>{t('Check for remote changes')}<select value={pollValue} onChange={(e) => setPoll(Number(e.target.value))}><option value={120}>2 min</option><option value={300}>5 min</option><option value={900}>15 min</option></select></label><button disabled={busy} onClick={() => run(() => action('policy', { quietSeconds: quietValue, pollSeconds: pollValue }))}>{t('Save')}</button></div></details>
             </> : <><p>{t('The App needs Contents read/write and Metadata read access to your selected repository. Repository creation also needs Repository creation write or Administration write.')}</p><button disabled={busy || !st.signedIn || !st.installationUrl} onClick={() => run(() => action('open', { target: 'install' }))}>{t('Choose repositories in GitHub')}</button>
-              <label className="acct-field"><span className="acct-label">{t('Repository name')}</span><input dir="ltr" autoComplete="off" spellCheck={false} value={repoName} onChange={(e) => { setRepoName(e.target.value); setVaults(null) }} /></label>
-              <div className="segmented" role="group" aria-label={t('Repository setup')}><button className={create ? 'on' : ''} disabled={busy} onClick={() => setCreate(true)}>{t('Create private repository')}</button><button className={!create ? 'on' : ''} disabled={busy} onClick={() => setCreate(false)}>{t('Use existing repository')}</button></div>
+              <label className="acct-field"><span className="acct-label">{t('Repository name')}</span><input dir="ltr" autoComplete="off" spellCheck={false} value={repoName} disabled={busy || !!installation} onChange={(e) => { setRepoName(e.target.value); setVaults(null) }} /></label>
+              <div className="segmented" role="group" aria-label={t('Repository setup')}><button className={create ? 'on' : ''} disabled={busy || !!installation} onClick={() => setCreate(true)}>{t('Create private repository')}</button><button className={!create ? 'on' : ''} disabled={busy || !!installation} onClick={() => setCreate(false)}>{t('Use existing repository')}</button></div>
               <p>{t('Before switching, a complete verified backup is saved on this device. Your existing server data stays intact. Empty repositories are initialized automatically.')}</p>
-              <div className="acct-row"><button className="primary" disabled={busy || !st.signedIn || !/^[\w.-]+$/.test(repoName)} onClick={connect}>{t('Back up and connect this workspace')}</button><button disabled={busy || !st.signedIn || create} onClick={() => run(async () => setVaults(await action<RemoteVault[]>('list', { repo: repoName })))}>{t('Find my other workspaces')}</button></div>
+              <div className="acct-row"><button className="primary" disabled={busy || !!installation || !st.signedIn || !/^[\w.-]+$/.test(repoName)} onClick={connect}>{t('Back up and connect this workspace')}</button><button disabled={busy || !st.signedIn || create} onClick={() => run(async () => setVaults(await action<RemoteVault[]>('list', { repo: repoName })))}>{t('Find my other workspaces')}</button></div>
               {vaults && <ul className="gh-vaults">{!vaults.length && <li>{t('No workspaces found in this repository.')}</li>}{vaults.map((v) => <li key={v.id}><div><b dir="auto">{v.name || v.id}</b><small><code dir="ltr">{v.id}</code></small><small>{t('{count} files', { count: v.files })}</small></div><button disabled={busy || v.connectedHere} onClick={() => download(v)}>{v.connectedHere ? t('On this device') : t('Download to a new folder')}</button></li>)}</ul>}
             </>}
           </section>
           <section className="gh-card"><div className="gh-account"><h4>{t('Conflicts')}</h4><button disabled={busy} onClick={() => run(loadConflicts)}>{t('Refresh')}</button></div><p>{t('Conflicting versions keep their full data until you choose one. Database IDs and relations stay unchanged.')}</p>
-            {!conflicts.length ? <small>{t('No unresolved conflicts.')}</small> : conflicts.map((c) => <details className="gh-conflict" key={c.id}><summary><code dir="ltr">{c.path}</code></summary>{c.deleted && <button disabled={busy} onClick={() => resolve(c, 'delete')}>{t('Keep deletion')}</button>}<div className="gh-versions">{(['local', 'remote', 'base'] as const).map((choice) => <div key={choice}><b>{t(choice === 'local' ? 'This device' : choice === 'remote' ? 'GitHub version' : 'Common version')}</b><p className="gh-version-title" dir="auto">{preview(c[choice]).title}</p><div className="gh-version-text" dir="auto">{preview(c[choice]).text}</div><details><summary>{t('Full data')}</summary><pre dir="auto">{decode(c[choice])}</pre></details><button disabled={busy || c[choice] === null} onClick={() => resolve(c, choice)}>{t('Use this version')}</button></div>)}</div></details>)}
+            {!conflicts.length ? <small>{t('No unresolved conflicts.')}</small> : <button className="primary" onClick={() => { openConflictReview(); onClose() }}>{t('Review {count} conflicts in workspace', { count: conflicts.length })}</button>}
           </section>
           <p className="acct-note">{t('Trash can be restored for 7 days. Permanent deletion removes the current snapshot; older Git commits and offline devices may retain earlier bytes.')}</p>
           <p className="acct-note">{t('Public forms, webhooks and background gateway jobs still need a running database gateway. Personal note sync works without the Noviq sync server.')}</p>

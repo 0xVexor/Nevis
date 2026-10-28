@@ -959,6 +959,7 @@ async fn github_action(s: St<'_>, app: AppHandle, action: String, args: Value) -
         match action.as_str() {
             "status" => github::status(&data, &id),
             "open" => { github::open_browser(args["target"].as_str().unwrap_or("device"))?; Ok(Value::Null) },
+            "repository-access" => Ok(json!({"ready":github::repository_access(args["repo"].as_str().ok_or("missing repository")?)?})),
             "begin" => github::begin(),
             "poll" => github::poll(),
             "cancel" => { github::cancel(); Ok(Value::Null) },
