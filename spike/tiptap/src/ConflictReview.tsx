@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { repo } from './store'
 import { t } from './i18n'
-import { githubAction, saveForSync, type SyncConflict } from './syncActions'
+import { conflictAction, saveForSync, type SyncConflict } from './syncActions'
 import { compareLines, conflictVersion } from './conflictDiff'
 import { ConflictDocument } from './ConflictDocument'
 import * as Ic from './icons'
@@ -15,7 +15,7 @@ export function ConflictReview({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(true)
   const alive = useRef(true)
   const refresh = useCallback(async () => {
-    const next = await githubAction<SyncConflict[]>('conflicts')
+    const next = await conflictAction<SyncConflict[]>('conflicts')
     if (!alive.current) return
     setRows(next); setSelected(id => next.some(c => c.id === id) ? id : next[0]?.id ?? '')
     setLoading(false)
@@ -29,6 +29,7 @@ export function ConflictReview({ onClose }: { onClose: () => void }) {
   const conflict = rows.find(c => c.id === selected)
   const left = useMemo(() => conflictVersion(conflict?.local ?? null), [conflict?.local])
   const right = useMemo(() => conflictVersion(conflict?.remote ?? null), [conflict?.remote])
+  const canKeepBoth = conflict?.provider === 'drive' && conflict.path.startsWith('pages/') && [left.raw, right.raw].every(raw => { try { const page = JSON.parse(raw); return !page.database && page.content?.type === 'doc' } catch { return false } })
   const changes = useMemo(() => {
     const blocks = (raw: string) => { try { const v = JSON.parse(raw); return (v.type === 'doc' ? v.content : v.content?.content)?.map((b: unknown) => JSON.stringify(b)).join('\n') ?? '' } catch { return '' } }
     const aligned = compareLines(blocks(left.raw), blocks(right.raw))
@@ -42,7 +43,7 @@ export function ConflictReview({ onClose }: { onClose: () => void }) {
     setBusy(true); setError('')
     try {
       await saveForSync()
-      await githubAction('resolve', { id: conflict.id, choice })
+      await conflictAction('resolve', { id: conflict.id, choice })
       await repo.refreshFromStore(); window.dispatchEvent(new Event('data-changed'))
       await refresh()
     } catch (e) { setError(String(e)) } finally { setBusy(false) }
@@ -55,13 +56,14 @@ export function ConflictReview({ onClose }: { onClose: () => void }) {
       <div className="cr-panes" dir="ltr" role="region" aria-label={t('Version comparison')}>
         {(['local', 'remote'] as const).map(side => {
           const absent = conflict[side] === null
-          return <section className="cr-pane" key={side} dir="auto" aria-label={t(side === 'local' ? 'This device' : 'GitHub version')}>
-            <header className="cr-pane-head"><span className="cr-side-label">{side === 'local' ? <Ic.Page size={16} /> : <Ic.Cloud size={16} />}<b>{t(side === 'local' ? 'This device' : 'GitHub version')}</b></span><button className="primary" disabled={busy || (absent && !conflict.deleted)} onClick={() => void resolve(absent ? 'delete' : side)}><Ic.Check size={15} />{t(absent ? 'Keep deletion' : side === 'local' ? 'Keep this device version' : 'Keep GitHub version')}</button></header>
+          return <section className="cr-pane" key={side} dir="auto" aria-label={t(side === 'local' ? (conflict?.provider === 'drive' ? 'Version A' : 'This device') : (conflict?.provider === 'drive' ? 'Version B' : 'GitHub version'))}>
+            <header className="cr-pane-head"><span className="cr-side-label">{side === 'local' ? <Ic.Page size={16} /> : <Ic.Cloud size={16} />}<b>{t(side === 'local' ? (conflict?.provider === 'drive' ? 'Version A' : 'This device') : (conflict?.provider === 'drive' ? 'Version B' : 'GitHub version'))}</b></span><button className="primary" disabled={busy || (absent && !conflict.deleted)} onClick={() => void resolve(absent && conflict.provider !== 'drive' ? 'delete' : side)}><Ic.Check size={15} />{t(absent ? 'Keep deletion' : side === 'local' ? (conflict?.provider === 'drive' ? 'Keep version A' : 'Keep this device version') : (conflict?.provider === 'drive' ? 'Keep version B' : 'Keep GitHub version'))}</button></header>
             <div className="cr-pane-scroll" tabIndex={0}><ConflictDocument encoded={conflict[side]} changed={changes[side]} /></div>
           </section>
         })}
       </div>
-      <footer className="cr-footer">{conflict.deleted && conflict.local !== null && conflict.remote !== null && <button disabled={busy} onClick={() => void resolve('delete')}>{t('Keep deletion')}</button>}<span>{t('Highlighted blocks differ. Choose the complete version you want to keep.')}</span><details><summary>{t('Common version')}</summary><ConflictDocument encoded={conflict.base} /></details><details><summary>{t('Technical details')}</summary><div className="cr-technical">{(['local', 'remote'] as const).map(side => <div key={side}><b>{t(side === 'local' ? 'This device' : 'GitHub version')}</b><pre dir="ltr">{conflictVersion(conflict[side]).raw || t('Version unavailable')}</pre></div>)}</div></details></footer>
+      {conflict.provider === 'drive' && <div className="cr-footer"><button disabled={busy || !canKeepBoth} onClick={() => void resolve('both')}>{t('Keep both as separate pages')}</button><button disabled title={t('Manual merge is unavailable in this comparison. Keep both pages and edit them in the workspace.')}>{t('Manual merge')}</button><span>{t('Keep both is available for regular pages. Database rows require preserving their original identity.')}</span></div>}
+      <footer className="cr-footer">{conflict.deleted && conflict.local !== null && conflict.remote !== null && <button disabled={busy} onClick={() => void resolve('delete')}>{t('Keep deletion')}</button>}<span>{t('Highlighted blocks differ. Choose the complete version you want to keep.')}</span><details><summary>{t('Common version')}</summary><ConflictDocument encoded={conflict.base} /></details><details><summary>{t('Technical details')}</summary><div className="cr-technical">{(['local', 'remote'] as const).map(side => <div key={side}><b>{t(side === 'local' ? (conflict?.provider === 'drive' ? 'Version A' : 'This device') : (conflict?.provider === 'drive' ? 'Version B' : 'GitHub version'))}</b><pre dir="ltr">{conflictVersion(conflict[side]).raw || t('Version unavailable')}</pre></div>)}</div></details></footer>
     </>}
   </section>
 }

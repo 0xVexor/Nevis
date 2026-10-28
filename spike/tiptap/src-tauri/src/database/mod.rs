@@ -115,7 +115,7 @@ fn crash_point(_name: &str) -> Res<()> {
 
 /// Every record, read in parallel. Records with an unknown format are reported, never rewritten.
 pub fn load_all(root: &Path) -> Res<Value> {
-    let dead=crate::sync::snapshot::tombstones(&crate::vault::Vault{root:root.to_path_buf()})?;
+    let dead=crate::sync::snapshot::tombstones(&crate::vault::Vault::open(root.to_path_buf())?)?;
     let mut files: Vec<(&'static str, PathBuf)> = vec![];
     for (kind, dir) in KINDS {
         let d = root.join("databases").join(dir);
@@ -194,7 +194,7 @@ fn on_disk(root: &Path, w: &Value, is_page: bool) -> Res<i64> {
     let id = w["id"].as_str().unwrap_or_default();
     let path=if is_page {page_path(root,id)?}else{rec_path(root,w["kind"].as_str().unwrap_or_default(),id)?};
     let rel=path.strip_prefix(root).map_err(err)?.to_string_lossy().replace('\\',"/");
-    if crate::sync::snapshot::tombstones(&crate::vault::Vault{root:root.to_path_buf()})?.contains(&rel){return Ok(0);}
+    if crate::sync::snapshot::tombstones(&crate::vault::Vault::open(root.to_path_buf())?)?.contains(&rel){return Ok(0);}
     match fs::read(&path) {
         Ok(b)=>{let v:Value=serde_json::from_slice(&b).map_err(|_|format!("STORAGE:unreadable_record:{}",path.display()))?;Ok(if is_page {page_revision(&v)}else{revision_of(&v)})},
         Err(e) if e.kind()==std::io::ErrorKind::NotFound=>Ok(0),
@@ -238,7 +238,7 @@ fn apply(root: &Path, b: &Batch) -> Res<()> {
         crash_if_second("between_writes", &mut n)?;
         let (kind, id) = (w["kind"].as_str().unwrap_or_default(), w["id"].as_str().unwrap_or_default());
         let path = rec_path(root, kind, id)?;
-        let vault=crate::vault::Vault{root:root.to_path_buf()};
+        let vault=crate::vault::Vault::open(root.to_path_buf())?;
         let rel=path.strip_prefix(root).map_err(err)?.to_string_lossy().replace('\\',"/");
         if w.get("after").is_none_or(Value::is_null) { crate::sync::snapshot::tombstone(&vault,&rel)?; }
         else { crate::sync::snapshot::restore_record(&vault,&rel)?; }
@@ -253,7 +253,7 @@ fn apply(root: &Path, b: &Batch) -> Res<()> {
         crash_if_second("between_writes", &mut n)?;
         let id = w["id"].as_str().unwrap_or_default();
         let path = page_path(root, id)?;
-        let vault=crate::vault::Vault{root:root.to_path_buf()};
+        let vault=crate::vault::Vault::open(root.to_path_buf())?;
         if w.get("after").is_none_or(Value::is_null) { crate::sync::snapshot::tombstone(&vault,&format!("pages/{id}.json"))?; }
         else if crate::sync::snapshot::tombstones(&vault)?.contains(&format!("pages/{id}.json")) { return Err("SYNC:permanently_deleted".into()); }
         match w.get("after").filter(|a| !a.is_null()) {

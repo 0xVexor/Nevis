@@ -7,7 +7,8 @@ import App from './App.tsx'
 import { initStore, repo } from './store'
 import { initBackup } from './autobackup'
 import { initSearchIndex } from './searchIndex'
-import { isTauri, vaultList, vaultClose } from './db'
+import { isTauri, vaultList, vaultClose, isDriveVault } from './db'
+import { enableDriveBlockIds } from './editor/stableBlockIds'
 import { VaultPicker } from './VaultPicker'
 import { initPreferences } from './sharedPreferences'
 import { initInputMenu } from './inputMenu'
@@ -19,7 +20,7 @@ function start() {
   // the workspace is loaded before the first render
   const bench = import.meta.env.DEV && !isTauri ? Number(new URLSearchParams(location.search).get('bench')) : 0
   const seeded = bench > 0 ? import('./devBench').then((m) => m.seedBench(bench)) : Promise.resolve()
-  seeded.then(initPreferences).then(initStore).then(() => {
+  seeded.then(async () => { if (isTauri) { enableDriveBlockIds(await isDriveVault()) } }).then(initPreferences).then(initStore).then(() => {
     void initBackup()
     void repo.watch()
     initSearchIndex()

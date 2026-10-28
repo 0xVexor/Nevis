@@ -1,3 +1,5 @@
+import { watchDriveLifecycle } from './driveLifecycle'
+import { enableDriveBlockIds } from './editor/stableBlockIds'
 import { useEffect, useRef, useState } from 'react'
 import { accountStatus, type AccountStatus } from './db'
 import { locale, t } from './i18n'
@@ -15,12 +17,14 @@ export function SyncButton({ onSetup, onSignIn, onConflicts }: { onSetup: () => 
   const [saving, setSaving] = useState(false)
   const notified = useRef(false)
   useEffect(() => {
-    const poll = () => void accountStatus().then(setSt, () => {})
+    const poll = () => void accountStatus().then(s => { setSt(s); enableDriveBlockIds(s.provider === 'drive') }, () => {})
     poll()
     const id = window.setInterval(poll, 2000)
     return () => window.clearInterval(id)
   }, [])
-  const conflicts = st?.provider === 'github' && st.reason === 'CONFLICTS'
+  const driveActive = st?.provider === 'drive' && st.syncOn
+  useEffect(() => driveActive ? watchDriveLifecycle(setError) : undefined, [driveActive])
+  const conflicts = (st?.provider === 'github' || st?.provider === 'drive') && st.reason === 'CONFLICTS'
   useEffect(() => {
     if (conflicts && !notified.current) { notified.current = true; onConflicts() }
     if (!conflicts) notified.current = false
@@ -41,13 +45,13 @@ export function SyncButton({ onSetup, onSignIn, onConflicts }: { onSetup: () => 
           ? t('Offline — your changes are saved here and will sync when the connection is back. Click to try now.')
           : failed
             ? t('Sync failed: {error}. Click to try again.', { error: explain(st.error || st.reason) })
-            : st.lastAt
+            : st.state === 'pending' ? t('Saved locally — waiting to sync') : st.lastAt
               ? t('Synced at {time}. Click to sync now.', { time: when(st.lastAt) })
               : t('Click to sync now'))
 
   const click = () => {
     if (conflicts) return onConflicts()
-    if (st.provider === 'github' && (st.state === 'paused' || st.state === 'error' || !st.syncOn)) return onSignIn()
+    if ((st.provider === 'github' || st.provider === 'drive') && (st.state === 'paused' || st.state === 'error' || !st.syncOn)) return onSignIn()
     if (!st.signedIn) return onSignIn()
     if (!st.syncOn) return onSetup()
     setSaving(true); setError('')

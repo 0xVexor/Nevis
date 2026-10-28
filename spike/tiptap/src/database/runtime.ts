@@ -21,7 +21,7 @@ function deviceId(): string {
     if (!id) localStorage.setItem(DEVICE_KEY, (id = crypto.randomUUID()))
     return id
   } catch {
-    return 'device-unknown'
+    throw new Error('DB:device_identity_unavailable')
   }
 }
 
@@ -54,8 +54,9 @@ export function getDatabase(): Promise<DatabaseService> {
   return (starting ??= (async () => {
     const vaultId = isTauri ? (await vaultInfo()).id : 'browser'
     const storage = isTauri ? new TauriStorage((cmd, args) => invoke(cmd, args)) : new IdbStorage(db)
+    const installation = isTauri ? await invoke<string>('installation_device_id') : deviceId()
     const svc = new DatabaseService({
-      vaultId, storage, pages, host, deviceId: deviceId(), zone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      vaultId, storage, pages, host, deviceId: installation, zone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
       runtime: storage.runtime(), adapters, weekStart: weekStart(),
     })
     await svc.open()
@@ -66,7 +67,7 @@ export function getDatabase(): Promise<DatabaseService> {
     }
     startJobs(svc)
     return svc
-  })())
+  })().catch(error => { starting = null; throw error }))
 }
 
 /** The service if it has been started (for code that must not wait, e.g. the graph). */

@@ -1,0 +1,56 @@
+
+> nevis@1.0.0 test:layout
+> node --import ./tests/register.mjs --test "./tests/*.test.mjs"
+
+✔ insertion aligns later unchanged lines and preserves all text on both sides (0.762ms)
+✔ changed lines and large-note fallback preserve exact versions (0.468125ms)
+✔ readable note preview keeps complete raw metadata and handles missing, binary and invalid data (0.312709ms)
+✔ pointer move only commits on release, keeps the original block and makes one undo event (3.407333ms)
+✔ Escape, focus loss, pointer cancellation and lost capture never commit a preview (0.616666ms)
+✔ a changed document invalidates the pending source and target before pointer release (0.407958ms)
+✔ a group dropped inside another column is rejected rather than moved or nested (0.412208ms)
+✔ dropping at the source or outside the editor is a no-op (0.383167ms)
+✔ external files retain the existing drop path, and older native block payloads cannot fall through (0.18975ms)
+✔ middle and last column grips stay inside their own gutter in both directions (0.244875ms)
+✔ atomic block grips resolve the node boundary and move the original node (0.252333ms)
+✔ Drive block IDs preserve pasted text, regenerate duplicates and survive undo/redo (4.2205ms)
+✔ local-only documents do not receive new identities; existing Drive IDs are preserved (0.551875ms)
+✔ device-local font survives a fresh Vault pull while global theme changes (0.923ms)
+✔ untrusted policy fails closed and absent policy preserves legacy behavior (0.412792ms)
+✔ async insertion keeps its original position when the user moves the caret (1.14425ms)
+✔ async insertion maps through preceding edits, but cancels if its source is removed (0.849291ms)
+✔ full document replacement and editor destruction invalidate async insertions (0.20875ms)
+✔ independent groups survive widths/direction changes and JSON roundtrip (2.91575ms)
+✔ insert at the caret preserves surrounding full-width content (0.55575ms)
+✔ complete selection wraps in first column, partial selection and nesting are rejected (0.45825ms)
+✔ three to two appends removed contents; unwrap retains all marked nodes in logical order (0.65375ms)
+✔ increasing columns adds empty content and respects the three-column cap (0.160625ms)
+✔ move retains node identity/marks, source paragraph, and creates one undo entry (0.474709ms)
+✔ multi-block movement keeps order; self/no-op creates no transaction (0.167375ms)
+✔ group movement remains root-only, and preserves direction and ratios (0.2835ms)
+✔ cross-column selection is copy-only and linearizes the touched blocks (0.176833ms)
+✔ column boundary deletion is guarded while internal text positions are editable (0.158167ms)
+✔ paste into a column flattens layouts in logical order (0.198708ms)
+✔ invalid widths only affect presentation; unknown, nested or malformed nodes are protected (0.462834ms)
+✔ width/direction/resize commits are atomic, reject invalid values, and no-op adds no history (0.297292ms)
+✔ full-width exit and deletion leave a valid typing destination (0.223584ms)
+✔ markdown exports every column in logical order without layout wrappers (0.476833ms)
+✔ safety plugin rejects cross-column typing, malformed structures and destructive group deletion (1.108042ms)
+✔ saved layout NodeViews initialize before editor.view is assigned (0.506083ms)
+✔ column arrow navigation follows logical order, including empty columns and full-width exit (0.167584ms)
+✔ all existing block shapes retain attrs, marks, nested data and attachment ids through moves and unwrap (2.539417ms)
+✔ Markdown keeps a database embed reference inside the linear column output (0.079125ms)
+✔ structural layout commands do not interrupt an active IME composition (0.145ms)
+✔ thirty independent groups retain every block through repeated structural edits (2.283916ms)
+ℹ Structural edits on 30 groups: 2.0 ms; no formal performance budget is claimed.
+✔ settings changed while saving rebase onto independent remote fields (0.807083ms)
+✔ fresh cache input stays local on a same-field conflict and defaults do not erase a new remote value (0.111875ms)
+✔ object key order does not trigger repeated preference writes (0.0965ms)
+ℹ tests 43
+ℹ suites 0
+ℹ pass 43
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 368.012

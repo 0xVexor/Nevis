@@ -30,6 +30,9 @@ pub struct Snapshot {
 pub struct Bundle {
     pub manifest: Snapshot,
     pub bytes: BTreeMap<String, String>,
+    /// Trusted, process-local content-addressed sources. Never deserialize paths from a Vault/network.
+    #[serde(skip)]
+    pub sources: BTreeMap<String, std::path::PathBuf>,
 }
 impl Bundle {
     pub fn new(vault: &str, files: &Files, tombstones: BTreeSet<String>) -> Self {
@@ -40,11 +43,31 @@ impl Bundle {
                 files: files.iter().map(|(p, b)| (p.clone(), hash(b))).collect(),
                 tombstones,
             },
+            sources: BTreeMap::new(),
             bytes: files
                 .iter()
                 .map(|(p, b)| (p.clone(), B64.encode(b)))
                 .collect(),
         }
+    }
+    /// Validate a lazy Drive bundle without reading binary media into memory.
+    pub fn decode_metadata(&self)->Res<Files>{
+        if self.sources.is_empty(){return self.decode();}
+        if self.manifest.format!=1{return Err("SYNC:unsupported_format".into());}
+        let mut files=Files::new();let mut names=BTreeSet::new();let mut total=0usize;
+        for (p,h) in &self.manifest.files {
+            safe_path(p)?;
+            if !names.insert(p.to_ascii_lowercase()) || self.manifest.tombstones.contains(p){return Err("SYNC:invalid_manifest".into());}
+            if let Some(source)=self.sources.get(p) {
+                if crate::sync::drive::streaming::file_hash(source)?!=*h{return Err("SYNC:hash_mismatch".into());}
+                if !p.ends_with(".json"){continue;}
+                if fs::metadata(source).map_err(err)?.len()>MAX_FILE as u64{return Err("SYNC:too_large".into());}
+                let data=fs::read(source).map_err(err)?;validate(p,&data)?;total+=data.len();files.insert(p.clone(),data);
+            }else{let data=B64.decode(self.bytes.get(p).ok_or("SYNC:incomplete_snapshot")?).map_err(err)?;if data.len()>MAX_FILE || hash(&data)!=*h{return Err("SYNC:hash_mismatch".into());}validate(p,&data)?;total+=data.len();files.insert(p.clone(),data);}
+            if total>MAX_SNAPSHOT{return Err("SYNC:too_large".into());}
+        }
+        let mut references=files.clone();for p in self.manifest.files.keys(){references.entry(p.clone()).or_default();}validate_references(&references)?;
+        for p in &self.manifest.tombstones{safe_path(p)?;}Ok(files)
     }
     pub fn decode(&self) -> Res<Files> {
         if self.manifest.format != 1 {
@@ -61,9 +84,7 @@ impl Bundle {
             if self.manifest.tombstones.contains(p) {
                 return Err("SYNC:invalid_manifest".into());
             }
-            let b = B64
-                .decode(self.bytes.get(p).ok_or("SYNC:incomplete_snapshot")?)
-                .map_err(err)?;
+            let b = if let Some(source)=self.sources.get(p){fs::read(source).map_err(err)?}else{B64.decode(self.bytes.get(p).ok_or("SYNC:incomplete_snapshot")?).map_err(err)?};
             total += b.len();
             if b.len() > MAX_FILE || total > MAX_SNAPSHOT {
                 return Err("SYNC:too_large".into());
@@ -183,7 +204,9 @@ pub fn validate(p: &str, bytes: &[u8]) -> Res<()> {
     }
     Ok(())
 }
-pub fn read(v: &Vault) -> Res<Files> {
+pub fn read(v: &Vault) -> Res<Files> {read_internal(v,false)}
+pub fn read_metadata(v:&Vault)->Res<Files>{read_internal(v,true)}
+fn read_internal(v: &Vault, metadata_only:bool) -> Res<Files> {
     for p in [
         &v.root,
         &v.root.join(".noviq"),
@@ -205,6 +228,7 @@ pub fn read(v: &Vault) -> Res<Files> {
         out: &mut Files,
         total: &mut usize,
         dead: &BTreeSet<String>,
+        metadata_only:bool,
     ) -> Res<()> {
         if !dir.exists() {
             return Ok(());
@@ -223,7 +247,7 @@ pub fn read(v: &Vault) -> Res<Files> {
                 return Err("SYNC:symlink".into());
             }
             if t.is_dir() {
-                walk(root, &e.path(), out, total, dead)?;
+                walk(root, &e.path(), out, total, dead,metadata_only)?;
             } else {
                 let p = e
                     .path()
@@ -234,6 +258,7 @@ pub fn read(v: &Vault) -> Res<Files> {
                 if safe_path(&p).is_err() || dead.contains(&p) {
                     continue;
                 }
+                if metadata_only && p.starts_with("files/") && !p.ends_with(".json"){continue;}
                 if e.metadata().map_err(err)?.len() > MAX_FILE as u64 {
                     return Err(format!("SYNC:too_large:{p}"));
                 }
@@ -253,7 +278,7 @@ pub fn read(v: &Vault) -> Res<Files> {
     }
     let mut total = 0;
     for dir in ["pages", "files", "databases", "kv", "conflicts"] {
-        walk(&v.root, &v.root.join(dir), &mut files, &mut total, &dead)?;
+        walk(&v.root, &v.root.join(dir), &mut files, &mut total, &dead,metadata_only)?;
     }
     Ok(files)
 }
@@ -494,12 +519,9 @@ pub fn backup(v: &Vault, dest: &Path) -> Res<()> {
             if t.is_dir() {
                 copy(root, &p, dest)?;
             } else {
-                let b = fs::read(&p).map_err(err)?;
                 let target = dest.join(p.strip_prefix(root).map_err(err)?);
-                write_atomic(&target, &b)?;
-                if hash(&fs::read(target).map_err(err)?) != hash(&b) {
-                    return Err("SYNC:backup_verification".into());
-                }
+                let digest=crate::sync::drive::streaming::file_hash(&p)?;
+                crate::sync::drive::streaming::copy_verified(&p,&target,&digest)?;
             }
         }
         Ok(())
@@ -1187,7 +1209,7 @@ mod user_kv_tests {
     }
 }
 
-fn asset_ids(files: &Files) -> BTreeSet<String> {
+pub(crate) fn asset_ids(files: &Files) -> BTreeSet<String> {
     fn id(s: &str) -> bool {
         s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
     }

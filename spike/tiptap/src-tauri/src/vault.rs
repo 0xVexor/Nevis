@@ -59,17 +59,28 @@ fn updated_at(v: &Value) -> i64 {
     v.get("updatedAt").and_then(Value::as_f64).unwrap_or(0.0) as i64
 }
 
+fn marker_id(meta:&Value)->Res<String>{
+    let format=meta.get("format").and_then(Value::as_u64).unwrap_or(1);
+    let id=match format {
+        1=>meta["id"].as_str(),
+        2 if meta["id"]=="" && meta["syncProtocol"]=="nevis-drive-sync" && meta["syncSchemaVersion"]==1=>meta["driveVaultId"].as_str(),
+        _=>return Err("VAULT_UNSUPPORTED_FORMAT".into()),
+    }.filter(|id|!id.is_empty()).ok_or(VAULT_MISSING)?;
+    check_id(id)?;Ok(id.to_string())
+}
 /// What is at `root`, reading only: the vault `id` ("ok"), another vault ("mismatch") or nothing ("missing").
 pub fn probe(root: &Path, id: &str) -> &'static str {
     match read_json(&root.join(".noviq/vault.json")) {
         None => "missing",
-        Some(m) if m.get("id").and_then(Value::as_str) == Some(id) => "ok",
+        Some(m) if marker_id(&m).is_ok_and(|actual|actual==id) => "ok",
         Some(_) => "mismatch",
     }
 }
 
 pub struct Vault {
     pub root: PathBuf,
+    expected_id:String,
+    _lock:std::sync::Arc<crate::vault_lock::Guard>,
 }
 
 /// Error codes the UI knows (see `explain` in the web app). They are plain strings because commands return `Res<T>`.
@@ -86,14 +97,30 @@ impl Vault {
         for p in [&root, &root.join(".noviq"), &root.join(".noviq/vault.json"), &root.join("pages"), &root.join("files"), &root.join("databases"), &root.join("kv"), &root.join("history"), &root.join("conflicts")] {
             if fs::symlink_metadata(p).is_ok_and(|m|m.file_type().is_symlink()){return Err("STORAGE:symlink".into());}
         }
-        let v = Vault { root };
+        let expected_id=marker_id(&read_json(&root.join(".noviq/vault.json")).ok_or(VAULT_MISSING)?)?;
+        let lock=crate::vault_lock::acquire(&root)?;
+        let v = Vault { root,expected_id,_lock:lock };
         if v.id().is_empty() {
             return Err(VAULT_MISSING.into());
         }
+        v.ensure_exclusive()?;
         v.make_dirs()?;
         Ok(v)
     }
 
+    pub fn ensure_exclusive(&self)->Res<()> {
+        match probe(&self.root,&self.expected_id){"ok"=>(),"missing"=>return Err(VAULT_MISSING.into()),_=>return Err(VAULT_MISMATCH.into())}
+        self._lock.check(&self.root)
+    }
+    pub fn requires_drive(&self)->bool{self.meta_value()["format"]==2}
+    /// An empty legacy `id` makes all existing v1 clients refuse both open and adopt.
+    /// The logical UUID is unchanged and only a compatible client reads driveVaultId.
+    pub fn fence_drive(&self)->Res<()> {
+        self.ensure_exclusive()?;let mut meta=self.meta_value();if self.requires_drive(){marker_id(&meta)?;return Ok(());}
+        meta["format"]=json!(2);meta["id"]=json!("");meta["driveVaultId"]=json!(self.expected_id);meta["syncProtocol"]=json!("nevis-drive-sync");meta["syncSchemaVersion"]=json!(1);
+        let bytes=serde_json::to_vec(&meta).map_err(err)?;write_atomic(&self.root.join(".noviq/vault.json"),&bytes)?;
+        if marker_id(&read_json(&self.root.join(".noviq/vault.json")).ok_or(VAULT_MISSING)?)?!=self.expected_id{return Err("VAULT_MISMATCH".into());}Ok(())
+    }
     /// Like `open`, and also checks that the folder is the vault `id`.
     pub fn open_as(root: PathBuf, id: &str) -> Res<Vault> {
         let v = Vault::open(root)?;
@@ -111,6 +138,8 @@ impl Vault {
         if !root.join(".noviq/vault.json").is_file() {
             let name = root.file_name().and_then(|n| n.to_str()).unwrap_or("Nevis").to_string();
             fs::create_dir_all(root.join(".noviq")).map_err(err)?;
+            let _initializing=crate::vault_lock::acquire(&root)?;
+            if root.join(".noviq/vault.json").is_file(){return Vault::open(root);}
             write_atomic(&root.join(".noviq/vault.json"), json!({ "format": 1, "id": uuid::Uuid::new_v4().to_string(), "name": name }).to_string().as_bytes())?;
         }
         Vault::open(root)
@@ -155,7 +184,7 @@ impl Vault {
     }
 
     pub fn id(&self) -> String {
-        self.meta_value().get("id").and_then(Value::as_str).unwrap_or_default().to_string()
+        self.expected_id.clone()
     }
 
     pub fn name(&self) -> String {
@@ -170,6 +199,7 @@ impl Vault {
     /// Used when a vault that already exists in the cloud is downloaded: it keeps its identity.
     pub fn create_with_id(root: PathBuf, name: &str, id: &str) -> Res<Vault> {
         fs::create_dir_all(root.join(".noviq")).map_err(err)?;
+        let _initializing=crate::vault_lock::acquire(&root)?;
         let marker = root.join(".noviq/vault.json");
         if !marker.exists() {
             write_atomic(&marker, json!({ "format": 1, "id": id, "name": name }).to_string().as_bytes())?;
@@ -637,5 +667,35 @@ mod tests {
         v.purge_trash();
         assert!(!old.exists(), "older than the retention time");
         assert_eq!(fs::read_dir(v.sync_trash_dir()).unwrap().count(), 2, "recent entries stay");
+    }
+}
+
+#[cfg(test)]
+mod locking_tests {
+    use super::*;
+    #[test]
+    fn process_probe() {
+        let Ok(root)=std::env::var("NEVIS_TEST_LOCK_ROOT") else{return;};
+        let expected=std::env::var("NEVIS_TEST_LOCK_EXPECT").unwrap();
+        let result=Vault::open(PathBuf::from(root));
+        if expected=="held"{assert_eq!(result.err().as_deref(),Some("VAULT_IN_USE"));}
+        else{let v=result.unwrap();v.save_pages(&[json!({"id":"child","title":"written by child","updatedAt":1,"deletedAt":null,"content":{"type":"doc","content":[]}})],&[],false).unwrap();}
+    }
+    #[test]
+    fn another_process_cannot_open_until_every_local_handle_is_closed(){
+        let root=std::env::temp_dir().join(format!("nevis-lock-{}",uuid::Uuid::new_v4()));let a=Vault::create(root.clone(),"locked").unwrap();let b=Vault::open_as(root.clone(),&a.id()).unwrap();
+        let child=|expect:&str|std::process::Command::new(std::env::current_exe().unwrap()).args(["--exact","vault::locking_tests::process_probe","--nocapture"]).env("NEVIS_TEST_LOCK_ROOT",&root).env("NEVIS_TEST_LOCK_EXPECT",expect).output().unwrap();
+        assert!(child("held").status.success());drop(a);assert!(child("held").status.success());drop(b);let outcome=child("free");assert!(outcome.status.success(),"{}",String::from_utf8_lossy(&outcome.stderr));assert!(root.join("pages/child.json").is_file());fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn drive_marker_fences_legacy_open_without_changing_logical_identity(){
+        let root=std::env::temp_dir().join(format!("nevis-format-{}",uuid::Uuid::new_v4()));let v=Vault::create(root.clone(),"T").unwrap();let id=v.id();v.fence_drive().unwrap();v.fence_drive().unwrap();
+        let marker=read_json(&root.join(".noviq/vault.json")).unwrap();assert_eq!(marker["format"],2);assert_eq!(marker["id"],"");assert_eq!(marker["driveVaultId"],id);assert_eq!(probe(&root,&id),"ok");assert_eq!(Vault::open_as(root.clone(),&id).unwrap().id(),id);
+        // Exactly the old v1 client's identity reader now returns empty and its open guard refuses the folder.
+        assert!(marker.get("id").and_then(Value::as_str).unwrap_or("").is_empty());drop(v);fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn replacing_marker_never_changes_the_open_vault_identity(){
+        let root=std::env::temp_dir().join(format!("nevis-identity-{}",uuid::Uuid::new_v4()));let v=Vault::create(root.clone(),"T").unwrap();let original=v.id();write_atomic(&root.join(".noviq/vault.json"),&serde_json::to_vec(&json!({"format":1,"id":uuid::Uuid::new_v4().to_string(),"name":"other"})).unwrap()).unwrap();assert_eq!(v.id(),original);assert_eq!(v.ensure_exclusive().unwrap_err(),VAULT_MISMATCH);drop(v);fs::remove_dir_all(root).unwrap();
     }
 }
