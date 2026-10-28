@@ -1,8 +1,8 @@
 # Local MCP connections
 
-The desktop preview can expose saved documents to a local agent client through an opt-in Streamable HTTP endpoint. Open **Settings → Agent connections** in the vault you want to share. Access starts disabled, and reopening Nevis does not restore a listener.
+The desktop preview can expose saved documents and revision-gated edits to a local agent client through an opt-in Streamable HTTP endpoint. Open **Settings → Agent connections** in the vault you want to share. Access starts disabled, and reopening Nevis does not restore a listener.
 
-Choose document roots or enable all documents in the current vault. A selected root includes its descendants. Excluded documents and their descendants always take priority. Missing or cyclic ancestry fails closed. The client cannot choose another vault or alter this policy through a tool call. Disconnect before changing permissions.
+Choose document roots or enable all documents in the current vault. A selected root includes its descendants. Excluded documents and their descendants always take priority. Missing or cyclic ancestry fails closed. The client cannot choose another vault or alter this policy through a tool call. Disconnect before changing permissions. Normal builds keep **Document editing** disabled until the final live-client check. An explicit `mcp-write-acceptance` build exposes the write opt-in for a disposable vault; it still requires a separate user grant.
 
 Click **Enable connection**, then **Copy connection details**. The copied JSON has this shape:
 
@@ -23,7 +23,11 @@ The server advertises eight tools: `list_documents`, `search_documents`, `read_d
 
 The adapter calls the shared TypeScript document service. Reads use persisted state and never flush or expose unsaved editor drafts. Search, history and content reads apply the same current grant. Cursors belong to the connection and query snapshot. Historical operations remain device/grant-local and bounded by the existing retention policy.
 
-External editing is disabled. Native settings reject write grants, and the TypeScript host has a separate closed release gate. The four mutation handlers are wired and covered through a test-only write grant. Enabling them for users requires the task 17 acceptance evidence, including authorization at final atomic admission. Do not enable writes by changing only the UI checkbox.
+Editing in the acceptance build is opt-in and uses exact document revisions, explicit block targets and durable operation IDs. Use preview before apply. A retry must repeat the original operation ID and payload; it returns the original saved receipt instead of applying twice. Stale revisions reject the edit. Unsaved editor drafts reject conflicting writes.
+
+The storage adapter checks the current hierarchy and live grant at final admission. Native admission holds the shared vault lock and validates the pending request, grant revision, deadline, target scope and newly introduced internal references before writing a durable prepare. Memory and IndexedDB apply the same check in their atomic mutation boundary. Cancellation or revocation before admission rejects the operation. Once the durable prepare is accepted, recovery must finish it even if the client disconnects. A timeout after admission can therefore mean the save succeeded; retry with the same operation ID to recover its original receipt.
+
+`edit_document` also supports `set_table_cell` and `insert_table_row`. Targets identify the table and cell/anchor row by stable block reference. Cell replacement preserves cell attributes and merged spans. Row insertion explicitly supplies the new cells and extends vertical spans crossing the insertion boundary. Rectangular grid validation rejects holes, overlaps, invalid widths/spans and unsupported shapes without saving a partial batch. Images and other unsupported content inside a cell remain protected from replacement.
 
 Tool results include both `structuredContent` and a matching JSON text block. Contract failures return bounded error codes without raw storage errors, filesystem paths, note bodies or credentials. Note bodies occur only in authorized tool content, not diagnostics or connection configuration.
 
@@ -45,8 +49,10 @@ The native listener binds literal `127.0.0.1` on an ephemeral port. It requires 
 
 Cancellation and deadlines invalidate the request. Native code holds no vault lock while awaiting the webview response. Replies must match both the pending request and active grant revision; revoked replies are discarded. Status and bridge events omit credentials. Configuration stores only grant identity, vault identity and policy in the per-device app data directory outside the vault. Tokens use the operating system credential store, with no plaintext fallback. Native providers are currently selected for macOS and Windows; other platforms fail closed.
 
-## Evidence and remaining acceptance
+## Validation and support
 
-Focused automated checks cover scoped handlers and schemas, all mutation delegations under a test grant, saved reads, scope changes after asynchronous I/O, bounded dispatch, cancellation, request limits, revocation, native loopback request guards, and the official MCP client library over a local HTTP fixture.
+The first acceptance target is macOS arm64. The same source has portable memory/IndexedDB checks and native CI; Windows and Intel Mac installer/runtime behavior are not established by the local Mac run. Web and mobile MCP hosts are not claimed. Linux connection enable fails closed until a native credential provider is selected.
 
-The official-client fixture runs the real TypeScript handlers through a Node test HTTP server. The native tests use a simulated webview callback over real loopback sockets. These are separate boundary checks. They do not prove the combined packaged Tauri/webview connection, operating system credential prompts, background behavior, or an intended agent application's complete workflow. Those remain tasks 17–18. Full PR suites and production packaging run at the final merge gate.
+The final acceptance record in `docs/mcp-acceptance.md` separates the packaged desktop run, intended-client observations, automated regression results and remaining distribution limits. The reproducible synthetic fixture and measured SDK workflow are in `tools/mcp-spike/fixture.mjs` and `workflow.mjs`. They never adopt personal vaults. The product bundle itself needs no Node MCP runtime.
+
+Locally signed preview artifacts are not notarized distribution releases. Do not interpret local signature verification as Gatekeeper, notarization, Windows installation or hardware power-loss proof.

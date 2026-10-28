@@ -8,9 +8,10 @@ import type { Page } from './model.ts'
 
 export const MCP_PROTOCOL = '2025-11-25'
 /** Writes additionally require an explicit grant and atomic storage admission. */
-export const MCP_WRITES_RELEASED = true
+export const MCP_WRITES_RELEASED = false
 export interface McpPolicy { wholeVault: boolean; rootIds: string[]; excludedIds: string[]; allowWrites: boolean }
 export interface McpConnection {
+  writesAvailable?: boolean
   grantId: string; revision: string; vaultId: string; policy: McpPolicy
 }
 const reads = new Set<DocumentToolName>(['list_documents', 'search_documents', 'read_document', 'get_document_history'])
