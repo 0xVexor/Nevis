@@ -12,7 +12,8 @@ const branch = execFileSync('git', ['branch', '--show-current'], { cwd: root, en
 const dirty = !!execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim()
 const folder = path.resolve(root, process.env.NOVIQ_PREVIEW_OUTPUT || 'artifacts/github-preview', platform)
 const bundle = process.env.NOVIQ_PREVIEW_TARGET_DIR || path.join(root, 'spike/tiptap/src-tauri/target')
-const executable = path.join(bundle, platform === 'macos' ? 'universal-apple-darwin/release/nevis' : 'release/nevis.exe')
+const release = path.join(bundle, platform === 'macos' ? 'universal-apple-darwin/release' : 'x86_64-pc-windows-msvc/release')
+const executable = path.join(release, platform === 'macos' ? 'nevis' : 'nevis.exe')
 const binary = await fs.readFile(executable)
 for (const marker of ['com.vexor.noviq.githubpreview', 'app.noviq.github.preview']) {
   if (!binary.includes(Buffer.from(marker))) throw new Error('Preview isolation marker missing in executable: ' + marker)
@@ -23,7 +24,7 @@ async function walk(dir) {
 }
 let input = process.argv[3]
 if (!input && platform === 'windows') {
-  const matches = (await walk(path.join(bundle, 'release/bundle/nsis'))).filter((f) => /[-_]setup\.exe$/i.test(f))
+  const matches = (await walk(path.join(release, 'bundle/nsis'))).filter((f) => /[-_]setup\.exe$/i.test(f))
   if (!matches.length) throw new Error('No NSIS installer found')
   const dated = await Promise.all(matches.map(async file => ({ file, modified: (await fs.stat(file)).mtimeMs })))
   dated.sort((a, b) => b.modified - a.modified)
@@ -41,7 +42,7 @@ await fs.writeFile(path.join(folder, 'SHA256SUMS.txt'), `${checksum}  ${name}\n`
 const publicApp = JSON.parse(await fs.readFile(path.join(root, 'spike/tiptap/src-tauri/github-app.public.json'), 'utf8'))
 const configured = !!((process.env.NOVIQ_GITHUB_CLIENT_ID?.trim() || publicApp.clientId) && (process.env.NOVIQ_GITHUB_APP_SLUG?.trim() || publicApp.slug))
 await fs.writeFile(path.join(folder, 'BUILD-INFO.json'), JSON.stringify({
-  commit, branch, dirty, platform: label, builtAt: new Date().toISOString(),
+  commit, branch, dirty, target: platform === 'macos' ? 'universal-apple-darwin' : 'x86_64-pc-windows-msvc', platform: label, builtAt: new Date().toISOString(),
   identifier: 'com.vexor.noviq.githubpreview', credentialService: 'app.noviq.github.preview',
   githubAppConfigured: configured, unsignedTestBuild: true,
 }, null, 2) + '\n')

@@ -1,5 +1,7 @@
 # Personal vault sync with GitHub
 
+For the complete current architecture, including the legacy engine and gateway boundaries, see [معماری فعلی همگام‌سازی](sync-architecture.md).
+
 Implementation branch: `sync/github-personal-vaults`. The existing vault remains the local source of truth. Desktop sync runs in Rust, independently of the Noviq server. The existing browser/IndexedDB app remains local-first; GitHub authentication/sync currently requires the native Tauri app.
 
 ## Publisher setup (required before live sign-in)

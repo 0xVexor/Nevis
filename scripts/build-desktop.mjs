@@ -16,7 +16,8 @@ export function buildPlan(root, platform = process.platform) {
     [process.execPath, [collector, 'macos', path.join(root, 'artifacts/github-preview/Nevis-GitHub-Preview.pkg')], root],
   ]
   if (platform === 'win32') return [
-    [process.execPath, [wrapper, '--bundles', 'nsis'], root],
+    ['rustup', ['toolchain', 'install', 'stable-x86_64-pc-windows-msvc', '--profile', 'minimal'], root],
+    [process.execPath, [wrapper, '--target', 'x86_64-pc-windows-msvc', '--bundles', 'nsis'], root],
     [process.execPath, [collector, 'windows'], root],
   ]
   throw new Error('Local installers require macOS or Windows. Use --both for the GitHub build runners.')
