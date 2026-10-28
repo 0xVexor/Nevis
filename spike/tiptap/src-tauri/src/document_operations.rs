@@ -90,6 +90,41 @@ fn local_dir(root: &Path) -> Res<Option<PathBuf>> {
     Ok(Some(base.join(format!("{:x}", Sha256::digest(id.as_bytes())))))
 }
 
+fn check_creation(root: &Path, record: &Value) -> Res<()> {
+    let Some(expected) = record.get("creation") else { return Ok(()); };
+    if !record["before"].is_null() || expected["parentId"] != record["after"]["parentId"] { return Err("Invalid document creation precondition".into()); }
+    let mut pages = std::collections::BTreeMap::<String, Value>::new();
+    for entry in fs::read_dir(root.join("pages")).map_err(err)? {
+        let path = entry.map_err(err)?.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("json") { continue; }
+        let Some(id) = path.file_stem().and_then(|s| s.to_str()).filter(|id| check_id(id).is_ok()) else { continue; };
+        if let Some(page) = read(&path)? { pages.insert(id.to_string(), page); }
+    }
+    let mut ancestors = vec![];
+    let mut seen = std::collections::BTreeSet::new();
+    let mut parent = record["after"]["parentId"].clone();
+    while !parent.is_null() {
+        let id = parent.as_str().ok_or("Document revision conflict")?;
+        let page = pages.get(id).ok_or("Document revision conflict")?;
+        if page.get("deletedAt") != Some(&Value::Null) || page.get("parentId").is_none()
+            || !seen.insert(id.to_string()) || ancestors.len() >= 128 { return Err("Document revision conflict".into()); }
+        ancestors.push(serde_json::json!({"id":id,"parentId":page["parentId"],"deletedAt":null}));
+        parent = page["parentId"].clone();
+    }
+    let parent = &record["after"]["parentId"];
+    let mut siblings = vec![]; let mut max_sort: Option<i64> = None;
+    for (id, page) in pages.iter().filter(|(_, page)| page.get("parentId") == Some(parent)) {
+        let sort = page["sort"].as_f64().filter(|n| n.is_finite() && n.fract() == 0.0 && n.abs() <= 9_007_199_254_740_991.0).ok_or("Document revision conflict")? as i64;
+        siblings.push(serde_json::json!({"id":id,"sort":sort}));
+        max_sort = Some(max_sort.map_or(sort, |previous| previous.max(sort)));
+    }
+    let sort = max_sort.map_or(0, |value| value.saturating_add(1));
+    if !(-9_007_199_254_740_991..=9_007_199_254_740_991).contains(&sort) { return Err("Document revision conflict".into()); }
+    let actual = serde_json::json!({"parentId":parent,"ancestors":ancestors,"siblings":siblings});
+    if actual != *expected || record["after"]["sort"].as_f64() != Some(sort as f64) { return Err("Document revision conflict".into()); }
+    Ok(())
+}
+
 fn recover_at(root: &Path, local: &Path) -> Res<()> {
     let pending = local.join("pending");
     if !pending.exists() { return Ok(()); }
@@ -108,6 +143,7 @@ fn recover_at(root: &Path, local: &Path) -> Res<()> {
             if current != record["after"] && current != record["before"] {
                 return Err("Document operation recovery conflict; snapshots retained".into());
             }
+            if current != record["after"] { check_creation(root, &record).map_err(|_| "Document creation recovery conflict; snapshots retained".to_string())?; }
             if let Some(history) = record.get("history") {
                 let ts = history["ts"].as_i64().ok_or("Invalid operation history")?;
                 let path = root.join("history").join(&id).join(format!("{ts}.json"));
@@ -151,6 +187,7 @@ fn commit_at_result(root: &Path, local: &Path, record: &Value) -> Res<(Value, bo
     }
     let page_path = root.join("pages").join(format!("{id}.json"));
     if read(&page_path)?.unwrap_or(Value::Null) != record["before"] { return Err("Document revision conflict".into()); }
+    check_creation(root, record)?;
     let mut record = record.clone();
     if record.get("history").is_some() {
         let history_dir = root.join("history").join(&id);
@@ -252,6 +289,30 @@ mod tests {
         assert!(recover_at(&root, &local).unwrap_err().contains("recovery conflict"));
         assert!(pending.exists());
         assert_eq!(read(&root.join("pages/note.json")).unwrap().unwrap()["title"], "external");
+        fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
+    #[test]
+    fn create_checks_sibling_and_parent_preconditions_before_prepare_and_deduplicates_after_commit() {
+        let (root, local, mut record) = fixture();
+        let parent = serde_json::json!({"id":"parent","parentId":null,"sort":7,"deletedAt":null});
+        fs::remove_file(root.join("pages/note.json")).unwrap();
+        durable_write(&root.join("pages/parent.json"), &parent).unwrap();
+        record["before"] = Value::Null; record["receipt"]["beforeRevision"] = Value::Null;
+        record.as_object_mut().unwrap().remove("history");
+        record["after"]["id"] = serde_json::json!("created"); record["receipt"]["documentId"] = serde_json::json!("created");
+        record["after"]["parentId"] = Value::Null; record["after"]["sort"] = serde_json::json!(8);
+        record["creation"] = serde_json::json!({"parentId":null,"ancestors":[],"siblings":[{"id":"parent","sort":7}]});
+        assert!(!commit_at_result(&root, &local, &record).unwrap().1);
+        assert!(commit_at_result(&root, &local, &record).unwrap().1);
+        let mut stale = record.clone(); stale["operationId"] = serde_json::json!("next"); stale["receipt"]["operationId"] = serde_json::json!("next");
+        stale["after"]["id"] = serde_json::json!("other"); stale["receipt"]["documentId"] = serde_json::json!("other");
+        assert!(commit_at_result(&root, &local, &stale).unwrap_err().contains("revision conflict"));
+        stale["after"]["parentId"] = serde_json::json!("parent"); stale["after"]["sort"] = serde_json::json!(0);
+        stale["creation"] = serde_json::json!({"parentId":"parent","ancestors":[{"id":"parent","parentId":null,"deletedAt":null}],"siblings":[]});
+        let mut trashed = parent.clone(); trashed["deletedAt"] = serde_json::json!(1);
+        durable_write(&root.join("pages/parent.json"), &trashed).unwrap();
+        assert!(commit_at_result(&root, &local, &stale).unwrap_err().contains("revision conflict"));
+        assert!(!root.join("pages/other.json").exists());
         fs::remove_dir_all(root.parent().unwrap()).unwrap();
     }
 }

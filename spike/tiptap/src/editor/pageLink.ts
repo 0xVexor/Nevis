@@ -75,11 +75,12 @@ export const PageLink = Node.create({
       }
       paint()
       window.addEventListener(PAGES_CHANGED, paint)
+      window.addEventListener('external-change', paint)
       a.onclick = (e) => {
         e.preventDefault()
         if (repo.get(id)) window.dispatchEvent(new CustomEvent(OPEN_PAGE, { detail: id }))
       }
-      return { dom: a, ignoreMutation: () => true, destroy: () => window.removeEventListener(PAGES_CHANGED, paint) }
+      return { dom: a, ignoreMutation: () => true, destroy: () => { window.removeEventListener(PAGES_CHANGED, paint); window.removeEventListener('external-change', paint) } }
     }
   },
 })
