@@ -36,7 +36,7 @@ pub struct Policy {
 }
 impl Policy {
     fn valid(&self) -> bool {
-        (!self.allow_writes || cfg!(feature = "mcp-write-acceptance"))
+        (!self.allow_writes || cfg!(feature = "mcp-writes"))
             && (self.whole_vault || !self.root_ids.is_empty())
             && [&self.root_ids, &self.excluded_ids].iter().all(|ids| {
                 ids.len() <= 100
@@ -151,7 +151,7 @@ impl Host {
         Ok(
             json!({"active":inner.session.is_some(),"endpoint":inner.session.as_ref().map(|s| &s.endpoint),
             "connection":inner.session.as_ref().map(|s| &s.connection),"ready":inner.ready.as_ref().is_some_and(|(_, _, at)| at.elapsed() < Duration::from_secs(10)),
-            "pending":inner.pending.len(),"writesAvailable":cfg!(feature = "mcp-write-acceptance")}),
+            "pending":inner.pending.len(),"writesAvailable":cfg!(feature = "mcp-writes")}),
         )
     }
     fn revoke(&self) -> Option<Session> {
@@ -209,7 +209,7 @@ impl Host {
             uuid::Uuid::new_v4().to_string()
         };
         let connection = Connection {
-            writes_available: cfg!(feature = "mcp-write-acceptance"),
+            writes_available: cfg!(feature = "mcp-writes"),
             grant_id,
             revision: uuid::Uuid::new_v4().to_string(),
             vault_id: vault_id.to_string(),
@@ -700,7 +700,7 @@ mod tests {
         listener.set_nonblocking(true).unwrap();
         let endpoint = format!("http://{}/mcp", listener.local_addr().unwrap());
         let connection = Connection {
-            writes_available: cfg!(feature = "mcp-write-acceptance"),
+            writes_available: cfg!(feature = "mcp-writes"),
             grant_id: uuid::Uuid::new_v4().to_string(),
             revision: "revision".into(),
             vault_id: "vault".into(),
@@ -839,7 +839,7 @@ mod tests {
         };
         assert!(policy.valid());
         policy.allow_writes = true;
-        assert_eq!(policy.valid(), cfg!(feature = "mcp-write-acceptance"));
+        assert_eq!(policy.valid(), cfg!(feature = "mcp-writes"));
         policy.whole_vault = false;
         assert!(!policy.valid());
         {

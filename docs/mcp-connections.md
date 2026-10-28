@@ -2,7 +2,7 @@
 
 The desktop preview can expose saved documents and revision-gated edits to a local agent client through an opt-in Streamable HTTP endpoint. Open **Settings → Agent connections** in the vault you want to share. Access starts disabled, and reopening Nevis does not restore a listener.
 
-Choose document roots or enable all documents in the current vault. A selected root includes its descendants. Excluded documents and their descendants always take priority. Missing or cyclic ancestry fails closed. The client cannot choose another vault or alter this policy through a tool call. Disconnect before changing permissions. Normal builds keep **Document editing** disabled until the final live-client check. An explicit `mcp-write-acceptance` build exposes the write opt-in for a disposable vault; it still requires a separate user grant.
+Choose document roots or enable all documents in the current vault. A selected root includes its descendants. Excluded documents and their descendants always take priority. Missing or cyclic ancestry fails closed. The client cannot choose another vault or alter this policy through a tool call. Disconnect before changing permissions. Normal macOS/Windows builds offer a separate **Allow document editing** opt-in after the recorded live-client acceptance. Connections still start disabled and write permission starts unchecked. Builds made with `--no-default-features` omit native write support.
 
 Click **Enable connection**, then **Copy connection details**. The copied JSON has this shape:
 
@@ -23,7 +23,7 @@ The server advertises eight tools: `list_documents`, `search_documents`, `read_d
 
 The adapter calls the shared TypeScript document service. Reads use persisted state and never flush or expose unsaved editor drafts. Search, history and content reads apply the same current grant. Cursors belong to the connection and query snapshot. Historical operations remain device/grant-local and bounded by the existing retention policy.
 
-Editing in the acceptance build is opt-in and uses exact document revisions, explicit block targets and durable operation IDs. Use preview before apply. A retry must repeat the original operation ID and payload; it returns the original saved receipt instead of applying twice. Stale revisions reject the edit. Unsaved editor drafts reject conflicting writes.
+Editing is opt-in and uses exact document revisions, explicit block targets and durable operation IDs. Use preview before apply. A retry must repeat the original operation ID and payload; it returns the original saved receipt instead of applying twice. Stale revisions reject the edit. Unsaved editor drafts reject conflicting writes.
 
 The storage adapter checks the current hierarchy and live grant at final admission. Native admission holds the shared vault lock and validates the pending request, grant revision, deadline, target scope and newly introduced internal references before writing a durable prepare. Memory and IndexedDB apply the same check in their atomic mutation boundary. Cancellation or revocation before admission rejects the operation. Once the durable prepare is accepted, recovery must finish it even if the client disconnects. A timeout after admission can therefore mean the save succeeded; retry with the same operation ID to recover its original receipt.
 

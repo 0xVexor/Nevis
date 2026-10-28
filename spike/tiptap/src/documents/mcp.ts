@@ -7,8 +7,6 @@ import type { DocumentReadRuntime } from './reader.ts'
 import type { Page } from './model.ts'
 
 export const MCP_PROTOCOL = '2025-11-25'
-/** Writes additionally require an explicit grant and atomic storage admission. */
-export const MCP_WRITES_RELEASED = false
 export interface McpPolicy { wholeVault: boolean; rootIds: string[]; excludedIds: string[]; allowWrites: boolean }
 export interface McpConnection {
   writesAvailable?: boolean
@@ -101,9 +99,10 @@ export class McpDocumentSession {
   private readonly service: DocumentService
   private readonly runtime: DocumentReadRuntime
   private readonly active: () => boolean
-  private readonly writesReleased: boolean
-  constructor(service: DocumentService, connection: McpConnection, runtime: DocumentReadRuntime, active: () => boolean, writesReleased = MCP_WRITES_RELEASED) {
-    this.service = service; this.connection = JSON.parse(JSON.stringify(connection)); this.runtime = runtime; this.active = active; this.writesReleased = writesReleased
+  private readonly writesAvailable: boolean
+  // A host must explicitly advertise write support in addition to the user grant.
+  constructor(service: DocumentService, connection: McpConnection, runtime: DocumentReadRuntime, active: () => boolean, writesAvailable = false) {
+    this.service = service; this.connection = JSON.parse(JSON.stringify(connection)); this.runtime = runtime; this.active = active; this.writesAvailable = writesAvailable
     this.scope = new McpDocumentScope(connection.policy)
     const grant = { context: { vaultHandle: service.vaultHandle, grantId: connection.grantId, grantRevision: connection.revision },
       isActive: () => this.live(), canRead: this.scope.canRead, canWrite: this.scope.canWrite, canCreate: this.scope.canCreate,
@@ -142,7 +141,7 @@ export class McpDocumentSession {
       if (notification || !object(p) || typeof p.protocolVersion !== 'string' || !object(p.capabilities) || !object(p.clientInfo)) return rpcError(id ?? null, -32602, 'Invalid initialization')
       this.initialized = true
       return response({ protocolVersion: MCP_PROTOCOL, serverInfo: { name: 'nevis-documents', version: '1.0.0' }, capabilities: { tools: { listChanged: false } },
-        instructions: `Only explicitly permitted saved documents are accessible. ${this.connection.policy.allowWrites && this.writesReleased ? 'Editing requires exact revisions and durable operation IDs. Preview before applying.' : 'This connection is read-only.'} Nevis must stay open.` })
+        instructions: `Only explicitly permitted saved documents are accessible. ${this.connection.policy.allowWrites && this.writesAvailable ? 'Editing requires exact revisions and durable operation IDs. Preview before applying.' : 'This connection is read-only.'} Nevis must stay open.` })
     }
     if (message.method === 'notifications/initialized') { if (this.initialized) this.ready = true; return null }
     if (message.method === 'ping') return notification ? null : response({})
@@ -161,7 +160,7 @@ export class McpDocumentSession {
     try {
       await this.refresh()
       if (!this.live()) throw { code: 'APP_UNAVAILABLE' }
-      if (!reads.has(name) && (!this.connection.policy.allowWrites || !this.writesReleased)) throw { code: this.connection.policy.allowWrites ? 'CAPABILITY_UNAVAILABLE' : 'ACCESS_DENIED' }
+      if (!reads.has(name) && (!this.connection.policy.allowWrites || !this.writesAvailable)) throw { code: this.connection.policy.allowWrites ? 'CAPABILITY_UNAVAILABLE' : 'ACCESS_DENIED' }
       const handlers = {
         list_documents: () => this.reader.listDocuments(input), search_documents: () => this.reader.searchDocuments(input), read_document: () => this.reader.readDocument(input),
         get_document_history: () => this.editor.getDocumentHistory(input), create_document: () => this.editor.createDocument(input), edit_document: () => this.editor.editDocument(input),

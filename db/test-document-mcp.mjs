@@ -42,7 +42,7 @@ test('scopes inherit exclusions, hide missing/cyclic ancestry and preserve selec
   assert.equal(scope.canCreate(null), false); assert.equal(scope.canCreate('root'), true); assert.equal(scope.canCreate('private'), false)
 })
 
-test('handshake, eight contracts, strict validation, bounded saved reads and read-only release gate', async () => {
+test('handshake, eight contracts, strict validation, bounded saved reads and explicit host write capability', async () => {
   const h = await fixture({ policy: { wholeVault: false, rootIds: ['root'], excludedIds: ['private'], allowWrites: true } })
   assert.equal((await h.rpc('tools/list')).error.code, -32002); await h.initialize()
   const tools = (await h.rpc('tools/list')).result.tools

@@ -3,6 +3,7 @@ import { acceptanceEndpoint, acceptanceToken } from './acceptance-auth.mjs'
 import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import { performance } from 'node:perf_hooks'
+import { setTimeout as pause } from 'node:timers/promises'
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 
 const [endpoint, fixturePath, grantId, reportPath] = process.argv.slice(2)
@@ -13,7 +14,11 @@ const url = acceptanceEndpoint(endpoint), token = acceptanceToken(grantId)
 const client = new Client({ name: 'nevis-desktop-acceptance', version: '1' }), calls = [], run = Date.now().toString(36)
 const start = performance.now()
 const report = { environment: { platform: process.platform, arch: process.arch, client: 'official MCP TypeScript SDK 2.4.0', transport: 'packaged Tauri HTTP -> webview -> native persistence', syntheticFixture: true }, calls, assertions: [], completed: false }
+let previousCall = 0
 async function call(name, args, expected = true) {
+  // Keep a deterministic scripted run below the native admission-rate budget.
+  await pause(Math.max(0, 125 - (performance.now() - previousCall)))
+  previousCall = performance.now()
   const started = performance.now(), result = await client.callTool({ name, arguments: args })
   const value = result.structuredContent
   calls.push({ name, durationMs: Number((performance.now() - started).toFixed(2)), returnedBytes: Buffer.byteLength(JSON.stringify(result)), ok: value?.ok === true })
