@@ -1,9 +1,11 @@
+import { settingsPolicy, preserveDeviceSettings, type SettingsPolicy } from './driveSettingsPolicy'
 import { invoke } from '@tauri-apps/api/core'
 import { kvGet, isTauri, storageFrozen } from './db'
 import { getSettings, reloadSettings } from './settings'
 import { preferenceKey, rebasePreferences, type Preferences } from './preferencesModel'
 const KEYS = new Set(['not.settings', 'not.reader.cfg', 'not.page.width', 'not.sideW', 'not.side', 'not.panel.v2', 'not.explorer.mode', 'not.db.weekStart', 'not.db.map', 'not.db.gateway', 'not.drawing.library'])
 const allowed = (k: string) => KEYS.has(k) || /^db\.personal\.[a-zA-Z0-9_-]+$/.test(k)
+let policy: SettingsPolicy = {}
 let baseline: Preferences = {}
 let seen = ''
 let saving: Promise<void> | null = null
@@ -12,6 +14,8 @@ let applying = false
 const snapshot = (): Preferences => Object.fromEntries([...new Set([...KEYS, ...Object.keys(localStorage).filter(allowed)])].sort().map((k) => [k, k === 'not.settings' ? JSON.stringify(getSettings()) : localStorage.getItem(k)]))
 function report(e: unknown) { window.dispatchEvent(new CustomEvent('storage-error', { detail: String(e) })) }
 function apply(values: Preferences) {
+  values = { ...values }
+  if (typeof values['not.settings'] === 'string') values['not.settings'] = preserveDeviceSettings(values['not.settings'], JSON.stringify(getSettings()), policy)
   applying = true
   try {
     for (const [k, v] of Object.entries(values)) if (allowed(k) && (v === null || typeof v === 'string')) {
@@ -37,6 +41,7 @@ export async function flushPreferences(): Promise<void> {
   return flushPreferences()
 }
 async function pull() {
+  policy = settingsPolicy(await kvGet('settings'))
   if (saving) await saving
   const remote = await kvGet<Preferences>('preferences')
   if (!remote) return
@@ -47,6 +52,7 @@ async function pull() {
 }
 export async function initPreferences() {
   if (!isTauri) return
+  policy = settingsPolicy(await kvGet('settings'))
   const saved = await kvGet<Preferences>('preferences')
   if (saved) { apply(saved); baseline = saved; seen = preferenceKey(snapshot()) }
   ready = true

@@ -35,5 +35,9 @@ fn main() {
         );
         println!("cargo:rustc-env={variable}={value}");
     }
+    for variable in ["NEVIS_GOOGLE_CLIENT_ID", "NEVIS_GOOGLE_CREDENTIAL_SERVICE", "NEVIS_DRIVE_SYNC_ENABLED"] {
+        println!("cargo:rerun-if-env-changed={variable}");
+        if let Ok(value)=std::env::var(variable){assert!(value.len()<256 && value.bytes().all(|b|b.is_ascii_alphanumeric()||b"._-".contains(&b)),"invalid public Drive build option");println!("cargo:rustc-env={variable}={value}");}
+    }
     tauri_build::build()
 }

@@ -50,6 +50,8 @@ const wrap = <T>(req: IDBRequest<T>) =>
     req.onerror = () => reject(req.error)
   })
 
+export async function isDriveVault(): Promise<boolean> { return isTauri ? invoke<boolean>('vault_drive_format') : false }
+
 export async function allPages(): Promise<any[]> {
   if (isTauri) return invoke('pages_all')
   return wrap((await db()).transaction('pages').objectStore('pages').getAll())
@@ -156,7 +158,7 @@ export interface VaultEntry {
 }
 /** Signed in or not, and what the sync of the open vault is doing. */
 export interface AccountStatus {
-  provider?: 'github' | 'legacy'
+  provider?: 'drive' | 'github' | 'legacy'
   signedIn: boolean
   username: string | null
   /** the server of the account (or the default one when signed out) */
@@ -164,7 +166,7 @@ export interface AccountStatus {
   defaultServer: string
   syncOn: boolean // sync of the open vault
   /** offline: the server cannot be reached; changes stay on this device and go out when it is back */
-  state: 'off' | 'idle' | 'syncing' | 'paused' | 'error' | 'offline'
+  state: 'off' | 'idle' | 'pending' | 'syncing' | 'paused' | 'error' | 'offline'
   lastAt: number
   /** NEEDS_CONFIRM: `error` holds the number of deletions that wait for the user */
   error: string

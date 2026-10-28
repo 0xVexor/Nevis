@@ -49,3 +49,6 @@
 @media (prefers-reduced-motion: reduce) { .gh-dialog button { transition: none; } }
 .gh-diagnostics pre { max-block-size: 240px; overflow: auto; font-size: 11px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .gh-installation { display:flex; flex-direction:column; gap:10px; }.gh-installation h4,.gh-installation p { margin:0; }.gh-installation small { color:var(--muted); }
+
+.drive-dialog pre { max-block-size: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.drive-dialog .acct-row { flex-wrap: wrap; }

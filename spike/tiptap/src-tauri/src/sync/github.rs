@@ -570,7 +570,7 @@ fn remote_bundle(archive: &BTreeMap<String, Vec<u8>>, id: &str) -> Res<Bundle> {
             ),
         );
     }
-    let bundle = Bundle { manifest, bytes };
+    let bundle = Bundle { manifest, bytes, sources: BTreeMap::new() };
     bundle.decode()?;
     Ok(bundle)
 }

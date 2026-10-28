@@ -1,3 +1,4 @@
+import { StableBlockIds } from './stableBlockIds'
 import StarterKit from '@tiptap/starter-kit'
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 import { TaskList, TaskItem } from '@tiptap/extension-list'
@@ -204,6 +205,7 @@ const Direction = Extension.create({
 })
 
 export const extensions = [
+  StableBlockIds,
   StarterKit.configure({ codeBlock: false }),
   CodeBlock,
   Table.configure({ resizable: true, View: DirTableView as any }),

@@ -1,3 +1,4 @@
+import { DriveAccountDialog } from './DriveSync'
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
   isTauri, saveTextFile, accountChangePassword, accountDelete, accountInfo, accountLogin, accountLogout, accountNewRecoveryKey, accountRecover, accountRegister, accountRevokeDevice, accountStatus,
@@ -423,7 +424,7 @@ function LegacyAccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: { 
   const [pw, setPw] = useState('')
   const [pw2, setPw2] = useState('')
 
-  const signedIn = !!acc?.signedIn && acc.provider !== 'github'
+  const signedIn = !!acc?.signedIn && acc.provider === 'legacy'
   const load = useCallback(() => {
     if (!signedIn) return
     accountInfo().then(
@@ -672,5 +673,7 @@ function LegacyAccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: { 
 
 export function AccountDialog(props: { onClose: () => void; onWorkspaces?: () => void; startWith?: 'signin' | 'signup' }) {
   const [legacy, setLegacy] = useState(false)
+  const [drive, setDrive] = useState(true)
+  if (drive) return <DriveAccountDialog onClose={props.onClose} onGitHub={() => setDrive(false)} />
   return legacy ? <LegacyAccountDialog {...props} /> : <GitHubAccountDialog onClose={props.onClose} onLegacy={() => setLegacy(true)} />
 }

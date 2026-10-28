@@ -1,0 +1,16 @@
+
+> nevis@1.0.0 test:direction
+> node --test src/editor/direction.test.mjs
+
+✔ Persian lists detect their own text, including punctuation and numbers (4.079917ms)
+✔ nested lists decide independently and empty parent ignores nested text (0.206417ms)
+✔ manual direction wins and nested headings are visited (0.093083ms)
+✔ typing, replacing and clearing text recomputes automatic direction (0.23875ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 249.447125

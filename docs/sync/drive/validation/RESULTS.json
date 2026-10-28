@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-29",
+  "nativeUnique": {
+    "passed": 174,
+    "failed": 0,
+    "ignored": 11
+  },
+  "drivePassed": 70,
+  "javascriptPassed": 227,
+  "javascriptFailed": 0,
+  "liveGoogle": "NOT_RUN",
+  "windows": "NOT_RUN",
+  "productionReady": false,
+  "acceptance": {
+    "PASS": 42,
+    "FAIL": 0,
+    "NOT_RUN": 62
+  }
+}

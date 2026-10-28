@@ -1,0 +1,6 @@
+{
+  "clientId": "",
+  "driveSyncEnabled": false,
+  "credentialServicePreview": "nevis.drive.preview.v1",
+  "credentialServiceRelease": "nevis.drive.release.v1"
+}
