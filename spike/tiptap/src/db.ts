@@ -8,7 +8,7 @@ import { publishDocumentChange } from './platform/documents/changes'
 import type { Page } from './documents/model'
 import type { DocumentWrite } from './documents/ports'
 import type { DocumentVersion } from './documents/ports'
-import type { DocumentOperationRecord, DocumentOperationReceipt } from './documents/operations'
+import type { DocumentOperationRecord, DocumentOperationReceipt, DocumentOperationCommitResult } from './documents/operations'
 export type { DocumentVersion as Version } from './documents/ports'
 
 export const isTauri = '__TAURI_INTERNALS__' in window
@@ -66,6 +66,10 @@ export async function findDocumentOperation(scopeId: string, operationId: string
 export async function commitDocumentOperation(record: DocumentOperationRecord, expectedVaultId: string) {
   if (frozen) throw new Error('Document storage is unavailable')
   return invoke<DocumentOperationReceipt>('document_operation_commit', { record, expectedVaultId })
+}
+export async function commitDocumentOperationResult(record: DocumentOperationRecord, expectedVaultId: string) {
+  if (frozen) throw new Error('Document storage is unavailable')
+  return invoke<DocumentOperationCommitResult>('document_operation_commit', { record, expectedVaultId, includeStatus: true })
 }
 
 export async function allPages(): Promise<any[]> {

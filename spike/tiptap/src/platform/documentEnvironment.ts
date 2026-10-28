@@ -1,4 +1,4 @@
-import { addVersion, allPages, db, deleteVersions, isTauri, listVersions, savePages, storageFrozen, vaultInfo, vaultStamp, findDocumentOperation, commitDocumentOperation } from '../db'
+import { addVersion, allPages, db, deleteVersions, isTauri, listVersions, savePages, storageFrozen, vaultInfo, vaultStamp, findDocumentOperation, commitDocumentOperation, commitDocumentOperationResult, accountStatus } from '../db'
 import { IndexedDbDocumentStorage } from './documents/indexedDb'
 import { NativeDocumentStorage } from './documents/native'
 import { publishDocumentChange } from './documents/changes'
@@ -25,6 +25,7 @@ export function createAppDocumentEnvironment(): DocumentEnvironment {
     active: () => !storageFrozen(),
     load: allPages, save: savePages, stamp: vaultStamp, listVersions, addVersion, deleteVersions,
     findOperation: findDocumentOperation, commitOperation: commitDocumentOperation,
+    commitOperationResult: commitDocumentOperationResult,
   }) : new IndexedDbDocumentStorage('browser:not.db', db, () => !storageFrozen(), publishDocumentChange)
   return {
     storage,
@@ -43,6 +44,12 @@ export function createAppDocumentEnvironment(): DocumentEnvironment {
       },
       clearLegacy() { localStorage.removeItem(LEGACY_KEY) },
       requestPersistence() { navigator.storage?.persist?.().catch(() => {}) },
+      async syncState() {
+        if (!isTauri) return 'disabled'
+        const status = await accountStatus()
+        if (!status.syncOn) return 'disabled'
+        return ['error', 'offline', 'paused'].includes(status.state) ? 'failed' : 'pending'
+      },
       async watchExternal(changed: () => void) {
         const timer = window.setInterval(() => !document.hidden && changed(), WATCH_EVERY)
         window.addEventListener('focus', changed)

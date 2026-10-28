@@ -68,6 +68,12 @@ fn validate(record: &Value) -> Res<(String, String)> {
         || fingerprint.len() != 67 || !fingerprint.starts_with("o1:") || !fingerprint[3..].bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err("Invalid document operation record".into());
     }
+    if let Some(history) = record.get("history") {
+        if before.is_null() || history["pageId"] != id || history["ts"].as_i64().is_none()
+            || history["title"] != before["title"] || history["content"] != before["content"] {
+            return Err("Invalid document operation history".into());
+        }
+    }
     Ok((operation_name(&scope, &operation)?, id.to_string()))
 }
 fn revision(value: &Value) -> bool {
@@ -99,6 +105,16 @@ fn recover_at(root: &Path, local: &Path) -> Res<()> {
         } else {
             let page_path = root.join("pages").join(format!("{id}.json"));
             let current = read(&page_path)?.unwrap_or(Value::Null);
+            if current != record["after"] && current != record["before"] {
+                return Err("Document operation recovery conflict; snapshots retained".into());
+            }
+            if let Some(history) = record.get("history") {
+                let ts = history["ts"].as_i64().ok_or("Invalid operation history")?;
+                let path = root.join("history").join(&id).join(format!("{ts}.json"));
+                if let Some(previous) = read(&path)? {
+                    if previous != *history { return Err("Document operation history recovery conflict".into()); }
+                } else { durable_write(&path, history)?; }
+            }
             if current != record["after"] {
                 if current != record["before"] { return Err("Document operation recovery conflict; snapshots retained".into()); }
                 durable_write(&page_path, &record["after"])?;
@@ -107,6 +123,7 @@ fn recover_at(root: &Path, local: &Path) -> Res<()> {
         }
         fs::remove_file(&path).map_err(err)?;
         sync_dir(&pending)?;
+        Vault { root: root.to_path_buf() }.trim_history(&id);
     }
     Ok(())
 }
@@ -122,26 +139,50 @@ pub fn find(vault: &Vault, scope: &str, operation: &str) -> Res<Option<Value>> {
     read(&local.join("committed").join(operation_name(scope, operation)?))
 }
 fn commit_at(root: &Path, local: &Path, record: &Value) -> Res<Value> {
+    Ok(commit_at_result(root, local, record)?.0)
+}
+fn commit_at_result(root: &Path, local: &Path, record: &Value) -> Res<(Value, bool)> {
     recover_at(root, local)?;
     let (name, id) = validate(record)?;
     let done = local.join("committed").join(&name);
     if let Some(prior) = read(&done)? {
         if prior["fingerprint"] != record["fingerprint"] { return Err("Document operation ID reused with different payload".into()); }
-        return Ok(prior["receipt"].clone());
+        return Ok((prior["receipt"].clone(), true));
     }
     let page_path = root.join("pages").join(format!("{id}.json"));
     if read(&page_path)?.unwrap_or(Value::Null) != record["before"] { return Err("Document revision conflict".into()); }
+    let mut record = record.clone();
+    if record.get("history").is_some() {
+        let history_dir = root.join("history").join(&id);
+        let mut ts = record["history"]["ts"].as_i64().ok_or("Invalid operation history")?;
+        if history_dir.exists() {
+            for entry in fs::read_dir(&history_dir).map_err(err)? {
+                let path = entry.map_err(err)?.path();
+                if let Some(previous) = path.file_stem().and_then(|s| s.to_str()).and_then(|s| s.parse::<i64>().ok()) { ts = ts.max(previous.saturating_add(1)); }
+            }
+        }
+        if !(0..=9_007_199_254_740_991).contains(&ts) { return Err("Invalid operation history clock".into()); }
+        record["history"]["ts"] = serde_json::json!(ts);
+    }
     let pending = local.join("pending").join(name);
-    durable_write(&pending, record)?; // complete content/metadata + original receipt before touching the note
+    durable_write(&pending, &record)?; // complete content/metadata + original receipt before touching the note
     // From here, a failed/lost response is indeterminate: recovery finishes the accepted prepare.
     recover_at(root, local)?;
-    Ok(record["receipt"].clone())
+    Ok((record["receipt"].clone(), false))
 }
 pub fn commit(vault: &Vault, record: &Value) -> Res<Value> {
     let _guard = crate::vault::commit_lock(&vault.root)?;
     vault.resolve_conflicts_locked();
     let local = local_dir(&vault.root)?.ok_or("Document operation storage is unavailable")?;
     commit_at(&vault.root, &local, record)
+}
+pub fn commit_result(vault: &Vault, record: &Value) -> Res<Value> {
+    let _guard = crate::vault::commit_lock(&vault.root)?;
+    vault.resolve_conflicts_locked();
+    let local = local_dir(&vault.root)?.ok_or("Document operation storage is unavailable")?;
+    let (receipt, replayed) = commit_at_result(&vault.root, &local, record)?;
+    vault.trim_history(record["after"]["id"].as_str().ok_or("Page without id")?);
+    Ok(serde_json::json!({"receipt":receipt,"replayed":replayed}))
 }
 
 #[cfg(test)]
@@ -152,9 +193,11 @@ mod tests {
         let base = std::env::temp_dir().join(format!("nevis-receipts-{}", uuid::Uuid::new_v4()));
         let root = base.join("vault"); let local = base.join("private");
         fs::create_dir_all(root.join("pages")).unwrap();
+        fs::create_dir_all(root.join(".noviq")).unwrap();
         let record = json!({"format":1,"scopeId":"grant","operationId":"append","fingerprint":format!("o1:{}","a".repeat(64)),
             "before":{"id":"note","title":"before","content":{"custom":"RTL فارسی"}},
             "after":{"id":"note","title":"after","content":{"custom":"RTL فارسی appended"}},
+            "history":{"pageId":"note","ts":2,"title":"before","content":{"custom":"RTL فارسی"}},
             "receipt":{"operationId":"append","documentId":"note","beforeRevision":format!("r1:{}","b".repeat(64)),"revision":format!("r1:{}","c".repeat(64)),"committedAt":1}});
         durable_write(&root.join("pages/note.json"), &record["before"]).unwrap();
         (root, local, record)
@@ -168,12 +211,20 @@ mod tests {
             if installed { durable_write(&root.join("pages/note.json"), &record["after"]).unwrap(); }
             recover_at(&root, &local).unwrap();
             assert_eq!(read(&root.join("pages/note.json")).unwrap().unwrap(), record["after"]);
+            assert_eq!(read(&root.join("history/note/2.json")).unwrap().unwrap(), record["history"]);
+            let vault = Vault { root: root.clone() };
+            let ui_history = json!({"pageId":"note","ts":2,"title":"after","content":record["after"]["content"]});
+            vault.version_add(&ui_history).unwrap();
+            vault.version_add(&ui_history).unwrap();
+            assert_eq!(vault.versions_list("note").unwrap().len(), 2);
+            assert_eq!(read(&root.join("history/note/2.json")).unwrap().unwrap(), record["history"]);
             let later = json!({"id":"note","title":"human edit"});
             durable_write(&root.join("pages/note.json"), &later).unwrap();
             // Crash after the committed receipt, before pending cleanup: do not replay over later content.
             durable_write(&local.join("pending").join(&name), &record).unwrap();
             recover_at(&root, &local).unwrap();
-            assert_eq!(commit_at(&root, &local, &record).unwrap(), record["receipt"]);
+            let (receipt, replayed) = commit_at_result(&root, &local, &record).unwrap();
+            assert_eq!(receipt, record["receipt"]); assert!(replayed);
             assert_eq!(read(&root.join("pages/note.json")).unwrap().unwrap(), later);
             let mut different = record.clone(); different["fingerprint"] = json!(format!("o1:{}","b".repeat(64)));
             assert!(commit_at(&root, &local, &different).unwrap_err().contains("different payload"));
@@ -189,6 +240,7 @@ mod tests {
         assert_eq!(read(&root.join("pages/note.json")).unwrap().unwrap(), record["before"]);
         fs::remove_file(&local).unwrap();
         record["before"] = Value::Null;
+        record.as_object_mut().unwrap().remove("history");
         record["receipt"]["beforeRevision"] = Value::Null;
         fs::remove_file(root.join("pages/note.json")).unwrap();
         assert_eq!(commit_at(&root, &local, &record).unwrap(), record["receipt"]);

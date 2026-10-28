@@ -1,5 +1,7 @@
 import type { Page } from './model.ts'
 import { canonicalDocumentValue } from './revision.ts'
+import type { SavedEditEvidence } from './savedEdit.ts'
+import type { DocumentVersion } from './ports.ts'
 
 /** Host-owned scope (principal/grant), never an agent-supplied authorization. */
 export interface DocumentOperationRequest {
@@ -16,6 +18,8 @@ export interface DocumentOperationReceipt {
   beforeRevision: string | null
   revision: string
   committedAt: number
+  /** Original bounded saved-content proof, coupled to the same durable operation. */
+  evidence?: SavedEditEvidence
 }
 export interface DocumentOperationRecord {
   format: 1
@@ -25,7 +29,9 @@ export interface DocumentOperationRecord {
   before: Page | null
   after: Page
   receipt: DocumentOperationReceipt
+  history?: DocumentVersion
 }
+export interface DocumentOperationCommitResult { receipt: DocumentOperationReceipt; replayed: boolean }
 export const operationKey = (scopeId: string, operationId: string) => {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(scopeId) || !/^[A-Za-z0-9_-]{1,128}$/.test(operationId)) throw new Error('Invalid document operation identity')
   return `${scopeId}/${operationId}`
@@ -54,4 +60,6 @@ export function validateOperationRecord(record: DocumentOperationRecord) {
     || !Number.isFinite(record.receipt.committedAt) || !/^o1:[a-f0-9]{64}$/.test(record.fingerprint)
     || !/^r1:[a-f0-9]{64,128}$/i.test(record.receipt.revision)
     || (record.before === null ? record.receipt.beforeRevision !== null : !/^r1:[a-f0-9]{64,128}$/i.test(record.receipt.beforeRevision ?? ''))) throw new Error('Invalid document operation record')
+  if (record.history && (!record.before || record.history.pageId !== record.before.id || !Number.isSafeInteger(record.history.ts)
+    || record.history.title !== record.before.title || canonicalDocumentValue(record.history.content) !== canonicalDocumentValue(record.before.content))) throw new Error('Invalid document operation history')
 }

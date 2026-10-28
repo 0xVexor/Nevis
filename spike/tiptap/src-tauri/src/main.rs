@@ -294,10 +294,11 @@ fn document_operation_find(s: St, scope_id: String, operation_id: String, expect
     })
 }
 #[tauri::command]
-fn document_operation_commit(s: St, record: Value, expected_vault_id: String) -> Res<Value> {
+fn document_operation_commit(s: St, record: Value, expected_vault_id: String, include_status: Option<bool>) -> Res<Value> {
     let receipt = with(&s, |v| {
         if v.id() != expected_vault_id { return Err("Document vault changed".into()); }
-        document_operations::commit(v, &record)
+        if include_status.unwrap_or(false) { document_operations::commit_result(v, &record) }
+        else { document_operations::commit(v, &record) }
     })?;
     kick(&s);
     Ok(receipt)

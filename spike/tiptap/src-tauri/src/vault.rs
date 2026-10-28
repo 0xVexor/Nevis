@@ -412,7 +412,7 @@ impl Vault {
 
     // ───── history ─────
 
-    fn trim_history(&self, id: &str) {
+    pub(crate) fn trim_history(&self, id: &str) {
         let dir = self.root.join("history").join(id);
         let mut ts: Vec<i64> = fs::read_dir(&dir)
             .into_iter()
@@ -440,17 +440,28 @@ impl Vault {
     }
 
     pub fn version_add(&self, version: &Value) -> Res<()> {
+        let _guard = commit_lock(&self.root)?;
         let id = version.get("pageId").and_then(Value::as_str).ok_or("version without pageId")?;
         if !self.page_path(id)?.exists() {
             return Ok(()); // the page itself is not saved yet; its first snapshot is not worth failing for
         }
-        let ts = version.get("ts").and_then(Value::as_i64).unwrap_or_else(now_ms);
-        write_atomic(&self.root.join("history").join(id).join(format!("{ts}.json")), version.to_string().as_bytes())?;
+        let mut ts = version.get("ts").and_then(Value::as_i64).unwrap_or_else(now_ms);
+        let mut version = version.clone();
+        loop {
+            if !(0..=9_007_199_254_740_991).contains(&ts) { return Err("Invalid operation history clock".into()); }
+            version["ts"] = json!(ts);
+            let path = self.root.join("history").join(id).join(format!("{ts}.json"));
+            let previous = strict_page(&path)?;
+            if previous == version { return Ok(()); }
+            if previous.is_null() { write_atomic(&path, version.to_string().as_bytes())?; break; }
+            ts = ts.checked_add(1).ok_or("Invalid operation history clock")?;
+        }
         self.trim_history(id);
         Ok(())
     }
 
     pub fn versions_delete(&self, id: &str) -> Res<()> {
+        let _guard = commit_lock(&self.root)?;
         let _ = fs::remove_dir_all(self.root.join("history").join(check_id(id)?));
         Ok(())
     }
