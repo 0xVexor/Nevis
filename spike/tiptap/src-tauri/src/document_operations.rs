@@ -226,6 +226,9 @@ fn commit_at(root: &Path, local: &Path, record: &Value) -> Res<Value> {
     Ok(commit_at_result(root, local, record)?.0)
 }
 fn commit_at_result(root: &Path, local: &Path, record: &Value) -> Res<(Value, bool)> {
+    commit_at_result_authorized(root, local, record, |_, _| Ok(()))
+}
+fn commit_at_result_authorized<G>(root: &Path, local: &Path, record: &Value, authorize: impl FnOnce(&Path, &Value) -> Res<G>) -> Res<(Value, bool)> {
     recover_at(root, local)?;
     let (name, id) = validate(record)?;
     let done = local.join("committed").join(&name);
@@ -251,7 +254,9 @@ fn commit_at_result(root: &Path, local: &Path, record: &Value) -> Res<(Value, bo
         record["history"]["ts"] = serde_json::json!(ts);
     }
     let pending = local.join("pending").join(name);
+    let permission = authorize(root, &record)?;
     durable_write(&pending, &record)?; // complete content/metadata + original receipt before touching the note
+    drop(permission); // durable prepare is the admission point; later cancellation cannot undo an accepted commit
     // From here, a failed/lost response is indeterminate: recovery finishes the accepted prepare.
     recover_at(root, local)?;
     Ok((record["receipt"].clone(), false))
@@ -263,10 +268,13 @@ pub fn commit(vault: &Vault, record: &Value) -> Res<Value> {
     commit_at(&vault.root, &local, record)
 }
 pub fn commit_result(vault: &Vault, record: &Value) -> Res<Value> {
+    commit_result_authorized(vault, record, |_, _| Ok(()))
+}
+pub fn commit_result_authorized<G>(vault: &Vault, record: &Value, authorize: impl FnOnce(&Path, &Value) -> Res<G>) -> Res<Value> {
     let _guard = crate::vault::commit_lock(&vault.root)?;
     vault.resolve_conflicts_locked();
     let local = local_dir(&vault.root)?.ok_or("Document operation storage is unavailable")?;
-    let (receipt, replayed) = commit_at_result(&vault.root, &local, record)?;
+    let (receipt, replayed) = commit_at_result_authorized(&vault.root, &local, record, authorize)?;
     vault.trim_history(record["after"]["id"].as_str().ok_or("Page without id")?);
     Ok(serde_json::json!({"receipt":receipt,"replayed":replayed}))
 }
@@ -405,4 +413,16 @@ mod tests {
         assert!(!root.join("pages/other.json").exists());
         fs::remove_dir_all(root.parent().unwrap()).unwrap();
     }
+    #[test]
+    fn admission_failure_precedes_durable_prepare_and_leaves_no_partial_save() {
+        let (root, local, record) = fixture();
+        let result = commit_at_result_authorized(&root, &local, &record, |_, _| Err::<(), _>("Write admission access denied".to_string()));
+        assert!(result.unwrap_err().contains("access denied"));
+        assert!(!local.join("pending").exists());
+        assert_eq!(read(&root.join("pages/note.json")).unwrap().unwrap(), record["before"]);
+        assert_eq!(commit_at_result_authorized(&root, &local, &record, |_, _| Ok(())).unwrap().1, false);
+        assert_eq!(read(&root.join("pages/note.json")).unwrap().unwrap(), record["after"]);
+        fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
+
 }

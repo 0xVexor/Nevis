@@ -1,3 +1,4 @@
+import { documentLinks } from './admission.ts'
 import { documentToolContracts, ERROR_CODES, LIMITS } from './contracts.ts'
 import type { DocumentToolName, Schema } from './contracts.ts'
 import { canonicalDocumentValue } from './revision.ts'
@@ -6,8 +7,8 @@ import type { DocumentReadRuntime } from './reader.ts'
 import type { Page } from './model.ts'
 
 export const MCP_PROTOCOL = '2025-11-25'
-/** External editing remains closed until NV-MCP-17 records the live-client write gates. */
-export const MCP_WRITES_RELEASED = false
+/** Writes additionally require an explicit grant and atomic storage admission. */
+export const MCP_WRITES_RELEASED = true
 export interface McpPolicy { wholeVault: boolean; rootIds: string[]; excludedIds: string[]; allowWrites: boolean }
 export interface McpConnection {
   grantId: string; revision: string; vaultId: string; policy: McpPolicy
@@ -18,10 +19,10 @@ const descriptions: Record<DocumentToolName, string> = {
   search_documents: 'Search permitted saved documents using original Persian/English passages and stable references.',
   read_document: 'Read a saved document outline, section, blocks or bounded full content.',
   get_document_history: 'Read retained operation versions for this grant on this device; retention is incomplete and bounded.',
-  create_document: 'Create a document once with a durable operation ID. Editing is unavailable in this preview.',
-  edit_document: 'Preview or apply a revision-gated block edit. Editing is unavailable in this preview.',
-  update_document_metadata: 'Update allowlisted metadata with an exact revision. Editing is unavailable in this preview.',
-  undo_document_edit: 'Preview or apply retained, revision-gated undo. Editing is unavailable in this preview.',
+  create_document: 'Create a document once with a durable operation ID.',
+  edit_document: 'Preview or apply a revision-gated block edit.',
+  update_document_metadata: 'Update allowlisted metadata with an exact revision.',
+  undo_document_edit: 'Preview or apply retained, revision-gated undo.',
 }
 const bytes = (value: unknown) => [...JSON.stringify(value)].reduce((n, c) => n + (c.codePointAt(0)! < 128 ? 1 : c.codePointAt(0)! < 2048 ? 2 : c.codePointAt(0)! < 65536 ? 3 : 4), 0)
 const object = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value)
@@ -104,7 +105,18 @@ export class McpDocumentSession {
     this.service = service; this.connection = JSON.parse(JSON.stringify(connection)); this.runtime = runtime; this.active = active; this.writesReleased = writesReleased
     this.scope = new McpDocumentScope(connection.policy)
     const grant = { context: { vaultHandle: service.vaultHandle, grantId: connection.grantId, grantRevision: connection.revision },
-      isActive: () => this.live(), canRead: this.scope.canRead, canWrite: this.scope.canWrite, canCreate: this.scope.canCreate }
+      isActive: () => this.live(), canRead: this.scope.canRead, canWrite: this.scope.canWrite, canCreate: this.scope.canCreate,
+      admission: () => {
+        const invocation = this.current!
+        return { native: { requestId: invocation.id, revision: this.connection.revision }, check: (pages: Page[], record: import('./operations.ts').DocumentOperationRecord) => {
+          if (!this.live() || this.current !== invocation) throw { code: 'APP_UNAVAILABLE' }
+          const scope = new McpDocumentScope(this.connection.policy); scope.observe(pages)
+          if (record.before ? !scope.canWrite(record.before.id) : !scope.canCreate(record.after.parentId)) throw { code: 'ACCESS_DENIED' }
+          if (record.before && record.before.parentId !== record.after.parentId && !scope.canCreate(record.after.parentId)) throw { code: 'ACCESS_DENIED' }
+          const previous = documentLinks(record.before?.content)
+          for (const id of documentLinks(record.after.content)) if (!previous.has(id) && !scope.canRead(id)) throw { code: 'ACCESS_DENIED' }
+        } }
+      } }
     this.reader = service.reader(grant, runtime); this.editor = service.editor(grant, runtime)
   }
   close() { this.closed = true }
@@ -129,7 +141,7 @@ export class McpDocumentSession {
       if (notification || !object(p) || typeof p.protocolVersion !== 'string' || !object(p.capabilities) || !object(p.clientInfo)) return rpcError(id ?? null, -32602, 'Invalid initialization')
       this.initialized = true
       return response({ protocolVersion: MCP_PROTOCOL, serverInfo: { name: 'nevis-documents', version: '1.0.0' }, capabilities: { tools: { listChanged: false } },
-        instructions: 'Only explicitly permitted saved documents are accessible. External editing is disabled in this preview. Nevis must stay open.' })
+        instructions: `Only explicitly permitted saved documents are accessible. ${this.connection.policy.allowWrites && this.writesReleased ? 'Editing requires exact revisions and durable operation IDs. Preview before applying.' : 'This connection is read-only.'} Nevis must stay open.` })
     }
     if (message.method === 'notifications/initialized') { if (this.initialized) this.ready = true; return null }
     if (message.method === 'ping') return notification ? null : response({})

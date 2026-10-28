@@ -1,3 +1,4 @@
+import { tableGrid } from './tableEdits.ts'
 import { BLOCK_TYPES, BLOCK_IDENTITY_VERSION, identityVersion, isBlockId } from './blockIdentity.ts'
 import { cloneDocumentValue } from './clone.ts'
 import { LIMITS } from './contracts.ts'
@@ -18,6 +19,8 @@ export type EditOperation =
   | { kind: 'move_blocks'; target: EditRange; at: EditLocation }
   | { kind: 'delete_blocks'; target: EditRange }
   | { kind: 'set_attributes'; target: EditReference; attributes: { dir?: 'auto' | 'ltr' | 'rtl'; level?: number; checked?: boolean; language?: string | null } }
+  | { kind: 'set_table_cell'; table: EditReference; cell: EditReference; blocks: InsertedBlock[] }
+  | { kind: 'insert_table_row'; table: EditReference; row: EditReference; position: 'before' | 'after'; cells: { kind: 'cell' | 'header'; blocks: InsertedBlock[] }[] }
   | { kind: 'set_internal_link'; target: EditReference; destinationDocumentId: string; label: string }
 export interface EditDocumentInput {
   documentId: string; expectedRevision: string; operationId: string; mode: 'preview' | 'apply'
@@ -45,7 +48,7 @@ export const EDIT_PROFILE_VERSION = 1
 export const EDIT_CAPABILITIES = Object.freeze({
   writableNodeTypes: [...writable, ...inlines], writableMarks: [...marks],
   writableAttributes: ['dir', 'level', 'checked', 'language'],
-  operations: ['insert_blocks', 'replace_blocks', 'move_blocks', 'delete_blocks', 'set_attributes', 'set_internal_link'],
+  operations: ['insert_blocks', 'replace_blocks', 'move_blocks', 'delete_blocks', 'set_attributes', 'set_internal_link', 'set_table_cell', 'insert_table_row'],
   preservesUntouchedUnsupportedNodes: true,
 })
 const object = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v)
@@ -266,6 +269,45 @@ export async function planDocumentEdit(source: Page, input: EditDocumentInput, r
   }
   for (const operation of input.operations) {
     switch (operation?.kind) {
+      case 'set_table_cell': case 'insert_table_row': {
+        fields(operation, operation.kind === 'set_table_cell' ? ['kind', 'table', 'cell', 'blocks'] : ['kind', 'table', 'row', 'position', 'cells'])
+        const target = resolve(operation.table); accessible(target)
+        let grid: ReturnType<typeof tableGrid>
+        try { grid = tableGrid(target.node) } catch { fail('UNSUPPORTED_CONTENT') }
+        if (operation.kind === 'set_table_cell') {
+          const entry = resolve(operation.cell)
+          if (!grid.cells.some(position => position.cell === entry.node)) fail('INVALID_TARGET')
+          entry.node.content!.forEach(editable)
+          const old = cloneDocumentValue(entry.node), nodes = inserted(operation.blocks)
+          if (nodes.some(node => ['listItem', 'taskItem'].includes(node.type))) fail('UNSUPPORTED_CONTENT')
+          nodes.forEach(node => structure(node))
+          entry.node.content = nodes
+          changed('replace', [old], [entry.node])
+        } else {
+          if (!['before', 'after'].includes(operation.position) || !Array.isArray(operation.cells) || !operation.cells.length || operation.cells.length > 100) fail('INVALID_ARGUMENT')
+          const row = resolve(operation.row), anchor = target.node.content!.indexOf(row.node)
+          if (anchor < 0 || row.node.type !== 'tableRow') fail('INVALID_TARGET')
+          const offset = anchor + (operation.position === 'after' ? 1 : 0)
+          const crossing = grid.cells.filter(cell => cell.row < offset && cell.row + cell.rowspan > offset)
+          const occupied = crossing.reduce((sum, cell) => sum + cell.colspan, 0)
+          if (operation.cells.length !== grid.width - occupied || target.node.content!.length >= 100) fail('UNSUPPORTED_CONTENT')
+          const cells = operation.cells.map(cell => {
+            fields(cell, ['kind', 'blocks'])
+            if (!['cell', 'header'].includes(cell.kind)) fail('INVALID_ARGUMENT')
+            const content = inserted(cell.blocks)
+            if (content.some(node => ['listItem', 'taskItem'].includes(node.type))) fail('UNSUPPORTED_CONTENT')
+            content.forEach(node => structure(node))
+            return { type: cell.kind === 'header' ? 'tableHeader' : 'tableCell', attrs: { blockId: fresh(), rowspan: 1, colspan: 1 }, content }
+          })
+          const old = crossing.map(cell => cloneDocumentValue(cell.cell))
+          for (const cell of crossing) cell.cell.attrs = { ...cell.cell.attrs, rowspan: cell.rowspan + 1 }
+          const next: EditNode = { type: 'tableRow', attrs: { blockId: fresh() }, content: cells }
+          target.node.content!.splice(offset, 0, next)
+          changed('insert', old, [...crossing.map(cell => cell.cell), next])
+        }
+        try { tableGrid(target.node) } catch { fail('UNSUPPORTED_CONTENT') }
+        break
+      }
       case 'insert_blocks': {
         fields(operation, ['kind', 'at', 'blocks'])
         const dest = destination(operation.at), nodes = inserted(operation.blocks)

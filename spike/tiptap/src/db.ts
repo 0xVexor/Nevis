@@ -1,3 +1,4 @@
+import type { DocumentAdmission } from './documents/admission'
 // Storage boundary. In the desktop app (Tauri) every call goes to the SQLite database of ADR-0002 (src-tauri/src/main.rs);
 // in a plain browser it falls back to IndexedDB: one record per page (so saving a page rewrites that page only), a versions
 // store for page history, and a small key-value store.
@@ -71,9 +72,9 @@ export async function commitDocumentOperation(record: DocumentOperationRecord, e
   if (frozen) throw new Error('Document storage is unavailable')
   return invoke<DocumentOperationReceipt>('document_operation_commit', { record, expectedVaultId })
 }
-export async function commitDocumentOperationResult(record: DocumentOperationRecord, expectedVaultId: string) {
+export async function commitDocumentOperationResult(record: DocumentOperationRecord, expectedVaultId: string, admission?: DocumentAdmission['native']) {
   if (frozen) throw new Error('Document storage is unavailable')
-  return invoke<DocumentOperationCommitResult>('document_operation_commit', { record, expectedVaultId, includeStatus: true })
+  return invoke<DocumentOperationCommitResult>('document_operation_commit', { record, expectedVaultId, includeStatus: true, admission })
 }
 
 export async function allPages(): Promise<any[]> {

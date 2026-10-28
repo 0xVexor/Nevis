@@ -1,3 +1,4 @@
+import type { DocumentAdmission } from './admission.ts'
 import type { Page } from './model.ts'
 import type { SearchIndexRuntime } from './searchLifecycle.ts'
 import type { DocumentOperationRecord, DocumentOperationReceipt, DocumentOperationCommitResult, DocumentOperationSummary } from './operations.ts'
@@ -44,7 +45,7 @@ export interface DocumentStorage {
   listOperations?(scopeId: string, documentId: string): Promise<DocumentOperationSummary[]>
   findOperation?(scopeId: string, operationId: string): Promise<DocumentOperationRecord | null>
   commitOperation?(record: DocumentOperationRecord): Promise<DocumentOperationReceipt>
-  commitOperationResult?(record: DocumentOperationRecord): Promise<DocumentOperationCommitResult>
+  commitOperationResult?(record: DocumentOperationRecord, admission?: DocumentAdmission): Promise<DocumentOperationCommitResult>
 }
 
 export interface DocumentHost {
