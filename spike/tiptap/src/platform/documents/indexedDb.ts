@@ -1,3 +1,4 @@
+import type { DocumentAdmission } from '../../documents/admission.ts'
 import type { Page } from '../../documents/model.ts'
 import type { DocumentStorage, DocumentVersion, DocumentWrite } from '../../documents/ports.ts'
 import { cloneDocumentValue } from '../../documents/clone.ts'
@@ -78,7 +79,7 @@ export class IndexedDbDocumentStorage implements DocumentStorage {
   async commitOperation(input: DocumentOperationRecord) {
     return (await this.commitOperationResult(input)).receipt
   }
-  async commitOperationResult(input: DocumentOperationRecord) {
+  async commitOperationResult(input: DocumentOperationRecord, admission?: DocumentAdmission) {
     const record = cloneDocumentValue(input)
     validateOperationRecord(record)
     const key = `document-operation/${operationKey(record.scopeId, record.operationId)}`
@@ -104,6 +105,11 @@ export class IndexedDbDocumentStorage implements DocumentStorage {
           if (!Number.isSafeInteger(record.history.ts)) throw new Error('Invalid operation history clock')
           versions.put(record.history)
           previous.sort((a, b) => b.ts - a.ts).slice(39).forEach(v => versions.delete([v.pageId, v.ts]))
+          if (!this.active()) throw new Error('Document storage is unavailable')
+        }
+        if (admission) {
+          const snapshot = await result(pages.getAll()) as Page[]
+          admission.check(snapshot, record)
           if (!this.active()) throw new Error('Document storage is unavailable')
         }
         pages.put(record.after)

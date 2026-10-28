@@ -1,3 +1,4 @@
+import type { DocumentAdmission } from '../../documents/admission.ts'
 import { cloneDocumentValue } from '../../documents/clone.ts'
 import type { Page } from '../../documents/model.ts'
 import type { DocumentStorage, DocumentVersion, DocumentWrite } from '../../documents/ports.ts'
@@ -16,7 +17,7 @@ export interface NativeDocumentBridge {
   listOperations?(scopeId: string, documentId: string, expectedVaultId: string): Promise<DocumentOperationSummary[]>
   findOperation?(scopeId: string, operationId: string, expectedVaultId: string): Promise<DocumentOperationRecord | null>
   commitOperation?(record: DocumentOperationRecord, expectedVaultId: string): Promise<DocumentOperationReceipt>
-  commitOperationResult?(record: DocumentOperationRecord, expectedVaultId: string): Promise<DocumentOperationCommitResult>
+  commitOperationResult?(record: DocumentOperationRecord, expectedVaultId: string, admission?: DocumentAdmission['native']): Promise<DocumentOperationCommitResult>
 }
 export class NativeDocumentStorage implements DocumentStorage {
   readonly revisionPolicy = 'exact-page' as const
@@ -73,11 +74,12 @@ export class NativeDocumentStorage implements DocumentStorage {
       return this.bridge.commitOperation(record, this.binding!)
     })
   }
-  commitOperationResult(input: DocumentOperationRecord) {
+  commitOperationResult(input: DocumentOperationRecord, admission?: DocumentAdmission) {
     const record = cloneDocumentValue(input)
     return this.run(() => {
       if (!this.bridge.commitOperationResult) throw new Error('Document operation storage is unavailable')
-      return this.bridge.commitOperationResult(record, this.binding!)
+      if (admission && !admission.native) throw new Error('Native write admission unavailable')
+      return this.bridge.commitOperationResult(record, this.binding!, admission?.native)
     })
   }
 }

@@ -54,7 +54,7 @@ const summary = obj({ documentId: id, revision, parentId: nullable(id), kind: ch
 const capabilities = obj({
   contractVersion: literal(CONTRACT_VERSION), blockIdentity: literal('stable'),
   readableNodeTypes: array(str(80)), writableNodeTypes: array(str(80)), writableMarks: array(str(80)),
-  writableAttributes: array(str(80)), operations: array(choice('insert_blocks', 'replace_blocks', 'move_blocks', 'delete_blocks', 'set_attributes', 'set_internal_link')),
+  writableAttributes: array(str(80)), operations: array(choice('insert_blocks', 'replace_blocks', 'move_blocks', 'delete_blocks', 'set_attributes', 'set_internal_link', 'set_table_cell', 'insert_table_row')),
   preservesUntouchedUnsupportedNodes: bool,
 })
 const chunk = obj({ range: nullable(range), markdown: nullable(str(LIMITS.textChars, 0)), structured: nullable(array(node, 100)) })
@@ -70,6 +70,7 @@ const location = union(
 )
 const inserted = obj({ temporaryId: id, node })
 const targetRange = obj({ from: editRef, through: editRef })
+const tableCell = obj({ kind: choice('cell', 'header'), blocks: array(inserted, 100, 1) })
 const operations = array(union(
   obj({ kind: literal('insert_blocks'), at: location, blocks: array(inserted, 100, 1) }),
   obj({ kind: literal('replace_blocks'), target: targetRange, blocks: array(inserted, 100, 1) }),
@@ -77,6 +78,8 @@ const operations = array(union(
   obj({ kind: literal('delete_blocks'), target: targetRange }),
   obj({ kind: literal('set_attributes'), target: editRef,
     attributes: { ...obj({ dir: choice('auto', 'ltr', 'rtl'), level: integer(1, 6), checked: bool, language: nullable(str(80)) }, []), minProperties: 1 } }),
+  obj({ kind: literal('set_table_cell'), table: editRef, cell: editRef, blocks: array(inserted, 100, 1) }),
+  obj({ kind: literal('insert_table_row'), table: editRef, row: editRef, position: choice('before', 'after'), cells: array(tableCell, 100, 1) }),
   obj({ kind: literal('set_internal_link'), target: editRef, destinationDocumentId: id, label: str(512) }),
 ), LIMITS.operations, 1)
 

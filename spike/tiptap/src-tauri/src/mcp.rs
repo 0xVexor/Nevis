@@ -36,8 +36,7 @@ pub struct Policy {
 }
 impl Policy {
     fn valid(&self) -> bool {
-        !self.allow_writes
-            && (self.whole_vault || !self.root_ids.is_empty())
+        (self.whole_vault || !self.root_ids.is_empty())
             && [&self.root_ids, &self.excluded_ids].iter().all(|ids| {
                 ids.len() <= 100
                     && ids.iter().all(|id| crate::vault::check_id(id).is_ok())
@@ -58,7 +57,12 @@ struct Session {
     token: String,
     endpoint: String,
 }
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WriteAdmission { pub request_id: String, pub revision: String }
+pub struct WritePermit<'a> { _guard: std::sync::MutexGuard<'a, Inner> }
 struct Pending {
+    expires_at: Instant,
     sender: oneshot::Sender<Value>,
     rpc_id: Value,
     revision: String,
@@ -171,7 +175,7 @@ impl Host {
             return Err("Operating system credential store unavailable on this platform".into());
         }
         if !policy.valid() {
-            return Err("Invalid connection scope or editing unavailable".into());
+            return Err("Invalid connection scope".into());
         }
         {
             let inner = self.inner.lock().map_err(err)?;
@@ -238,6 +242,48 @@ impl Host {
         });
         self.status()
     }
+    /// Called with the vault OS lock held, immediately before the durable prepare.
+    /// Keep the session lock until prepare completes so revoke/cancel linearize on either side of admission.
+    pub fn write_guard(&self, vault_id: &str, admission: &WriteAdmission, root: &Path, record: &Value) -> Res<WritePermit<'_>> {
+        let inner = self.inner.lock().map_err(err)?;
+        let session = inner.session.as_ref().ok_or("Connection revoked")?;
+        if session.connection.vault_id != vault_id || session.connection.revision != admission.revision
+            || !session.connection.policy.allow_writes || record["scopeId"] != session.connection.grant_id
+            || !inner.ready.as_ref().is_some_and(|(_, id, at)| id == vault_id && at.elapsed() < Duration::from_secs(10))
+            || !inner.pending.get(&admission.request_id).is_some_and(|pending| pending.revision == admission.revision && Instant::now() < pending.expires_at) {
+            return Err("Write admission access denied".into());
+        }
+        let connection = session.connection.clone();
+        drop(inner); // scanning holds the vault lock, but must not delay cancellation or heartbeat
+        let mut pages = HashMap::<String, Value>::new();
+        for entry in fs::read_dir(root.join("pages")).map_err(err)? {
+            let path = entry.map_err(err)?.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("json") { continue; }
+            let page: Value = serde_json::from_slice(&fs::read(path).map_err(err)?).map_err(err)?;
+            let id = page["id"].as_str().ok_or("Write admission access denied")?;
+            pages.insert(id.to_owned(), page);
+        }
+        let policy = &connection.policy;
+        let can_read = |id: &str| scope_allows(policy, &pages, id);
+        let can_create = |parent: &Value| if parent.is_null() { policy.whole_vault } else { parent.as_str().is_some_and(can_read) };
+        let before = &record["before"]; let after = &record["after"];
+        if if before.is_null() { !can_create(&after["parentId"]) } else { !before["id"].as_str().is_some_and(can_read)
+            || (before["parentId"] != after["parentId"] && !can_create(&after["parentId"])) } { return Err("Write admission access denied".into()); }
+        fn links(node: &Value, result: &mut std::collections::HashSet<String>) {
+            if node["type"] == "pageLink" { if let Some(id) = node["attrs"]["id"].as_str() { result.insert(id.to_owned()); } }
+            if let Some(children) = node["content"].as_array() { for child in children { links(child, result); } }
+        }
+        let mut previous = std::collections::HashSet::new(); links(&before["content"], &mut previous);
+        let mut next = std::collections::HashSet::new(); links(&after["content"], &mut next);
+        if next.difference(&previous).any(|id| !can_read(id)) { return Err("Write admission access denied".into()); }
+        let inner = self.inner.lock().map_err(err)?;
+        if !inner.session.as_ref().is_some_and(|s| s.connection.revision == admission.revision && s.connection.vault_id == vault_id)
+            || !inner.pending.get(&admission.request_id).is_some_and(|p| p.revision == admission.revision && Instant::now() < p.expires_at)
+            || !inner.ready.as_ref().is_some_and(|(_, id, at)| id == vault_id && at.elapsed() < Duration::from_secs(10)) {
+            return Err("Write admission access denied".into());
+        }
+        Ok(WritePermit { _guard: inner })
+    }
     pub fn credential(&self) -> Res<String> {
         let inner = self.inner.lock().map_err(err)?;
         let session = inner.session.as_ref().ok_or("Connection disabled")?;
@@ -274,6 +320,16 @@ impl Host {
             .send(result)
             .map_err(|_| "Request expired".into())
     }
+}
+fn scope_allows(policy: &Policy, pages: &HashMap<String, Value>, id: &str) -> bool {
+    let mut current = Some(id); let mut seen = std::collections::HashSet::new(); let mut selected = policy.whole_vault;
+    while let Some(id) = current {
+        if !seen.insert(id) || seen.len() > 128 || policy.excluded_ids.iter().any(|excluded| excluded == id) { return false; }
+        let Some(page) = pages.get(id) else { return false; };
+        if policy.root_ids.iter().any(|root| root == id) { selected = true; }
+        current = match page.get("parentId") { Some(Value::Null) => None, Some(Value::String(id)) => Some(id), _ => return false };
+    }
+    selected
 }
 fn config_path(base: &Path, vault_id: &str) -> PathBuf {
     base.join("mcp")
@@ -459,6 +515,7 @@ async fn handle(
         inner.pending.insert(
             request_id.clone(),
             Pending {
+                expires_at: Instant::now() + host.deadline,
                 sender,
                 rpc_id: body.get("id").cloned().unwrap_or(Value::Null),
                 revision: revision.clone(),
@@ -705,6 +762,8 @@ mod tests {
         };
         assert!(policy.valid());
         policy.allow_writes = true;
+        assert!(policy.valid());
+        policy.whole_vault = false;
         assert!(!policy.valid());
         {
             let mut inner = host.inner.lock().unwrap();
@@ -713,6 +772,7 @@ mod tests {
                 inner.pending.insert(
                     format!("quota-{i}"),
                     Pending {
+                        expires_at: Instant::now() + Duration::from_secs(2),
                         sender,
                         rpc_id: json!(i),
                         revision: "revision".into(),
@@ -817,4 +877,31 @@ mod tests {
         assert_eq!(pending.join().unwrap().status(), 503);
         server.join().unwrap();
     }
+    #[test]
+    fn write_admission_requires_current_scope_pending_request_and_deadline() {
+        let host = Host::default();
+        let root = std::env::temp_dir().join(format!("nevis-admission-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(root.join("pages")).unwrap();
+        let note = uuid::Uuid::new_v4().to_string(); let ancestor = uuid::Uuid::new_v4().to_string(); let private = uuid::Uuid::new_v4().to_string();
+        let save = |id: &str, parent: Value| fs::write(root.join("pages").join(format!("{id}.json")), json!({"id":id,"parentId":parent}).to_string()).unwrap();
+        save(&note, json!(ancestor)); save(&ancestor, Value::Null); save(&private, Value::Null);
+        let admission = WriteAdmission { request_id: "request".into(), revision: "revision".into() };
+        let record = json!({"scopeId":"grant","before":{"id":note,"parentId":ancestor},"after":{"id":note,"parentId":ancestor}});
+        let (sender, _) = oneshot::channel();
+        { let mut inner = host.inner.lock().unwrap();
+          inner.ready = Some(("owner".into(), "vault".into(), Instant::now()));
+          inner.session = Some(Session { connection: Connection { grant_id:"grant".into(), revision:"revision".into(), vault_id:"vault".into(), policy: Policy { whole_vault:false, root_ids:vec![ancestor.clone()], excluded_ids:vec![private.clone()], allow_writes:true } }, token:"test".into(), endpoint:"unused".into() });
+          inner.pending.insert("request".into(), Pending { expires_at:Instant::now()+Duration::from_secs(10), sender, rpc_id:json!(1), revision:"revision".into() });
+        }
+        drop(host.write_guard("vault", &admission, &root, &record).unwrap());
+        save(&ancestor, json!(private));
+        assert!(host.write_guard("vault", &admission, &root, &record).is_err());
+        save(&ancestor, Value::Null);
+        host.inner.lock().unwrap().pending.get_mut("request").unwrap().expires_at = Instant::now();
+        assert!(host.write_guard("vault", &admission, &root, &record).is_err());
+        host.inner.lock().unwrap().pending.clear();
+        assert!(host.write_guard("vault", &admission, &root, &record).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
 }

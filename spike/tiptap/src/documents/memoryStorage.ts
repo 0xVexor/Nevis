@@ -1,3 +1,4 @@
+import type { DocumentAdmission } from './admission.ts'
 import type { Page } from './model.ts'
 import { cloneDocumentValue } from './clone.ts'
 import type { DocumentStorage, DocumentVersion, DocumentWrite } from './ports.ts'
@@ -48,7 +49,7 @@ export class MemoryDocumentStorage implements DocumentStorage {
   async commitOperation(input: DocumentOperationRecord) {
     return (await this.commitOperationResult(input)).receipt
   }
-  async commitOperationResult(input: DocumentOperationRecord) {
+  async commitOperationResult(input: DocumentOperationRecord, admission?: DocumentAdmission) {
     const record = cloneDocumentValue(input), key = operationKey(record.scopeId, record.operationId)
     validateOperationRecord(record)
     const prior = matchOperation(this.operations.get(key) ?? null, record.fingerprint)
@@ -56,6 +57,7 @@ export class MemoryDocumentStorage implements DocumentStorage {
     if (canonicalDocumentValue(this.pages.get(record.after.id) ?? null) !== canonicalDocumentValue(record.before)) throw new Error('Document revision conflict')
     if (record.requireNoChildren && [...this.pages.values()].some(page => page.parentId === record.after.id && page.deletedAt === null)) throw new Error('Document revision conflict')
     if (record.creation) assertCreationPosition([...this.pages.values()], record.after, record.creation)
+    admission?.check([...this.pages.values()], record)
     if (record.history) {
       const history = this.versions.get(record.history.pageId) ?? []
       record.history.ts = Math.max(record.history.ts, ...history.map(v => v.ts + 1))

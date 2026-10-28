@@ -342,10 +342,13 @@ fn document_operation_find(s: St, scope_id: String, operation_id: String, expect
     })
 }
 #[tauri::command]
-fn document_operation_commit(s: St, record: Value, expected_vault_id: String, include_status: Option<bool>) -> Res<Value> {
+fn document_operation_commit(s: St, record: Value, expected_vault_id: String, include_status: Option<bool>, admission: Option<mcp::WriteAdmission>) -> Res<Value> {
     let receipt = with(&s, |v| {
         if v.id() != expected_vault_id { return Err("Document vault changed".into()); }
-        if include_status.unwrap_or(false) { document_operations::commit_result(v, &record) }
+        if let Some(admission) = admission {
+            let result = document_operations::commit_result_authorized(v, &record, |root, record| s.mcp.write_guard(&expected_vault_id, &admission, root, record))?;
+            if include_status.unwrap_or(false) { Ok(result) } else { Ok(result["receipt"].clone()) }
+        } else if include_status.unwrap_or(false) { document_operations::commit_result(v, &record) }
         else { document_operations::commit(v, &record) }
     })?;
     kick(&s);

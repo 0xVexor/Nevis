@@ -1,3 +1,4 @@
+import type { DocumentAdmission } from './admission.ts'
 import { DocumentHistory } from './history.ts'
 import type { DocumentHistoryInput, UndoDocumentInput } from './history.ts'
 import { failEdit as fail, translateEdit as translate } from './editErrors.ts'
@@ -17,6 +18,7 @@ import { creationPosition } from './hierarchy.ts'
 import type { CreationPosition } from './hierarchy.ts'
 
 export interface DocumentEditGrant {
+  admission?(): DocumentAdmission
   readonly context: DocumentAccessContext
   isActive(): boolean
   canRead(documentId: string): boolean
