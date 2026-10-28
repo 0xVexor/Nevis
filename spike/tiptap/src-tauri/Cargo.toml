@@ -5,8 +5,11 @@ description = "Nevis: offline notes with full Persian/RTL support"
 edition = "2021"
 
 [features]
-# Enable only in an explicitly selected acceptance build until the live-client gate is recorded.
-mcp-write-acceptance = []
+# Connections still start disabled and require a separate document-editing grant.
+default = ["mcp-writes"]
+mcp-writes = []
+# Keep existing acceptance commands compatible; app identity supplies the isolation.
+mcp-write-acceptance = ["mcp-writes"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

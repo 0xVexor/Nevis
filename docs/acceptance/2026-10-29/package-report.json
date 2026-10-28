@@ -1,0 +1,12 @@
+{
+  "platform": "macOS arm64",
+  "identifier": "com.vexor.noviq",
+  "defaultWriteCapability": true,
+  "requiresExplicitGrant": true,
+  "localAdHocSignatureVerified": true,
+  "expandedPayloadExecutableEqual": true,
+  "fixedInstallLocation": true,
+  "packageSha256": "4b690a5204699f1bc5bdb7e18c8592475e59c7bdc830fb5207d4bf39e045a209",
+  "notarized": false,
+  "installerExecuted": false
+}
