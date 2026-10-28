@@ -1,5 +1,20 @@
 // English → Persian UI strings (see i18n.ts). Generated once from the original Persian UI, edit freely.
 export const FA: Record<string, string> = {
+  "The desktop app could not connect to GitHub. Check the system proxy or VPN and retry.": "برنامهٔ دسکتاپ نتوانست به GitHub متصل شود. پراکسی یا VPN سیستم را بررسی کنید و دوباره تلاش کنید.",
+  "GitHub did not respond in time. Your notes are safe. Check whether the repository was already created before retrying.": "GitHub در زمان مقرر پاسخ نداد. یادداشت‌ها حفظ شده‌اند. پیش از تلاش دوباره بررسی کنید که مخزن قبلاً ساخته نشده باشد.",
+  "This device could not resolve the GitHub address. Check DNS, VPN or proxy settings.": "این دستگاه نتوانست آدرس GitHub را پیدا کند. تنظیمات DNS، VPN یا پراکسی را بررسی کنید.",
+  "The system proxy could not connect to GitHub. Check the proxy or VPN and retry.": "پراکسی سیستم نتوانست به GitHub متصل شود. پراکسی یا VPN را بررسی کنید و دوباره تلاش کنید.",
+  "The secure GitHub connection could not be verified. Check the system clock and trusted certificates. Certificate checks remain enabled.": "اعتبار اتصال امن GitHub تأیید نشد. ساعت سیستم و گواهی‌های معتبر را بررسی کنید. بررسی گواهی‌ها همچنان فعال است.",
+  "The native network client could not be initialized. Check the error details.": "راه‌اندازی بخش شبکهٔ برنامه ممکن نشد. جزئیات خطا را بررسی کنید.",
+  "Your account is signed in, but the App cannot access this repository. Grant access to the selected repository in GitHub, then continue with the existing repository.": "حساب وارد شده است، اما برنامه به این مخزن دسترسی ندارد. دسترسی مخزن انتخابی را در GitHub بدهید، سپس با مخزن موجود ادامه دهید.",
+  "GitHub did not confirm repository creation. The repository may already exist. Check GitHub and continue with the existing repository if it was created. No notes were uploaded.": "GitHub ساخت مخزن را تأیید نکرد. ممکن است مخزن ساخته شده باشد. GitHub را بررسی کنید و اگر ساخته شده، با مخزن موجود ادامه دهید. هیچ یادداشتی ارسال نشد.",
+  "The local repository setup record could not be read. Your vault and remote data were kept.": "خواندن وضعیت راه‌اندازی مخزن ممکن نشد. فضای کاری و داده‌های مخزن حفظ شده‌اند.",
+  "Check GitHub connection": "بررسی اتصال GitHub",
+  "Give App access to repository": "دادن دسترسی مخزن به برنامه",
+  "Continue with existing repository": "ادامه با مخزن موجود",
+  "Connection diagnostics": "تشخیص اتصال",
+  "Existing repository selected. After granting App access, use Back up and connect this workspace.": "مخزن موجود انتخاب شد. پس از دادن دسترسی به برنامه، «پشتیبان‌گیری و اتصال این فضای کاری» را بزنید.",
+
   "This repository name is unavailable. Choose Use existing repository if it was already created, or enter another name.": "این نام مخزن در دسترس نیست. اگر مخزن قبلاً ساخته شده، گزینهٔ استفاده از مخزن موجود را انتخاب کنید؛ در غیر این صورت نام دیگری وارد کنید.",
   "A referenced attachment is missing. Restore its original file from a backup, then retry. Your notes were kept.": "یکی از پیوست‌های استفاده‌شده موجود نیست. فایل اصلی را از پشتیبان بازیابی کنید و دوباره تلاش کنید. یادداشت‌های شما حفظ شده‌اند.",
   "Refresh": "تازه‌سازی",

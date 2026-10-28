@@ -25,7 +25,7 @@ A production-assets Chrome run with the desktop CSP response header loaded the T
 
 A headless Chrome run against the actual browser/IndexedDB app also built and restored a full backup containing pages, page versions, database records/history/kv and a GIF. Corrupt record checksums and corrupt attachment bytes were rejected before restoration. The database record and attachment bytes survived the reload/roundtrip.
 
-The frontend build retains the existing large-bundle/dynamic-import warnings. Rust retains existing unused `changed`/`copy_into` method warnings. No performance/10,000-page benchmark, mobile build, Windows/Linux local execution, installer signing or live GitHub authorization is claimed. CI is now configured for Windows/macOS/Linux; it has not been dispatched by this local branch.
+The frontend build retains the existing large-bundle/dynamic-import warnings. Rust retains existing unused `changed`/`copy_into` method warnings. No performance/10,000-page benchmark, mobile build, Windows/Linux local execution, installer signing or live GitHub authorization is claimed. Initial validation was local; subsequent preview CI results are recorded below.
 
 ## UI and visual verification
 
@@ -39,9 +39,19 @@ Seven state/language/theme combinations rendered in headless installed Chrome wi
 
 ## Remaining external acceptance gate
 
-1. Register/configure the real GitHub App and supply its public client ID and slug to the build/release variables.
+1. The real GitHub App public client ID and slug are bundled in preview builds (completed).
 2. In the native UI, authorize an actual account and selected private repository, verify automatic creation/installation access and real token refresh/rotation with the OS credential store.
 3. Migrate an actual copy, check the backup completion marker and hashes, download it on a second device, exercise offline edits/conflict resolution, and restore an independent backup.
 4. Pause old clients. Keep legacy remote data and backups until this succeeds. Keep the database gateway if public forms, webhooks or background jobs use it.
 
-No real data repository/account authorization, remote deletion, production migration, server shutdown, commit push or release publication was performed during this implementation. See [setup and architecture](github-personal-vaults.md) for size bounds, conservative asset retention, rollback and server retirement conditions.
+No remote deletion, production migration, server shutdown or release publication was performed. The preview branch was pushed to build test installers; the user authorized their account independently. See [setup and architecture](github-personal-vaults.md) for size bounds, conservative asset retention, rollback and server retirement conditions.
+
+## Desktop preview follow-up (2026-10-28)
+
+The registered public GitHub App configuration is now bundled in the isolated preview installers. Both macOS Universal and Windows x64 builds succeeded for `b029d5f`; the subsequent user report prompted the transport/setup repairs below. No branch has been merged.
+
+The installed preview showed a connected account and an incomplete repository setup. A read-only metadata probe found the selected private repository existed and was empty. Public native HTTPS probes to GitHub and its API succeeded; these observations do not establish the cause of the earlier offline error.
+
+The repaired client supports OS proxy configuration, SOCKS and native certificate roots while retaining TLS verification. Error details retain safe transport categories, host and operation phase without URLs, response bodies or credentials. A public-endpoint diagnostic does not read the account, vault or keychain. Repository creation writes a durable receipt before access verification, allowing setup to resume without creating again; missing installation access has explicit recovery controls. Uncertain creation responses are never blindly retried.
+
+Validation: the updated Rust suite passed 99 tests (11 ignored external/legacy tests); a manually invoked public HTTPS probe passed. The frontend production build and targeted lint passed. Isolated browser fixtures checked missing-installation recovery, selecting an existing repository, Persian dark diagnostics and preservation of safe raw error details. Actual account refresh and two-device private-vault publication remain user acceptance checks.

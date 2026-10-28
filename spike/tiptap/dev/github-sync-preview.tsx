@@ -12,13 +12,15 @@ Object.assign(window, { __GH_PREVIEW_CALLS__: calls, __TAURI_INTERNALS__: {
     calls.push({ cmd, args })
     if (cmd === 'pages_all') return []
     if (cmd === 'vault_stamp') return 'fixture'
-    if (cmd === 'account_status') return { provider: 'github', signedIn: true, syncOn: true, state: scenario === 'offline' ? 'offline' : scenario === 'error' ? 'error' : 'idle', lastAt: 1793095200000, reason: '', error: scenario === 'error' ? 'GITHUB:rate_limited:120' : scenario === 'offline' ? 'GITHUB:network' : '' }
+    if (cmd === 'account_status') return { provider: 'github', signedIn: true, syncOn: true, state: scenario === 'offline' ? 'offline' : scenario === 'error' ? 'error' : 'idle', lastAt: 1793095200000, reason: '', error: scenario === 'error' ? 'GITHUB:rate_limited:120' : scenario === 'offline' ? 'GITHUB:network_connect:host=api.github.com;phase=account_profile;os=61' : '' }
     if (cmd === 'github_action') {
       if (args.action === 'status') return { configured: scenario !== 'unconfigured', signedIn: !['signedout', 'unconfigured', 'device'].includes(scenario), login: 'preview-user', binding: ['connected', 'conflicts', 'offline', 'error'].includes(scenario) ? binding : null, installationUrl: 'https://github.com/apps/preview/installations/new' }
       if (args.action === 'conflicts') return scenario === 'conflicts' ? [{ id: 'conflict-one', path: 'pages/preview-page.json', createdAt: Date.now(), local: version('ویرایش این دستگاه / Local edit'), remote: version('ویرایش دستگاه دیگر / Remote edit'), base: version('Original note') }] : []
+      if (args.action === 'diagnostics') return { systemProxySupport: true, certificateValidation: true, checks: [{ host: 'api.github.com', reachable: true, httpStatus: 200 }] }
       if (args.action === 'begin') return { userCode: 'ABCD-EFGH', verificationUri: 'https://github.com/login/device', interval: 5, expiresIn: 900 }
       if (args.action === 'poll') return { pending: true, interval: 5 }
       if (args.action === 'list') return [{ id: 'preview-vault', files: 120, connectedHere: false }]
+      if (args.action === 'connect' && scenario === 'setup') throw 'GITHUB:installation_required'
       if (args.action === 'connect') return { backup: '/preview/verified-backup' }
       return null
     }

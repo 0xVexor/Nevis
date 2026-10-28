@@ -29,13 +29,9 @@ fn client_id() -> Res<&'static str> {
         .ok_or_else(|| "GITHUB:app_not_configured".into())
 }
 fn client() -> Res<Client> {
-    Client::builder()
-        .user_agent("Noviq-personal-vaults/1")
-        .connect_timeout(Duration::from_secs(15))
-        .timeout(Duration::from_secs(120))
-        .build()
-        .map_err(|_| "GITHUB:network".into())
+    super::network::client()
 }
+
 fn secret() -> Res<keyring::Entry> {
     keyring::Entry::new(SERVICE, "user-token")
         .map_err(|_| "GITHUB:secure_storage_unavailable".into())
@@ -67,11 +63,11 @@ fn oauth(path: &str, form: &[(&str, &str)]) -> Res<Value> {
         .header("Accept", "application/json")
         .form(form)
         .send()
-        .map_err(|_| "GITHUB:network")?;
+        .map_err(|e| super::network::failure(&e, "github.com", "authorization"))?;
     if !r.status().is_success() {
         return Err(format!("GITHUB:oauth_http_{}", r.status().as_u16()));
     }
-    r.json().map_err(|_| "GITHUB:invalid_response".into())
+    decode_json(r, "github.com", "authorization_body")
 }
 #[derive(Serialize, Deserialize)]
 struct Device {
@@ -187,6 +183,15 @@ fn field<'a>(v: &'a Value, k: &str) -> Res<&'a str> {
         .filter(|s| !s.is_empty())
         .ok_or_else(|| "GITHUB:invalid_response".into())
 }
+fn decode_json(response: Response, host: &str, phase: &str) -> Res<Value> {
+    response.json().map_err(|e| {
+        if e.is_timeout() || e.is_connect() || e.is_body() {
+            super::network::failure(&e, host, phase)
+        } else {
+            "GITHUB:invalid_response".into()
+        }
+    })
+}
 struct Api {
     client: Client,
     token: String,
@@ -219,7 +224,22 @@ impl Api {
         if let Some(b) = body {
             r = r.json(b);
         }
-        let r = r.send().map_err(|_| "GITHUB:network")?;
+        let phase = if path == "/user" {
+            "account_profile"
+        } else if path == "/user/repos" {
+            "create_repository"
+        } else if path.contains("/contents/") {
+            "initialize_repository"
+        } else if path.contains("/git/refs/") {
+            "publish"
+        } else if path.contains("/tarball/") {
+            "download_snapshot"
+        } else {
+            "repository_api"
+        };
+        let r = r
+            .send()
+            .map_err(|e| super::network::failure(&e, "api.github.com", phase))?;
         if r.status().is_success() {
             return Ok(r);
         }
@@ -254,14 +274,18 @@ impl Api {
         })
     }
     fn get(&mut self, p: &str) -> Res<Value> {
-        self.request(Method::GET, p, None)?
-            .json()
-            .map_err(|_| "GITHUB:invalid_response".into())
+        decode_json(
+            self.request(Method::GET, p, None)?,
+            "api.github.com",
+            "response_body",
+        )
     }
     fn post(&mut self, p: &str, v: &Value) -> Res<Value> {
-        self.request(Method::POST, p, Some(v))?
-            .json()
-            .map_err(|_| "GITHUB:invalid_response".into())
+        decode_json(
+            self.request(Method::POST, p, Some(v))?,
+            "api.github.com",
+            "response_body",
+        )
     }
 }
 #[derive(Serialize, Deserialize, Clone)]
@@ -334,21 +358,77 @@ fn verify(a: &mut Api, b: &Binding) -> Res<Value> {
     }
     Ok(r)
 }
-/// Prepare connection only. The caller must take a verified local backup before persisting this binding.
-pub fn prepare(vault: &str, name: &str, create: bool, initialize: bool) -> Res<Binding> {
-    component(name)?;
+#[derive(Serialize, Deserialize)]
+struct SetupReceipt {
+    owner_id: u64,
+    repo_id: u64,
+    repo: String,
+}
+fn setup_access(error: String) -> String {
+    if [
+        "GITHUB:not_found_or_access_revoked",
+        "GITHUB:permission_or_branch_policy",
+    ]
+    .contains(&error.as_str())
+    {
+        "GITHUB:installation_required".into()
+    } else {
+        error
+    }
+}
+/// Prepare only; a successful creation receipt survives permission/initialization/network failures.
+pub fn prepare(
+    data: &Path,
+    vault: &str,
+    name: &str,
+    create: bool,
+    initialize: bool,
+) -> Res<Binding> {
     let mut a = api()?;
+    prepare_with_api(data, vault, name, create, initialize, &mut a)
+}
+fn prepare_with_api(
+    data: &Path,
+    vault: &str,
+    name: &str,
+    create: bool,
+    initialize: bool,
+    a: &mut Api,
+) -> Res<Binding> {
+    component(name)?;
+    crate::vault::check_id(vault)?;
     let user = a.get("/user")?;
     let owner = field(&user, "login")?;
     component(owner)?;
-    let r = if create {
-        a.post("/user/repos",&json!({"name":name,"private":true,"auto_init":true,"description":"Noviq personal vault data"}))?
+    let owner_id = user["id"].as_u64().ok_or("GITHUB:invalid_response")?;
+    let receipt_path = dir(data, vault).join(format!("setup-{owner_id}-{name}.json"));
+    let receipt: Option<SetupReceipt> = match fs::read(&receipt_path) {
+        Ok(bytes) => {
+            Some(serde_json::from_slice(&bytes).map_err(|_| "GITHUB:setup_state_corrupt")?)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(err(e)),
+    };
+    let r = if create && receipt.is_none() {
+        let r=match a.post("/user/repos",&json!({"name":name,"private":true,"auto_init":true,"description":"Noviq personal vault data"})){
+            Ok(r)=>r,
+            Err(e)if e.starts_with("GITHUB:network") || e == "GITHUB:invalid_response"=>return Err(format!("GITHUB:repository_creation_uncertain:{e}")),
+            Err(e)=>return Err(e)
+        };
+        let receipt = SetupReceipt {
+            owner_id,
+            repo_id: r["id"].as_u64().ok_or("GITHUB:invalid_response")?,
+            repo: name.into(),
+        };
+        write_atomic(&receipt_path, &serde_json::to_vec(&receipt).map_err(err)?)?;
+        r
     } else {
-        a.get(&format!("/repos/{owner}/{name}"))?
+        a.get(&format!("/repos/{owner}/{name}"))
+            .map_err(setup_access)?
     };
     let b = Binding {
         owner: owner.into(),
-        owner_id: user["id"].as_u64().ok_or("GITHUB:invalid_response")?,
+        owner_id,
         repo: name.into(),
         repo_id: r["id"].as_u64().ok_or("GITHUB:invalid_response")?,
         branch: field(&r, "default_branch")?.into(),
@@ -357,14 +437,19 @@ pub fn prepare(vault: &str, name: &str, create: bool, initialize: bool) -> Res<B
         poll_seconds: 120,
         backup: String::new(),
     };
-    verify(&mut a, &b)?;
-    // Ref must be readable. Newly created repositories use auto_init; never treat a 404 as an empty repository.
-    if let Err(e) = a.get(&format!("{}/git/ref/heads/{}", repo_path(&b), b.branch)) {
-        if !initialize || r["size"].as_u64() != Some(0) {
-            return Err(e);
+    if let Some(receipt) = receipt {
+        if receipt.owner_id != owner_id || receipt.repo != name || receipt.repo_id != b.repo_id {
+            return Err("GITHUB:repository_identity_or_privacy_changed".into());
         }
-        a.request(Method::PUT,&format!("{}/contents/README.md",repo_path(&b)),Some(&json!({"message":"Initialize Noviq data repository","content":B64.encode(b"# Noviq personal vaults\n"),"branch":b.branch})))?;
-        a.get(&format!("{}/git/ref/heads/{}", repo_path(&b), b.branch))?;
+    }
+    let metadata = verify(a, &b).map_err(setup_access)?;
+    if let Err(e) = a.get(&format!("{}/git/ref/heads/{}", repo_path(&b), b.branch)) {
+        if !initialize || metadata["size"].as_u64() != Some(0) {
+            return Err(setup_access(e));
+        }
+        a.request(Method::PUT,&format!("{}/contents/README.md",repo_path(&b)),Some(&json!({"message":"Initialize Noviq data repository","content":B64.encode(b"# Noviq personal vaults\n"),"branch":b.branch}))).map_err(setup_access)?;
+        a.get(&format!("{}/git/ref/heads/{}", repo_path(&b), b.branch))
+            .map_err(setup_access)?;
     }
     Ok(b)
 }
@@ -461,7 +546,7 @@ fn remote_bundle(archive: &BTreeMap<String, Vec<u8>>, id: &str) -> Res<Bundle> {
     Ok(bundle)
 }
 pub fn list_vaults(data: &Path, repo: &str) -> Res<Value> {
-    let b = prepare("browse", repo, false, false)?;
+    let b = prepare(data, "browse", repo, false, false)?;
     let mut a = api()?;
     let head = a.get(&format!("{}/git/ref/heads/{}", repo_path(&b), b.branch))?;
     let archive = archive(&mut a, &b, field(&head["object"], "sha")?)?;
@@ -830,6 +915,51 @@ mod tests {
         assert!(remote_bundle(&a, "v").is_err());
     }
     #[test]
+    fn setup_recovers_created_repository_after_installation_failure_without_another_create() {
+        let data = std::env::temp_dir().join(format!("github-setup-test-{}", uuid::Uuid::new_v4()));
+        let user = json!({"id":7,"login":"me"});
+        let repository = json!({"id":8,"owner":{"id":7},"private":true,"archived":false,"default_branch":"main","size":0});
+        let (mut api, first) = server(vec![
+            (200, user.clone()),
+            (201, repository.clone()),
+            (404, json!({})),
+        ]);
+        assert_eq!(
+            prepare_with_api(&data, "v", "data", true, true, &mut api)
+                .err()
+                .unwrap(),
+            "GITHUB:installation_required"
+        );
+        assert_eq!(
+            first
+                .join()
+                .unwrap()
+                .iter()
+                .filter(|(request, _)| request.starts_with("POST /user/repos "))
+                .count(),
+            1
+        );
+        assert!(dir(&data, "v").join("setup-7-data.json").exists());
+        let (mut api, retry) = server(vec![
+            (200, user),
+            (200, repository.clone()),
+            (200, repository),
+            (200, json!({"object":{"sha":"H"}})),
+        ]);
+        assert_eq!(
+            prepare_with_api(&data, "v", "data", true, true, &mut api)
+                .unwrap()
+                .repo_id,
+            8
+        );
+        assert!(retry
+            .join()
+            .unwrap()
+            .iter()
+            .all(|(request, _)| request.starts_with("GET ")));
+        fs::remove_dir_all(data).unwrap();
+    }
+    #[test]
     fn api_errors_never_expose_response_body_tokens() {
         let (mut api, thread) = server(vec![(
             401,
@@ -839,5 +969,31 @@ mod tests {
         assert_eq!(error, "GITHUB:sign_in_required");
         assert!(!error.contains("secret-token"));
         thread.join().unwrap();
+    }
+}
+
+#[cfg(test)]
+mod live_network_diagnostics {
+    use super::*;
+    #[test]
+    #[ignore = "Explicit public-endpoint transport diagnostic; no account or vault access"]
+    fn github_public_transport() {
+        let c = client().unwrap();
+        for url in [
+            "https://github.com/login/device",
+            "https://api.github.com/rate_limit",
+        ] {
+            match c.get(url).timeout(Duration::from_secs(15)).send() {
+                Ok(r) => println!("PUBLIC_TRANSPORT {url} status={}", r.status()),
+                Err(e) => {
+                    println!(
+                        "PUBLIC_TRANSPORT {url} timeout={} connect={} error={e:?}",
+                        e.is_timeout(),
+                        e.is_connect()
+                    );
+                    panic!("public GitHub transport failed");
+                }
+            }
+        }
     }
 }
