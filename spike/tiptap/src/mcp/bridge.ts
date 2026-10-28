@@ -6,7 +6,7 @@ import { createDocumentReadRuntime } from '../platform/documentEnvironment'
 import { McpDocumentSession } from '../documents/mcp'
 import type { McpConnection, McpPolicy } from '../documents/mcp'
 
-export interface McpStatus { active: boolean; ready: boolean; endpoint: string | null; connection: McpConnection | null; pending: number }
+export interface McpStatus { writesAvailable: boolean; active: boolean; ready: boolean; endpoint: string | null; connection: McpConnection | null; pending: number }
 export const connectionStatus = () => invoke<McpStatus>('mcp_status')
 export const disableConnection = () => invoke<void>('mcp_disable')
 export async function enableConnection(policy: McpPolicy) {
@@ -41,7 +41,7 @@ export async function startMcpBridge() {
       let session = sessions.get(connection.revision)
       if (!session) {
         close()
-        session = new McpDocumentSession(repo, connection, runtime, () => alive && !storageFrozen())
+        session = new McpDocumentSession(repo, connection, runtime, () => alive && !storageFrozen(), connection.writesAvailable === true)
         sessions.set(connection.revision, session)
       }
       let result

@@ -4,6 +4,10 @@ version = "1.0.0"
 description = "Nevis: offline notes with full Persian/RTL support"
 edition = "2021"
 
+[features]
+# Enable only in an explicitly selected acceptance build until the live-client gate is recorded.
+mcp-write-acceptance = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
