@@ -1,5 +1,6 @@
 import type { Page } from './model.ts'
 import type { SearchIndexRuntime } from './searchLifecycle.ts'
+import type { DocumentOperationRecord, DocumentOperationReceipt } from './operations.ts'
 
 export interface DocumentVersion {
   pageId: string
@@ -38,6 +39,9 @@ export interface DocumentStorage {
   addVersion(version: DocumentVersion): Promise<void>
   deleteVersions(pageId: string): Promise<void>
   stamp?(): Promise<string>
+  /** Local-only snapshots. Commit atomically with the page, or recover before any later writer. */
+  findOperation?(scopeId: string, operationId: string): Promise<DocumentOperationRecord | null>
+  commitOperation?(record: DocumentOperationRecord): Promise<DocumentOperationReceipt>
 }
 
 export interface DocumentHost {

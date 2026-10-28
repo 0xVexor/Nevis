@@ -10,11 +10,12 @@
     "test:layout": "node --import ./tests/register.mjs --test \"./tests/*.test.mjs\"",
     "test:updates": "node --test ../../db/test-updates.mjs",
     "test:document-persistence": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-service.mjs ../../db/tests/database/idb.test.mjs src/editor/documentCommitGuard.test.mjs",
+    "test:document-operations": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-operations.mjs",
     "test:document-reads": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-reads.mjs",
     "test:document-search": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-search.mjs",
     "test:search-freshness": "tsc -p tsconfig.documents.json && node --test ../../db/test-search-freshness.mjs",
     "test:direction": "node --test src/editor/direction.test.mjs",
-    "test:documents": "tsc -p tsconfig.documents.json && node --test ../../db/test-agent-documents.mjs ../../db/test-document-projection.mjs ../../db/test-document-contracts.mjs ../../db/test-block-identity.mjs ../../db/test-repo-identity.mjs ../../db/test-document-service.mjs ../../db/test-document-reads.mjs ../../db/test-document-search.mjs ../../db/test-search-freshness.mjs src/editor/blockIdentity.test.mjs src/editor/documentCommitGuard.test.mjs",
+    "test:documents": "tsc -p tsconfig.documents.json && node --test ../../db/test-agent-documents.mjs ../../db/test-document-projection.mjs ../../db/test-document-contracts.mjs ../../db/test-block-identity.mjs ../../db/test-repo-identity.mjs ../../db/test-document-service.mjs ../../db/test-document-operations.mjs ../../db/test-document-reads.mjs ../../db/test-document-search.mjs ../../db/test-search-freshness.mjs src/editor/blockIdentity.test.mjs src/editor/documentCommitGuard.test.mjs",
     "test:db": "node --test \"../../db/tests/database/*.test.mjs\"",
     "preview": "vite preview",
     "tauri": "tauri"

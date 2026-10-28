@@ -54,6 +54,7 @@ pub fn commit_lock(root: &Path) -> Res<fs::File> {
     let file = fs::OpenOptions::new().read(true).write(true).create(true).truncate(false)
         .open(root.join(".noviq/document-commit.lock")).map_err(err)?;
     file.lock().map_err(err)?;
+    crate::document_operations::recover_locked(root)?;
     Ok(file)
 }
 
@@ -111,6 +112,8 @@ impl Vault {
         if v.id() != id {
             return Err(VAULT_MISMATCH.into());
         }
+        // Finish local accepted operations before startup readers or sync scan this vault.
+        { let _guard = commit_lock(&v.root)?; }
         Ok(v)
     }
 
@@ -229,7 +232,7 @@ impl Vault {
         self.resolve_conflicts_locked();
     }
 
-    fn resolve_conflicts_locked(&self) {
+    pub(crate) fn resolve_conflicts_locked(&self) {
         let Ok(rd) = fs::read_dir(self.pages_dir()) else { return };
         for e in rd.flatten() {
             let path = e.path();

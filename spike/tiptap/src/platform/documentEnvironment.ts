@@ -1,4 +1,4 @@
-import { addVersion, allPages, db, deleteVersions, isTauri, listVersions, savePages, storageFrozen, vaultInfo, vaultStamp } from '../db'
+import { addVersion, allPages, db, deleteVersions, isTauri, listVersions, savePages, storageFrozen, vaultInfo, vaultStamp, findDocumentOperation, commitDocumentOperation } from '../db'
 import { IndexedDbDocumentStorage } from './documents/indexedDb'
 import { NativeDocumentStorage } from './documents/native'
 import { publishDocumentChange } from './documents/changes'
@@ -24,6 +24,7 @@ export function createAppDocumentEnvironment(): DocumentEnvironment {
     currentVaultId: async () => (await vaultInfo()).id,
     active: () => !storageFrozen(),
     load: allPages, save: savePages, stamp: vaultStamp, listVersions, addVersion, deleteVersions,
+    findOperation: findDocumentOperation, commitOperation: commitDocumentOperation,
   }) : new IndexedDbDocumentStorage('browser:not.db', db, () => !storageFrozen(), publishDocumentChange)
   return {
     storage,

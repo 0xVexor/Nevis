@@ -2,6 +2,8 @@ import type { Page } from '../../documents/model.ts'
 import type { DocumentStorage, DocumentVersion, DocumentWrite } from '../../documents/ports.ts'
 import { cloneDocumentValue } from '../../documents/clone.ts'
 import { canonicalDocumentValue } from '../../documents/revision.ts'
+import { matchOperation, operationKey, validateOperationRecord } from '../../documents/operations.ts'
+import type { DocumentOperationRecord } from '../../documents/operations.ts'
 
 const complete = (tx: IDBTransaction) => new Promise<void>((resolve, reject) => {
   tx.oncomplete = () => resolve()
@@ -44,6 +46,42 @@ export class IndexedDbDocumentStorage implements DocumentStorage {
   async load(): Promise<Page[]> {
     const tx = (await this.database()).transaction('pages')
     return result(tx.objectStore('pages').getAll())
+  }
+  async findOperation(scopeId: string, operationId: string): Promise<DocumentOperationRecord | null> {
+    const key = `document-operation/${operationKey(scopeId, operationId)}`
+    const tx = (await this.database()).transaction('kv')
+    const record = (await result(tx.objectStore('kv').get(key))) ?? null
+    if (!this.active()) throw new Error('Document storage is unavailable')
+    return record
+  }
+  async commitOperation(input: DocumentOperationRecord) {
+    const record = cloneDocumentValue(input)
+    validateOperationRecord(record)
+    const key = `document-operation/${operationKey(record.scopeId, record.operationId)}`
+    // The private kv entry is never included in page backups or database exports.
+    const tx = (await this.database()).transaction(['pages', 'kv'], 'readwrite', { durability: 'strict' })
+    const committed = complete(tx)
+    let receipt = record.receipt
+    try {
+      const kv = tx.objectStore('kv'), pages = tx.objectStore('pages')
+      const prior = matchOperation((await result(kv.get(key))) ?? null, record.fingerprint)
+      if (prior) receipt = prior.receipt
+      else {
+        const current = (await result(pages.get(record.after.id))) ?? null
+        if (canonicalDocumentValue(current) !== canonicalDocumentValue(record.before)) throw new Error('Document revision conflict')
+        if (!this.active()) throw new Error('Document storage is unavailable')
+        pages.put(record.after)
+        kv.put(record, key)
+      }
+    } catch (error) {
+      tx.abort()
+      await committed.catch(() => {})
+      throw error
+    }
+    await committed
+    if (!this.active()) throw new Error('Document storage is unavailable')
+    try { this.changed() } catch { /* advisory notification */ }
+    return cloneDocumentValue(receipt)
   }
   async save(input: DocumentWrite): Promise<void> {
     const write = cloneDocumentValue(input)
