@@ -1,7 +1,7 @@
 import { cloneDocumentValue } from '../../documents/clone.ts'
 import type { Page } from '../../documents/model.ts'
 import type { DocumentStorage, DocumentVersion, DocumentWrite } from '../../documents/ports.ts'
-import type { DocumentOperationRecord, DocumentOperationReceipt, DocumentOperationCommitResult } from '../../documents/operations.ts'
+import type { DocumentOperationRecord, DocumentOperationReceipt, DocumentOperationCommitResult, DocumentOperationSummary } from '../../documents/operations.ts'
 
 /** The app injects its existing bridge; this adapter itself imports no Tauri API. */
 export interface NativeDocumentBridge {
@@ -13,6 +13,7 @@ export interface NativeDocumentBridge {
   listVersions(pageId: string): Promise<DocumentVersion[]>
   addVersion(version: DocumentVersion): Promise<void>
   deleteVersions(pageId: string): Promise<void>
+  listOperations?(scopeId: string, documentId: string, expectedVaultId: string): Promise<DocumentOperationSummary[]>
   findOperation?(scopeId: string, operationId: string, expectedVaultId: string): Promise<DocumentOperationRecord | null>
   commitOperation?(record: DocumentOperationRecord, expectedVaultId: string): Promise<DocumentOperationReceipt>
   commitOperationResult?(record: DocumentOperationRecord, expectedVaultId: string): Promise<DocumentOperationCommitResult>
@@ -53,6 +54,12 @@ export class NativeDocumentStorage implements DocumentStorage {
   listVersions(pageId: string) { return this.run(() => this.bridge.listVersions(pageId)) }
   addVersion(version: DocumentVersion) { return this.run(() => this.bridge.addVersion(version)) }
   deleteVersions(pageId: string) { return this.run(() => this.bridge.deleteVersions(pageId)) }
+  listOperations(scopeId: string, documentId: string) {
+    return this.run(() => {
+      if (!this.bridge.listOperations) throw new Error('Document operation storage is unavailable')
+      return this.bridge.listOperations(scopeId, documentId, this.binding!)
+    })
+  }
   findOperation(scopeId: string, operationId: string) {
     return this.run(() => {
       if (!this.bridge.findOperation) throw new Error('Document operation storage is unavailable')

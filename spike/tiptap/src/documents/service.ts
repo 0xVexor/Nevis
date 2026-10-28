@@ -141,7 +141,16 @@ export class DocumentService implements PageRepo {
         }
         return receipt
       },
-      commit: (request, before, after, check, evidence, creation) => this.commitPlannedEdit(request, before, after, digest, check, evidence, creation),
+      commit: (request, before, after, check, evidence, creation, requireNoChildren) => this.commitPlannedEdit(request, before, after, digest, check, evidence, creation, requireNoChildren),
+      now: () => this.host.now(),
+      listOperations: (scopeId, documentId) => {
+        if (!this.storage.listOperations) throw new Error('Document operation storage is unavailable')
+        return this.storage.listOperations(scopeId, documentId)
+      },
+      operationRecord: (scopeId, operationId) => {
+        if (!this.storage.findOperation) throw new Error('Document operation storage is unavailable')
+        return this.storage.findOperation(scopeId, operationId)
+      },
       createId: () => this.host.createId(),
       search: receipt => this.savedSearch(receipt, digest), sync: async () => this.host.syncState?.() ?? 'pending',
     }, grant, digest)
@@ -155,17 +164,19 @@ export class DocumentService implements PageRepo {
     return { state: 'fresh', indexedRevision: receipt.revision }
   }
   private async commitPlannedEdit(request: DocumentOperationRequest, expected: Page | null, next: Page, digest: (value: string) => Promise<string>,
-    check: () => void, evidence: (page: Page, receipt: DocumentOperationReceipt) => SavedEditEvidence, creation?: CreationPosition) {
+    check: () => void, evidence: (page: Page, receipt: DocumentOperationReceipt) => SavedEditEvidence, creation?: CreationPosition, requireNoChildren = false) {
     if (!this.storage.commitOperationResult) throw new Error('Document operation storage is unavailable')
     request = cloneDocumentValue(request)
     const before = cloneDocumentValue(expected), after = cloneDocumentValue(next), committedAt = this.host.now()
     if (!Number.isSafeInteger(committedAt) || committedAt < 0 || (before && (!Number.isSafeInteger(before.updatedAt) || before.updatedAt >= Number.MAX_SAFE_INTEGER))) throw new Error('Invalid document clock')
     after.updatedAt = Math.max(committedAt, before ? before.updatedAt + 1 : 0)
     if (after.database) after.recordMeta = { ...(after.recordMeta ?? { format: 1, revision: 0, createdAt: before?.updatedAt ?? committedAt,
-      createdBy: '', updatedBy: '', lastOperationId: '', inferred: true }), revision: (after.recordMeta?.revision ?? 0) + 1, lastOperationId: request.operationId }
+      createdBy: '', updatedBy: '', lastOperationId: '', inferred: true }), revision: (before?.recordMeta?.revision ?? after.recordMeta?.revision ?? 0) + 1, lastOperationId: request.operationId }
     const fingerprint = await operationFingerprint(request, digest), beforeRevision = before ? await documentRevision(before, digest) : null
     if (beforeRevision !== request.expectedRevision || (before ? before.id !== after.id || request.documentId !== before.id || request.kind !== 'edit'
       : request.documentId !== null || request.kind !== 'create' || !creation)) throw new Error('Document revision conflict')
+    const payload = request.payload as { tool?: string; undoOperationId?: string } | null
+    const undoOf = payload?.tool === 'undo_document_edit' ? payload.undoOperationId : undefined
     const receipt: DocumentOperationReceipt = { operationId: request.operationId, documentId: after.id, beforeRevision,
       revision: await documentRevision(after, digest), committedAt }
     receipt.evidence = evidence(after, receipt) // a bounded response must be representable before any write
@@ -183,7 +194,7 @@ export class DocumentService implements PageRepo {
       if (canonicalDocumentValue(this.getRaw(after.id) ?? null) !== canonicalDocumentValue(before)) throw new Error('Document revision conflict')
       const result = await this.storage.commitOperationResult({ format: 1, scopeId: request.scopeId, operationId: request.operationId,
         fingerprint, before, after, receipt, ...(before ? { history: { pageId: before.id, ts: after.updatedAt, title: before.title, content: cloneDocumentValue(before.content) } } : {}),
-        ...(creation ? { creation: cloneDocumentValue(creation) } : {}) })
+        ...(creation ? { creation: cloneDocumentValue(creation) } : {}), ...(requireNoChildren ? { requireNoChildren: true as const } : {}), ...(undoOf ? { undoOf } : {}) })
       await this.publishCommittedDocument(result.receipt.documentId)
       return result
     } finally { release() }

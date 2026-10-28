@@ -1,6 +1,6 @@
 import type { Page } from './model.ts'
 import type { SearchIndexRuntime } from './searchLifecycle.ts'
-import type { DocumentOperationRecord, DocumentOperationReceipt, DocumentOperationCommitResult } from './operations.ts'
+import type { DocumentOperationRecord, DocumentOperationReceipt, DocumentOperationCommitResult, DocumentOperationSummary } from './operations.ts'
 import type { SyncState } from './savedEdit.ts'
 
 export interface DocumentVersion {
@@ -41,6 +41,7 @@ export interface DocumentStorage {
   deleteVersions(pageId: string): Promise<void>
   stamp?(): Promise<string>
   /** Local-only snapshots. Commit atomically with the page, or recover before any later writer. */
+  listOperations?(scopeId: string, documentId: string): Promise<DocumentOperationSummary[]>
   findOperation?(scopeId: string, operationId: string): Promise<DocumentOperationRecord | null>
   commitOperation?(record: DocumentOperationRecord): Promise<DocumentOperationReceipt>
   commitOperationResult?(record: DocumentOperationRecord): Promise<DocumentOperationCommitResult>
