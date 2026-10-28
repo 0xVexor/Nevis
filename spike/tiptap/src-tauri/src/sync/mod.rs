@@ -14,6 +14,7 @@ pub mod hub;
 pub mod snapshot;
 pub mod provider;
 pub mod github;
+pub mod network;
 
 use crate::vault::{err, now_ms, write_atomic, Res, Vault, VAULT_MISMATCH, VAULT_MISSING};
 use md5::{Digest, Md5};

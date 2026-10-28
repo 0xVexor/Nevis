@@ -35,6 +35,15 @@ const messages: Record<string, string> = {
   permission_or_branch_policy: 'GitHub refused this operation. Check the selected repository permissions and branch rules, then retry.',
   not_found_or_access_revoked: 'The repository is unavailable. Check the account and App installation. Local data is safe.',
   repository_identity_or_privacy_changed: 'Sync stopped because the repository identity or privacy changed. Make it private and check access before retrying.',
+  network_connect: 'The desktop app could not connect to GitHub. Check the system proxy or VPN and retry.',
+  network_timeout: 'GitHub did not respond in time. Your notes are safe. Check whether the repository was already created before retrying.',
+  network_dns: 'This device could not resolve the GitHub address. Check DNS, VPN or proxy settings.',
+  network_proxy: 'The system proxy could not connect to GitHub. Check the proxy or VPN and retry.',
+  network_tls: 'The secure GitHub connection could not be verified. Check the system clock and trusted certificates. Certificate checks remain enabled.',
+  network_client_config: 'The native network client could not be initialized. Check the error details.',
+  installation_required: 'Your account is signed in, but the App cannot access this repository. Grant access to the selected repository in GitHub, then continue with the existing repository.',
+  repository_creation_uncertain: 'GitHub did not confirm repository creation. The repository may already exist. Check GitHub and continue with the existing repository if it was created. No notes were uploaded.',
+  setup_state_corrupt: 'The local repository setup record could not be read. Your vault and remote data were kept.',
   network: 'Offline. Your changes stay on this device and will sync when the connection returns.',
   missing_attachment: 'A referenced attachment is missing. Restore its original file from a backup, then retry. Your notes were kept.',
   too_large: 'A file or snapshot exceeds the supported size. Local changes are kept. Reduce the attachment size and retry.',
@@ -60,6 +69,7 @@ export function GitHubAccountDialog({ onClose, onLegacy }: { onClose: () => void
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [note, setNote] = useState('')
+  const [diagnostics, setDiagnostics] = useState<Record<string, unknown> | null>(null)
   const [conflicts, setConflicts] = useState<Conflict[]>([])
   const [vaults, setVaults] = useState<RemoteVault[] | null>(null)
   const [quiet, setQuiet] = useState<number | null>(null)
@@ -88,7 +98,7 @@ export function GitHubAccountDialog({ onClose, onLegacy }: { onClose: () => void
   }, [onClose, busy])
   useEffect(() => {
     let alive = true
-    const update = () => { if (alive) void refresh().catch((e) => setError(problem(e))) }
+    const update = () => { if (alive) void refresh().catch((e) => setError(String(e))) }
     update(); const timer = window.setInterval(update, 2500)
     void loadConflicts().catch(() => {})
     return () => { alive = false; window.clearInterval(timer); void action('cancel').catch(() => {}) }
@@ -110,7 +120,7 @@ export function GitHubAccountDialog({ onClose, onLegacy }: { onClose: () => void
         if (cancelled) return
         if (!result.pending) { setDevice(null); setNote(t('Signed in. Install the App for your selected data repository, then connect the workspace.')); await refresh(); return }
         interval = result.interval ?? interval
-      } catch (e) { if (!cancelled) { setError(problem(e)); setDevice(null) }; return }
+      } catch (e) { if (!cancelled) { setError(String(e)); setDevice(null) }; return }
       finally { polling.current = false }
       if (!cancelled) timer = window.setTimeout(next, interval * 1000)
     }
@@ -120,7 +130,7 @@ export function GitHubAccountDialog({ onClose, onLegacy }: { onClose: () => void
   const run = async (f: () => Promise<unknown>) => {
     if (busy) return
     setBusy(true); setError(''); setNote('')
-    try { await f(); await refresh() } catch (e) { setError(problem(e)) } finally { setBusy(false) }
+    try { await f(); await refresh() } catch (e) { setError(String(e)) } finally { setBusy(false) }
   }
   const connect = () => run(async () => {
     await durable()
@@ -141,6 +151,7 @@ export function GitHubAccountDialog({ onClose, onLegacy }: { onClose: () => void
     window.dispatchEvent(new Event('data-changed'))
   })
   const stateLabel = runtime?.state === 'syncing' ? 'Syncing…' : runtime?.state === 'offline' ? 'Offline' : runtime?.state === 'error' ? 'Sync needs attention' : runtime?.reason === 'CONFLICTS' ? 'Conflicts need review' : runtime?.syncOn ? 'Ready to sync' : 'Sync paused'
+  const setupRecovery = ['GITHUB:installation_required', 'GITHUB:repository_creation_uncertain', 'GITHUB:repository_name_unavailable'].some((code) => error.includes(code))
   const quietValue = quiet ?? st?.binding?.quiet_seconds ?? 15
   const pollValue = poll ?? st?.binding?.poll_seconds ?? 120
   return <div className="overlay" onMouseDown={() => !busy && onClose()}>
@@ -149,13 +160,14 @@ export function GitHubAccountDialog({ onClose, onLegacy }: { onClose: () => void
       <div className="wsd-body gh-body" aria-busy={busy}>
         <div className="gh-intro"><span className="gh-mark"><Ic.Cloud size={24} /></span><div><h3>{t('Your notes. Your private repository.')}</h3><p>{t('Save locally, work offline and sync your personal devices through GitHub.')}</p></div></div>
         {busy && <p className="gh-progress" role="status"><i className="acct-spin" />{t('Working… Keep this window open.')}</p>}
-        {(error || runtime?.error) && <div className="acct-err" role="alert"><p>{error || problem(runtime?.error)}</p><details><summary>{t('Error details')}</summary><pre dir="ltr">{error || runtime?.error}</pre></details></div>}
+        {(error || runtime?.error) && <div className="acct-err" role="alert"><p>{problem(error || runtime?.error)}</p><details><summary>{t('Error details')}</summary><pre dir="ltr">{error || runtime?.error}</pre></details><div className="acct-row"><button disabled={busy} onClick={() => run(async () => setDiagnostics(await action<Record<string, unknown>>('diagnostics')))}>{t('Check GitHub connection')}</button>{setupRecovery && <><button disabled={busy} onClick={() => run(() => action('open', { target: 'install' }))}>{t('Give App access to repository')}</button><button disabled={busy} onClick={() => { setCreate(false); setError(''); setNote(t('Existing repository selected. After granting App access, use Back up and connect this workspace.')) }}>{t('Continue with existing repository')}</button></>}</div></div>}
+        {diagnostics && <details className="gh-card gh-diagnostics" open><summary>{t('Connection diagnostics')}</summary><pre dir="ltr">{JSON.stringify(diagnostics, null, 2)}</pre></details>}
         {note && <p className="gh-notice" role="status" dir="auto">{note}</p>}
         {!st ? <p role="status">{t('Loading…')}</p> : <>
           {!st.configured && <p className="gh-notice">{t(messages.app_not_configured)}</p>}
           <section className="gh-card"><h4>{t('1. GitHub account')}</h4>
             {st.signedIn ? <><div className="gh-account"><Ic.Check size={17} /><b dir="ltr">{st.login}</b><span>{t('Connected')}</span></div><div className="acct-row"><button disabled={busy} onClick={() => run(async () => { await action('begin').then((d) => setDevice(d as Device)) })}>{t('Sign in again')}</button><button disabled={busy} onClick={() => run(async () => { await action('disconnect'); setDevice(null) })}>{t('Disconnect this account locally')}</button></div><small>{t('Disconnect keeps your files and repository. Revoke App access in GitHub settings separately.')}</small></> : <button className="primary" disabled={busy || !st.configured || !!device} onClick={() => run(async () => setDevice(await action<Device>('begin')))}>{t('Sign in with GitHub')}</button>}
-            {device && <div className="gh-device"><p>{t('Enter this code on GitHub to authorize this device:')}</p><code dir="ltr">{device.userCode}</code><div className="acct-row"><button className="primary" disabled={busy} onClick={() => run(() => action('open', { target: 'device' }))}>{t('Open GitHub authorization')}</button><button disabled={busy} onClick={() => { setDevice(null); void action('cancel').catch((e) => setError(problem(e))) }}>{t('Cancel')}</button></div><small role="status">{t('Waiting for authorization…')}</small></div>}
+            {device && <div className="gh-device"><p>{t('Enter this code on GitHub to authorize this device:')}</p><code dir="ltr">{device.userCode}</code><div className="acct-row"><button className="primary" disabled={busy} onClick={() => run(() => action('open', { target: 'device' }))}>{t('Open GitHub authorization')}</button><button disabled={busy} onClick={() => { setDevice(null); void action('cancel').catch((e) => setError(String(e))) }}>{t('Cancel')}</button></div><small role="status">{t('Waiting for authorization…')}</small></div>}
           </section>
           <section className="gh-card"><h4>{t('2. Private data repository')}</h4>
             {st.binding ? <><div className="gh-account"><b dir="ltr">{st.binding.owner}/{st.binding.repo}</b><span className="gh-state" role="status">{t(stateLabel)}</span></div><p>{t('Only this provider is active for this workspace.')}</p><dl className="gh-facts"><dt>{t('Branch')}</dt><dd dir="ltr">{st.binding.branch}</dd><dt>{t('Last sync')}</dt><dd>{runtime?.lastAt ? new Date(runtime.lastAt).toLocaleString(locale()) : t('Not yet')}</dd><dt>{t('Migration backup')}</dt><dd dir="auto">{st.binding.backup || t('Downloaded workspace')}</dd></dl>

@@ -20,7 +20,7 @@ pub enum ErrorKind {
     Other,
 }
 pub fn error_kind(e: &str) -> ErrorKind {
-    if e == "GITHUB:network" {
+    if e.starts_with("GITHUB:network") {
         ErrorKind::Offline
     } else if e.contains("sign_in_required") || e.contains("account_mismatch") {
         ErrorKind::Unauthorized

@@ -939,7 +939,7 @@ fn run_github(ctx: &SyncCtx, e: &Entry) -> Res<()> {
     if let Ok(mut st) = ctx.status.lock() {
         match &result {
             Ok(conflicts) => { st.state = if *conflicts > 0 { "paused" } else { "idle" }; st.reason = if *conflicts > 0 { "CONFLICTS" } else { "" }.into(); st.error.clear(); st.last_at = now_ms(); },
-            Err(e) => { st.state = if e == "GITHUB:network" { "offline" } else { "error" }; st.error = e.clone(); st.reason = "GITHUB".into(); }
+            Err(e) => { st.state = if e.starts_with("GITHUB:network") { "offline" } else { "error" }; st.error = e.clone(); st.reason = "GITHUB".into(); }
         }
     }
     if result.is_ok() { let _ = app.emit("vault-changed", e.id.clone()); }
@@ -951,6 +951,7 @@ fn run_github(ctx: &SyncCtx, e: &Entry) -> Res<()> {
 async fn github_action(s: St<'_>, app: AppHandle, action: String, args: Value) -> Res<Value> {
     let data = s.app_data.clone();
     let result = blocking(move || {
+        if action == "diagnostics" { return Ok(sync::network::diagnostics()); }
         if action == "status" { let s=app.state::<Store>(); let id=current_entry(&s).map(|e|e.id).unwrap_or_else(||"none".into()); return github::status(&data,&id); }
         let _op = github::OPERATION.lock().map_err(err)?;
         let s = app.state::<Store>();
@@ -977,7 +978,7 @@ async fn github_action(s: St<'_>, app: AppHandle, action: String, args: Value) -
                 let target=parent.join(&name);if target.exists(){return Err("folder already exists".into());}
                 let stage=parent.join(format!(".noviq-download-{}",uuid::Uuid::new_v4()));
                 let v=Vault::create_with_id(stage.clone(),&name,remote_id)?;
-                let b=github::prepare(remote_id,args["repo"].as_str().unwrap_or("noviq-data"),false,false)?;
+                let b=github::prepare(&data,remote_id,args["repo"].as_str().unwrap_or("noviq-data"),false,false)?;
                 github::download_unlocked(&data,&b,||snapshot::capture(&v),|before,after|snapshot::apply(&v,before,after))?;
                 std::fs::rename(stage,&target).map_err(err)?;
                 github::save_binding(&data,&b)?;
@@ -987,7 +988,7 @@ async fn github_action(s: St<'_>, app: AppHandle, action: String, args: Value) -
             "connect" => {
                 if id.is_empty() { return Err("no vault open".into()); }
                 if github::enabled(&data,&id) { return Err("GITHUB:already_connected".into()); }
-                let mut b = github::prepare(&id,args["repo"].as_str().unwrap_or("noviq-data"),args["create"].as_bool().unwrap_or(false),true)?;
+                let mut b = github::prepare(&data,&id,args["repo"].as_str().unwrap_or("noviq-data"),args["create"].as_bool().unwrap_or(false),true)?;
                 let backup = data.join("github/backups").join(format!("{}-{}",id,now_ms()));
                 // Short local critical section: consistent complete backup + readback before switching active provider.
                 with(&s, |v| { if v.id()!=id { return Err("SYNC:workspace_changed".into()); } snapshot::backup(v,&backup) })?;
