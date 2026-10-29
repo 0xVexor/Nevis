@@ -34,13 +34,13 @@
 
 ## نتایج آزمون نهاییِ ادامهٔ کار
 
-- مجموعهٔ کامل Rust روی کد اصلاح‌شده: **۱۹۸ موفق، صفر ناموفق، ۱۱ ignored**، زمان 132.65 ثانیه. تست تازهٔ backoff پایدار سپس با ۴ تست زمان‌بندی موجود اجرا شد: **۵ موفق**. با احتساب regression تازهٔ ورود مستقیم Secret، نتیجهٔ یکتای logهای نهایی **۲۰۰ موفق، صفر ناموفق، ۱۱ ignored** است؛ **۹۵ تست Drive**. تست‌های root پس از سخت‌گیری نام نمایشی نیز ۳/۳ موفق بودند.
+- مجموعهٔ کامل Rust روی کد اصلاح‌شده: **۱۹۸ موفق، صفر ناموفق، ۱۱ ignored**، زمان 132.65 ثانیه. تست تازهٔ backoff پایدار سپس با ۴ تست زمان‌بندی موجود اجرا شد: **۵ موفق**. با احتساب regression تازهٔ ورود مستقیم Secret، با اصلاحات نهایی تنظیم ناشر و cache وضعیت حساب، نتیجهٔ یکتای logهای نهایی **۲۰۳ موفق، صفر ناموفق، ۱۱ ignored** است؛ **۹۷ تست Drive**. تست‌های root پس از سخت‌گیری نام نمایشی نیز ۳/۳ موفق بودند.
 - JavaScript: layout/editor/policy **43**، دیتابیس **173**، جهت متن **4**، به‌روزرسانی **7**؛ مجموع **۲۲۷ موفق، صفر ناموفق**.
 - TypeScript/Vite و lint موفق؛ lint **۲۳۶ warning و صفر error** دارد.
 - Preview debug مک ARM64 با Client ID عمومی واقعی ساخته شد. بستهٔ مستقل `com.vexor.nevis.drive-preview` همچنان release امضاشده/notarized نیست.
 - ماتریس ۱۰۴ مورد: **۴۶ PASS مصنوعی، صفر FAIL در تست‌های نگاشت‌شده، ۵۸ NOT_RUN**. NOT_RUN شامل محدودیت‌های داخلی و آزمون‌های خارجی است؛ به معنای عبور کامل پلن نیست.
 - Smoke رابط نسخهٔ اصلاح OAuth: باز شدن برنامه، ورود از صفحهٔ شروع به Google Drive Sync، و وجود Import Desktop OAuth JSON و Sign in with Google مشاهده شد. این نتیجه، ورود واقعی یا گردش تعارض متصل را تأیید نمی‌کند.
-- **ورود واقعی در Preview قبلی ناموفق بود.** گوگل برای Client ID واقعی در یک probe بدون authorization code معتبر، `invalid_request: client_secret is missing` برگرداند. PKCE به‌تنهایی برای این کلاینت کافی نبود. نسخهٔ اصلاح‌شده JSON کلاینت Desktop را با کنترل Client ID وارد Keychain می‌کند و هنگام code exchange و refresh می‌فرستد. ورود/refresh واقعی نسخهٔ اصلاح‌شده هنوز منتظر تست کاربر است؛ شکست قبلی پنهان یا PASS نشده است.
+- **Preview اولیه به علت `client_secret is missing` ناموفق بود؛ سپس کاربر ورود واقعی را موفق گزارش کرد.** نسخهٔ فعلی مقدار کلاینت Desktop را هنگام build دریافت می‌کند و فرم Secret/JSON در UI عادی ندارد. بارگذاری دوبارهٔ هویت ذخیره‌شده در نسخهٔ دارای تنظیمات ناشر نیز در GUI مشاهده شد. refresh واقعی، ورود روی نصب پاک و انتقال دو دستگاه هنوز تأیید نشده‌اند.
 
 ## اصلاحات این ادامه
 
@@ -51,7 +51,7 @@
 - بازپخش از checkpoint برای actor قدیمی که قبل از actorهای پوشش‌داده‌شده مرتب می‌شود، دیگر فقط روی state تا‌شده merge نمی‌کند: آرشیو gzip قطعیِ batch/preimageها با hash در checkpoint نگهداری و صحت کامل آن بررسی می‌شود. سه نامزد هم‌زمان و حذف covered streams تست شد. آرشیوِ بازشده سقف 95MiB دارد؛ checkpoint قدیمی بدون replay archive برای bootstrap انتخاب نمی‌شود و history خام/خطای صریح لازم است. این کار ورودی صحیح ادغام را حفظ می‌کند، ولی هزینهٔ کامل replay را حذف نمی‌کند.
 - ارجاع دیرهنگام به پیوست حذف‌شده، bytes و metadata تاریخی را از ورودی‌های تأییدشده بازمی‌گرداند؛ MIME یا size ساختگی تولید نمی‌شود. fixture GIF پس از checkpoint/pruning موفق شد.
 - شکل‌های رزروشدهٔ opaque JSON از marker واقعی blob تفکیک شدند؛ کلید سفارشی دیگر ID رکورد را نمی‌پوشاند یا JSON را به‌عنوان فایل باینری اعمال نمی‌کند. ناسازگاری path/hash/blob رد می‌شود.
-- Client ID عمومی تولید در build config عمومی است؛ secret ارسالی در چت در فایل/مخزن/log نوشته نشده است. import فایل JSON به صورت محلی و از طریق UI انجام می‌شود. این مرحلهٔ per-device هنوز یک محدودیت محصول/بسته‌بندی برای انتشار عمومی است.
+- Client ID در config عمومی است. مقدار کلاینت Desktop از محیط build یا Keychain سازنده دریافت و در generated OUT_DIR و باینری قرار می‌گیرد؛ قابل استخراج است و توکن حساب یا secret سرور نیست. مقدار واقعی در source/public config/Git یا log چاپ نشده است. کاربر نهایی هیچ تنظیم کلاینتی انجام نمی‌دهد؛ توکن‌های خودش فقط در OS credential store می‌مانند.
 
 ## خطاهایی که پیدا و اصلاح شدند
 
@@ -75,7 +75,7 @@
 
 ## محدودیت‌ها و gateهای باقی‌مانده
 
-1. ورود واقعی نسخهٔ قبلی به علت client_secret مفقود شکست خورد؛ تست ورود/refresh نسخهٔ اصلاح‌شده، consent و discovery واقعی cross-device هنوز لازم است. از همان publisher project/consent app و client Desktop متناسب با هر پلتفرم استفاده شود. scope برای دورزدن مشکل discovery گسترده نشده است. Windows و release امضاشده در این میزبان در دسترس نیستند.
+1. ورود واقعی نسخهٔ قبلی به علت client_secret مفقود شکست خورد؛ تست ورود روی نصب پاکِ نسخهٔ تنظیم‌شده، refresh و discovery واقعی cross-device هنوز لازم است. از همان publisher project/consent app و client Desktop متناسب با هر پلتفرم استفاده شود. scope برای دورزدن مشکل discovery گسترده نشده است. Windows و release امضاشده در این میزبان در دسترس نیستند.
 2. تمام ۱۰۴ سناریو آزموده نشده‌اند: power loss واقعی، ENOSPC/readonly، تمام نقاط crash، ۸ ساعت idle، rate limit طولانی و GUI متصل پوشش کامل ندارند. وجود کد، جای نتیجهٔ آزمون را نمی‌گیرد.
 3. رسانه فایل‌محور است، ولی JSON هنوز 95MiB/file و 512MiB aggregate محدودیت دارد؛ marker/checkpoint حداکثر 4MiB است؛ دانلود رسانه 5GiB/object محدود است. آرشیو replay سقف 95MiB بازشده دارد؛ journal/replay همچنان یکپارچه و نگهداری تاریخچه بدون pruning پرهزینه است. نخستین hash/copy ممکن است هنگام نگه‌داشتن mutex بومی زمان ببرد؛ latency واقعی editor باید روی build انتشار اندازه‌گیری شود.
 4. cache هش محلی با identity/metadata و حداکثر ۲۴ ساعت اعتبار کار می‌کند؛ تغییر معمول/تعویض اتمیک آن را باطل می‌کند. دست‌کاری محلیِ مخرب که همهٔ metadata را حفظ کند به deep check نیاز دارد. بایت‌های شبکه مستقل hash می‌شوند.
@@ -96,4 +96,14 @@ MANUAL_TEST.md دوازده سناریوی قدم‌به‌قدم دارد: ات
 
 ## اصلاح راهنمای تنظیمات بر اساس تصویر واقعی Console
 
-در صفحهٔ کلاینت کاربر گزینهٔ دانلود Secret موجود دیگر ارائه نمی‌شود؛ راهنمای قبلی دانلود JSON برای آن صفحه اشتباه بود. مسیر «وارد کردن Secret ذخیره‌شده» با فیلد password و ذخیره در Keychain اضافه شد. مقدار پس از شروع ذخیره از فیلد پاک می‌شود و هیچ Secret واقعی در کد، ابزار یا log درج نشده است. ۵ تست OAuth موفق بودند؛ یک تست تازه به مجموع یکتای نهایی اضافه شد: **۲۰۰ Rust موفق، صفر ناموفق، ۱۱ ignored**، شامل **۹۵ تست Drive**. این مجموع حاصل log کامل قبلی و regressionهای تازه است، نه ادعای اجرای دوبارهٔ همهٔ تست‌ها. TypeScript/Vite و lint نیز دوباره موفق بودند. ورود واقعی هنوز منتظر اقدام کاربر است.
+در صفحهٔ کلاینت کاربر گزینهٔ دانلود Secret موجود دیگر ارائه نمی‌شود؛ راهنمای قبلی دانلود JSON برای آن صفحه اشتباه بود. مسیر «وارد کردن Secret ذخیره‌شده» با فیلد password و ذخیره در Keychain اضافه شد. مقدار پس از شروع ذخیره از فیلد پاک می‌شود و هیچ Secret واقعی در کد، ابزار یا log درج نشده است. ۵ تست OAuth موفق بودند؛ یک تست تازه به مجموع یکتای نهایی اضافه شد: **۲۰۰ Rust موفق، صفر ناموفق، ۱۱ ignored**، شامل **۹۵ تست Drive**. این مجموع حاصل log کامل قبلی و regressionهای تازه است، نه ادعای اجرای دوبارهٔ همهٔ تست‌ها. TypeScript/Vite و lint نیز دوباره موفق بودند. این مسیر موقت بعداً توسط کاربر با ورود موفق تأیید شد و با build دارای تنظیمات ناشر از مسیر عادی مشتری کنار رفت.
+
+## ورود موفق کاربر و حذف تنظیم OAuth از مسیر کاربر نهایی
+
+کاربر ورود واقعی را موفق گزارش کرد. نسخهٔ بعدی تنظیم کلاینت را هنگام build از محیط سازنده (در این مک، مقدار قبلاً ذخیره‌شدهٔ Keychain) دریافت و در باینری قرار می‌دهد. کاربر نهایی فقط ورود گوگل را انجام می‌دهد؛ JSON/Secret از UI عادی حذف و commandهای آن بدون developer mode رد می‌شوند. ساخت نسخهٔ فعال Drive بدون تنظیم ناشر fail-closed است. مقدار کلاینت Desktop در خروجی generated و باینری وجود دارد و قابل استخراج است؛ ادعای محرمانه‌ماندن آن نداریم. این مدل public client گوگل است، PKCE حفظ شده و هیچ توکن حساب وارد build نمی‌شود. دستورهای قبلی import برای مشتری لازم نیستند.
+
+۷ تست auth و ۲ تست config موفق شدند، شامل ۳ تست تازه: مجموع یکتای logها **۲۰۳ تست Rust موفق، صفر ناموفق، ۱۱ ignored** و **۹۷ تست Drive** است. TypeScript/Vite، lint و بستهٔ مک دوباره موفق شدند. حضور مقدار صحیح در باینری و نبود آن در log بدون چاپ مقدار بررسی شد. ورود تازه روی نصب پاک، refresh واقعی، انتقال دو دستگاه و Windows همچنان باید بررسی شوند؛ موفقیت ورود قبلی معادل این موارد نیست.
+
+در smoke نسخهٔ دارای تنظیمات ناشر، خواندن Keychain تکمیل نشد و نمونهٔ stack انتظار در SecKeychainFindGenericPassword را نشان داد. وضعیت حساب به single-flight پس‌زمینه با cache هویت و generation تبدیل شد تا UI منتظر کل status نماند و poll درخواست‌های انباشته نسازد؛ تست stale-read پس از logout موفق بود. پس از آن همان خواندن Keychain کامل شد و هویت ذخیره‌شده و نبود فرم تنظیمات در GUI مشاهده شد؛ این مشاهده، تست refresh نیست. مجوز Keychain یا signing دور زده نشده‌اند و ساخت release امضاشده همچنان gate جداست.
+
+Later in the publisher-build GUI smoke, the Keychain read completed: the previously signed-in identity and Reconnect Google were visible, with no Secret or JSON setup controls. No Vault was open. This verifies a basic stored-account reload and the normal customer UI in that build; it does not verify automatic token refresh or two-device transfer. The following single-flight status change has unit regression coverage; no full connected GUI certification is claimed.

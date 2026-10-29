@@ -24,3 +24,9 @@ CUA bundle-ID lookup was ambiguous because three Preview copies exist. Selecting
 ## Direct saved-secret entry — same day
 
 The new delivered Preview opened by its exact full path. Welcome → Drive dialog → Enter saved client secret revealed an AX secure text field and Save client secret securely. Clicking save with an empty field displayed the expected safe validation message; no real value was entered and no credential was saved. The dialog was closed/reopened to clear the test message, then the empty secret entry was left expanded for the user. This proves the native IPC validation/UI path for empty input, not successful Keychain storage or Google sign-in.
+
+## Publisher-configured Preview
+
+Exact-path launch and welcome → Drive dialog succeeded. The first status read remained Loading; a native stack sample showed repeated calls blocked in SecKeychainFindGenericPassword. No successful retained-session or completed dialog is claimed from that run. Status was subsequently made one asynchronous generation-protected read, with explicit checking/error state and no per-poll thread accumulation. Unit regression passed; final GUI completion is pending. Source/customer configuration hides and gates JSON/manual setup; packaged parameter presence and log redaction were separately verified. No OS credential-store permission or signing check was bypassed.
+
+Later in the publisher-build GUI smoke, the Keychain read completed: the previously signed-in identity and Reconnect Google were visible, with no Secret or JSON setup controls. No Vault was open. This verifies a basic stored-account reload and the normal customer UI in that build; it does not verify automatic token refresh or two-device transfer. The following single-flight status change has unit regression coverage; no full connected GUI certification is claimed.
