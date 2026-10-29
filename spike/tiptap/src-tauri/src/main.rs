@@ -1085,7 +1085,7 @@ fn sync_thread(app: AppHandle, rx: Receiver<Kick>) {
     let mut mandatory_retry = false;
     loop {
         // an edit, the server, or the user wakes us at once; the long wait is only a safety net
-        let poll = { let s=app.state::<Store>(); current_entry(&s).map_or(120,|e|if drive::enabled(&s.app_data,&e.id){55+(now_ms() as u64 % 11)}else{github::binding(&s.app_data,&e.id).ok().flatten().map_or(120,|b|b.poll_seconds)}) };
+        let poll = { let s=app.state::<Store>(); current_entry(&s).map_or(120,|e|if drive::enabled(&s.app_data,&e.id){if s.ctx.status.lock().is_ok_and(|st|st.state=="pending"){2}else{55+(now_ms() as u64 % 11)}}else{github::binding(&s.app_data,&e.id).ok().flatten().map_or(120,|b|b.poll_seconds)}) };
         let first = match rx.recv_timeout(Duration::from_secs(poll)) {
             Ok(k) => Some(k),
             Err(RecvTimeoutError::Timeout) => None,
@@ -1099,7 +1099,7 @@ fn sync_thread(app: AppHandle, rx: Receiver<Kick>) {
             if current_entry(&s).is_some_and(|e|drive::enabled(&s.app_data,&e.id)) {
                 drop(s);
                 let started=Instant::now();let mut last=Instant::now();
-                loop {let wait=Duration::from_secs(45).saturating_sub(last.elapsed()).min(Duration::from_secs(300).saturating_sub(started.elapsed()));if wait.is_zero(){break;}
+                loop {let wait=drive::schedule::edit_wait(last.elapsed(),started.elapsed());if wait.is_zero(){break;}
                     match rx.recv_timeout(wait){Ok(Kick::Edit)=>last=Instant::now(),Ok(k)=>{urgent=true;manual_publish|=k==Kick::User;break;},Err(RecvTimeoutError::Timeout)=>break,Err(RecvTimeoutError::Disconnected)=>return}
                 }
             } else if let Some(b) = policy {

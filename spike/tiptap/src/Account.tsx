@@ -42,7 +42,7 @@ export function size(n: number) {
 export function syncLabel(a: AccountStatus) {
   if (!a.signedIn) return t('Signed out')
   if (!a.syncOn) return t('Off for this workspace')
-  return a.state === 'syncing' ? t('Syncing…') : a.state === 'offline' ? t('Offline') : a.state === 'error' ? t('Error') : a.state === 'paused' ? t('Paused') : t('Up to date')
+  return a.state === 'pending' ? t('Saved locally — waiting to sync') : a.state === 'syncing' ? t('Syncing…') : a.state === 'offline' ? t('Offline') : a.state === 'error' ? t('Error') : a.state === 'paused' ? t('Paused') : t('Up to date')
 }
 
 const host = (server: string) => {

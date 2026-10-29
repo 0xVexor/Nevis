@@ -1,4 +1,4 @@
-import { driveSettingKeys, driveSettingLabels, type SettingsPolicy } from './driveSettingsPolicy'
+import { driveSettingLabels, type SettingsPolicy } from './driveSettingsPolicy'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { open as chooseFolder } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
@@ -7,8 +7,10 @@ import { accountStatus, vaultList, vaultOpen, freezeStorage, thawStorage, type V
 import { createDriveWorkspace, switchWorkspaceSafely } from './workspaceCloud'
 import { enableDriveBlockIds } from './editor/stableBlockIds'
 import { t } from './i18n'
+import * as Ic from './icons'
+import { drivePreferenceGroups, driveVisualState, type DriveTab } from './drivePresentation'
+import { DriveTime, DriveDialogFrame, DriveCard, DriveActions, DriveEmpty, DriveProfile, DriveWorkspaceStatus, DriveWorkspaceForm, DriveWorkspaceList, DriveDisclosure } from './DriveSyncUi'
 import { repo } from './store'
-import './styles/github-sync.css'
 
 const driveAction = <T,>(action: string, args: Record<string, unknown> = {}) => invoke<T>('drive_action', { action, args })
 interface DriveStatus {
@@ -66,8 +68,12 @@ const explain = (e: unknown) => {
   return t(messages[code] ?? String(e))
 }
 export function DriveAccountDialog({ onClose, onGitHub, onWorkspaceOpened }: { onClose: () => void; onGitHub: () => void; onWorkspaceOpened?: () => void }) {
-  const root = useRef<HTMLElement>(null)
   const clientSecretInput = useRef<HTMLInputElement>(null)
+  const accountReady = useRef(false)
+  const [tab, setTab] = useState<DriveTab>('overview')
+  const [historyLoaded, setHistoryLoaded] = useState(false)
+  const [diagnosticResult, setDiagnosticResult] = useState<string | null>(null)
+  const [verifiedBackup, setVerifiedBackup] = useState('')
   const [st, setSt] = useState<DriveStatus | null>(null)
   const [runtime, setRuntime] = useState<AccountStatus | null>(null)
   const [busy, setBusy] = useState(false), [waiting, setWaiting] = useState(false)
@@ -84,6 +90,8 @@ export function DriveAccountDialog({ onClose, onGitHub, onWorkspaceOpened }: { o
   const [relationPreview, setRelationPreview] = useState<RelationPreview | null>(null)
   const refresh = useCallback(async () => {
     const [status, runtime, locals] = await Promise.all([driveAction<DriveStatus>('status'), accountStatus(), vaultList()])
+    if (status.auth.signedIn && !status.currentVaultId && !accountReady.current) setTab('workspaces')
+    accountReady.current = status.auth.signedIn
     setLocalVaults(locals.vaults)
     setSt(status); setRuntime(runtime); enableDriveBlockIds(runtime.provider === 'drive')
   }, [])
@@ -111,22 +119,8 @@ export function DriveAccountDialog({ onClose, onGitHub, onWorkspaceOpened }: { o
     setBusy(true); setError(''); setNote('')
     try { await f() } catch (e) { setError(explain(e)) } finally { try { await refresh() } catch (e) { setError(previous => previous || explain(e)) }; setBusy(false) }
   }
-  const close = () => { if (waiting) void driveAction('cancel'); onClose() }
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null
-    root.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
-    const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); if (waiting) void driveAction('cancel'); onClose() }
-      if (e.key === 'Tab') {
-        const nodes = [...(root.current?.querySelectorAll<HTMLElement>('button:not(:disabled),summary,select,input') ?? [])]
-        const first = nodes[0], last = nodes.at(-1)
-        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus() }
-        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus() }
-      }
-    }
-    window.addEventListener('keydown', key)
-    return () => { window.removeEventListener('keydown', key); previous?.focus() }
-  }, [onClose, waiting])
+  const close = () => { if (busy) return; if (waiting) void driveAction('cancel'); onClose() }
+  useEffect(() => { if (tab !== 'advanced' && clientSecretInput.current) clientSecretInput.current.value = '' }, [tab])
   const folder = () => chooseFolder({ directory: true, multiple: false })
   const connect = () => run(async () => {
     await saveForSync()
@@ -134,110 +128,115 @@ export function DriveAccountDialog({ onClose, onGitHub, onWorkspaceOpened }: { o
     enableDriveBlockIds(true)
     if (onWorkspaceOpened) { onWorkspaceOpened(); return }
     await repo.refreshFromStore()
-    setNote(`${t('Verified backup')}: ${result.backup}`)
+    setVerifiedBackup(result.backup)
+    setNote(t('Workspace connected. A local backup was created.'))
     window.dispatchEvent(new Event('data-changed'))
   })
   const switchWorkspace = (action: () => Promise<unknown>) => switchWorkspaceSafely(action, { save: saveForSync, freeze: freezeStorage, thaw: thawStorage, opened })
-  const discovery = st && <section aria-label={t('Your workspaces in Google Drive')}>
-            <h3>{t('Your workspaces in Google Drive')}</h3>
-            <button disabled={busy || finding || !st.driveSyncEnabled || !st.auth.signedIn || st.auth.checking} onClick={() => void run(async () => { setVaults(await driveAction<RemoteVault[]>('list')); setSearched(true) })}>{finding ? t('Finding your workspaces…') : t('Find my Drive workspaces')}</button>
-            {st.auth.signedIn && searched && vaults.length === 0 && <p>{t('No workspaces found in Google Drive. Create your first workspace above.')}</p>}
-            {st.auth.signedIn && vaults.map(v => { const local = localVaults.find(l => l.id === v.id && l.status === 'ok'); return <div className="drive-root-choice" key={v.folderId}><b>{v.name}</b>{local ? <button disabled={busy} onClick={() => void run(() => switchWorkspace(() => vaultOpen(v.id)))}>{t('Open workspace')}</button> : <button disabled={busy} onClick={() => void run(async () => { const parent = await folder(); if (typeof parent === 'string') await switchWorkspace(() => driveAction('download', { ...v, parent })) })}>{t('Download and open workspace')}</button>}</div> })}
-  </section>
-  return <div className="overlay" onMouseDown={e => e.target === e.currentTarget && close()}>
-    <section ref={root} className="modal wsd acct gh-dialog drive-dialog" role="dialog" aria-modal="true" aria-labelledby="drive-title">
-      <header className="wsd-head"><h2 id="drive-title">Google Drive Sync</h2><button className="icon-btn" onClick={close} aria-label={t('Close')}>×</button></header>
-      <div className="wsd-body gh-body">
-        <p>{t('Local saves work offline. Sync uses your personal Google Drive. End-to-end encryption is not available.')}</p>
-        <p className="gh-notice" role="status">{t('Experimental — not ready for real vaults until release checks pass.')}</p>
-        {error && <p className="acct-err" role="alert">{error}</p>}{note && <p role="status">{note}</p>}
-        {!st ? <p>{t('Loading…')}</p> : <>
-          {!st.driveSyncEnabled && <p>{t('Drive sync is disabled in this build because release checks are incomplete.')}</p>}
-          {!st.auth.configured && <p>{t('Google sign-in is unavailable in this build. Please install an updated version.')}</p>}
-          <p>{st.auth.checking ? t('Checking secure account storage…') : st.auth.email ?? t('Signed out')}</p>
-          {st.auth.error && <p className="acct-err" role="alert">{explain(st.auth.error)}</p>}
-          <div className="acct-row">
-            {st.auth.developerSetup && <button disabled={busy || waiting || !st.driveSyncEnabled} onClick={() => void run(async () => {
-              const path = await chooseFolder({ multiple: false, directory: false, filters: [{ name: 'Google Desktop OAuth', extensions: ['json'] }] })
-              if (typeof path === 'string') { await driveAction('import-client', { path }); setNote(t('Desktop OAuth credentials saved in the operating system credential store. Sign in again.')) }
-            })}>{t('Import Desktop OAuth JSON')}</button>}
-            <button disabled={busy || waiting || st.auth.checking || !st.driveSyncEnabled || !st.auth.configured} onClick={() => void run(async () => { await driveAction('begin'); setWaiting(true) })}>{st.auth.signedIn ? t('Reconnect Google') : t('Sign in with Google')}</button>
-            {waiting && <button onClick={() => void run(async () => { await driveAction('cancel'); setWaiting(false) })}>{t('Cancel')}</button>}
-          </div>
-          {st.auth.developerSetup && <details onToggle={event => { if (!event.currentTarget.open && clientSecretInput.current) clientSecretInput.current.value = '' }}>
-            <summary>{t('Enter saved client secret')}</summary>
-            <p>{t('Use the Desktop client secret you already saved. Google no longer offers downloads of existing secrets. This value is saved only in the operating system credential store.')}</p>
-            <label htmlFor="drive-client-secret">{t('Desktop client secret')}</label>
-            <input id="drive-client-secret" ref={clientSecretInput} type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={1024} disabled={busy || waiting || !st.auth.configured} dir="ltr" />
-            <button disabled={busy || waiting || !st.auth.configured || !st.driveSyncEnabled} onClick={() => void run(async () => {
-              const secret = clientSecretInput.current?.value ?? ''
-              if (clientSecretInput.current) clientSecretInput.current.value = ''
-              await driveAction('configure-client', { secret })
-              setNote(t('Desktop OAuth credentials saved in the operating system credential store. Sign in again.'))
-            })}>{t('Save client secret securely')}</button>
-          </details>}
-            {!st.currentVaultId && <section className="drive-startup" aria-label={t('Create a workspace in Google Drive')}>
-              <h3>{t('Create a workspace in Google Drive')}</h3>
-              <p>{t('Your workspace stays available offline on this computer and syncs with Google Drive.')}</p>
-              <label htmlFor="drive-workspace-name">{t('Workspace name')}</label>
-              <input id="drive-workspace-name" dir="auto" maxLength={120} value={workspaceName} onChange={e => setWorkspaceName(e.target.value)} placeholder={t('My notes')} disabled={busy} />
-              <button className="primary" disabled={busy || !st.driveSyncEnabled || !st.auth.signedIn || st.auth.checking} onClick={() => void run(async () => {
-                const created = await createDriveWorkspace(workspaceName.trim() || t('My notes'), async () => {
-                  const parent = await chooseFolder({ directory: true, multiple: false, title: t('Choose where to keep this workspace on this computer') })
-                  return typeof parent === 'string' ? parent : null
-                }, invoke)
-                if (created) opened()
-              })}>{busy ? t('Working…') : t('Create and open workspace')}</button>
-            </section>}
-          {!st.currentVaultId && discovery}
-          {st.auth.signedIn && <>
-            {st.currentVaultId && onWorkspaceOpened && <button className="primary" disabled={busy} onClick={opened}>{t('Open workspace')}</button>}
-            {st.currentVaultId && !st.binding && <button disabled={busy || !st.driveSyncEnabled || !st.currentVaultId} onClick={() => void connect()}>{t('Back up and connect this workspace to Drive')}</button>}
-            {st.binding && <>
-              <p dir="ltr">Vault: {st.binding.vaultId}</p>
-              <p role="status">{st.binding.paused ? t('Paused') : runtime?.state === 'syncing' ? t('Syncing…') : runtime?.state === 'pending' ? t('Saved locally — waiting to sync') : runtime?.reason === 'CONFLICTS' ? t('Conflicts') : runtime?.error ? explain(runtime.error) : st.lastVerifiedAt ? `${t('Last verified')}: ${new Date(st.lastVerifiedAt).toLocaleString()}` : t('Waiting to sync')}</p>
-              <p>{t('Pending batches')}: {st.pending}</p>
-              <div className="acct-row">
-                <button disabled={busy || runtime?.state === 'syncing' || st.binding.paused} onClick={() => void run(syncWorkspaceNow)}>{t('Sync now')}</button>
-                <button disabled={busy} onClick={() => void run(() => driveAction('pause', { paused: !st.binding?.paused }))}>{st.binding.paused ? t('Resume sync') : t('Pause sync')}</button>
-                <button disabled={busy} onClick={() => { close(); openConflictReview() }}>{t('Review conflicts')}</button>
-              </div>
-              <details open={runtime?.error.includes('db_relation_cardinality') || runtime?.error.includes('db_duplicate_edge')}><summary>{t('Database link conflicts')}</summary>
-                <p>{t('Concurrent links can exceed a relation limit. Preview a decision before applying it; other candidates stay in history.')}</p>
-                <button disabled={busy} onClick={() => void run(async () => { setRelationConflicts(await driveAction<RelationConflict[]>('database-conflicts')); setRelationPreview(null) })}>{t('Review database links')}</button>
-                {relationConflicts?.length === 0 && <p>{t('No database link conflicts remain.')}</p>}
-                {relationConflicts?.map(conflict => { const preferred = relationChoices[conflict.id] ?? conflict.choices[0]?.id; const plan = relationPreview?.id === conflict.id && relationPreview.preferred === preferred ? relationPreview : null; return <section className="drive-history-preview" key={conflict.id}>
-                  <label>{t('Preferred link')}<select disabled={busy} value={preferred} onChange={e => { setRelationChoices(old => ({ ...old, [conflict.id]: e.target.value })); setRelationPreview(null) }}>{conflict.choices.map(edge => <option key={edge.id} value={edge.id}>{edge.from} → {edge.to} · {edge.id.slice(0, 8)}</option>)}</select></label>
-                  <button disabled={busy || !preferred} onClick={() => void run(async () => setRelationPreview(await driveAction<RelationPreview>('database-conflict-preview', { id: conflict.id, preferred })))}>{t('Preview link decision')}</button>
-                  {plan && <><p>{t('{count} compatible links will remain active.', { count: plan.kept.length })}</p><ul>{plan.kept.slice(0, 20).map(edge => <li key={edge.id}>{edge.from} → {edge.to}</li>)}</ul><p>{t('{count} other candidates will be preserved in history.', { count: plan.archived.length })}</p><button disabled={busy} onClick={() => void run(async () => { await saveForSync(); const result = await driveAction<{ applied: boolean; remaining: number }>('database-conflict-resolve', { id: conflict.id, preferred, digest: plan.digest }); if (result.applied) { await repo.refreshFromStore(); window.dispatchEvent(new Event('data-changed')) }; setRelationConflicts(await driveAction<RelationConflict[]>('database-conflicts')); setRelationPreview(null); setNote(t(result.applied ? 'The decision was applied locally. Cloud publication is pending.' : 'The decision was saved. Review the remaining link conflicts before applying.')) })}>{t('Apply this link decision')}</button></>}
-                </section> })}
-              </details>
-              <details><summary>{t('Settings sync policy')}</summary>
-                <p>{t('Global values sync between devices. Device-local values stay on this installation; previously uploaded history is retained.')}</p>
-                {driveSettingKeys.map(key => <label className="gh-policy" key={key}><span>{t(driveSettingLabels[key])}</span><select aria-label={`${t('Sync scope')}: ${t(driveSettingLabels[key])}`} value={st.settingsPolicy?.[key] ?? 'global'} disabled={busy} onChange={e => { const scope = e.target.value; void run(async () => { await saveForSync(); await driveAction('settings-policy', { key, scope }) }) }}><option value="global">{t('Global')}</option><option value="device-local">{t('Device-local')}</option></select></label>)}
-              </details>
-              <div className="acct-row">
-                <button disabled={busy} onClick={() => void run(() => driveAction('checkpoint'))}>{t('Create restore point')}</button>
-                <button disabled={busy} onClick={() => void run(async () => setHistory(await driveAction<RestorePoint[]>('history')))}>{t('Remote restore points')}</button>
-              </div>
-              {history.map(h => <div key={h.id}><span>{new Date(h.createdAt).toLocaleString()} · {h.files} {t('files')}</span><button disabled={busy} onClick={() => void run(async () => setPreview(await driveAction<HistoryPreview>('history-preview', { checkpointId: h.id })))}>{t('Preview restore point')}</button><button disabled={busy} onClick={() => void run(async () => { await saveForSync(); const parent = await folder(); if (typeof parent === 'string') { await driveAction('restore-copy', { checkpointId: h.id, parent }); window.location.reload() } })}>{t('Restore as a new local copy')}</button></div>)}
-              {preview && <section className="drive-history-preview" aria-label={t('Restore point preview')}><h3>{t('Restore point preview')}</h3><p>{new Date(preview.createdAt).toLocaleString()} · {t('{count} pages', { count: preview.pages })} · {t('{count} attachments', { count: preview.attachments })}</p><p>{t('This is a metadata preview. Restoring verifies all files and creates a separate local copy.')}</p><ul>{preview.titleSample.map(page => <li key={page.id}>{page.title || t('Untitled')}{page.deleted ? ` · ${t('Deleted')}` : ''}</li>)}</ul>{preview.sampleOmitted > 0 && <p>{t('{count} more pages are not listed in this preview.', { count: preview.sampleOmitted })}</p>}<button onClick={() => setPreview(null)}>{t('Close preview')}</button></section>}
-              <button disabled={busy} onClick={() => void run(async () => { await saveForSync(); await driveAction('detach') })}>{t('Use local only (requires no pending changes)')}</button>
-            </>}
-            {st.currentVaultId && discovery}
-            <details><summary>{t('Choose or inspect a Drive root')}</summary>
-              <p>{t('Choose a verified Nevis folder when more than one exists. This choice never moves connected workspaces or deletes folders.')}</p>
-              <button disabled={busy} onClick={() => void run(async () => setRoots(await driveAction<RemoteRoot[]>('roots')))}>{t('Find Nevis root folders')}</button>
-              {roots?.length === 0 && <p>{t('No existing Nevis root found. Connecting a workspace will create one.')}</p>}
-              {roots?.map(r => <div key={r.id} className="drive-root-choice"><b>{r.name}</b><small dir="ltr">{r.id}</small>{r.vaults !== null && <span>{t('{count} workspaces', { count: r.vaults })}</span>}{r.selected && <span>{t('Selected')}</span>}{st.binding?.rootId === r.id && <span>{t('This workspace is connected here')}</span>}{!r.verified && <p>{explain(r.error ?? 'DRIVE:identity_mismatch')}</p>}<div className="acct-row"><button disabled={busy} onClick={() => void run(() => driveAction('view-root', { id: r.id }))}>{t('View folder in Google Drive')}</button><button disabled={busy || !r.verified || (Boolean(st.binding) && st.binding?.rootId !== r.id)} onClick={() => void run(async () => { await driveAction('select-root', { id: r.id }); setRoots(await driveAction<RemoteRoot[]>('roots')); setVaults([]); setSearched(false); setNote(t('Root selected. Existing workspace bindings were preserved.')) })}>{t('Use this root for discovery')}</button></div></div>)}
-            </details>
-            <button disabled={busy} onClick={() => void run(() => driveAction('disconnect'))}>{t('Disconnect Google (keep local data)')}</button>
-          </>}
-          <details><summary>{t('Sync diagnostics')}</summary>{st.binding && <div className="acct-row"><button disabled={busy} onClick={() => void run(async () => { const result=await driveAction('deep-check'); setNote(JSON.stringify(result,null,2)) })}>{t('Verify all local file bytes')}</button><button disabled={busy} onClick={() => void run(async () => { const result=await driveAction('gc-dry-run'); setNote(JSON.stringify(result,null,2)) })}>{t('Check cleanup safety (no deletion)')}</button><button disabled={busy} onClick={() => void run(async () => { const result=await driveAction('gc-verify'); setNote(JSON.stringify(result,null,2)) })}>{t('Verify cleanup assessment')}</button></div>}<pre dir="ltr">{JSON.stringify({ pending: st.pending, metrics: st.metrics, gc: st.gc, releaseReady: st.releaseReady }, null, 2)}</pre></details>
-        </>}
-        {!st?.currentVaultId && <button disabled={busy} onClick={close}>{t('Open or create a local workspace')}</button>}
-        <button disabled={busy || waiting} onClick={onGitHub}>{t('GitHub / legacy sync settings')}</button>
+  const locked = busy || waiting
+  const canUseDrive = !!st?.driveSyncEnabled && !!st.auth.signedIn && !st.auth.checking && !locked
+  const currentName = localVaults.find(v => v.id === st?.currentVaultId)?.name || t('Current workspace')
+  const visualState = driveVisualState({ connected: !!st?.binding, signedIn: !!st?.auth.signedIn, checking: st?.auth.checking, paused: !!st?.binding?.paused, state: runtime?.state, reason: runtime?.reason, error: runtime?.error, pending: st?.pending ?? 0, verified: st?.lastVerifiedAt ?? 0 })
+  const signIn = () => void run(async () => { await driveAction('begin'); setWaiting(true); setTab('overview') })
+  const loginDisabled = locked || !!st?.auth.checking || !st?.auth.configured || !st.driveSyncEnabled
+  const findWorkspaces = () => void run(async () => { setVaults(await driveAction<RemoteVault[]>('list')); setSearched(true) })
+  const createWorkspace = () => void run(async () => {
+    const created = await createDriveWorkspace(workspaceName.trim() || t('My notes'), async () => {
+      const parent = await chooseFolder({ directory: true, multiple: false, title: t('Choose where to keep this workspace on this computer') })
+      return typeof parent === 'string' ? parent : null
+    }, invoke)
+    if (created) opened()
+  })
+  const openRemote = (id: string) => void run(async () => {
+    const vault = vaults.find(v => v.id === id)
+    if (!vault) return
+    if (localVaults.some(local => local.id === id && local.status === 'ok')) { await switchWorkspace(() => vaultOpen(id)); return }
+    const parent = await folder()
+    if (typeof parent === 'string') await switchWorkspace(() => driveAction('download', { ...vault, parent }))
+  })
+  const loadHistory = async () => { setHistory(await driveAction<RestorePoint[]>('history')); setHistoryLoaded(true) }
+  const diagnostic = (action: string) => void run(async () => setDiagnosticResult(JSON.stringify(await driveAction(action), null, 2)))
+  const connectPrompt = <DriveEmpty icon={<Ic.Layers size={23} />} title={t('Connect a workspace first')} description={t('Choose a workspace to use sync preferences and restore points.')}><button type="button" className="primary" onClick={() => setTab(st?.currentVaultId ? 'overview' : 'workspaces')}>{t('Choose a workspace')}</button></DriveEmpty>
+  const accountPrompt = <DriveEmpty title={st?.auth.checking ? t('Checking secure account storage…') : t('Your notes, on every device.')} description={t('Sign in to create a workspace or bring your existing notes to this computer.')}>
+    {st?.auth.checking ? <span className="drive-loading"><i className="acct-spin" />{t('One moment…')}</span> : <button type="button" className="primary" disabled={loginDisabled} onClick={signIn}>{t('Sign in with Google')}</button>}
+  </DriveEmpty>
+  const relationSection = st?.binding && <DriveDisclosure title={t('Database link conflicts')} icon={<Ic.Link size={16} />} open={/db_relation_cardinality|db_duplicate_edge/.test(runtime?.error ?? '') || undefined}>
+    <p className="drive-small">{t('Concurrent links can exceed a relation limit. Preview a decision before applying it; other candidates stay in history.')}</p>
+    <DriveActions><button type="button" disabled={!canUseDrive} onClick={() => void run(async () => { setRelationConflicts(await driveAction<RelationConflict[]>('database-conflicts')); setRelationPreview(null) })}>{t('Review database links')}</button></DriveActions>
+    {relationConflicts?.length === 0 && <p className="drive-small">{t('No database link conflicts remain.')}</p>}
+    {relationConflicts?.map(conflict => {
+      const preferred = relationChoices[conflict.id] ?? conflict.choices[0]?.id
+      const plan = relationPreview?.id === conflict.id && relationPreview.preferred === preferred ? relationPreview : null
+      return <div className="drive-history-preview" key={conflict.id}>
+        <label className="acct-field"><span className="acct-label">{t('Preferred link')}</span><select disabled={!canUseDrive} value={preferred} onChange={event => { setRelationChoices(old => ({ ...old, [conflict.id]: event.target.value })); setRelationPreview(null) }}>{conflict.choices.map(edge => <option key={edge.id} value={edge.id}>{edge.from} → {edge.to} · {edge.id.slice(0, 8)}</option>)}</select></label>
+        <DriveActions><button type="button" disabled={!canUseDrive || !preferred} onClick={() => void run(async () => setRelationPreview(await driveAction<RelationPreview>('database-conflict-preview', { id: conflict.id, preferred })))}>{t('Preview link decision')}</button></DriveActions>
+        {plan && <><p className="drive-small">{t('{count} compatible links will remain active.', { count: plan.kept.length })}</p><ul>{plan.kept.slice(0, 20).map(edge => <li key={edge.id}>{edge.from} → {edge.to}</li>)}</ul><p className="drive-small">{t('{count} other candidates will be preserved in history.', { count: plan.archived.length })}</p><DriveActions><button type="button" className="primary" disabled={!canUseDrive} onClick={() => void run(async () => {
+          await saveForSync()
+          const result = await driveAction<{ applied: boolean; remaining: number }>('database-conflict-resolve', { id: conflict.id, preferred, digest: plan.digest })
+          if (result.applied) { await repo.refreshFromStore(); window.dispatchEvent(new Event('data-changed')) }
+          setRelationConflicts(await driveAction<RelationConflict[]>('database-conflicts')); setRelationPreview(null)
+          setNote(t(result.applied ? 'The decision was applied locally. Cloud publication is pending.' : 'The decision was saved. Review the remaining link conflicts before applying.'))
+        })}>{t('Apply this link decision')}</button></DriveActions></>}
       </div>
-    </section>
-  </div>
+    })}
+  </DriveDisclosure>
+  const overview = !st ? <p className="drive-loading" role="status"><i className="acct-spin" />{t('Loading…')}</p> : <>
+    <DriveProfile email={st.auth.email} signedIn={st.auth.signedIn} checking={st.auth.checking} />
+    {waiting ? <DriveCard title={t('Continue in your browser')} icon={<Ic.Cloud size={17} />}><p className="drive-loading" role="status"><i className="acct-spin" />{t('Return here after completing Google sign-in.')}</p><DriveActions><button type="button" disabled={busy} onClick={() => void run(async () => { await driveAction('cancel'); setWaiting(false) })}>{t('Cancel')}</button></DriveActions></DriveCard> : !st.auth.signedIn && accountPrompt}
+    {st.auth.signedIn && (st.currentVaultId ? <DriveWorkspaceStatus name={currentName} state={visualState} verifiedAt={st.lastVerifiedAt} pending={st.pending}>
+      {runtime?.error && <p className="acct-err" role="alert">{explain(runtime.error)}</p>}
+      <DriveActions>
+        {st.binding ? <><button type="button" className="primary" disabled={!canUseDrive || runtime?.state === 'syncing' || st.binding.paused} onClick={() => void run(syncWorkspaceNow)}><Ic.Reset size={15} />{t('Sync now')}</button><button type="button" disabled={!canUseDrive} onClick={() => void run(() => driveAction('pause', { paused: !st.binding?.paused }))}>{t(st.binding.paused ? 'Resume sync' : 'Pause sync')}</button>{visualState === 'conflicts' && <button type="button" disabled={locked} onClick={() => { close(); openConflictReview() }}>{t('Review conflicts')}</button>}</> : <button type="button" className="primary" disabled={!canUseDrive} onClick={() => void connect()}><Ic.Cloud size={15} />{t('Back up and connect this workspace to Drive')}</button>}
+        {onWorkspaceOpened && <button type="button" disabled={locked} onClick={opened}><Ic.Open size={15} />{t('Open workspace')}</button>}
+      </DriveActions>
+    </DriveWorkspaceStatus> : <DriveEmpty icon={<Ic.Layers size={23} />} title={t('Choose your workspace')} description={t('Create a new workspace or download one you already use.')}><button type="button" className="primary" onClick={() => setTab('workspaces')}><Ic.Plus size={15} />{t('View workspaces')}</button></DriveEmpty>)}
+    {visualState === 'conflicts' && relationSection}
+    <p className="drive-small drive-privacy"><Ic.Key size={14} />{t('Files stay on this computer and in your personal Google Drive. Sync is not end-to-end encrypted.')}</p>
+  </>
+  const workspaces = st && <>
+    {!st.auth.signedIn && <p className="acct-note">{t('Sign in with Google to create or download a workspace.')}</p>}
+    {!st.currentVaultId && <DriveWorkspaceForm name={workspaceName} onName={setWorkspaceName} onCreate={createWorkspace} disabled={!canUseDrive} busy={busy} />}
+    {st.currentVaultId && <DriveCard title={t('On this computer')} icon={<Ic.Folder size={17} />}><div className="drive-workspace-heading"><b dir="auto">{currentName}</b><span className="acct-pill">{t(st.binding ? 'Connected to Drive' : 'Local only')}</span></div><DriveActions>{onWorkspaceOpened && <button type="button" className="primary" disabled={locked} onClick={opened}>{t('Open workspace')}</button>}<button type="button" onClick={() => setTab('overview')}>{t(st.binding ? 'Manage sync' : 'Connect to Drive')}</button></DriveActions></DriveCard>}
+    <DriveWorkspaceList items={st.auth.signedIn ? vaults.map(v => ({ id: v.id, name: v.name, local: localVaults.some(local => local.id === v.id && local.status === 'ok') })) : []} loading={finding} searched={searched} disabled={!canUseDrive} onRefresh={findWorkspaces} onOpen={openRemote} />
+  </>
+  const preferences = st?.binding && st.auth.signedIn ? <>
+    <p className="drive-description">{t('Choose which preferences follow you across devices. Your local choices stay on this computer.')}</p>
+    {drivePreferenceGroups.map(group => <DriveCard title={t(group.title)} key={group.title}>{group.keys.map(key => <div className="sx-row drive-scope-row" key={key}><div className="sx-tx"><label htmlFor={`drive-scope-${key}`}>{t(driveSettingLabels[key])}</label></div><div className="sx-ctl"><select id={`drive-scope-${key}`} aria-label={`${t('Sync scope')}: ${t(driveSettingLabels[key])}`} value={st.settingsPolicy?.[key] ?? 'global'} disabled={!canUseDrive} onChange={event => { const scope = event.target.value; void run(async () => { await saveForSync(); await driveAction('settings-policy', { key, scope }) }) }}><option value="global">{t('All devices')}</option><option value="device-local">{t('This device only')}</option></select></div></div>)}</DriveCard>)}
+    <p className="drive-small">{t('Previously uploaded history is retained when a preference becomes local.')}</p>
+  </> : connectPrompt
+  const historyPanel = st?.binding && st.auth.signedIn ? <>
+    <DriveCard title={t('Restore points')} icon={<Ic.History size={17} />}>
+      <p className="drive-description">{t('Keep a restore point before a major change. Restoring always creates a separate local copy.')}</p>
+      <DriveActions><button type="button" className="primary" disabled={!canUseDrive} onClick={() => void run(async () => { await driveAction('checkpoint'); await loadHistory(); setNote(t('Restore point created.')) })}><Ic.Save size={15} />{t('Create restore point')}</button><button type="button" disabled={!canUseDrive} onClick={() => void run(loadHistory)}><Ic.Reset size={15} />{t(historyLoaded ? 'Refresh' : 'Load restore points')}</button></DriveActions>
+    </DriveCard>
+    {history.length ? <DriveCard title={t('Saved restore points')}>{history.map(point => <div className="drive-history-row" key={point.id}><div><b><DriveTime value={point.createdAt} /></b><small>{t('{count} files', { count: point.files })}</small></div><DriveActions><button type="button" disabled={!canUseDrive} onClick={() => void run(async () => setPreview(await driveAction<HistoryPreview>('history-preview', { checkpointId: point.id })))}>{t('Preview')}</button><button type="button" disabled={!canUseDrive} onClick={() => void run(async () => { const parent = await folder(); if (typeof parent === 'string') await switchWorkspace(() => driveAction('restore-copy', { checkpointId: point.id, parent })) })}><Ic.Download size={15} />{t('Restore a copy')}</button></DriveActions></div>)}</DriveCard> : <DriveEmpty icon={<Ic.History size={23} />} title={t(historyLoaded ? 'No restore points yet' : 'Your history, kept safely')} description={t('Load your saved restore points or create one for this workspace.')} />}
+    {preview && <DriveCard title={t('Restore point preview')} icon={<Ic.Page size={17} />} aside={<button type="button" className="icon-btn" aria-label={t('Close preview')} onClick={() => setPreview(null)}><Ic.Close size={15} /></button>}><div className="drive-history-preview"><p className="drive-description">{t('{count} pages', { count: preview.pages })} · {t('{count} attachments', { count: preview.attachments })}</p><p className="drive-small">{t('This is a metadata preview. Restoring verifies all files and creates a separate local copy.')}</p><ul>{preview.titleSample.map(page => <li key={page.id}>{page.title || t('Untitled')}{page.deleted ? ` · ${t('Deleted')}` : ''}</li>)}</ul>{preview.sampleOmitted > 0 && <p className="drive-small">{t('{count} more pages are not listed in this preview.', { count: preview.sampleOmitted })}</p>}</div></DriveCard>}
+  </> : connectPrompt
+  const advanced = <>
+    {st?.auth.signedIn && <DriveDisclosure title={t('Drive folder')} icon={<Ic.Folder size={16} />}>
+      <p className="drive-small">{t('Choose a verified Nevis folder when more than one exists. This choice never moves connected workspaces or deletes folders.')}</p>
+      <DriveActions><button type="button" disabled={!canUseDrive} onClick={() => void run(async () => setRoots(await driveAction<RemoteRoot[]>('roots')))}><Ic.Search size={15} />{t('Find Nevis root folders')}</button></DriveActions>
+      {roots?.length === 0 && <p className="drive-small">{t('No existing Nevis root found. Connecting a workspace will create one.')}</p>}
+      {roots?.map(folder => <div className="wsd-row" key={folder.id}><span className="wsd-ic"><Ic.Folder size={17} /></span><span className="wsd-tx"><b dir="auto">{folder.name}</b><small dir="ltr" title={folder.id}>{folder.id}</small>{folder.vaults !== null && <small>{t('{count} workspaces', { count: folder.vaults })}</small>}</span>{folder.selected && <span className="acct-pill idle">{t('Selected')}</span>}<DriveActions><button type="button" disabled={!canUseDrive} onClick={() => void run(() => driveAction('view-root', { id: folder.id }))}>{t('View folder')}</button><button type="button" disabled={!canUseDrive || !folder.verified || (Boolean(st.binding) && st.binding?.rootId !== folder.id)} onClick={() => void run(async () => { await driveAction('select-root', { id: folder.id }); setRoots(await driveAction<RemoteRoot[]>('roots')); setVaults([]); setSearched(false); setNote(t('Root selected. Existing workspace bindings were preserved.')) })}>{t('Use this folder')}</button></DriveActions>{!folder.verified && <p className="acct-err">{explain(folder.error ?? 'DRIVE:identity_mismatch')}</p>}</div>)}
+    </DriveDisclosure>}
+    {relationSection}
+    <DriveDisclosure title={t('Sync diagnostics')} icon={<Ic.Code size={16} />}>
+      <p className="drive-small">{t('Technical details for troubleshooting. Cleanup checks never delete files.')}</p>
+      {st?.binding && <DriveActions><button type="button" disabled={!canUseDrive} onClick={() => diagnostic('deep-check')}>{t('Verify all local file bytes')}</button><button type="button" disabled={!canUseDrive} onClick={() => diagnostic('gc-dry-run')}>{t('Check cleanup safety (no deletion)')}</button><button type="button" disabled={!canUseDrive} onClick={() => diagnostic('gc-verify')}>{t('Verify cleanup assessment')}</button></DriveActions>}
+      <pre className="drive-technical" dir="ltr">{JSON.stringify({ workspace: st?.currentVaultId, pending: st?.pending, metrics: st?.metrics, gc: st?.gc, releaseReady: st?.releaseReady }, null, 2)}</pre>
+      {diagnosticResult && <pre className="drive-technical" dir="ltr">{diagnosticResult}</pre>}
+      {(st?.binding?.backup || verifiedBackup) && <><p className="drive-small">{t('Verified backup')}</p><code className="drive-technical" dir="ltr">{st?.binding?.backup || verifiedBackup}</code></>}
+    </DriveDisclosure>
+    {st?.auth.developerSetup && <DriveDisclosure title={t('Developer configuration')} icon={<Ic.Code size={16} />}>
+      <p className="drive-small">{t('Use the Desktop client secret you already saved. Google no longer offers downloads of existing secrets. This value is saved only in the operating system credential store.')}</p>
+      <label className="acct-field"><span className="acct-label">{t('Desktop client secret')}</span><input ref={clientSecretInput} type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={1024} disabled={locked || !st.auth.configured} dir="ltr" /></label>
+      <DriveActions><button type="button" disabled={locked || !st.auth.configured || !st.driveSyncEnabled} onClick={() => void run(async () => { const secret = clientSecretInput.current?.value ?? ''; if (clientSecretInput.current) clientSecretInput.current.value = ''; await driveAction('configure-client', { secret }); setNote(t('Desktop OAuth credentials saved in the operating system credential store. Sign in again.')) })}>{t('Save client secret securely')}</button><button type="button" disabled={locked || !st.driveSyncEnabled} onClick={() => void run(async () => { const path = await chooseFolder({ multiple: false, directory: false, filters: [{ name: 'Google Desktop OAuth', extensions: ['json'] }] }); if (typeof path === 'string') { await driveAction('import-client', { path }); setNote(t('Desktop OAuth credentials saved in the operating system credential store. Sign in again.')) } })}>{t('Import Desktop OAuth JSON')}</button></DriveActions>
+    </DriveDisclosure>}
+    {st?.auth.signedIn && <DriveCard title={t('Account')} icon={<Ic.Key size={17} />}>
+      <div className="acct-line"><span>{t('Reconnect Google')}</span><DriveActions><button type="button" disabled={loginDisabled} onClick={signIn}>{t('Reconnect')}</button></DriveActions></div>
+      {st.binding && <div className="acct-line"><span>{t('Keep this workspace local')}</span><DriveActions><button type="button" disabled={locked || st.pending > 0} title={t('Finish syncing before switching to local only.')} onClick={() => void run(async () => { await saveForSync(); await driveAction('detach') })}>{t('Use local only')}</button></DriveActions></div>}
+      <div className="acct-line danger"><span>{t('Local files stay on this computer.')}</span><DriveActions><button type="button" className="danger" disabled={locked} onClick={() => void run(() => driveAction('disconnect'))}>{t('Sign out')}</button></DriveActions></div>
+    </DriveCard>}
+  </>
+  return <DriveDialogFrame tab={tab} onTab={setTab} panels={{ overview, workspaces, history: historyPanel, preferences, advanced }} busy={busy} error={error || (st?.auth.error ? explain(st.auth.error) : '') || (st && !st.driveSyncEnabled ? t('Drive sync is disabled in this build because release checks are incomplete.') : '') || (st && !st.auth.configured ? t('Google sign-in is unavailable in this build. Please install an updated version.') : '')} note={note} onClose={close} onOtherProviders={() => { if (waiting) void driveAction('cancel'); onGitHub() }} onLocal={!st?.currentVaultId ? close : undefined} />
 }

@@ -14,6 +14,7 @@ use serde_json::{json, Value};
 use std::{
     collections::BTreeMap,
     io::Read,
+    sync::Mutex,
     time::{Duration, Instant},
 };
 const API: &str = "https://www.googleapis.com/drive/v3";
@@ -31,8 +32,35 @@ pub struct Meter {
     #[serde(default)]
     pub header_latency_ms: Vec<u64>,
 }
+// Clones share reqwest's connection pool, including TLS sessions, across sync runs.
+// Rotate periodically so a changed system proxy is picked up without restarting Nevis.
+#[derive(Default)]
+struct HttpPool {
+    current: Option<(Instant, Client)>,
+}
+impl HttpPool {
+    fn client(&mut self) -> Res<Client> {
+        if let Some((created, client)) = &self.current {
+            if created.elapsed() < Duration::from_secs(300) {
+                return Ok(client.clone());
+            }
+        }
+        let client = build_http()?;
+        self.current = Some((Instant::now(), client.clone()));
+        Ok(client)
+    }
+}
+static HTTP_POOL: Mutex<HttpPool> = Mutex::new(HttpPool { current: None });
 pub fn http() -> Res<Client> {
+    HTTP_POOL
+        .lock()
+        .map_err(|_| "DRIVE:network_configuration")?
+        .client()
+}
+fn build_http() -> Res<Client> {
     Client::builder()
+        .pool_idle_timeout(Duration::from_secs(300))
+        .pool_max_idle_per_host(4)
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(Duration::from_secs(15))
         .timeout(Duration::from_secs(120))
@@ -127,7 +155,12 @@ impl Drive {
                 self.meter.header_latency_ms.remove(0);
             }
             self.meter.header_latency_ms.push(elapsed);
-            let r = response.map_err(|_| "DRIVE:network")?;
+            let r = response.map_err(|_| {
+                if let Ok(mut pool) = HTTP_POOL.lock() {
+                    pool.current = None;
+                }
+                "DRIVE:network"
+            })?;
             if r.status() == StatusCode::UNAUTHORIZED && attempt == 0 {
                 self.token = self.refresh_token()?;
                 continue;
@@ -411,6 +444,44 @@ mod tests {
             write!(stream,"HTTP/1.1 {status}\r\nContent-Type: application/json\r\nRetry-After: 120\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();
         });
         (url, handle)
+    }
+    #[test]
+    fn successive_sync_clients_reuse_one_connection() {
+        let socket = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", socket.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = socket.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            for _ in 0..2 {
+                let mut request = Vec::new();
+                while !request.ends_with(b"\r\n\r\n") {
+                    let mut byte = [0];
+                    stream.read_exact(&mut byte).unwrap();
+                    request.push(byte[0]);
+                }
+                stream
+                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}")
+                    .unwrap();
+                stream.flush().unwrap();
+            }
+        });
+        let mut pool = HttpPool::default();
+        for _ in 0..2 {
+            let client = pool.client().unwrap();
+            assert_eq!(
+                client
+                    .get(&url)
+                    .timeout(Duration::from_secs(3))
+                    .send()
+                    .unwrap()
+                    .text()
+                    .unwrap(),
+                "{}"
+            );
+        }
+        server.join().unwrap();
     }
     #[test]
     fn adapter_http_errors_redact_and_respect_retry_after() {
