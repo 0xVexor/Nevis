@@ -681,6 +681,7 @@ fn checkpoint_scheduler_requires_age_or_causal_budget() {
         covered_batches: Default::default(),
         audit_tombstones: Default::default(),
         provenance: Default::default(),
+        replay_archive: None,
         retained_objects: BTreeSet::new(),
         inventory: Default::default(),
         tombstones: Default::default(),
@@ -917,7 +918,16 @@ fn checkpoint_cloud(a: &Device, cloud: &FakeDrive) -> checkpoint::Checkpoint {
     let journal = Journal::load(&a.path(), VAULT, a.id).unwrap();
     let bundle = settings::cloud_bundle(&snapshot::capture(&a.v).unwrap()).unwrap();
     let manifest = checkpoint::Checkpoint::from_journal(VAULT, &bundle, &journal, 1).unwrap();
-    let seed = checkpoint::seed(&manifest, &bundle).unwrap();
+    let replay = core::history(&journal).unwrap();
+    let archive = checkpoint::encode_history(&replay).unwrap();
+    write_atomic(
+        &a.path()
+            .with_extension("objects")
+            .join(snapshot::hash(&archive)),
+        &archive,
+    )
+    .unwrap();
+    let seed = checkpoint::seed(&manifest, &bundle, replay).unwrap();
     cloud.0.lock().unwrap().bootstrap = Some(seed);
     manifest
 }
@@ -1261,7 +1271,7 @@ fn gc_proof_is_durable_stale_sensitive_and_never_deletes_without_release_gates()
         write_atomic(&a.path().with_extension("objects").join(h), data).unwrap();
     }
     let mut j = Journal::load(&a.path(), VAULT, A).unwrap();
-    j.seed = Some(checkpoint::seed(&manifest, &bundle).unwrap());
+    j.seed = Some(checkpoint::seed(&manifest, &bundle, core::history(&j).unwrap()).unwrap());
     j.save(&a.path()).unwrap();
     let before = cloud.0.lock().unwrap().files.clone();
     let proof = gc::dry_run(&a.path(), &j).unwrap();
@@ -1472,7 +1482,7 @@ fn checkpoint_gc_retains_object_only_referenced_by_older_history() {
     assert!(manifest.retained_objects.contains(&id));
     let snapshot = settings::cloud_bundle(&snapshot::capture(&a.v).unwrap()).unwrap();
     let mut j = Journal::load(&a.path(), VAULT, A).unwrap();
-    j.seed = Some(checkpoint::seed(&manifest, &snapshot).unwrap());
+    j.seed = Some(checkpoint::seed(&manifest, &snapshot, core::history(&j).unwrap()).unwrap());
     let proof = gc::dry_run(&a.path(), &j).unwrap();
     assert!(proof["retainedObjects"]
         .as_array()
@@ -1700,4 +1710,229 @@ fn independent_changes_continue_syncing_while_another_conflict_remains_open() {
     assert_eq!(state.conflicts, conflict);
     assert_eq!(state.documents["kv/tags.json"]["new"], "independent");
     assert_eq!(a.docs(), b.docs());
+}
+#[test]
+fn concurrent_single_relation_links_require_a_reviewed_atomic_decision() {
+    let cloud = FakeDrive::default();
+    let a = Device::new(A);
+    let b = Device::new(B);
+    a.put("Database host", "body");
+    let mut records = vec![
+        (
+            "databases/containers/c.json".to_string(),
+            json!({"format":1,"id":"c","hostPageId":VAULT,"sourceLinks":[{"sourceId":"s","sortKey":"a"}]}),
+        ),
+        (
+            "databases/sources/s.json".into(),
+            json!({"format":1,"id":"s","ownerContainerId":"c","titlePropertyId":"title"}),
+        ),
+        (
+            "databases/properties/title.json".into(),
+            json!({"format":1,"id":"title","kind":"title","sourceId":"s"}),
+        ),
+        (
+            "databases/properties/p.json".into(),
+            json!({"format":1,"id":"p","kind":"relation","sourceId":"s","config":{"definitionId":"r","side":"forward"}}),
+        ),
+        (
+            "databases/relations/r.json".into(),
+            json!({"format":1,"id":"r","propertyId":"p","sourceId":"s","targetSourceId":"s","mode":"one_way","cardinality":"one","inverseCardinality":"many","inversePropertyId":null,"displayedPropertyIds":[]}),
+        ),
+    ];
+    for (id, title) in [(A, "From"), (B, "Left"), (C, "Right")] {
+        records.push((format!("pages/{id}.json"),json!({"id":id,"title":title,"deletedAt":null,"content":{"type":"doc","content":[]},"database":{"format":1,"sourceId":"s","parentItemId":null,"cells":{},"allocatedIds":{}}})));
+    }
+    for (path, value) in records {
+        write_atomic(&a.v.root.join(path), &bytes(&value).unwrap()).unwrap();
+    }
+    a.sync(&cloud).unwrap();
+    b.cold(&cloud).unwrap();
+    for (device, id, to) in [(&a, "ea", B), (&b, "eb", C)] {
+        write_atomic(&device.v.root.join(format!("databases/edges/{id}.json")),&bytes(&json!({"format":1,"id":id,"definitionId":"r","fromPageId":A,"toPageId":to,"deletedAt":null})).unwrap()).unwrap();
+    }
+    a.sync(&cloud).unwrap();
+    let before_b = b.docs();
+    assert_eq!(b.sync(&cloud).unwrap_err(), "DRIVE:db_relation_cardinality");
+    assert_eq!(b.docs(), before_b);
+    assert_eq!(a.sync(&cloud).unwrap_err(), "DRIVE:db_relation_cardinality");
+    let data = a.root.join("app");
+    write_atomic(&data.join("drive/device.json"), &bytes(&A).unwrap()).unwrap();
+    let path = dir(&data, VAULT).join("journal.json");
+    Journal::load(&a.path(), VAULT, A)
+        .unwrap()
+        .save(&path)
+        .unwrap();
+    let state = relation_conflicts::state(&data, VAULT).unwrap();
+    let conflicts = relation_conflicts::list(&state).unwrap();
+    let id = conflicts[0]["id"].as_str().unwrap();
+    let preview = relation_conflicts::preview(&state, id, "eb").unwrap();
+    let before = streaming::capture(&a.v, &a.root).unwrap();
+    let decision = relation_conflicts::resolve(
+        &data,
+        VAULT,
+        id,
+        "eb",
+        preview["digest"].as_str().unwrap(),
+        &before,
+    )
+    .unwrap();
+    assert_eq!(decision.remaining, 0);
+    streaming::apply(&a.v, &a.root, &before, &decision.after.unwrap()).unwrap();
+    Journal::load(&path, VAULT, A)
+        .unwrap()
+        .save(&a.path())
+        .unwrap();
+    join_pair(&a, &b, &cloud);
+    assert_eq!(a.docs(), b.docs());
+    let docs = a.docs();
+    assert!(docs["databases/edges/eb.json"]["deletedAt"].is_null());
+    assert!(!docs["databases/edges/ea.json"]["deletedAt"].is_null());
+    assert_eq!(docs["databases/edges/ea.json"]["toPageId"], B);
+    assert_eq!(docs["databases/edges/eb.json"]["toPageId"], C);
+}
+#[test]
+fn journal_commit_failure_leaves_local_changes_and_never_starts_publication() {
+    let cloud = FakeDrive::default();
+    let a = Device::new(A);
+    a.put("Saved local", "pending");
+    let path = a.path();
+    let mut first = true;
+    let result = synchronize(
+        &mut cloud.clone(),
+        &path,
+        VAULT,
+        A,
+        || {
+            let bundle = streaming::capture(&a.v, &a.root)?;
+            if first {
+                fs::create_dir(&path).unwrap();
+                first = false;
+            }
+            Ok(bundle)
+        },
+        |x, y| streaming::apply(&a.v, &a.root, x, y),
+    );
+    assert!(result.is_err());
+    assert_eq!(cloud.0.lock().unwrap().writes, 0);
+    assert_eq!(a.v.pages_all().unwrap()[0]["title"], "Saved local");
+    fs::remove_dir(&path).unwrap();
+    a.sync(&cloud).unwrap();
+    assert_eq!(
+        Journal::load(&path, VAULT, A).unwrap().capture_frontier[A],
+        1
+    );
+}
+
+#[test]
+fn checkpoint_late_lower_actor_and_three_candidates_match_full_replay() {
+    let cloud = FakeDrive::default();
+    let b = Device::new(B);
+    b.put("base", "base");
+    b.sync(&cloud).unwrap();
+    let a = Device::new(A);
+    let c = Device::new(C);
+    a.cold(&cloud).unwrap();
+    c.cold(&cloud).unwrap();
+    a.put("candidate A", "base");
+    b.put("candidate B", "base");
+    c.put("candidate C", "base");
+    b.sync(&cloud).unwrap();
+    c.sync(&cloud).unwrap();
+    b.sync(&cloud).unwrap();
+    let mut all = Journal::load(&a.path(), VAULT, A).unwrap();
+    all.capture(&a.docs()).unwrap();
+    {
+        let remote = cloud.0.lock().unwrap();
+        for raw in remote.files.values() {
+            let batch: Batch = serde_json::from_slice(raw).unwrap();
+            all.ingest(batch).unwrap();
+        }
+        for (hash, raw) in &remote.objects {
+            if let Ok(value) = serde_json::from_slice(raw) {
+                all.preimages.insert(hash.clone(), value);
+            }
+        }
+    }
+    let expected = core::replay(VAULT, &all.batches, &all.preimages).unwrap();
+    assert!(!expected.conflicts.is_empty());
+    checkpoint_cloud(&b, &cloud);
+    cloud.0.lock().unwrap().files.clear();
+    a.sync(&cloud).unwrap();
+    let journal = Journal::load(&a.path(), VAULT, A).unwrap();
+    let actual = core::replay_seeded(
+        VAULT,
+        &journal.batches,
+        &journal.preimages,
+        journal.seed.as_ref(),
+    )
+    .unwrap();
+    assert_eq!(expected, actual);
+    b.sync(&cloud).unwrap();
+    let cold = Device::new(C);
+    cold.cold(&cloud).unwrap();
+    assert_eq!(a.docs(), b.docs());
+    assert_eq!(a.docs(), cold.docs());
+}
+
+#[test]
+fn opaque_blob_keys_roundtrip_without_hiding_database_identity() {
+    for value in [
+        json!({"$nevisBlob":"customer-data"}),
+        json!({"$nevisLiteral":42}),
+        json!({"$nevisNodes":{},"$nevisOrder":[]}),
+        json!({"id":"record","$nevisTreeV1":{"customer":1},"$nevisBlob":"opaque","nested":{"$nevisBlob":"literal"}}),
+    ] {
+        let normalized = stable::normalize(&value);
+        assert!(core::blob_hash(&normalized).is_none());
+        if value["id"].is_string() {
+            assert_eq!(normalized["id"], value["id"]);
+        }
+        assert_eq!(stable::denormalize(&normalized).unwrap(), value);
+    }
+    let mut journal = Journal::load(&Device::new(A).path(), VAULT, A).unwrap();
+    journal
+        .capture(&BTreeMap::from([(
+            "kv/tags.json".into(),
+            stable::normalize(&json!({"$nevisBlob":"opaque"})),
+        )]))
+        .unwrap();
+    let state = core::replay(VAULT, &journal.batches, &journal.preimages).unwrap();
+    assert_eq!(
+        stable::denormalize(&state.documents["kv/tags.json"]).unwrap(),
+        json!({"$nevisBlob":"opaque"})
+    );
+    let hash = "a".repeat(64);
+    let mut invalid = journal.batches.values().next().unwrap().clone();
+    invalid.operations[0].next = Some(json!({"$nevisBlob":hash}));
+    assert_eq!(invalid.seal().unwrap_err(), "DRIVE:invalid_blob_context");
+}
+
+#[test]
+fn late_reference_restores_deleted_historical_asset_after_checkpoint_pruning() {
+    let cloud = FakeDrive::default();
+    let b = Device::new(B);
+    b.put("base", "base");
+    let media = b"GIF89a historical referenced bytes";
+    let id = snapshot::hash(media);
+    b.v.file_put(&id, media, "image/gif", "original.gif", 1)
+        .unwrap();
+    b.sync(&cloud).unwrap();
+    let a = Device::new(A);
+    a.cold(&cloud).unwrap();
+    a.put("base", &format!("offline attachment att:{id}"));
+    let relative = format!("files/{}/{id}", &id[..2]);
+    fs::remove_file(b.v.root.join(&relative)).unwrap();
+    fs::remove_file(b.v.root.join(format!("{relative}.json"))).unwrap();
+    b.sync(&cloud).unwrap();
+    checkpoint_cloud(&b, &cloud);
+    cloud.0.lock().unwrap().files.clear();
+    a.sync(&cloud).unwrap();
+    b.sync(&cloud).unwrap();
+    assert_eq!(a.docs(), b.docs());
+    assert_eq!(b.v.file_get(&id).unwrap(), media);
+    let metadata: Value =
+        serde_json::from_slice(&fs::read(b.v.root.join(format!("{relative}.json"))).unwrap())
+            .unwrap();
+    assert_eq!(metadata["type"], "image/gif");
+    assert_eq!(metadata["name"], "original.gif");
 }

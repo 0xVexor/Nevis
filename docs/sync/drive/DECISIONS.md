@@ -27,3 +27,9 @@
 - Read the local Vault format before the first editor render, independent of OAuth/status polling. Refresh the migrated store after connecting. This closes a startup window in which a new Drive page could be edited before block IDs were enabled.
 
 - Small markers use multipart metadata+content in one request; large objects retain durable resumable sessions. This follows the official [Drive upload guide](https://developers.google.com/workspace/drive/api/guides/manage-uploads), rechecked 2026-10-29. A response-loss HTTP fixture proves reconciliation by the same reserved ID without another create. Checkpoint manifests have an explicit 4MiB bound and fail before publication if exceeded.
+
+## OAuth and replay correction after user sign-in failure
+
+- A real token-endpoint probe with the configured public Desktop client and an intentionally invalid non-user code returned `client_secret is missing`. The earlier secret-less PKCE assumption was incompatible with this client. Import the original Desktop JSON locally into the OS credential store; never put the chat-provided secret in source, build config, logs or Vault data. Both exchange and refresh include the stored client parameter. Public distribution without per-device import remains unresolved; release stays disabled.
+- Preserve full canonical replay inputs in a verified bounded deterministic gzip checkpoint object. A folded state alone is unsafe for non-associative multi-candidate merges when old actors return. This keeps convergence and recoverable historical assets, but it does not achieve bounded incremental history replay or authorize GC.
+- Add verified-root selection, read-only history previews, fresh-copy names, relation graph decisions and more schema validation without changing existing GitHub/legacy providers.

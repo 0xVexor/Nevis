@@ -218,6 +218,8 @@ impl Batch {
         }
         for o in &self.operations {
             safe_path(&o.path)?;
+            validate_document(&o.path, o.base.as_ref())?;
+            validate_document(&o.path, o.next.as_ref())?;
             if (o.base_object.is_some() && o.base.is_some())
                 || (o.next_object.is_some() && o.next.is_some())
                 || (o.delta.is_some() && (o.base_object.is_some() || o.next_object.is_some()))
@@ -431,9 +433,41 @@ fn merge(
     b.or(a).cloned()
 }
 
+// Retain canonical replay inputs: folding a checkpoint alone is not associative for
+// three-way merges when a long-offline actor arrives before covered actors.
+#[derive(Clone, Default, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ReplayHistory {
+    pub batches: BTreeMap<String, Batch>,
+    pub preimages: BTreeMap<String, Value>,
+}
+pub fn history(journal: &Journal) -> Res<ReplayHistory> {
+    let mut history = match &journal.seed {
+        Some(seed) => seed
+            .history
+            .clone()
+            .ok_or("DRIVE:checkpoint_replay_required")?,
+        None => ReplayHistory::default(),
+    };
+    for (id, batch) in &journal.batches {
+        if history.batches.get(id).is_some_and(|old| old != batch) {
+            return Err("DRIVE:integrity".into());
+        }
+        history.batches.insert(id.clone(), batch.clone());
+    }
+    for (id, value) in &journal.preimages {
+        if hash(&bytes(value)?) != *id {
+            return Err("DRIVE:integrity".into());
+        }
+        history.preimages.insert(id.clone(), value.clone());
+    }
+    Ok(history)
+}
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReplaySeed {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history: Option<ReplayHistory>,
     pub vault_id: String,
     pub state: Materialized,
     pub heads: BTreeMap<String, String>,
@@ -457,6 +491,7 @@ impl ReplaySeed {
         }
         for (path, value) in &self.state.documents {
             safe_path(path)?;
+            validate_document(path, Some(value))?;
             if let Some(h) = blob_hash(value) {
                 if !valid_hash(h) {
                     return Err("DRIVE:invalid_hash".into());
@@ -479,6 +514,30 @@ impl ReplaySeed {
         }
         for path in &self.state.tombstones {
             safe_path(path)?;
+        }
+        if let Some(history) = &self.history {
+            let mut ledger = BTreeMap::new();
+            for (id, batch) in &history.batches {
+                batch.validate(vault)?;
+                if id != &batch.batch_id
+                    || ledger
+                        .insert(stream_key(&batch.device_id, batch.sequence), id.clone())
+                        .is_some()
+                {
+                    return Err("DRIVE:checkpoint_replay_integrity".into());
+                }
+            }
+            if ledger != self.covered_batches {
+                return Err("DRIVE:checkpoint_replay_integrity".into());
+            }
+            for (id, value) in &history.preimages {
+                if hash(&bytes(value)?) != *id {
+                    return Err("DRIVE:integrity".into());
+                }
+            }
+            if replay(vault, &history.batches, &history.preimages)? != self.state {
+                return Err("DRIVE:checkpoint_replay_integrity".into());
+            }
         }
         Ok(())
     }
@@ -559,6 +618,54 @@ pub fn coverage(j: &Journal) -> Res<(BTreeMap<String, String>, BTreeMap<String, 
     validate_coverage(&j.capture_frontier, &heads, &ledger)?;
     Ok((heads, ledger))
 }
+// Referenced historical assets survive a concurrent deletion. Metadata comes only
+// from verified log inputs; MIME/size are never fabricated during remote replay.
+fn recover_referenced_assets(
+    out: &mut Materialized,
+    metadata: &Documents,
+    known: &BTreeSet<String>,
+) -> Res<()> {
+    let mut files = super::snapshot::Files::new();
+    for (path, value) in &out.documents {
+        if !path.starts_with("files/") {
+            files.insert(path.clone(), bytes(&super::stable::denormalize(value)?)?);
+        }
+    }
+    for (id, conflict) in &out.conflicts {
+        for (index, value) in [&conflict.base, &conflict.a, &conflict.b]
+            .iter()
+            .enumerate()
+        {
+            if let Some(value) = value {
+                files.insert(
+                    format!("conflicts/{id}-{index}.json"),
+                    bytes(&super::stable::denormalize(value)?)?,
+                );
+            }
+        }
+    }
+    for id in super::snapshot::asset_ids(&files) {
+        let path = format!("files/{}/{id}", &id[..2]);
+        let meta = format!("{path}.json");
+        if !out.documents.contains_key(&path) {
+            if !known.contains(&id) {
+                return Err("DRIVE:missing_dependency".into());
+            }
+            out.documents.insert(path.clone(), json!({"$nevisBlob":id}));
+            out.provenance
+                .entry(path)
+                .or_insert_with(|| out.frontier.clone());
+        }
+        if !out.documents.contains_key(&meta) {
+            let value = metadata.get(&meta).ok_or("DRIVE:missing_asset_metadata")?;
+            out.documents.insert(meta.clone(), value.clone());
+            out.provenance
+                .entry(meta)
+                .or_insert_with(|| out.frontier.clone());
+        }
+    }
+    Ok(())
+}
 pub fn replay(
     vault: &str,
     batches: &BTreeMap<String, Batch>,
@@ -574,6 +681,28 @@ pub fn replay_seeded(
 ) -> Res<Materialized> {
     if let Some(seed) = seed {
         seed.validate(vault)?;
+    }
+    if let Some(seed) = seed {
+        let history = seed
+            .history
+            .as_ref()
+            .ok_or("DRIVE:checkpoint_replay_required")?;
+        let mut all = history.batches.clone();
+        let mut values = history.preimages.clone();
+        for (id, batch) in batches {
+            seed.covers(batch)?;
+            if all.get(id).is_some_and(|old| old != batch) {
+                return Err("DRIVE:integrity".into());
+            }
+            all.insert(id.clone(), batch.clone());
+        }
+        for (id, value) in preimages {
+            if hash(&bytes(value)?) != *id {
+                return Err("DRIVE:integrity".into());
+            }
+            values.insert(id.clone(), value.clone());
+        }
+        return replay_seeded(vault, &all, &values, None);
     }
     let mut pending = BTreeMap::new();
     for b in batches.values() {
@@ -616,6 +745,8 @@ pub fn replay_seeded(
     }
     let mut out = seed.map(|s| s.state.clone()).unwrap_or_default();
     let mut heads = seed.map(|s| s.heads.clone()).unwrap_or_default();
+    let mut asset_metadata = Documents::new();
+    let mut known_objects = BTreeSet::new();
     while !pending.is_empty() {
         let key = pending
             .iter()
@@ -628,6 +759,7 @@ pub fn replay_seeded(
             .map(|(k, _)| k.clone())
             .ok_or("DRIVE:waiting_dependency")?;
         let b = pending.remove(&key).unwrap();
+        known_objects.extend(b.required_objects.iter().cloned());
         if b.previous_batch_id.as_ref() != heads.get(&b.device_id) {
             return Err("DRIVE:previous_batch".into());
         }
@@ -657,9 +789,19 @@ pub fn replay_seeded(
                     load(&op.next_object, &op.next)?,
                 )
             };
+            validate_document(&op.path, base.as_ref())?;
+            validate_document(&op.path, next.as_ref())?;
             let mut context = out.provenance.get(&op.path).cloned().unwrap_or_default();
             context.insert(b.device_id.clone(), b.sequence);
             let old = out.documents.get(&op.path).cloned();
+            if op.path.starts_with("files/") && op.path.ends_with(".json") {
+                for value in [base.as_ref(), old.as_ref(), next.as_ref()]
+                    .into_iter()
+                    .flatten()
+                {
+                    asset_metadata.insert(op.path.clone(), value.clone());
+                }
+            }
             let existing: BTreeSet<_> = out.conflicts.keys().cloned().collect();
             let mut merged = merge(
                 &op.path,
@@ -784,7 +926,11 @@ pub fn replay_seeded(
             }
             let next = merged
                 .map(|v| {
-                    super::stable::denormalize(&v).map(|plain| super::stable::normalize(&plain))
+                    if blob_hash(&v).is_some() {
+                        Ok(v)
+                    } else {
+                        super::stable::denormalize(&v).map(|plain| super::stable::normalize(&plain))
+                    }
                 })
                 .transpose()?;
             if op.delta.is_none() && op.next.is_none() && op.next_object.is_none() {
@@ -807,6 +953,12 @@ pub fn replay_seeded(
         super::settings::sanitize(&mut out.documents)?;
         out.frontier.insert(b.device_id.clone(), b.sequence);
         heads.insert(b.device_id.clone(), b.batch_id.clone());
+        if b.atomic_group
+            .as_ref()
+            .is_none_or(|g| g.index + 1 == g.count)
+        {
+            recover_referenced_assets(&mut out, &asset_metadata, &known_objects)?;
+        }
     }
     Ok(out)
 }
@@ -1054,7 +1206,25 @@ impl Journal {
     }
 }
 pub fn blob_hash(v: &Value) -> Option<&str> {
+    if v.as_object()?.len() != 1 {
+        return None;
+    }
     v.get("$nevisBlob").and_then(Value::as_str)
+}
+fn validate_document(path: &str, value: Option<&Value>) -> Res<()> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    let asset = path.starts_with("files/") && !path.ends_with(".json");
+    match (asset, blob_hash(value)) {
+        (true, Some(hash))
+            if valid_hash(hash) && path == format!("files/{}/{hash}", &hash[..2]) =>
+        {
+            Ok(())
+        }
+        (false, None) => Ok(()),
+        _ => Err("DRIVE:invalid_blob_context".into()),
+    }
 }
 pub fn gc_plan(j: &Journal) -> Value {
     json!({"destructiveEnabled":false,"candidates":0,"retainedBatches":j.batches.len(),"reason":"GC_DEFERRED: cold-restore coverage and stale-device rebase proof required"})

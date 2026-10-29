@@ -22,6 +22,7 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
 same-file = "1"
+httpdate = "1"
 md-5 = "0.10"
 base64 = "0.22"
 keyring = { version = "3", features = ["windows-native", "apple-native"] }

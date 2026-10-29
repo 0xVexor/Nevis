@@ -32,19 +32,26 @@
 
 ورود به editor اکنون نوع Vault را از marker محلی می‌خواند و تخصیص block ID را پیش از اولین render فعال می‌کند؛ به OAuth یا poll دوثانیه‌ای وابسته نیست. پس از connect، دادهٔ مهاجرت‌یافته دوباره وارد store می‌شود.
 
-## نتایج آزمون
+## نتایج آزمون نهاییِ ادامهٔ کار
 
-- مجموعهٔ کامل Rust: **۱۷۳ موفق، صفر ناموفق، ۱۱ ignored**، زمان 115.67 ثانیه.
-- پس از اصلاح انتشار multipart و افزودن کنترل اندازهٔ manifest، زیرمجموعهٔ ۶۶تستی Drive دوباره اجرا شد. نتیجهٔ یکتای ترکیب logها: **۱۷۴ موفق، صفر ناموفق، ۱۱ ignored**؛ ۷۰ تست در namespace Drive.
+- مجموعهٔ کامل Rust روی کد اصلاح‌شده: **۱۹۸ موفق، صفر ناموفق، ۱۱ ignored**، زمان 132.65 ثانیه. تست تازهٔ backoff پایدار سپس با ۴ تست زمان‌بندی موجود اجرا شد: **۵ موفق**. نتیجهٔ یکتای logهای نهایی **۱۹۹ موفق، صفر ناموفق، ۱۱ ignored** است؛ **۹۴ تست Drive**. تست‌های root پس از سخت‌گیری نام نمایشی نیز ۳/۳ موفق بودند.
 - JavaScript: layout/editor/policy **43**، دیتابیس **173**، جهت متن **4**، به‌روزرسانی **7**؛ مجموع **۲۲۷ موفق، صفر ناموفق**.
-- TypeScript/Vite و lint موفق؛ lint **۲۳۶ warning و صفر error** دارد. warningها پنهان نشده‌اند.
-- Preview debug مک ARM64 ساخته شد؛ بستهٔ مستقل `com.vexor.nevis.drive-preview`، تقریباً 85.65 MiB. این بسته signed/notarized release نیست.
-- ماتریس ۱۰۴ مورد: **۴۲ PASS، صفر FAIL، ۶۲ NOT_RUN**. PASS به معنی اجرای fixture نام‌برده است؛ تأیید Google یا سیستم‌عامل دیگر نیست. NOT_RUN شامل فاصله‌های داخلی تست/پیاده‌سازی نیز هست.
-- ۱۱ تست ignored متعلق به مسیرهای قدیمی‌اند: یک diagnostic عمومی GitHub و ده E2E سرویس Hub که server پیکربندی‌شده می‌خواهند. هیچ تست Drive ignored نیست.
-- smoke اولیهٔ native: setup، پیام نبود Client ID، ورود غیرفعال، فارسی/RTL، Escape و دسترسی به تنظیمات GitHub بررسی شدند. تکرار smoke روی بستهٔ نهایی به `noWindowsAvailable/timeoutReached` ابزار CUA خورد؛ **برای GUI نهایی یا ذخیرهٔ محلی از داخل GUI ادعای PASS جدید نشده است**.
-- OAuth واقعی، چرخهٔ واقعی Keychain/refresh/revocation، discovery با drive.file روی دو دستگاه و Windows: **NOT_RUN**.
+- TypeScript/Vite و lint موفق؛ lint **۲۳۶ warning و صفر error** دارد.
+- Preview debug مک ARM64 با Client ID عمومی واقعی ساخته شد. بستهٔ مستقل `com.vexor.nevis.drive-preview` همچنان release امضاشده/notarized نیست.
+- ماتریس ۱۰۴ مورد: **۴۶ PASS مصنوعی، صفر FAIL در تست‌های نگاشت‌شده، ۵۸ NOT_RUN**. NOT_RUN شامل محدودیت‌های داخلی و آزمون‌های خارجی است؛ به معنای عبور کامل پلن نیست.
+- Smoke رابط نسخهٔ اصلاح OAuth: باز شدن برنامه، ورود از صفحهٔ شروع به Google Drive Sync، و وجود Import Desktop OAuth JSON و Sign in with Google مشاهده شد. این نتیجه، ورود واقعی یا گردش تعارض متصل را تأیید نمی‌کند.
+- **ورود واقعی در Preview قبلی ناموفق بود.** گوگل برای Client ID واقعی در یک probe بدون authorization code معتبر، `invalid_request: client_secret is missing` برگرداند. PKCE به‌تنهایی برای این کلاینت کافی نبود. نسخهٔ اصلاح‌شده JSON کلاینت Desktop را با کنترل Client ID وارد Keychain می‌کند و هنگام code exchange و refresh می‌فرستد. ورود/refresh واقعی نسخهٔ اصلاح‌شده هنوز منتظر تست کاربر است؛ شکست قبلی پنهان یا PASS نشده است.
 
-جزئیات و فرمان‌ها در TEST_RESULTS.md و شواهد log در validation/ قرار دارند.
+## اصلاحات این ادامه
+
+- Rootهای هم‌نام با ID/marker معتبر در UI فهرست می‌شوند؛ انتخاب صریح، نمایش پوشه، جداسازی حساب و جلوگیری از انتقال خاموش bindingهای موجود اضافه شد. Find اکنون read-only است و root جایگزین برای root مفقود نمی‌سازد.
+- History پیش‌نمایش شمارش/عنوان نمونه دارد و صحت کامل را ادعا نمی‌کند. restore به کپی، UUID و نام محلی تازه دارد و هویت و دادهٔ نسخهٔ اصلی را حفظ می‌کند.
+- کنترل relation cardinality، edge تکراری، ارجاع view/filter/sort/property، نوع سلول، principal و چرخهٔ parentها اضافه شد. تعارض لینکِ تک‌مقصدی مسیر انتخاب → preview با digest → تصمیم causal دارد؛ نامزدهای بازنده soft-delete می‌شوند و اصل رکورد حفظ می‌شود. fixture واقعی دو دستگاه تا همگرایی و انتشار تصمیم پاس شد.
+- Retry-After به صورت delta و HTTP-date، overflow، فایل وضعیت ناخوانا/خراب و منع bypass بررسی شد. backoff سهمیه با تکرار خطا از ۶۰ ثانیه تا ۱ ساعت افزایش و پس از موفقیت reset می‌شود؛ مهلت طولانی‌تر سرور حفظ می‌شود.
+- بازپخش از checkpoint برای actor قدیمی که قبل از actorهای پوشش‌داده‌شده مرتب می‌شود، دیگر فقط روی state تا‌شده merge نمی‌کند: آرشیو gzip قطعیِ batch/preimageها با hash در checkpoint نگهداری و صحت کامل آن بررسی می‌شود. سه نامزد هم‌زمان و حذف covered streams تست شد. آرشیوِ بازشده سقف 95MiB دارد؛ checkpoint قدیمی بدون replay archive برای bootstrap انتخاب نمی‌شود و history خام/خطای صریح لازم است. این کار ورودی صحیح ادغام را حفظ می‌کند، ولی هزینهٔ کامل replay را حذف نمی‌کند.
+- ارجاع دیرهنگام به پیوست حذف‌شده، bytes و metadata تاریخی را از ورودی‌های تأییدشده بازمی‌گرداند؛ MIME یا size ساختگی تولید نمی‌شود. fixture GIF پس از checkpoint/pruning موفق شد.
+- شکل‌های رزروشدهٔ opaque JSON از marker واقعی blob تفکیک شدند؛ کلید سفارشی دیگر ID رکورد را نمی‌پوشاند یا JSON را به‌عنوان فایل باینری اعمال نمی‌کند. ناسازگاری path/hash/blob رد می‌شود.
+- Client ID عمومی تولید در build config عمومی است؛ secret ارسالی در چت در فایل/مخزن/log نوشته نشده است. import فایل JSON به صورت محلی و از طریق UI انجام می‌شود. این مرحلهٔ per-device هنوز یک محدودیت محصول/بسته‌بندی برای انتشار عمومی است.
 
 ## خطاهایی که پیدا و اصلاح شدند
 
@@ -68,15 +75,15 @@
 
 ## محدودیت‌ها و gateهای باقی‌مانده
 
-1. Google OAuth/consent/test-user و تأیید دسترسی cross-device با همان app identity لازم است. scope برای دورزدن مشکل discovery گسترده نشده است. Windows و release امضاشده در این میزبان در دسترس نیستند.
+1. ورود واقعی نسخهٔ قبلی به علت client_secret مفقود شکست خورد؛ تست ورود/refresh نسخهٔ اصلاح‌شده، consent و discovery واقعی cross-device هنوز لازم است. از همان publisher project/consent app و client Desktop متناسب با هر پلتفرم استفاده شود. scope برای دورزدن مشکل discovery گسترده نشده است. Windows و release امضاشده در این میزبان در دسترس نیستند.
 2. تمام ۱۰۴ سناریو آزموده نشده‌اند: power loss واقعی، ENOSPC/readonly، تمام نقاط crash، ۸ ساعت idle، rate limit طولانی و GUI متصل پوشش کامل ندارند. وجود کد، جای نتیجهٔ آزمون را نمی‌گیرد.
-3. رسانه فایل‌محور است، ولی JSON هنوز 95MiB/file و 512MiB aggregate محدودیت دارد؛ marker/checkpoint حداکثر 4MiB است؛ دانلود رسانه 5GiB/object محدود است. journal/replay همچنان یکپارچه و نگهداری تاریخچه بدون pruning پرهزینه است. نخستین hash/copy ممکن است هنگام نگه‌داشتن mutex بومی زمان ببرد؛ latency واقعی editor باید روی build انتشار اندازه‌گیری شود.
+3. رسانه فایل‌محور است، ولی JSON هنوز 95MiB/file و 512MiB aggregate محدودیت دارد؛ marker/checkpoint حداکثر 4MiB است؛ دانلود رسانه 5GiB/object محدود است. آرشیو replay سقف 95MiB بازشده دارد؛ journal/replay همچنان یکپارچه و نگهداری تاریخچه بدون pruning پرهزینه است. نخستین hash/copy ممکن است هنگام نگه‌داشتن mutex بومی زمان ببرد؛ latency واقعی editor باید روی build انتشار اندازه‌گیری شود.
 4. cache هش محلی با identity/metadata و حداکثر ۲۴ ساعت اعتبار کار می‌کند؛ تغییر معمول/تعویض اتمیک آن را باطل می‌کند. دست‌کاری محلیِ مخرب که همهٔ metadata را حفظ کند به deep check نیاز دارد. بایت‌های شبکه مستقل hash می‌شوند.
 5. کنترل‌های graph دیتابیس و fixtureهای ۱۳ نوع وجود دارند، اما تمام business invariantهای هر نوع و ترکیب‌های چندرکوردی اثبات نشده‌اند. نتیجهٔ نامعتبر به‌صورت fail-closed اعمال نمی‌شود؛ این وضعیت ممکن است به اصلاح/بازیابی صریح نیاز داشته باشد.
 6. ترتیب مبهم siblingهای بسیار بزرگ و ساختارهای ناسازگار به archive/fallback محافظه‌کارانه می‌روند. Keep both فقط برای صفحهٔ معمولی است؛ Manual merge با توضیح غیرفعال است. GUI تعارضهای پیچیده روی حساب واقعی بررسی نشده است.
-7. Google Picker و رابط repair/reselect برای root تکراری پیاده نشده‌اند؛ برنامه ایمن متوقف می‌شود. hierarchy فیزیکی streams/objects flat است و با پیشنهاد پوشهٔ per-device/prefix سند تفاوت دارد.
+7. انتخاب صریح root معتبر و بررسی/بازکردن آن اضافه شده است؛ Google Picker و repair مجوزی پوشهٔ دلخواه خارج از محدودهٔ drive.file هنوز وجود ندارد. hierarchy فیزیکی streams/objects flat است و با پیشنهاد پوشهٔ per-device/prefix سند تفاوت دارد.
 8. GC destructive، حذف retention و quarantine/rollback واقعی به دلیل کامل‌نبودن اثبات‌های release، دستگاه قدیمی و retention فعال نشده‌اند. رشد تعداد Drive items/storage واقعی است. مسیرهای guarded فعلی فقط deferred receipt را بازیابی می‌کنند، نه حذف نیمه‌تمامی که این build هرگز انجام نمی‌دهد.
-9. شمارش HTTP و budget نرم معادل quota units یا صورت‌حساب Google نیست؛ OAuth و clientهای دیگر در آن حساب نشده‌اند. p50/p95 مربوط به header request و پنجرهٔ نمونه است، نه latency کل تجربهٔ کاربر.
+9. شمارش HTTP و budget نرم معادل quota units یا صورت‌حساب Google نیست؛ OAuth، setup/history/repair دستی و clientهای دیگر در شمارندهٔ worker حساب نشده‌اند. p50/p95 مربوط به header request و پنجرهٔ نمونه است، نه latency کل تجربهٔ کاربر.
 10. close، انتشار ابری را تضمین نمی‌کند؛ local save پیش از destroy await می‌شود. درخواست HTTP جاری ممکن است تا timeout طول بکشد. قفل advisory، ابزار خارجیِ بی‌اعتنا به قفل را کنترل نمی‌کند. E2EE و امضای مستقل نویسنده وجود ندارند.
 
 به همین دلیل feature flag و release gate بسته مانده‌اند. این گزارش ادعای «تکمیل کامل سند» یا «آمادهٔ دادهٔ واقعی» ندارد.

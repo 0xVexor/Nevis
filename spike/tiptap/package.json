@@ -13,6 +13,7 @@
     "test:db": "node --test \"../../db/tests/database/*.test.mjs\"",
     "preview": "vite preview",
     "tauri": "tauri",
+    "build:drive-preview": "node ../../scripts/build-drive-preview.mjs",
     "build:preview": "node ../../.github/scripts/build-github-preview.mjs",
     "desktop:build": "node ../../scripts/build-desktop.mjs"
   },

@@ -80,6 +80,8 @@ pub struct Drive {
     api: String,
     upload: String,
     pause_signal: Option<std::path::PathBuf>,
+    #[cfg(test)]
+    refresh: Option<fn() -> Res<String>>,
 }
 impl Drive {
     pub fn new() -> Res<Self> {
@@ -90,6 +92,8 @@ impl Drive {
             api: API.into(),
             upload: UPLOAD.into(),
             pause_signal: None,
+            #[cfg(test)]
+            refresh: None,
         })
     }
     pub fn cancellable(mut self, path: std::path::PathBuf) -> Self {
@@ -102,6 +106,13 @@ impl Drive {
         } else {
             Ok(())
         }
+    }
+    fn refresh_token(&mut self) -> Res<String> {
+        #[cfg(test)]
+        if let Some(refresh) = self.refresh {
+            return refresh();
+        }
+        auth::access(true)
     }
     fn send(&mut self, operation: &str, make: impl Fn(&Client) -> RequestBuilder) -> Res<Response> {
         self.check_pause()?;
@@ -118,19 +129,17 @@ impl Drive {
             self.meter.header_latency_ms.push(elapsed);
             let r = response.map_err(|_| "DRIVE:network")?;
             if r.status() == StatusCode::UNAUTHORIZED && attempt == 0 {
-                self.token = auth::access(true)?;
+                self.token = self.refresh_token()?;
                 continue;
             }
             if r.status().is_success() || r.status().as_u16() == 308 {
                 return Ok(r);
             }
             let status = r.status().as_u16();
-            let retry = r
-                .headers()
-                .get("Retry-After")
-                .and_then(|h| h.to_str().ok())
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(60);
+            let retry = super::schedule::retry_seconds(
+                r.headers().get("Retry-After").and_then(|h| h.to_str().ok()),
+                std::time::SystemTime::now(),
+            );
             let v = json_response(r, 64 * 1024).unwrap_or(Value::Null);
             let reason = v["error"]["errors"][0]["reason"].as_str().unwrap_or("");
             let error = classify(status, reason, retry);
@@ -431,6 +440,8 @@ mod tests {
                 api: url.clone(),
                 upload: url,
                 pause_signal: None,
+                #[cfg(test)]
+                refresh: None,
             };
             assert_eq!(d.metadata("test-id").unwrap_err(), expected);
             t.join().unwrap();
@@ -447,6 +458,8 @@ mod tests {
             api: url.clone(),
             upload: url,
             pause_signal: None,
+            #[cfg(test)]
+            refresh: None,
         };
         assert_eq!(d.metadata("test-id").unwrap()["id"], "test-id");
         t.join().unwrap();
@@ -792,6 +805,8 @@ mod resumable_tests {
             api: url.clone(),
             upload: url,
             pause_signal: None,
+            #[cfg(test)]
+            refresh: None,
         };
         assert_eq!(
             d.put_file("parent", "vault", &digest, &source, &receipt)
@@ -911,6 +926,8 @@ mod pause_tests {
             api: "http://127.0.0.1:9".into(),
             upload: "http://127.0.0.1:9".into(),
             pause_signal: Some(signal),
+            #[cfg(test)]
+            refresh: None,
         };
         assert_eq!(drive.metadata("id").unwrap_err(), "DRIVE:paused");
         assert_eq!(drive.meter.requests, 0);
@@ -997,6 +1014,8 @@ mod multipart_tests {
             api: url.clone(),
             upload: url,
             pause_signal: None,
+            #[cfg(test)]
+            refresh: None,
         };
         assert_eq!(
             drive
@@ -1010,5 +1029,71 @@ mod multipart_tests {
         server.join().unwrap();
         assert_eq!(drive.meter.operations["upload.marker"], 1);
         assert_eq!(drive.meter.requests, 4);
+    }
+}
+
+#[cfg(test)]
+mod refresh_tests {
+    use super::*;
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
+    static REFRESHES: AtomicUsize = AtomicUsize::new(0);
+    fn refreshed() -> Res<String> {
+        REFRESHES.fetch_add(1, Ordering::SeqCst);
+        Ok("refreshed-token".into())
+    }
+    fn revoked() -> Res<String> {
+        REFRESHES.fetch_add(1, Ordering::SeqCst);
+        Err("DRIVE:sign_in_required".into())
+    }
+    #[test]
+    fn repeated_401_and_revoked_refresh_are_bounded_and_redacted() {
+        for succeeds in [true, false] {
+            REFRESHES.store(0, Ordering::SeqCst);
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let url = format!("http://{}", listener.local_addr().unwrap());
+            let server = std::thread::spawn(move || {
+                for index in 0..if succeeds { 2 } else { 1 } {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    stream
+                        .set_read_timeout(Some(Duration::from_secs(5)))
+                        .unwrap();
+                    let mut request = vec![];
+                    loop {
+                        let mut buf = [0; 4096];
+                        let n = stream.read(&mut buf).unwrap();
+                        assert!(n > 0);
+                        request.extend_from_slice(&buf[..n]);
+                        if request.windows(4).any(|w| w == b"\r\n\r\n") {
+                            break;
+                        }
+                    }
+                    let header = String::from_utf8_lossy(&request);
+                    assert!(header.contains(if index == 0 {
+                        "Bearer original-token"
+                    } else {
+                        "Bearer refreshed-token"
+                    }));
+                    let body = r#"{"error":{"message":"private body must never be returned"}}"#;
+                    write!(stream,"HTTP/1.1 401 Unauthorized\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();
+                }
+            });
+            let mut d = Drive {
+                client: http().unwrap(),
+                token: "original-token".into(),
+                meter: Meter::default(),
+                api: url.clone(),
+                upload: url,
+                pause_signal: None,
+                refresh: Some(if succeeds { refreshed } else { revoked }),
+            };
+            assert_eq!(d.metadata("file").unwrap_err(), "DRIVE:sign_in_required");
+            assert_eq!(REFRESHES.load(Ordering::SeqCst), 1);
+            assert_eq!(d.meter.requests, if succeeds { 2 } else { 1 });
+            server.join().unwrap();
+        }
     }
 }

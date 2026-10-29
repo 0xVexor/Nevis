@@ -35,20 +35,62 @@ struct Credential {
 pub fn client_id() -> &'static str {
     option_env!("NEVIS_GOOGLE_CLIENT_ID").unwrap_or("")
 }
+fn credential_service() -> &'static str {
+    option_env!("NEVIS_GOOGLE_CREDENTIAL_SERVICE").unwrap_or(if cfg!(debug_assertions) {
+        "nevis.drive.preview.v1"
+    } else {
+        "nevis.drive.release.v1"
+    })
+}
 fn entry() -> Res<keyring::Entry> {
-    let service =
-        option_env!("NEVIS_GOOGLE_CREDENTIAL_SERVICE").unwrap_or(if cfg!(debug_assertions) {
-            "nevis.drive.preview.v1"
-        } else {
-            "nevis.drive.release.v1"
-        });
-    keyring::Entry::new(service, "google-oauth")
+    keyring::Entry::new(credential_service(), "google-oauth")
         .map_err(|_| "DRIVE:secure_storage_unavailable".into())
 }
+fn client_entry() -> Res<keyring::Entry> {
+    keyring::Entry::new(
+        credential_service(),
+        &format!("desktop-client:{}", client_id()),
+    )
+    .map_err(|_| "DRIVE:secure_storage_unavailable".into())
+}
+fn parse_client(raw: &[u8], expected: &str) -> Res<String> {
+    let value: Value = serde_json::from_slice(raw).map_err(|_| "DRIVE:invalid_client_file")?;
+    let installed = &value["installed"];
+    if installed["client_id"].as_str() != Some(expected) {
+        return Err("DRIVE:client_file_mismatch".into());
+    }
+    installed["client_secret"]
+        .as_str()
+        .filter(|s| !s.is_empty() && s.len() <= 1024 && s.bytes().all(|b| b.is_ascii_graphic()))
+        .map(String::from)
+        .ok_or("DRIVE:invalid_client_file".into())
+}
+pub fn import_client(path: &std::path::Path) -> Res<Value> {
+    let file = std::fs::File::open(path).map_err(|_| "DRIVE:invalid_client_file")?;
+    let mut raw = Vec::new();
+    file.take(65537)
+        .read_to_end(&mut raw)
+        .map_err(|_| "DRIVE:invalid_client_file")?;
+    if raw.len() > 65536 {
+        return Err("DRIVE:invalid_client_file".into());
+    }
+    let secret = parse_client(&raw, client_id())?;
+    client_entry()?
+        .set_password(&secret)
+        .map_err(|_| "DRIVE:secure_storage_unavailable")?;
+    Ok(json!({"imported":true}))
+}
+fn client_secret() -> Res<String> {
+    client_entry()?.get_password().map_err(|e| match e {
+        keyring::Error::NoEntry => "DRIVE:desktop_credentials_required".into(),
+        _ => "DRIVE:secure_storage_unavailable".into(),
+    })
+}
 fn load() -> Res<Credential> {
-    let s = entry()?
-        .get_password()
-        .map_err(|_| "DRIVE:sign_in_required")?;
+    let s = entry()?.get_password().map_err(|error| match error {
+        keyring::Error::NoEntry => "DRIVE:sign_in_required",
+        _ => "DRIVE:secure_storage_unavailable",
+    })?;
     serde_json::from_str(&s).map_err(|_| "DRIVE:credential_corrupt".into())
 }
 fn save(c: &Credential) -> Res<()> {
@@ -84,6 +126,7 @@ pub fn begin() -> Res<Value> {
     if client_id().is_empty() {
         return Err("DRIVE:oauth_not_configured".into());
     }
+    client_secret()?;
     // Exercise credential-store access before launching the browser; no plaintext fallback.
     let key = entry()?;
     match key.get_password() {
@@ -138,6 +181,10 @@ pub fn begin() -> Res<Value> {
     }
     Ok(json!({"waiting":true,"expiresIn":300}))
 }
+pub fn open_drive_folder(id: &str) -> Res<()> {
+    super::transport::check_id(id)?;
+    open(&format!("https://drive.google.com/drive/folders/{id}"))
+}
 fn open(url: &str) -> Res<()> {
     #[cfg(target_os = "macos")]
     let result = std::process::Command::new("open").arg(url).spawn();
@@ -154,11 +201,24 @@ fn open(url: &str) -> Res<()> {
 fn http() -> Res<reqwest::blocking::Client> {
     super::transport::http()
 }
-fn token_response(r: reqwest::blocking::Response) -> Res<Value> {
-    if !r.status().is_success() {
-        return Err("DRIVE:sign_in_required".into());
+fn token_error(status: u16, code: &str) -> &'static str {
+    match (status, code) {
+        (500..=599, _) => "DRIVE:service_unavailable",
+        (_, "invalid_client" | "unauthorized_client") => "DRIVE:oauth_client_rejected",
+        (_, "invalid_scope") => "DRIVE:oauth_scope_rejected",
+        (_, "access_denied") => "DRIVE:oauth_cancelled",
+        (_, "invalid_request") => "DRIVE:oauth_request_rejected",
+        _ => "DRIVE:sign_in_required",
     }
-    super::transport::json_response(r, 64 * 1024)
+}
+fn token_response(r: reqwest::blocking::Response) -> Res<Value> {
+    let status = r.status();
+    let result = super::transport::json_response(r, 64 * 1024);
+    if !status.is_success() {
+        let json = result.unwrap_or(Value::Null);
+        return Err(token_error(status.as_u16(), json["error"].as_str().unwrap_or("")).into());
+    }
+    result
 }
 fn expiry(token: &Value, now: i64) -> Res<i64> {
     token["expires_in"]
@@ -239,10 +299,12 @@ pub fn poll() -> Res<Value> {
         return Err("DRIVE:oauth_cancelled".into());
     }
     let code = q.get("code").ok_or("DRIVE:invalid_callback")?;
+    let secret = client_secret()?;
     let r = http()?
         .post("https://oauth2.googleapis.com/token")
         .form(&[
             ("client_id", client_id()),
+            ("client_secret", secret.as_str()),
             ("code", code),
             ("code_verifier", f.verifier.as_str()),
             ("redirect_uri", f.redirect.as_str()),
@@ -295,10 +357,12 @@ pub fn poll() -> Res<Value> {
 pub fn access(force: bool) -> Res<String> {
     let mut c = load()?;
     if force || now_ms() + 60_000 >= c.expires {
+        let secret = client_secret()?;
         let r = http()?
             .post("https://oauth2.googleapis.com/token")
             .form(&[
                 ("client_id", client_id()),
+                ("client_secret", secret.as_str()),
                 ("refresh_token", c.refresh.as_str()),
                 ("grant_type", "refresh_token"),
             ])
@@ -321,6 +385,43 @@ pub fn access(force: bool) -> Res<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn desktop_client_import_checks_identity_and_never_echoes_credentials() {
+        let raw = br#"{"installed":{"client_id":"desktop-id","client_secret":"dummy-test-value"}}"#;
+        assert_eq!(parse_client(raw, "desktop-id").unwrap(), "dummy-test-value");
+        assert_eq!(
+            parse_client(raw, "other-id").unwrap_err(),
+            "DRIVE:client_file_mismatch"
+        );
+        for invalid in [
+            br#"{"web":{"client_id":"desktop-id"}}"#.as_slice(),
+            b"invalid",
+            br#"{"installed":{"client_id":"desktop-id","client_secret":""}}"#,
+        ] {
+            let error = parse_client(invalid, "desktop-id").unwrap_err();
+            assert!(!error.contains("dummy-test-value"));
+        }
+    }
+    #[test]
+    fn oauth_failures_report_safe_actionable_codes() {
+        assert_eq!(
+            token_error(400, "invalid_client"),
+            "DRIVE:oauth_client_rejected"
+        );
+        assert_eq!(token_error(400, "invalid_grant"), "DRIVE:sign_in_required");
+        assert_eq!(
+            token_error(400, "invalid_scope"),
+            "DRIVE:oauth_scope_rejected"
+        );
+        assert_eq!(
+            token_error(503, "private token details"),
+            "DRIVE:service_unavailable"
+        );
+        assert_eq!(
+            token_error(400, "private token details"),
+            "DRIVE:sign_in_required"
+        );
+    }
     #[test]
     fn callback_rejects_wrong_state_path_duplicates_and_error_with_code() {
         for target in [

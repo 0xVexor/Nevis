@@ -3,7 +3,7 @@
 Do not use a real Vault for initial validation. The implementation is experimental and has internal release gaps in addition to the missing OAuth/account tests.
 
 1. In Google Cloud Console create/select one publisher project for both desktop platforms and enable Drive API.
-2. Configure consent branding, audience and test users. Create an OAuth client of type **Desktop app**. Use the same client/app identity on both test devices.
+2. Configure consent branding, audience and test users. Create an OAuth client of type **Desktop app**. Use the same publisher project/consent app; Google recommends a separate Desktop client per platform. Verify cross-device discovery with those actual clients.
 3. Requested scopes are `drive.file`, `openid`, and `email`. The latter two bind the root to a stable Google subject. Do not broaden to full Drive access to work around failed discovery.
 4. Supply the public desktop client ID at build time. No access/refresh token or confidential client secret belongs in Git, public configuration, backups or logs.
 
@@ -25,11 +25,11 @@ $env:NEVIS_GOOGLE_CREDENTIAL_SERVICE='nevis.drive.preview.v1'
 npm run tauri -- build --debug --config src-tauri/tauri.drive-preview.conf.json
 ```
 
-The example JSON is a configuration reference, not automatically loaded. Actual build variables are allowlisted in build.rs. The preview identifier is `com.vexor.nevis.drive-preview`; it uses separate app-data. Production Drive is disabled unless explicitly built with the flag. Do not enable a release merely because a preview connects.
+`src-tauri/google-oauth.public.json` is loaded by build.rs and contains only the public `clientId`. `NEVIS_GOOGLE_CLIENT_ID` overrides it. The example file is a template. Run `npm run build:drive-preview -- --debug --bundles app` for the configured preview. The preview identifier is `com.vexor.nevis.drive-preview`; it uses separate app-data. Production Drive is disabled unless explicitly built with the flag. Do not enable a release merely because a preview connects.
 
 Authentication opens the system browser and receives a state-validated callback on an ephemeral `127.0.0.1` listener. PKCE verifier stays in memory. Cancel/timeout/restart do not persist an authorization code. Tokens and subject/email are stored together in the OS credential store; there is no plaintext fallback. Keychain/Credential Manager failures stop sign-in. Refresh is serialized with provider operations. A different Google subject cannot use an existing binding.
 
-Google documents client_secret as optional for this flow. This implementation uses public-client PKCE without one; compatibility with the actual registered client has **not** been live tested. If the configured client refuses this exchange, keep the feature disabled and report the sanitized code. Do not embed a confidential secret as a workaround.
+Google documents `client_secret` as optional, but a live request with this configured Desktop client on 2026-10-29 returned `invalid_request: client_secret is missing`. The original Preview omitted it and therefore could not complete sign-in. Download the original Desktop client JSON from Google Auth Platform → Clients and use **Import Desktop OAuth JSON** in the corrected Preview. The native importer bounds the input to 64 KiB, requires `installed.client_id` to match the compiled public identity, and stores only `installed.client_secret` in the OS credential store under that identity. Neither JSON nor secret is copied to the repository, app data, or Vault. Both code exchange and refresh submit it over HTTPS alongside PKCE/the refresh token. Desktop client values are extractable public-client identifiers, not a substitute for PKCE or user tokens. Import is a per-device setup step in this experimental build; public distribution without that step remains a packaging/product decision. Successful real sign-in and refresh are still NOT VERIFIED until the user retests.
 
 Consent Testing/verification and refresh-token restrictions must be checked in the actual Console before release. Test cross-device `drive.file` discovery explicitly; mock tests do not establish Google app authorization semantics. There is no Picker repair flow yet. A discovery failure is a blocked release gate.
 

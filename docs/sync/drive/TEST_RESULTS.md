@@ -1,12 +1,13 @@
 # Validation results — 2026-10-29
 
-**Production-ready: NO.** TEST_MATRIX.md computes all 104 acceptance rows from observed test names: **42 PASS / 0 FAIL / 62 NOT_RUN**. A synthetic PASS is not real Google/OS certification. Unmapped/partial cases stay NOT_RUN.
+**Production-ready: NO.** TEST_MATRIX.md computes all 104 acceptance rows from observed test names: **46 PASS / 0 FAIL / 58 NOT_RUN**. A synthetic PASS is not real Google/OS certification. Unmapped/partial cases stay NOT_RUN.
 
 | Check | Result | Evidence |
 |---|---|---|
-| Full native suite, `cargo test --manifest-path spike/tiptap/src-tauri/Cargo.toml -- --nocapture` | PASS | 173 passed, 0 failed, 11 ignored; 115.67s |
-| Final additional Drive regression run (excluding repeated large benchmarks) | PASS | 66 passed; includes new domain and HTTP assertions after full run |
-| Unique native results across these two logs | PASS | 174 passed, 0 failed, 11 ignored; 70 Drive tests, no ignored Drive tests |
+| Full corrected native suite | PASS | 198 passed, 0 failed, 11 ignored; 132.65s |
+| Final durable exponential quota-backoff regression | PASS | 5 schedule tests, including 1 new test, after the full suite |
+| Final root-display hardening regression | PASS | 3 root tests |
+| Unique native results across final logs | PASS | 199 passed, 0 failed, 11 ignored; 94 Drive tests, no ignored Drive tests |
 | `npm run test:layout` | PASS | 43 passed, including editor identity and settings policy |
 | `npm run test:db` | PASS | 173 passed |
 | `npm run test:direction` | PASS | 4 passed |
@@ -15,11 +16,12 @@
 | `npm run build` / native beforeBuild | PASS | TypeScript and Vite, warnings retained |
 | `npm run lint` | PASS with warnings | 236 warnings, zero errors |
 | New Rust modules rustfmt / git diff whitespace | PASS | Check output retained in validation |
-| macOS ARM64 debug app | PASS | com.vexor.nevis.drive-preview, approximately 85.65MiB, independent data/credential identity |
+| macOS ARM64 debug app | PASS | com.vexor.nevis.drive-preview, approximately 86.65MiB, independent data/credential identity |
 | Initial native setup smoke | PASS, limited | Missing client, disabled sign-in, Persian/RTL, Escape, GitHub access; earlier screenshot retained |
-| Final rebuilt GUI smoke | NOT_RUN to completion | CUA reported noWindowsAvailable / timeoutReached; launch helper unavailable; no new GUI success claimed |
-| Native GUI local-save / connected conflict/history flows | NOT_RUN | Earlier OS picker automation timed out; no real account/client configured |
-| Actual Google OAuth / Keychain lifecycle / cross-device drive.file | NOT_RUN | Requires configured Desktop client and disposable account authorization |
+| Corrected OAuth Preview setup smoke | PASS, limited | Full-path CUA launch, welcome → Drive dialog, Import Desktop OAuth JSON and sign-in visible; no real Vault touched |
+| Native GUI local-save / connected conflict/history flows | NOT_RUN | Earlier OS picker automation timed out; real configured client; successful connected authorization still unverified |
+| Actual Google OAuth | FAILED in prior build; corrected build NOT_RUN | Live diagnostic returned client_secret is missing; corrected native import/keychain exchange awaits user retest |
+| Actual Keychain credential lifecycle / cross-device drive.file | NOT_RUN | User authorization and real two-device verification required |
 | Windows packaging/startup; signed/notarized release | NOT_RUN | macOS host/debug package only |
 
 The 11 ignored tests are one explicit GitHub public diagnostic and ten legacy Hub E2E tests needing their external server. They are not passes.
@@ -64,4 +66,10 @@ Presence/null encoding, structural ancestor repair, checkpoint notification on t
 
 ## Remaining limits
 
-See EXECUTION_REPORT.md for exact internal and external gaps. No destructive GC/retention is enabled; Picker/root repair is absent; not every DB business invariant or fault boundary is tested. JSON/journals remain memory bounded and expensive rather than fully incremental. Live OAuth, actual drive.file discovery, Windows, final connected GUI and release packaging remain unverified. The provider stays off by default.
+See EXECUTION_REPORT.md for exact internal and external gaps. No destructive GC/retention is enabled; Picker permission repair is absent; explicit verified-root selection is implemented; not every DB business invariant or fault boundary is tested. JSON/journals remain memory bounded and expensive rather than fully incremental. Live OAuth, actual drive.file discovery, Windows, final connected GUI and release packaging remain unverified. The provider stays off by default.
+
+## Continuation regressions
+
+Verified root selection/account isolation, original-root loss without replacement, safe history title/count preview and fresh-name local restore, graph cardinality/duplicate/cycle/filter validation, explicit reviewed concurrent link decisions, one bounded 401 refresh and revoked refresh redaction, bounded Desktop JSON identity validation, HTTP-date/overflow/durable Retry-After, repeated exponential quota backoff, journal commit-point failure with no publication, reserved JSON/blob context separation, three-candidate late-actor checkpoint replay, deterministic/bounded gzip archive, and late referenced GIF recovery after covered-stream pruning all passed.
+
+The journal fault uses a directory at the rename destination, not an actual full/read-only filesystem. The archive decompression-limit test uses a small injected bound; production uses 95MiB. Historical performance/RSS figures above were measured on the earlier implementation and are not relabeled as measurements of replay-archive overhead. Final large fixtures passed but were not separately profiled for release latency/RSS.

@@ -1,6 +1,6 @@
 # Changed files
 
-Worktree root: `/Users/wrangler/.codex/worktrees/google-drive-sync/Nevis`. Paths below are relative to this root. Includes implementation, supplied plan, reports and observed validation evidence; original checkout edits are outside this worktree.
+Worktree root: `/Users/wrangler/.codex/worktrees/google-drive-sync/Nevis`. Includes the implementation and follow-up corrections since merge e140ce7. No original-checkout edits are included.
 
 - `docs/sync/drive/ARCHITECTURE.md`
 - `docs/sync/drive/CHANGED_FILES.md`
@@ -17,6 +17,7 @@ Worktree root: `/Users/wrangler/.codex/worktrees/google-drive-sync/Nevis`. Paths
 - `docs/sync/drive/TEST_MATRIX.md`
 - `docs/sync/drive/TEST_RESULTS.md`
 - `docs/sync/drive/TROUBLESHOOTING.md`
+- `docs/sync/drive/validation/README.md`
 - `docs/sync/drive/validation/RESULTS.json`
 - `docs/sync/drive/validation/UI_SMOKE.md`
 - `docs/sync/drive/validation/drive-regressions.txt`
@@ -27,13 +28,20 @@ Worktree root: `/Users/wrangler/.codex/worktrees/google-drive-sync/Nevis`. Paths
 - `docs/sync/drive/validation/javascript-updates.txt`
 - `docs/sync/drive/validation/lint.txt`
 - `docs/sync/drive/validation/media-memory.txt`
+- `docs/sync/drive/validation/native-build.txt`
+- `docs/sync/drive/validation/root-regressions.txt`
 - `docs/sync/drive/validation/rust-tests.txt`
+- `docs/sync/drive/validation/schedule-regressions.txt`
+- `scripts/build-drive-preview.mjs`
 - `scripts/drive-test-report.py`
+- `spike/tiptap/package.json`
 - `spike/tiptap/src-tauri/Cargo.lock`
 - `spike/tiptap/src-tauri/Cargo.toml`
 - `spike/tiptap/src-tauri/build.rs`
 - `spike/tiptap/src-tauri/google-oauth.public.example.json`
+- `spike/tiptap/src-tauri/google-oauth.public.json`
 - `spike/tiptap/src-tauri/src/database/mod.rs`
+- `spike/tiptap/src-tauri/src/google_build_config.rs`
 - `spike/tiptap/src-tauri/src/main.rs`
 - `spike/tiptap/src-tauri/src/sync/drive/auth.rs`
 - `spike/tiptap/src-tauri/src/sync/drive/checkpoint.rs`
@@ -41,8 +49,12 @@ Worktree root: `/Users/wrangler/.codex/worktrees/google-drive-sync/Nevis`. Paths
 - `spike/tiptap/src-tauri/src/sync/drive/database.rs`
 - `spike/tiptap/src-tauri/src/sync/drive/diagnostics.rs`
 - `spike/tiptap/src-tauri/src/sync/drive/gc.rs`
+- `spike/tiptap/src-tauri/src/sync/drive/history.rs`
 - `spike/tiptap/src-tauri/src/sync/drive/mod.rs`
 - `spike/tiptap/src-tauri/src/sync/drive/onboarding.rs`
+- `spike/tiptap/src-tauri/src/sync/drive/relation_conflicts.rs`
+- `spike/tiptap/src-tauri/src/sync/drive/roots.rs`
+- `spike/tiptap/src-tauri/src/sync/drive/schedule.rs`
 - `spike/tiptap/src-tauri/src/sync/drive/settings.rs`
 - `spike/tiptap/src-tauri/src/sync/drive/stable.rs`
 - `spike/tiptap/src-tauri/src/sync/drive/streaming.rs`
@@ -73,6 +85,3 @@ Worktree root: `/Users/wrangler/.codex/worktrees/google-drive-sync/Nevis`. Paths
 - `spike/tiptap/src/vaultErrors.ts`
 - `spike/tiptap/tests/drive-block-ids.test.mjs`
 - `spike/tiptap/tests/drive-settings-policy.test.mjs`
-
-- `docs/sync/drive/validation/native-build.txt`
-- `docs/sync/drive/validation/README.md`
