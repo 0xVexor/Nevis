@@ -630,10 +630,13 @@ fn account_status(s: St) -> Value {
     let sync_on = lock_vault(&s).ok().and_then(|g| g.as_ref().map(|v| v.id())).and_then(|id| s.reg.lock().ok()?.find(&id).map(|e| e.sync)).unwrap_or(false);
     let git = lock_vault(&s).ok().and_then(|g|g.as_ref().map(|v|github::enabled(&s.app_data,&v.id()))).unwrap_or(false);
     let drive_on = lock_vault(&s).ok().and_then(|g|g.as_ref().map(|v|drive::enabled(&s.app_data,&v.id()))).unwrap_or(false);
+    let google_status=if drive::feature_enabled() || drive_on {drive::auth::status()}else{json!({"signedIn":false})};
+    let drive_startup=drive::feature_enabled() && current_entry(&s).is_none() && acct.is_none() && google_status["signedIn"]==true;
+    let google=drive_on || drive_startup;
     json!({
-        "provider": if drive_on { "drive" } else if git { "github" } else { "legacy" },
-        "signedIn": if drive_on { drive::auth::status()["signedIn"] == true } else if git { true } else { acct.is_some() },
-        "username": acct.as_ref().map(|a| a.username.clone()),
+        "provider": if google { "drive" } else if git { "github" } else { "legacy" },
+        "signedIn": if google { google_status["signedIn"] == true } else if git { true } else { acct.is_some() },
+        "username": if google { google_status["email"].clone() } else { json!(acct.as_ref().map(|a| a.username.clone())) },
         "server": acct.as_ref().map_or_else(|| account::DEFAULT_SERVER.to_string(), |a| a.server.clone()),
         "defaultServer": account::DEFAULT_SERVER,
         "syncOn": sync_on,
@@ -767,6 +770,7 @@ fn sync_confirm(s: St) -> Res<()> {
 /// The cloud copy of a vault goes to the server's trash (30 days); the vault on this device stays and its sync is turned off here.
 #[tauri::command]
 async fn cloud_delete(s: St<'_>, id: String) -> Res<()> {
+    if drive::enabled(&s.app_data,&id)||github::enabled(&s.app_data,&id){return Err("SYNC:provider_mismatch".into());}
     {
         let mut r = s.reg.lock().map_err(err)?;
         if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
@@ -791,6 +795,7 @@ async fn cloud_delete(s: St<'_>, id: String) -> Res<()> {
 /// The cloud copy is gone but the vault here is kept: sync it again as a new cloud copy (everything is uploaded, nothing is deleted).
 #[tauri::command]
 fn cloud_reupload(s: St, id: String) -> Res<()> {
+    if drive::enabled(&s.app_data,&id)||github::enabled(&s.app_data,&id){return Err("SYNC:provider_mismatch".into());}
     let _ = std::fs::remove_file(state_file(&s.app_data, &id));
     let mut r = s.reg.lock().map_err(err)?;
     if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
@@ -1275,6 +1280,54 @@ fn run_drive(ctx:&SyncCtx,e:&Entry,automatic:bool)->Res<()> {
     if let Ok(mut st)=ctx.status.lock(){match &result{Ok(n)=>{st.state=if *n>0{"paused"}else if pending || ctx.local_generation.load(Ordering::SeqCst)!=generation{"pending"}else{"idle"};st.reason=if *n>0{"CONFLICTS"}else{""}.into();st.last_at=now_ms();},Err(e)=>{st.state=if e=="DRIVE:network"{"offline"}else if e=="DRIVE:paused"{"paused"}else{"error"};st.reason="DRIVE".into();st.error=e.clone();}}}
     if result.is_ok(){let _=app.emit("vault-changed",e.id.clone());}result.map(|_|())
 }
+// Caller holds the provider operation mutex. New and existing workspaces share
+// the backup, remote identity, migration and single-writer fencing path.
+fn connect_drive_workspace(s: &St, app: &AppHandle, data: &Path, id: &str) -> Res<Value> {
+    if drive::enabled(data, id) {
+        return Err("DRIVE:already_connected".into());
+    }
+    // A pending GitHub publish cannot be silently abandoned during provider switching.
+    let github_dir = data.join("github").join(id);
+    if github_dir.exists() {
+        for e in std::fs::read_dir(&github_dir).map_err(err)?.flatten() {
+            if e.path().join("pending.json").exists() {
+                return Err("DRIVE:github_pending_publish".into());
+            }
+        }
+    }
+    let backup = data
+        .join("drive/backups")
+        .join(format!("{id}-{}", now_ms()));
+    let name = with(s, |v| {
+        database::recover(&v.root)?;
+        snapshot::backup(v, &backup)?;
+        Ok(v.name())
+    })?;
+    let mut b = drive::prepare(data, id, &name, None)?;
+    b.backup = backup.to_string_lossy().into();
+    // External setup succeeds before fencing. Persist recovery evidence before changing format.
+    vault::write_atomic(
+        &drive::dir(data, id).join("provider-switch.json"),
+        &serde_json::to_vec(&b).map_err(err)?,
+    )?;
+    with(s, |v| {
+        drive::stable::migrate(v)?;
+        drive::database::migrate_allocators(v)?;
+        v.fence_drive()
+    })?;
+    // Keep old binding archived; Drive becomes the sole active writer under the same operation mutex.
+    github::detach(data, id)?;
+    drive::save_binding(data, &b)?;
+    let _ = app.emit("vault-changed", id);
+    let mut reg = s.reg.lock().map_err(err)?;
+    if let Some(e) = reg.vaults.iter_mut().find(|e| e.id == id) {
+        e.sync = true;
+    }
+    reg.save(data)?;
+    drop(reg);
+    kick_as(s, Kick::User);
+    Ok(json!({"backup":b.backup}))
+}
 #[tauri::command]
 async fn drive_action(s:St<'_>,app:AppHandle,action:String,args:Value)->Res<Value>{
     let data=s.app_data.clone();
@@ -1294,20 +1347,16 @@ async fn drive_action(s:St<'_>,app:AppHandle,action:String,args:Value)->Res<Valu
             "roots"=>drive::roots::list(&data),
             "view-root"=>{drive::roots::open(args["id"].as_str().ok_or("DRIVE:missing_root")?)?;Ok(Value::Null)},
             "select-root"=>drive::roots::select(&data,args["id"].as_str().ok_or("DRIVE:missing_root")?),
-            "connect"=>{
-                if drive::enabled(&data,&id){return Err("DRIVE:already_connected".into());}
-                // A pending GitHub publish cannot be silently abandoned during provider switching.
-                let github_dir=data.join("github").join(&id);
-                if github_dir.exists(){for e in std::fs::read_dir(&github_dir).map_err(err)?.flatten(){if e.path().join("pending.json").exists(){return Err("DRIVE:github_pending_publish".into());}}}
-                let backup=data.join("drive/backups").join(format!("{id}-{}",now_ms()));
-                let name=with(&s,|v|{database::recover(&v.root)?;snapshot::backup(v,&backup)?;Ok(v.name())})?;
-                let mut b=drive::prepare(&data,&id,&name,None)?;b.backup=backup.to_string_lossy().into();
-                // External setup succeeds before fencing. Persist recovery evidence before changing format.
-                vault::write_atomic(&drive::dir(&data,&id).join("provider-switch.json"),&serde_json::to_vec(&b).map_err(err)?)?;
-                with(&s,|v|{drive::stable::migrate(v)?;drive::database::migrate_allocators(v)?;v.fence_drive()})?;
-                // Keep old binding archived; Drive becomes the sole active writer under the same operation mutex.
-                github::detach(&data,&id)?;drive::save_binding(&data,&b)?;let _=app.emit("vault-changed",id.clone());
-                let mut reg=s.reg.lock().map_err(err)?;if let Some(e)=reg.vaults.iter_mut().find(|e|e.id==id){e.sync=true;}reg.save(&data)?;drop(reg);kick_as(&s,Kick::User);Ok(json!({"backup":b.backup}))
+            "connect"=>connect_drive_workspace(&s,&app,&data,&id),
+            "create"=>{
+                if current_entry(&s).is_some(){return Err("DRIVE:workspace_already_open".into());}
+                drive::auth::subject()?;
+                let parent=PathBuf::from(args["parent"].as_str().ok_or("DRIVE:missing_parent")?);
+                let name=clean_name(args["name"].as_str().unwrap_or("My notes"))?;
+                // Keep a failed cloud setup available locally; never enable legacy auto-sync.
+                drive::onboarding::create_and_connect(&parent,&name,
+                    |id,path|activate(&s,&Entry{id:id.into(),name:name.clone(),path:path.to_string_lossy().into_owned(),sync:false},false),
+                    |id|connect_drive_workspace(&s,&app,&data,id))
             },
             "settings-policy"=>{if !drive::enabled(&data,&id){return Err("DRIVE:not_connected".into());}let key=args["key"].as_str().ok_or("DRIVE:settings_policy_unknown_key")?;let scope:drive::settings::Scope=serde_json::from_value(args["scope"].clone()).map_err(|_|"DRIVE:settings_policy_invalid")?;with(&s,|v|drive::settings::set(v,key,scope))?;kick(&s);Ok(Value::Null)},
             "pause"=>{let mut b=drive::binding(&data,&id)?.ok_or("DRIVE:not_connected")?;b.paused=args["paused"].as_bool().unwrap_or(true);drive::save_binding(&data,&b)?;if !b.paused{let path=drive::dir(&data,&id).join("pause-request");match std::fs::remove_file(path){Ok(())=>(),Err(e)if e.kind()==std::io::ErrorKind::NotFound=>(),Err(e)=>return Err(err(e))}}kick_as(&s,Kick::User);Ok(Value::Null)},
@@ -1322,6 +1371,8 @@ async fn drive_action(s:St<'_>,app:AppHandle,action:String,args:Value)->Res<Valu
             "download"=>{
                 let remote_id=vault::check_id(args["id"].as_str().ok_or("DRIVE:missing_vault")?)?;
                 if s.reg.lock().map_err(err)?.find(remote_id).is_some(){return Err("DRIVE:vault_already_registered".into());}
+                let existing_state=drive::dir(&data,remote_id);
+                if existing_state.join("journal.json").exists() && !existing_state.join("download.json").exists(){return Err("DRIVE:existing_local_sync_state".into());}
                 let parent=PathBuf::from(args["parent"].as_str().ok_or("DRIVE:missing_parent")?);if !parent.is_absolute()||!parent.is_dir(){return Err("DRIVE:invalid_parent".into());}
                 let name=clean_name(args["name"].as_str().unwrap_or("My notes"))?;
                 let b=drive::prepare(&data,remote_id,&name,Some(args["folderId"].as_str().ok_or("DRIVE:missing_folder")?))?;

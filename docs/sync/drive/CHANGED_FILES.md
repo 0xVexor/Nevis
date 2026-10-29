@@ -92,3 +92,13 @@ Worktree root: `/Users/wrangler/.codex/worktrees/google-drive-sync/Nevis`. Inclu
 - `docs/sync/drive/validation/publisher-config-tests.txt`
 
 - `docs/sync/drive/validation/publisher-package-check.txt`
+
+- `spike/tiptap/src/workspaceCloud.ts`
+- `spike/tiptap/src/VaultPicker.tsx`
+- `spike/tiptap/tests/drive-workspace-startup.test.mjs`
+- `docs/sync/drive/validation/startup-native-suite.txt`
+- `docs/sync/drive/validation/startup-workflow-tests.txt`
+- `docs/sync/drive/validation/startup-binding-tests.txt`
+
+- `spike/tiptap/src/Vaults.tsx`
+- `docs/sync/drive/validation/startup-live-summary.json`

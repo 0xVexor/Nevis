@@ -7,12 +7,12 @@
 | Full corrected native suite | PASS | 198 passed, 0 failed, 11 ignored; 132.65s |
 | Final durable exponential quota-backoff regression | PASS | 5 schedule tests, including 1 new test, after the full suite |
 | Final root-display hardening regression | PASS | 3 root tests |
-| Unique native results across final logs | PASS | 203 passed, 0 failed, 11 ignored; 97 Drive tests, no ignored Drive tests |
-| `npm run test:layout` | PASS | 43 passed, including editor identity and settings policy |
+| Unique native results across final logs | PASS | 206 passed, 0 failed, 11 ignored; 100 Drive tests, no ignored Drive tests |
+| `npm run test:layout` | PASS | 47 passed, including editor identity and settings policy |
 | `npm run test:db` | PASS | 173 passed |
 | `npm run test:direction` | PASS | 4 passed |
 | `npm run test:updates` | PASS | 7 passed |
-| Unique JS total | PASS | 227 passed, 0 failed |
+| Unique JS total | PASS | 231 passed, 0 failed |
 | `npm run build` / native beforeBuild | PASS | TypeScript and Vite, warnings retained |
 | `npm run lint` | PASS with warnings | 236 warnings, zero errors |
 | New Rust modules rustfmt / git diff whitespace | PASS | Check output retained in validation |
@@ -86,3 +86,19 @@ User reported successful real sign-in using the prior developer-configured Previ
 The publisher-build GUI smoke encountered an OS Keychain read that did not complete. A process sample showed repeated status jobs blocked inside SecKeychainFindGenericPassword. Status was changed to one asynchronous read with a generation-protected identity cache; a regression covers single-flight and stale read completion after logout. Native auth tests: 7/7. Final GUI completion/retained-session validation is still pending; neither OS permissions nor release signing was bypassed. The build/configuration fix does not claim those gates passed.
 
 Later in the publisher-build GUI smoke, the Keychain read completed: the previously signed-in identity and Reconnect Google were visible, with no Secret or JSON setup controls. No Vault was open. This verifies a basic stored-account reload and the normal customer UI in that build; it does not verify automatic token refresh or two-device transfer. The following single-flight status change has unit regression coverage; no full connected GUI certification is claimed.
+
+## Workspace startup integration
+
+Native regression suite excluding the two unchanged heavy fixtures: 202 passed, 0 failed, 11 ignored, 2 filtered, 30.40s. Final onboarding subset: 3 passed. Resume binding account/folder guard: 1 passed. Combined unique observed native results, retaining the prior heavy-fixture evidence: **206 passed, 0 failed, 11 ignored; 100 Drive passes**. Layout/editor/controller suite: **46 passed**, with three new routing/cancellation/failure tests; latest combined JS evidence is **231 passes** (DB/direction/updates were unchanged and not rerun in this localized startup correction). Build and lint passed.
+
+New native assertions cover new-folder allocation without overwriting unrelated files, activation before remote connection, local retention when cloud setup fails, no remote mutation if local registration fails, and resume refusal for a different Google subject/folder. Controller tests cover actual provider command routing, preserved remote folder ID, cancelled folder choice with no create call, and no success result after a cloud error. Legacy commands are unchanged in the routing test. Live cloud create/download in the new GUI remains pending OS Keychain completion; no such success is claimed.
+
+## Final startup validation and user-driven live success
+
+Final native suite: **204 passed, 0 failed, 11 ignored, 2 unchanged heavy fixtures filtered**, 29.59s. Retaining their prior full-suite results gives **206 unique native passes; 100 Drive passes**. All JS suites reran after the final UI changes: **47 layout/controller + 173 database + 4 direction + 7 updates = 231 passes, 0 failures**. Build/lint passed. The receipt regression now also rejects a lost completed target or missing partially downloaded stage instead of silently creating an empty local input.
+
+After the user authorized Keychain, the editor opened My notes and UI showed Synced. App-data inspection, with only counts/booleans retained, found a saved Drive binding/provider-switch receipt, one baseline page, two retained batches, zero outbox entries and a saved checkpoint. This is real user-driven create/connect/open/first-publication evidence, not a second-device download or long-duration refresh test. No actual user note was edited by automation.
+
+The Workspaces dialog now uses the same provider-aware list/download helpers as startup. Legacy cloud-delete/everywhere actions are hidden for Drive, and legacy native cloud-delete/reupload reject Drive/GitHub binding IDs before mutation. Drive New workspace routes through the safe picker; existing editor/repo/preferences flush before switching. Cloud retention/deletion remains unavailable rather than falling through to the old server.
+
+The final extra controller assertion covers safe switching: drain editor/repo/preferences before activation, freeze writes during the change, thaw only after a failed native action, and never resume the old editor after a successful activation. It is used by both Drive account and Workspaces switching paths. Layout/controller total is now 47.

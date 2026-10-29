@@ -1,5 +1,29 @@
 // English → Persian UI strings (see i18n.ts). Generated once from the original Persian UI, edit freely.
 export const FA: Record<string, string> = {
+  "Existing sync history was preserved. Locate the original local folder or restore a history copy before reconnecting.": "تاریخچهٔ همگام‌سازی قبلی حفظ شد. پوشهٔ اصلی را مشخص کنید یا پیش از اتصال دوباره، یک کپی از تاریخچه بازیابی کنید.",
+  "The downloaded workspace folder is missing. Locate or restore it; no empty replacement was created.": "پوشهٔ فضای کاری دریافت‌شده پیدا نشد. آن را مشخص یا بازیابی کنید؛ پوشهٔ خالی جایگزین ساخته نشده است.",
+  "The interrupted download folder is missing. Recovery stopped to protect the cloud workspace.": "پوشهٔ دانلود نیمه‌تمام پیدا نشد. برای محافظت از فضای کاری ابری، بازیابی متوقف شد.",
+
+  "Manage Google Drive sync": "مدیریت همگام‌سازی گوگل درایو",
+
+  "Create a local-only workspace": "ساخت فضای کاری فقط روی این کامپیوتر",
+
+  "This workspace is already on this computer. Open or locate its local folder instead.": "این فضای کاری روی این کامپیوتر ثبت شده است. پوشهٔ محلی آن را باز کنید یا مکانش را مشخص کنید.",
+
+  "Create a workspace in Google Drive": "ساخت فضای کاری در گوگل درایو",
+  "Your workspace stays available offline on this computer and syncs with Google Drive.": "فضای کاری روی این کامپیوتر آفلاین در دسترس است و با گوگل درایو همگام می‌شود.",
+  "Workspace name": "نام فضای کاری",
+  "Choose where to keep this workspace on this computer": "محل نگهداری فضای کاری روی این کامپیوتر را انتخاب کنید",
+  "Create and open workspace": "ساخت و باز کردن فضای کاری",
+  "Open workspace": "باز کردن فضای کاری",
+  "Your workspaces in Google Drive": "فضاهای کاری شما در گوگل درایو",
+  "Finding your workspaces…": "در حال پیدا کردن فضاهای کاری…",
+  "No workspaces found in Google Drive. Create your first workspace above.": "فضای کاری‌ای در گوگل درایو پیدا نشد. می‌توانید اولین فضای کاری خود را بسازید.",
+  "Download and open workspace": "دریافت و باز کردن فضای کاری",
+  "Open or create a local workspace": "ساخت یا باز کردن فضای کاری محلی",
+  "A folder with this name already exists. Choose another name or location; nothing was overwritten.": "پوشه‌ای با این نام وجود دارد. نام یا محل دیگری انتخاب کنید؛ چیزی بازنویسی نشده است.",
+  "Open the current workspace or close it before creating another one.": "فضای کاری فعلی را باز کنید یا پیش از ساخت فضای کاری تازه آن را ببندید.",
+
   "Checking secure account storage…": "در حال بررسی مخزن امن حساب…",
 
   "Google sign-in is unavailable in this build. Please install an updated version.": "ورود با گوگل در این نسخه در دسترس نیست. لطفاً نسخهٔ به‌روز برنامه را نصب کنید.",

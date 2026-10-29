@@ -13,6 +13,8 @@ Branch `feature/drive-sync`; isolated worktree, dev 45069f2 integrated with GitH
 | 4 Merge/integration | page-wide block identities/moves/ancestor recovery, full archives/causal choices/Keep both, DB refs/allocator migration, per-setting policy; exhaustive business graphs and connected UI incomplete |
 | 5 Checkpoint/history/GC | dominating seed with verified compressed replay inputs + tail, stale offline merge/rebootstrap, retained dependency objects, history copy; reproducible GC assessment/deferred execute/recovery; destructive retention/quarantine intentionally unavailable |
 | 6 UI/routing | single provider writer, lifetime Vault lock/fence, descriptors, lifecycle, 90s publication throttle, status/policy/diagnostics, boot IDs before render; verified-root selection implemented; Picker permission repair and full connected GUI unverified |
-| 7 Verification | 203 unique Rust passes, 11 old ignored; 227 JS passes; build/lint/macOS debug packaging; 46/104 mapped synthetic acceptance PASS, 58 NOT_RUN |
+| 7 Verification | 206 unique Rust passes, 11 old ignored; 231 JS passes; build/lint/macOS debug packaging; 46/104 mapped synthetic acceptance PASS, 58 NOT_RUN |
 
 The streaming media fixture now transfers 128MiB through capture/cold restore with approximately 15.3MiB maximum RSS in an isolated debug test process. This does not prove Google/Windows performance or a 1000-large-file workload. Full details, corrected failures and remaining gates are in EXECUTION_REPORT.md and TEST_RESULTS.md.
+
+Startup now supports create/connect/open and discover/download/open, with provider-aware picker routing and safe local retention on cloud failure. User-driven real create/connect/open and first sync/checkpoint succeeded after Keychain permission; second-device download remains pending.

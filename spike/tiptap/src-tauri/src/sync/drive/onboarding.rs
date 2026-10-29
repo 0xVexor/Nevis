@@ -79,6 +79,14 @@ pub fn install(
         owned(&v, &r.token)?;
         return Ok(r.target);
     }
+    if !r.stage.exists() && (r.complete || state.join("journal.json").exists()) {
+        return Err(if r.complete {
+            "DRIVE:download_target_missing"
+        } else {
+            "DRIVE:download_stage_missing"
+        }
+        .into());
+    }
     let v = if r.stage.exists() {
         Vault::open_as(r.stage.clone(), &r.vault)?
     } else {
@@ -160,6 +168,148 @@ mod tests {
             install(&root.join("other"), &b, &root, "Notes", |_| Ok(())).unwrap_err(),
             "DRIVE:target_exists"
         );
+        fs::remove_dir_all(&target).unwrap();
+        assert_eq!(
+            install(&state, &b, &root, "Notes", |_| panic!(
+                "missing completed target must never be replaced by an empty vault"
+            ))
+            .unwrap_err(),
+            "DRIVE:download_target_missing"
+        );
+        assert!(!target.exists());
+        let lost_state = root.join("lost-state");
+        assert_eq!(
+            install(&lost_state, &b, &root, "Lost", |_| {
+                write_atomic(&lost_state.join("journal.json"), b"{}")?;
+                Err("DRIVE:network".into())
+            })
+            .unwrap_err(),
+            "DRIVE:network"
+        );
+        let lost: Receipt =
+            serde_json::from_slice(&fs::read(lost_state.join("download.json")).unwrap()).unwrap();
+        fs::remove_dir_all(&lost.stage).unwrap();
+        assert_eq!(
+            install(&lost_state, &b, &root, "Lost", |_| panic!(
+                "lost stage must not become local deletion input"
+            ))
+            .unwrap_err(),
+            "DRIVE:download_stage_missing"
+        );
+        assert!(!lost.stage.exists());
         fs::remove_dir_all(root).unwrap();
+    }
+}
+
+/// Allocate only a new user-selected local folder. Existing folders, even empty
+/// ones, are never adopted or overwritten by the Drive create flow.
+pub fn create_local(parent: &std::path::Path, name: &str) -> Res<crate::vault::Vault> {
+    use std::path::Component;
+    if !parent.is_absolute() || !parent.is_dir() {
+        return Err("DRIVE:invalid_parent".into());
+    }
+    let mut parts = std::path::Path::new(name).components();
+    if !matches!(parts.next(), Some(Component::Normal(_)))
+        || parts.next().is_some()
+        || name
+            .chars()
+            .any(|c| c.is_control() || "<>:\"/\\|?*".contains(c))
+    {
+        return Err("DRIVE:invalid_workspace_name".into());
+    }
+    let target = parent.join(name);
+    match std::fs::create_dir(&target) {
+        Ok(()) => crate::vault::Vault::create(target, name),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            Err("DRIVE:target_exists".into())
+        }
+        Err(error) => Err(crate::vault::err(error)),
+    }
+}
+/// Publish only after local registration succeeds. A cloud error leaves the new
+/// local workspace intact and registered for explicit retry/opening.
+pub fn create_and_connect(
+    parent: &std::path::Path,
+    name: &str,
+    activate: impl FnOnce(&str, &std::path::Path) -> Res<()>,
+    connect: impl FnOnce(&str) -> Res<serde_json::Value>,
+) -> Res<serde_json::Value> {
+    let vault = create_local(parent, name)?;
+    let id = vault.id();
+    let path = vault.root.clone();
+    drop(vault);
+    activate(&id, &path)?;
+    connect(&id)
+}
+#[cfg(test)]
+mod create_tests {
+    use super::*;
+    #[test]
+    fn cloud_setup_failure_keeps_registered_local_workspace_and_never_claims_success() {
+        use std::cell::RefCell;
+        let root = std::env::temp_dir().join(format!("nevis-drive-flow-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let registered = RefCell::new(None);
+        let result = create_and_connect(
+            &root,
+            "Offline",
+            |id, path| {
+                assert!(path.join(".noviq/vault.json").exists());
+                *registered.borrow_mut() = Some(id.to_string());
+                Ok(())
+            },
+            |id| {
+                assert_eq!(registered.borrow().as_deref(), Some(id));
+                Err("DRIVE:network".into())
+            },
+        );
+        assert_eq!(result.unwrap_err(), "DRIVE:network");
+        let local = crate::vault::Vault::open(root.join("Offline")).unwrap();
+        assert_eq!(registered.borrow().as_deref(), Some(local.id().as_str()));
+        assert_eq!(local.name(), "Offline");
+        drop(local);
+        let result = create_and_connect(
+            &root,
+            "Registration failed",
+            |_, _| Err("LOCAL:write_failed".into()),
+            |_| panic!("cloud must not be contacted before registration"),
+        );
+        assert_eq!(result.unwrap_err(), "LOCAL:write_failed");
+        assert!(root.join("Registration failed/.noviq/vault.json").exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn new_drive_workspace_preserves_existing_targets_and_has_its_own_identity() {
+        let root =
+            std::env::temp_dir().join(format!("nevis-drive-create-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let a = create_local(&root, "First").unwrap();
+        let b = create_local(&root, "Second").unwrap();
+        assert_ne!(a.id(), b.id());
+        assert_eq!(a.name(), "First");
+        assert_eq!(
+            create_local(&root, "First").err().unwrap(),
+            "DRIVE:target_exists"
+        );
+        let unrelated = root.join("Unrelated");
+        std::fs::create_dir(&unrelated).unwrap();
+        std::fs::write(unrelated.join("keep.txt"), b"keep").unwrap();
+        assert_eq!(
+            create_local(&root, "Unrelated").err().unwrap(),
+            "DRIVE:target_exists"
+        );
+        assert_eq!(std::fs::read(unrelated.join("keep.txt")).unwrap(), b"keep");
+        for name in ["../outside", "", ".", "/absolute", "nested/name"] {
+            assert!(create_local(&root, name).is_err());
+        }
+        assert_eq!(
+            create_local(std::path::Path::new("relative"), "Vault")
+                .err()
+                .unwrap(),
+            "DRIVE:invalid_parent"
+        );
+        drop(a);
+        drop(b);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
