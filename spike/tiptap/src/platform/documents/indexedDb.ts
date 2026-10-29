@@ -1,3 +1,5 @@
+import { verifyDocumentAssets } from '../../documents/assets.ts'
+import type { DocumentAsset, AssetDigest } from '../../documents/assets.ts'
 import type { DocumentAdmission } from '../../documents/admission.ts'
 import type { Page } from '../../documents/model.ts'
 import type { DocumentStorage, DocumentVersion, DocumentWrite } from '../../documents/ports.ts'
@@ -24,17 +26,20 @@ export class IndexedDbDocumentStorage implements DocumentStorage {
   readonly vaultHandle: string
   private readonly open: () => Promise<IDBDatabase>
   private readonly active: () => boolean
+  private readonly assetStorage?: { digest: AssetDigest; write(assets: (DocumentAsset & { bytes: Uint8Array })[], addedAt: number): Promise<void> }
   private readonly changed: () => void
   constructor(
     vaultHandle: string,
     open: () => Promise<IDBDatabase>,
     active: () => boolean = () => true,
     changed: () => void = () => {},
+    assetStorage?: { digest: AssetDigest; write(assets: (DocumentAsset & { bytes: Uint8Array })[], addedAt: number): Promise<void> },
   ) {
     this.vaultHandle = vaultHandle
     this.open = open
     this.active = active
     this.changed = changed
+    this.assetStorage = assetStorage
     if (!vaultHandle) throw new Error('A fixed document vault handle is required')
   }
   private async database() {
@@ -82,6 +87,19 @@ export class IndexedDbDocumentStorage implements DocumentStorage {
   async commitOperationResult(input: DocumentOperationRecord, admission?: DocumentAdmission) {
     const record = cloneDocumentValue(input)
     validateOperationRecord(record)
+    if (record.assets) {
+      if (!this.assetStorage) throw new Error('Document attachment storage is unavailable')
+      const assets = await verifyDocumentAssets(record.assets, this.assetStorage.digest)
+      const prior = matchOperation(await this.findOperation(record.scopeId, record.operationId), record.fingerprint)
+      if (prior) return { receipt: prior.receipt, replayed: true }
+      const pages = await this.load()
+      if (canonicalDocumentValue(pages.find(page => page.id === record.after.id) ?? null) !== canonicalDocumentValue(record.before)) throw new Error('Document revision conflict')
+      admission?.check(pages, record)
+      if (!this.active()) throw new Error('Document storage is unavailable')
+      // Attachments are immutable. A later page conflict can leave only an orphan,
+      // reclaimed by the existing grace-period GC; a page never points at an unflushed file.
+      await this.assetStorage.write(assets, record.receipt.committedAt)
+    }
     const key = `document-operation/${operationKey(record.scopeId, record.operationId)}`
     // The private kv entry is never included in page backups or database exports.
     const tx = (await this.database()).transaction(['pages', 'kv', ...(record.history ? ['versions'] : [])], 'readwrite', { durability: 'strict' })

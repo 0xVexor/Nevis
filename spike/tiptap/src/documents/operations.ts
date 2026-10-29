@@ -1,3 +1,5 @@
+import { decodeDocumentAsset } from './assets.ts'
+import type { DocumentAsset } from './assets.ts'
 import type { Page } from './model.ts'
 import { canonicalDocumentValue } from './revision.ts'
 import type { SavedEditEvidence } from './savedEdit.ts'
@@ -24,6 +26,7 @@ export interface DocumentOperationReceipt {
 }
 export interface DocumentOperationRecord {
   format: 1
+  assets?: DocumentAsset[]
   scopeId: string
   operationId: string
   fingerprint: string
@@ -58,6 +61,13 @@ export function matchOperation(record: DocumentOperationRecord | null, fingerpri
 /** Defend adapters too: malformed internal inputs must never produce split identities. */
 export function validateOperationRecord(record: DocumentOperationRecord) {
   operationKey(record.scopeId, record.operationId)
+  if (record.assets !== undefined) {
+    if (!Array.isArray(record.assets) || !record.assets.length || record.assets.length > 20 || new Set(record.assets.map(asset => asset.id)).size !== record.assets.length) throw new Error('Invalid document assets')
+    let bytes = 0
+    for (const asset of record.assets) {
+      if (!asset || Object.keys(asset).sort().join(',') !== 'data,id,mimeType,name' || !/^[a-f0-9]{64}$/.test(asset.id) || (bytes += decodeDocumentAsset(asset).length) > 196608) throw new Error('Invalid document assets')
+    }
+  }
   if (record.format !== 1 || !/^[A-Za-z0-9_-]{1,80}$/.test(record.after?.id)
     || (record.before !== null && record.before?.id !== record.after.id)
     || record.receipt?.documentId !== record.after.id || record.receipt?.operationId !== record.operationId

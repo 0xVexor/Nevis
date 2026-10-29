@@ -345,6 +345,9 @@ impl Host {
         let mut available_resources: std::collections::HashSet<_> = pages.iter()
             .filter(|(id, page)| page["deletedAt"].is_null() && can_read(id))
             .flat_map(|(_, page)| resources(page)).collect();
+        if let Some(assets) = record["assets"].as_array() {
+            available_resources.extend(assets.iter().filter_map(|asset| asset["id"].as_str()).map(|id| format!("attachment:{id}")));
+        }
         if let Some(operation) = record["undoOf"].as_str() {
             if let Some(origin) = crate::document_operations::find_locked(root, &connection.grant_id, operation)? {
                 if origin["scopeId"] == connection.grant_id && origin["after"]["id"] == after["id"]

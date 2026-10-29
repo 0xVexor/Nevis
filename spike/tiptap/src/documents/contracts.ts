@@ -72,9 +72,10 @@ const location = union(
 const inserted = obj({ temporaryId: id, node })
 const targetRange = obj({ from: editRef, through: editRef })
 const tableCell = obj({ kind: choice('cell', 'header'), blocks: array(inserted, 100, 1) })
+const assets = array(obj({ temporaryId: id, mimeType: choice('image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/vnd.excalidraw+json'), name: str(256, 0), data: str(262144) }), 20, 1)
 const operations = array(union(
-  obj({ kind: literal('insert_blocks'), at: location, blocks: array(inserted, 100, 1) }),
-  obj({ kind: literal('replace_blocks'), target: targetRange, blocks: array(inserted, 100, 1) }),
+  obj({ kind: literal('insert_blocks'), at: location, blocks: array(inserted, 100, 1), assets }, ['kind', 'at', 'blocks']),
+  obj({ kind: literal('replace_blocks'), target: targetRange, blocks: array(inserted, 100, 1), assets }, ['kind', 'target', 'blocks']),
   obj({ kind: literal('move_blocks'), target: targetRange, at: location }),
   obj({ kind: literal('delete_blocks'), target: targetRange }),
   obj({ kind: literal('set_attributes'), target: editRef,
@@ -125,7 +126,7 @@ export const documentToolContracts = Object.freeze({
       obj({ kind: literal('section'), headingBlockId: id }), obj({ kind: literal('blocks'), blockIds: array(id, 100, 1) })),
     format: choice('markdown', 'structured', 'both'), budget, cursor,
   }, ['documentId', 'target', 'format']), readResult),
-  create_document: tool(obj({ operationId: id, parentId: nullable(id), kind: choice('page', 'folder', 'board', 'todo'), metadata, content }), saved),
+  create_document: tool(obj({ operationId: id, parentId: nullable(id), kind: choice('page', 'folder', 'board', 'todo'), metadata, content, assets }, ['operationId', 'parentId', 'kind', 'metadata', 'content']), saved),
   edit_document: tool(obj({ ...write, mode: choice('preview', 'apply'), operations, budget },
     [...Object.keys(write), 'mode', 'operations']), union(
     obj({ mode: literal('preview'), documentId: id, baseRevision: revision, persisted: literal(false),

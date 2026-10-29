@@ -1,3 +1,5 @@
+import { ASSET_LIMIT, decodeDocumentAsset, prepareDocumentAssets } from './assets.ts'
+import type { AssetUpload, DocumentAsset, AssetDigest } from './assets.ts'
 import { EDITOR_BLOCKS, EDITOR_INLINES, EDITOR_MARKS, EDITOR_ATTRIBUTES, editorAttributesValid, editorMarkValid, safeImage } from './editorProfile.ts'
 import { tableGrid } from './tableEdits.ts'
 import { BLOCK_TYPES, BLOCK_IDENTITY_VERSION, identityVersion, isBlockId } from './blockIdentity.ts'
@@ -15,8 +17,8 @@ export type EditRange = { from: EditReference; through: EditReference }
 export type EditLocation = { position: 'before' | 'after'; target: EditReference } | { position: 'end'; parent: EditReference | null }
 export interface InsertedBlock { temporaryId: string; node: EditNode }
 export type EditOperation =
-  | { kind: 'insert_blocks'; at: EditLocation; blocks: InsertedBlock[] }
-  | { kind: 'replace_blocks'; target: EditRange; blocks: InsertedBlock[] }
+  | { kind: 'insert_blocks'; at: EditLocation; blocks: InsertedBlock[]; assets?: AssetUpload[] }
+  | { kind: 'replace_blocks'; target: EditRange; blocks: InsertedBlock[]; assets?: AssetUpload[] }
   | { kind: 'move_blocks'; target: EditRange; at: EditLocation }
   | { kind: 'delete_blocks'; target: EditRange }
   | { kind: 'set_attributes'; target: EditReference; attributes: Record<string, unknown> }
@@ -29,6 +31,7 @@ export interface EditDocumentInput {
 }
 export interface EditPlannerRuntime {
   digest(snapshot: string): Promise<string>
+  digestBytes?: AssetDigest
   /** Host-owned, side-effect-free policy snapshot. No title lookup or note dereference. */
   canLink(documentId: string): boolean
   canUseResource?(kind: 'attachment' | 'database', id: string): boolean
@@ -102,7 +105,7 @@ export interface EditPreview {
   changes: Change[]; truncated: boolean; warnings: { code: 'UNSUPPORTED_CONTENT'; message: string; blockIds: string[] }[]
 }
 export interface DocumentEditPlan {
-  before: Page; after: Page; affectedBlockIds: string[]; temporaryIds: Record<string, string>; preview: EditPreview
+  before: Page; after: Page; assets: DocumentAsset[]; affectedBlockIds: string[]; temporaryIds: Record<string, string>; preview: EditPreview
 }
 
 export function validateEditRequest(input: EditDocumentInput) {
@@ -136,6 +139,7 @@ export async function planDocumentEdit(source: Page, input: EditDocumentInput, r
   if (!/^[a-f0-9]{64}$/.test(seed)) fail('APP_UNAVAILABLE')
   const root = after.content as EditNode, temporary = new Map<string, string>(), reserved = new Set<string>()
   const changes: Change[] = [], affected = new Set<string>()
+  const assets = new Map<string, DocumentAsset>(), uploadedIds = new Map<string, string>()
   let entries = new Map<string, Entry>(), serial = 0, protectedContent = false
   function index() {
     entries = new Map(); let count = 0
@@ -235,11 +239,11 @@ export async function planDocumentEdit(source: Page, input: EditDocumentInput, r
     }
     if (node.type === 'image') {
       if (!safeImage(attrs.src)) fail('INVALID_ARGUMENT')
-      if (attrs.src.startsWith('att:') && !runtime.canUseResource?.('attachment', attrs.src.slice(4))) fail('ACCESS_DENIED')
+      if (attrs.src.startsWith('att:') && !assets.has(attrs.src.slice(4)) && !runtime.canUseResource?.('attachment', attrs.src.slice(4))) fail('ACCESS_DENIED')
     }
     if (node.type === 'drawing') for (const key of ['scene', 'preview']) {
       const id = attrs[key]
-      if (typeof id === 'string' && id && !runtime.canUseResource?.('attachment', id)) fail('ACCESS_DENIED')
+      if (typeof id === 'string' && id && !assets.has(id) && !runtime.canUseResource?.('attachment', id)) fail('ACCESS_DENIED')
     }
     if (node.type === 'databaseEmbed' && (!string(attrs.containerId) || !runtime.canUseResource?.('database', attrs.containerId))) fail('ACCESS_DENIED')
   }
@@ -249,6 +253,14 @@ export async function planDocumentEdit(source: Page, input: EditDocumentInput, r
       fields(node, ['type', 'text', 'attrs', 'marks', 'content'], ['type'])
       if (!writableSet.has(node.type) && !inlines.has(node.type)) fail('UNSUPPORTED_CONTENT')
       if (node.attrs !== undefined) {
+        for (const key of node.type === 'image' ? ['src'] : node.type === 'drawing' ? ['scene', 'preview'] : []) {
+          const value = node.attrs[key]
+          if (typeof value === 'string' && value.startsWith('upload:')) {
+            const id = uploadedIds.get(value.slice(7))
+            if (!id) fail('INVALID_ARGUMENT')
+            node.attrs[key] = node.type === 'image' ? `att:${id}` : id
+          }
+        }
         fields(node.attrs, Object.keys(EDITOR_ATTRIBUTES).filter(key => EDITOR_ATTRIBUTES[key].types.includes(node.type)), [])
         if (Object.keys(node.attrs).length) attributes(node.attrs, node.type)
       }
@@ -282,6 +294,13 @@ export async function planDocumentEdit(source: Page, input: EditDocumentInput, r
     changes.push({ kind, blockIds, before: JSON.stringify(oldLocation ? { location: oldLocation, blocks: old } : old), after: JSON.stringify(nextLocation ? { location: nextLocation, blocks: next } : next) })
   }
   for (const operation of input.operations) {
+    if (operation && 'assets' in operation && operation.assets !== undefined) {
+      if (!['insert_blocks', 'replace_blocks'].includes(operation.kind)) fail('INVALID_ARGUMENT')
+      const prepared = await prepareDocumentAssets(operation.assets, runtime.digestBytes)
+      for (const [name, id] of prepared.ids) { if (uploadedIds.has(name)) fail('INVALID_ARGUMENT'); uploadedIds.set(name, id) }
+      for (const asset of prepared.assets) assets.set(asset.id, asset)
+      if (uploadedIds.size > 20 || [...assets.values()].reduce((total, asset) => total + decodeDocumentAsset(asset).length, 0) > ASSET_LIMIT) fail('LIMIT_EXCEEDED')
+    }
     switch (operation?.kind) {
       case 'set_table_cell': case 'insert_table_row': {
         fields(operation, operation.kind === 'set_table_cell' ? ['kind', 'table', 'cell', 'blocks'] : ['kind', 'table', 'row', 'position', 'cells'])
@@ -323,14 +342,14 @@ export async function planDocumentEdit(source: Page, input: EditDocumentInput, r
         break
       }
       case 'insert_blocks': {
-        fields(operation, ['kind', 'at', 'blocks'])
+        fields(operation, ['kind', 'at', 'blocks', 'assets'], ['kind', 'at', 'blocks'])
         const dest = destination(operation.at), nodes = inserted(operation.blocks)
         const children = dest.parent.content ??= []
         children.splice(dest.anchor ? children.indexOf(dest.anchor) + (dest.position === 'after' ? 1 : 0) : children.length, 0, ...nodes)
         changed('insert', [], nodes); break
       }
       case 'replace_blocks': case 'delete_blocks': {
-        fields(operation, operation.kind === 'replace_blocks' ? ['kind', 'target', 'blocks'] : ['kind', 'target'])
+        fields(operation, operation.kind === 'replace_blocks' ? ['kind', 'target', 'blocks', 'assets'] : ['kind', 'target'], operation.kind === 'replace_blocks' ? ['kind', 'target', 'blocks'] : ['kind', 'target'])
         const source = selected(operation.target), nodes = operation.kind === 'replace_blocks' ? inserted(operation.blocks) : []
         source.parent.content!.splice(source.from, source.nodes.length, ...nodes)
         changed(operation.kind === 'replace_blocks' ? 'replace' : 'delete', source.nodes, nodes); break
@@ -366,6 +385,14 @@ export async function planDocumentEdit(source: Page, input: EditDocumentInput, r
     }
     index()
   }
+  const referencedAssets = new Set<string>()
+  const scanAssets = (node: EditNode) => {
+    if (node.type === 'image' && typeof node.attrs?.src === 'string' && node.attrs.src.startsWith('att:')) referencedAssets.add(node.attrs.src.slice(4))
+    if (node.type === 'drawing') for (const key of ['scene', 'preview']) if (typeof node.attrs?.[key] === 'string') referencedAssets.add(node.attrs[key] as string)
+    node.content?.forEach(scanAssets)
+  }
+  scanAssets(root)
+  if ([...assets.keys()].some(id => !referencedAssets.has(id))) fail('INVALID_ARGUMENT')
   structure(root) // whole final known structure, including temporarily emptied source containers
   if (before.kind === 'board' && (root.content?.length !== 1 || root.content[0].type !== 'drawing')) fail('UNSUPPORTED_CONTENT')
   let charsLeft = input.budget?.maxChars ?? LIMITS.textChars, blocksLeft = input.budget?.maxBlocks ?? 100, truncated = false
@@ -387,5 +414,5 @@ export async function planDocumentEdit(source: Page, input: EditDocumentInput, r
     else change.before = [...change.before].slice(0, Math.floor([...change.before].length / 2)).join('')
     preview.truncated = true
   }
-  return { before, after, temporaryIds: Object.fromEntries(temporary), affectedBlockIds: [...affected], preview }
+  return { before, after, assets: [...assets.values()], temporaryIds: Object.fromEntries(temporary), affectedBlockIds: [...affected], preview }
 }

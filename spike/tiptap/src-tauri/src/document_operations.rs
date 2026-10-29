@@ -2,6 +2,7 @@
 //! every participating writer recovers it under the vault's OS lock first.
 use crate::vault::{check_id, err, write_atomic, Res, Vault};
 use serde_json::Value;
+use base64::Engine;
 use sha2::{Digest, Sha256};
 use std::{fs, path::{Path, PathBuf}, sync::OnceLock};
 
@@ -52,6 +53,61 @@ fn operation_name(scope: &str, id: &str) -> Res<String> {
     token(&keys, "scopeId")?; token(&keys, "operationId")?;
     Ok(format!("{:x}.json", Sha256::digest(format!("{scope}/{id}").as_bytes())))
 }
+// Attachment bytes remain in the durable prepare until recovery has installed both
+// file and metadata. A page must never become visible before its files exist.
+fn validated_assets(record: &Value) -> Res<Vec<(String, Vec<u8>, String, String)>> {
+    let Some(value) = record.get("assets") else { return Ok(vec![]); };
+    let assets = value.as_array().filter(|rows| !rows.is_empty() && rows.len() <= 20).ok_or("Invalid document attachments")?;
+    let mut result = vec![];
+    let mut seen = std::collections::HashSet::new();
+    let mut total = 0;
+    fn bounded(value: &Value, depth: usize, count: &mut usize) -> bool {
+        *count += 1;
+        if depth > 32 || *count > 20000 { return false; }
+        match value {
+            Value::Array(rows) => rows.iter().all(|child| bounded(child, depth + 1, count)),
+            Value::Object(rows) => rows.values().all(|child| bounded(child, depth + 1, count)),
+            _ => true,
+        }
+    }
+    for asset in assets {
+        let object = asset.as_object().ok_or("Invalid document attachment")?;
+        if object.len() != 4 || !["id", "data", "mimeType", "name"].iter().all(|key| object.contains_key(*key)) { return Err("Invalid document attachment".into()); }
+        let id = asset["id"].as_str().filter(|id| id.len() == 64 && id.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))).ok_or("Invalid attachment identity")?;
+        if !seen.insert(id) { return Err("Duplicate document attachment".into()); }
+        let name = asset["name"].as_str().filter(|name| name.chars().count() <= 256).ok_or("Invalid attachment name")?;
+        let mime = asset["mimeType"].as_str().ok_or("Invalid attachment type")?;
+        let data = asset["data"].as_str().filter(|data| !data.is_empty() && data.len() <= 262144).ok_or("Invalid attachment data")?;
+        let bytes = base64::engine::general_purpose::STANDARD.decode(data).map_err(|_| "Invalid attachment encoding")?;
+        total += bytes.len();
+        if total > 196608 || format!("{:x}", Sha256::digest(&bytes)) != id { return Err("Invalid attachment digest or size".into()); }
+        let valid = match mime {
+            "image/png" => bytes.starts_with(&[137,80,78,71,13,10,26,10]),
+            "image/jpeg" => bytes.starts_with(&[255,216,255]),
+            "image/gif" => bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a"),
+            "image/webp" => bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP"),
+            "application/vnd.excalidraw+json" => serde_json::from_slice::<Value>(&bytes).is_ok_and(|scene|
+                scene["type"] == "excalidraw" && scene["elements"].is_array() && bounded(&scene, 0, &mut 0)),
+            _ => false,
+        };
+        if !valid { return Err("Invalid attachment content type".into()); }
+        result.push((id.to_string(), bytes, mime.to_string(), name.to_string()));
+    }
+    Ok(result)
+}
+fn install_assets(root: &Path, record: &Value) -> Res<()> {
+    let vault = Vault { root: root.to_path_buf() };
+    for (id, bytes, mime, name) in validated_assets(record)? {
+        let dir = root.join("files").join(&id[..2]);
+        ensure_dir(&dir)?;
+        let path = dir.join(&id);
+        // Repair an interrupted or corrupt file even when its byte length matches.
+        if fs::read(&path).ok().as_deref() != Some(bytes.as_slice()) { write_atomic(&path, &bytes)?; }
+        vault.file_put(&id, &bytes, &mime, &name, record["receipt"]["committedAt"].as_i64().ok_or("Invalid attachment timestamp")?)?;
+        sync_dir(&dir)?;
+    }
+    Ok(())
+}
 fn validate(record: &Value) -> Res<(String, String)> {
     if record["format"] != 1 { return Err("Unsupported document operation format".into()); }
     let scope = token(record, "scopeId")?;
@@ -81,6 +137,7 @@ fn validate(record: &Value) -> Res<(String, String)> {
     if let Some(flag) = record.get("requireNoChildren") {
         if flag != &Value::Bool(true) || before.is_null() || !record["after"]["deletedAt"].as_u64().is_some_and(|n| n <= 9_007_199_254_740_991) { return Err("Invalid undo precondition".into()); }
     }
+    validated_assets(record)?;
     Ok((operation_name(&scope, &operation)?, id.to_string()))
 }
 fn revision(value: &Value) -> bool {
@@ -165,6 +222,7 @@ fn recover_at(root: &Path, local: &Path) -> Res<()> {
             }
             if current != record["after"] { check_children(root, &record).map_err(|_| "Document undo recovery conflict; snapshots retained".to_string())?; }
             if current != record["after"] { check_creation(root, &record).map_err(|_| "Document creation recovery conflict; snapshots retained".to_string())?; }
+            install_assets(root, &record)?;
             if let Some(history) = record.get("history") {
                 let ts = history["ts"].as_i64().ok_or("Invalid operation history")?;
                 let path = root.join("history").join(&id).join(format!("{ts}.json"));
@@ -321,6 +379,30 @@ mod tests {
         assert_eq!(rows[39]["operationId"], "history-01");
         assert!(rows.iter().all(|row| row.get("before").is_none() && row.get("after").is_none() && row.get("evidence").is_none()));
         assert_eq!(list_at(&local, "grant", "missing").unwrap(), json!([]));
+        fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
+    #[test]
+    fn attachment_recovery_installs_verified_bytes_before_document_and_rejects_corruption() {
+        let (root, local, mut record) = fixture();
+        let bytes = b"\x89PNG\r\n\x1a\nfixture";
+        let id = format!("{:x}", Sha256::digest(bytes));
+        record["assets"] = json!([{ "id":id, "mimeType":"image/png", "name":"fixture.png",
+            "data":base64::engine::general_purpose::STANDARD.encode(bytes) }]);
+        let mut bad = record.clone(); bad["assets"][0]["id"] = json!("a".repeat(64));
+        assert!(commit_at(&root, &local, &bad).unwrap_err().contains("digest"));
+        bad = record.clone(); bad["assets"][0]["mimeType"] = json!("image/jpeg");
+        assert!(commit_at(&root, &local, &bad).unwrap_err().contains("content type"));
+        assert_eq!(read(&root.join("pages/note.json")).unwrap().unwrap(), record["before"]);
+        let file = root.join("files").join(&id[..2]).join(&id);
+        ensure_dir(file.parent().unwrap()).unwrap();
+        fs::write(&file, vec![0; bytes.len()]).unwrap();
+        let pending = local.join("pending").join(validate(&record).unwrap().0);
+        durable_write(&pending, &record).unwrap();
+        recover_at(&root, &local).unwrap();
+        assert_eq!(fs::read(&file).unwrap(), bytes);
+        assert_eq!(read(&file.with_extension("json")).unwrap().unwrap()["type"], "image/png");
+        assert_eq!(read(&root.join("pages/note.json")).unwrap().unwrap(), record["after"]);
+        assert!(commit_at_result(&root, &local, &record).unwrap().1);
         fs::remove_dir_all(root.parent().unwrap()).unwrap();
     }
     #[test]

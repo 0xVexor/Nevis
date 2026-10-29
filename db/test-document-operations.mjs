@@ -13,7 +13,7 @@ const page = (id = 'note') => ({ id, parentId: null, title: 'فارسی', tags: 
   content: { type: 'doc', attrs: { blockIdentityVersion: 1 }, content: [{ type: 'paragraph', attrs: { blockId: 'p1' }, content: [{ type: 'text', text: 'before' }] }] }, updatedAt: 1, deletedAt: null })
 const host = () => ({ now: () => 42, createId: () => 'generated', defer: () => () => {}, emit() {}, report() {} })
 let sequence = 0
-function adapters(backend) {
+function adapters(backend, assetStorage) {
   if (backend === 'memory') { const store = new MemoryDocumentStorage('fixed'); return [store, store] }
   const name = `receipt-${++sequence}`
   const open = () => new Promise((resolve, reject) => {
@@ -26,7 +26,7 @@ function adapters(backend) {
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error)
   })
-  return [new IndexedDbDocumentStorage('fixed', open), new IndexedDbDocumentStorage('fixed', open)]
+  return [new IndexedDbDocumentStorage('fixed', open, undefined, undefined, assetStorage), new IndexedDbDocumentStorage('fixed', open, undefined, undefined, assetStorage)]
 }
 const seed = (store, pages) => store.save({ upserts: pages, removed: [], replaceAll: true, baseVersions: {} })
 const request = (kind, operationId, documentId = null, expectedRevision = null) => ({ scopeId: 'grant', operationId, kind, documentId, expectedRevision, payload: { text: ' appended', metadata: { tags: [] } } })
@@ -101,5 +101,35 @@ test('indexeddb: a failure after staging the page aborts both the page and priva
   assert.deepEqual(await reopened.load(), [before])
   assert.equal(await reopened.findOperation('grant', 'atomic'), null)
   assert.deepEqual(await reopened.commitOperation(input), input.receipt)
+  assert.deepEqual(await store.load(), [after])
+})
+
+
+test('indexeddb: attachment failure preserves the page; post-upload conflicts cannot overwrite a concurrent edit; retry installs verified files', async () => {
+  const files = new Map(), bytes = Buffer.from('iVBORw0KGgo=', 'base64'), id = await digest(bytes)
+  let fail = true, race = false, store, reopened, before = page(), later = { ...before, title: 'Concurrent editor' }
+  const assetStorage = { digest, async write(assets) {
+    if (fail) throw new Error('attachment disk full')
+    for (const asset of assets) files.set(asset.id, Buffer.from(asset.bytes))
+    if (race) await reopened.save({ upserts: [later], removed: [], replaceAll: false, baseVersions: {}, expectedPages: { note: before } })
+  } }
+  ;[store, reopened] = adapters('indexeddb', assetStorage)
+  await seed(store, [before])
+  const after = { ...before, title: 'Uploaded', content: { type: 'doc', content: [{ type: 'image', attrs: { src: `att:${id}` } }] } }
+  const input = await record(request('edit', 'upload', before.id, await documentRevision(before, digest)), before, after)
+  input.assets = [{ id, mimeType: 'image/png', name: 'pixel.png', data: bytes.toString('base64') }]
+  await assert.rejects(store.commitOperation(input), /attachment disk full/)
+  assert.deepEqual(await store.load(), [before]); assert.equal(await store.findOperation('grant', 'upload'), null)
+  fail = false; race = true
+  await assert.rejects(store.commitOperation(input), /revision conflict/)
+  assert.deepEqual(await store.load(), [later]); assert.equal(await store.findOperation('grant', 'upload'), null)
+  race = false
+  await reopened.save({ upserts: [before], removed: [], replaceAll: false, baseVersions: {}, expectedPages: { note: later } })
+  await store.commitOperation(input)
+  assert.deepEqual(await store.load(), [after]); assert.deepEqual(files.get(id), bytes)
+  assert.equal((await reopened.commitOperationResult(input)).replayed, true)
+  const corrupt = { ...input, operationId: 'corrupt', assets: [{ ...input.assets[0], id: 'b'.repeat(64) }] }
+  corrupt.receipt = { ...input.receipt, operationId: 'corrupt' }
+  await assert.rejects(store.commitOperation(corrupt), /attachment/i)
   assert.deepEqual(await store.load(), [after])
 })

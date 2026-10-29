@@ -1,3 +1,4 @@
+import { DocumentAssetError } from './assets.ts'
 import { DocumentPlanError } from './editPlanner.ts'
 import type { ERROR_CODES } from './contracts.ts'
 
@@ -10,7 +11,7 @@ export class DocumentEditError extends Error {
 export function failEdit(code: EditCode): never { throw new DocumentEditError(code) }
 export function translateEdit(error: unknown, fallback: EditCode): never {
   if (error instanceof DocumentEditError) throw error
-  if (error instanceof DocumentPlanError) return failEdit(error.code)
+  if (error instanceof DocumentPlanError || error instanceof DocumentAssetError) return failEdit(error.code)
   if (error && typeof error === 'object' && 'code' in error && ['ACCESS_DENIED', 'APP_UNAVAILABLE'].includes(String(error.code))) failEdit(error.code as EditCode)
   const message = error instanceof Error ? error.message : String(error)
   if (/ID reused/.test(message)) failEdit('OPERATION_ID_MISMATCH')

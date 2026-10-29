@@ -1,3 +1,4 @@
+import type { AssetUpload } from './assets.ts'
 import { cloneDocumentValue } from './clone.ts'
 import { isBlockId } from './blockIdentity.ts'
 import { DocumentPlanError, planDocumentEdit, validateDocumentJson } from './editPlanner.ts'
@@ -11,7 +12,7 @@ export interface DocumentMetadata {
 }
 export interface CreateDocumentInput {
   operationId: string; parentId: string | null; kind: PageKind
-  metadata: DocumentMetadata; content: { type: 'doc'; content: EditNode[] }
+  metadata: DocumentMetadata; assets?: AssetUpload[]; content: { type: 'doc'; content: EditNode[] }
 }
 export interface UpdateDocumentMetadataInput {
   operationId: string; documentId: string; expectedRevision: string; patch: Partial<DocumentMetadata>
@@ -55,7 +56,7 @@ export function metadataEvidence(page: Page): DocumentMetadata {
   return metadata
 }
 export function validateCreate(input: CreateDocumentInput) {
-  validateDocumentJson(input); fields(input, ['operationId', 'parentId', 'kind', 'metadata', 'content'])
+  validateDocumentJson(input); fields(input, ['operationId', 'parentId', 'kind', 'metadata', 'content', 'assets'], ['operationId', 'parentId', 'kind', 'metadata', 'content'])
   if (!isBlockId(input.operationId) || (input.parentId !== null && !string(input.parentId, 256)) || !['page', 'folder', 'board', 'todo'].includes(input.kind)) fail('INVALID_ARGUMENT')
   validateMetadata(input.metadata, true)
   fields(input.content, ['type', 'content'])
@@ -77,11 +78,11 @@ export async function prepareCreatedPage(input: CreateDocumentInput, id: string,
     updatedAt: 0, deletedAt: null, content: { type: 'doc', attrs: { blockIdentityVersion: 1 }, content: [{ type: 'paragraph', attrs: { blockId: 'create_scaffold' } }] } }
   const operations: EditOperation[] = [{ kind: 'delete_blocks', target: { from: { blockId: 'create_scaffold' }, through: { blockId: 'create_scaffold' } } }]
   for (let start = 0; start < input.content.content.length; start += 100) operations.push({ kind: 'insert_blocks', at: { position: 'end', parent: null },
-    blocks: input.content.content.slice(start, start + 100).map((node, index) => ({ temporaryId: `create_${start + index}`, node })) })
+    ...(start === 0 && input.assets ? { assets: input.assets } : {}), blocks: input.content.content.slice(start, start + 100).map((node, index) => ({ temporaryId: `create_${start + index}`, node })) })
   // Folder scaffolds use the same structural validator as pages, then restore their kind.
   const plan = await planDocumentEdit({ ...scaffold, kind: undefined }, { documentId: id, expectedRevision: await documentRevision({ ...scaffold, kind: undefined }, runtime.digest),
     operationId: input.operationId, mode: 'apply', operations }, runtime)
   const after = applyMetadata(plan.after, input.metadata)
   if (input.kind === 'page') delete after.kind; else after.kind = input.kind
-  return { after, affected: plan.affectedBlockIds.filter(blockId => blockId !== 'create_scaffold') }
+  return { after, assets: plan.assets, affected: plan.affectedBlockIds.filter(blockId => blockId !== 'create_scaffold') }
 }

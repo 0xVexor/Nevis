@@ -30,6 +30,9 @@ const read = documentId => call('read_document', { documentId, target: { kind: '
 try {
   await client.connect(new StreamableHTTPClientTransport(url, { requestInit: { headers: { Authorization: `Bearer ${token}` } } }))
   assert.equal((await client.listTools()).tools.length, 9)
+  const editor = await call('get_editor_capabilities', {})
+  assert.equal(editor.profileVersion, 2)
+  for (const type of ['callout', 'toggle', 'mermaid', 'drawing', 'image', 'table', 'layoutGroup']) assert.ok(editor.nodes.some(node => node.type === type))
   const listed = await call('list_documents', { limit: 100 }); assert.ok(listed.documents.some(d => d.documentId === fixture.documentId)); assert.ok(listed.documents.every(d => d.documentId !== fixture.excludedId))
   const search = await call('search_documents', { query: 'محفوظ', mode: 'keywords' }); assert.ok(search.hits.some(hit => hit.documentId === fixture.documentId))
   await call('read_document', { documentId: fixture.documentId, target: { kind: 'outline' }, format: 'structured' })
