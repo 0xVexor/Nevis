@@ -154,3 +154,5 @@
 
 /* user content shown in UI labels: text direction follows the text, alignment follows the UI */
 .ntitle, .nav-tx, .ol-row, .crumb button, .result-tx b { direction: inherit; unicode-bidi: plaintext; text-align: start; }
+
+.sync-btn.sync-success { color:var(--ok); }

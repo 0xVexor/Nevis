@@ -5,6 +5,7 @@ import { accountStatus, type AccountStatus } from './db'
 import { locale, t } from './i18n'
 import { syncWorkspaceNow } from './syncActions'
 import { explain } from './vaultErrors'
+import { syncSucceeded } from './drivePresentation'
 
 const when = (ts: number) => (ts ? new Date(ts).toLocaleTimeString(locale(), { timeStyle: 'short' }) : '')
 
@@ -35,6 +36,7 @@ export function SyncButton({ onSetup, onSignIn, onConflicts }: { onSetup: () => 
   const busy = saving || (on && st.state === 'syncing')
   const offline = on && st.state === 'offline'
   const failed = on && (st.state === 'error' || (st.state === 'paused' && st.reason === 'SIGNED_OUT'))
+  const success = syncSucceeded(st) && !saving && !error
   const title = error || (conflicts ? t('Review sync conflicts') : !st.signedIn
     ? t('Sync is off — click to sign in')
     : !st.syncOn
@@ -60,7 +62,7 @@ export function SyncButton({ onSetup, onSignIn, onConflicts }: { onSetup: () => 
 
   return (
     <button
-      className={'icon-btn sync-btn' + (busy ? ' spinning' : '') + (failed || error ? ' sync-failed' : '') + (conflicts ? ' sync-conflict' : '') + (offline ? ' sync-offline' : '') + (on ? '' : ' sync-off')}
+      className={'icon-btn sync-btn' + (success ? ' sync-success' : '') + (busy ? ' spinning' : '') + (failed || error ? ' sync-failed' : '') + (conflicts ? ' sync-conflict' : '') + (offline ? ' sync-offline' : '') + (on ? '' : ' sync-off')}
       title={title}
       aria-label={title}
       disabled={busy}

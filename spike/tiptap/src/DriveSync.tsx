@@ -11,6 +11,7 @@ import * as Ic from './icons'
 import { drivePreferenceGroups, driveVisualState, type DriveTab } from './drivePresentation'
 import { DriveTime, DriveDialogFrame, DriveCard, DriveActions, DriveEmpty, DriveProfile, DriveWorkspaceStatus, DriveWorkspaceForm, DriveWorkspaceList, DriveDisclosure } from './DriveSyncUi'
 import { repo } from './store'
+import { Select } from './ui'
 
 const driveAction = <T,>(action: string, args: Record<string, unknown> = {}) => invoke<T>('drive_action', { action, args })
 interface DriveStatus {
@@ -201,7 +202,7 @@ export function DriveAccountDialog({ onClose, onGitHub, onWorkspaceOpened }: { o
   </>
   const preferences = st?.binding && st.auth.signedIn ? <>
     <p className="drive-description">{t('Choose which preferences follow you across devices. Your local choices stay on this computer.')}</p>
-    {drivePreferenceGroups.map(group => <DriveCard title={t(group.title)} key={group.title}>{group.keys.map(key => <div className="sx-row drive-scope-row" key={key}><div className="sx-tx"><label htmlFor={`drive-scope-${key}`}>{t(driveSettingLabels[key])}</label></div><div className="sx-ctl"><select id={`drive-scope-${key}`} aria-label={`${t('Sync scope')}: ${t(driveSettingLabels[key])}`} value={st.settingsPolicy?.[key] ?? 'global'} disabled={!canUseDrive} onChange={event => { const scope = event.target.value; void run(async () => { await saveForSync(); await driveAction('settings-policy', { key, scope }) }) }}><option value="global">{t('All devices')}</option><option value="device-local">{t('This device only')}</option></select></div></div>)}</DriveCard>)}
+    {drivePreferenceGroups.map(group => <DriveCard title={t(group.title)} key={group.title}>{group.keys.map(key => <div className="sx-row drive-scope-row" key={key}><div className="sx-tx"><label htmlFor={`drive-scope-${key}`}>{t(driveSettingLabels[key])}</label></div><div className="sx-ctl"><Select id={`drive-scope-${key}`} aria-label={`${t('Sync scope')}: ${t(driveSettingLabels[key])}`} value={st.settingsPolicy?.[key] ?? 'global'} disabled={!canUseDrive} options={[{ value: 'global', label: t('All devices') }, { value: 'device-local', label: t('This device only') }]} onChange={scope => { void run(async () => { await saveForSync(); await driveAction('settings-policy', { key, scope }) }) }} /></div></div>)}</DriveCard>)}
     <p className="drive-small">{t('Previously uploaded history is retained when a preference becomes local.')}</p>
   </> : connectPrompt
   const historyPanel = st?.binding && st.auth.signedIn ? <>
