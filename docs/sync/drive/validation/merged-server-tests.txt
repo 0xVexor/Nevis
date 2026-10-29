@@ -1,0 +1,90 @@
+
+> nevis-sync-server@0.1.0 test
+> node --test "test/*.test.js"
+
+▶ accounts
+  ✔ registers with a username and a password, and shows a recovery key once (99.845ms)
+  ✔ refuses a taken user name (any letter case), a weak password and a missing proof of work (110.371666ms)
+  ✔ does not accept the same proof of work twice (60.114792ms)
+  ✔ needs an invite code in invite mode, and a code can be limited to a number of accounts (118.526125ms)
+  ✔ is closed when registration is closed (14.511375ms)
+  ✔ logs in, and answers an unknown user like a wrong password (203.775833ms)
+  ✔ locks a user name after ten wrong passwords, even for the right one (513.677542ms)
+  ✔ needs a token, and a revoked device is out at once (51.992708ms)
+  ✔ lists and revokes devices (95.994875ms)
+  ✔ changing the password logs the other devices out (318.544459ms)
+  ✔ recovers an account with the recovery key, which then changes (139.947625ms)
+  ✔ wrong recovery keys are counted like wrong passwords (53.584584ms)
+  ✔ a deleted account can be brought back by logging in during the grace period (137.449292ms)
+  ✔ refuses a client that is too old (3.446583ms)
+✔ accounts (1923.244958ms)
+▶ blobs
+  ✔ stores a blob under its hash, answers HEAD and GET with its md5, and accepts the same blob again (111.130167ms)
+  ✔ refuses bytes that do not match the name they are uploaded under, and stores nothing (72.732833ms)
+  ✔ takes a blob in pieces, tells how far it got, and survives a piece that is sent again (94.839667ms)
+  ✔ discards an upload whose pieces add up to the wrong content (81.239167ms)
+  ✔ refuses a blob that is too large or would exceed the quota of the account (123.4075ms)
+  ✔ does not hand out another vault's blobs (114.670333ms)
+  ✔ the content of a deleted revision is gone from the revision endpoint (72.833708ms)
+✔ blobs (671.778667ms)
+▶ housekeeping
+  ✔ keeps a deleted file for the retention period and then forgets it; older devices must start over (119.820208ms)
+  ✔ removes old revisions and blobs nothing refers to any more, but not the current ones (92.616958ms)
+  ✔ does not touch a blob that was uploaded a moment ago and is about to be committed (76.723791ms)
+  ✔ removes a trashed vault with its blobs after the retention period (69.943292ms)
+  ✔ removes an account that was deleted, with everything in it, once the grace period is over (172.823333ms)
+✔ housekeeping (532.738458ms)
+▶ backup
+  ✔ a copy of the database in the storage brings the whole server back on an empty disk, with new epochs (111.600458ms)
+  ✔ keeps only the most recent hourly copies (606.270959ms)
+  ✔ nothing to restore from when there is no copy (55.451125ms)
+✔ backup (773.637167ms)
+▶ single instance lock
+  ✔ lets the first instance in and keeps a second one out (0.887708ms)
+  ✔ takes over from an instance that stopped without letting go (its heartbeat is old) (0.398625ms)
+  ✔ waits for an instance that is stopping, as in a rolling deploy (1.068667ms)
+  ✔ the same instance can take its own lock again (0.293166ms)
+✔ single instance lock (3.688625ms)
+✔ desktop and server path contract (0.6485ms)
+▶ vaults and commits
+  ✔ creates a vault once, and answers the same vault when asked again (99.228ms)
+  ✔ keeps vaults of different users apart, and does not reveal that they exist (109.497166ms)
+  ✔ a committed file shows up in the changes with its content hash and a rev (79.630375ms)
+  ✔ answers a repeated op_id with the same result and changes nothing twice (72.320083ms)
+  ✔ refuses a write based on an old rev and shows the current state instead (compare and swap) (85.176583ms)
+  ✔ accepts a second write of identical content as a no-op even if its base is stale (65.778792ms)
+  ✔ a path that exists cannot be created again from nothing (80.800083ms)
+  ✔ a delete is a tombstone with its own rev, and a stale delete does not remove a newer edit (76.532292ms)
+  ✔ an edit made before another device deleted the file brings it back, and deleting twice is harmless (70.091875ms)
+  ✔ an atomic commit applies everything or nothing (81.510667ms)
+  ✔ without atomic, the ops that fit are applied and the others report why not (79.849292ms)
+  ✔ refuses to commit content that was never uploaded (48.879584ms)
+  ✔ refuses paths that are outside the vault, unsafe on another system, or equal when letters are folded (72.484083ms)
+  ✔ a bad request is a 400, not a crash (52.363166ms)
+  ✔ holds back a mass deletion unless the client confirms it (171.247125ms)
+  ✔ pages through the changes in the order they happened (104.33275ms)
+  ✔ a file that changed twice appears once, with its latest rev (81.799708ms)
+  ✔ serves the content of an old revision and can put it back (65.199625ms)
+  ✔ answers for one path as it is right now, tombstones included (65.849958ms)
+  ✔ the state has a root hash that changes with the content and not with the order of events (89.755791ms)
+  ✔ trashing a vault hides it, and it can be brought back (59.056125ms)
+  ✔ deletes a trashed vault for good, with its files in the storage, and only a trashed one (108.048667ms)
+  ✔ advertises supported sync paths and keeps database records through trash and restore (67.162916ms)
+  ✔ rejects unsafe database paths without changing existing records (65.6045ms)
+  ✔ schedules durable backups for vault metadata changes (51.156584ms)
+  ✔ limits the number of vaults per account (96.867167ms)
+✔ vaults and commits (2101.931791ms)
+▶ instant notification
+  ✔ answers a waiting request the moment another device commits (110.81225ms)
+  ✔ answers at once when the vault is already past `since`, and after the wait when nothing happens (1066.045375ms)
+  ✔ wakes every waiting device, not just one (117.239709ms)
+  ✔ a commit that changed nothing does not wake anyone (1054.483458ms)
+✔ instant notification (2348.797875ms)
+ℹ tests 64
+ℹ suites 7
+ℹ pass 64
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4591.554958

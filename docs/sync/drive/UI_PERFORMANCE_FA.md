@@ -30,3 +30,15 @@
 ۳. با تایپ پیوسته حدود ۱۵ ثانیه، ارسال دوره‌ای و سپس رسیدن کار معوق به صفر را بررسی کنید. تغییر را با قطع شبکه نگه دارید و پس از وصل‌شدن، سالم‌ماندن متن و ارسال را بررسی کنید.
 ۴. در فارسی/انگلیسی و روشن/تیره تب‌ها را باز کنید، ساخت/یافتن/بازکردن فضای کاری آزمایشی را بررسی کنید. Restore را فقط به کپی جدید آزمایشی اجرا کنید.
 ۵. دریافت روی دستگاه دوم، refresh طولانی‌مدت حساب، Windows و انتشار signed/notarized هنوز تأیید نشده‌اند. releaseReady همچنان false است.
+
+## Upload transfer follow-up and latest-dev integration
+
+The user clarified that transfer time itself was slow. Objects up to 4MiB now use multipart with their durable reserved ID instead of starting a resumable session. A newly created object through object_file takes 6 requests instead of 8 on the successful path. Fresh large-file sessions send bytes immediately; recovered sessions still probe Google's acknowledged offset. Remote byte/hash verification remains mandatory. Real HTTP fixtures verify small-file unknown-response recovery and fresh-session direct upload. These are request savings, not a measured increase in the user's Internet bandwidth.
+
+Diagnostics now record wallElapsedMs for actual cycle duration and operationElapsedMs for header-wait totals by operation. Existing elapsedMs remains compatible. New-binary Google transfer latency has not been measured.
+
+The toolbar icon turns green only with idle state, signed-in account, sync enabled, positive successful timestamp and no error/reason. Pending, paused, offline and conflicts cannot inherit green from an older success. The dialog uses the same --ok success token.
+
+Preference controls now use the existing shared Select instead of native OS select menus. Arrow/Home/End navigation and Escape closing the menu without closing the dialog were verified. The successful status computes to the green --ok color. Open-menu screenshot: artifacts/drive-ui/preferences-menu-en.png.
+
+Merged origin/dev 5bee6a6. Every dev translation retains its exact value; configureBackupFolder retains dev's name. dragHandle/layout/snapModel/layout CSS match dev exactly; Drive StableBlockIds and editor conflict archival remain integrated. Post-merge validation: 210 Rust PASS (104 Drive), zero failed, 11 existing ignored; 236 app JS PASS (52 layout/controller, 173 database, 4 direction, 7 updater); 64 server PASS; 10 local legacy-sync e2e PASS; 2 desktop-build script PASS; 4 installer script PASS. TypeScript/Vite PASS; lint 237 existing warnings, zero errors. The initial server invocation could not load fastify because dependencies were absent; npm ci resolved it and all 64 tests then passed. Local legacy-sync e2e does not certify two-device Google Drive behavior.

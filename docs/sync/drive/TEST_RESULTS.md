@@ -1,5 +1,8 @@
 # Validation results — 2026-10-29
 
+Latest merged-dev follow-up (`origin/dev` 5bee6a6): **210 native PASS / 0 FAIL / 11 ignored**, **104 Drive tests**; **236 app JS PASS**; **64 server PASS**, **10 local legacy-sync e2e PASS**, **2 desktop build-script PASS**, **4 installer-script PASS**. TypeScript/Vite PASS; lint 237 warnings / zero errors. Upload regressions preserve unknown-response recovery while reducing small-object round trips and skipping only fresh-session probes. Shared preference menus and green-only-on-success feedback were verified in the browser. New-binary real Google transfer latency remains unmeasured.
+
+
 Latest UI/responsiveness follow-up: **208 native PASS / 0 FAIL / 11 ignored**, including **102 Drive tests** and both heavy media/cold-restore fixtures, 110.19s. JavaScript **234 PASS** (50 controller/layout, 173 database, 4 direction, 7 updater). TypeScript/Vite and configured macOS ARM64 debug bundle PASS. Lint 237 warnings / 0 errors; no new unique warning categories compared with the retained baseline. See [the follow-up report](UI_PERFORMANCE_FA.md). Real-account latency with the new binary remains NOT_RUN; do not infer a speed multiplier from unit tests.
 
 
