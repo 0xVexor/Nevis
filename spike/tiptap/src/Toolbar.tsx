@@ -5,7 +5,6 @@ import { linkSelection } from './editor/slash'
 import * as Ic from './icons'
 import { insertImageFromUrl, insertImages, pickImages } from './editor/image'
 import { t } from './i18n'
-import { LayoutInsert } from './LayoutControls'
 
 type Chain = any
 
@@ -72,7 +71,6 @@ export function Toolbar({ editor, diagram }: { editor: any; diagram?: { from: nu
         <span className="sep" />
         <ImageMenu editor={editor} />
         <TableMenu editor={editor} />
-        <LayoutInsert editor={editor} />
         <DirMenu editor={editor} />
         <span className="sep" />
         {(['left', 'center', 'right'] as const).map((a) => (

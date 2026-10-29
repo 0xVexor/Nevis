@@ -7,7 +7,6 @@ import { LANGS } from './codeBlock'
 import { menuRender } from './menu'
 import { looksLikeMermaid } from './mermaidText'
 import { t } from '../i18n'
-import { ancestor, COLUMN } from './layoutModel'
 import { insertDatabase } from './databaseEmbed'
 
 interface Item {
@@ -31,7 +30,6 @@ export function linkSelection(c: any, editor: any) {
 }
 
 const ITEMS: Item[] = [
-  ...[2, 3].map((count) => ({ title: 'Layout: {n} columns', desc: 'Insert an independent layout with equal widths', vars: { n: String(count) }, icon: 'i:columns', keywords: 'layout columns ستون چیدمان', run: (c: any) => c.insertLayout(count) })),
   { title: 'Text', desc: 'Write with a plain paragraph', icon: 'Aa', keywords: 'paragraph text متن پاراگراف', run: (c) => c.setParagraph() },
   { title: 'Heading 1', desc: 'Large section heading', icon: 'H1', keywords: 'heading h1 عنوان تیتر', run: (c) => c.setHeading({ level: 1 }) },
   { title: 'Heading 2', desc: 'Medium heading', icon: 'H2', keywords: 'heading h2 عنوان تیتر', run: (c) => c.setHeading({ level: 2 }) },
@@ -80,11 +78,6 @@ function filter(query: string, list: Item[] = ITEMS): Item[] {
   return list.filter((i) => normalizeFa(`${shown(i).title} ${i.title} ${i.keywords}`).includes(q)).sort((a, b) => inTitle(b) - inTitle(a))
 }
 
-function layoutAvailability(items: Item[], editor: any): Item[] {
-  if (!ancestor(editor.state.selection.$from, COLUMN)) return items
-  return items.map((item) => item.title === 'Layout: {n} columns' ? { ...item, disabled: true, desc: 'Layouts cannot be nested. Add full-width text after this layout first.' } : item)
-}
-
 // ───────────── Ctrl+/ palette (see commandPalette.ts) ─────────────
 export type CommandItem = Item
 export const shownItem = shown
@@ -113,13 +106,12 @@ export function paletteItems(query: string, editor: any): Item[] {
     // the plain Callout / Toggle entries would insert empty boxes; with a selection the wrapping versions replace them
     list = [...onSelection, ...ITEMS.filter((i) => i.title !== 'Callout' && i.title !== 'Toggle')]
   }
-  return layoutAvailability(filter(query, list), editor)
+  return filter(query, list)
 }
 
 export const SlashCommand = Extension.create({
   name: 'slashCommand',
   addProseMirrorPlugins() {
-    const editor = this.editor
     return [
       Suggestion({
         editor: this.editor,
@@ -132,7 +124,7 @@ export const SlashCommand = Extension.create({
         char: '/',
         startOfLine: false,
         allowSpaces: false,
-        items: ({ query }: any) => layoutAvailability(filter(query), editor),
+        items: ({ query }: any) => filter(query),
         command: ({ editor, range, props }: any) => {
           if (props.disabled) return
           props.run(editor.chain().focus().deleteRange(range), editor).run()

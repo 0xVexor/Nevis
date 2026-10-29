@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useEditorState } from '@tiptap/react'
+import { NodeSelection } from '@tiptap/pm/state'
 import * as Ic from './icons'
 import { useAnchor } from './editor/useAnchor'
 import { hasHeaderColumn, hasHeaderRow } from './editor/tableHeader'
@@ -8,11 +9,14 @@ import { t } from './i18n'
 
 /** The DOM table the cursor is in. */
 function tableDom(editor: any): HTMLElement | null {
+  const selection = editor.state.selection
+  if (selection instanceof NodeSelection && selection.node.type.name === 'table') return editor.view.nodeDOM(selection.from) as HTMLElement | null
   const { $from } = editor.state.selection
   for (let d = $from.depth; d > 0; d--) {
     if ($from.node(d).type.name === 'table') {
       const dom = editor.view.nodeDOM($from.before(d)) as HTMLElement | null
-      return dom ? (dom.tagName === 'TABLE' ? dom : (dom.querySelector('table') ?? dom)) : null
+      // Anchor above the WHOLE frame, including its drag surface, rather than over that surface.
+      return dom
     }
   }
   return null
@@ -34,7 +38,7 @@ const Group = ({ label, children }: { label: string; children: ReactNode }) => (
 
 /**
  * Toolbar for the table the cursor is in: rows, columns, cells, header, direction, size, position.
- * It sits centered on top of the table (pinned under the top bar while you scroll through a tall table), whatever cell you click.
+ * Anchored to the complete frame; useAnchor keeps the drag surface clear while scrolling.
  */
 export function TableBubble({ editor }: { editor: any }) {
   const s = useEditorState({
@@ -51,7 +55,7 @@ export function TableBubble({ editor }: { editor: any }) {
   if (!open) return null
   const run = (fn: (c: any) => any) => fn(editor.chain().focus()).run()
   return createPortal(
-    <div ref={box} className="bubble tbl" dir="ltr" style={{ position: 'fixed', zIndex: 60 }} onMouseDown={(e) => e.preventDefault()}>
+    <div ref={box} className="bubble tbl" role="toolbar" aria-label={t('Table')} dir="ltr" style={{ position: 'fixed', zIndex: 60 }} onMouseDown={(e) => e.preventDefault()}>
       <Group label={t('Row')}>
         <B icon={<Ic.RowAbove />} title={t('Insert row above')} onClick={() => run((c) => c.addRowBefore())} />
         <B icon={<Ic.RowBelow />} title={t('Insert row below')} onClick={() => run((c) => c.addRowAfter())} />

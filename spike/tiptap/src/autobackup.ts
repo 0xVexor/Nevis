@@ -113,11 +113,11 @@ async function runBackup(): Promise<void> {
 /** Must be called from a click: opens the folder picker. */
 export async function chooseBackupFolder() {
   const picked = await (window as any).showDirectoryPicker({ id: 'notes-backup', mode: 'readwrite' }).catch(() => null)
-  if (picked) await rememberBackupFolder(picked)
+  if (picked) await configureBackupFolder(picked)
 }
 
 /** Also the seam for tests: any FileSystemDirectoryHandle (e.g. from the origin-private file system) works. */
-async function rememberBackupFolder(dir: FileSystemDirectoryHandle) {
+async function configureBackupFolder(dir: FileSystemDirectoryHandle) {
   handle = dir as Dir
   cfg = { enabled: true }
   await kvSet('backupDir', dir)
