@@ -119,6 +119,7 @@ export class McpDocumentSession {
           for (const id of documentLinks(record.after.content)) if (!previous.has(id) && !scope.canRead(id)) throw { code: 'ACCESS_DENIED' }
           const previousResources = documentResources(record.before), availableResources = new Set<string>()
           for (const page of pages) if (page.deletedAt === null && scope.canRead(page.id)) for (const id of documentResources(page)) availableResources.add(id)
+          for (const asset of record.assets ?? []) availableResources.add(`attachment:${asset.id}`)
           for (const id of undoResources(record, undoOrigin)) availableResources.add(id)
           for (const id of documentResources(record.after)) if (!previousResources.has(id) && !availableResources.has(id)) throw { code: 'ACCESS_DENIED' }
         } }

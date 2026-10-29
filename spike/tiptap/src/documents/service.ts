@@ -1,3 +1,4 @@
+import type { DocumentAsset } from './assets.ts'
 import type { DocumentAdmission } from './admission.ts'
 import { canonicalDocumentValue, documentRevision } from './revision.ts'
 import { matchOperation, operationFingerprint } from './operations.ts'
@@ -130,7 +131,7 @@ export class DocumentService implements PageRepo {
     } finally { release() }
   }
 
-  editor(grant: DocumentEditGrant, runtime: Pick<DocumentReadRuntime, 'digest'>) {
+  editor(grant: DocumentEditGrant, runtime: Pick<DocumentReadRuntime, 'digest' | 'digestBytes'>) {
     const digest = (value: string) => runtime.digest(value)
     return new DocumentEditor({ vaultHandle: this.vaultHandle, load: async () => { await this.queue; return this.storage.load() },
       lookup: async request => {
@@ -142,7 +143,7 @@ export class DocumentService implements PageRepo {
         }
         return receipt
       },
-      commit: (request, before, after, check, evidence, creation, requireNoChildren) => this.commitPlannedEdit(request, before, after, digest, check, evidence, creation, requireNoChildren, grant.admission?.()),
+      commit: (request, before, after, check, evidence, creation, requireNoChildren, assets) => this.commitPlannedEdit(request, before, after, digest, check, evidence, creation, requireNoChildren, grant.admission?.(), assets),
       now: () => this.host.now(),
       listOperations: (scopeId, documentId) => {
         if (!this.storage.listOperations) throw new Error('Document operation storage is unavailable')
@@ -154,7 +155,7 @@ export class DocumentService implements PageRepo {
       },
       createId: () => this.host.createId(),
       search: receipt => this.savedSearch(receipt, digest), sync: async () => this.host.syncState?.() ?? 'pending',
-    }, grant, digest)
+    }, grant, digest, runtime.digestBytes)
   }
   private async savedSearch(receipt: DocumentOperationReceipt, digest: (value: string) => Promise<string>): Promise<SavedSearch> {
     const prepared = await this.refreshSearchIndex()
@@ -165,7 +166,7 @@ export class DocumentService implements PageRepo {
     return { state: 'fresh', indexedRevision: receipt.revision }
   }
   private async commitPlannedEdit(request: DocumentOperationRequest, expected: Page | null, next: Page, digest: (value: string) => Promise<string>,
-    check: () => void, evidence: (page: Page, receipt: DocumentOperationReceipt) => SavedEditEvidence, creation?: CreationPosition, requireNoChildren = false, admission?: DocumentAdmission) {
+    check: () => void, evidence: (page: Page, receipt: DocumentOperationReceipt) => SavedEditEvidence, creation?: CreationPosition, requireNoChildren = false, admission?: DocumentAdmission, assets?: DocumentAsset[]) {
     if (!this.storage.commitOperationResult) throw new Error('Document operation storage is unavailable')
     request = cloneDocumentValue(request)
     const before = cloneDocumentValue(expected), after = cloneDocumentValue(next), committedAt = this.host.now()
@@ -194,7 +195,7 @@ export class DocumentService implements PageRepo {
       }
       if (canonicalDocumentValue(this.getRaw(after.id) ?? null) !== canonicalDocumentValue(before)) throw new Error('Document revision conflict')
       const result = await this.storage.commitOperationResult({ format: 1, scopeId: request.scopeId, operationId: request.operationId,
-        fingerprint, before, after, receipt, ...(before ? { history: { pageId: before.id, ts: after.updatedAt, title: before.title, content: cloneDocumentValue(before.content) } } : {}),
+        fingerprint, before, after, receipt, ...(assets?.length ? { assets: cloneDocumentValue(assets) } : {}), ...(before ? { history: { pageId: before.id, ts: after.updatedAt, title: before.title, content: cloneDocumentValue(before.content) } } : {}),
         ...(creation ? { creation: cloneDocumentValue(creation) } : {}), ...(requireNoChildren ? { requireNoChildren: true as const } : {}), ...(undoOf ? { undoOf } : {}) }, admission)
       await this.publishCommittedDocument(result.receipt.documentId)
       return result

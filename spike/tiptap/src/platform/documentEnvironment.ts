@@ -8,6 +8,10 @@ import type { DocumentReadRuntime } from '../documents/reader'
 
 export function createDocumentReadRuntime(): DocumentReadRuntime {
   return {
+    async digestBytes(bytes) {
+      const hash = await crypto.subtle.digest('SHA-256', new Uint8Array(bytes))
+      return [...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, '0')).join('')
+    },
     now: () => Date.now(), cursorId: () => crypto.randomUUID(),
     async digest(snapshot) {
       const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(snapshot))
@@ -26,7 +30,16 @@ export function createAppDocumentEnvironment(): DocumentEnvironment {
     load: allPages, save: savePages, stamp: vaultStamp, listVersions, addVersion, deleteVersions,
     listOperations: listDocumentOperations, findOperation: findDocumentOperation, commitOperation: commitDocumentOperation,
     commitOperationResult: commitDocumentOperationResult,
-  }) : new IndexedDbDocumentStorage('browser:not.db', db, () => !storageFrozen(), publishDocumentChange)
+  }) : new IndexedDbDocumentStorage('browser:not.db', db, () => !storageFrozen(), publishDocumentChange, {
+    digest: createDocumentReadRuntime().digestBytes!,
+    async write(assets, addedAt) {
+      const { putRecord } = await import('../attachments')
+      for (const asset of assets) {
+        if (storageFrozen()) throw new Error('Document storage is unavailable')
+        await putRecord({ id: asset.id, type: asset.mimeType, name: asset.name, size: asset.bytes.length, blob: new Blob([new Uint8Array(asset.bytes)], { type: asset.mimeType }), addedAt })
+      }
+    },
+  })
   return {
     storage,
     search: { yield: () => new Promise(resolve => window.setTimeout(resolve, 0)) },

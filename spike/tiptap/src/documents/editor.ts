@@ -1,3 +1,4 @@
+import type { DocumentAsset, AssetDigest } from './assets.ts'
 import { canUseDocumentResource } from './admission.ts'
 import type { DocumentAdmission } from './admission.ts'
 import { DocumentHistory } from './history.ts'
@@ -32,7 +33,7 @@ export interface DocumentEditSource {
   load(): Promise<Page[]>
   lookup(request: DocumentOperationRequest): Promise<DocumentOperationReceipt | null>
   commit(request: DocumentOperationRequest, before: Page | null, after: Page, check: () => void,
-    evidence: (page: Page, receipt: DocumentOperationReceipt) => SavedEditEvidence, creation?: CreationPosition, requireNoChildren?: boolean): Promise<DocumentOperationCommitResult>
+    evidence: (page: Page, receipt: DocumentOperationReceipt) => SavedEditEvidence, creation?: CreationPosition, requireNoChildren?: boolean, assets?: DocumentAsset[]): Promise<DocumentOperationCommitResult>
   now(): number
   listOperations(scopeId: string, documentId: string): Promise<DocumentOperationSummary[]>
   operationRecord(scopeId: string, operationId: string): Promise<DocumentOperationRecord | null>
@@ -46,8 +47,10 @@ export class DocumentEditor {
   private readonly source: DocumentEditSource
   private readonly grant: DocumentEditGrant
   private readonly context: DocumentAccessContext
+  private readonly digestBytes?: AssetDigest
   private readonly digest: (value: string) => Promise<string>
-  constructor(source: DocumentEditSource, grant: DocumentEditGrant, digest: (value: string) => Promise<string>) {
+  constructor(source: DocumentEditSource, grant: DocumentEditGrant, digest: (value: string) => Promise<string>, digestBytes?: AssetDigest) {
+    this.digestBytes = digestBytes
     this.source = source; this.grant = grant; this.context = Object.freeze({ ...grant.context }); this.digest = digest
     this.authorize()
     this.history = new DocumentHistory(source, grant, digest)
@@ -104,7 +107,7 @@ export class DocumentEditor {
       for (const id of links) if (!this.grant.canRead(id)) fail('ACCESS_DENIED')
     }
     let plan
-    try { plan = await planDocumentEdit(before, input, { digest: this.digest, canLink: id => { links.add(id); return this.grant.canRead(id) }, canUseResource: (kind, id) => canUseDocumentResource(rows, this.grant.canRead, kind, id) }) }
+    try { plan = await planDocumentEdit(before, input, { digest: this.digest, digestBytes: this.digestBytes, canLink: id => { links.add(id); return this.grant.canRead(id) }, canUseResource: (kind, id) => canUseDocumentResource(rows, this.grant.canRead, kind, id) }) }
     catch (error) {
       if (input.mode === 'apply') {
         let prior
@@ -117,7 +120,7 @@ export class DocumentEditor {
     if (input.mode === 'preview') return plan.preview
     let result: DocumentOperationCommitResult
     try { result = await this.source.commit(request, plan.before, plan.after, check,
-      (page, receipt) => savedEditEvidence(page, receipt, plan.affectedBlockIds, input.budget)) }
+      (page, receipt) => savedEditEvidence(page, receipt, plan.affectedBlockIds, input.budget), undefined, false, plan.assets) }
     catch (error) {
       let prior
       try { prior = await this.racedReplay(request, error) } catch (lookupError) { translate(lookupError, 'APP_UNAVAILABLE') }
@@ -140,7 +143,7 @@ export class DocumentEditor {
     }
     check()
     const request: DocumentOperationRequest = { scopeId: this.context.grantId, operationId: input.operationId, kind: 'create', documentId: null, expectedRevision: null,
-      payload: { tool: 'create_document', parentId: input.parentId, kind: input.kind, metadata: input.metadata, content: input.content } }
+      payload: { tool: 'create_document', parentId: input.parentId, kind: input.kind, metadata: input.metadata, content: input.content, ...(input.assets ? { assets: input.assets } : {}) } }
     let prior
     try { prior = await this.source.lookup(request) } catch (error) { translate(error, 'APP_UNAVAILABLE') }
     check()
@@ -154,12 +157,12 @@ export class DocumentEditor {
     let position, planned
     try {
       position = creationPosition(rows, input.parentId)
-      planned = await prepareCreatedPage(input, id, position.sort, { digest: this.digest, canLink: id => { links.add(id); return this.grant.canRead(id) }, canUseResource: (kind, id) => canUseDocumentResource(rows, this.grant.canRead, kind, id) })
+      planned = await prepareCreatedPage(input, id, position.sort, { digest: this.digest, digestBytes: this.digestBytes, canLink: id => { links.add(id); return this.grant.canRead(id) }, canUseResource: (kind, id) => canUseDocumentResource(rows, this.grant.canRead, kind, id) })
     } catch (error) { translate(error, 'INVALID_ARGUMENT') }
     check()
     let committed
     try { committed = await this.source.commit(request, null, planned.after, check,
-      (page, receipt) => savedEditEvidence(page, receipt, planned.affected, undefined, metadataEvidence(page)), position.precondition) }
+      (page, receipt) => savedEditEvidence(page, receipt, planned.affected, undefined, metadataEvidence(page)), position.precondition, false, planned.assets) }
     catch (error) {
       // A concurrent identical create may already own a different generated identity.
       if (/revision conflict|commit in progress/i.test(error instanceof Error ? error.message : String(error))) {

@@ -93,3 +93,13 @@ test('rich fixture content remains intact through the structured read contract',
     assert.equal(JSON.stringify(blocks), before)
   }
 })
+
+
+test('upload contracts accept bounded raster/scene entries only on create and block insertion/replacement', () => {
+  const assets = [{ temporaryId: 'pixel', name: 'pixel.png', mimeType: 'image/png', data: 'iVBORw0KGgo=' }]
+  validate('create_document', 'input', { ...examples.tools.create_document.input, assets })
+  validate('edit_document', 'input', { ...examples.tools.edit_document.input, operations: [{ kind: 'insert_blocks', at: { position: 'end', parent: null }, assets, blocks: [{ temporaryId: 'image', node: { type: 'image', attrs: { src: 'upload:pixel' } } }] }] })
+  for (const invalid of [[], Array(21).fill(assets[0]), [{ ...assets[0], mimeType: 'application/javascript' }], [{ ...assets[0], path: '/tmp/image.png' }]]) {
+    assert.equal(validators.create_document.input({ ...examples.tools.create_document.input, assets: invalid }), false)
+  }
+})

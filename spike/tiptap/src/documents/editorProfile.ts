@@ -108,8 +108,10 @@ export function editorCapabilities() {
       'Use create_document or insert/replace_blocks with native node JSON. Block IDs are assigned by the host.',
       'layoutGroup is top-level only, has two or three columns, and explicit widths must each be at least 20 and total 100.',
       'Table rows must form a rectangular grid after colspan/rowspan expansion. Table rows/cells belong inside their table/row.',
-      'Attachment hashes and database container IDs must already be referenced by a document in the current grant; a guessed ID is insufficient.',
+      'Existing attachment hashes and database container IDs must be referenced by a readable document. New attachments use assets uploads on create_document or insert/replace_blocks.',
       'Images accept att: references, HTTP(S) URLs or bounded PNG/JPEG/GIF/WebP data URLs. Links accept HTTP(S), mailto, tel or fragment URLs.',
+      'Upload entries contain temporaryId, mimeType, name and standard base64 data. Use upload:<temporaryId> in image.src or drawing.scene/preview; the host replaces it with a SHA-256 reference. Every upload must be used.',
+      'Uploads allow PNG/JPEG/GIF/WebP and application/vnd.excalidraw+json scenes, at most 20 assets and 196608 decoded bytes per request within the existing request byte limit.',
       'Drawing scene/preview values reference stored attachments; an empty drawing can be edited in the Nevis canvas.',
     ],
   }

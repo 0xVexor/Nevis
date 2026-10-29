@@ -135,3 +135,64 @@ test('MCP final admission restores a removed attachment only from the same scope
   const denied = await call('edit_document', { documentId: 'target', operationId: 'private-image', expectedRevision: undone.result.revision, mode: 'apply', operations: [{ kind: 'set_attributes', target: { blockId }, attributes: { src: `att:${'b'.repeat(64)}` } }] })
   assert.equal(denied.error.code, 'ACCESS_DENIED')
 })
+
+
+test('uploaded raster images and drawing scenes persist native references and exact bytes, retry safely and reject invalid uploads', async () => {
+  const storage = new MemoryDocumentStorage('rich', [], digest)
+  const service = new DocumentService({ storage, host }); await service.init()
+  const writer = service.editor(access, { digest, digestBytes: digest })
+  const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64')
+  const scene = Buffer.from(JSON.stringify({ type: 'excalidraw', version: 2, elements: [] }))
+  const upload = (temporaryId, bytes, mimeType) => ({ temporaryId, mimeType, name: temporaryId, data: bytes.toString('base64') })
+  const request = { operationId: 'upload-create', parentId: null, kind: 'page', metadata: { title: 'Uploaded content', tags: [], favorite: false },
+    assets: [upload('photo', image, 'image/png'), upload('scene', scene, 'application/vnd.excalidraw+json')],
+    content: { type: 'doc', content: [ { type: 'image', attrs: { src: 'upload:photo', alt: 'Pixel' } },
+      { type: 'drawing', attrs: { scene: 'upload:scene', preview: 'upload:photo' } } ] } }
+  const created = await writer.createDocument(request)
+  const saved = service.get(created.documentId)
+  const imageId = await digest(image), sceneId = await digest(scene)
+  assert.equal(saved.content.content[0].attrs.src, `att:${imageId}`)
+  assert.equal(saved.content.content[1].attrs.scene, sceneId)
+  assert.deepEqual(Buffer.from((await storage.readAsset(imageId)).bytes), image)
+  assert.deepEqual(Buffer.from((await storage.readAsset(sceneId)).bytes), scene)
+  const exposed = await storage.readAsset(imageId); exposed.bytes.fill(0)
+  assert.deepEqual(Buffer.from((await storage.readAsset(imageId)).bytes), image)
+  schema.nodeFromJSON(saved.content).check()
+  assert.deepEqual((await writer.createDocument(request)).receipt, created.receipt)
+  const baseline = await storage.load()
+  for (const asset of [ { ...request.assets[0], mimeType: 'image/jpeg' }, { ...request.assets[0], data: 'AAAA' } ]) {
+    await assert.rejects(writer.createDocument({ ...request, operationId: randomUUID(), assets: [asset] }))
+    assert.deepEqual(await storage.load(), baseline)
+  }
+  const missing = new DocumentService({ storage: new MemoryDocumentStorage('rich', []), host }); await missing.init()
+  await assert.rejects(missing.editor(access, { digest }).createDocument(request), error => error.code === 'CAPABILITY_UNAVAILABLE')
+})
+
+
+test('MCP wire accepts new attachment uploads, applies final grant admission, previews without files and undoes insertion', async () => {
+  const { McpDocumentSession, MCP_PROTOCOL } = await import('../src/documents/mcp.ts')
+  const storage = new MemoryDocumentStorage('wire-uploads', [], digest)
+  const service = new DocumentService({ storage, host }); await service.init()
+  const runtime = { now: () => 10, cursorId: randomUUID, digest, digestBytes: digest }
+  const session = new McpDocumentSession(service, { vaultId: 'wire-uploads', grantId: 'uploads-grant', revision: '1', policy: { wholeVault: true, rootIds: [], excludedIds: [], allowWrites: true } }, runtime, () => true, true)
+  let serial = 0
+  const rpc = (method, params, notification = false) => session.dispatch({ jsonrpc: '2.0', ...(notification ? {} : { id: ++serial }), method, params }, { id: randomUUID(), expiresAt: 1010, active: () => true })
+  await rpc('initialize', { protocolVersion: MCP_PROTOCOL, capabilities: {}, clientInfo: { name: 'upload-test', version: '1' } })
+  await rpc('notifications/initialized', {}, true)
+  const call = async (name, args) => (await rpc('tools/call', { name, arguments: args })).result.structuredContent
+  const created = await call('create_document', { operationId: 'wire-create', parentId: null, kind: 'page', metadata: { title: 'Upload target', tags: [], favorite: false }, content: { type: 'doc', content: [p('Before')] } })
+  assert.equal(created.ok, true, JSON.stringify(created))
+  const data = 'iVBORw0KGgo=', id = await digest(Buffer.from(data, 'base64'))
+  const request = { documentId: created.result.documentId, operationId: 'wire-insert', expectedRevision: created.result.revision, mode: 'preview', operations: [
+    { kind: 'insert_blocks', at: { position: 'end', parent: null }, assets: [{ temporaryId: 'pixel', name: 'pixel.png', mimeType: 'image/png', data }], blocks: [{ temporaryId: 'image', node: { type: 'image', attrs: { src: 'upload:pixel' } } }] },
+  ] }
+  assert.equal((await call('edit_document', request)).ok, true)
+  assert.equal(await storage.readAsset(id), null)
+  const before = structuredClone(service.get(request.documentId))
+  const applied = await call('edit_document', { ...request, mode: 'apply' })
+  assert.equal(applied.ok, true, JSON.stringify(applied)); assert.ok(await storage.readAsset(id))
+  assert.equal(service.get(request.documentId).content.content[1].attrs.src, `att:${id}`)
+  const undone = await call('undo_document_edit', { documentId: request.documentId, operationId: 'wire-undo', undoOperationId: request.operationId, expectedRevision: applied.result.saved.revision })
+  assert.equal(undone.ok, true, JSON.stringify(undone))
+  assert.deepEqual(service.get(request.documentId).content, before.content)
+})

@@ -18,6 +18,7 @@ export interface DocumentReadGrant {
   canRead(documentId: string): boolean
 }
 export interface DocumentReadRuntime {
+  digestBytes?: import('./assets.ts').AssetDigest
   now(): number
   /** Host supplies cryptographically random opaque tokens, not sequential IDs. */
   cursorId(): string
