@@ -1,6 +1,6 @@
 # Acceptance matrix — computed from test logs
 
-PASS: 42, FAIL: 0, NOT_RUN: 62; total: 104.
+PASS: 46, FAIL: 0, NOT_RUN: 58; total: 104.
 
 PASS means the named synthetic test ran. It does not establish live Google or OS compatibility. NOT_RUN includes internal implementation/test gaps as well as external dependencies.
 
@@ -21,11 +21,11 @@ PASS means the named synthetic test ran. It does not establish live Google or OS
 | A03 | OS Keychain unavailable | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
 | A04 | دو حساب Google مختلف | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
 | A05 | فایل/فولدر renamed در Drive | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
-| A06 | دو فولدر `Nevis` هم‌نام | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
+| A06 | دو فولدر `Nevis` هم‌نام | PASS | `sync::drive::roots::tests::duplicate_names_require_explicit_verified_identity_and_never_fall_back`<br>`sync::drive::roots::tests::choice_is_account_scoped_and_bound_vaults_cannot_be_redirected` |
 | A07 | cross-device `drive.file` discovery | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
 | A08 | permission removed / root deleted | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
 | A09 | quota 403/429 و `Retry-After` | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
-| A10 | 401 refresh لازم / refresh هم شکست | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
+| A10 | 401 refresh لازم / refresh هم شکست | PASS | `sync::drive::transport::refresh_tests::repeated_401_and_revoked_refresh_are_bounded_and_redacted` |
 | A11 | 5xx / network timeout / TLS error | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
 | A12 | Drive storage full و 403 insufficient storage | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
 | A13 | پاسخ API بسیار کند | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
@@ -70,7 +70,7 @@ PASS means the named synthetic test ran. It does not establish live Google or OS
 | M14 | page-level replace-safe + concurrent block change | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
 | B01 | A یک property، B یک field دیگر همان record را edit کند | PASS | `sync::drive::tests::database_fields_merge_and_same_field_archives_keep_original_identity` |
 | B02 | دو edit ناسازگار یک field | PASS | `sync::drive::tests::database_fields_merge_and_same_field_archives_keep_original_identity` |
-| B03 | concurrent relation/edge updates | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
+| B03 | concurrent relation/edge updates | PASS | `sync::drive::tests::concurrent_single_relation_links_require_a_reviewed_atomic_decision`<br>`sync::drive::database::graph_tests::relation_limits_and_logical_duplicate_edges_are_rejected` |
 | B04 | atomic multi-record batch و crash وسط apply | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
 | B05 | ID allocation هم‌زمان روی دو دستگاه | PASS | `sync::drive::database::tests::duplicate_allocated_tokens_fail_before_application`<br>`sync::drive::tests::database_same_identity_creation_archives_whole_candidates_and_delete_edit_resurrects` |
 | B06 | kv stale UI cache بعد از remote update | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
@@ -78,18 +78,18 @@ PASS means the named synthetic test ran. It does not establish live Google or OS
 | B08 | A page delete، B offline edit همان page | PASS | `sync::drive::tests::page_delete_offline_edit_resurrects_and_archives` |
 | B09 | دو delete موازی یک صفحه | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
 | B10 | Remote file vanished بدون tombstone | PASS | `sync::drive::tests::expired_cursor_rescans_but_missing_uncovered_history_stops_without_deletion` |
-| B11 | صفحه با asset reference در conflict/history | PASS | `sync::drive::tests::checkpoint_gc_retains_object_only_referenced_by_older_history` |
+| B11 | صفحه با asset reference در conflict/history | PASS | `sync::drive::tests::checkpoint_gc_retains_object_only_referenced_by_older_history`<br>`sync::drive::tests::late_reference_restores_deleted_historical_asset_after_checkpoint_pruning` |
 | B12 | page permanent-delete UI و offline device | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
 | C01 | Crash وسط checkpoint objects upload | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
 | C02 | manifest published ولی object missing | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
 | C03 | دو concurrent checkpoints با incomparable frontiers | PASS | `sync::drive::checkpoint::tests::incomparable_checkpoints_never_choose_the_latest_timestamp` |
 | C04 | fresh device از remote خالی محلی | PASS | `sync::drive::tests::two_devices_independent_fields_and_cold_restore`<br>`sync::drive::tests::benchmark_1000_pages_1000_assets_cold_restore`<br>`sync::drive::tests::all_13_record_types_retain_identity_and_field_values` |
-| C05 | device offline یک ماه ویرایش کرده | PASS | `sync::drive::tests::checkpoint_tail_preserves_offline_preimage_and_new_device_sequence` |
+| C05 | device offline یک ماه ویرایش کرده | PASS | `sync::drive::tests::checkpoint_tail_preserves_offline_preimage_and_new_device_sequence`<br>`sync::drive::tests::checkpoint_late_lower_actor_and_three_candidates_match_full_replay` |
 | C06 | device offline بدون ویرایش و GC شده | PASS | `sync::drive::tests::stale_device_without_edits_rebootstraps_after_covered_stream_removal` |
 | C07 | legacy older client incompatible protocol | PASS | `vault::locking_tests::drive_marker_fences_legacy_open_without_changing_logical_identity` |
 | C08 | GC crash بعد از حذف بخشی از candidates | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
 | C09 | GC dry-run به object reference مهم می‌رسد | PASS | `sync::drive::tests::gc_proof_is_durable_stale_sensitive_and_never_deletes_without_release_gates`<br>`sync::drive::tests::checkpoint_gc_retains_object_only_referenced_by_older_history` |
-| C10 | restoration of an older History checkpoint | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
+| C10 | restoration of an older History checkpoint | PASS | `sync::drive::history::tests::restore_copy_preserves_original_identity_and_contents_and_has_its_own_name`<br>`sync::drive::history::tests::preview_counts_inventory_without_claiming_full_restore_verification` |
 | C11 | checkpoint with 1000 pages + 1000 assets | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
 | C12 | local backup restored روی دستگاه دوم | NOT_RUN | No complete automated/live assertion for this acceptance case; see limitations. |
 | C13 | manifest tampering/corrupt inventory | PASS | `sync::drive::checkpoint::tests::manifest_hash_paths_and_tamper_rejected` |

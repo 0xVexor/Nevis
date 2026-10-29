@@ -1,19 +1,19 @@
 {
   "date": "2026-10-29",
   "nativeUnique": {
-    "passed": 174,
+    "passed": 199,
     "failed": 0,
     "ignored": 11
   },
-  "drivePassed": 70,
+  "drivePassed": 94,
   "javascriptPassed": 227,
   "javascriptFailed": 0,
-  "liveGoogle": "NOT_RUN",
+  "liveGoogle": "PRIOR_SIGN_IN_FAILED_MISSING_CLIENT_SECRET; CORRECTED_BUILD_AWAITING_USER_RETEST",
   "windows": "NOT_RUN",
   "productionReady": false,
   "acceptance": {
-    "PASS": 42,
+    "PASS": 46,
     "FAIL": 0,
-    "NOT_RUN": 62
+    "NOT_RUN": 58
   }
 }

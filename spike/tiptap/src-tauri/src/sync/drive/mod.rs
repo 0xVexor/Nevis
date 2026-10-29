@@ -5,7 +5,11 @@ pub mod core;
 pub mod database;
 pub mod diagnostics;
 pub mod gc;
+pub mod history;
 pub mod onboarding;
+pub mod relation_conflicts;
+pub mod roots;
+pub mod schedule;
 pub mod settings;
 pub mod stable;
 pub mod streaming;
@@ -203,44 +207,64 @@ fn vault_descriptor(
     )
 }
 fn root(d: &mut Drive, data: &Path, subject: &str) -> Res<String> {
-    let rows =
-        d.list("trashed = false and appProperties has { key='nevisKind' and value='root' }")?;
-    if rows.len() > 1 {
-        return Err("DRIVE:duplicate_roots".into());
-    }
-    let id = if let Some(r) = rows.first() {
-        if r["appProperties"]["owner"] != subject || r["appProperties"]["nevisProtocol"] != "1" {
-            return Err("DRIVE:identity_mismatch".into());
-        }
-        r["id"]
-            .as_str()
-            .ok_or("DRIVE:invalid_response")?
-            .to_string()
-    } else {
-        folder(
-            d,
-            &data.join("drive").join(format!("root-{subject}.json")),
-            "Nevis",
-            None,
-            &json!({"nevisKind":"root","nevisProtocol":"1","owner":subject}),
-        )?
-    };
-    root_descriptor(
-        d,
-        &id,
-        subject,
-        Some(
-            &data
+    let rows = d.list(&roots::query(subject)?)?;
+    let selection = roots::selected(data, subject)?;
+    let existing = roots::choose(&rows, subject, selection.as_deref())?;
+    let id = match existing {
+        Some(id) => {
+            let receipt = data.join("drive").join(format!("root-{subject}.json"));
+            let locally_reserved = fs::read(&receipt)
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<String>(&bytes).ok())
+                .as_deref()
+                == Some(&id);
+            let descriptor_receipt = data
                 .join("drive")
-                .join(format!("root-descriptor-{subject}.json")),
-        ),
-    )?;
+                .join(format!("root-descriptor-{subject}.json"));
+            root_descriptor(
+                d,
+                &id,
+                subject,
+                if locally_reserved {
+                    Some(descriptor_receipt.as_path())
+                } else {
+                    None
+                },
+            )?;
+            id
+        }
+        None => {
+            let id = folder(
+                d,
+                &data.join("drive").join(format!("root-{subject}.json")),
+                "Nevis",
+                None,
+                &json!({"nevisKind":"root","nevisProtocol":"1","owner":subject}),
+            )?;
+            root_descriptor(
+                d,
+                &id,
+                subject,
+                Some(
+                    &data
+                        .join("drive")
+                        .join(format!("root-descriptor-{subject}.json")),
+                ),
+            )?;
+            id
+        }
+    };
     Ok(id)
 }
 pub fn discover(data: &Path) -> Res<Value> {
     let mut d = Drive::new()?;
     let sub = auth::subject()?;
-    let root = root(&mut d, data, &sub)?;
+    let roots = d.list(&roots::query(&sub)?)?;
+    let selection = roots::selected(data, &sub)?;
+    let Some(root) = roots::choose(&roots, &sub, selection.as_deref())? else {
+        return Ok(json!([]));
+    };
+    root_descriptor(&mut d, &root, &sub, None)?;
     let rows=d.list(&format!("trashed = false and '{root}' in parents and appProperties has {{ key='nevisKind' and value='vault' }}"))?;
     let mut out = vec![];
     for row in rows {
@@ -270,7 +294,16 @@ pub fn prepare(data: &Path, vault: &str, name: &str, existing: Option<&str>) -> 
     uuid::Uuid::parse_str(vault).map_err(|_| "DRIVE:invalid_vault")?;
     let subject = auth::subject()?;
     let mut d = Drive::new()?;
-    let root = root(&mut d, data, &subject)?;
+    let root = if existing.is_some() {
+        let rows = d.list(&roots::query(&subject)?)?;
+        let selection = roots::selected(data, &subject)?;
+        let id = roots::choose(&rows, &subject, selection.as_deref())?
+            .ok_or("DRIVE:root_unavailable")?;
+        root_descriptor(&mut d, &id, &subject, None)?;
+        id
+    } else {
+        root(&mut d, data, &subject)?
+    };
     let props = json!({"nevisKind":"vault","nevisProtocol":"1","owner":subject,"nevisVault":vault});
     let f = if let Some(id) = existing {
         let m = d.metadata(id)?;
@@ -967,16 +1000,7 @@ pub fn run(
         .try_lock()
         .map_err(|_| "DRIVE:another_process_syncing")?;
     let retry_file = state_dir.join("retry-after.json");
-    if let Ok(bytes) = fs::read(&retry_file) {
-        let deadline: i64 =
-            serde_json::from_slice(&bytes).map_err(|_| "DRIVE:retry_state_corrupt")?;
-        if deadline > crate::vault::now_ms() {
-            return Err(format!(
-                "DRIVE:rate_limited:{}",
-                (deadline - crate::vault::now_ms() + 999) / 1000
-            ));
-        }
-    }
+    schedule::enforce(&retry_file, crate::vault::now_ms())?;
     let publication_clock = state_dir.join("publication-at.json");
     let last: Option<i64> = match fs::read(&publication_clock) {
         Ok(b) => Some(serde_json::from_slice(&b).map_err(|_| "DRIVE:publication_state_corrupt")?),
@@ -984,8 +1008,7 @@ pub fn run(
         Err(_) => return Err("DRIVE:publication_state_unreadable".into()),
     };
     let mut storage = VaultDrive {
-        allow_publish: !automatic
-            || last.is_none_or(|t| crate::vault::now_ms().saturating_sub(t) >= 90_000),
+        allow_publish: schedule::publication_allowed(last, crate::vault::now_ms(), automatic),
         publication_clock,
         drive: Drive::new()?.cancellable(state_dir.join("pause-request")),
         binding: b.clone(),
@@ -1026,15 +1049,9 @@ pub fn run(
         }
     }
     if let Err(message) = &result {
-        if let Some(seconds) = message
-            .strip_prefix("DRIVE:rate_limited:")
-            .and_then(|s| s.parse::<i64>().ok())
-        {
-            write_atomic(
-                &retry_file,
-                &bytes(&(crate::vault::now_ms() + seconds.saturating_mul(1000)))?,
-            )?;
-        }
+        schedule::record(&retry_file, message, crate::vault::now_ms())?;
+    } else {
+        schedule::success(&retry_file)?;
     }
     let cumulative = match diagnostics::record(
         data,
@@ -1066,7 +1083,7 @@ pub fn status(data: &Path, id: &str) -> Res<Value> {
         .ok()
         .and_then(|b| serde_json::from_slice::<Value>(&b).ok());
     Ok(
-        json!({"driveSyncEnabled":feature_enabled(),"auth":auth::status(),"binding":b,"pending":j.as_ref().map_or(0,|j|j.outbox.len()),"lastVerifiedAt":j.as_ref().map_or(0,|j|j.last_verified_at),"gc":j.as_ref().map(core::gc_plan),"metrics":metrics,"releaseReady":false}),
+        json!({"currentVaultId":if id=="none"{Value::Null}else{json!(id)},"driveSyncEnabled":feature_enabled(),"auth":auth::status(),"binding":b,"pending":j.as_ref().map_or(0,|j|j.outbox.len()),"lastVerifiedAt":j.as_ref().map_or(0,|j|j.last_verified_at),"gc":j.as_ref().map(core::gc_plan),"metrics":metrics,"releaseReady":false}),
     )
 }
 #[cfg(test)]

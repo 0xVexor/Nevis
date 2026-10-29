@@ -1,3 +1,5 @@
+#[path = "src/google_build_config.rs"]
+mod google_build_config;
 fn main() {
     println!("cargo:rerun-if-env-changed=NOVIQ_GITHUB_CLIENT_ID");
     println!("cargo:rerun-if-env-changed=NOVIQ_GITHUB_APP_SLUG");
@@ -35,9 +37,15 @@ fn main() {
         );
         println!("cargo:rustc-env={variable}={value}");
     }
-    for variable in ["NEVIS_GOOGLE_CLIENT_ID", "NEVIS_GOOGLE_CREDENTIAL_SERVICE", "NEVIS_DRIVE_SYNC_ENABLED"] {
+    println!("cargo:rerun-if-changed=google-oauth.public.json");
+    println!("cargo:rerun-if-env-changed=NEVIS_GOOGLE_CLIENT_ID");
+    let public=google_build_config::parse(&std::fs::read_to_string("google-oauth.public.json").expect("read public Google build identity")).expect("valid public Google identity (clientId only)");
+    let client=std::env::var("NEVIS_GOOGLE_CLIENT_ID").unwrap_or(public);
+    google_build_config::validate(&client).expect("valid public Google Desktop client ID");
+    println!("cargo:rustc-env=NEVIS_GOOGLE_CLIENT_ID={client}");
+    for variable in ["NEVIS_GOOGLE_CREDENTIAL_SERVICE","NEVIS_DRIVE_SYNC_ENABLED"] {
         println!("cargo:rerun-if-env-changed={variable}");
-        if let Ok(value)=std::env::var(variable){assert!(value.len()<256 && value.bytes().all(|b|b.is_ascii_alphanumeric()||b"._-".contains(&b)),"invalid public Drive build option");println!("cargo:rustc-env={variable}={value}");}
+        if let Ok(value)=std::env::var(variable){assert!(value.len()<256 && value.bytes().all(|b|b.is_ascii_alphanumeric()||b"._-".contains(&b)),"invalid public Drive build option");if variable=="NEVIS_DRIVE_SYNC_ENABLED"{assert!(value=="0" || value=="1","Drive feature option must be 0 or 1");}println!("cargo:rustc-env={variable}={value}");}
     }
     tauri_build::build()
 }

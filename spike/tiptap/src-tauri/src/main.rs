@@ -11,6 +11,8 @@ mod portable;
 mod registry;
 mod sync;
 mod vault;
+#[cfg(test)]
+mod google_build_config;
 mod vault_lock;
 mod updates;
 
@@ -1130,7 +1132,7 @@ fn sync_thread(app: AppHandle, rx: Receiver<Kick>) {
                         let rate=message.strip_prefix("GITHUB:rate_limited:").and_then(|s|s.parse::<u64>().ok());
                         Duration::from_secs(rate.unwrap_or((15u64 << fails.min(6)).min(900)) + (now_ms() as u64 % 11))
                     } else { backoff(fails) };
-                    retry_at = Instant::now() + delay;
+                    retry_at = Instant::now() + drive::schedule::wake_delay(delay);
                 }
             },
             _ => {
@@ -1284,9 +1286,13 @@ async fn drive_action(s:St<'_>,app:AppHandle,action:String,args:Value)->Res<Valu
         let _op=github::OPERATION.lock().map_err(err)?;
         let s=app.state::<Store>();let id=current_entry(&s).map(|e|e.id).unwrap_or_default();
         match action.as_str(){
+            "import-client"=>drive::auth::import_client(std::path::Path::new(args["path"].as_str().ok_or("DRIVE:invalid_client_file")?)),
             "begin"=>drive::auth::begin(),"poll"=>drive::auth::poll(),"cancel"=>{drive::auth::cancel();Ok(Value::Null)},
             "disconnect"=>{if let Some(mut b)=drive::binding(&data,&id)?{b.paused=true;drive::save_binding(&data,&b)?;}drive::auth::disconnect()?;Ok(Value::Null)},
             "list"=>drive::discover(&data),
+            "roots"=>drive::roots::list(&data),
+            "view-root"=>{drive::roots::open(args["id"].as_str().ok_or("DRIVE:missing_root")?)?;Ok(Value::Null)},
+            "select-root"=>drive::roots::select(&data,args["id"].as_str().ok_or("DRIVE:missing_root")?),
             "connect"=>{
                 if drive::enabled(&data,&id){return Err("DRIVE:already_connected".into());}
                 // A pending GitHub publish cannot be silently abandoned during provider switching.
@@ -1326,6 +1332,9 @@ async fn drive_action(s:St<'_>,app:AppHandle,action:String,args:Value)->Res<Valu
                 drive::save_binding(&data,&b)?;
                 activate(&s,&Entry{id:remote_id.into(),name,path:target.to_string_lossy().into(),sync:true},false)?;Ok(Value::Null)
             },
+            "database-conflicts"=>drive::relation_conflicts::list(&drive::relation_conflicts::state(&data,&id)?),
+            "database-conflict-preview"=>drive::relation_conflicts::preview(&drive::relation_conflicts::state(&data,&id)?,args["id"].as_str().ok_or("DRIVE:missing_conflict")?,args["preferred"].as_str().ok_or("DRIVE:missing_choice")?),
+            "database-conflict-resolve"=>{let applied=with(&s,|v|{let before=drive::streaming::capture(v,&drive::dir(&data,&id))?;let decision=drive::relation_conflicts::resolve(&data,&id,args["id"].as_str().ok_or("DRIVE:missing_conflict")?,args["preferred"].as_str().ok_or("DRIVE:missing_choice")?,args["digest"].as_str().ok_or("DRIVE:missing_choice")?,&before)?;let applied=decision.after.is_some();if let Some(after)=decision.after{drive::streaming::apply(v,&drive::dir(&data,&id),&before,&after)?;}Ok(json!({"applied":applied,"remaining":decision.remaining}))})?;let _=app.emit("vault-changed",id);kick_as(&s,Kick::User);Ok(applied)},
             "conflicts"=>with(&s,|v|{let mut out=vec![];for (p,b) in snapshot::read_metadata(v)?{if p.starts_with("conflicts/"){out.push(serde_json::from_slice::<Value>(&b).map_err(err)?);}}Ok(json!(out))}),
             "resolve"=>{with(&s,|v|{let conflict_id=vault::check_id(args["id"].as_str().ok_or("DRIVE:missing_conflict")?)?;let archive:Value=serde_json::from_slice(&std::fs::read(v.root.join("conflicts").join(format!("{conflict_id}.json"))).map_err(err)?).map_err(err)?;if archive["provider"]!="drive"{return snapshot::resolve_conflict(v,conflict_id,args["choice"].as_str().ok_or("DRIVE:missing_choice")?);}let before=drive::streaming::capture(v,&drive::dir(&data,&v.id()))?;let after=drive::resolve(&data,&id,args["id"].as_str().ok_or("DRIVE:missing_conflict")?,args["choice"].as_str().ok_or("DRIVE:missing_choice")?,&before)?;drive::streaming::apply(v,&drive::dir(&data,&v.id()),&before,&after)})?;let _=app.emit("vault-changed",id);kick_as(&s,Kick::User);Ok(Value::Null)},
             "deep-check"=>{drive::streaming::clear_verification_cache();let bundle=with(&s,|v|drive::streaming::capture(v,&drive::dir(&data,&v.id())))?;Ok(json!({"verifiedFiles":bundle.manifest.files.len()}))},
@@ -1334,9 +1343,10 @@ async fn drive_action(s:St<'_>,app:AppHandle,action:String,args:Value)->Res<Valu
                 let path=drive::dir(&data,&id).join("journal.json");let j=drive::core::Journal::load(&path,&id,&drive::device(&data)?)?;
                 match action.as_str(){"gc-dry-run"=>drive::gc::dry_run(&path,&j),"gc-verify"=>drive::gc::verify(&path,&j),"gc-execute-guarded"=>drive::gc::execute_guarded(&path,&j),_=>drive::gc::recover(&path)}
             },
-            "history"|"checkpoint"|"restore-copy"=>{
+            "history"|"history-preview"|"checkpoint"|"restore-copy"=>{
                 let b=drive::binding(&data,&id)?.ok_or("DRIVE:not_connected")?;let mut storage=drive::VaultDrive::new(b.clone(),drive::dir(&data,&id))?;drive::SyncStorageAdapter::check(&mut storage)?;
                 if action=="history"{return drive::checkpoint::list(&mut storage.drive,&b);}
+                if action=="history-preview"{return drive::history::preview(&mut storage.drive,&b,args["checkpointId"].as_str().ok_or("DRIVE:missing_checkpoint")?);}
                 if action=="checkpoint"{let j=drive::core::Journal::load(&drive::dir(&data,&id).join("journal.json"),&id,&drive::device(&data)?)?;if !j.outbox.is_empty(){return Err("DRIVE:pending_outbox".into());}
                     let bundle=with(&s,|v|{if drive::has_local_changes(v,&j,&drive::dir(&data,&id))?{return Err("DRIVE:pending_local_edits".into());}drive::streaming::capture(v,&drive::dir(&data,&v.id()))})?;
                     let h=drive::checkpoint::publish(&mut storage.drive,&b,&drive::dir(&data,&id),&bundle,&j)?;return Ok(json!({"checkpointId":h}));}
@@ -1344,7 +1354,7 @@ async fn drive_action(s:St<'_>,app:AppHandle,action:String,args:Value)->Res<Valu
                 let parent=PathBuf::from(args["parent"].as_str().ok_or("DRIVE:missing_parent")?);if !parent.is_absolute()||!parent.is_dir(){return Err("DRIVE:invalid_parent".into());}
                 let name=format!("Restored notes {}",now_ms());let stage=parent.join(format!(".nevis-restore-{}",uuid::Uuid::new_v4()));let v=Vault::create(stage.clone(),&name)?;
                 with(&s,|v|snapshot::backup(v,&data.join("drive/backups").join(format!("before-restore-{}",now_ms()))))?;
-                let mut after=restored;after.manifest.vault=v.id();let copy_state=drive::dir(&data,&v.id());drive::streaming::apply(&v,&copy_state,&drive::streaming::capture(&v,&copy_state)?,&after)?;
+                let after=drive::history::as_local_copy(&restored,&v.id(),&name)?;let copy_state=drive::dir(&data,&v.id());drive::streaming::apply(&v,&copy_state,&drive::streaming::capture(&v,&copy_state)?,&after)?;
                 let restored_id=v.id();let target=parent.join(&name);std::fs::rename(stage,&target).map_err(err)?;activate(&s,&Entry{id:restored_id,name,path:target.to_string_lossy().into(),sync:false},false)?;Ok(Value::Null)
             },
             _=>Err("DRIVE:unknown_action".into())

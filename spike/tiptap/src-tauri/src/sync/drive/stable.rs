@@ -126,12 +126,10 @@ pub fn normalize(v: &Value) -> Value {
         return t;
     }
     if v.as_object().is_some_and(|o| {
-        o.keys().any(|k| {
-            matches!(
-                k.as_str(),
-                "$nevisTreeV1" | "$nevisNodes" | "$nevisOrder" | "$nevisLiteral"
-            )
-        })
+        (o.len() == 1
+            && o.keys()
+                .any(|k| matches!(k.as_str(), "$nevisTreeV1" | "$nevisLiteral" | "$nevisBlob")))
+            || (o.len() == 2 && o.contains_key("$nevisNodes") && o.contains_key("$nevisOrder"))
     }) {
         return json!({"$nevisLiteral":v});
     }
@@ -168,11 +166,15 @@ pub fn denormalize(v: &Value) -> Res<Value> {
             return Ok(literal.clone());
         }
     }
-    if let Some(t) = v.get("$nevisTreeV1") {
-        return render_tree(t);
+    if v.as_object().is_some_and(|o| o.len() == 1) {
+        if let Some(t) = v.get("$nevisTreeV1") {
+            return render_tree(t);
+        }
     }
     match v {
-        Value::Object(o) if o.contains_key("$nevisNodes") && o.contains_key("$nevisOrder") => {
+        Value::Object(o)
+            if o.len() == 2 && o.contains_key("$nevisNodes") && o.contains_key("$nevisOrder") =>
+        {
             let nodes = o["$nevisNodes"]
                 .as_object()
                 .ok_or("DRIVE:invalid_block_map")?;

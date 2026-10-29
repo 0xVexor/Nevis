@@ -16,3 +16,7 @@ No connected-account, remote transfer or resolved-conflict UI success is claimed
 ## Final rebuild — 2026-10-29
 
 The final source was packaged again successfully. Retesting through CUA could not reach a native window: bundle-ID lookup returned noWindowsAvailable, the optional launch_app API was unavailable, and full-path lookup timed out. These are automation limitations; they do not prove an application launch failure or a GUI PASS. The earlier screenshot/setup observations are not relabeled as final connected UI evidence. No real user Vault or Google authorization was used.
+
+## Corrected OAuth Preview — observed later on 2026-10-29
+
+CUA bundle-ID lookup was ambiguous because three Preview copies exist. Selecting the exact delivered full path succeeded. The native welcome window was visible; clicking Sign in or create account opened the Google Drive Sync dialog. Experimental notice, Signed out, Import Desktop OAuth JSON, Sign in with Google, diagnostics and GitHub settings were visible. No credential import, Google consent grant, Vault creation or remote data operation was performed by automation. User reported the old sign-in failed; corrected-build sign-in is still pending.

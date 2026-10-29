@@ -10,6 +10,61 @@ use std::{
 fn reference(records: &BTreeMap<String, BTreeMap<String, Value>>, kind: &str, id: &str) -> bool {
     records.get(kind).is_some_and(|r| r.contains_key(id))
 }
+fn reject_cycles(records: &BTreeMap<String, Value>, pointer: &str) -> Res<()> {
+    let mut colors: BTreeMap<String, u8> = BTreeMap::new();
+    for start in records.keys() {
+        if colors.get(start) == Some(&2) {
+            continue;
+        }
+        let mut path = vec![];
+        let mut cursor = Some(start.clone());
+        while let Some(id) = cursor {
+            if colors.get(&id) == Some(&2) {
+                break;
+            }
+            if colors.get(&id) == Some(&1) {
+                return Err("DRIVE:db_parent_cycle".into());
+            }
+            let Some(record) = records.get(&id) else {
+                break;
+            };
+            if !record["deletedAt"].is_null() {
+                break;
+            }
+            colors.insert(id.clone(), 1);
+            path.push(id);
+            cursor = record
+                .pointer(pointer)
+                .and_then(Value::as_str)
+                .map(str::to_string);
+        }
+        for id in path {
+            colors.insert(id, 2);
+        }
+    }
+    Ok(())
+}
+fn filter_properties<'a>(filter: &'a Value, depth: usize, out: &mut Vec<&'a Value>) -> Res<()> {
+    if filter.is_null() {
+        return Ok(());
+    }
+    if depth > 64 {
+        return Err("DRIVE:db_filter_schema".into());
+    }
+    match filter["kind"].as_str() {
+        Some("predicate") => out.push(&filter["propertyId"]),
+        Some("and" | "or") => {
+            for child in filter["children"]
+                .as_array()
+                .ok_or("DRIVE:db_filter_schema")?
+            {
+                filter_properties(child, depth + 1, out)?;
+            }
+        }
+        _ => return Err("DRIVE:db_filter_schema".into()),
+    }
+    Ok(())
+}
 pub fn validate(files: &Files) -> Res<()> {
     let mut records: BTreeMap<String, BTreeMap<String, Value>> = BTreeMap::new();
     let mut pages = BTreeMap::new();
@@ -116,6 +171,60 @@ pub fn validate(files: &Files) -> Res<()> {
                     check(target, value)?;
                 }
             }
+            if kind == "sources" {
+                if let Some(id) = record["titlePropertyId"].as_str() {
+                    let p = &records["properties"][id];
+                    if p.get("sourceId").is_some_and(|v| v != &record["id"])
+                        || p.get("kind").is_some_and(|v| v != "title")
+                    {
+                        return Err("DRIVE:db_title_property_mismatch".into());
+                    }
+                }
+            }
+            if kind == "properties" {
+                if record["kind"] == "relation" {
+                    if let Some(id) = record["config"].get("definitionId") {
+                        check("relations", id)?;
+                    }
+                }
+                if record["kind"] == "rollup" {
+                    for field in ["relationPropertyId", "targetPropertyId"] {
+                        if let Some(id) = record["config"].get(field) {
+                            check("properties", id)?;
+                        }
+                    }
+                }
+            }
+            if kind == "views" {
+                if let Some(parent) = record["parentDashboardId"].as_str() {
+                    let dashboard = &records["views"][parent];
+                    if dashboard.get("type").is_some_and(|v| v != "dashboard")
+                        || record["type"] == "dashboard"
+                    {
+                        return Err("DRIVE:db_dashboard_schema".into());
+                    }
+                }
+                let mut properties = vec![];
+                if let Some(filter) = record.get("filter") {
+                    filter_properties(filter, 0, &mut properties)?;
+                }
+                if let Some(sorts) = record.get("sorts").filter(|v| !v.is_null()) {
+                    for sort in sorts.as_array().ok_or("DRIVE:db_filter_schema")? {
+                        properties.push(&sort["propertyId"]);
+                    }
+                }
+                for property in properties {
+                    check("properties", property)?;
+                    let id = property.as_str().ok_or("DRIVE:db_reference_invalid")?;
+                    if !record["sourceId"].is_null()
+                        && records["properties"][id]
+                            .get("sourceId")
+                            .is_some_and(|s| s != &record["sourceId"])
+                    {
+                        return Err("DRIVE:db_property_source_mismatch".into());
+                    }
+                }
+            }
             if kind == "containers" {
                 if let Some(links) = record.get("sourceLinks") {
                     for link in links.as_array().ok_or("DRIVE:db_reference_invalid")? {
@@ -192,9 +301,43 @@ pub fn validate(files: &Files) -> Res<()> {
                     {
                         return Err("DRIVE:db_property_source_mismatch".into());
                     }
+                    if let Some(kind) = property["kind"].as_str() {
+                        const CELL_KINDS: &[&str] = &[
+                            "text",
+                            "number",
+                            "select",
+                            "multi_select",
+                            "status",
+                            "date",
+                            "people",
+                            "files",
+                            "checkbox",
+                            "url",
+                            "email",
+                            "phone",
+                            "place",
+                            "verification",
+                            "connected",
+                        ];
+                        if CELL_KINDS.contains(&kind) && cell["value"]["kind"] != kind {
+                            return Err("DRIVE:db_cell_kind_mismatch".into());
+                        }
+                    }
+                    if cell["value"]["kind"] == "people" {
+                        if let Some(ids) = cell["value"].get("principalIds") {
+                            for id in ids.as_array().ok_or("DRIVE:db_cell_schema")? {
+                                check("principals", id)?;
+                            }
+                        }
+                    }
                     if !cell["value"]["kind"].is_string() {
                         return Err("DRIVE:db_cell_schema".into());
                     }
+                }
+            }
+            if let Some(parent) = row["parentItemId"].as_str() {
+                if pages[parent]["database"]["sourceId"] != row["sourceId"] {
+                    return Err("DRIVE:db_parent_source_mismatch".into());
                 }
             }
             if let Some(values) = row.get("allocatedIds") {
@@ -208,6 +351,9 @@ pub fn validate(files: &Files) -> Res<()> {
             }
         }
     }
+    let mut pairs = BTreeSet::new();
+    let mut outgoing = BTreeSet::new();
+    let mut incoming = BTreeSet::new();
     for edge in records
         .get("edges")
         .into_iter()
@@ -225,6 +371,35 @@ pub fn validate(files: &Files) -> Res<()> {
             if source != &definition["sourceId"] || target != &definition["targetSourceId"] {
                 return Err("DRIVE:db_relation_source_mismatch".into());
             }
+            if definition["mode"] == "self_symmetric"
+                && (definition["sourceId"] != definition["targetSourceId"] || from > to)
+            {
+                return Err("DRIVE:db_symmetric_relation".into());
+            }
+            if !pairs.insert((edge["definitionId"].as_str().unwrap(), from, to)) {
+                return Err("DRIVE:db_duplicate_edge".into());
+            }
+            if definition["mode"] != "self_symmetric"
+                && definition["cardinality"] == "one"
+                && !outgoing.insert((edge["definitionId"].as_str().unwrap(), from))
+            {
+                return Err("DRIVE:db_relation_cardinality".into());
+            }
+            if definition["mode"] != "self_symmetric"
+                && definition["inverseCardinality"] == "one"
+                && !incoming.insert((edge["definitionId"].as_str().unwrap(), to))
+            {
+                return Err("DRIVE:db_relation_cardinality".into());
+            }
+        }
+    }
+    reject_cycles(&pages, "/database/parentItemId")?;
+    for (kind, pointer) in [
+        ("views", "/parentDashboardId"),
+        ("comments", "/parentCommentId"),
+    ] {
+        if let Some(records) = records.get(kind) {
+            reject_cycles(records, pointer)?;
         }
     }
     Ok(())
@@ -407,5 +582,109 @@ mod tests {
         );
         drop(v);
         fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod graph_tests {
+    use super::*;
+    fn bytes_of(value: Value) -> Vec<u8> {
+        super::super::core::bytes(&value).unwrap()
+    }
+    fn put(f: &mut Files, path: &str, value: Value) {
+        f.insert(path.into(), bytes_of(value));
+    }
+    fn graph() -> Files {
+        let mut f = Files::new();
+        put(&mut f, "databases/sources/s.json", json!({"id":"s"}));
+        put(
+            &mut f,
+            "databases/properties/p.json",
+            json!({"id":"p","sourceId":"s","kind":"number"}),
+        );
+        for id in ["a", "b", "c"] {
+            put(
+                &mut f,
+                &format!("pages/{id}.json"),
+                json!({"id":id,"database":{"format":1,"sourceId":"s","parentItemId":null,"cells":{}}}),
+            );
+        }
+        put(
+            &mut f,
+            "databases/relations/r.json",
+            json!({"id":"r","sourceId":"s","targetSourceId":"s","cardinality":"one","inverseCardinality":"many","mode":"one_way"}),
+        );
+        f
+    }
+    #[test]
+    fn relation_limits_and_logical_duplicate_edges_are_rejected() {
+        let mut f = graph();
+        put(
+            &mut f,
+            "databases/edges/e1.json",
+            json!({"id":"e1","definitionId":"r","fromPageId":"a","toPageId":"b"}),
+        );
+        validate(&f).unwrap();
+        put(
+            &mut f,
+            "databases/edges/e2.json",
+            json!({"id":"e2","definitionId":"r","fromPageId":"a","toPageId":"c"}),
+        );
+        assert_eq!(validate(&f).unwrap_err(), "DRIVE:db_relation_cardinality");
+        put(
+            &mut f,
+            "databases/edges/e2.json",
+            json!({"id":"e2","definitionId":"r","fromPageId":"a","toPageId":"b"}),
+        );
+        assert_eq!(validate(&f).unwrap_err(), "DRIVE:db_duplicate_edge");
+    }
+    #[test]
+    fn parent_cycles_and_cross_kind_cells_are_never_applied() {
+        let mut f = graph();
+        put(
+            &mut f,
+            "pages/a.json",
+            json!({"id":"a","database":{"format":1,"sourceId":"s","parentItemId":"b","cells":{}}}),
+        );
+        put(
+            &mut f,
+            "pages/b.json",
+            json!({"id":"b","database":{"format":1,"sourceId":"s","parentItemId":"a","cells":{}}}),
+        );
+        assert_eq!(validate(&f).unwrap_err(), "DRIVE:db_parent_cycle");
+        put(
+            &mut f,
+            "pages/a.json",
+            json!({"id":"a","database":{"format":1,"sourceId":"s","cells":{"p":{"value":{"kind":"text","runs":[]}}}}}),
+        );
+        assert_eq!(validate(&f).unwrap_err(), "DRIVE:db_cell_kind_mismatch");
+    }
+    #[test]
+    fn view_filter_and_dashboard_references_follow_the_actual_schema() {
+        let mut f = graph();
+        put(
+            &mut f,
+            "databases/views/d.json",
+            json!({"id":"d","type":"dashboard"}),
+        );
+        put(
+            &mut f,
+            "databases/views/v.json",
+            json!({"id":"v","type":"table","sourceId":"s","parentDashboardId":"d","filter":{"kind":"and","children":[{"kind":"predicate","propertyId":"p","op":"is_empty"}]},"sorts":[{"propertyId":"p","direction":"asc"}]}),
+        );
+        validate(&f).unwrap();
+        put(
+            &mut f,
+            "databases/views/d.json",
+            json!({"id":"d","type":"table"}),
+        );
+        assert_eq!(validate(&f).unwrap_err(), "DRIVE:db_dashboard_schema");
+        put(
+            &mut f,
+            "databases/views/d.json",
+            json!({"id":"d","type":"dashboard"}),
+        );
+        f.remove("databases/properties/p.json");
+        assert_eq!(validate(&f).unwrap_err(), "DRIVE:db_reference_missing");
     }
 }

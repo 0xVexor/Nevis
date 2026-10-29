@@ -52,3 +52,5 @@
 
 .drive-dialog pre { max-block-size: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
 .drive-dialog .acct-row { flex-wrap: wrap; }
+
+.drive-root-choice,.drive-history-preview{border:1px solid var(--border);border-radius:12px;padding:12px;margin-block:10px}.drive-root-choice small{display:block;overflow-wrap:anywhere}.drive-root-choice>span{display:block}.drive-history-preview ul{max-height:240px;overflow:auto}

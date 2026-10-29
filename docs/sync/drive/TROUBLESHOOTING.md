@@ -33,3 +33,7 @@ Large media: Drive media capture/download/apply is file-backed; JSON still has 9
 Pause stops subsequent requests/chunks and keeps outbox/upload receipts; an already running HTTP call can take up to its timeout. Resume removes the pause signal. A mandatory Retry-After still applies.
 
 GC proof stale: run dry-run again after any journal/inventory change. Verification must preserve all referenced history objects. Guarded execute reports GC_DEFERRED; this build cannot delete remote history.
+
+## Google rejected the sign-in request / missing client_secret
+
+The initial configured Preview omitted a client parameter required by this actual Google Desktop client. Use the corrected Preview, download the original Desktop JSON from Google Cloud → Google Auth Platform → Clients, and select Import Desktop OAuth JSON before signing in. A mismatched client ID is rejected. The native importer saves the client parameter only in the OS credential store; do not paste secrets into the repository or chat. Keychain failure is an error, never plaintext fallback. Successful real login/refresh still requires a user retest.
