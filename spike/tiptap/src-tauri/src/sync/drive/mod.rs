@@ -598,8 +598,14 @@ impl SyncStorageAdapter for VaultDrive {
             self.binding.vault_id.clone(),
             self.state_dir.clone(),
         );
+        // Three or more objects: one listing replaces one existence query per object.
+        let listing = if items.len() >= 3 {
+            Some(self.drive.objects_listing(&objects)?)
+        } else {
+            None
+        };
         transport::parallel_map(&mut self.drive, items.to_vec(), |d, (h, target, local)| {
-            d.object_file(&objects, &vault, &h, &target, local, &state)
+            d.object_file_in(&objects, &vault, &h, &target, local, &state, listing.as_ref())
         })
         .map(|_| ())
     }
@@ -614,7 +620,7 @@ impl SyncStorageAdapter for VaultDrive {
     }
 }
 const IDENTITY_READ_TTL: std::time::Duration = std::time::Duration::from_secs(600);
-const IDENTITY_WRITE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+const IDENTITY_WRITE_TTL: std::time::Duration = std::time::Duration::from_secs(300);
 /// When each remote identity (account, root, vault and child folders) was last verified in this process.
 static VERIFIED: std::sync::Mutex<BTreeMap<String, std::time::Instant>> =
     std::sync::Mutex::new(BTreeMap::new());
@@ -656,46 +662,51 @@ impl VaultDrive {
         self.drive.meter.phase("identity", started);
         Ok(())
     }
+    /// The same checks as ever, run side by side: seven independent lookups instead of eleven in a row.
     fn verify_identity(&mut self) -> Res<()> {
-        let root = self.drive.metadata(&self.binding.root_id)?;
-        let vault = self.drive.metadata(&self.binding.folder_id)?;
-        if root["appProperties"]["owner"] != self.binding.subject
-            || root["appProperties"]["nevisKind"] != "root"
-            || vault["appProperties"]["nevisVault"] != self.binding.vault_id
-            || vault["appProperties"]["owner"] != self.binding.subject
-        {
-            return Err("DRIVE:identity_mismatch".into());
-        }
-        root_descriptor(
-            &mut self.drive,
-            &self.binding.root_id,
-            &self.binding.subject,
-            None,
-        )?;
-        vault_descriptor(
-            &mut self.drive,
-            &self.binding.root_id,
-            &self.binding.folder_id,
-            &self.binding.vault_id,
-            &self.binding.subject,
-            None,
-        )?;
-        for (id, kind) in [
-            (&self.binding.streams_id, "streams"),
-            (&self.binding.objects_id, "objects"),
-            (&self.binding.checkpoints_id, "checkpoints"),
-        ] {
-            let m = self.drive.metadata(id)?;
-            if m["appProperties"]["nevisKind"] != kind
-                || m["appProperties"]["nevisVault"] != self.binding.vault_id
-                || !m["parents"]
-                    .as_array()
-                    .is_some_and(|p| p.contains(&json!(self.binding.folder_id)))
-            {
-                return Err("DRIVE:identity_mismatch".into());
+        let b = self.binding.clone();
+        transport::parallel_map(&mut self.drive, (0..7).collect::<Vec<usize>>(), |d, step| {
+            match step {
+                0 => {
+                    let root = d.metadata(&b.root_id)?;
+                    if root["appProperties"]["owner"] != b.subject
+                        || root["appProperties"]["nevisKind"] != "root"
+                    {
+                        return Err("DRIVE:identity_mismatch".into());
+                    }
+                    Ok(())
+                }
+                1 => {
+                    let vault = d.metadata(&b.folder_id)?;
+                    if vault["appProperties"]["nevisVault"] != b.vault_id
+                        || vault["appProperties"]["owner"] != b.subject
+                    {
+                        return Err("DRIVE:identity_mismatch".into());
+                    }
+                    Ok(())
+                }
+                2 => root_descriptor(d, &b.root_id, &b.subject, None),
+                3 => vault_descriptor(d, &b.root_id, &b.folder_id, &b.vault_id, &b.subject, None),
+                n => {
+                    let (id, kind) = [
+                        (&b.streams_id, "streams"),
+                        (&b.objects_id, "objects"),
+                        (&b.checkpoints_id, "checkpoints"),
+                    ][n - 4];
+                    let m = d.metadata(id)?;
+                    if m["appProperties"]["nevisKind"] != kind
+                        || m["appProperties"]["nevisVault"] != b.vault_id
+                        || !m["parents"]
+                            .as_array()
+                            .is_some_and(|p| p.contains(&json!(b.folder_id)))
+                    {
+                        return Err("DRIVE:identity_mismatch".into());
+                    }
+                    Ok(())
+                }
             }
-        }
-        Ok(())
+        })
+        .map(|_| ())
     }
 }
 fn documents(b: &Bundle) -> Res<(Documents, BTreeMap<String, Vec<u8>>)> {
@@ -840,15 +851,24 @@ pub fn synchronize(
 ) -> Res<usize> {
     synchronize_with(storage, path, vault, device, false, capture, apply)
 }
+/// What a quiet poll found.
+enum Quiet {
+    /// Nothing new anywhere: the answer (open conflicts) came from one request.
+    Answered(usize),
+    /// The feed has news. The pages already fetched are handed to the complete run so it does not ask again.
+    News(BTreeMap<String, ChangePage>),
+    /// No quiet answer is possible (the last run left no conflict count).
+    Unavailable,
+}
 /// A quiet poll: nothing changed locally, nothing waits to be sent, and the remote change feed has
 /// nothing for this vault. Answers with one request and without reading or replaying anything.
-/// `None` means the feed has news, so the caller continues with the complete run (the cursor is untouched).
-fn quiet_poll(storage: &mut impl SyncStorageAdapter, j: &mut Journal, path: &Path) -> Res<Option<usize>> {
+fn quiet_poll(storage: &mut impl SyncStorageAdapter, j: &mut Journal, path: &Path) -> Res<Quiet> {
     let Some(open) = j.open_conflicts else {
-        return Ok(None);
+        return Ok(Quiet::Unavailable);
     };
     let mut page = j.cursor.clone().ok_or("DRIVE:invalid_cursor")?;
     let mut pages = BTreeSet::new();
+    let mut fetched = BTreeMap::new();
     let last = loop {
         if !pages.insert(page.clone()) {
             return Err("DRIVE:pagination_cycle".into());
@@ -861,8 +881,10 @@ fn quiet_poll(storage: &mut impl SyncStorageAdapter, j: &mut Journal, path: &Pat
             }
             r => r?,
         };
-        if !changes.files.is_empty() || !changes.removed.is_empty() || changes.checkpoint_changed {
-            return Ok(None);
+        let news = !changes.files.is_empty() || !changes.removed.is_empty() || changes.checkpoint_changed;
+        fetched.insert(page.clone(), changes.clone());
+        if news {
+            return Ok(Quiet::News(fetched));
         }
         match changes.next {
             Some(next) => page = next,
@@ -877,7 +899,7 @@ fn quiet_poll(storage: &mut impl SyncStorageAdapter, j: &mut Journal, path: &Pat
         &path.with_file_name("verified-at.json"),
         &bytes(&crate::vault::now_ms())?,
     )?;
-    Ok(Some(open))
+    Ok(Quiet::Answered(open))
 }
 /// `local_clean` says the caller knows nothing changed in the vault since the last complete run, so a
 /// run that finds nothing new remotely may skip the local capture entirely.
@@ -894,6 +916,7 @@ pub fn synchronize_with(
     let phase = std::time::Instant::now();
     storage.check()?;
     storage.note_phase("check", phase);
+    let mut prefetched: BTreeMap<String, ChangePage> = BTreeMap::new();
     if local_clean
         && j.apply_pending.is_none()
         && j.outbox.is_empty()
@@ -904,8 +927,10 @@ pub fn synchronize_with(
         let phase = std::time::Instant::now();
         let quiet = quiet_poll(storage, &mut j, path)?;
         storage.note_phase("quiet-poll", phase);
-        if let Some(open) = quiet {
-            return Ok(open);
+        match quiet {
+            Quiet::Answered(open) => return Ok(open),
+            Quiet::News(pages) => prefetched = pages,
+            Quiet::Unavailable => {}
         }
     }
     let phase = std::time::Instant::now();
@@ -965,13 +990,16 @@ pub fn synchronize_with(
         if !pages.insert(page.clone()) {
             return Err("DRIVE:pagination_cycle".into());
         }
-        let changes = match storage.changes(&page) {
-            Err(e) if e == "DRIVE:cursor_expired" => {
-                j.cursor = None;
-                j.save(path)?;
-                return Err("DRIVE:rescan_required".into());
-            }
-            r => r?,
+        let changes = match prefetched.remove(&page) {
+            Some(changes) => changes,
+            None => match storage.changes(&page) {
+                Err(e) if e == "DRIVE:cursor_expired" => {
+                    j.cursor = None;
+                    j.save(path)?;
+                    return Err("DRIVE:rescan_required".into());
+                }
+                r => r?,
+            },
         };
         if changes.checkpoint_changed {
             if let Some(bootstrap) = storage.bootstrap()? {
@@ -1320,6 +1348,9 @@ pub fn run_hinted(
         schedule::success(&retry_file)?;
     }
     storage.drive.meter.wall_elapsed_ms = run_started.elapsed().as_millis() as u64;
+    if captured || result.is_err() {
+        let _ = diagnostics::record_run(&dir(data, &b.vault_id), crate::vault::now_ms(), automatic, &result, &storage.drive.meter);
+    }
     let cumulative = match diagnostics::record(
         data,
         &b.subject,

@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { saveForSync } from './syncActions'
 
-const ACTIVE_POLL_MS = 10_000
+const ACTIVE_POLL_MS = 5_000
 
 /** Lifecycle remote flush is best effort; local save is awaited before a native close. */
 export function watchDriveLifecycle(onError: (message: string) => void = () => {}): () => void {
