@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { open } from '@tauri-apps/plugin-dialog'
-import { cloudDownload, cloudVaults, vaultAdd, vaultCreate, vaultForget, vaultList, vaultLocate, vaultOpen, type CloudVault, type VaultEntry } from './db'
+import { invoke } from '@tauri-apps/api/core'
+import { listCloudWorkspaces, downloadCloudWorkspace, createDriveWorkspace, type RemoteWorkspace } from './workspaceCloud'
+import { vaultAdd, vaultCreate, vaultForget, vaultList, vaultLocate, vaultOpen, type VaultEntry } from './db'
 import { AccountDialog, AuthFlow, size, useAccountStatus } from './Account'
 import { explain } from './vaultErrors'
 import { updateSettings, useSettings } from './settings'
@@ -23,7 +25,7 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
   const [view, setView] = useState<'home' | 'auth'>('home')
   const [accountOpen, setAccountOpen] = useState(false)
   const [vaults, setVaults] = useState<VaultEntry[]>([])
-  const [cloud, setCloud] = useState<CloudVault[] | null>(null)
+  const [cloud, setCloud] = useState<RemoteWorkspace[] | null>(null)
   const [name, setName] = useState('')
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
@@ -39,8 +41,8 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
   const elsewhere = (cloud ?? []).filter((c) => !vaults.some((v) => v.id === c.id && v.status === 'ok'))
   useEffect(() => {
     if (!signedIn) return setCloud(null)
-    cloudVaults().then(setCloud, (e) => (setCloud([]), setError(explain(e))))
-  }, [signedIn])
+    listCloudWorkspaces(acc?.provider, invoke).then(setCloud, (e) => (setCloud([]), setError(explain(e))))
+  }, [signedIn, acc?.provider])
 
   const run = async (label: string, f: () => Promise<unknown>) => {
     setBusy(label)
@@ -50,15 +52,17 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
     } catch (e) {
       setError(explain(e))
     } finally {
+      try { await refresh() } catch (e) { setError(previous => previous || explain(e)) }
       setBusy('')
     }
   }
 
-  const create = () =>
+  const create = (localOnly = false) =>
     run('create', async () => {
       const parent = await pickFolder(t('Choose where to create the vault'))
       if (!parent) return
-      await vaultCreate(parent, name || t('My notes'))
+      if (acc?.provider === 'drive' && !localOnly) await createDriveWorkspace(name.trim() || t('My notes'), async () => parent, invoke)
+      else await vaultCreate(parent, name || t('My notes'))
       onOpened()
     })
   const openExisting = () =>
@@ -75,11 +79,11 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
       await vaultLocate(v.id, dir)
       await refresh()
     })
-  const download = (v: CloudVault) =>
+  const download = (v: RemoteWorkspace) =>
     run('dl' + v.id, async () => {
       const parent = await pickFolder(t('Choose where to put this vault on this computer'))
       if (!parent) return
-      await cloudDownload(v.id, v.name, parent)
+      await downloadCloudWorkspace(acc?.provider, v, parent, invoke)
       onOpened()
     })
 
@@ -91,7 +95,7 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
         <b>{firstRun ? t('Already use Nevis on another device?') : t('Keep your notes in sync')}</b>
         <small>{t('Sign in to get your notes here and keep every device up to date. It is optional: your notes live in a folder on this computer either way.')}</small>
       </div>
-      <button className="primary" disabled={!!busy} onClick={() => setView('auth')}>{t('Sign in or create account')}</button>
+      <button className="primary" disabled={!!busy} onClick={() => setAccountOpen(true)}>{t('Sign in or create account')}</button>
     </div>
   )
 
@@ -180,12 +184,13 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
                 </>
               )}
 
-              <h4>{t('Create a new vault')}</h4>
+              <h4>{t(acc?.provider === 'drive' ? 'Create a workspace in Google Drive' : 'Create a new vault')}</h4>
               <div className="backup-acts">
                 <input dir="auto" placeholder={t('Vault name')} value={name} onChange={(e) => setName(e.target.value)} />
-                <button className="primary" disabled={!!busy} onClick={create}>{t('Choose location and create…')}</button>
+                <button className="primary" disabled={!!busy} onClick={() => void create()}>{t(acc?.provider === 'drive' ? 'Create and open workspace' : 'Choose location and create…')}</button>
               </div>
               <div className="backup-acts">
+                {acc?.provider === 'drive' && <button disabled={!!busy} onClick={() => void create(true)}>{t('Create a local-only workspace')}</button>}
                 <button disabled={!!busy} onClick={openExisting}>{t('Open a folder as vault…')}</button>
               </div>
 
@@ -196,6 +201,7 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
       </div>
       {accountOpen && (
         <AccountDialog
+          onWorkspaceOpened={onOpened}
           onClose={() => {
             setAccountOpen(false)
             void refresh()

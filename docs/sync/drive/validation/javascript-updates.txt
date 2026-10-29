@@ -1,0 +1,19 @@
+
+> nevis@1.0.0 test:updates
+> node --test ../../db/test-updates.mjs
+
+✔ stable by default; a background check only notifies; no installation without approval (0.900541ms)
+✔ Later suppresses repeated notices for the session; manual checks still open details (0.101083ms)
+✔ switching off previews discards an in-flight result and checks the stable channel (2.307292ms)
+✔ failed saving keeps the downloaded update and blocks installation until retry succeeds (0.235583ms)
+✔ failed or unsigned download cannot be installed; retry is possible (0.132042ms)
+✔ duplicate requests are serialized and background checks cannot replace a download (0.13875ms)
+✔ manual no-update and offline checks have visible status (0.104708ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 96.393959

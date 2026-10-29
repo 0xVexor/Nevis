@@ -1,3 +1,4 @@
+import { setPreference, removePreference } from '../../preferenceEvents'
 // Settings → Database: workspace calendar defaults, the optional map tile provider and the status of the connected services.
 // Nothing here ships a key or a default provider: a map needs a tile URL the person chooses, the gateway a URL the person runs.
 import { useState, type ReactNode } from 'react'
@@ -13,7 +14,7 @@ const CHECK_TEXT: Record<GatewayStatus, string> = { ready: 'Connected', needs_se
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 const read = (k: string) => { try { return localStorage.getItem(k) ?? '' } catch { return '' } }
-const write = (k: string, v: string) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k) } catch { /* settings are a convenience */ } }
+const write = (k: string, v: string) => { try { v ? setPreference(k, v) : removePreference(k) } catch { /* settings are a convenience */ } }
 
 export function DatabaseSettings() {
   const tiles = loadTileConfig()

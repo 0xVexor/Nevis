@@ -21,8 +21,13 @@ jobs:
       - run: npm test
         working-directory: server
 
-  app:
-    runs-on: windows-latest
+  app-platforms:
+    name: app (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,7 +39,14 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: spike/tiptap/src-tauri
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - run: npm ci
+        working-directory: spike/tiptap
+      - run: npm ci
+        working-directory: db/tests/tools
+      - run: npm run test:db
         working-directory: spike/tiptap
       - run: npx tsc -b
         working-directory: spike/tiptap
@@ -48,6 +60,18 @@ jobs:
         working-directory: spike/tiptap
       - run: cargo test
         working-directory: spike/tiptap/src-tauri
+
+  # Keep the existing protected-branch check name while requiring every platform.
+  app:
+    name: app
+    needs: app-platforms
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all application platforms to pass
+        env:
+          PLATFORM_RESULT: ${{ needs.app-platforms.result }}
+        run: test "$PLATFORM_RESULT" = success
 
   # The Rust sync engine against the real server: two vaults, offline edits, conflicts, big attachments.
   end-to-end:

@@ -1,0 +1,4 @@
+Packaged publisher ID and Desktop parameter present: PASS
+Publisher value absent from normal build log: PASS
+No account token was read or supplied to the build: publisher-only keyring account selected
+Values omitted. Desktop public-client parameter is intentionally extractable from the binary.

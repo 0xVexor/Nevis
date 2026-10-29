@@ -9,8 +9,13 @@
 //! for the user, nothing is ever deleted outright (it goes to the trash of the vault / of the server), and a file that
 //! changed while we were talking to the server is never overwritten.
 
+pub mod drive;
 pub mod account;
 pub mod hub;
+pub mod snapshot;
+pub mod provider;
+pub mod github;
+pub mod network;
 
 use crate::vault::{err, now_ms, write_atomic, Res, Vault, VAULT_MISMATCH, VAULT_MISSING};
 use md5::{Digest, Md5};
@@ -375,6 +380,7 @@ fn dedupe(vault: &Vault, remote: &mut dyn Remote, listed: Vec<RemoteFile>, rep: 
 /// One synchronization. `progress` is called every now and then with the bookkeeping so far, so that a crash or a
 /// lost connection in the middle costs only the work since then.
 pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, progress: &mut dyn FnMut(&SyncState)) -> Res<Report> {
+    vault.ensure_exclusive()?;
     let root = &vault.root;
     // preflight: nothing below may run against a vault or a cloud folder that is not there
     if !root.is_dir() || vault.id().is_empty() {
@@ -545,7 +551,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         }
     }
     if !merged.is_empty() {
-        vault.resolve_conflicts();
+        vault.resolve_conflicts()?;
         // the merged page is the new truth: send it right away unless it is exactly what the cloud already has
         for (p, r) in merged {
             let res: Res<()> = (|| {
@@ -590,6 +596,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                         rep.skipped += 1;
                         return Ok(());
                     }
+                    if snapshot::safe_path(p).is_ok(){snapshot::tombstone(vault,p)?;}
                     vault.sync_trash_move(p)?; // recoverable for 30 days; when it fails the file stays and so does `base`
                     state.files.remove(p);
                     rep.deleted += 1;
@@ -716,10 +723,7 @@ mod tests {
             static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
             let root: PathBuf = std::env::temp_dir().join(format!("noviq-sync-{name}-{}-{}", now_ms(), N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)));
             let _ = fs::remove_dir_all(&root);
-            let vault = Vault::create(root, "T").unwrap();
-            if let Some(id) = id {
-                write_atomic(&vault.root.join(".noviq/vault.json"), json!({ "format": 1, "id": id, "name": "T" }).to_string().as_bytes()).unwrap();
-            }
+            let vault = match id { Some(id) => Vault::create_with_id(root, "T", id).unwrap(), None => Vault::create(root, "T").unwrap() };
             Device { vault, state: SyncState::default(), remote: remote.clone() }
         }
         fn try_sync(&mut self) -> Res<Report> {
@@ -815,7 +819,8 @@ mod tests {
         a.sync();
         b.sync();
         assert!(b.page(P1).is_none());
-        assert!(b.vault.root.join(".trash/pages").join(format!("{P1}.json")).exists()); // still recoverable
+        assert!(!b.vault.root.join(".trash/pages").join(format!("{P1}.json")).exists()); // permanent deletion has no app restore path
+        assert!(snapshot::tombstones(&b.vault).unwrap().contains(&format!("pages/{P1}.json")));
         // the page file itself went to the sync trash, not into the void
         assert!(fs::read_dir(b.vault.sync_trash_dir()).unwrap().count() >= 1);
     }
@@ -1124,7 +1129,7 @@ mod tests {
         // while b downloads v2, the user edits the page on b
         let root = b.vault.root.clone();
         b.remote.0.borrow_mut().on_download = Some(Rc::new(move || {
-            let v = Vault { root: root.clone() };
+            let v = Vault::open(root.clone()).unwrap();
             v.save_pages(&[json!({ "id": P1, "title": "typed on b", "content": {"type":"doc","content":[]}, "updatedAt": 500, "deletedAt": null })], &[], false).unwrap();
         }));
         let r = b.sync();

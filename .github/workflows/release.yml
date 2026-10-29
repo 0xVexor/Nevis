@@ -93,6 +93,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEVIS_SERVER: ${{ vars.NEVIS_SERVER || vars.NOVIQ_SERVER }}
+          NOVIQ_GITHUB_CLIENT_ID: ${{ vars.NOVIQ_GITHUB_CLIENT_ID }}
+          NOVIQ_GITHUB_APP_SLUG: ${{ vars.NOVIQ_GITHUB_APP_SLUG }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:

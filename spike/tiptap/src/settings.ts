@@ -1,3 +1,4 @@
+import { setPreference } from './preferenceEvents'
 // Appearance settings. Everything is applied as CSS variables on <html> (see docs/design-language.md),
 // so no component needs to know about them. Persisted in localStorage (small, per device).
 import { useSyncExternalStore } from 'react'
@@ -113,7 +114,7 @@ function load(): Settings {
   }
   const old = saved as { glass?: boolean }
   if (old.glass && saved.sideGlass === undefined) saved.sideGlass = 60 // the old on/off switch became a slider
-  return { ...DEFAULTS, ...saved }
+  return { ...DEFAULTS, ...Object.fromEntries(Object.entries(saved).filter(([key]) => key in DEFAULTS)) }
 }
 
 let state: Settings = load()
@@ -125,10 +126,16 @@ const subscribe = (fn: () => void) => (subs.add(fn), () => void subs.delete(fn))
 export function updateSettings(patch: Partial<Settings>) {
   state = { ...state, ...patch }
   try {
-    localStorage.setItem(KEY, JSON.stringify(state))
+    setPreference(KEY, JSON.stringify(state))
   } catch {
     /* private mode: the change still applies for this session */
   }
+  apply()
+  subs.forEach((f) => f())
+}
+
+export function reloadSettings() {
+  state = load()
   apply()
   subs.forEach((f) => f())
 }

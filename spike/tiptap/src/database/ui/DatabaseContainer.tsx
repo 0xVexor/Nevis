@@ -1,3 +1,4 @@
+import { setPreference, removePreference } from '../../preferenceEvents'
 // A database as the user sees it: title, source selector, view tabs, search / filter / sort / group / properties / settings,
 // the active view, row peek, notices. It owns the viewer's unsaved ("personal") filter and sort overrides.
 import { Suspense, lazy, useCallback, useEffect, useRef, useState, type ComponentType } from 'react'
@@ -41,7 +42,7 @@ function loadPersonal(id: Id): Personal | null {
   try { const v = localStorage.getItem(personalKey(id)); return v ? JSON.parse(v) : null } catch { return null }
 }
 function savePersonal(id: Id, p: Personal | null) {
-  try { p ? localStorage.setItem(personalKey(id), JSON.stringify(p)) : localStorage.removeItem(personalKey(id)) } catch { /* private window: the override just lives in memory */ }
+  try { p ? setPreference(personalKey(id), JSON.stringify(p)) : removePreference(personalKey(id)) } catch { /* private window: the override just lives in memory */ }
 }
 
 export type OpenPage = (pageId: Id) => void

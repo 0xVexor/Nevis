@@ -1,0 +1,68 @@
+   Compiling objc2-exception-helper v0.1.1
+   Compiling ring v0.17.14
+   Compiling objc2 v0.6.5
+   Compiling mac-notification-sys v0.6.15
+   Compiling libsqlite3-sys v0.35.0
+   Compiling nevis v1.0.0 (<workspace>/spike/tiptap/src-tauri)
+   Compiling objc2-foundation v0.3.2
+   Compiling wry v0.57.1
+   Compiling rustls v0.23.46
+   Compiling block2 v0.6.2
+   Compiling objc2-core-foundation v0.3.2
+   Compiling dispatch2 v0.3.1
+   Compiling rustls-webpki v0.103.16
+   Compiling rusqlite v0.37.0
+   Compiling tokio-rustls v0.26.6
+   Compiling rustls-platform-verifier v0.7.1
+   Compiling hyper-rustls v0.27.10
+   Compiling reqwest v0.13.5
+   Compiling reqwest v0.12.28
+   Compiling objc2-quartz-core v0.3.2
+   Compiling trash v5.2.9
+   Compiling notify-rust v4.18.2
+   Compiling objc2-app-kit v0.3.2
+   Compiling objc2-web-kit v0.3.2
+   Compiling tao v0.37.2
+   Compiling window-vibrancy v0.8.1
+   Compiling muda v0.20.0
+   Compiling objc2-osa-kit v0.3.2
+   Compiling rfd v0.16.1
+   Compiling osakit v0.3.1
+   Compiling tauri-runtime v2.12.2
+   Compiling tauri-runtime-wry v2.12.3
+   Compiling tauri v2.12.5
+   Compiling tauri-plugin-fs v2.7.1
+   Compiling tauri-plugin-updater v2.14.0
+   Compiling tauri-plugin-notification v2.7.0
+   Compiling tauri-plugin-dialog v2.8.3
+warning: function `run` is never used
+   --> src/sync/github.rs:598:8
+    |
+598 | pub fn run(
+    |        ^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `copy_into` is never used
+   --> src/vault.rs:524:12
+    |
+ 90 | impl Vault {
+    | ---------- method in this implementation
+...
+524 |     pub fn copy_into(&self, to: &Path) -> Res<()> {
+    |            ^^^^^^^^^
+
+warning: `nevis` (bin "nevis" test) generated 2 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.87s
+     Running unittests src/main.rs (spike/tiptap/src-tauri/target/debug/deps/nevis-02c44ac1e1fd7893)
+
+running 7 tests
+test sync::drive::auth::tests::oauth_failures_report_safe_actionable_codes ... ok
+test sync::drive::auth::tests::account_status_is_single_flight_and_stale_reads_cannot_restore_logged_out_identity ... ok
+test sync::drive::auth::tests::customer_client_needs_no_per_user_secret_or_keyring_setup ... ok
+test sync::drive::auth::tests::desktop_client_import_checks_identity_and_never_echoes_credentials ... ok
+test sync::drive::auth::tests::manually_entered_desktop_secret_is_bounded_and_errors_never_echo_input ... ok
+test sync::drive::auth::tests::pkce_uses_s256_rfc7636_vector_and_bounded_expiry ... ok
+test sync::drive::auth::tests::callback_rejects_wrong_state_path_duplicates_and_error_with_code ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 207 filtered out; finished in 0.00s

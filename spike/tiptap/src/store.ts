@@ -15,7 +15,7 @@ export const repo = new Repo(() => [
   },
 ])
 
-export const TRASH_DAYS = 30
+export const TRASH_DAYS = 7
 
 /** Loads the workspace (migrating the old localStorage data once). Call before rendering. */
 export async function initStore() {
@@ -25,11 +25,8 @@ export async function initStore() {
 
 /** Removes stored files that no page (including trash) references any more. */
 export async function gcFiles() {
-  const { fileIndex, deleteFile } = await import('./attachments')
-  // a custom background image is referenced from the settings, not from a page
-  const used = JSON.stringify(repo.dump()) + (localStorage.getItem('not.settings') ?? '')
-  const grace = Date.now() - 3600_000 // a just-pasted image may not be in a saved page yet (editor autosave, undo history)
-  for (const f of await fileIndex()) if (!used.includes(f.id) && (f.addedAt ?? 0) < grace) await deleteFile(f.id)
+  // Conservative retention: assets may be referenced by database records, local history,
+  // conflict preimages, or a pending publication. Collection waits for a complete reference index.
 }
 
 setPageTitleResolver((id) => repo.get(id)?.title || id)

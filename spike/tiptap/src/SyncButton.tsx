@@ -1,29 +1,43 @@
-import { useEffect, useState } from 'react'
-import { accountStatus, syncNow, type AccountStatus } from './db'
+import { watchDriveLifecycle } from './driveLifecycle'
+import { enableDriveBlockIds } from './editor/stableBlockIds'
+import { useEffect, useRef, useState } from 'react'
+import { accountStatus, type AccountStatus } from './db'
 import { locale, t } from './i18n'
+import { syncWorkspaceNow } from './syncActions'
 import { explain } from './vaultErrors'
+import { syncSucceeded } from './drivePresentation'
 
 const when = (ts: number) => (ts ? new Date(ts).toLocaleTimeString(locale(), { timeStyle: 'short' }) : '')
 
 /**
- * Top-bar sync button (desktop app). One click syncs now; the app also syncs by itself, within a second of a change
- * on any device. Signed out, it opens the account dialog; signed in with sync off, the workspaces dialog where it is turned on.
+ * Top-bar sync button (desktop app). One click saves pending editor/preferences work and requests a sync. Background sync follows the provider policy. Signed out, it opens the account dialog; signed in with sync off, the workspaces dialog where it is turned on.
  */
-export function SyncButton({ onSetup, onSignIn }: { onSetup: () => void; onSignIn: () => void }) {
+export function SyncButton({ onSetup, onSignIn, onConflicts }: { onSetup: () => void; onSignIn: () => void; onConflicts: () => void }) {
   const [st, setSt] = useState<AccountStatus | null>(null)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const notified = useRef(false)
   useEffect(() => {
-    const poll = () => void accountStatus().then(setSt, () => {})
+    const poll = () => void accountStatus().then(s => { setSt(s); enableDriveBlockIds(s.provider === 'drive') }, () => {})
     poll()
     const id = window.setInterval(poll, 2000)
     return () => window.clearInterval(id)
   }, [])
+  const driveActive = st?.provider === 'drive' && st.syncOn
+  useEffect(() => driveActive ? watchDriveLifecycle(setError) : undefined, [driveActive])
+  const conflicts = (st?.provider === 'github' || st?.provider === 'drive') && st.reason === 'CONFLICTS'
+  useEffect(() => {
+    if (conflicts && !notified.current) { notified.current = true; onConflicts() }
+    if (!conflicts) notified.current = false
+  }, [conflicts, onConflicts])
   if (!st) return null
 
   const on = st.signedIn && st.syncOn
-  const busy = on && st.state === 'syncing'
+  const busy = saving || (on && st.state === 'syncing')
   const offline = on && st.state === 'offline'
   const failed = on && (st.state === 'error' || (st.state === 'paused' && st.reason === 'SIGNED_OUT'))
-  const title = !st.signedIn
+  const success = syncSucceeded(st) && !saving && !error
+  const title = error || (conflicts ? t('Review sync conflicts') : !st.signedIn
     ? t('Sync is off — click to sign in')
     : !st.syncOn
       ? t('Sync is off for this workspace — click to set it up')
@@ -33,19 +47,22 @@ export function SyncButton({ onSetup, onSignIn }: { onSetup: () => void; onSignI
           ? t('Offline — your changes are saved here and will sync when the connection is back. Click to try now.')
           : failed
             ? t('Sync failed: {error}. Click to try again.', { error: explain(st.error || st.reason) })
-            : st.lastAt
+            : st.state === 'pending' ? t('Saved locally — waiting to sync') : st.lastAt
               ? t('Synced at {time}. Click to sync now.', { time: when(st.lastAt) })
-              : t('Click to sync now')
+              : t('Click to sync now'))
 
   const click = () => {
+    if (conflicts) return onConflicts()
+    if ((st.provider === 'github' || st.provider === 'drive') && (st.state === 'paused' || st.state === 'error' || !st.syncOn)) return onSignIn()
     if (!st.signedIn) return onSignIn()
     if (!st.syncOn) return onSetup()
-    void syncNow().then(() => accountStatus().then(setSt))
+    setSaving(true); setError('')
+    void syncWorkspaceNow().then(() => accountStatus().then(setSt)).catch(e => setError(String(e))).finally(() => setSaving(false))
   }
 
   return (
     <button
-      className={'icon-btn sync-btn' + (busy ? ' spinning' : '') + (failed ? ' sync-failed' : '') + (offline ? ' sync-offline' : '') + (on ? '' : ' sync-off')}
+      className={'icon-btn sync-btn' + (success ? ' sync-success' : '') + (busy ? ' spinning' : '') + (failed || error ? ' sync-failed' : '') + (conflicts ? ' sync-conflict' : '') + (offline ? ' sync-offline' : '') + (on ? '' : ' sync-off')}
       title={title}
       aria-label={title}
       disabled={busy}

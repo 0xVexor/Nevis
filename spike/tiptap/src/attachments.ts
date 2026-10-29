@@ -1,5 +1,5 @@
 // Content-addressed file store (the `attachments` table of ADR-0002): id = sha256 of the bytes, identical files are stored once.
-// Desktop app: files live in <app data>/files/<sha[0:2]>/<sha> (src-tauri); browser: IndexedDB.
+// Desktop app: files live in <vault>/files/<sha[0:2]>/<sha> (src-tauri); browser: IndexedDB.
 import { invoke } from '@tauri-apps/api/core'
 import { isTauri, storageFrozen } from './db'
 import { maybeCompress } from './compress'
