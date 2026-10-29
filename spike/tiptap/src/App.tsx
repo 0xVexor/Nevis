@@ -1,3 +1,4 @@
+import { setPreference } from './preferenceEvents'
 import { Brand } from './Brand'
 import { UpdateCenter } from './UpdateUI'
 import { shortcutLabel } from './shortcuts'
@@ -33,10 +34,16 @@ import { BackupSettings } from './BackupSettings'
 import { Vaults } from './Vaults'
 import { AccountDialog } from './Account'
 import { SyncButton } from './SyncButton'
+import { ConflictReview } from './ConflictReview'
+import { saveForSync, syncWorkspaceNow } from './syncActions'
 import { WorkspaceCard } from './VaultSwitcher'
 import { GraphView } from './GraphView'
 import { searchPages } from './searchIndex'
-import { isTauri, kvGet, kvSet, syncNow } from './db'
+import { save as saveDialog } from '@tauri-apps/plugin-dialog'
+import { invoke } from '@tauri-apps/api/core'
+import { saveBeforeUpdate } from './updateSave'
+import { flushPreferences } from './sharedPreferences'
+import { isTauri, kvGet, kvSet } from './db'
 import { watchDueCards } from './cardsDue'
 import { normalizeFa } from './normalize'
 import { MenuItem, MenuLabel, MenuSep, NameDialog, Popover, SearchModal, Toast, TrashModal, type PaletteCommand } from './ui'
@@ -60,7 +67,7 @@ const store = <T,>(k: string, fallback: T): T => {
 }
 const put = (k: string, v: unknown) => {
   try {
-    localStorage.setItem(k, JSON.stringify(v))
+    setPreference(k, JSON.stringify(v))
   } catch {
     /* private mode etc. — preferences are optional */
   }
@@ -223,6 +230,15 @@ export default function App() {
   const [backupOpen, setBackupOpen] = useState(false)
   const [folderOpen, setFolderOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
+  const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null)
+  const [conflictReview, setConflictReview] = useState(false)
+  const reviewConflicts = useCallback(() => {
+    void saveForSync().then(() => { setAccountOpen(false); setConflictReview(true) }).catch(e => setToast({ msg: String(e) }))
+  }, [])
+  useEffect(() => {
+    window.addEventListener('github-review-conflicts', reviewConflicts)
+    return () => window.removeEventListener('github-review-conflicts', reviewConflicts)
+  }, [reviewConflicts])
   const [tableOpen, setTableOpen] = useState(false)
   const [graphOpen, setGraphOpen] = useState(false)
   const [dueCards, setDueCards] = useState(0)
@@ -231,7 +247,6 @@ export default function App() {
   const [dataMenu, setDataMenu] = useState<DOMRect | null>(null)
   const [blankMenu, setBlankMenu] = useState<DOMRect | null>(null) // right-click on empty sidebar space
   const [trashTick, setTrashTick] = useState(0)
-  const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null)
   const [menu, setMenu] = useState<{ id: string; rect: DOMRect } | null>(null)
   const [movingId, setMovingId] = useState<string | null>(null)
   const [reader, setReader] = useState(false)
@@ -253,7 +268,7 @@ export default function App() {
   const current = pages.find((p) => p.id === currentId && p.kind !== 'folder') ?? pages.find((p) => p.kind !== 'folder')
 
   useEffect(() => {
-    if (current) localStorage.setItem('not.current', current.id)
+    if (current) setPreference('not.current', current.id)
   }, [current])
   useEffect(() => put('not.side', sideOpen), [sideOpen])
   // views lay themselves out by the width of the main panel (window minus sidebar), not the window: data-main on .app is lg / md / sm / xs
@@ -325,8 +340,8 @@ export default function App() {
       if (e.altKey && !mod && !e.shiftKey && (e.code === 'Equal' || e.code === 'Minus')) {
         e.preventDefault()
         const d = e.code === 'Equal' ? PAGE_W.step : -PAGE_W.step
-        if (readerRef.current) setReaderCfg((c) => { const n = { ...c, width: Math.min(1400, Math.max(480, c.width + d)) }; localStorage.setItem('not.reader.cfg', JSON.stringify(n)); return n })
-        else setPageW((w) => { const n = Math.min(PAGE_W.max, Math.max(PAGE_W.min, w + d)); localStorage.setItem('not.page.width', String(n)); return n })
+        if (readerRef.current) setReaderCfg((c) => { const n = { ...c, width: Math.min(1400, Math.max(480, c.width + d)) }; setPreference('not.reader.cfg', JSON.stringify(n)); return n })
+        else setPageW((w) => { const n = Math.min(PAGE_W.max, Math.max(PAGE_W.min, w + d)); setPreference('not.page.width', String(n)); return n })
       }
       if (mod && !e.altKey && !e.shiftKey && e.code === 'Period') (e.preventDefault(), setReader((r) => !r)) // physical key: works with the Persian layout
       if (e.key === 'Escape' && !document.querySelector('.lightbox')) setReader(false)
@@ -455,7 +470,15 @@ export default function App() {
     }
   }
   const stamp = () => new Date().toISOString().slice(0, 10)
-  const doBackup = async () => download(`notes-backup-${stamp()}.json`, await buildBackup(repo))
+  const doBackup = async () => {
+    const name = `notes-backup-${stamp()}.json`
+    try {
+      if (!isTauri) return download(name, await buildBackup(repo))
+      await saveBeforeUpdate(); await repo.flushBeforeUpdate(); await flushPreferences()
+      const path = await saveDialog({ defaultPath: name, filters: [{ name: 'JSON', extensions: ['json'] }] })
+      if (path) await invoke('vault_backup_save', { path })
+    } catch (error) { setToast({ msg: t('Backup failed') + ': ' + String(error) }) }
+  }
   const doExportAll = async () => {
     try {
       const r = await exportAllZip()
@@ -498,7 +521,7 @@ export default function App() {
   }
   const doRestore = async () => {
     const [f] = await pickFiles('application/json')
-    if (!f || !(await confirmDialog({ title: t('Restore from backup'), message: t('All current pages will be replaced by the backup. Continue?'), confirmLabel: t('Restore'), danger: true }))) return
+    if (!f || !(await confirmDialog({ title: t('Restore from backup'), message: isTauri ? t('The backup will open in a new disconnected workspace. Current files stay intact. Continue?') : t('All current pages will be replaced by the backup. Continue?'), confirmLabel: t('Restore'), danger: true }))) return
     try {
       const r = await restoreBackup(repo, await f.text())
       refresh()
@@ -703,10 +726,11 @@ export default function App() {
         </div>
       </aside>
 
-      <main ref={mainRef} className={'main' + (panelOpen && !reader && view === 'page' && current ? ' drawer-open' : '')}>
+      <main ref={mainRef} className={'main' + (panelOpen && !reader && !conflictReview && view === 'page' && current ? ' drawer-open' : '')}>
         <header className="topbar">
           {!sideOpen && <button className="icon-btn" title={t('Open sidebar  Ctrl+\\')} onClick={() => setSideOpen(true)}><Ic.Sidebar /></button>}
           <nav className="crumbs">
+            {conflictReview ? <span className="crumb-cur">{t('Resolve sync conflicts')}</span> : <>
             <button className="crumb-home" title={t('Home')} onClick={() => setView('home')}><Ic.Home size={15} /></button>
             {view === 'home' && <span className="crumb"><span className="crumb-cur"><Ic.Sidebar size={14} />{t('Home')}</span></span>}
             {view === 'files' && <span className="crumb"><span className="crumb-cur"><Ic.Folders size={14} />{t('Files')}</span></span>}
@@ -726,12 +750,13 @@ export default function App() {
                 )}
               </span>
             ))}
+            </>}
           </nav>
           <span className="spacer" />
           <span className={'status' + (save === 'saving' ? ' busy' : '')}><i className="dot" />{save === 'saving' ? t('Saving…') : t('Saved')}</span>
           <div className="tb-group">
-            {isTauri && <SyncButton onSetup={() => setFolderOpen(true)} onSignIn={() => setAccountOpen(true)} />}
-            {current && view === 'page' && (
+            {isTauri && <SyncButton onSetup={() => setFolderOpen(true)} onSignIn={() => setAccountOpen(true)} onConflicts={reviewConflicts} />}
+            {!conflictReview && current && view === 'page' && (
               <>
                 <button className="icon-btn" title={t('Reader mode  Ctrl+.')} onClick={() => setReader(true)}><Ic.Reader /></button>
                 <button className={'icon-btn' + (current.favorite ? ' fav-on' : '')} title={t('Favorite')} onClick={() => fav(current.id)}><Ic.Star filled={current.favorite} /></button>
@@ -742,12 +767,12 @@ export default function App() {
               {dark ? <Ic.Sun /> : <Ic.Moon />}
             </button>
           </div>
-          {current && view === 'page' && <button className="share-btn" title={t('Share & export')} onClick={(e) => setDataMenu(e.currentTarget.getBoundingClientRect())}><Ic.Share size={15} />{t('Share')}</button>}
+          {!conflictReview && current && view === 'page' && <button className="share-btn" title={t('Share & export')} onClick={(e) => setDataMenu(e.currentTarget.getBoundingClientRect())}><Ic.Share size={15} />{t('Share')}</button>}
         </header>
 
-        {reader && view === 'page' && current && <ReaderBar cfg={readerCfg} onCfg={(c) => (setReaderCfg(c), localStorage.setItem('not.reader.cfg', JSON.stringify(c)))} onExit={() => setReader(false)} />}
+        {!conflictReview && reader && view === 'page' && current && <ReaderBar cfg={readerCfg} onCfg={(c) => (setReaderCfg(c), setPreference('not.reader.cfg', JSON.stringify(c)))} onExit={() => setReader(false)} />}
         <div className="scroller">
-          {view === 'home' ? (
+          {conflictReview ? <ConflictReview onClose={() => setConflictReview(false)} /> : view === 'home' ? (
             <Home pages={pages} onOpen={setCurrentId} onNew={() => add(null)} onFolder={() => addFolder(null)} onTable={() => setTableOpen(true)} onCards={() => setCardsOpen(true)} onSearch={() => setSearching(true)}
               onNewDatabase={() => addDatabase(null)} onNewBoard={() => add(null, 'board')} onNewList={() => add(null, 'todo')}
               onDatabases={() => setView('databases')} onDrawings={() => setView('drawings')} onTasks={() => setView('tasks')}
@@ -761,7 +786,7 @@ export default function App() {
           ) : view === 'drawings' ? (
             <Drawings onOpen={setCurrentId} onNew={() => add(null, 'board')} onDelete={delDrawing} />
           ) : view === 'settings' ? (
-            <SettingsView data={{ importMarkdown: doImport, importVault: () => void doVault(), exportAll: doExportAll, backup: doBackup, restore: doRestore, autoBackup: () => setBackupOpen(true), workspaces: () => setFolderOpen(true), account: isTauri ? () => setAccountOpen(true) : undefined, syncNow: isTauri ? () => void syncNow() : undefined }} />
+            <SettingsView data={{ importMarkdown: doImport, importVault: () => void doVault(), exportAll: doExportAll, backup: doBackup, restore: doRestore, autoBackup: () => setBackupOpen(true), workspaces: () => setFolderOpen(true), account: isTauri ? () => setAccountOpen(true) : undefined, syncNow: isTauri ? () => void syncWorkspaceNow().catch(e => setToast({ msg: String(e) })) : undefined }} />
           ) : current?.dbHost ? (
             <Suspense fallback={<div className="page-skeleton" aria-busy="true" />}><DatabasePage key={current.id} page={current} onOpenPage={setCurrentId} onMeta={refresh} readOnly={reader} /></Suspense>
           ) : current?.kind === 'board' ? (
@@ -782,7 +807,7 @@ export default function App() {
             </div>
           )}
         </div>
-        {view === 'page' && current && (
+        {!conflictReview && view === 'page' && current && (
           <PagePanel
             open={panelOpen && !reader}
             page={current}
@@ -858,7 +883,7 @@ export default function App() {
       {dataMenu && (
         <Popover anchor={dataMenu} onClose={() => setDataMenu(null)} align="end">
           <div className="menu share-menu">
-            {current && view === 'page' && (
+            {!conflictReview && current && view === 'page' && (
               <>
                 <MenuLabel>{t('Share this page')}</MenuLabel>
                 <MenuItem icon={<Ic.Markdown />} label={t('Export Markdown')} desc={t('Download as a .md file')} onClick={() => (setDataMenu(null), exportMd(current.id))} />

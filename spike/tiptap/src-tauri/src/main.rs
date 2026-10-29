@@ -1,15 +1,19 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 //! Storage for Nevis: Vault folders (pages, attachments, history as plain files; see ADR-0003) that the app can
-//! keep in sync, by itself, through the Nevis sync server (server/ in this repository). The web UI talks to it through the commands below
+//! keep in sync through GitHub snapshots or the legacy Nevis server. The web UI talks to it through the commands below
 //! (spike/tiptap/src/db.ts and attachments.ts); in a plain browser the same UI falls back to IndexedDB.
 
 mod database;
 mod index;
 mod legacy;
+mod portable;
 mod registry;
 mod sync;
 mod vault;
+#[cfg(test)]
+mod google_build_config;
+mod vault_lock;
 mod updates;
 
 use registry::{Entry, Registry};
@@ -18,9 +22,10 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::atomic::{AtomicU64,Ordering};
 use std::time::{Duration, Instant};
 use sync::hub::{self, Hub};
-use sync::{account, SyncState};
+use sync::{account, drive, github, snapshot, SyncState};
 use tauri::ipc::{InvokeBody, Request, Response};
 use tauri::{AppHandle, Emitter, Manager, State};
 use vault::{err, now_ms, Res, Vault, VAULT_MISMATCH, VAULT_MISSING};
@@ -51,12 +56,17 @@ fn lock_vault<'a>(s: &'a St) -> Res<MutexGuard<'a, Option<Vault>>> {
 
 /// Runs `f` on the open vault; errors when the picker is showing.
 fn with<T>(s: &St, f: impl FnOnce(&Vault) -> Res<T>) -> Res<T> {
+    let expected=s.reg.lock().map_err(err)?.current.clone();
     match &*lock_vault(s)? {
         Some(v) => {
+            v.ensure_exclusive()?;
             // a vault whose folder vanished while it was open is not written to: that would re-create half of it
             if !v.root.join(".noviq/vault.json").is_file() {
                 return Err(VAULT_MISSING.into());
             }
+            if expected.as_deref()!=Some(v.id().as_str()){return Err(VAULT_MISMATCH.into());}
+            snapshot::recover(v)?;
+            drive::streaming::recover(v,&drive::dir(&s.app_data,&v.id()))?;
             f(v)
         }
         None => Err("no vault open".into()),
@@ -69,7 +79,7 @@ fn kick(s: &St) {
 }
 
 // Settings that belong to this device and must not travel through the vault.
-const LOCAL_KEYS: [&str; 1] = ["backupCfg"];
+const LOCAL_KEYS: [&str; 2] = ["backupCfg", "graphLayouts"];
 
 // ───── vaults: list, create, open, switch ─────
 
@@ -100,6 +110,8 @@ fn activate(s: &St, e: &Entry, import_legacy: bool) -> Res<()> {
             Err(e) => eprintln!("legacy import failed: {e}"),
         }
     }
+    snapshot::recover(&v)?;
+    drive::streaming::recover(&v,&drive::dir(&s.app_data,&v.id()))?;
     v.purge_trash();
     let mut r = s.reg.lock().map_err(err)?;
     r.add(Entry { name: v.name(), ..e.clone() });
@@ -273,11 +285,57 @@ fn pages_all(s: St) -> Res<Vec<Value>> {
 
 /// `clear_first` = the upserts are the whole workspace. Every page is its own atomic file write.
 #[tauri::command]
+fn vault_drive_format(s: St) -> Res<bool> { with(&s,|v|Ok(v.requires_drive())) }
+
+#[tauri::command]
 fn pages_save(s: St, upserts: Vec<Value>, removed: Vec<String>, clear_first: bool) -> Res<Vec<String>> {
     // ids of pages whose newer version on disk (another device's edit) went to the page history before ours replaced it
     let kept = with(&s, |v| v.save_pages(&upserts, &removed, clear_first))?;
     kick(&s);
     Ok(kept)
+}
+
+#[tauri::command]
+fn vault_backup_export(s: St) -> Res<Value> { with(&s,|v| { database::recover(&v.root)?; serde_json::to_value(portable::export(v)?).map_err(err) }) }
+#[tauri::command]
+fn vault_backup_save(s: St, path: String) -> Res<()> {
+    let p=PathBuf::from(path);
+    if !p.is_absolute() || p.extension().and_then(|e|e.to_str()).map(str::to_ascii_lowercase).as_deref()!=Some("json"){return Err("BACKUP:invalid_destination".into());}
+    with(&s,|v| {
+        let parent=p.parent().ok_or("BACKUP:invalid_destination")?.canonicalize().map_err(err)?;
+        if parent.starts_with(v.root.canonicalize().map_err(err)?) || parent.starts_with(s.app_data.canonicalize().map_err(err)?) {return Err("BACKUP:destination_inside_live_data".into());}
+        database::recover(&v.root)?;
+        let backup=portable::export(v)?;
+        let bytes=serde_json::to_vec(&backup).map_err(err)?;
+        vault::write_atomic(&p,&bytes)?;
+        if snapshot::hash(&std::fs::read(&p).map_err(err)?)!=snapshot::hash(&bytes){return Err("BACKUP:verification_failed".into());}
+        Ok(())
+    })
+}
+#[tauri::command]
+fn vault_backup_restore(s: St, data: Value) -> Res<Value> {
+    let _op=github::OPERATION.lock().map_err(err)?;
+    let v=with(&s,|v|portable::restore(v.root.parent().ok_or("no parent directory")?,data))?;
+    let entry=Entry{id:v.id(),name:v.name(),path:v.root.to_string_lossy().into(),sync:false};
+    activate(&s,&entry,false)?;
+    Ok(json!({"pages":v.pages_all()?.len(),"files":v.files_list().len()}))
+}
+
+#[tauri::command]
+fn archive_editor_conflict(s: St, page: Value, base: Value) -> Res<()> {
+    use base64::Engine;
+    with(&s,|v| {
+        let id=vault::check_id(page["id"].as_str().ok_or("page without id")?)?;
+        let path=format!("pages/{id}.json");
+        if snapshot::tombstones(v)?.contains(&path){return Err("SYNC:permanently_deleted".into());}
+        let local=serde_json::to_vec(&page).map_err(err)?;snapshot::validate(&path,&local)?;
+        let current=std::fs::read(v.root.join(&path)).map_err(err)?;
+        let cid=uuid::Uuid::new_v4().to_string();
+        let enc=|b:&[u8]|base64::engine::general_purpose::STANDARD.encode(b);
+        let c=json!({"id":cid,"path":path,"createdAt":now_ms(),"base":enc(&serde_json::to_vec(&base).map_err(err)?),"local":enc(&local),"remote":enc(&current)});
+        vault::write_atomic(&v.root.join("conflicts").join(format!("{cid}.json")),&serde_json::to_vec(&c).map_err(err)?)
+    })?;
+    kick(&s);Ok(())
 }
 
 // ───── key-value settings ─────
@@ -293,7 +351,23 @@ fn kv_file(s: &St, v: &Vault, key: &str) -> Res<PathBuf> {
 
 #[tauri::command]
 fn kv_get(s: St, key: String) -> Res<Option<Value>> {
-    with(&s, |v| Ok(std::fs::read(kv_file(&s, v, &key)?).ok().and_then(|b| serde_json::from_slice(&b).ok())))
+    with(&s, |v| match std::fs::read(kv_file(&s,v,&key)?) {
+        Ok(bytes)=>serde_json::from_slice(&bytes).map(Some).map_err(|_|format!("STORAGE:unreadable_setting:{key}")),
+        Err(e)if e.kind()==std::io::ErrorKind::NotFound=>Ok(None),
+        Err(e)=>Err(err(e))
+    })
+}
+
+#[tauri::command]
+fn preferences_save(s: St, base: Value, next: Value) -> Res<Value> {
+    let result=with(&s,|v|snapshot::save_preferences(v,&base,&next))?;
+    kick(&s);Ok(result)
+}
+
+#[tauri::command]
+fn kv_merge_set(s: St, key: String, base: Value, next: Value) -> Res<Value> {
+    let result=with(&s,|v|snapshot::save_user_kv(v,&key,&base,&next))?;
+    kick(&s);Ok(result)
 }
 
 #[tauri::command]
@@ -517,6 +591,7 @@ enum Kick {
 struct SyncCtx {
     app_data: PathBuf,
     status: Arc<Mutex<SyncStatus>>,
+    local_generation:Arc<AtomicU64>,
     /// vaults whose held-back deletions the user confirmed; used up by the next sync of that vault
     confirm: Arc<Mutex<BTreeSet<String>>>,
     /// (vault id, server `seq` this device has applied): what the watcher compares the server with
@@ -525,6 +600,9 @@ struct SyncCtx {
 }
 
 fn kick_as(s: &St, k: Kick) {
+    if k==Kick::Edit {s.ctx.local_generation.fetch_add(1,Ordering::SeqCst);
+        if current_entry(s).is_some_and(|e|drive::enabled(&s.app_data,&e.id)){if let Ok(mut st)=s.ctx.status.lock(){if st.state!="syncing"{st.state="pending";}}}
+    }
     if let Ok(tx) = s.kick.lock() {
         let _ = tx.send(k);
     }
@@ -541,15 +619,24 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Res<T> + Send + 'static
     tauri::async_runtime::spawn_blocking(f).await.map_err(err)?
 }
 
+#[tauri::command]
+async fn installation_device_id(s:St<'_>)->Res<String>{let data=s.app_data.clone();blocking(move||drive::device(&data)).await}
+
 /// Signed in or not, and what the sync of the open vault is doing.
 #[tauri::command]
 fn account_status(s: St) -> Value {
     let acct = account::load(&s.app_data);
     let st = s.ctx.status.lock().map(|x| x.clone()).unwrap_or_default();
     let sync_on = lock_vault(&s).ok().and_then(|g| g.as_ref().map(|v| v.id())).and_then(|id| s.reg.lock().ok()?.find(&id).map(|e| e.sync)).unwrap_or(false);
+    let git = lock_vault(&s).ok().and_then(|g|g.as_ref().map(|v|github::enabled(&s.app_data,&v.id()))).unwrap_or(false);
+    let drive_on = lock_vault(&s).ok().and_then(|g|g.as_ref().map(|v|drive::enabled(&s.app_data,&v.id()))).unwrap_or(false);
+    let google_status=if drive::feature_enabled() || drive_on {drive::auth::status()}else{json!({"signedIn":false})};
+    let drive_startup=drive::feature_enabled() && current_entry(&s).is_none() && acct.is_none() && google_status["signedIn"]==true;
+    let google=drive_on || drive_startup;
     json!({
-        "signedIn": acct.is_some(),
-        "username": acct.as_ref().map(|a| a.username.clone()),
+        "provider": if google { "drive" } else if git { "github" } else { "legacy" },
+        "signedIn": if google { google_status["signedIn"] == true } else if git { true } else { acct.is_some() },
+        "username": if google { google_status["email"].clone() } else { json!(acct.as_ref().map(|a| a.username.clone())) },
         "server": acct.as_ref().map_or_else(|| account::DEFAULT_SERVER.to_string(), |a| a.server.clone()),
         "defaultServer": account::DEFAULT_SERVER,
         "syncOn": sync_on,
@@ -664,6 +751,9 @@ fn sync_set(s: St, on: bool) -> Res<()> {
 }
 
 #[tauri::command]
+fn sync_wake(s: St, background: bool) { kick_as(&s, if background { Kick::User } else { Kick::Remote }); }
+
+#[tauri::command]
 fn sync_now(s: St) {
     kick_as(&s, Kick::User);
 }
@@ -680,6 +770,7 @@ fn sync_confirm(s: St) -> Res<()> {
 /// The cloud copy of a vault goes to the server's trash (30 days); the vault on this device stays and its sync is turned off here.
 #[tauri::command]
 async fn cloud_delete(s: St<'_>, id: String) -> Res<()> {
+    if drive::enabled(&s.app_data,&id)||github::enabled(&s.app_data,&id){return Err("SYNC:provider_mismatch".into());}
     {
         let mut r = s.reg.lock().map_err(err)?;
         if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
@@ -704,6 +795,7 @@ async fn cloud_delete(s: St<'_>, id: String) -> Res<()> {
 /// The cloud copy is gone but the vault here is kept: sync it again as a new cloud copy (everything is uploaded, nothing is deleted).
 #[tauri::command]
 fn cloud_reupload(s: St, id: String) -> Res<()> {
+    if drive::enabled(&s.app_data,&id)||github::enabled(&s.app_data,&id){return Err("SYNC:provider_mismatch".into());}
     let _ = std::fs::remove_file(state_file(&s.app_data, &id));
     let mut r = s.reg.lock().map_err(err)?;
     if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
@@ -757,6 +849,7 @@ async fn cloud_restore(s: St<'_>, id: String) -> Res<()> {
 /// Creates `<parent>/<name>` for a vault that exists in the cloud and downloads it.
 #[tauri::command]
 async fn cloud_download(s: St<'_>, id: String, name: String, parent: String) -> Res<()> {
+    if drive::enabled(&s.app_data,&id)||github::enabled(&s.app_data,&id){return Err("SYNC:provider_mismatch".into());}
     let name = clean_name(&name)?;
     let root = PathBuf::from(&parent).join(&name);
     let v = Vault::create_with_id(root.clone(), &name, &id)?;
@@ -767,14 +860,19 @@ async fn cloud_download(s: St<'_>, id: String, name: String, parent: String) -> 
     drop(v);
     let ctx = s.ctx.clone();
     let e2 = e.clone();
-    blocking(move || run_sync(&ctx, &e2, true)).await?;
+    blocking(move || run_sync(&ctx, &e2, true, false)).await?;
     activate(&s, &e, false)
 }
 
 /// One synchronization of one vault: bring the mirror of the server up to date, then let the engine compare and move files.
 /// `patient`: retry a lost request a few times. While the network is known to be down it is false: one try, then the back-off
 /// decides when to look again, so that a sync does not sit for ten seconds in retries when the connection has just come back.
-fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool) -> Res<()> {
+fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool, automatic: bool) -> Res<()> {
+    if drive::enabled(&ctx.app_data,&e.id) { return run_drive(ctx,e,automatic); }
+    if github::enabled(&ctx.app_data, &e.id) { return run_github(ctx, e); }
+    let legacy_guard = github::OPERATION.lock().map_err(err)?;
+    if drive::enabled(&ctx.app_data,&e.id) { drop(legacy_guard); return run_drive(ctx,e,automatic); }
+    if github::enabled(&ctx.app_data, &e.id) { drop(legacy_guard); return run_github(ctx,e); }
     let set = |state: &'static str, reason: &str, error: String, done: bool| {
         if let Ok(mut st) = ctx.status.lock() {
             st.state = state;
@@ -790,6 +888,7 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool) -> Res<()> {
         // The vault must be there and be the one we think it is. A folder that vanished is never a reason to
         // delete the cloud copy, and nothing is created here.
         let vault = Vault::open_as(PathBuf::from(&e.path), &e.id)?;
+        if vault.requires_drive(){return Err("DRIVE:binding_required".into());}
         let acct = account::load(&ctx.app_data).ok_or("AUTH:signed_out")?;
         let api = account::api(&ctx.app_data)?;
         let api = if patient { api } else { api.quick() };
@@ -860,6 +959,115 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool) -> Res<()> {
     }
 }
 
+fn run_github(ctx: &SyncCtx, e: &Entry) -> Res<()> {
+    let operation=github::OPERATION.lock().map_err(err)?;
+    if drive::enabled(&ctx.app_data,&e.id){drop(operation);return run_drive(ctx,e,false);}
+    let app = ctx.app.as_ref().ok_or("GITHUB:no_app")?;
+    let b = github::binding(&ctx.app_data, &e.id)?.ok_or("GITHUB:not_connected")?;
+    { let s=app.state::<Store>();with(&s,|v|{if v.requires_drive(){return Err("DRIVE:binding_required".into());}Ok(())})?; }
+    if let Ok(mut st) = ctx.status.lock() { st.state = "syncing"; st.error.clear(); st.reason.clear(); }
+    let result = github::run_unlocked(&ctx.app_data, &b, true,
+        || { let s = app.state::<Store>(); with(&s, |v| { if v.id() != e.id { return Err("SYNC:workspace_changed".into()); } database::recover(&v.root)?; snapshot::capture(v) }) },
+        |before, after| { let s = app.state::<Store>(); with(&s, |v| { if v.id() != e.id { return Err("SYNC:workspace_changed".into()); } snapshot::apply(v,before,after) }) });
+    if let Ok(mut st) = ctx.status.lock() {
+        match &result {
+            Ok(conflicts) => { st.state = if *conflicts > 0 { "paused" } else { "idle" }; st.reason = if *conflicts > 0 { "CONFLICTS" } else { "" }.into(); st.error.clear(); st.last_at = now_ms(); },
+            Err(e) => { st.state = if e.starts_with("GITHUB:network") { "offline" } else { "error" }; st.error = e.clone(); st.reason = "GITHUB".into(); }
+        }
+    }
+    if result.is_ok() { let _ = app.emit("vault-changed", e.id.clone()); }
+    result.map(|_| ())
+}
+
+/// All authentication/provider mutations run off the UI thread and share one operation lock.
+#[tauri::command]
+async fn github_action(s: St<'_>, app: AppHandle, action: String, args: Value) -> Res<Value> {
+    let data = s.app_data.clone();
+    let result = blocking(move || {
+        if action == "diagnostics" { return Ok(sync::network::diagnostics()); }
+        if action == "status" { let s=app.state::<Store>(); let id=current_entry(&s).map(|e|e.id).unwrap_or_else(||"none".into()); return github::status(&data,&id); }
+        let _op = github::OPERATION.lock().map_err(err)?;
+        let s = app.state::<Store>();
+        let id = current_entry(&s).map(|e|e.id).unwrap_or_default();
+        match action.as_str() {
+            "status" => github::status(&data, &id),
+            "open" => { github::open_browser(args["target"].as_str().unwrap_or("device"))?; Ok(Value::Null) },
+            "repository-access" => Ok(json!({"ready":github::repository_access(args["repo"].as_str().ok_or("missing repository")?)?})),
+            "begin" => github::begin(),
+            "poll" => github::poll(),
+            "cancel" => { github::cancel(); Ok(Value::Null) },
+            "disconnect" => { github::disconnect()?; Ok(Value::Null) },
+            "list" => {
+                let mut rows=github::list_vaults(&data,args["repo"].as_str().unwrap_or("noviq-data"))?;
+                let reg=s.reg.lock().map_err(err)?;
+                if let Some(rows)=rows.as_array_mut(){for row in rows {row["connectedHere"]=json!(row["id"].as_str().and_then(|id|reg.find(id)).is_some_and(|e|vault::probe(Path::new(&e.path),&e.id)=="ok"));}}
+                Ok(rows)
+            },
+            "download" => {
+                let remote_id=vault::check_id(args["id"].as_str().ok_or("missing vault id")?)?;if drive::enabled(&data,remote_id){return Err("SYNC:provider_mismatch".into());}
+                if s.reg.lock().map_err(err)?.find(remote_id).is_some_and(|e|vault::probe(Path::new(&e.path),&e.id)=="ok"){return Err("GITHUB:vault_already_local".into());}
+                let parent=PathBuf::from(args["parent"].as_str().ok_or("missing parent")?);
+                if !parent.is_absolute()||!parent.is_dir(){return Err("invalid parent directory".into());}
+                let name=clean_name(args["name"].as_str().unwrap_or("My notes"))?;
+                let target=parent.join(&name);if target.exists(){return Err("folder already exists".into());}
+                let stage=parent.join(format!(".noviq-download-{}",uuid::Uuid::new_v4()));
+                let v=Vault::create_with_id(stage.clone(),&name,remote_id)?;
+                let b=github::prepare(&data,remote_id,args["repo"].as_str().unwrap_or("noviq-data"),false,false)?;
+                github::download_unlocked(&data,&b,||snapshot::capture(&v),|before,after|snapshot::apply(&v,before,after))?;
+                std::fs::rename(stage,&target).map_err(err)?;
+                github::save_binding(&data,&b)?;
+                let e=Entry{id:remote_id.into(),name,path:target.to_string_lossy().into(),sync:true};
+                activate(&s,&e,false)?;Ok(Value::Null)
+            },
+            "connect" => {
+                if drive::enabled(&data,&id){return Err("DRIVE:detach_before_provider_switch".into());}
+                if with(&s,|v|Ok(v.requires_drive()))?{return Err("DRIVE:restore_copy_before_provider_switch".into());}
+                if id.is_empty() { return Err("no vault open".into()); }
+                if github::enabled(&data,&id) { return Err("GITHUB:already_connected".into()); }
+                let mut b = github::prepare(&data,&id,args["repo"].as_str().unwrap_or("noviq-data"),args["create"].as_bool().unwrap_or(false),true)?;
+                let backup = data.join("github/backups").join(format!("{}-{}",id,now_ms()));
+                // Short local critical section: consistent complete backup + readback before switching active provider.
+                with(&s, |v| { if v.id()!=id { return Err("SYNC:workspace_changed".into()); } snapshot::backup(v,&backup) })?;
+                b.backup=backup.to_string_lossy().into();
+                // Single active provider. A durable binding is the worker's routing source of truth.
+                github::save_binding(&data,&b)?;
+                let mut reg=s.reg.lock().map_err(err)?;
+                if let Some(e)=reg.vaults.iter_mut().find(|e|e.id==id){e.sync=true;}
+                reg.save(&data)?;
+                kick_as(&s,Kick::User);
+                Ok(json!({"backup":b.backup}))
+            },
+            "detach" => {
+                // Paused, local data kept. Do not silently resume the legacy provider.
+                let mut reg=s.reg.lock().map_err(err)?;
+                if let Some(e)=reg.vaults.iter_mut().find(|e|e.id==id){e.sync=false;}
+                reg.save(&data)?;
+                github::detach(&data,&id)?;
+                Ok(Value::Null)
+            },
+            "policy" => {
+                let mut b=github::binding(&data,&id)?.ok_or("GITHUB:not_connected")?;
+                b.quiet_seconds=args["quietSeconds"].as_u64().unwrap_or(15).clamp(15,120);
+                b.poll_seconds=args["pollSeconds"].as_u64().unwrap_or(120).clamp(120,3600);
+                github::save_binding(&data,&b)?; Ok(Value::Null)
+            },
+            "conflicts" => with(&s,|v| {
+                let mut rows=vec![];
+                for (p,b) in snapshot::read(v)? { if p.starts_with("conflicts/") {rows.push(serde_json::from_slice::<Value>(&b).map_err(err)?);} }
+                Ok(json!(rows))
+            }),
+            "resolve" => {
+                if drive::enabled(&data,&id){return Err("DRIVE:use_drive_resolver".into());}
+                with(&s,|v|snapshot::resolve_conflict(v,args["id"].as_str().ok_or("missing conflict id")?,args["choice"].as_str().ok_or("missing choice")?))?;
+                let _=app.emit("vault-changed",id);
+                kick_as(&s,Kick::User);Ok(Value::Null)
+            },
+            _ => Err("GITHUB:unknown_action".into())
+        }
+    }).await?;
+    Ok(result)
+}
+
 fn current_entry(s: &Store) -> Option<Entry> {
     let cur = s.reg.lock().ok().and_then(|r| r.current.clone());
     cur.and_then(|id| s.reg.lock().ok()?.find(&id).cloned())
@@ -874,34 +1082,62 @@ fn backoff(fails: u32) -> Duration {
 fn sync_thread(app: AppHandle, rx: Receiver<Kick>) {
     let mut fails = 0u32;
     let mut retry_at = Instant::now();
+    let mut mandatory_retry = false;
     loop {
         // an edit, the server, or the user wakes us at once; the long wait is only a safety net
-        let first = match rx.recv_timeout(Duration::from_secs(300)) {
+        let poll = { let s=app.state::<Store>(); current_entry(&s).map_or(120,|e|if drive::enabled(&s.app_data,&e.id){if s.ctx.status.lock().is_ok_and(|st|st.state=="pending"){2}else{55+(now_ms() as u64 % 11)}}else{github::binding(&s.app_data,&e.id).ok().flatten().map_or(120,|b|b.poll_seconds)}) };
+        let first = match rx.recv_timeout(Duration::from_secs(poll)) {
             Ok(k) => Some(k),
             Err(RecvTimeoutError::Timeout) => None,
             Err(RecvTimeoutError::Disconnected) => return,
         };
         let mut urgent = matches!(first, Some(Kick::User | Kick::Remote));
+        let mut manual_publish=first==Some(Kick::User);
         if first == Some(Kick::Edit) {
-            std::thread::sleep(Duration::from_millis(250)); // let a burst of saves finish; a change from the server is not a burst and goes at once
-            while let Ok(k) = rx.try_recv() {
-                urgent |= matches!(k, Kick::User | Kick::Remote);
+            let s = app.state::<Store>();
+            let policy = current_entry(&s).and_then(|e| github::binding(&s.app_data,&e.id).ok().flatten());
+            if current_entry(&s).is_some_and(|e|drive::enabled(&s.app_data,&e.id)) {
+                drop(s);
+                let started=Instant::now();let mut last=Instant::now();
+                loop {let wait=drive::schedule::edit_wait(last.elapsed(),started.elapsed());if wait.is_zero(){break;}
+                    match rx.recv_timeout(wait){Ok(Kick::Edit)=>last=Instant::now(),Ok(k)=>{urgent=true;manual_publish|=k==Kick::User;break;},Err(RecvTimeoutError::Timeout)=>break,Err(RecvTimeoutError::Disconnected)=>return}
+                }
+            } else if let Some(b) = policy {
+                let started=Instant::now(); let mut last=Instant::now();
+                loop {
+                    let wait=Duration::from_secs(b.quiet_seconds).saturating_sub(last.elapsed()).min(Duration::from_secs(120).saturating_sub(started.elapsed()));
+                    if wait.is_zero(){break;}
+                    match rx.recv_timeout(wait) {
+                        Ok(Kick::Edit)=>last=Instant::now(),
+                        Ok(k)=>{urgent=true;manual_publish|=k==Kick::User;break;},
+                        Err(RecvTimeoutError::Timeout)=>break,
+                        Err(RecvTimeoutError::Disconnected)=>return,
+                    }
+                }
+            } else {
+                std::thread::sleep(Duration::from_millis(250));
+                while let Ok(k)=rx.try_recv(){urgent |= matches!(k,Kick::User | Kick::Remote) ;}
             }
         }
         // while the network is down an edit does not try again before the back-off is over; the server speaking to us, or the user, does
-        if fails > 0 && !urgent && Instant::now() < retry_at {
+        if fails > 0 && (!urgent || mandatory_retry) && Instant::now() < retry_at {
             continue;
         }
         let s = app.state::<Store>();
         let ctx = s.ctx.clone();
         let entry = current_entry(&s);
-        let ready = entry.as_ref().is_some_and(|e| e.sync) && account::load(&ctx.app_data).is_some();
+        let ready = entry.as_ref().is_some_and(|e| e.sync) && entry.as_ref().is_some_and(|e| drive::enabled(&ctx.app_data,&e.id) || github::enabled(&ctx.app_data,&e.id) || account::load(&ctx.app_data).is_some());
         match entry {
-            Some(e) if ready => match run_sync(&ctx, &e, fails == 0) {
+            Some(e) if ready => match run_sync(&ctx, &e, fails == 0, !manual_publish) {
                 Ok(()) => fails = 0,
-                Err(_) => {
+                Err(message) => {
                     fails += 1;
-                    retry_at = Instant::now() + backoff(fails);
+                    mandatory_retry=message.starts_with("GITHUB:rate_limited:") || message.starts_with("DRIVE:rate_limited:");
+                    let delay=if drive::enabled(&ctx.app_data,&e.id) { Duration::from_secs(message.strip_prefix("DRIVE:rate_limited:").and_then(|s|s.parse::<u64>().ok()).unwrap_or_else(||{if message=="DRIVE:storage_full"{return 3600;}let cap=(15u64 << fails.min(6)).min(900);(uuid::Uuid::new_v4().as_u128() as u64 % cap)+1})) } else if github::enabled(&ctx.app_data,&e.id) {
+                        let rate=message.strip_prefix("GITHUB:rate_limited:").and_then(|s|s.parse::<u64>().ok());
+                        Duration::from_secs(rate.unwrap_or((15u64 << fails.min(6)).min(900)) + (now_ms() as u64 % 11))
+                    } else { backoff(fails) };
+                    retry_at = Instant::now() + drive::schedule::wake_delay(delay);
                 }
             },
             _ => {
@@ -926,6 +1162,7 @@ fn watcher(app: AppHandle) {
             std::thread::sleep(Duration::from_secs(2));
             continue;
         };
+        if drive::enabled(&ctx.app_data,&e.id) || github::enabled(&ctx.app_data,&e.id) { std::thread::sleep(Duration::from_secs(2)); continue; }
         let Ok(api) = account::api(&ctx.app_data) else {
             std::thread::sleep(Duration::from_secs(2));
             continue;
@@ -992,6 +1229,7 @@ fn main() {
             let (tx, rx) = channel();
             let ctx = SyncCtx {
                 app_data: app_data.clone(),
+                local_generation:Arc::new(AtomicU64::new(0)),
                 status: Arc::new(Mutex::new(SyncStatus { state: "off", ..Default::default() })),
                 confirm: Arc::new(Mutex::new(BTreeSet::new())),
                 synced: Arc::new(Mutex::new((String::new(), -1))),
@@ -1016,15 +1254,162 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            updates::updates_check, updates::updates_download, updates::updates_install,
-            vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
+            installation_device_id, drive_action, updates::updates_check, updates::updates_download, updates::updates_install,
+            kv_merge_set, preferences_save, archive_editor_conflict, vault_backup_save, vault_backup_export, vault_backup_restore, github_action, vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
             db_recover, db_load_all, db_commit, db_get_operation, db_history, db_undo_load, db_undo_save, db_runtime_get, db_runtime_set, db_runtime_delete,
             db_runtime_keys, db_index_rebuild, db_index_candidates, db_index_count,
-            vault_stamp, pages_all, pages_save, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list,
+            vault_stamp, vault_drive_format, pages_all, pages_save, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list,
             file_delete, files_clear, account_status, server_health, account_register, account_login, account_recover, account_logout, account_info,
-            account_revoke_device, account_change_password, account_new_recovery_key, account_delete, save_text_file, sync_set, sync_now, sync_confirm, cloud_vaults,
+            account_revoke_device, account_change_password, account_new_recovery_key, account_delete, save_text_file, sync_set, sync_now, sync_wake, sync_confirm, cloud_vaults,
             cloud_trashed, cloud_restore, cloud_purge, cloud_download, cloud_delete, cloud_reupload, index_state, index_update, index_search
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nevis");
+}
+
+fn run_drive(ctx:&SyncCtx,e:&Entry,automatic:bool)->Res<()> {
+    let _op=github::OPERATION.lock().map_err(err)?;
+    let b=match drive::binding(&ctx.app_data,&e.id).and_then(|b|b.ok_or("DRIVE:not_connected".into())){Ok(b)=>b,Err(error)=>{if let Ok(mut st)=ctx.status.lock(){st.state="error";st.reason="DRIVE".into();st.error=error.clone();}return Err(error);}};
+    let app=ctx.app.as_ref().ok_or("DRIVE:no_app")?;
+    if let Ok(mut st)=ctx.status.lock(){st.state="syncing";st.error.clear();st.reason.clear();}
+    let generation=ctx.local_generation.load(Ordering::SeqCst);
+    let result=drive::run(&ctx.app_data,&b,automatic,
+        ||{let s=app.state::<Store>();with(&s,|v|{if v.id()!=e.id{return Err("SYNC:workspace_changed".into());}database::recover(&v.root)?;drive::streaming::capture(v,&drive::dir(&ctx.app_data,&e.id))})},
+        |before,after|{let s=app.state::<Store>();with(&s,|v|{if v.id()!=e.id{return Err("SYNC:workspace_changed".into());}drive::streaming::apply(v,&drive::dir(&ctx.app_data,&e.id),before,after)})});
+    let pending=drive::status(&ctx.app_data,&e.id).ok().and_then(|v|v["pending"].as_u64()).unwrap_or(0)>0;
+    if let Ok(mut st)=ctx.status.lock(){match &result{Ok(n)=>{st.state=if *n>0{"paused"}else if pending || ctx.local_generation.load(Ordering::SeqCst)!=generation{"pending"}else{"idle"};st.reason=if *n>0{"CONFLICTS"}else{""}.into();st.last_at=now_ms();},Err(e)=>{st.state=if e=="DRIVE:network"{"offline"}else if e=="DRIVE:paused"{"paused"}else{"error"};st.reason="DRIVE".into();st.error=e.clone();}}}
+    if result.is_ok(){let _=app.emit("vault-changed",e.id.clone());}result.map(|_|())
+}
+// Caller holds the provider operation mutex. New and existing workspaces share
+// the backup, remote identity, migration and single-writer fencing path.
+fn connect_drive_workspace(s: &St, app: &AppHandle, data: &Path, id: &str) -> Res<Value> {
+    if drive::enabled(data, id) {
+        return Err("DRIVE:already_connected".into());
+    }
+    // A pending GitHub publish cannot be silently abandoned during provider switching.
+    let github_dir = data.join("github").join(id);
+    if github_dir.exists() {
+        for e in std::fs::read_dir(&github_dir).map_err(err)?.flatten() {
+            if e.path().join("pending.json").exists() {
+                return Err("DRIVE:github_pending_publish".into());
+            }
+        }
+    }
+    let backup = data
+        .join("drive/backups")
+        .join(format!("{id}-{}", now_ms()));
+    let name = with(s, |v| {
+        database::recover(&v.root)?;
+        snapshot::backup(v, &backup)?;
+        Ok(v.name())
+    })?;
+    let mut b = drive::prepare(data, id, &name, None)?;
+    b.backup = backup.to_string_lossy().into();
+    // External setup succeeds before fencing. Persist recovery evidence before changing format.
+    vault::write_atomic(
+        &drive::dir(data, id).join("provider-switch.json"),
+        &serde_json::to_vec(&b).map_err(err)?,
+    )?;
+    with(s, |v| {
+        drive::stable::migrate(v)?;
+        drive::database::migrate_allocators(v)?;
+        v.fence_drive()
+    })?;
+    // Keep old binding archived; Drive becomes the sole active writer under the same operation mutex.
+    github::detach(data, id)?;
+    drive::save_binding(data, &b)?;
+    let _ = app.emit("vault-changed", id);
+    let mut reg = s.reg.lock().map_err(err)?;
+    if let Some(e) = reg.vaults.iter_mut().find(|e| e.id == id) {
+        e.sync = true;
+    }
+    reg.save(data)?;
+    drop(reg);
+    kick_as(s, Kick::User);
+    Ok(json!({"backup":b.backup}))
+}
+#[tauri::command]
+async fn drive_action(s:St<'_>,app:AppHandle,action:String,args:Value)->Res<Value>{
+    let data=s.app_data.clone();
+    blocking(move ||{
+        if action=="status"{let s=app.state::<Store>();let id=current_entry(&s).map(|e|e.id).unwrap_or_else(||"none".into());let mut status=drive::status(&data,&id)?;if id!="none"{status["settingsPolicy"]=json!(with(&s,drive::settings::read)?);}return Ok(status);}
+        if !drive::feature_enabled(){return Err("DRIVE:feature_disabled".into());}
+        if action=="cancel"{drive::auth::cancel();return Ok(Value::Null);}
+        if action=="disconnect" || (action=="pause" && args["paused"].as_bool().unwrap_or(true)){let s=app.state::<Store>();if let Some(e)=current_entry(&s){if drive::enabled(&data,&e.id){vault::write_atomic(&drive::dir(&data,&e.id).join("pause-request"),b"1")?;}}}
+        let _op=github::OPERATION.lock().map_err(err)?;
+        let s=app.state::<Store>();let id=current_entry(&s).map(|e|e.id).unwrap_or_default();
+        match action.as_str(){
+            "configure-client"=>drive::auth::configure_client(args["secret"].as_str().ok_or("DRIVE:invalid_client_secret")?),
+            "import-client"=>drive::auth::import_client(std::path::Path::new(args["path"].as_str().ok_or("DRIVE:invalid_client_file")?)),
+            "begin"=>drive::auth::begin(),"poll"=>drive::auth::poll(),"cancel"=>{drive::auth::cancel();Ok(Value::Null)},
+            "disconnect"=>{if let Some(mut b)=drive::binding(&data,&id)?{b.paused=true;drive::save_binding(&data,&b)?;}drive::auth::disconnect()?;Ok(Value::Null)},
+            "list"=>drive::discover(&data),
+            "roots"=>drive::roots::list(&data),
+            "view-root"=>{drive::roots::open(args["id"].as_str().ok_or("DRIVE:missing_root")?)?;Ok(Value::Null)},
+            "select-root"=>drive::roots::select(&data,args["id"].as_str().ok_or("DRIVE:missing_root")?),
+            "connect"=>connect_drive_workspace(&s,&app,&data,&id),
+            "create"=>{
+                if current_entry(&s).is_some(){return Err("DRIVE:workspace_already_open".into());}
+                drive::auth::subject()?;
+                let parent=PathBuf::from(args["parent"].as_str().ok_or("DRIVE:missing_parent")?);
+                let name=clean_name(args["name"].as_str().unwrap_or("My notes"))?;
+                // Keep a failed cloud setup available locally; never enable legacy auto-sync.
+                drive::onboarding::create_and_connect(&parent,&name,
+                    |id,path|activate(&s,&Entry{id:id.into(),name:name.clone(),path:path.to_string_lossy().into_owned(),sync:false},false),
+                    |id|connect_drive_workspace(&s,&app,&data,id))
+            },
+            "settings-policy"=>{if !drive::enabled(&data,&id){return Err("DRIVE:not_connected".into());}let key=args["key"].as_str().ok_or("DRIVE:settings_policy_unknown_key")?;let scope:drive::settings::Scope=serde_json::from_value(args["scope"].clone()).map_err(|_|"DRIVE:settings_policy_invalid")?;with(&s,|v|drive::settings::set(v,key,scope))?;kick(&s);Ok(Value::Null)},
+            "pause"=>{let mut b=drive::binding(&data,&id)?.ok_or("DRIVE:not_connected")?;b.paused=args["paused"].as_bool().unwrap_or(true);drive::save_binding(&data,&b)?;if !b.paused{let path=drive::dir(&data,&id).join("pause-request");match std::fs::remove_file(path){Ok(())=>(),Err(e)if e.kind()==std::io::ErrorKind::NotFound=>(),Err(e)=>return Err(err(e))}}kick_as(&s,Kick::User);Ok(Value::Null)},
+            "detach"=>{
+                let b=drive::binding(&data,&id)?.ok_or("DRIVE:not_connected")?;
+                let j=drive::core::Journal::load(&drive::dir(&data,&id).join("journal.json"),&id,&drive::device(&data)?)?;
+                if !j.outbox.is_empty(){return Err("DRIVE:pending_outbox".into());}
+                let dirty=with(&s,|v|drive::has_local_changes(v,&j,&drive::dir(&data,&id)))?;if dirty{return Err("DRIVE:pending_local_edits".into());}
+                let mut reg=s.reg.lock().map_err(err)?;if let Some(e)=reg.vaults.iter_mut().find(|e|e.id==id){e.sync=false;}reg.save(&data)?;drop(reg);
+                std::fs::rename(drive::dir(&data,&id).join("binding.json"),drive::dir(&data,&id).join(format!("binding-detached-{}.json",now_ms()))).map_err(err)?;Ok(json!({"backup":b.backup}))
+            },
+            "download"=>{
+                let remote_id=vault::check_id(args["id"].as_str().ok_or("DRIVE:missing_vault")?)?;
+                if s.reg.lock().map_err(err)?.find(remote_id).is_some(){return Err("DRIVE:vault_already_registered".into());}
+                let existing_state=drive::dir(&data,remote_id);
+                if existing_state.join("journal.json").exists() && !existing_state.join("download.json").exists(){return Err("DRIVE:existing_local_sync_state".into());}
+                let parent=PathBuf::from(args["parent"].as_str().ok_or("DRIVE:missing_parent")?);if !parent.is_absolute()||!parent.is_dir(){return Err("DRIVE:invalid_parent".into());}
+                let name=clean_name(args["name"].as_str().unwrap_or("My notes"))?;
+                let b=drive::prepare(&data,remote_id,&name,Some(args["folderId"].as_str().ok_or("DRIVE:missing_folder")?))?;
+                let state=drive::dir(&data,remote_id);
+                let target=drive::onboarding::install(&state,&b,&parent,&name,|v|{
+                    if state.join("journal.json").exists(){drive::run(&data,&b,false,||drive::streaming::capture(v,&drive::dir(&data,&v.id())),|a,b|drive::streaming::apply(v,&drive::dir(&data,&v.id()),a,b))?;let j=drive::core::Journal::load(&state.join("journal.json"),remote_id,&drive::device(&data)?)?;if j.batches.is_empty() && j.seed.is_none(){return Err("DRIVE:remote_empty_or_missing".into());}Ok(())}
+                    else{let initial=drive::streaming::capture(v,&drive::dir(&data,&v.id()))?;drive::initialize(&data,&b,&initial,||drive::streaming::capture(v,&drive::dir(&data,&v.id())),|a,b|drive::streaming::apply(v,&drive::dir(&data,&v.id()),a,b)).map(|_|())}
+                })?;
+                drive::save_binding(&data,&b)?;
+                activate(&s,&Entry{id:remote_id.into(),name,path:target.to_string_lossy().into(),sync:true},false)?;Ok(Value::Null)
+            },
+            "database-conflicts"=>drive::relation_conflicts::list(&drive::relation_conflicts::state(&data,&id)?),
+            "database-conflict-preview"=>drive::relation_conflicts::preview(&drive::relation_conflicts::state(&data,&id)?,args["id"].as_str().ok_or("DRIVE:missing_conflict")?,args["preferred"].as_str().ok_or("DRIVE:missing_choice")?),
+            "database-conflict-resolve"=>{let applied=with(&s,|v|{let before=drive::streaming::capture(v,&drive::dir(&data,&id))?;let decision=drive::relation_conflicts::resolve(&data,&id,args["id"].as_str().ok_or("DRIVE:missing_conflict")?,args["preferred"].as_str().ok_or("DRIVE:missing_choice")?,args["digest"].as_str().ok_or("DRIVE:missing_choice")?,&before)?;let applied=decision.after.is_some();if let Some(after)=decision.after{drive::streaming::apply(v,&drive::dir(&data,&id),&before,&after)?;}Ok(json!({"applied":applied,"remaining":decision.remaining}))})?;let _=app.emit("vault-changed",id);kick_as(&s,Kick::User);Ok(applied)},
+            "conflicts"=>with(&s,|v|{let mut out=vec![];for (p,b) in snapshot::read_metadata(v)?{if p.starts_with("conflicts/"){out.push(serde_json::from_slice::<Value>(&b).map_err(err)?);}}Ok(json!(out))}),
+            "resolve"=>{with(&s,|v|{let conflict_id=vault::check_id(args["id"].as_str().ok_or("DRIVE:missing_conflict")?)?;let archive:Value=serde_json::from_slice(&std::fs::read(v.root.join("conflicts").join(format!("{conflict_id}.json"))).map_err(err)?).map_err(err)?;if archive["provider"]!="drive"{return snapshot::resolve_conflict(v,conflict_id,args["choice"].as_str().ok_or("DRIVE:missing_choice")?);}let before=drive::streaming::capture(v,&drive::dir(&data,&v.id()))?;let after=drive::resolve(&data,&id,args["id"].as_str().ok_or("DRIVE:missing_conflict")?,args["choice"].as_str().ok_or("DRIVE:missing_choice")?,&before)?;drive::streaming::apply(v,&drive::dir(&data,&v.id()),&before,&after)})?;let _=app.emit("vault-changed",id);kick_as(&s,Kick::User);Ok(Value::Null)},
+            "deep-check"=>{drive::streaming::clear_verification_cache();let bundle=with(&s,|v|drive::streaming::capture(v,&drive::dir(&data,&v.id())))?;Ok(json!({"verifiedFiles":bundle.manifest.files.len()}))},
+            "gc-dry-run"|"gc-verify"|"gc-execute-guarded"|"gc-recovery"=>{
+                drive::binding(&data,&id)?.ok_or("DRIVE:not_connected")?;
+                let path=drive::dir(&data,&id).join("journal.json");let j=drive::core::Journal::load(&path,&id,&drive::device(&data)?)?;
+                match action.as_str(){"gc-dry-run"=>drive::gc::dry_run(&path,&j),"gc-verify"=>drive::gc::verify(&path,&j),"gc-execute-guarded"=>drive::gc::execute_guarded(&path,&j),_=>drive::gc::recover(&path)}
+            },
+            "history"|"history-preview"|"checkpoint"|"restore-copy"=>{
+                let b=drive::binding(&data,&id)?.ok_or("DRIVE:not_connected")?;let mut storage=drive::VaultDrive::new(b.clone(),drive::dir(&data,&id))?;drive::SyncStorageAdapter::check(&mut storage)?;
+                if action=="history"{return drive::checkpoint::list(&mut storage.drive,&b);}
+                if action=="history-preview"{return drive::history::preview(&mut storage.drive,&b,args["checkpointId"].as_str().ok_or("DRIVE:missing_checkpoint")?);}
+                if action=="checkpoint"{let j=drive::core::Journal::load(&drive::dir(&data,&id).join("journal.json"),&id,&drive::device(&data)?)?;if !j.outbox.is_empty(){return Err("DRIVE:pending_outbox".into());}
+                    let bundle=with(&s,|v|{if drive::has_local_changes(v,&j,&drive::dir(&data,&id))?{return Err("DRIVE:pending_local_edits".into());}drive::streaming::capture(v,&drive::dir(&data,&v.id()))})?;
+                    let h=drive::checkpoint::publish(&mut storage.drive,&b,&drive::dir(&data,&id),&bundle,&j)?;return Ok(json!({"checkpointId":h}));}
+                let m=drive::checkpoint::read(&mut storage.drive,&b,args["checkpointId"].as_str().ok_or("DRIVE:missing_checkpoint")?)?;let restored=drive::checkpoint::restore(&mut storage.drive,&b,&m,&drive::dir(&data,&id))?;
+                let parent=PathBuf::from(args["parent"].as_str().ok_or("DRIVE:missing_parent")?);if !parent.is_absolute()||!parent.is_dir(){return Err("DRIVE:invalid_parent".into());}
+                let name=format!("Restored notes {}",now_ms());let stage=parent.join(format!(".nevis-restore-{}",uuid::Uuid::new_v4()));let v=Vault::create(stage.clone(),&name)?;
+                with(&s,|v|snapshot::backup(v,&data.join("drive/backups").join(format!("before-restore-{}",now_ms()))))?;
+                let after=drive::history::as_local_copy(&restored,&v.id(),&name)?;let copy_state=drive::dir(&data,&v.id());drive::streaming::apply(&v,&copy_state,&drive::streaming::capture(&v,&copy_state)?,&after)?;
+                let restored_id=v.id();let target=parent.join(&name);std::fs::rename(stage,&target).map_err(err)?;activate(&s,&Entry{id:restored_id,name,path:target.to_string_lossy().into(),sync:false},false)?;Ok(Value::Null)
+            },
+            _=>Err("DRIVE:unknown_action".into())
+        }
+    }).await
 }

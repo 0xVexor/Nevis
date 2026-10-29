@@ -1,0 +1,24 @@
+
+running 1 test
+test sync::drive::tests::streaming_media_128mib_capture_cold_restore_and_restart_avoid_bundle_bodies ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 181 filtered out; finished in 25.66s
+
+       25.66 real        24.95 user         0.23 sys
+            16039936  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                1215  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                 309  voluntary context switches
+                2638  involuntary context switches
+        368206074460  instructions retired
+         97211613279  cycles elapsed
+             3129752  peak memory footprint

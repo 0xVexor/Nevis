@@ -1,0 +1,6 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Nevis Drive Preview",
+  "identifier": "com.vexor.nevis.drive-preview",
+  "plugins": { "updater": { "pubkey": "" } }
+}
