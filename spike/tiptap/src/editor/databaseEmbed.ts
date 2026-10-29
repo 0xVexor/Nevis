@@ -2,6 +2,7 @@ import { Node, mergeAttributes, type Editor } from '@tiptap/core'
 import { insertionAnchor } from './insertionAnchor'
 import { t } from '../i18n'
 import { OPEN_PAGE } from './pageLink'
+import { createSectionDragSurface } from './snapSurface'
 
 /**
  * A database shown inside a page. The page stores only the container id; the database itself (rows, views, schema) lives in the database
@@ -29,18 +30,22 @@ export const DatabaseEmbed = Node.create({
       const dom = document.createElement('div')
       dom.className = 'db-embed'
       dom.contentEditable = 'false'
+      const surface = createSectionDragSurface(t('Move database'), t('Drag this area to move the whole block.'))
+      const content = document.createElement('div')
+      content.className = 'db-embed-content'
+      dom.append(surface, content)
       let unmount: (() => void) | null = null
       let destroyed = false
       const id = node.attrs.containerId as string
       if (!id) {
-        dom.textContent = t('This database is not available.')
+        content.textContent = t('This database is not available.')
       } else {
         void Promise.all([import('react-dom/client'), import('react'), import('../database/ui/DatabaseContainer')]).then(([{ createRoot }, React, { DatabaseContainer }]) => {
           if (destroyed) return
-          const root = createRoot(dom)
+          const root = createRoot(content)
           root.render(React.createElement(DatabaseContainer, { containerId: id, inline: true, onOpenPage: (pageId: string) => window.dispatchEvent(new CustomEvent(OPEN_PAGE, { detail: pageId })) }))
           unmount = () => root.unmount()
-        }).catch(() => { if (!destroyed) dom.textContent = t('This database is not available.') })
+        }).catch(() => { if (!destroyed) content.textContent = t('This database is not available.') })
       }
       return {
         dom,

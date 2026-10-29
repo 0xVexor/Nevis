@@ -6,6 +6,7 @@ import { looksLikeMermaid } from './mermaid'
 import { t } from '../i18n'
 import { svgIcon } from './svgIcons'
 import { openLangMenu } from './langMenu'
+import { createSectionDragSurface } from './snapSurface'
 
 const lowlight = createLowlight(common)
 
@@ -187,6 +188,7 @@ export const CodeBlock = CodeBlockLowlight.extend({
       let current = node
       const dom = document.createElement('div')
       dom.className = 'code-wrap'
+      const surface = createSectionDragSurface(t('Move code block'), t('Drag this area to move the whole block.'))
 
       const bar = document.createElement('div')
       bar.className = 'code-bar'
@@ -216,10 +218,17 @@ export const CodeBlock = CodeBlockLowlight.extend({
       copy.className = 'code-copy'
       copy.type = 'button'
       copy.textContent = t('Copy')
-      copy.onclick = () => {
-        navigator.clipboard?.writeText(current.textContent)
-        copy.textContent = t('Copied ✓')
-        setTimeout(() => (copy.textContent = t('Copy')), 1200)
+      let destroyed = false, copyTimer = 0
+      copy.onclick = async () => {
+        clearTimeout(copyTimer)
+        try {
+          if (!navigator.clipboard) throw new Error('Clipboard unavailable')
+          await navigator.clipboard.writeText(current.textContent)
+          if (!destroyed) copy.textContent = t('Copied ✓')
+        } catch {
+          if (!destroyed) copy.textContent = t('Copy failed')
+        }
+        if (!destroyed) copyTimer = window.setTimeout(() => { copy.textContent = t('Copy') }, 1200)
       }
       // code that is really a diagram (language "mermaid", or Mermaid source in a block with no language): offer to draw it
       const diag = document.createElement('button')
@@ -254,7 +263,7 @@ export const CodeBlock = CodeBlockLowlight.extend({
       const pre = document.createElement('pre')
       const code = document.createElement('code')
       pre.append(code)
-      dom.append(bar, pre)
+      dom.append(surface, bar, pre)
 
       const sync = (n: typeof node) => {
         const id = canonLang(n.attrs.language)
@@ -287,8 +296,9 @@ export const CodeBlock = CodeBlockLowlight.extend({
           sync(n)
           return true
         },
-        stopEvent: (e) => bar.contains(e.target as any),
-        ignoreMutation: (m) => bar.contains(m.target),
+        stopEvent: (e) => bar.contains(e.target as any) || surface.contains(e.target as any),
+        ignoreMutation: (m) => bar.contains(m.target) || surface.contains(m.target),
+        destroy: () => { destroyed = true; clearTimeout(copyTimer) },
       }
     }
   },

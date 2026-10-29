@@ -5,10 +5,15 @@ import { closeHistory, isHistoryTransaction } from '@tiptap/pm/history'
 import { confirmDialog } from '../dialog'
 import { t } from '../i18n'
 import {
-  GROUP, COLUMN, GAP, MIN_WIDTH, activeGroup, adjacentColumnSelection, ancestor, blockRange, boundaryKey,
+  GROUP, COLUMN, GAP, MIN_WIDTH, activeGroup, ancestor, blockRange, boundaryKey,
   crossesColumns, displayWidths, equalWidths, flattenGroup, flattenLayouts, focusIn,
-  groupColumns, layoutStructureValid, linearSelection, moveBlocks, structural, validWidths,
+  groupColumns, layoutStructureValid, structural, validWidths,
 } from './layoutModel'
+import { planSnap, snapTransaction, verticalSnapTarget } from './snapModel'
+import { snapContext } from './snapTargets'
+import { crossColumnClipboard, editAcrossColumns, insideTable } from './layoutEditing'
+import { navigateLayout } from './layoutNavigation'
+import { setLayoutInteraction } from './layoutInteraction'
 
 export const LAYOUT_CANCEL = 'layout-cancel'
 export const layoutMessage = (message: string) => window.dispatchEvent(new CustomEvent('layout-message', { detail: t(message) }))
@@ -116,7 +121,6 @@ export const LayoutGroup = Node.create({
       },
       setLayoutWidths: (widths, pos) => ({ state, tr, dispatch, editor }) => {
         const group = groupAt(state, pos)
-        if (crossesColumns(state)) return reject('Select blocks from one column.', dispatch)
         if (!editor.isEditable || editor.view.composing || !group || !validWidths(widths, group.node.childCount)) return false
         if (JSON.stringify(widths) === JSON.stringify(group.node.attrs.widths)) return true
         if (dispatch) structural(tr).setNodeMarkup(group.pos, undefined, { ...group.node.attrs, widths: [...widths] })
@@ -160,35 +164,30 @@ export const LayoutGroup = Node.create({
         if (!range) return reject('Select complete blocks from one column.', dispatch)
         if (col?.type.name !== COLUMN) return false
         const target = columnPos + 1 + (end ? col.content.size : 0)
-        const tr = moveBlocks(state, range, target)
+        const result = planSnap(state, range, { kind: 'insert', pos: target }, snapContext(editor.view))
+        const tr = result.plan && snapTransaction(state, result.plan)
         if (tr && dispatch) dispatch(tr)
-        return true
+        return !!tr
       },
       moveOutsideLayout: (groupPos, after = true) => ({ state, dispatch, editor }) => {
         if (!editor.isEditable || editor.view.composing) return false
         const range = blockRange(state), group = groupAt(state, groupPos)
         if (!range || !group) return reject('Select complete blocks from one column.', dispatch)
-        const tr = moveBlocks(state, range, group.pos + (after ? group.node.nodeSize : 0))
+        const result = planSnap(state, range, { kind: 'insert', pos: group.pos + (after ? group.node.nodeSize : 0) }, snapContext(editor.view))
+        const tr = result.plan && snapTransaction(state, result.plan)
         if (tr && dispatch) dispatch(tr)
-        return true
+        return !!tr
       },
       shiftLayoutBlock: (direction) => ({ state, dispatch, editor }) => {
-        if (!editor.isEditable || editor.view.composing) return false
+        if (!editor.isEditable || editor.view.composing || insideTable(state)) return false
         const range = blockRange(state)
         if (!range) return false
-        let target: number
-        if (direction === -1) {
-          const before = state.doc.resolve(range.from).nodeBefore
-          if (!before) return false
-          target = range.from - before.nodeSize
-        } else {
-          const after = state.doc.nodeAt(range.to)
-          if (!after) return false
-          target = range.to + after.nodeSize
-        }
-        const tr = moveBlocks(state, range, target)
+        const target = verticalSnapTarget(state, range, direction === -1 ? 'up' : 'down')
+        if (!target) return false
+        const result = planSnap(state, range, target, snapContext(editor.view))
+        const tr = result.plan && snapTransaction(state, result.plan)
         if (tr && dispatch) dispatch(tr)
-        return true
+        return !!tr
       },
     }
   },
@@ -219,14 +218,13 @@ export const LayoutGroup = Node.create({
           const before = widths.slice(0, i + 1).reduce((a, b) => a + b, 0)
           const grip = child as HTMLElement
           grip.style.insetInlineStart = `${available * before / 100 + GAP * (i + 0.5)}px`
+          const min = available > 0 ? Math.max(20, MIN_WIDTH / available * 100) : 20
+          const max = widths[i] + widths[i + 1] - min
           grip.setAttribute('aria-valuenow', String(Math.round(widths[i])))
-          grip.setAttribute('aria-valuemin', '20')
-          grip.setAttribute('aria-valuemax', String(Math.round(widths[i] + widths[i + 1] - 20)))
+          grip.setAttribute('aria-valuemin', String(Math.ceil(min)))
+          grip.setAttribute('aria-valuemax', String(Math.max(Math.ceil(min), Math.floor(max))))
+          grip.setAttribute('aria-disabled', String(stacked || max < min))
         })
-      }
-      const selectGroup = () => {
-        const pos = getPos()
-        if (pos != null && activeGroup(editor.state)?.pos !== pos) view.dispatch(editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, pos)))
       }
       const makeGrips = () => {
         grips.replaceChildren()
@@ -239,32 +237,37 @@ export const LayoutGroup = Node.create({
           grip.setAttribute('aria-label', t('Resize columns {a} and {b}', { a: i + 1, b: i + 2 }))
           grip.title = t('Drag to resize. Escape cancels. Arrow keys adjust width.')
           grip.onkeydown = (e) => {
-            if (!editor.isEditable || dom.classList.contains('layout-stacked') || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return
+            if (!editor.isEditable || view.composing || dom.classList.contains('layout-stacked') || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return
             e.preventDefault(); e.stopPropagation()
-            selectGroup()
+            view.dom.dispatchEvent(new Event(LAYOUT_CANCEL))
             const rtl = getComputedStyle(dom).direction === 'rtl'
             const delta = (e.key === 'ArrowRight' ? 1 : -1) * (rtl ? -1 : 1)
             const widths = displayWidths(cur).slice(), pair = widths[i] + widths[i + 1]
             const min = Math.max(20, MIN_WIDTH / (body.clientWidth - GAP * (cur.childCount - 1)) * 100)
+            if (!Number.isFinite(min) || pair < min * 2) return
             widths[i] = Math.max(min, Math.min(pair - min, widths[i] + delta))
             widths[i + 1] = pair - widths[i]
             const pos = getPos()
             if (pos != null) editor.commands.setLayoutWidths(widths, pos)
           }
           grip.onpointerdown = (e) => {
-            if (!editor.isEditable || editor.view.composing || e.button !== 0 || dom.classList.contains('layout-stacked')) return
+            if (!editor.isEditable || editor.view.composing || e.button !== 0 || !e.isPrimary || dom.classList.contains('layout-stacked')) return
             e.preventDefault(); e.stopPropagation()
-            cancelResize?.()
-            selectGroup()
+            view.dom.dispatchEvent(new Event(LAYOUT_CANCEL))
             const originalDoc = editor.state.doc, at = getPos()
             if (at == null) return
             const widths = displayWidths(cur).slice(), start = e.clientX
             const usable = body.clientWidth - GAP * (cur.childCount - 1)
             const pair = widths[i] + widths[i + 1], min = Math.max(20, MIN_WIDTH / usable * 100)
+            if (!Number.isFinite(min) || pair < min * 2) return
             const rtl = getComputedStyle(dom).direction === 'rtl'
             let preview = widths.slice()
+            let finished = false
             dom.classList.add('layout-resizing')
+            setLayoutInteraction(view.dom, 'resize')
             const move = (ev: PointerEvent) => {
+              if (ev.pointerId !== e.pointerId || finished) return
+              if (view.composing || !editor.isEditable || getComputedStyle(dom).direction !== (rtl ? 'rtl' : 'ltr')) { finish(false); return }
               const delta = (ev.clientX - start) / usable * 100 * (rtl ? -1 : 1)
               preview = widths.slice()
               preview[i] = Math.max(min, Math.min(pair - min, widths[i] + delta))
@@ -272,25 +275,41 @@ export const LayoutGroup = Node.create({
               draw(preview)
             }
             const finish = (commit: boolean) => {
+              if (finished) return
+              finished = true
               window.removeEventListener('pointermove', move)
               window.removeEventListener('pointerup', up)
-              window.removeEventListener('pointercancel', cancel)
+              window.removeEventListener('pointercancel', pointerCancel)
               window.removeEventListener('blur', cancel)
+              window.removeEventListener('pagehide', cancel)
+              document.removeEventListener('visibilitychange', visibility)
               window.removeEventListener('keydown', key, true)
+              grip.removeEventListener('lostpointercapture', cancel)
+              view.dom.removeEventListener('compositionstart', cancel)
               editor.off('transaction', changed)
               cancelResize = null
               dom.classList.remove('layout-resizing')
+              setLayoutInteraction(view.dom, 'idle')
+              try { if (grip.hasPointerCapture(e.pointerId)) grip.releasePointerCapture(e.pointerId) } catch { /* already released */ }
               draw()
-              if (commit && editor.state.doc === originalDoc && JSON.stringify(preview) !== JSON.stringify(widths)) editor.commands.setLayoutWidths(preview, at)
+              if (commit && !editor.isDestroyed && editor.isEditable && !view.composing && editor.state.doc === originalDoc && JSON.stringify(preview) !== JSON.stringify(widths)) editor.commands.setLayoutWidths(preview, at)
             }
-            const up = () => finish(true), cancel = () => finish(false)
+            const up = (ev: PointerEvent) => { if (ev.pointerId === e.pointerId) { move(ev); finish(true) } }
+            const cancel = () => finish(false)
+            const visibility = () => { if (document.hidden) cancel() }
+            const pointerCancel = (ev: PointerEvent) => { if (ev.pointerId === e.pointerId) cancel() }
             const key = (ev: KeyboardEvent) => { if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); cancel() } }
             const changed = () => { if (editor.state.doc !== originalDoc || !editor.isEditable) cancel() }
             cancelResize = cancel
+            try { grip.setPointerCapture(e.pointerId) } catch { /* window listeners still cancel */ }
+            grip.addEventListener('lostpointercapture', cancel)
+            view.dom.addEventListener('compositionstart', cancel)
             window.addEventListener('pointermove', move)
-            window.addEventListener('pointerup', up, { once: true })
-            window.addEventListener('pointercancel', cancel, { once: true })
+            window.addEventListener('pointerup', up)
+            window.addEventListener('pointercancel', pointerCancel)
             window.addEventListener('blur', cancel, { once: true })
+            window.addEventListener('pagehide', cancel)
+            document.addEventListener('visibilitychange', visibility)
             window.addEventListener('keydown', key, true)
             editor.on('transaction', changed)
           }
@@ -363,7 +382,6 @@ export const LayoutSafety = Extension.create({
   priority: 1100,
   addProseMirrorPlugins() {
     const editor = this.editor
-    const blocked = () => { layoutMessage('Select blocks from one column.'); return true }
     return [new Plugin({
       key: new PluginKey('layoutSafety'),
       filterTransaction(tr, state) {
@@ -371,7 +389,6 @@ export const LayoutSafety = Extension.create({
         if (!layoutStructureValid(tr.doc)) { layoutMessage('Layouts cannot be nested. Add full-width text after this layout first.'); return false }
         // Full document replacement and history use their own validated document.
         if (tr.getMeta('preventUpdate') || isHistoryTransaction(tr) || tr.getMeta('layoutAction')) return true
-        if (crossesColumns(state)) { blocked(); return false }
         if (state.selection instanceof NodeSelection && state.selection.node.type.name === GROUP) {
           layoutMessage('Use the layout menu to delete a layout and its content.')
           return false
@@ -386,6 +403,8 @@ export const LayoutSafety = Extension.create({
       props: {
         handleKeyDown(view, e) {
           if (!view.editable) return false
+          if (e.isComposing || view.composing) return false
+          if (typeof HTMLElement !== 'undefined' && e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable="false"]')) return false
           const selected = view.state.selection
           if ((e.key === 'Backspace' || e.key === 'Delete') && selected instanceof NodeSelection && selected.node.type.name === GROUP) {
             const { doc } = view.state
@@ -396,36 +415,73 @@ export const LayoutSafety = Extension.create({
             return true
           }
           if (crossesColumns(view.state)) {
-            const modifies = e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Enter' || (e.key.length === 1 && !e.metaKey && !e.ctrlKey)
-            if (modifies) return blocked()
+            if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Enter') {
+              const tr = editAcrossColumns(view.state, undefined, e.key === 'Enter')
+              if (tr) view.dispatch(tr)
+              return true
+            }
           }
-          if (e.isComposing || view.composing) return false
           if (e.key === 'Backspace' && boundaryKey(view.state, true)) return true
           if (e.key === 'Delete' && boundaryKey(view.state, false)) return true
           if (!e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && /^Arrow(Left|Right|Up|Down)$/.test(e.key)) {
-            const group = activeGroup(view.state)
-            const dom = group && view.nodeDOM(group.pos) as HTMLElement | null
-            const rtl = dom && getComputedStyle(dom).direction === 'rtl'
-            const backwards = e.key === 'ArrowUp' || e.key === (rtl ? 'ArrowRight' : 'ArrowLeft')
             const physical = e.key.slice(5).toLowerCase() as 'left' | 'right' | 'up' | 'down'
-            if (group && view.endOfTextblock(physical)) {
-              const next = adjacentColumnSelection(view.state, backwards)
-              if (next) { view.dispatch(view.state.tr.setSelection(next).scrollIntoView()); return true }
+            const next = navigateLayout(view, physical)
+            if (next) {
+              if (next.selection) view.dispatch(view.state.tr.setSelection(next.selection).scrollIntoView())
+              return true
             }
           }
           return false
         },
-        handleTextInput: (view) => crossesColumns(view.state) ? blocked() : false,
-        handlePaste: (view) => crossesColumns(view.state) ? blocked() : false,
+        handleTextInput(view, _from, _to, text) {
+          if (!view.editable || !crossesColumns(view.state)) return false
+          const tr = editAcrossColumns(view.state, text)
+          if (tr) view.dispatch(tr)
+          return true
+        },
+        handlePaste(view, _event, slice) {
+          if (!view.editable || !crossesColumns(view.state)) return false
+          const tr = editAcrossColumns(view.state, slice)
+          if (tr) view.dispatch(tr)
+          return true
+        },
         handleDOMEvents: {
-          cut: (view, e) => { if (!crossesColumns(view.state)) return false; e.preventDefault(); return blocked() },
+          cut: (view, e) => {
+            if (!view.editable || !crossesColumns(view.state)) return false
+            e.preventDefault()
+            if (!e.clipboardData) return true
+            const tr = editAcrossColumns(view.state)
+            if (!tr) return true
+            try {
+              const copied = view.serializeForClipboard(crossColumnClipboard(view.state))
+              e.clipboardData.setData('text/html', copied.dom.innerHTML)
+              e.clipboardData.setData('text/plain', copied.text)
+            } catch { return true }
+            view.dispatch(tr)
+            return true
+          },
           beforeinput: (view, e) => {
             if (!view.editable || !crossesColumns(view.state)) return false
-            e.preventDefault(); return blocked()
+            if (!e.cancelable || e.isComposing) return false
+            const deletion = e.inputType.startsWith('delete')
+            const text = e.inputType === 'insertText' || e.inputType === 'insertReplacementText'
+            const split = e.inputType === 'insertParagraph' || e.inputType === 'insertLineBreak'
+            if (!deletion && !text && !split) return false
+            e.preventDefault()
+            const tr = editAcrossColumns(view.state, text ? e.data ?? '' : undefined, split)
+            if (tr) view.dispatch(tr)
+            return true
+          },
+          compositionstart: (view) => {
+            if (view.editable && crossesColumns(view.state)) {
+              const tr = editAcrossColumns(view.state)
+              if (tr) view.dispatch(tr)
+            }
+            return false
           },
         },
         transformCopied(slice, view) {
-          return crossesColumns(view.state) ? new Slice(linearSelection(view.state), 0, 0) : slice
+          return crossesColumns(view.state) ? new Slice(flattenLayouts(slice.content), 0, 0) : slice
         },
         transformPasted(slice, view) {
           if (!ancestor(view.state.selection.$from, COLUMN)) return slice
@@ -437,7 +493,17 @@ export const LayoutSafety = Extension.create({
     })]
   },
   addKeyboardShortcuts() {
+    const snap = (mode: 'left' | 'right') => {
+      const editor = this.editor
+      if (!editor.isEditable || editor.view.composing || insideTable(editor.state)) return false
+      const range = blockRange(editor.state)
+      if (!range) return true
+      editor.view.dom.dispatchEvent(new CustomEvent('layout-snap-pick', { detail: { range, doc: editor.state.doc, mode } }))
+      return true
+    }
     return {
+      'Mod-Alt-ArrowLeft': () => snap('left'),
+      'Mod-Alt-ArrowRight': () => snap('right'),
       'Mod-Alt-ArrowUp': () => this.editor.commands.shiftLayoutBlock(-1),
       'Mod-Alt-ArrowDown': () => this.editor.commands.shiftLayoutBlock(1),
       'Mod-Alt-Enter': () => this.editor.commands.addAfterLayout(),
