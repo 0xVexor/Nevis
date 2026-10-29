@@ -45,3 +45,6 @@ Merged origin/dev 5bee6a6. Every dev translation retains its exact value; config
 
 
 Initial PR CI on macOS and Linux found a pre-existing timing assumption in sync_trash_keeps_files_and_purges_old_ones: two different relative file paths can share a millisecond trash directory, so counting exactly two directories is invalid. The regression now asserts byte-for-byte retention of both the page and settings, while still requiring old trash to be removed. Production trash behavior is unchanged. Both first CI results were 209 PASS / 1 FAIL / 11 ignored; final CI must pass on the corrected head before merge.
+
+
+All five jobs passed on d5fdb03, but dev correctly blocked merge because its required checks are server, app and end-to-end. Expanding app into a platform matrix had replaced the exact app check name. The workflow now retains the three platform checks and adds the required app aggregate gate, using always() and a strict success test of the matrix result. Any failed/cancelled platform fails the aggregate. Branch protection is unchanged. Final merge requires the new head's checks, including app, to succeed.

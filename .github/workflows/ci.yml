@@ -21,7 +21,8 @@ jobs:
       - run: npm test
         working-directory: server
 
-  app:
+  app-platforms:
+    name: app (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -59,6 +60,18 @@ jobs:
         working-directory: spike/tiptap
       - run: cargo test
         working-directory: spike/tiptap/src-tauri
+
+  # Keep the existing protected-branch check name while requiring every platform.
+  app:
+    name: app
+    needs: app-platforms
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all application platforms to pass
+        env:
+          PLATFORM_RESULT: ${{ needs.app-platforms.result }}
+        run: test "$PLATFORM_RESULT" = success
 
   # The Rust sync engine against the real server: two vaults, offline edits, conflicts, big attachments.
   end-to-end:
