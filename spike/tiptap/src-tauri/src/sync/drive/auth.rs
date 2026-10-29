@@ -53,6 +53,28 @@ fn client_entry() -> Res<keyring::Entry> {
     )
     .map_err(|_| "DRIVE:secure_storage_unavailable".into())
 }
+fn validate_client_secret(secret: &str) -> Res<&str> {
+    let secret = secret.trim();
+    if secret.is_empty()
+        || secret.len() > 1024
+        || !secret.bytes().all(|b| b.is_ascii_graphic())
+        || secret.ends_with(".apps.googleusercontent.com")
+    {
+        return Err("DRIVE:invalid_client_secret".into());
+    }
+    Ok(secret)
+}
+/// Explicit user setup only. Never persist Desktop configuration in Vault/app-data JSON.
+pub fn configure_client(secret: &str) -> Res<Value> {
+    if client_id().is_empty() {
+        return Err("DRIVE:oauth_not_configured".into());
+    }
+    let secret = validate_client_secret(secret)?;
+    client_entry()?
+        .set_password(secret)
+        .map_err(|_| "DRIVE:secure_storage_unavailable")?;
+    Ok(json!({"imported":true}))
+}
 fn parse_client(raw: &[u8], expected: &str) -> Res<String> {
     let value: Value = serde_json::from_slice(raw).map_err(|_| "DRIVE:invalid_client_file")?;
     let installed = &value["installed"];
@@ -75,10 +97,7 @@ pub fn import_client(path: &std::path::Path) -> Res<Value> {
         return Err("DRIVE:invalid_client_file".into());
     }
     let secret = parse_client(&raw, client_id())?;
-    client_entry()?
-        .set_password(&secret)
-        .map_err(|_| "DRIVE:secure_storage_unavailable")?;
-    Ok(json!({"imported":true}))
+    configure_client(&secret)
 }
 fn client_secret() -> Res<String> {
     client_entry()?.get_password().map_err(|e| match e {
@@ -385,6 +404,25 @@ pub fn access(force: bool) -> Res<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn manually_entered_desktop_secret_is_bounded_and_errors_never_echo_input() {
+        assert_eq!(
+            validate_client_secret("  dummy-client-value\n").unwrap(),
+            "dummy-client-value"
+        );
+        for secret in [
+            "".to_string(),
+            "bad secret with spaces".into(),
+            "client.apps.googleusercontent.com".into(),
+            "x".repeat(1025),
+            "dummy\nvalue".into(),
+        ] {
+            assert_eq!(
+                validate_client_secret(&secret).unwrap_err(),
+                "DRIVE:invalid_client_secret"
+            );
+        }
+    }
     #[test]
     fn desktop_client_import_checks_identity_and_never_echoes_credentials() {
         let raw = br#"{"installed":{"client_id":"desktop-id","client_secret":"dummy-test-value"}}"#;

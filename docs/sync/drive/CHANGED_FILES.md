@@ -85,3 +85,5 @@ Worktree root: `/Users/wrangler/.codex/worktrees/google-drive-sync/Nevis`. Inclu
 - `spike/tiptap/src/vaultErrors.ts`
 - `spike/tiptap/tests/drive-block-ids.test.mjs`
 - `spike/tiptap/tests/drive-settings-policy.test.mjs`
+
+- `docs/sync/drive/validation/oauth-entry-regressions.txt`

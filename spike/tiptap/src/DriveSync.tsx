@@ -27,7 +27,8 @@ interface RestorePoint { id: string; checkpointId: string; createdAt: number; fi
 const explain = (e: unknown) => {
   const code = String(e).replace(/^DRIVE:/, '')
   const messages: Record<string, string> = {
-    desktop_credentials_required: 'Import the Desktop OAuth JSON from Google Cloud before signing in. It is stored in the operating system credential store.',
+    desktop_credentials_required: 'Enter the saved Desktop client secret or import its JSON before signing in.',
+    invalid_client_secret: 'Paste only the client secret, without the client ID or extra text.',
     client_file_mismatch: 'This Desktop OAuth JSON belongs to a different client ID.',
     invalid_client_file: 'Choose the original Desktop OAuth JSON downloaded from Google Cloud.',
     oauth_client_rejected: 'Google rejected this OAuth client. Check that it is an enabled Desktop app client in the configured project.',
@@ -59,6 +60,7 @@ const explain = (e: unknown) => {
 }
 export function DriveAccountDialog({ onClose, onGitHub }: { onClose: () => void; onGitHub: () => void }) {
   const root = useRef<HTMLElement>(null)
+  const clientSecretInput = useRef<HTMLInputElement>(null)
   const [st, setSt] = useState<DriveStatus | null>(null)
   const [runtime, setRuntime] = useState<AccountStatus | null>(null)
   const [busy, setBusy] = useState(false), [waiting, setWaiting] = useState(false)
@@ -134,6 +136,18 @@ export function DriveAccountDialog({ onClose, onGitHub }: { onClose: () => void;
             <button disabled={busy || waiting || !st.driveSyncEnabled || !st.auth.configured} onClick={() => void run(async () => { await driveAction('begin'); setWaiting(true) })}>{st.auth.signedIn ? t('Reconnect Google') : t('Sign in with Google')}</button>
             {waiting && <button onClick={() => void run(async () => { await driveAction('cancel'); setWaiting(false) })}>{t('Cancel')}</button>}
           </div>
+          <details onToggle={event => { if (!event.currentTarget.open && clientSecretInput.current) clientSecretInput.current.value = '' }}>
+            <summary>{t('Enter saved client secret')}</summary>
+            <p>{t('Use the Desktop client secret you already saved. Google no longer offers downloads of existing secrets. This value is saved only in the operating system credential store.')}</p>
+            <label htmlFor="drive-client-secret">{t('Desktop client secret')}</label>
+            <input id="drive-client-secret" ref={clientSecretInput} type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={1024} disabled={busy || waiting || !st.auth.configured} dir="ltr" />
+            <button disabled={busy || waiting || !st.auth.configured || !st.driveSyncEnabled} onClick={() => void run(async () => {
+              const secret = clientSecretInput.current?.value ?? ''
+              if (clientSecretInput.current) clientSecretInput.current.value = ''
+              await driveAction('configure-client', { secret })
+              setNote(t('Desktop OAuth credentials saved in the operating system credential store. Sign in again.'))
+            })}>{t('Save client secret securely')}</button>
+          </details>
           {st.auth.signedIn && <>
             <details><summary>{t('Choose or inspect a Drive root')}</summary>
               <p>{t('Choose a verified Nevis folder when more than one exists. This choice never moves connected workspaces or deletes folders.')}</p>

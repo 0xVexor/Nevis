@@ -7,7 +7,7 @@
 | Full corrected native suite | PASS | 198 passed, 0 failed, 11 ignored; 132.65s |
 | Final durable exponential quota-backoff regression | PASS | 5 schedule tests, including 1 new test, after the full suite |
 | Final root-display hardening regression | PASS | 3 root tests |
-| Unique native results across final logs | PASS | 199 passed, 0 failed, 11 ignored; 94 Drive tests, no ignored Drive tests |
+| Unique native results across final logs | PASS | 200 passed, 0 failed, 11 ignored; 95 Drive tests, no ignored Drive tests |
 | `npm run test:layout` | PASS | 43 passed, including editor identity and settings policy |
 | `npm run test:db` | PASS | 173 passed |
 | `npm run test:direction` | PASS | 4 passed |
@@ -73,3 +73,7 @@ See EXECUTION_REPORT.md for exact internal and external gaps. No destructive GC/
 Verified root selection/account isolation, original-root loss without replacement, safe history title/count preview and fresh-name local restore, graph cardinality/duplicate/cycle/filter validation, explicit reviewed concurrent link decisions, one bounded 401 refresh and revoked refresh redaction, bounded Desktop JSON identity validation, HTTP-date/overflow/durable Retry-After, repeated exponential quota backoff, journal commit-point failure with no publication, reserved JSON/blob context separation, three-candidate late-actor checkpoint replay, deterministic/bounded gzip archive, and late referenced GIF recovery after covered-stream pruning all passed.
 
 The journal fault uses a directory at the rename destination, not an actual full/read-only filesystem. The archive decompression-limit test uses a small injected bound; production uses 95MiB. Historical performance/RSS figures above were measured on the earlier implementation and are not relabeled as measurements of replay-archive overhead. Final large fixtures passed but were not separately profiled for release latency/RSS.
+
+## Saved Desktop secret entry correction
+
+After the user's Console screenshot showed existing-secret downloads are unavailable, added direct password entry into the existing client-scoped OS keyring. All 5 OAuth tests passed, including the new manual-input bounds/redaction assertion. Combined unique results: **200 native passes, 0 failures, 11 ignored; 95 Drive passes**. No complete-suite rerun is claimed after this localized auth/UI correction. TypeScript/Vite and lint passed again; actual keyring save and live sign-in still require the user's action. No real client secret was entered by automation.
