@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { open } from '@tauri-apps/plugin-dialog'
+import { invoke } from '@tauri-apps/api/core'
+import { listCloudWorkspaces, downloadCloudWorkspace, switchWorkspaceSafely, type RemoteWorkspace } from './workspaceCloud'
+import { saveForSync } from './syncActions'
 import {
-  accountStatus, cloudDelete, cloudDownload, cloudReupload, cloudVaults, freezeStorage, isTauri, syncConfirm, syncNow, syncSet, thawStorage,
+  accountStatus, cloudDelete, cloudReupload, freezeStorage, isTauri, syncConfirm, syncNow, syncSet, thawStorage,
   vaultAdd, vaultClose, vaultCreate, vaultForget, vaultInfo, vaultList, vaultLocate, vaultOpen, vaultRename, vaultTrashLocal,
-  type AccountStatus, type CloudVault, type VaultEntry,
+  type AccountStatus, type VaultEntry,
 } from './db'
-import { repo } from './store'
 import { alertDialog, confirmDialog, promptDialog } from './dialog'
 import { explain } from './vaultErrors'
 import { syncLabel } from './Account'
@@ -29,7 +31,7 @@ export function Vaults({ onClose, onNew, onAccount }: { onClose: () => void; onN
   const [id, setId] = useState('')
   const [vaults, setVaults] = useState<VaultEntry[]>([])
   const [acc, setAcc] = useState<AccountStatus | null>(null)
-  const [cloud, setCloud] = useState<CloudVault[] | null>(null)
+  const [cloud, setCloud] = useState<RemoteWorkspace[] | null>(null)
   const [menu, setMenu] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -39,8 +41,8 @@ export function Vaults({ onClose, onNew, onAccount }: { onClose: () => void; onN
   const signedIn = !!acc?.signedIn && acc.provider !== 'github'
   const reloadCloud = useCallback(() => {
     if (!signedIn) return setCloud(null)
-    cloudVaults().then(setCloud, (e) => (setCloud([]), setError(explain(e))))
-  }, [signedIn])
+    listCloudWorkspaces(acc?.provider, invoke).then(setCloud, (e) => (setCloud([]), setError(explain(e))))
+  }, [signedIn, acc?.provider])
 
   useEffect(() => {
     if (!isTauri) return
@@ -74,17 +76,7 @@ export function Vaults({ onClose, onNew, onAccount }: { onClose: () => void; onN
   }
 
   /** Leaves the workspace that is open: nothing may stay unsaved in it, and nothing may be written into the next one. */
-  const switching = async (f: () => Promise<unknown>) => {
-    await repo.flushed()
-    freezeStorage()
-    try {
-      await f()
-    } catch (e) {
-      thawStorage() // it did not happen: the workspace stays as it was
-      throw e
-    }
-    window.location.reload()
-  }
+  const switching = (action: () => Promise<unknown>) => switchWorkspaceSafely(action, { save: saveForSync, freeze: freezeStorage, thaw: thawStorage, opened: () => window.location.reload() })
 
   const switchTo = (to: string) => run(() => (to === id ? Promise.resolve() : switching(() => vaultOpen(to))))
   const create = async (vaultName: string) => {
@@ -97,10 +89,10 @@ export function Vaults({ onClose, onNew, onAccount }: { onClose: () => void; onN
       const dir = await pickFolder(t('Choose a vault folder'))
       if (dir) await switching(() => vaultAdd(dir))
     })
-  const download = (v: CloudVault) =>
+  const download = (v: RemoteWorkspace) =>
     run(async () => {
       const parent = await pickFolder(t('Choose where to put this vault on this computer'))
-      if (parent) await switching(() => cloudDownload(v.id, v.name, parent))
+      if (parent) await switching(() => downloadCloudWorkspace(acc?.provider, v, parent, invoke))
     })
   /** The picker of all workspaces (it also shows the account's cloud vaults). */
   const toPicker = () => run(() => switching(() => vaultClose()))
@@ -216,8 +208,8 @@ export function Vaults({ onClose, onNew, onAccount }: { onClose: () => void; onN
                       <button role="menuitem" disabled={busy} onClick={() => void forget(v)}><Ic.Close size={16} />{t('Remove from list')}</button>
                       <div className="wsd-sep" role="separator" />
                       {v.status === 'ok' && <button role="menuitem" className="danger" disabled={busy} onClick={() => void trashLocal(v)}><Ic.Trash size={16} />{t('Move folder to Recycle Bin…')}</button>}
-                      {signedIn && <button role="menuitem" className="danger" disabled={busy} onClick={() => void deleteCloud(v)}><Ic.Cloud size={16} />{t('Delete cloud copy…')}</button>}
-                      {v.status === 'ok' && <button role="menuitem" className="danger" disabled={busy} onClick={() => void deleteEverywhere(v)}><Ic.Trash size={16} />{t('Delete everywhere…')}</button>}
+                      {signedIn && acc?.provider !== 'drive' && <button role="menuitem" className="danger" disabled={busy} onClick={() => void deleteCloud(v)}><Ic.Cloud size={16} />{t('Delete cloud copy…')}</button>}
+                      {v.status === 'ok' && acc?.provider !== 'drive' && <button role="menuitem" className="danger" disabled={busy} onClick={() => void deleteEverywhere(v)}><Ic.Trash size={16} />{t('Delete everywhere…')}</button>}
                     </div>
                   )}
                 </div>
@@ -235,7 +227,7 @@ export function Vaults({ onClose, onNew, onAccount }: { onClose: () => void; onN
 
           {isTauri && (
             <>
-              <button className="wsd-new" disabled={busy} onClick={() => (onClose(), onNew(create))}>
+              <button className="wsd-new" disabled={busy} onClick={() => acc?.provider === 'drive' ? void toPicker() : (onClose(), onNew(create))}>
                 <span className="wsd-ic"><Ic.Plus size={16} /></span>{t('New workspace…')}
               </button>
               <div className="wsd-acts wsd-more-acts">
@@ -263,7 +255,9 @@ export function Vaults({ onClose, onNew, onAccount }: { onClose: () => void; onN
           {isTauri && (
             <section className="wsd-sync">
               <h4>{t('Sync between devices')}</h4>
-              {!acc?.signedIn ? (
+              {acc?.provider === 'drive' ? (
+                <div className="wsd-card"><p>{t('Google Drive Sync')}</p><p>{syncLabel(acc)}</p><button className="primary" disabled={busy} onClick={() => (onClose(), onAccount())}>{t('Manage Google Drive sync')}</button></div>
+              ) : !acc?.signedIn ? (
                 <div className="wsd-card">
                   <p>{t('Sign in and Nevis keeps this vault in sync on all your devices, within a second or two of each change. You need only a user name and a password: no email address.')}</p>
                   <button className="primary" disabled={busy} onClick={() => (onClose(), onAccount())}>{t('Sign in or create account')}</button>

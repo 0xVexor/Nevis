@@ -54,3 +54,4 @@
 .drive-dialog .acct-row { flex-wrap: wrap; }
 
 .drive-root-choice,.drive-history-preview{border:1px solid var(--border);border-radius:12px;padding:12px;margin-block:10px}.drive-root-choice small{display:block;overflow-wrap:anywhere}.drive-root-choice>span{display:block}.drive-history-preview ul{max-height:240px;overflow:auto}
+.drive-startup{padding:16px;border:1px solid var(--border);border-radius:12px;margin-block:14px}.drive-startup label{display:block;margin-block:8px}.drive-startup input{box-sizing:border-box;width:100%;margin-block-end:12px}.drive-startup .primary{width:100%}

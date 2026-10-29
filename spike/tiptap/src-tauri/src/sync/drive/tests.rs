@@ -1936,3 +1936,31 @@ fn late_reference_restores_deleted_historical_asset_after_checkpoint_pruning() {
     assert_eq!(metadata["type"], "image/gif");
     assert_eq!(metadata["name"], "original.gif");
 }
+
+#[test]
+fn missing_local_workspace_resume_keeps_original_google_account_and_folder() {
+    let previous = Binding {
+        schema_version: 1,
+        subject: "original-account".into(),
+        root_id: "root".into(),
+        vault_id: VAULT.into(),
+        folder_id: "original-folder".into(),
+        objects_id: "objects".into(),
+        streams_id: "streams".into(),
+        checkpoints_id: "checkpoints".into(),
+        backup: String::new(),
+        paused: true,
+    };
+    validate_resume_binding(Some(&previous), "original-account", Some("original-folder")).unwrap();
+    assert_eq!(
+        validate_resume_binding(Some(&previous), "another-account", Some("original-folder"))
+            .unwrap_err(),
+        "DRIVE:account_mismatch"
+    );
+    assert_eq!(
+        validate_resume_binding(Some(&previous), "original-account", Some("another-folder"))
+            .unwrap_err(),
+        "DRIVE:identity_mismatch"
+    );
+    validate_resume_binding(None, "fresh-account", Some("new-folder")).unwrap();
+}

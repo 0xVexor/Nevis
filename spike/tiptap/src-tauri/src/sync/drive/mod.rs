@@ -287,12 +287,20 @@ pub fn discover(data: &Path) -> Res<Value> {
     }
     Ok(json!(out))
 }
+fn validate_resume_binding(previous: Option<&Binding>, subject: &str, folder: Option<&str>) -> Res<()> {
+    if let Some(previous) = previous {
+        if previous.subject != subject { return Err("DRIVE:account_mismatch".into()); }
+        if folder.is_some_and(|folder| folder != previous.folder_id) { return Err("DRIVE:identity_mismatch".into()); }
+    }
+    Ok(())
+}
 pub fn prepare(data: &Path, vault: &str, name: &str, existing: Option<&str>) -> Res<Binding> {
     if !feature_enabled() {
         return Err("DRIVE:feature_disabled".into());
     }
     uuid::Uuid::parse_str(vault).map_err(|_| "DRIVE:invalid_vault")?;
     let subject = auth::subject()?;
+    validate_resume_binding(binding(data, vault)?.as_ref(), &subject, existing)?;
     let mut d = Drive::new()?;
     let root = if existing.is_some() {
         let rows = d.list(&roots::query(&subject)?)?;

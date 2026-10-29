@@ -671,9 +671,9 @@ function LegacyAccountDialog({ onClose, onWorkspaces, startWith = 'signin' }: { 
   )
 }
 
-export function AccountDialog(props: { onClose: () => void; onWorkspaces?: () => void; startWith?: 'signin' | 'signup' }) {
+export function AccountDialog(props: { onClose: () => void; onWorkspaces?: () => void; startWith?: 'signin' | 'signup'; onWorkspaceOpened?: () => void }) {
   const [legacy, setLegacy] = useState(false)
   const [drive, setDrive] = useState(true)
-  if (drive) return <DriveAccountDialog onClose={props.onClose} onGitHub={() => setDrive(false)} />
+  if (drive) return <DriveAccountDialog onClose={props.onClose} onGitHub={() => setDrive(false)} onWorkspaceOpened={props.onWorkspaceOpened} />
   return legacy ? <LegacyAccountDialog {...props} /> : <GitHubAccountDialog onClose={props.onClose} onLegacy={() => setLegacy(true)} />
 }

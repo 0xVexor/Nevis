@@ -34,8 +34,8 @@
 
 ## نتایج آزمون نهاییِ ادامهٔ کار
 
-- مجموعهٔ کامل Rust روی کد اصلاح‌شده: **۱۹۸ موفق، صفر ناموفق، ۱۱ ignored**، زمان 132.65 ثانیه. تست تازهٔ backoff پایدار سپس با ۴ تست زمان‌بندی موجود اجرا شد: **۵ موفق**. با احتساب regression تازهٔ ورود مستقیم Secret، با اصلاحات نهایی تنظیم ناشر و cache وضعیت حساب، نتیجهٔ یکتای logهای نهایی **۲۰۳ موفق، صفر ناموفق، ۱۱ ignored** است؛ **۹۷ تست Drive**. تست‌های root پس از سخت‌گیری نام نمایشی نیز ۳/۳ موفق بودند.
-- JavaScript: layout/editor/policy **43**، دیتابیس **173**، جهت متن **4**، به‌روزرسانی **7**؛ مجموع **۲۲۷ موفق، صفر ناموفق**.
+- مجموعهٔ کامل Rust روی کد اصلاح‌شده: **۱۹۸ موفق، صفر ناموفق، ۱۱ ignored**، زمان 132.65 ثانیه. تست تازهٔ backoff پایدار سپس با ۴ تست زمان‌بندی موجود اجرا شد: **۵ موفق**. با احتساب regression تازهٔ ورود مستقیم Secret، با اصلاحات نهایی تنظیم ناشر و cache وضعیت حساب، نتیجهٔ یکتای logهای نهایی **۲۰۶ موفق، صفر ناموفق، ۱۱ ignored** است؛ **۱۰۰ تست Drive**. تست‌های root پس از سخت‌گیری نام نمایشی نیز ۳/۳ موفق بودند.
+- JavaScript: layout/editor/policy/controller **47**، دیتابیس **173**، جهت متن **4**، به‌روزرسانی **7**؛ مجموع **۲۳۱ موفق، صفر ناموفق**.
 - TypeScript/Vite و lint موفق؛ lint **۲۳۶ warning و صفر error** دارد.
 - Preview debug مک ARM64 با Client ID عمومی واقعی ساخته شد. بستهٔ مستقل `com.vexor.nevis.drive-preview` همچنان release امضاشده/notarized نیست.
 - ماتریس ۱۰۴ مورد: **۴۶ PASS مصنوعی، صفر FAIL در تست‌های نگاشت‌شده، ۵۸ NOT_RUN**. NOT_RUN شامل محدودیت‌های داخلی و آزمون‌های خارجی است؛ به معنای عبور کامل پلن نیست.
@@ -107,3 +107,23 @@ MANUAL_TEST.md دوازده سناریوی قدم‌به‌قدم دارد: ات
 در smoke نسخهٔ دارای تنظیمات ناشر، خواندن Keychain تکمیل نشد و نمونهٔ stack انتظار در SecKeychainFindGenericPassword را نشان داد. وضعیت حساب به single-flight پس‌زمینه با cache هویت و generation تبدیل شد تا UI منتظر کل status نماند و poll درخواست‌های انباشته نسازد؛ تست stale-read پس از logout موفق بود. پس از آن همان خواندن Keychain کامل شد و هویت ذخیره‌شده و نبود فرم تنظیمات در GUI مشاهده شد؛ این مشاهده، تست refresh نیست. مجوز Keychain یا signing دور زده نشده‌اند و ساخت release امضاشده همچنان gate جداست.
 
 Later in the publisher-build GUI smoke, the Keychain read completed: the previously signed-in identity and Reconnect Google were visible, with no Secret or JSON setup controls. No Vault was open. This verifies a basic stored-account reload and the normal customer UI in that build; it does not verify automatic token refresh or two-device transfer. The following single-flight status change has unit regression coverage; no full connected GUI certification is claimed.
+
+## مسیر شروع، ساخت و دریافت فضای کاری پس از ورود
+
+پنجرهٔ حساب قبلاً فقط اتصال Vault موجود را عرضه می‌کرد و صفحهٔ شروع Google را بدون Vault باز به‌عنوان provider تشخیص نمی‌داد. مسیر واقعی ساخت اضافه شد: نام، انتخاب پوشهٔ نگهداری آفلاین، ایجاد پوشهٔ جدید، ثبت محلی بدون فعال‌کردن legacy sync، سپس همان مسیر backup/remote preparation/migration/fencing موجود Drive. موفقیت، editor را باز می‌کند؛ شکست cloud، Vault محلی را پاک نمی‌کند و UI وضعیت تازه و دکمهٔ بازکردن محلی/تلاش دوباره را نشان می‌دهد.
+
+انتخاب پوشه اگر لغو شود هیچ درخواست ساختی نمی‌فرستد. پوشهٔ موجود حتی اگر خالی باشد adopt/overwrite نمی‌شود. پس از ورود، کشف read-only فضاهای کاری Drive خودکار است؛ نتیجهٔ خالی، حالت جست‌وجو و retry دیده می‌شوند. فضای کاری حاضر روی این کامپیوتر باز می‌شود؛ بقیه با folder ID واقعی دریافت و پس از ثبت، editor باز می‌شود. صفحهٔ شروع در provider Drive از API قدیمی Hub استفاده نمی‌کند؛ مسیر legacy در regression مستقل حفظ شده است. تغییر حساب یا folder یک binding موجود پیش از هر درخواست remote رد می‌شود. Workspace ازقبل‌ثبت‌شده باید باز/Locate شود؛ دانلود روی تاریخچهٔ محلی باقی‌مانده به‌عنوان نصب تازه مجاز نیست. گم‌شدن stage یا مقصد تکمیل‌شده هم با خطای صریح متوقف می‌شود تا پوشهٔ خالی به‌عنوان حذف محلی بازپخش نشود.
+
+تست‌ها: اجرای Native با صرف‌نظر از دو fixture سنگین بدون تغییر، **۲۰۲ موفق، صفر ناموفق، ۱۱ ignored و ۲ filtered** در 30.40s؛ سپس سه تست onboarding و یک تست resume-binding موفق. مجموع یکتای شواهد با fixtureهای قبلی **۲۰۶ Rust موفق، صفر ناموفق، ۱۱ ignored**، شامل **۱۰۰ تست Drive** است. مجموعهٔ layout/controller اکنون **۴۷ موفق** است؛ همراه نتایج قبلی DB/direction/update، مجموع JavaScript **۲۳۱ موفق** است. TypeScript/Vite، lint و بستهٔ مک دوباره ساخته شدند.
+
+آزمون زنده ابتدا منتظر مجوز Keychain بود؛ پس از اقدام کاربر، مسیر ساخت/اتصال واقعی و بازشدن editor مشاهده شد. UI سپس Synced را نشان داد. Drive binding، provider-switch receipt، baseline یک صفحه، دو batch، صف ارسال خالی و checkpoint ثبت‌شده بررسی شدند. این happy path واقعی موفق است؛ دریافت روی دستگاه دوم هنوز آزموده نشده است. گزینه‌های شروع حتی هنگام بررسی حساب دیده می‌شوند، ولی عملیات ابری تا احراز هویت فعال نمی‌شود. Vault اصلی کاربر باز یا دست‌کاری نشده است.
+
+### آخرین تأیید زنده و اصلاحات Workspaces
+
+کاربر مجوز Keychain را داد؛ سپس فضای کاری My notes در editor باز شد و وضعیت Synced مشاهده شد. شواهد خلاصهٔ بدون محتوا/شناسهٔ خصوصی در validation/startup-live-summary.json است. هیچ یادداشت کاربر از طرف ابزار ویرایش نشد. ساخت/اتصال/بازشدن و اولین publication/checkpoint تأیید شدند؛ refresh طولانی و دریافت واقعی دستگاه دوم هنوز مستقل‌اند.
+
+هر دو صفحهٔ شروع و Workspaces از routing مشترک Drive/legacy استفاده می‌کنند. ساخت از صفحهٔ شروع در حالت Drive همان create pipeline را می‌زند و انتخاب محلیِ مستقل هم عرضه می‌شود. New workspace از داخل editor در حالت Drive ابتدا با flush امن به picker می‌رود. انتقال workspace ابتدا editor، repo و preferences را flush می‌کند. cloud-delete/reupload قدیمی برای bindingهای Drive/GitHub fail-closed هستند و منوهای cloud-delete قدیمی در حالت Drive نشان داده نمی‌شوند؛ local open/rename/locate/remove/trash حفظ شده‌اند.
+
+اجرای نهایی Native پس از آخرین سخت‌گیری‌ها: **۲۰۴ موفق، صفر ناموفق، ۱۱ ignored، ۲ fixture سنگین بدون تغییر filtered** در 29.59s. با شواهد قبلی همان دو fixture: **۲۰۶ نتیجهٔ موفق یکتا**. این بار تمام مجموعه‌های JS نیز دوباره اجرا شدند: **۴۷ + ۱۷۳ + ۴ + ۷ = ۲۳۱ موفق، صفر ناموفق**. بستهٔ مک تقریباً 86.70MiB ساخته شد. مسیرهای missing-stage/completed-target اکنون در تست receipt موجود بررسی می‌شوند و به‌جای ساخت Vault خالی توقف می‌کنند.
+
+گذار workspace در هر دو پنجرهٔ Drive و Workspaces اکنون از یک مرز مشترک استفاده می‌کند: ذخیرهٔ editor/repo/preferences، توقف نوشتن، فعال‌سازی مقصد و reload؛ فقط در خطای action نوشتن قبلی دوباره فعال می‌شود. regression ترتیب عملیات و توقف پیش از activation در صورت شکست save موفق بود.
