@@ -1286,6 +1286,7 @@ async fn drive_action(s:St<'_>,app:AppHandle,action:String,args:Value)->Res<Valu
         let _op=github::OPERATION.lock().map_err(err)?;
         let s=app.state::<Store>();let id=current_entry(&s).map(|e|e.id).unwrap_or_default();
         match action.as_str(){
+            "configure-client"=>drive::auth::configure_client(args["secret"].as_str().ok_or("DRIVE:invalid_client_secret")?),
             "import-client"=>drive::auth::import_client(std::path::Path::new(args["path"].as_str().ok_or("DRIVE:invalid_client_file")?)),
             "begin"=>drive::auth::begin(),"poll"=>drive::auth::poll(),"cancel"=>{drive::auth::cancel();Ok(Value::Null)},
             "disconnect"=>{if let Some(mut b)=drive::binding(&data,&id)?{b.paused=true;drive::save_binding(&data,&b)?;}drive::auth::disconnect()?;Ok(Value::Null)},

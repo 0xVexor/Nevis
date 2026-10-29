@@ -109,10 +109,14 @@
 
 ## اصلاح ورود برای Client ID فعلی
 
-1. [Google Cloud Clients](https://console.cloud.google.com/auth/clients) را باز کنید و پروژه‌ای را که کلاینت در آن ساخته شده انتخاب کنید.
-2. کلاینت با نوع Desktop app را باز و Download JSON را انتخاب کنید. فایل/secret را در چت یا Git کپی نکنید.
-3. Preview قبلی را کامل ببندید. نسخهٔ دارای Import Desktop OAuth JSON را باز کنید؛ فایل را وارد و سپس Sign in with Google را بزنید.
-4. اگر ورود موفق بود، فعلاً فقط وضعیت Signed in و ایمیل را بررسی کنید. پس از اتصال حساب، سناریوهای انتقال را تنها با Vault آزمایشی انجام دهید.
-5. در صورت خطا، فقط متن/کد خطای Nevis کافی است؛ callback URL، authorization code یا token را ارسال نکنید.
+1. نیازی به تغییر Console، ساخت client جدید یا دانلود فایل نیست، چون Secret اصلی قبلاً نگه داشته شده است.
+2. Preview قبلی را کاملاً ببندید و نسخهٔ دارای «وارد کردن Secret ذخیره‌شده» را باز کنید.
+3. در Google Drive Sync بخش Enter saved client secret را باز کنید؛ فقط مقدار Secret را در فیلد مخفی وارد کنید و Save client secret securely را بزنید.
+4. پس از پیام ذخیرهٔ موفق، Sign in with Google را بزنید و مرحلهٔ مرورگر را خودتان کامل کنید. Secret یا توکن را دوباره در چت نفرستید.
+5. فعلاً فقط وضعیت Signed in و ایمیل را بررسی کنید؛ آزمون انتقال تنها با Vault آزمایشی انجام شود. اگر JSON اصلی را از قبل دارید، وارد کردن آن نیز همچنان پشتیبانی می‌شود.
 
 در آزمون بعدی دو دستگاه، رابطهٔ one با دو مقصد آفلاین متفاوت بسازید و Database link conflicts → preview → apply را بررسی کنید. هر دو نامزد و شمارش لینک‌های نگه‌داشته/آرشیوشده باید قبل از تصمیم دیده شوند. rootهای تکراری را با ID معتبر انتخاب کنید؛ binding فعال نباید خاموش به root دیگری منتقل شود. History preview عنوان‌های نمونه دارد و صحت تمام فایل‌ها را تا restore ادعا نمی‌کند.
+
+## Existing Desktop secret cannot be downloaded (user Console verified)
+
+The user's current Google Cloud client detail page explicitly says viewing and downloading existing secrets is no longer available. Earlier instructions to download the existing client's JSON were incorrect for that page. No new client or secret rotation is needed if the original secret was saved. In the corrected Preview, open **Enter saved client secret**, paste only that saved value into the password field, select **Save client secret securely**, then sign in. The field is uncontrolled/transient, is cleared before the native call and when collapsed/unmounted, and is never put in localStorage/Vault data. The native command bounds/validates input, rejects a client ID or extra text, and stores it only in the same client-scoped OS keyring item used by JSON import. If a credential JSON was already downloaded earlier, import remains supported. No Google-side secret/client change was performed by this correction.

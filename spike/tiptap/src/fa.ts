@@ -1,5 +1,12 @@
 // English → Persian UI strings (see i18n.ts). Generated once from the original Persian UI, edit freely.
 export const FA: Record<string, string> = {
+  "Enter saved client secret": "وارد کردن Secret ذخیره‌شده",
+  "Desktop client secret": "Secret کلاینت دسکتاپ",
+  "Save client secret securely": "ذخیرهٔ امن Secret",
+  "Enter the saved Desktop client secret or import its JSON before signing in.": "پیش از ورود، Secret ذخیره‌شدهٔ کلاینت دسکتاپ را وارد کنید یا فایل JSON آن را انتخاب کنید.",
+  "Paste only the client secret, without the client ID or extra text.": "فقط مقدار Secret را بدون Client ID یا متن اضافی وارد کنید.",
+  "Use the Desktop client secret you already saved. Google no longer offers downloads of existing secrets. This value is saved only in the operating system credential store.": "همان Secret کلاینت دسکتاپ را که قبلاً نگه داشته‌اید وارد کنید. گوگل دانلود Secret موجود را دیگر ارائه نمی‌کند. این مقدار فقط در مخزن امن سیستم ذخیره می‌شود.",
+
   "Import Desktop OAuth JSON": "وارد کردن JSON کلاینت دسکتاپ",
   "Desktop OAuth credentials saved in the operating system credential store. Sign in again.": "مشخصات کلاینت در مخزن امن سیستم ذخیره شد. دوباره وارد شوید.",
   "Import the Desktop OAuth JSON from Google Cloud before signing in. It is stored in the operating system credential store.": "پیش از ورود، JSON کلاینت Desktop را از Google Cloud وارد کنید. مشخصات در مخزن امن سیستم ذخیره می‌شود.",
