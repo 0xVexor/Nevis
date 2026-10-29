@@ -92,3 +92,29 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 }
+/// The most recent runs that did real work (or failed), newest last, for finding where time goes.
+/// Quiet polls are left out so a minute of idle polling cannot push a slow upload out of the list.
+pub fn record_run(state_dir: &Path, at: i64, automatic: bool, outcome: &Res<usize>, meter: &Meter) -> Res<()> {
+    const KEEP: usize = 40;
+    let path = state_dir.join("runs.json");
+    let mut runs: Vec<Value> = fs::read(&path)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    runs.push(json!({
+        "at": at,
+        "automatic": automatic,
+        "ok": outcome.is_ok(),
+        "error": outcome.as_ref().err(),
+        "wallMs": meter.wall_elapsed_ms,
+        "requests": meter.requests,
+        "uploadedBytes": meter.uploaded_bytes,
+        "downloadedBytes": meter.downloaded_bytes,
+        "operations": meter.operations,
+        "operationMs": meter.operation_elapsed_ms,
+        "phaseMs": meter.phase_elapsed_ms,
+    }));
+    let excess = runs.len().saturating_sub(KEEP);
+    runs.drain(..excess);
+    write_atomic(&path, &bytes(&runs)?)
+}

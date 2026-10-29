@@ -61,7 +61,7 @@ impl Meter {
     }
 }
 /// Upper bound of simultaneous Drive requests from one sync run. Kept low to stay clear of per-user rate limits.
-pub const PARALLEL_REQUESTS: usize = 4;
+pub const PARALLEL_REQUESTS: usize = 8;
 /// Runs `work` for every item, up to `PARALLEL_REQUESTS` at a time, each worker with its own forked client.
 /// Results come back in input order; the first failure (by input order) wins and stops the remaining items.
 pub fn parallel_map<T: Send, R: Send>(
@@ -1070,6 +1070,19 @@ mod resumable_tests {
 }
 
 impl Drive {
+    /// Every object in the folder with one listing, keyed by digest: a run that moves many objects
+    /// asks Drive once instead of once per object whether each already exists.
+    pub fn objects_listing(&mut self, parent: &str) -> Res<BTreeMap<String, Value>> {
+        check_id(parent)?;
+        let rows = self.list(&format!("trashed = false and '{parent}' in parents and appProperties has {{ key='nevisKind' and value='object' }}"))?;
+        let mut known = BTreeMap::new();
+        for row in rows {
+            if let Some(key) = row["appProperties"]["nevisKey"].as_str() {
+                known.entry(key.to_string()).or_insert(row);
+            }
+        }
+        Ok(known)
+    }
     pub fn object_file(
         &mut self,
         parent: &str,
@@ -1079,11 +1092,28 @@ impl Drive {
         local: bool,
         state: &std::path::Path,
     ) -> Res<()> {
+        self.object_file_in(parent, vault, digest, target, local, state, None)
+    }
+    /// Like `object_file`, but answers "does it exist" from `known` (see `objects_listing`) when given.
+    #[allow(clippy::too_many_arguments)]
+    pub fn object_file_in(
+        &mut self,
+        parent: &str,
+        vault: &str,
+        digest: &str,
+        target: &std::path::Path,
+        local: bool,
+        state: &std::path::Path,
+        known: Option<&BTreeMap<String, Value>>,
+    ) -> Res<()> {
         if !valid_hash(digest) {
             return Err("DRIVE:invalid_hash".into());
         }
         check_id(parent)?;
-        let rows=self.list(&format!("trashed = false and '{parent}' in parents and appProperties has {{ key='nevisKey' and value='{digest}' }}"))?;
+        let rows = match known {
+            Some(listing) => listing.get(digest).cloned().into_iter().collect(),
+            None => self.list(&format!("trashed = false and '{parent}' in parents and appProperties has {{ key='nevisKey' and value='{digest}' }}"))?,
+        };
         if rows.is_empty() {
             if !local {
                 return Err("DRIVE:missing_dependency".into());
@@ -1521,6 +1551,32 @@ mod upload_latency_tests {
         d.put("reserved", "parent", "object", "vault", &digest, data).unwrap();
         server.join().unwrap();
         assert_eq!(d.meter.operations["upload.marker"], 1);
+    }
+    #[test]
+    fn a_known_listing_answers_existence_without_a_request_per_object() {
+        let data = b"object bytes";
+        let digest = hash(data);
+        let root = std::env::temp_dir().join(format!("nevis-known-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let (url, server) = serve(vec![(
+            "get /files?",
+            "200 OK",
+            bytes(&json!({"files":[{"id":"reserved","parents":["parent"],"trashed":false,"size":"3","appProperties":{"nevisProtocol":"1","nevisKind":"object","nevisVault":"vault","nevisKey":digest,"sha256":digest}}]})).unwrap(),
+        )]);
+        let mut d = drive(url);
+        let known = d.objects_listing("parent").unwrap();
+        server.join().unwrap();
+        assert_eq!(known.len(), 1);
+        assert_eq!(d.meter.requests, 1);
+        // An object the listing does not have, and nothing local to send: answered with no further request.
+        let missing = hash(b"not on drive");
+        assert_eq!(
+            d.object_file_in("parent", "vault", &missing, &root.join("t"), false, &root, Some(&known))
+                .unwrap_err(),
+            "DRIVE:missing_dependency"
+        );
+        assert_eq!(d.meter.requests, 1);
+        std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn several_ids_are_reserved_in_one_request() {

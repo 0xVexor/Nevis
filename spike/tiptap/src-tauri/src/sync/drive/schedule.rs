@@ -88,7 +88,7 @@ pub fn success(path: &Path) -> Res<()> {
     }
 }
 /// Interactive edits settle quickly; sustained typing still publishes bounded batches.
-pub const EDIT_QUIET: Duration = Duration::from_secs(2);
+pub const EDIT_QUIET: Duration = Duration::from_secs(1);
 pub const EDIT_MAX_WAIT: Duration = Duration::from_secs(10);
 pub fn edit_wait(quiet_elapsed: Duration, total_elapsed: Duration) -> Duration {
     EDIT_QUIET
@@ -96,7 +96,7 @@ pub fn edit_wait(quiet_elapsed: Duration, total_elapsed: Duration) -> Duration {
         .min(EDIT_MAX_WAIT.saturating_sub(total_elapsed))
 }
 pub fn publication_allowed(last: Option<i64>, now: i64, automatic: bool) -> bool {
-    !automatic || last.is_none_or(|at| now.saturating_sub(at) >= 2_000)
+    !automatic || last.is_none_or(|at| now.saturating_sub(at) >= 1_000)
 }
 pub fn wake_delay(delay: Duration) -> Duration {
     delay.min(Duration::from_secs(24 * 3600))
@@ -167,14 +167,14 @@ mod tests {
         assert_eq!(retry_seconds(Some(&u64::MAX.to_string()), now), u64::MAX);
     }
     #[test]
-    fn edits_settle_in_two_seconds_and_continuous_typing_cannot_starve_publication() {
+    fn edits_settle_in_one_second_and_continuous_typing_cannot_starve_publication() {
         assert_eq!(
             edit_wait(Duration::ZERO, Duration::ZERO),
-            Duration::from_secs(2)
+            Duration::from_secs(1)
         );
         assert_eq!(
-            edit_wait(Duration::from_secs(1), Duration::from_secs(9)),
-            Duration::from_secs(1)
+            edit_wait(Duration::from_millis(400), Duration::from_secs(9)),
+            Duration::from_millis(600)
         );
         assert_eq!(
             edit_wait(Duration::ZERO, Duration::from_secs(10)),
@@ -186,9 +186,9 @@ mod tests {
         );
     }
     #[test]
-    fn automatic_spacing_is_two_seconds_and_clock_rollback_is_conservative() {
-        assert!(!publication_allowed(Some(1000), 2_999, true));
-        assert!(publication_allowed(Some(1000), 3_000, true));
+    fn automatic_spacing_is_one_second_and_clock_rollback_is_conservative() {
+        assert!(!publication_allowed(Some(1000), 1_999, true));
+        assert!(publication_allowed(Some(1000), 2_000, true));
         assert!(publication_allowed(Some(1000), 1100, false));
         assert!(!publication_allowed(Some(10_000), 1, true));
     }
