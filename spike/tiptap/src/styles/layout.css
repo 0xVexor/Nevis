@@ -1,7 +1,7 @@
 /* Layout-only styling; typography, menus and theme colours come from the existing design system. */
 .tiptap .layout-group { position: relative; margin: 1.1em 0; padding: 8px 0; min-width: 0; }
 .layout-columns, .layout-export { display: grid; gap: 24px; align-items: start; }
-.layout-columns > .layout-column, .layout-export > .layout-column { min-width: 0; min-height: 52px; box-sizing: border-box; padding: 2px 0; padding-inline-start: 28px; overflow-wrap: anywhere; border-radius: var(--radius-sm); }
+.layout-columns > .layout-column, .layout-export > .layout-column { min-width: 0; min-height: 52px; box-sizing: border-box; padding: 2px 0; overflow-wrap: anywhere; border-radius: var(--radius-sm); }
 .layout-column > :first-child { margin-top: 0; }
 .layout-column > :last-child { margin-bottom: 0; }
 .tiptap .layout-group:focus-within > .layout-columns > .layout-column,
@@ -32,14 +32,51 @@
 .layout-width-warning { font-size: 12px; color: var(--muted); }
 .layout-drop-indicator { height: 2px; border-radius: 2px; background: var(--accent); pointer-events: none; z-index: 90; }
 .layout-drag-preview { position: fixed; z-index: 91; pointer-events: none; max-width: 280px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--pop); color: var(--text); box-shadow: var(--shadow); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.block-handle { touch-action: none; }
-.block-handle.layout-block-grip { width: 24px; margin: 0; border: 0; background: var(--bg); }
-.block-handle.layout-block-grip::before { display: none; }
-.block-handle { padding: 0; border: 0; background: transparent; }
+.layout-snap-overlay[hidden], .layout-snap-hover-outline[hidden], .layout-snap-column-highlight[hidden], .layout-snap-tray[hidden], .layout-drag-preview[hidden], .layout-snap-picker[hidden] { display: none !important; }
+.layout-snap-picker:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.layout-snap-overlay { position: fixed; display: grid; direction: ltr; z-index: 90; pointer-events: none; box-sizing: border-box; }
+.layout-snap-hover-outline { position: fixed; z-index: 88; pointer-events: none; box-sizing: border-box; background: var(--accent-soft); border: 1px solid transparent; border-radius: var(--radius-sm); }
+.tiptap.layout-surface-hover, .tiptap.layout-surface-armed { cursor: var(--cursor-grab, grab); }
+.tiptap.layout-dragging { cursor: var(--cursor-grabbing, grabbing); user-select: none; }
+.layout-snap-column-highlight { position: fixed; z-index: 89; pointer-events: none; box-sizing: border-box; border: 1px solid var(--accent-ring); border-radius: var(--radius-sm); background: var(--accent-soft); }
+.layout-snap-tray { position: fixed; z-index: 94; display: flex; gap: 4px; padding: 4px; box-sizing: border-box; background: var(--pop); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); font: inherit; font-size: 11px; user-select: none; }
+.layout-snap-tray-slot { flex: 1; min-width: 0; min-height: 60px; padding: 7px 4px; display: grid; gap: 5px; justify-items: center; align-content: center; box-sizing: border-box; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--accent-soft); }
+.layout-snap-miniature { display: grid; direction: ltr; gap: 3px; width: 40px; height: 20px; }
+.layout-snap-miniature-extraction { height: 28px; grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.layout-snap-miniature-row { display: grid; gap: 3px; min-height: 0; }
+.layout-snap-miniature-panel { min-width: 0; border: 1px solid var(--accent-ring); border-radius: var(--radius-sm); background: var(--pop); }
+.layout-snap-miniature-panel.active { border-color: var(--accent); background: var(--accent-bg); }
+.layout-snap-tray-with-exits { display: grid; }
+.layout-snap-tray-slot.layout-snap-tray-active { background: var(--accent-bg); border: 1px solid var(--accent); color: var(--accent); }
+.layout-snap-column { min-width: 0; display: flex; gap: 8px; align-items: center; justify-content: center; font: inherit; font-size: 12px; color: var(--accent); border: 1px dashed var(--accent-ring); border-radius: var(--radius-sm); background: var(--accent-soft); box-sizing: border-box; }
+.layout-snap-column.layout-snap-active { border: 2px solid var(--accent); background: var(--accent-bg); }
+.layout-snap-overlay.layout-snap-line { display: block; border-radius: var(--radius-sm); background: var(--accent); }
+.layout-snap-source-overlay { position: fixed; inset: 0; z-index: 89; pointer-events: none; }
+.layout-snap-source-outline { position: fixed; box-sizing: border-box; outline: 1px dashed var(--accent-ring); outline-offset: 2px; border-radius: var(--radius-sm); pointer-events: none; }
+.layout-snap-picker { position: fixed; inset-inline-start: 50%; bottom: 20px; transform: translateX(-50%); z-index: 92; width: max-content; max-width: min(520px, calc(100vw - 32px)); box-sizing: border-box; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--pop); color: var(--text); box-shadow: var(--shadow); font: inherit; font-size: 12px; }
+.layout-snap-picker:dir(rtl) { transform: translateX(50%); }
+.layout-snap-hint { color: var(--muted); line-height: 1.6; }
+.layout-snap-choice { margin-block: 6px; font-weight: 500; overflow-wrap: anywhere; }
+.layout-snap-picker .ghost-btn { min-height: 30px; }
+.layout-snap-announcement { position: fixed; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.section-drag-surface { height: 24px; min-width: 0; box-sizing: border-box; display: flex; align-items: center; padding-inline: 10px; border-bottom: 1px solid var(--border); border-radius: var(--radius-sm) var(--radius-sm) 0 0; background: var(--accent-soft); color: var(--muted); font-family: var(--font); font-size: 11px; font-weight: 500; cursor: var(--cursor-grab, grab); user-select: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; touch-action: none; }
+.section-drag-surface:hover { background: var(--accent-bg); color: var(--accent); }
+.tiptap.layout-dragging .section-drag-surface { cursor: var(--cursor-grabbing, grabbing); }
+.section-drag-surface:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tableWrapper > .section-drag-surface { position: sticky; inset-inline-start: 0; width: 100%; }
+.code-wrap:has(> .section-drag-surface) > .code-bar { top: 31px; }
+.drawing-block:has(> .section-drag-surface) > .drawing-actions,
+.mermaid-block:has(> .section-drag-surface) > .mermaid-bar { top: 32px; }
+.mermaid-block.editing > .section-drag-surface { display: none; }
+.db-embed-content { min-width: 0; max-width: 100%; }
+.tiptap[contenteditable='false'] .section-drag-surface { display: none; }
+.tiptap[contenteditable='false'] .code-wrap > .code-bar { top: 7px; }
+.tiptap[contenteditable='false'] .drawing-block > .drawing-actions,
+.tiptap[contenteditable='false'] .mermaid-block > .mermaid-bar { top: 8px; }
 .layout-export { grid-template-columns: var(--layout-tracks); }
 @media (max-width: 640px) { .layout-export { grid-template-columns: minmax(0, 1fr); } }
 @media print {
-  .layout-context, .layout-resizers, .layout-drop-indicator, .layout-drag-preview, .layout-width-warning { display: none !important; }
+  .layout-context, .layout-resizers, .layout-drop-indicator, .layout-drag-preview, .layout-width-warning, .layout-snap-overlay, .layout-snap-source-overlay, .layout-snap-hover-outline, .layout-snap-column-highlight, .layout-snap-tray, .layout-snap-picker, .layout-snap-announcement, .section-drag-surface { display: none !important; }
   .tiptap .layout-column { outline: none !important; }
   .layout-group { break-inside: auto; }
 }

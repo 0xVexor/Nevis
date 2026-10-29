@@ -1,116 +1,123 @@
 import { useEffect, useRef, useState } from 'react'
-import { useEditorState } from '@tiptap/react'
+import type { Editor } from '@tiptap/core'
 import { MenuItem, MenuLabel, MenuSep, Popover } from './ui'
 import * as Ic from './icons'
 import { t } from './i18n'
 import { confirmDialog } from './dialog'
-import { activeGroup, blockRange, groupColumns, NodeSelection } from './editor/layout'
-import { COLUMN, GROUP, ancestor, displayWidths, equalWidths } from './editor/layoutModel'
-import type { Editor } from '@tiptap/core'
+import { ancestor, blockRange, equalWidths, GROUP, validWidths, type BlockRange } from './editor/layoutModel'
+import { LAYOUT_CANCEL } from './editor/layout'
+import { SNAP_PICK, type SnapPickRequest } from './editor/dragHandle'
+import { directionalSnapTarget, fitsSnapColumns, planSnap, snapKey, verticalSnapTarget, type SnapTarget } from './editor/snapModel'
+import { snapContext, snapDestinations } from './editor/snapTargets'
 
-function LayoutPreview({ count }: { count: number }) {
-  return <span className="layout-preview" aria-hidden="true"><Ic.Columns count={count} size={18} /></span>
-}
+interface MoveMenu { rect: DOMRect; doc: Editor['state']['doc']; range: BlockRange }
 
-export function LayoutInsert({ editor }: { editor: Editor }) {
-  const [anchor, setAnchor] = useState<DOMRect | null>(null)
-  const inside = !!ancestor(editor.state.selection.$from, COLUMN)
-  return <>
-    <button type="button" title={t('Insert Layout')} aria-label={t('Insert Layout')} aria-haspopup="menu" aria-expanded={!!anchor} onMouseDown={(e) => e.preventDefault()} onClick={(e) => setAnchor(e.currentTarget.getBoundingClientRect())}>
-      <LayoutPreview count={2} />
-    </button>
-    {anchor && <Popover anchor={anchor} onClose={() => { setAnchor(null); editor.commands.focus() }}>
-      <div className="menu layout-menu" role="menu">
-        <MenuLabel>{t('Insert Layout')}</MenuLabel>
-        {inside ? <>
-          <MenuItem disabled label={t('Layouts cannot be nested.')} onClick={() => {}} />
-          <MenuItem icon={<Ic.Plus size={16} />} label={t('Add full-width text after layout')} onClick={() => { setAnchor(null); editor.chain().focus().addAfterLayout().run() }} />
-        </> : [2, 3].map((count) => <MenuItem key={count} icon={<LayoutPreview count={count} />} label={t('{n} columns', { n: count })} desc={t('Equal widths')} onClick={() => { setAnchor(null); editor.chain().focus().insertLayout(count).run() }} />)}
-      </div>
-    </Popover>}
-  </>
-}
-
-/** Focused group settings, using the same compact toolbar and popover as other editor tools. */
+/** No permanent layout toolbar: the grip/keyboard menu exposes only contextual actions. */
 export function LayoutControls({ editor }: { editor: Editor }) {
-  const [menu, setMenu] = useState<{ kind: 'layout' | 'move'; rect: DOMRect; doc: Editor['state']['doc'] } | null>(null)
-  const focusRef = useRef<HTMLButtonElement>(null)
-  const s = useEditorState({ editor, selector: ({ editor: ed }) => {
-    const group = activeGroup(ed.state)
-    return { pos: group?.pos ?? -1, count: group?.node.childCount ?? 0, widths: group ? displayWidths(group.node) : [], direction: group?.node.attrs.direction ?? null, movable: !!blockRange(ed.state), editable: ed.isEditable }
-  } })
-  const close = () => { setMenu(null); editor.commands.focus() }
+  const [menu, setMenu] = useState<MoveMenu | null>(null)
+  const ref = useRef<HTMLDivElement>(null)
+  const pendingFrame = useRef(0)
+  const close = () => { setMenu(null); if (!editor.isDestroyed) editor.commands.focus() }
   useEffect(() => {
-    const open = (e: Event) => {
-      if (!editor.isEditable) return
-      const supplied = (e as CustomEvent<DOMRect>).detail
-      const coords = editor.view.coordsAtPos(editor.state.selection.from)
-      setMenu({ kind: 'move', rect: supplied || new DOMRect(coords.left, coords.top, 0, coords.bottom - coords.top), doc: editor.state.doc })
+    const open = (event: Event) => {
+      if (!editor.isEditable || editor.view.composing) return
+      const range = blockRange(editor.state)
+      if (!range) return
+      editor.view.dom.dispatchEvent(new Event(LAYOUT_CANCEL))
+      const supplied = (event as CustomEvent<DOMRect>).detail
+      const coords = editor.view.coordsAtPos(range.from)
+      setMenu({ range, doc: editor.state.doc, rect: supplied || new DOMRect(coords.left, coords.top, 0, coords.bottom - coords.top) })
+    }
+    const changed = () => setMenu((previous) => previous && (previous.doc !== editor.state.doc || !editor.isEditable) ? null : previous)
+    const cancel = () => {
+      cancelAnimationFrame(pendingFrame.current)
+      pendingFrame.current = 0
+      setMenu(null)
+    }
+    const escapePending = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && pendingFrame.current) { cancel(); if (!editor.isDestroyed) editor.commands.focus() }
     }
     editor.view.dom.addEventListener('layout-move-menu', open)
-    const changed = () => setMenu((prev) => prev && (prev.doc !== editor.state.doc || !editor.isEditable) ? null : prev)
+    editor.view.dom.addEventListener(LAYOUT_CANCEL, cancel)
+    window.addEventListener('keydown', escapePending)
     editor.on('transaction', changed)
-    return () => { editor.view.dom.removeEventListener('layout-move-menu', open); editor.off('transaction', changed) }
+    return () => {
+      cancelAnimationFrame(pendingFrame.current)
+      editor.view.dom.removeEventListener('layout-move-menu', open)
+      editor.view.dom.removeEventListener(LAYOUT_CANCEL, cancel)
+      window.removeEventListener('keydown', escapePending)
+      editor.off('transaction', changed)
+    }
   }, [editor])
   useEffect(() => {
-    if (menu) requestAnimationFrame(() => document.querySelector<HTMLElement>('.layout-menu button:not(:disabled)')?.focus())
+    if (!menu) return
+    const frame = requestAnimationFrame(() => {
+      ref.current?.querySelectorAll('button.menu-item').forEach((button) => button.setAttribute('role', 'menuitem'))
+      ref.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
   }, [menu])
-  if (!s.editable) return null
-  const group = activeGroup(editor.state)
-  const run = (fn: () => void) => { setMenu(null); fn(); editor.commands.focus() }
-  const openMenu = (kind: 'layout' | 'move', rect: DOMRect) => setMenu({ kind, rect, doc: editor.state.doc })
-  const deleteGroup = async () => {
-    if (!group) return
-    const { doc } = editor.state, { pos, node } = group
+  if (!menu || editor.isDestroyed || !editor.isEditable || menu.doc !== editor.state.doc) return null
+  const valid = () => !editor.isDestroyed && editor.isEditable && !editor.view.composing && editor.state.doc === menu.doc
+  const move = (mode: SnapPickRequest['mode']) => {
+    if (!valid()) { setMenu(null); return }
+    const detail: SnapPickRequest = { mode, range: menu.range, doc: menu.doc }
     setMenu(null)
-    let empty = true
-    node.descendants((n) => { if (n.isText && n.text?.length || n.isLeaf && !n.isText && n.type.name !== 'paragraph' || !['layoutColumn', 'paragraph', 'text'].includes(n.type.name)) empty = false })
-    if (!empty && !await confirmDialog({ title: t('Delete layout and content'), message: t('Delete this layout with {n} columns and all its content? You can undo this action.', { n: node.childCount }), confirmLabel: t('Delete'), danger: true })) return
-    // A sync or local edit while confirmation is open invalidates the old position.
-    if (editor.isDestroyed || editor.state.doc !== doc) return
-    editor.commands.deleteLayout(pos)
-    editor.commands.focus()
+    // Let Popover unmount before moving focus to the in-page destination picker.
+    pendingFrame.current = requestAnimationFrame(() => {
+      pendingFrame.current = 0
+      if (valid()) editor.view.dom.dispatchEvent(new CustomEvent(SNAP_PICK, { detail }))
+    })
   }
-  const selectedGroup = editor.state.selection instanceof NodeSelection && editor.state.selection.node.type.name === GROUP
-  const columns = groupColumns(editor.state.doc)
-  const groups = columns.filter((c) => c.column === 1)
-  return <>
-    {s.count > 0 && <div className="layout-context" role="toolbar" aria-label={t('Layout')}>
-      <button ref={focusRef} type="button" className="ghost-btn" aria-haspopup="menu" aria-expanded={menu?.kind === 'layout'} onMouseDown={(e) => e.preventDefault()} onClick={(e) => openMenu('layout', e.currentTarget.getBoundingClientRect())}>
-        <LayoutPreview count={s.count} /> {t('{n} columns', { n: s.count })} <Ic.Chevron size={12} />
-      </button>
-      <button type="button" className="ghost-btn" onMouseDown={(e) => e.preventDefault()} onClick={(e) => openMenu('move', e.currentTarget.getBoundingClientRect())}><Ic.Arrow size={14} /> {t('Move to Column')}</button>
-      <button type="button" className="icon-btn" title={t('Add full-width text after layout')} aria-label={t('Add full-width text after layout')} onMouseDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().addAfterLayout().run()}><Ic.Plus size={16} /></button>
-    </div>}
-    {menu && <Popover anchor={menu.rect} onClose={close}>
-      <div className="menu layout-menu" role="menu">
-        {menu.kind === 'layout' && group ? <>
-          <MenuLabel>{t('Columns')}</MenuLabel>
-          {[1, 2, 3].map((n) => <MenuItem key={n} icon={<LayoutPreview count={n} />} label={n === 1 ? t('Convert to full width') : t('{n} columns', { n })} desc={n < group.node.childCount && n > 1 ? t('Content from removed columns moves to the last column.') : undefined} onClick={() => run(() => { editor.commands.setLayoutColumns(n, group.pos) })} />)}
-          <MenuSep />
-          <MenuLabel>{t('Width')}</MenuLabel>
-          {(group.node.childCount === 2 ? [[50, 50], [30, 70], [70, 30]] : [equalWidths(3)]).map((widths, i) => <MenuItem key={i} icon={<Ic.AlignLeft size={16} />} label={widths.every((w) => Math.abs(w - widths[0]) < 0.01) ? t('Equal widths') : widths.join(' / ') + '%'} onClick={() => run(() => { editor.commands.setLayoutWidths(widths, group.pos) })} />)}
-          <MenuSep />
-          <MenuLabel>{t('Layout direction')}</MenuLabel>
-          {([null, 'ltr', 'rtl'] as const).map((d) => <MenuItem key={d ?? 'inherit'} icon={s.direction === d ? <Ic.Check size={16} /> : <Ic.Direction size={16} />} label={d === null ? t('Follow page direction') : d.toUpperCase()} onClick={() => run(() => { editor.commands.setLayoutDirection(d, group.pos) })} />)}
-          <MenuSep />
-          <MenuItem icon={<Ic.Plus size={16} />} label={t('Add full-width text after layout')} onClick={() => run(() => { editor.commands.addAfterLayout(group.pos) })} />
-          <MenuItem icon={<Ic.Arrow size={16} />} label={t('Move layout')} desc={t('Use the grip or keyboard to move this layout.')} onClick={() => run(() => { editor.view.dispatch(editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, group.pos))) })} />
-          <MenuItem icon={<Ic.Trash size={16} />} label={t('Delete layout and content')} danger onClick={() => void deleteGroup()} />
-        </> : <>
-          <MenuLabel>{t('Move to Column')}</MenuLabel>
-          {!s.movable && <div className="layout-menu-note">{t('Select complete blocks from one column.')}</div>}
-          {columns.map((col) => <div key={col.pos}>
-            <MenuLabel>{t('Layout {group}, column {column}', { group: col.group, column: col.column })} · {col.node.textContent.slice(0, 44) || t('Empty')}</MenuLabel>
-            {([false, true]).map((end) => <MenuItem key={String(end)} disabled={!s.movable || selectedGroup} icon={<Ic.Arrow size={14} />} label={t(end ? 'Move to end' : 'Move to start')} onClick={() => run(() => { editor.commands.moveToLayout(col.pos, end) })} />)}
-          </div>)}
-          {groups.length > 0 && <MenuSep />}
-          {groups.flatMap((g) => [false, true].map((after) => <MenuItem key={g.groupPos + String(after)} disabled={!s.movable} icon={<Ic.Arrow size={14} />} label={t(after ? 'Full width after layout {n}' : 'Full width before layout {n}', { n: g.group })} onClick={() => run(() => { editor.commands.moveOutsideLayout(g.groupPos, after) })} />))}
-          <MenuSep />
-          <MenuItem disabled={!s.movable} icon={<Ic.Arrow size={14} />} label={t('Move block up')} hint="Ctrl+Alt+↑" onClick={() => run(() => { editor.commands.shiftLayoutBlock(-1) })} />
-          <MenuItem disabled={!s.movable} icon={<Ic.Arrow size={14} />} label={t('Move block down')} hint="Ctrl+Alt+↓" onClick={() => run(() => { editor.commands.shiftLayoutBlock(1) })} />
+  const selectedGroup = menu.range.nodes.length === 1 && menu.range.nodes[0].type.name === GROUP
+  const group = selectedGroup ? { node: menu.range.nodes[0], pos: menu.range.from }
+    : ancestor(menu.doc.resolve(menu.range.from), GROUP)
+  const run = (action: () => void) => { setMenu(null); if (valid()) { action(); editor.commands.focus() } }
+  const remove = async () => {
+    setMenu(null)
+    if (!group || !valid()) return
+    const ok = await confirmDialog({
+      title: t('Delete layout and content'),
+      message: t('Delete this layout with {n} columns and all its content? You can undo this action.', { n: group.node.childCount }),
+      confirmLabel: t('Delete'), danger: true,
+    })
+    if (ok && valid()) { editor.commands.deleteLayout(group.pos); editor.commands.focus() }
+  }
+  const before = verticalSnapTarget(editor.state, menu.range, 'up')
+  const after = verticalSnapTarget(editor.state, menu.range, 'down')
+  const context = snapContext(editor.view)
+  const left = directionalSnapTarget(editor.state, menu.range, 'left', context)
+  const right = directionalSnapTarget(editor.state, menu.range, 'right', context)
+  const destinations = snapDestinations(editor.view, menu.range)
+  const available = (target: SnapTarget | null | undefined) => {
+    if (!target) return false
+    const result = planSnap(editor.state, menu.range, target, context)
+    if (!result.plan) return false
+    if (!result.plan.columns) return true
+    const destination = destinations.find((d) => d.key === snapKey(target))
+    return !!destination && fitsSnapColumns(destination.rect.width, result.plan.columns.widths)
+  }
+  return <Popover anchor={menu.rect} onClose={close}>
+    <div ref={ref} className="menu layout-menu" role="menu">
+      <MenuLabel>{t(selectedGroup ? 'Move layout' : 'Move block')}</MenuLabel>
+      <MenuItem icon={<Ic.Arrow size={16} />} label={t('Move to…')} hint="Ctrl+Alt+M" onClick={() => move('pick')} />
+      <MenuItem disabled={!available(before)} label={t('Move block up')} onClick={() => move('up')} />
+      <MenuItem disabled={!available(after)} label={t('Move block down')} onClick={() => move('down')} />
+      {!selectedGroup && <>
+        <MenuItem disabled={!available(left.target)} label={t('Move left')} onClick={() => move('left')} />
+        <MenuItem disabled={!available(right.target)} label={t('Move right')} onClick={() => move('right')} />
+      </>}
+      {group && <>
+        <MenuSep />
+        {!selectedGroup && <>
+          <MenuItem label={t('Extract above layout')} onClick={() => move('outside-before')} />
+          <MenuItem label={t('Extract below layout')} onClick={() => move('outside-after')} />
         </>}
-      </div>
-    </Popover>}
-  </>
+        {!validWidths(group.node.attrs.widths, group.node.childCount) && <MenuItem icon={<Ic.Columns count={group.node.childCount} size={16} />} label={t('Equal widths')} onClick={() => run(() => { editor.commands.setLayoutWidths(equalWidths(group.node.childCount), group.pos) })} />}
+        <MenuItem icon={<Ic.Columns count={1} size={16} />} label={t('Convert entire layout to full width')} onClick={() => run(() => { editor.commands.setLayoutColumns(1, group.pos) })} />
+        <MenuItem icon={<Ic.Plus size={16} />} label={t('Add full-width text after layout')} onClick={() => run(() => { editor.commands.addAfterLayout(group.pos) })} />
+        {selectedGroup && <MenuItem icon={<Ic.Trash size={16} />} label={t('Delete layout and content')} danger onClick={() => void remove()} />}
+      </>}
+    </div>
+  </Popover>
 }

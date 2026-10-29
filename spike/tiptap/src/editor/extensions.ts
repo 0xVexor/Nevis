@@ -23,12 +23,15 @@ import { MathAuto, MathBlock, MathInline } from './math'
 import { Callout, Toggle } from './blocks'
 import { PageLink, PageLinkSuggest } from './pageLink'
 import { t } from '../i18n'
+import { createSectionDragSurface } from './snapSurface'
 
 const BaseTableView = (Table as any).options.View
 
 // The default table NodeView ignores node attrs, so mirror `dir` onto <table>.
 function DirTableView(this: any, node: any, ...rest: any[]) {
   const view = new BaseTableView(node, ...rest)
+  const surface = createSectionDragSurface(t('Move table'), t('Drag this area to move the whole block.'))
+  view.dom.prepend(surface)
   const apply = (n: any) => {
     view.table.setAttribute('dir', n.attrs.dir || 'auto')
     // width and position belong to the wrapper <div class="tableWrapper"> around the table
