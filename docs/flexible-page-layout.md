@@ -1,5 +1,7 @@
 # Flexible page layout
 
+> بازبینی جاریِ موتور اسنپ: [گزارش ۲۰۲۶-۱۰-۲۹](editor-release-review-2026-10-29.fa.md). نتایج تست و اسکرین‌شات‌های پایین، تاریخی و مربوط به موتور قبلی‌اند؛ تأیید بازنویسی فعلی نیستند.
+
 Implementation branch: `feature/flexible-page-layout`, based on `origin/dev`.
 Reference: “Noviq — Flexible Page Layout System” in the user's local notes.
 
