@@ -161,6 +161,7 @@ export class DocumentReader {
       metadata: { title: page.title, tags: page.tags ?? [], favorite: page.favorite,
         ...(page.icon !== undefined ? { icon: page.icon } : {}), ...(page.status !== undefined ? { status: page.status } : {}),
         ...(page.titleDir !== undefined ? { titleDir: page.titleDir } : {}),
+        ...(page.cover !== undefined ? { cover: cloneDocumentValue(page.cover) } : {}),
       },
     })))
     this.authorize()

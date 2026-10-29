@@ -7,7 +7,7 @@ import { isDeepStrictEqual } from 'node:util'
 const [endpoint, fixturePath, grantId, outputRoot] = process.argv.slice(2)
 if (!endpoint?.startsWith('http://127.0.0.1:') || !outputRoot?.startsWith('/tmp/nevis-mcp-acceptance/')) throw new Error('Use only the disposable local acceptance environment')
 const fixture = JSON.parse(await readFile(fixturePath, 'utf8'))
-const url = acceptanceEndpoint(endpoint), token = acceptanceToken(grantId)
+const url = acceptanceEndpoint(endpoint), token = acceptanceToken(grantId, endpoint)
 if (!resolve(outputRoot).startsWith('/tmp/nevis-mcp-acceptance/') || !resolve(fixture.vaultPath).startsWith('/tmp/nevis-mcp-acceptance/')) throw new Error('Fixture and reports must remain disposable')
 const pageFile = id => join(fixture.vaultPath, 'pages', `${id}.json`)
 const originalPage = JSON.parse(await readFile(pageFile(fixture.documentId), 'utf8'))

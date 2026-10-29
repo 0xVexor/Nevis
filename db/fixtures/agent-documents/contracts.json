@@ -495,6 +495,56 @@
           "replayed": false
         }
       }
+    },
+    "get_editor_capabilities": {
+      "input": {},
+      "output": {
+        "ok": true,
+        "result": {
+          "profileVersion": 2,
+          "nodes": [
+            {
+              "type": "mermaid",
+              "attributes": {
+                "code": {
+                  "type": "string",
+                  "minLength": 0,
+                  "maxLength": 16000
+                }
+              },
+              "contentExpression": "",
+              "example": {
+                "type": "mermaid",
+                "attrs": {
+                  "code": "flowchart LR\n  Client --> Nevis"
+                }
+              }
+            }
+          ],
+          "marks": [
+            {
+              "type": "link",
+              "attributes": {
+                "href": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                },
+                "rel": {
+                  "type": "string"
+                },
+                "class": {
+                  "type": "string"
+                }
+              }
+            }
+          ],
+          "notes": [
+            "Use create_document or insert/replace_blocks with native node JSON. Block IDs are assigned by the host."
+          ]
+        }
+      }
     }
   },
   "errors": [

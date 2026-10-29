@@ -1,4 +1,5 @@
-import { documentLinks } from './admission.ts'
+import { editorCapabilities } from './editorProfile.ts'
+import { documentLinks, documentResources, undoResources } from './admission.ts'
 import { documentToolContracts, ERROR_CODES, LIMITS } from './contracts.ts'
 import type { DocumentToolName, Schema } from './contracts.ts'
 import { canonicalDocumentValue } from './revision.ts'
@@ -12,8 +13,9 @@ export interface McpConnection {
   writesAvailable?: boolean
   grantId: string; revision: string; vaultId: string; policy: McpPolicy
 }
-const reads = new Set<DocumentToolName>(['list_documents', 'search_documents', 'read_document', 'get_document_history'])
+const reads = new Set<DocumentToolName>(['get_editor_capabilities', 'list_documents', 'search_documents', 'read_document', 'get_document_history'])
 const descriptions: Record<DocumentToolName, string> = {
+  get_editor_capabilities: 'Discover every supported editor node, mark, attribute schema, content model and rich authoring example before writing a document.',
   list_documents: 'Browse permitted saved documents with bounded pagination.',
   search_documents: 'Search permitted saved documents using original Persian/English passages and stable references.',
   read_document: 'Read a saved document outline, section, blocks or bounded full content.',
@@ -108,13 +110,17 @@ export class McpDocumentSession {
       isActive: () => this.live(), canRead: this.scope.canRead, canWrite: this.scope.canWrite, canCreate: this.scope.canCreate,
       admission: () => {
         const invocation = this.current!
-        return { native: { requestId: invocation.id, revision: this.connection.revision }, check: (pages: Page[], record: import('./operations.ts').DocumentOperationRecord) => {
+        return { native: { requestId: invocation.id, revision: this.connection.revision }, check: (pages: Page[], record: import('./operations.ts').DocumentOperationRecord, undoOrigin?: import('./operations.ts').DocumentOperationRecord | null) => {
           if (!this.live() || this.current !== invocation) throw { code: 'APP_UNAVAILABLE' }
           const scope = new McpDocumentScope(this.connection.policy); scope.observe(pages)
           if (record.before ? !scope.canWrite(record.before.id) : !scope.canCreate(record.after.parentId)) throw { code: 'ACCESS_DENIED' }
           if (record.before && record.before.parentId !== record.after.parentId && !scope.canCreate(record.after.parentId)) throw { code: 'ACCESS_DENIED' }
           const previous = documentLinks(record.before?.content)
           for (const id of documentLinks(record.after.content)) if (!previous.has(id) && !scope.canRead(id)) throw { code: 'ACCESS_DENIED' }
+          const previousResources = documentResources(record.before), availableResources = new Set<string>()
+          for (const page of pages) if (page.deletedAt === null && scope.canRead(page.id)) for (const id of documentResources(page)) availableResources.add(id)
+          for (const id of undoResources(record, undoOrigin)) availableResources.add(id)
+          for (const id of documentResources(record.after)) if (!previousResources.has(id) && !availableResources.has(id)) throw { code: 'ACCESS_DENIED' }
         } }
       } }
     this.reader = service.reader(grant, runtime); this.editor = service.editor(grant, runtime)
@@ -141,7 +147,7 @@ export class McpDocumentSession {
       if (notification || !object(p) || typeof p.protocolVersion !== 'string' || !object(p.capabilities) || !object(p.clientInfo)) return rpcError(id ?? null, -32602, 'Invalid initialization')
       this.initialized = true
       return response({ protocolVersion: MCP_PROTOCOL, serverInfo: { name: 'nevis-documents', version: '1.0.0' }, capabilities: { tools: { listChanged: false } },
-        instructions: `Only explicitly permitted saved documents are accessible. ${this.connection.policy.allowWrites && this.writesAvailable ? 'Editing requires exact revisions and durable operation IDs. Preview before applying.' : 'This connection is read-only.'} Nevis must stay open.` })
+        instructions: `Call get_editor_capabilities for native rich-block examples, including tables, callouts, diagrams and columns. Only explicitly permitted saved documents are accessible. ${this.connection.policy.allowWrites && this.writesAvailable ? 'Editing requires exact revisions and durable operation IDs. Preview before applying.' : 'This connection is read-only.'} Nevis must stay open.` })
     }
     if (message.method === 'notifications/initialized') { if (this.initialized) this.ready = true; return null }
     if (message.method === 'ping') return notification ? null : response({})
@@ -162,6 +168,7 @@ export class McpDocumentSession {
       if (!this.live()) throw { code: 'APP_UNAVAILABLE' }
       if (!reads.has(name) && (!this.connection.policy.allowWrites || !this.writesAvailable)) throw { code: this.connection.policy.allowWrites ? 'CAPABILITY_UNAVAILABLE' : 'ACCESS_DENIED' }
       const handlers = {
+        get_editor_capabilities: () => editorCapabilities(),
         list_documents: () => this.reader.listDocuments(input), search_documents: () => this.reader.searchDocuments(input), read_document: () => this.reader.readDocument(input),
         get_document_history: () => this.editor.getDocumentHistory(input), create_document: () => this.editor.createDocument(input), edit_document: () => this.editor.editDocument(input),
         update_document_metadata: () => this.editor.updateDocumentMetadata(input), undo_document_edit: () => this.editor.undoDocumentEdit(input),

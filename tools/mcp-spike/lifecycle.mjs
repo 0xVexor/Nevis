@@ -27,7 +27,7 @@ if (mode === '--resume') {
   state.newEndpoint = acceptanceEndpoint(next.endpoint).href
 } else {
   await unlink(`${directory}/reconnected.json`).catch(error => { if (error.code !== 'ENOENT') throw error })
-  const oldToken = acceptanceToken(grantId, 300000), stamp = Date.now().toString(36), client = await connect(oldUrl, oldToken)
+  const oldToken = acceptanceToken(grantId, endpoint), stamp = Date.now().toString(36), client = await connect(oldUrl, oldToken)
   const originalPage = JSON.parse(await readFile(pageFile, 'utf8')), original = await read(client)
   const request = { documentId: fixture.documentId, operationId: `restart-${stamp}`, expectedRevision: original.revision, patch: { title: 'Restart checkpoint synthetic fixture' } }
   const saved = await call(client, 'update_document_metadata', request)
@@ -48,12 +48,16 @@ if (mode === '--resume') {
   assert.ok(oldEndpointClosed)
   assert.equal((await fetch(newUrl, { method: 'POST', headers: { Authorization: `Bearer ${oldToken}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }) })).status, 401, 'Old token must fail on the new endpoint')
   state = { ...state, newEndpoint: next.endpoint, oldEndpointClosed, oldTokenRejected: true }
-  // Persist no credentials. A Keychain prompt can time out without losing restart evidence.
+  // Save the old-token checks without credentials, then resume with newly copied connection details.
   await writeFile(stateFile, JSON.stringify(state))
 }
 const { request, stamp, receipt, originalPage } = state
 const newUrl = acceptanceEndpoint(state.newEndpoint)
-const newToken = acceptanceToken(grantId, 300000)
+if (mode !== '--resume') {
+  console.log(JSON.stringify({ stage: 'restart-verified', next: 'Supply the rotated connection details and rerun with --resume', directory }))
+  process.exit(0)
+}
+const newToken = acceptanceToken(grantId, state.newEndpoint)
 const restarted = await connect(newUrl, newToken)
 try {
   const replay = await call(restarted, 'update_document_metadata', request)

@@ -42,12 +42,13 @@ test('scopes inherit exclusions, hide missing/cyclic ancestry and preserve selec
   assert.equal(scope.canCreate(null), false); assert.equal(scope.canCreate('root'), true); assert.equal(scope.canCreate('private'), false)
 })
 
-test('handshake, eight contracts, strict validation, bounded saved reads and explicit host write capability', async () => {
+test('handshake, nine contracts, strict validation, bounded saved reads and explicit host write capability', async () => {
   const h = await fixture({ policy: { wholeVault: false, rootIds: ['root'], excludedIds: ['private'], allowWrites: true } })
   assert.equal((await h.rpc('tools/list')).error.code, -32002); await h.initialize()
   const tools = (await h.rpc('tools/list')).result.tools
   assert.deepEqual(tools.map(t => t.name), Object.keys(documentToolContracts))
   assert.equal((await h.rpc('tools/list', { cursor: 'unknown' })).error.code, -32602)
+  const capabilities = await h.call('get_editor_capabilities'); assert.equal(capabilities.ok, true); assert.ok(capabilities.result.nodes.some(node => node.type === 'mermaid' && node.attributes.code)); assert.ok(capabilities.result.marks.some(mark => mark.type === 'link'))
   const listed = await h.call('list_documents'); assert.deepEqual(listed.result.documents.map(d => d.documentId).sort(), ['note', 'root'])
   assert.equal(listed.result.documents.find(d => d.documentId === 'root').parentId, null)
   assert.equal((await h.call('read_document', { documentId: 'secret', target: { kind: 'full' }, format: 'both' })).error.code, 'ACCESS_DENIED')

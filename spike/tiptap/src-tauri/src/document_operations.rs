@@ -192,8 +192,14 @@ pub fn recover_locked(root: &Path) -> Res<()> {
 }
 pub fn find(vault: &Vault, scope: &str, operation: &str) -> Res<Option<Value>> {
     let _guard = crate::vault::commit_lock(&vault.root)?;
-    let local = local_dir(&vault.root)?.ok_or("Document operation storage is unavailable")?;
-    read(&local.join("committed").join(operation_name(scope, operation)?))
+    find_locked(&vault.root, scope, operation)
+}
+/// The caller must hold the vault commit lock; do not reacquire it during admission.
+pub fn find_locked(root: &Path, scope: &str, operation: &str) -> Res<Option<Value>> {
+    let local = local_dir(root)?.ok_or("Document operation storage is unavailable")?;
+    let record = read(&local.join("committed").join(operation_name(scope, operation)?))?;
+    if let Some(record) = &record { validate(record)?; }
+    Ok(record)
 }
 // Stream private records and retain at most 40 metadata entries; no snapshot bodies cross IPC.
 fn list_at(local: &Path, scope: &str, document_id: &str) -> Res<Value> {

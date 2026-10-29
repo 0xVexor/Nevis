@@ -1,3 +1,4 @@
+import { canUseDocumentResource } from './admission.ts'
 import type { DocumentAdmission } from './admission.ts'
 import { DocumentHistory } from './history.ts'
 import type { DocumentHistoryInput, UndoDocumentInput } from './history.ts'
@@ -103,7 +104,7 @@ export class DocumentEditor {
       for (const id of links) if (!this.grant.canRead(id)) fail('ACCESS_DENIED')
     }
     let plan
-    try { plan = await planDocumentEdit(before, input, { digest: this.digest, canLink: id => { links.add(id); return this.grant.canRead(id) } }) }
+    try { plan = await planDocumentEdit(before, input, { digest: this.digest, canLink: id => { links.add(id); return this.grant.canRead(id) }, canUseResource: (kind, id) => canUseDocumentResource(rows, this.grant.canRead, kind, id) }) }
     catch (error) {
       if (input.mode === 'apply') {
         let prior
@@ -153,7 +154,7 @@ export class DocumentEditor {
     let position, planned
     try {
       position = creationPosition(rows, input.parentId)
-      planned = await prepareCreatedPage(input, id, position.sort, { digest: this.digest, canLink: id => { links.add(id); return this.grant.canRead(id) } })
+      planned = await prepareCreatedPage(input, id, position.sort, { digest: this.digest, canLink: id => { links.add(id); return this.grant.canRead(id) }, canUseResource: (kind, id) => canUseDocumentResource(rows, this.grant.canRead, kind, id) })
     } catch (error) { translate(error, 'INVALID_ARGUMENT') }
     check()
     let committed
@@ -188,6 +189,7 @@ export class DocumentEditor {
     check()
     const before = rows.find(page => page.id === input.documentId && page.deletedAt === null)
     if (!before) fail('NOT_FOUND')
+    if (input.patch.cover?.kind === 'image' && !canUseDocumentResource(rows, this.grant.canRead, 'attachment', input.patch.cover.file)) fail('ACCESS_DENIED')
     const after = applyMetadata(before, input.patch)
     let committed
     try { committed = await this.source.commit(request, before, after, check,

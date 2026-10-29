@@ -10,7 +10,7 @@ const [endpoint, fixturePath, grantId, reportPath] = process.argv.slice(2)
 if (!endpoint?.startsWith('http://127.0.0.1:') || !fixturePath || !grantId || !reportPath) throw new Error('Usage: node workflow.mjs <loopback-url> <fixture.json> <grant-id> <report.json>')
 const fixture = JSON.parse(await readFile(fixturePath, 'utf8'))
 assert.ok(fixture.vaultPath.startsWith('/tmp/nevis-mcp-acceptance/'), 'Only the disposable acceptance fixture is allowed')
-const url = acceptanceEndpoint(endpoint), token = acceptanceToken(grantId)
+const url = acceptanceEndpoint(endpoint), token = acceptanceToken(grantId, endpoint)
 const client = new Client({ name: 'nevis-desktop-acceptance', version: '1' }), calls = [], run = Date.now().toString(36)
 const start = performance.now()
 const report = { environment: { platform: process.platform, arch: process.arch, client: 'official MCP TypeScript SDK 2.4.0', transport: 'packaged Tauri HTTP -> webview -> native persistence', syntheticFixture: true }, calls, assertions: [], completed: false }
@@ -29,7 +29,7 @@ async function call(name, args, expected = true) {
 const read = documentId => call('read_document', { documentId, target: { kind: 'full' }, format: 'both' })
 try {
   await client.connect(new StreamableHTTPClientTransport(url, { requestInit: { headers: { Authorization: `Bearer ${token}` } } }))
-  assert.equal((await client.listTools()).tools.length, 8)
+  assert.equal((await client.listTools()).tools.length, 9)
   const listed = await call('list_documents', { limit: 100 }); assert.ok(listed.documents.some(d => d.documentId === fixture.documentId)); assert.ok(listed.documents.every(d => d.documentId !== fixture.excludedId))
   const search = await call('search_documents', { query: 'محفوظ', mode: 'keywords' }); assert.ok(search.hits.some(hit => hit.documentId === fixture.documentId))
   await call('read_document', { documentId: fixture.documentId, target: { kind: 'outline' }, format: 'structured' })
@@ -57,7 +57,7 @@ try {
   await call('undo_document_edit', { documentId: created.documentId, operationId: `undo-metadata-${run}`, undoOperationId: `metadata-${run}`, expectedRevision: metadata.revision })
   const cleanCreate = await call('create_document', { ...create, operationId: `create-undo-${run}` })
   await call('undo_document_edit', { documentId: cleanCreate.documentId, operationId: `undo-create-${run}`, undoOperationId: `create-undo-${run}`, expectedRevision: cleanCreate.revision })
-  report.assertions = ['eight tools discovered', 'scoped browse/search/read', 'excluded content denied', 'preview without persistence', 'durable original retry receipt', 'stale revision rejected', 'saved read-back', 'retained version read', 'edit undo restores exact chunks', 'merged table cell edit, row insertion and undo', 'creation retry identity', 'metadata update and undo', 'creation undo tombstone']
+  report.assertions = ['nine tools discovered', 'scoped browse/search/read', 'excluded content denied', 'preview without persistence', 'durable original retry receipt', 'stale revision rejected', 'saved read-back', 'retained version read', 'edit undo restores exact chunks', 'merged table cell edit, row insertion and undo', 'creation retry identity', 'metadata update and undo', 'creation undo tombstone']
   report.completed = true
 } finally {
   await client.close()

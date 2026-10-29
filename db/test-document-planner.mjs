@@ -76,7 +76,6 @@ test('invalid batches are atomic: schema, scope, identities, sibling ranges, cyc
     [{ kind: 'delete_blocks', target: range('p1', 'q1') }, 'INVALID_TARGET'],
     [{ kind: 'move_blocks', target: range('quote'), at: { position: 'end', parent: ref('quote') } }, 'INVALID_TARGET'],
     [{ kind: 'move_blocks', target: range('quote'), at: { position: 'before', target: ref('q1') } }, 'INVALID_TARGET'],
-    [{ kind: 'set_attributes', target: ref('cell-text'), attributes: { dir: 'ltr' } }, 'UNSUPPORTED_CONTENT'],
     [{ kind: 'set_attributes', target: ref('opaque-child'), attributes: { dir: 'ltr' } }, 'UNSUPPORTED_CONTENT'],
     [{ kind: 'delete_blocks', target: range('opaque') }, 'UNSUPPORTED_CONTENT'],
     [{ kind: 'set_attributes', target: ref('p1'), attributes: { level: 4 } }, 'UNSUPPORTED_CONTENT'],

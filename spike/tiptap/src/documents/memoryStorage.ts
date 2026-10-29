@@ -57,7 +57,7 @@ export class MemoryDocumentStorage implements DocumentStorage {
     if (canonicalDocumentValue(this.pages.get(record.after.id) ?? null) !== canonicalDocumentValue(record.before)) throw new Error('Document revision conflict')
     if (record.requireNoChildren && [...this.pages.values()].some(page => page.parentId === record.after.id && page.deletedAt === null)) throw new Error('Document revision conflict')
     if (record.creation) assertCreationPosition([...this.pages.values()], record.after, record.creation)
-    admission?.check([...this.pages.values()], record)
+    admission?.check([...this.pages.values()], record, record.undoOf ? this.operations.get(operationKey(record.scopeId, record.undoOf)) : null)
     if (record.history) {
       const history = this.versions.get(record.history.pageId) ?? []
       record.history.ts = Math.max(record.history.ts, ...history.map(v => v.ts + 1))

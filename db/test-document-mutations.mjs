@@ -88,7 +88,7 @@ for (const backend of ['memory', 'indexeddb']) {
     assert.equal(replay.replayed, true); assert.deepEqual(replay.metadata, result.metadata); assert.deepEqual(replay.receipt, result.receipt)
     assert.equal(service.get('note').title, '')
     await assert.rejects(writer.updateDocumentMetadata({ ...req, operationId: 'stale' }), { code: 'REVISION_CONFLICT' })
-    for (const patch of [{}, { cover: null }, { parentId: null }, { content: {} }, { tags: ['duplicate', 'duplicate'] }, { icon: '' }, { status: 'other' }]) {
+    for (const patch of [{}, { cover: { kind: 'invalid' } }, { parentId: null }, { content: {} }, { tags: ['duplicate', 'duplicate'] }, { icon: '' }, { status: 'other' }]) {
       await assert.rejects(writer.updateDocumentMetadata({ ...req, operationId: 'invalid', patch }), { code: 'INVALID_ARGUMENT' })
     }
     assert.equal((await store.listVersions('note')).length, 2)
