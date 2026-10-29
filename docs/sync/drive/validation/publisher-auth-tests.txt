@@ -3,7 +3,7 @@
    Compiling objc2 v0.6.5
    Compiling mac-notification-sys v0.6.15
    Compiling libsqlite3-sys v0.35.0
-   Compiling nevis v1.0.0 (/Users/wrangler/.codex/worktrees/google-drive-sync/Nevis/spike/tiptap/src-tauri)
+   Compiling nevis v1.0.0 (<workspace>/spike/tiptap/src-tauri)
    Compiling objc2-foundation v0.3.2
    Compiling wry v0.57.1
    Compiling rustls v0.23.46
