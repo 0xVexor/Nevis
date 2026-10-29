@@ -2,6 +2,7 @@ import { Node, mergeAttributes } from '@tiptap/core'
 import { t as tr } from '../i18n'
 import { urlFor } from '../attachments'
 import { openLightbox } from './lightbox'
+import { createSectionDragSurface } from './snapSurface'
 
 /**
  * A freehand drawing / whiteboard made with Excalidraw. The page only stores two file ids:
@@ -33,7 +34,9 @@ export const DrawingBlock = Node.create({
     return ({ node, editor, getPos }) => {
       let cur = node
       let busy = false
-      let shown = ''
+      let destroyed = false, openTimer = 0
+      let shown: string | null = null
+      const alive = () => !destroyed && !editor.isDestroyed
       const dom = document.createElement('div')
       dom.className = 'drawing-block'
       dom.contentEditable = 'false'
@@ -50,7 +53,8 @@ export const DrawingBlock = Node.create({
       edit.className = 'dr-edit'
       edit.textContent = tr('Edit drawing')
       bar.append(big, edit)
-      dom.append(bar, view)
+      const surface = createSectionDragSurface(tr('Move drawing'), tr('Drag this area to move the whole block.'))
+      dom.append(surface, bar, view)
 
       let url: string | null = null
       const paint = async () => {
@@ -64,8 +68,9 @@ export const DrawingBlock = Node.create({
           url = null
           return
         }
-        const u = await urlFor('att:' + want)
-        if (want !== cur.attrs.preview) return // a newer version superseded this one
+        let u: string | null = null
+        try { u = await urlFor('att:' + want) } catch { /* Show the missing-file state below. */ }
+        if (!alive() || want !== cur.attrs.preview) return // a newer version superseded this one
         url = u
         view.className = 'drawing-view'
         if (!u) return void (view.textContent = tr('The drawing file is missing'))
@@ -79,26 +84,37 @@ export const DrawingBlock = Node.create({
       void paint()
 
       const remove = () => {
+        if (!alive() || !editor.isEditable) return
         const pos = getPos()
         if (pos != null) editor.view.dispatch(editor.state.tr.delete(pos, pos + cur.nodeSize))
       }
 
       const open = async () => {
-        if (!editor.isEditable || busy) return
+        if (!alive() || !editor.isEditable || busy) return
         busy = true
+        const originalScene = cur.attrs.scene, originalPreview = cur.attrs.preview
+        const current = () => alive() && editor.isEditable && cur.attrs.scene === originalScene && cur.attrs.preview === originalPreview
         try {
           const { excalidraw, loadScene } = await import('./excalidraw')
           await excalidraw() // sets the asset path before the editor module is evaluated
-          const [{ openDrawingEditor }, initial] = await Promise.all([import('../DrawingModal'), loadScene(cur.attrs.scene)])
+          const [{ openDrawingEditor }, initial] = await Promise.all([import('../DrawingModal'), loadScene(originalScene)])
+          if (!current()) return
           const r = await openDrawingEditor(initial)
+          if (!current()) {
+            if (r) window.dispatchEvent(new CustomEvent('layout-message', { detail: tr('The drawing changed while it was open. The newer page content was kept.') }))
+            return
+          }
           if (r && !r.scene) remove() // a drawing cleared down to nothing is not worth keeping as a block
           else if (r) {
             const pos = getPos()
             if (pos != null) editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...cur.attrs, ...r }))
           } else if (!cur.attrs.scene) remove() // cancelled straight after inserting
+        } catch (error) {
+          console.error('[drawing] Could not open drawing', error)
+          if (alive()) window.dispatchEvent(new CustomEvent('layout-message', { detail: tr('The drawing could not be opened. Please try again.') }))
         } finally {
           busy = false
-          editor.view.focus()
+          if (alive()) editor.view.focus()
         }
       }
 
@@ -107,7 +123,7 @@ export const DrawingBlock = Node.create({
       edit.onclick = () => void open()
       // reader mode: the picture can be looked at and enlarged, not edited
       view.onclick = () => (editor.isEditable ? void open() : enlarge())
-      if (!node.attrs.scene && editor.isEditable) setTimeout(() => void open(), 0) // freshly inserted: straight to drawing
+      if (!node.attrs.scene && editor.isEditable) openTimer = window.setTimeout(() => void open(), 0)
 
       return {
         dom,
@@ -117,8 +133,9 @@ export const DrawingBlock = Node.create({
           void paint()
           return true
         },
-        stopEvent: () => bar.matches(':hover'),
+        stopEvent: (event) => event.target instanceof globalThis.Node && (bar.contains(event.target) || surface.contains(event.target)),
         ignoreMutation: () => true,
+        destroy: () => { destroyed = true; clearTimeout(openTimer) },
       }
     }
   },

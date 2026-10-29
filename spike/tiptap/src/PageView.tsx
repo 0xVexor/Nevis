@@ -687,7 +687,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
                 <MenuItem icon={<Ic.Quote />} label={t('Quote')} onClick={() => (setCtx(null), editor.chain().focus().toggleBlockquote().run())} />
               </>
             )}
-            {!readOnly && <MenuItem icon={<Ic.Arrow />} label={t('Move to Column')} hint="Ctrl+Alt+M" onClick={() => { setCtx(null); editor.view.dom.dispatchEvent(new CustomEvent('layout-move-menu', { detail: ctx })) }} />}
+            {!readOnly && <MenuItem icon={<Ic.Arrow />} label={t('Move to…')} hint="Ctrl+Alt+M" onClick={() => { setCtx(null); editor.view.dom.dispatchEvent(new CustomEvent('layout-move-menu', { detail: ctx })) }} />}
             {!readOnly && <MenuItem icon={<Ic.Paste />} label={t('Paste as plain text')} hint="Ctrl+Shift+V" onClick={() => (setCtx(null), void paste(true))} />}
             {!readOnly && <MenuItem icon={<Ic.Code />} label={t('Convert $…$ to formulas')} onClick={() => (setCtx(null), (editor.commands as any).convertFormulas())} />}
             <MenuItem icon={<Ic.SelectAll />} label={t('Select all')} hint="Ctrl+A" onClick={() => (setCtx(null), editor.chain().focus().selectAll().run())} />
@@ -702,7 +702,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
       {!readOnly && <LayoutControls editor={editor} />}
       {!readOnly && (() => {
         const group = activeGroup(editor.state)
-        return group && !validWidths(group.node.attrs.widths, group.node.childCount) ? <p className="layout-width-warning" role="status">{t('Invalid column widths are displayed equally. Choose a width preset to repair this layout.')}</p> : null
+        return group && !validWidths(group.node.attrs.widths, group.node.childCount) ? <p className="layout-width-warning" role="status">{t('Column widths are displayed equally. Open the block menu and choose Equal widths to keep this arrangement.')}</p> : null
       })()}
       {contentIssue ? <div className="layout-protection" role="status">
         <p>{t(contentIssue)}</p>

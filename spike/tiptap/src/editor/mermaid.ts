@@ -1,4 +1,5 @@
 import { Node, InputRule, mergeAttributes } from '@tiptap/core'
+import { createSectionDragSurface } from './snapSurface'
 import { t as tr } from '../i18n'
 import { cleanMermaid } from "./mermaidText"
 import { openLightbox } from "./lightbox"
@@ -128,6 +129,8 @@ export const MermaidBlock = Node.create({
       let cur = node
       let editing = false
       let token = 0
+      let destroyed = false, previewTimer = 0, openTimer = 0, visibilityTimer = 0, watchFrame = 0
+      let editBase = node.attrs.code
       const dom = document.createElement('div')
       dom.className = 'mermaid-block'
       dom.contentEditable = 'false'
@@ -164,17 +167,20 @@ export const MermaidBlock = Node.create({
         editor.view.focus()
       }
       bar.append(big, toCode, edit)
-      dom.append(bar, view)
+      const surface = createSectionDragSurface(tr('Move diagram'), tr('Drag this area to move the whole block.'))
+      dom.append(surface, bar, view)
 
       const paint = async (code: string, into: HTMLElement = view) => {
+        if (destroyed) return
         const mine = ++token
         if (!code.trim()) {
+          if (into === view) big.hidden = true
           into.textContent = tr('Empty diagram — click “Edit code”')
           into.className = into === view ? 'mermaid-view empty' : into.className
           return
         }
         const r = await renderDiagram(code)
-        if (mine !== token) return // a newer render superseded this one
+        if (destroyed || mine !== token) return // a newer render superseded this one
         if (into === view) big.hidden = !('svg' in r) // nothing to enlarge when the code has an error
         into.classList.remove('empty')
         if ('svg' in r) {
@@ -203,19 +209,24 @@ export const MermaidBlock = Node.create({
         if (on && stale) draw()
       })
       let obs: IntersectionObserver | undefined
-      requestAnimationFrame(() => (obs = watch(dom))) // after the node is in the page, so its scroll container can be found
+      watchFrame = requestAnimationFrame(() => { if (!destroyed) obs = watch(dom) })
       // a page that is not being shown (hidden window, background tab) never reports visibility: draw anyway so printing/export still work
-      window.setTimeout(() => {
-        if (reported || !dom.isConnected) return
+      visibilityTimer = window.setTimeout(() => {
+        if (destroyed || reported || !dom.isConnected) return
         near = true
         draw()
       }, 1500)
       const commit = (value: string | null) => {
+        if (destroyed || editor.isDestroyed) return
+        clearTimeout(previewTimer); token++
         editing = false
         dom.classList.remove('editing')
         panel.remove()
         const pos = getPos()
-        if (pos != null && value !== null && value !== cur.attrs.code) {
+        if (value !== null && cur.attrs.code !== editBase) {
+          window.dispatchEvent(new CustomEvent('layout-message', { detail: tr('The diagram changed while it was open. The newer page content was kept.') }))
+          draw()
+        } else if (pos != null && editor.isEditable && value !== null && value !== cur.attrs.code) {
           editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...cur.attrs, code: value }))
         } else draw()
         editor.view.focus()
@@ -224,8 +235,9 @@ export const MermaidBlock = Node.create({
       const panel = document.createElement('div')
       panel.className = 'mermaid-edit'
       const startEdit = () => {
-        if (editing) return
+        if (editing || destroyed || editor.isDestroyed || !editor.isEditable) return
         editing = true
+        editBase = cur.attrs.code
         dom.classList.add('editing')
         const ta = document.createElement('textarea')
         ta.className = 'mermaid-src'
@@ -238,11 +250,10 @@ export const MermaidBlock = Node.create({
         hint.textContent = tr('Ctrl+Enter save · Esc cancel · the diagram updates as you type')
         panel.replaceChildren(ta, hint)
         dom.append(panel)
-        let t = 0
         ta.oninput = () => {
           ta.rows = Math.max(5, ta.value.split('\n').length + 1)
-          window.clearTimeout(t)
-          t = window.setTimeout(() => paint(ta.value), 350)
+          window.clearTimeout(previewTimer)
+          previewTimer = window.setTimeout(() => { if (!destroyed && editing) void paint(ta.value) }, 350)
         }
         ta.onkeydown = (e) => {
           e.stopPropagation()
@@ -262,7 +273,7 @@ export const MermaidBlock = Node.create({
       // reader mode (editor not editable): the diagram can be looked at and enlarged, not edited
       edit.onclick = () => editor.isEditable && startEdit()
       view.onclick = () => editor.isEditable && startEdit()
-      if (!node.attrs.code) setTimeout(startEdit, 0) // freshly inserted: straight to writing
+      if (!node.attrs.code && editor.isEditable) openTimer = window.setTimeout(startEdit, 0)
 
       return {
         dom,
@@ -272,9 +283,12 @@ export const MermaidBlock = Node.create({
           draw()
           return true
         },
-        stopEvent: () => editing || bar.matches(':hover'),
+        stopEvent: (event) => editing || (event.target instanceof globalThis.Node && (bar.contains(event.target) || surface.contains(event.target))),
         ignoreMutation: () => true,
         destroy: () => {
+          destroyed = true
+          clearTimeout(previewTimer); clearTimeout(openTimer); clearTimeout(visibilityTimer); cancelAnimationFrame(watchFrame)
+          token++ // Discard a render which resolves after its block has been removed/moved.
           views.delete(redraw)
           obs?.unobserve(dom)
           visible.delete(dom)
