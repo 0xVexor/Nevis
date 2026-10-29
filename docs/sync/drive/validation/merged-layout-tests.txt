@@ -1,0 +1,65 @@
+
+> nevis@1.0.0 test:layout
+> node --import ./tests/register.mjs --test "./tests/*.test.mjs"
+
+✔ insertion aligns later unchanged lines and preserves all text on both sides (0.976ms)
+✔ changed lines and large-note fallback preserve exact versions (0.558916ms)
+✔ readable note preview keeps complete raw metadata and handles missing, binary and invalid data (0.354959ms)
+✔ pointer move only commits on release, keeps the original block and makes one undo event (6.266292ms)
+✔ Escape, focus loss, pointer cancellation and lost capture never commit a preview (1.75325ms)
+✔ a changed document invalidates the pending source and target before pointer release (0.631542ms)
+✔ a group dropped inside another column is rejected rather than moved or nested (0.382208ms)
+✔ dropping at the source or outside the editor is a no-op (0.691792ms)
+✔ external files retain the existing drop path, and older native block payloads cannot fall through (0.153875ms)
+✔ column hover follows the actual block and clears over empty gutters in both directions (0.331291ms)
+✔ atomic block surfaces resolve the node boundary and move the original node (0.5815ms)
+✔ vertical extraction from two and three columns previews without editing and preserves undo (1.748458ms)
+✔ Drive block IDs preserve pasted text, regenerate duplicates and survive undo/redo (4.150917ms)
+✔ local-only documents do not receive new identities; existing Drive IDs are preserved (0.511792ms)
+✔ sync presentation never calls pending, signed-out, paused, offline or conflicted work up to date (1.196959ms)
+✔ grouping the preference UI preserves every existing policy control exactly once (0.407666ms)
+✔ untrusted sync timestamps cannot crash the account dialog (2.188541ms)
+✔ green sync indicator requires a successful idle run with no outstanding state (0.133917ms)
+✔ device-local font survives a fresh Vault pull while global theme changes (1.643917ms)
+✔ untrusted policy fails closed and absent policy preserves legacy behavior (0.527375ms)
+✔ Drive startup discovery and download keep verified remote folder identity and never call the legacy server (0.885125ms)
+✔ cancelled folder choice creates nothing, while cloud setup failure is not reported as an opened workspace (3.549959ms)
+✔ legacy workspace discovery and downloads retain their existing commands (0.304958ms)
+✔ workspace switching drains pending saves before activation and never thaws the old editor after success (0.517958ms)
+✔ async insertion keeps its original position when the user moves the caret (1.51175ms)
+✔ async insertion maps through preceding edits, but cancels if its source is removed (1.569833ms)
+✔ full document replacement and editor destruction invalidate async insertions (0.244458ms)
+✔ independent groups survive widths/direction changes and JSON roundtrip (2.822792ms)
+✔ insert at the caret preserves surrounding full-width content (0.670833ms)
+✔ complete selection wraps in first column, partial selection and nesting are rejected (0.476459ms)
+✔ three to two appends removed contents; unwrap retains all marked nodes in logical order (0.658875ms)
+✔ increasing columns adds empty content and respects the three-column cap (0.183ms)
+✔ move retains node identity/marks, collapses the exhausted source, and creates one undo entry (0.886ms)
+✔ multi-block movement keeps order; self/no-op creates no transaction (0.233292ms)
+✔ group movement remains root-only, and preserves direction and ratios (0.29475ms)
+✔ cross-column selection is copy-only and linearizes the touched blocks (0.168917ms)
+✔ column boundary deletion is guarded while internal text positions are editable (0.147125ms)
+✔ paste into a column flattens layouts in logical order (0.105125ms)
+✔ invalid widths only affect presentation; unknown, nested or malformed nodes are protected (0.351208ms)
+✔ width/direction/resize commits are atomic, reject invalid values, and no-op adds no history (0.262542ms)
+✔ full-width exit and deletion leave a valid typing destination (0.223792ms)
+✔ markdown exports every column in logical order without layout wrappers (0.41875ms)
+✔ cross-column replacement preserves wrappers and the safety plugin rejects malformed structures and destructive group deletion (1.093375ms)
+✔ saved layout NodeViews initialize before editor.view is assigned (0.515584ms)
+✔ column arrow navigation follows logical order, including empty columns and full-width exit (0.158291ms)
+✔ all existing block shapes retain attrs, marks, nested data and attachment ids through moves and unwrap (3.083667ms)
+✔ Markdown keeps a database embed reference inside the linear column output (0.080125ms)
+✔ structural layout commands do not interrupt an active IME composition (0.109083ms)
+✔ thirty independent groups retain every block through repeated structural edits (2.119375ms)
+ℹ Structural edits on 30 groups: 1.9 ms; no formal performance budget is claimed.
+✔ settings changed while saving rebase onto independent remote fields (1.925458ms)
+✔ fresh cache input stays local on a same-field conflict and defaults do not erase a new remote value (0.170125ms)
+✔ object key order does not trigger repeated preference writes (0.108083ms)
+ℹ tests 52
+ℹ suites 0
+ℹ pass 52
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 451.404083
