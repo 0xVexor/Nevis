@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { driveTimestamp, driveVisualState, drivePreferenceGroups } from '../src/drivePresentation'
+import { syncSucceeded, driveTimestamp, driveVisualState, drivePreferenceGroups } from '../src/drivePresentation'
 import { driveSettingKeys } from '../src/driveSettingsPolicy'
 test('sync presentation never calls pending, signed-out, paused, offline or conflicted work up to date', () => {
   const connected = { connected: true, signedIn: true, paused: false, state: 'idle', pending: 0, verified: 1000 }
@@ -17,4 +17,10 @@ test('grouping the preference UI preserves every existing policy control exactly
 test('untrusted sync timestamps cannot crash the account dialog', () => {
   for (const value of [0, -1, NaN, Infinity, Number.MAX_SAFE_INTEGER]) assert.equal(driveTimestamp(value), null)
   assert.equal(driveTimestamp(1000)?.toISOString(), '1970-01-01T00:00:01.000Z')
+})
+
+test('green sync indicator requires a successful idle run with no outstanding state', () => {
+ const success = { signedIn: true, syncOn: true, state: 'idle', lastAt: 1000 }
+ assert.equal(syncSucceeded(success), true)
+ for (const change of [{ signedIn: false }, { syncOn: false }, { lastAt: 0 }, { error: 'network' }, { reason: 'CONFLICTS' }, ...['pending', 'syncing', 'paused', 'offline', 'error', 'off'].map(state => ({ state }))]) assert.equal(syncSucceeded({ ...success, ...change }), false)
 })

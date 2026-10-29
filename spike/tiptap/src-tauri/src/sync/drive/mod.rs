@@ -1015,6 +1015,7 @@ pub fn run(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(_) => return Err("DRIVE:publication_state_unreadable".into()),
     };
+    let run_started = std::time::Instant::now();
     let mut storage = VaultDrive {
         allow_publish: schedule::publication_allowed(last, crate::vault::now_ms(), automatic),
         publication_clock,
@@ -1061,6 +1062,7 @@ pub fn run(
     } else {
         schedule::success(&retry_file)?;
     }
+    storage.drive.meter.wall_elapsed_ms = run_started.elapsed().as_millis() as u64;
     let cumulative = match diagnostics::record(
         data,
         &b.subject,

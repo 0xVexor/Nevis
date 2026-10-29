@@ -16,6 +16,11 @@ fn merge(a: &mut Meter, b: &Meter) {
     a.downloaded_bytes = a.downloaded_bytes.saturating_add(b.downloaded_bytes);
     a.rate_limits = a.rate_limits.saturating_add(b.rate_limits);
     a.elapsed_ms = a.elapsed_ms.saturating_add(b.elapsed_ms);
+    a.wall_elapsed_ms = a.wall_elapsed_ms.saturating_add(b.wall_elapsed_ms);
+    for (key, value) in &b.operation_elapsed_ms {
+        let old = a.operation_elapsed_ms.entry(key.clone()).or_default();
+        *old = old.saturating_add(*value);
+    }
     for (k, v) in &b.operations {
         let old = a.operations.entry(k.clone()).or_default();
         *old = old.saturating_add(*v);

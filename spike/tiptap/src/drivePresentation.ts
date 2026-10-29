@@ -28,3 +28,8 @@ export function driveTimestamp(value: number): Date | null {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? null : date
 }
+
+/** A previous success cannot turn pending, paused or failed work green. */
+export function syncSucceeded(status: { signedIn: boolean; syncOn: boolean; state: string; lastAt: number; error?: string; reason?: string }): boolean {
+  return status.signedIn && status.syncOn && status.state === 'idle' && status.lastAt > 0 && !status.error && !status.reason
+}

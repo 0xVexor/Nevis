@@ -73,13 +73,23 @@ export function Select({ value, options, onChange, className, title, style, disa
   const [rect, setRect] = useState<DOMRect | null>(null)
   const [inline, setInline] = useState(false)
   const btn = useRef<HTMLButtonElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
   const cur = options.find((o) => o.value === value) ?? options[0]
   const open = !!rect || inline
   const close = () => (setRect(null), setInline(false))
+  useLayoutEffect(() => { if (open) menu.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus() }, [open])
   const list = (
-    <div className="menu sel-menu" role="listbox" style={inline ? undefined : { minWidth: Math.max(rect?.width ?? 0, 180) }} onClick={(e) => e.stopPropagation()}>
+    <div ref={menu} onKeyDown={event => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); btn.current?.focus(); return }
+      const items = [...(menu.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])]
+      if (!items.length || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+      event.preventDefault(); event.stopPropagation()
+      const index = items.indexOf(document.activeElement as HTMLButtonElement)
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowDown' ? (index + 1) % items.length : (index - 1 + items.length) % items.length
+      items[next]?.focus()
+    }} className="menu sel-menu" role="listbox" style={inline ? undefined : { minWidth: Math.max(rect?.width ?? 0, 180) }} onClick={(e) => e.stopPropagation()}>
       {options.map((o) => (
-        <button key={o.value} type="button" role="option" aria-selected={o.value === value} className={'menu-item' + (o.value === value ? ' on' : '')} onClick={() => (onChange(o.value), close())}>
+        <button key={o.value} type="button" role="option" aria-selected={o.value === value} className={'menu-item' + (o.value === value ? ' on' : '')} onClick={() => (onChange(o.value), close(), btn.current?.focus())}>
           <span className="menu-ic">{o.color ? <i className="sel-dot" style={{ background: o.color }} /> : null}</span>
           <span className="menu-tx">{o.label}</span>
           {o.value === value && <span className="sel-check"><Ic.Check size={14} /></span>}

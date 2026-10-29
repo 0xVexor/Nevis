@@ -28,6 +28,10 @@ pub struct Meter {
     pub downloaded_bytes: u64,
     pub rate_limits: u64,
     pub elapsed_ms: u64,
+    #[serde(default)]
+    pub wall_elapsed_ms: u64,
+    #[serde(default)]
+    pub operation_elapsed_ms: BTreeMap<String, u64>,
     pub operations: BTreeMap<String, u64>,
     #[serde(default)]
     pub header_latency_ms: Vec<u64>,
@@ -151,6 +155,11 @@ impl Drive {
             let response = make(&self.client).bearer_auth(&self.token).send();
             let elapsed = start.elapsed().as_millis() as u64;
             self.meter.elapsed_ms += elapsed;
+            *self
+                .meter
+                .operation_elapsed_ms
+                .entry(operation.into())
+                .or_default() += elapsed;
             if self.meter.header_latency_ms.len() == 512 {
                 self.meter.header_latency_ms.remove(0);
             }
@@ -660,6 +669,18 @@ impl Drive {
             .as_str()
             .ok_or("DRIVE:upload_receipt_corrupt")?
             .to_string();
+        // Small immutable objects need no resumable session round trips. Keep the
+        // reserved ID durable before calling put, including an unknown POST result.
+        // An existing resumable receipt always follows the original recovery path.
+        if size <= 4 * 1024 * 1024 && state["session"].is_null() {
+            let data = std::fs::read(source).map_err(|_| "DRIVE:source_unavailable")?;
+            if data.len() as u64 != size || hash(&data) != digest {
+                return Err("DRIVE:integrity".into());
+            }
+            self.put(&id, parent, "object", vault, digest, &data)?;
+            std::fs::remove_file(receipt).map_err(err)?;
+            return Ok(());
+        }
         match self.metadata(&id) {
             Ok(m) => {
                 verify(&m, parent, "object", vault, digest, digest)?;
@@ -670,7 +691,8 @@ impl Drive {
             Err(e) if e == "DRIVE:remote_unavailable" => (),
             Err(e) => return Err(e),
         }
-        if state["session"].is_null() {
+        let fresh_session = state["session"].is_null();
+        if fresh_session {
             let u = format!("{}/files?uploadType=resumable", self.upload);
             let meta = json!({"id":id,"name":digest,"parents":[parent],"appProperties":{"nevisProtocol":"1","nevisKind":"object","nevisVault":vault,"nevisKey":digest,"sha256":digest}});
             let r = self.send("upload.start", |c| {
@@ -691,26 +713,32 @@ impl Drive {
             .ok_or("DRIVE:upload_receipt_corrupt")?
             .to_string();
         self.valid_session(&session)?;
-        let probe = self.send("upload.probe", |c| {
-            c.put(&session)
-                .header("Content-Length", 0)
-                .header("Content-Range", format!("bytes */{size}"))
-        });
-        let mut offset = match probe {
-            Ok(r) if r.status().as_u16() == 308 => resume_offset(r.headers(), size, false)?,
-            Ok(_) => {
-                let meta = self.metadata(&id)?;
-                verify(&meta, parent, "object", vault, digest, digest)?;
-                self.verify_stream(&id, digest, size)?;
-                std::fs::remove_file(receipt).map_err(err)?;
-                return Ok(());
+        // A session created in this call is empty. Only recovered sessions need
+        // a status probe; after a crash they still resume from Google's offset.
+        let mut offset = if fresh_session {
+            0
+        } else {
+            let probe = self.send("upload.probe", |c| {
+                c.put(&session)
+                    .header("Content-Length", 0)
+                    .header("Content-Range", format!("bytes */{size}"))
+            });
+            match probe {
+                Ok(r) if r.status().as_u16() == 308 => resume_offset(r.headers(), size, false)?,
+                Ok(_) => {
+                    let meta = self.metadata(&id)?;
+                    verify(&meta, parent, "object", vault, digest, digest)?;
+                    self.verify_stream(&id, digest, size)?;
+                    std::fs::remove_file(receipt).map_err(err)?;
+                    return Ok(());
+                }
+                Err(e) if e == "DRIVE:remote_unavailable" => {
+                    state["session"] = Value::Null;
+                    crate::vault::write_atomic(receipt, &bytes(&state)?)?;
+                    return Err("DRIVE:upload_session_expired".into());
+                }
+                Err(e) => return Err(e),
             }
-            Err(e) if e == "DRIVE:remote_unavailable" => {
-                state["session"] = Value::Null;
-                crate::vault::write_atomic(receipt, &bytes(&state)?)?;
-                return Err("DRIVE:upload_session_expired".into());
-            }
-            Err(e) => return Err(e),
         };
         if offset > size {
             return Err("DRIVE:invalid_upload_offset".into());
@@ -1166,5 +1194,188 @@ mod refresh_tests {
             assert_eq!(d.meter.requests, if succeeds { 2 } else { 1 });
             server.join().unwrap();
         }
+    }
+}
+
+#[cfg(test)]
+mod upload_latency_tests {
+    use super::*;
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+    };
+
+    fn request(stream: &mut std::net::TcpStream) -> (String, Vec<u8>) {
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut raw = vec![];
+        let end = loop {
+            let mut buf = [0; 8192];
+            let n = stream.read(&mut buf).unwrap();
+            assert!(n > 0);
+            raw.extend_from_slice(&buf[..n]);
+            if let Some(i) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+                break i + 4;
+            }
+        };
+        let header = String::from_utf8_lossy(&raw[..end]).to_ascii_lowercase();
+        let size = header
+            .lines()
+            .find_map(|l| l.strip_prefix("content-length: "))
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(0);
+        while raw.len() < end + size {
+            let mut buf = [0; 8192];
+            let n = stream.read(&mut buf).unwrap();
+            assert!(n > 0);
+            raw.extend_from_slice(&buf[..n]);
+        }
+        (header, raw[end..].to_vec())
+    }
+    fn metadata(digest: &str) -> Vec<u8> {
+        bytes(&json!({"id":"reserved","parents":["parent"],"trashed":false,"appProperties":{"nevisProtocol":"1","nevisKind":"object","nevisVault":"vault","nevisKey":digest,"sha256":digest}})).unwrap()
+    }
+    fn drive(url: String) -> Drive {
+        Drive {
+            client: http().unwrap(),
+            token: "test-token".into(),
+            meter: Meter::default(),
+            api: url.clone(),
+            upload: url,
+            pause_signal: None,
+            refresh: None,
+        }
+    }
+    #[test]
+    fn small_file_multipart_preserves_receipt_and_reserved_id_after_unknown_response() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let data = b"small immutable object";
+        let digest = hash(data);
+        let h = digest.clone();
+        let server = std::thread::spawn(move || {
+            for i in 0..4 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let (header, body) = request(&mut stream);
+                let (status, response) = match i {
+                    0 => ("404 Not Found", vec![]),
+                    1 => {
+                        assert!(header.starts_with("post /files?uploadtype=multipart"));
+                        assert!(String::from_utf8_lossy(&body).contains("small immutable object"));
+                        ("503 Service Unavailable", vec![])
+                    }
+                    2 => {
+                        assert!(header.starts_with("get /files/reserved"));
+                        ("200 OK", metadata(&h))
+                    }
+                    _ => {
+                        assert!(header.contains("alt=media"));
+                        ("200 OK", data.to_vec())
+                    }
+                };
+                write!(
+                    stream,
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    response.len()
+                )
+                .unwrap();
+                stream.write_all(&response).unwrap();
+            }
+        });
+        let root =
+            std::env::temp_dir().join(format!("nevis-small-upload-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let source = root.join("source");
+        let receipt = root.join("receipt");
+        std::fs::write(&source, data).unwrap();
+        crate::vault::write_atomic(
+            &receipt,
+            &bytes(&json!({"id":"reserved","digest":digest,"size":data.len(),"session":null}))
+                .unwrap(),
+        )
+        .unwrap();
+        let mut d = drive(url);
+        assert_eq!(
+            d.put_file("parent", "vault", &digest, &source, &receipt)
+                .unwrap_err(),
+            "DRIVE:service_unavailable"
+        );
+        assert!(receipt.is_file());
+        d.put_file("parent", "vault", &digest, &source, &receipt)
+            .unwrap();
+        assert!(!receipt.exists());
+        assert_eq!(d.meter.operations.get("upload.marker"), Some(&1));
+        assert!(!d.meter.operations.contains_key("upload.start"));
+        assert!(!d.meter.operations.contains_key("upload.probe"));
+        server.join().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn fresh_large_session_sends_bytes_without_status_probe_and_still_verifies_them() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let base = url.clone();
+        let data = vec![b'x'; 4 * 1024 * 1024 + 1];
+        let digest = hash(&data);
+        let h = digest.clone();
+        let payload = data.clone();
+        let server = std::thread::spawn(move || {
+            for i in 0..5 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let (header, body) = request(&mut stream);
+                let (status, extra, response) = match i {
+                    0 => ("404 Not Found", String::new(), vec![]),
+                    1 => {
+                        assert!(header.contains("uploadtype=resumable"));
+                        ("200 OK", format!("Location: {base}/session\r\n"), vec![])
+                    }
+                    2 => {
+                        assert!(header.starts_with("put /session"));
+                        assert!(header.contains(&format!(
+                            "content-range: bytes 0-{}/{}",
+                            payload.len() - 1,
+                            payload.len()
+                        )));
+                        assert_eq!(body, payload);
+                        ("200 OK", String::new(), vec![])
+                    }
+                    3 => {
+                        assert!(header.contains("alt=media"));
+                        ("200 OK", String::new(), payload.clone())
+                    }
+                    _ => ("200 OK", String::new(), metadata(&h)),
+                };
+                write!(
+                    stream,
+                    "HTTP/1.1 {status}\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n",
+                    response.len()
+                )
+                .unwrap();
+                stream.write_all(&response).unwrap();
+            }
+        });
+        let root =
+            std::env::temp_dir().join(format!("nevis-fresh-upload-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let source = root.join("source");
+        let receipt = root.join("receipt");
+        std::fs::write(&source, &data).unwrap();
+        crate::vault::write_atomic(
+            &receipt,
+            &bytes(&json!({"id":"reserved","digest":digest,"size":data.len(),"session":null}))
+                .unwrap(),
+        )
+        .unwrap();
+        let mut d = drive(url);
+        d.put_file("parent", "vault", &digest, &source, &receipt)
+            .unwrap();
+        assert_eq!(d.meter.requests, 5);
+        assert_eq!(d.meter.uploaded_bytes, data.len() as u64);
+        assert_eq!(d.meter.downloaded_bytes, data.len() as u64);
+        assert!(!d.meter.operations.contains_key("upload.probe"));
+        assert!(!receipt.exists());
+        server.join().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
