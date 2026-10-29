@@ -37,3 +37,11 @@
 ## Customer sign-in correction
 
 The user correctly rejected per-customer client-secret entry. Bundle the Google Desktop public-client parameter as publisher configuration, supplied by local/CI build environment. This is intentionally extractable native-client configuration, not a confidential backend secret. Preserve PKCE/state and keep every account token solely in the OS credential store. The build helper may read the developer Keychain item in memory on the build machine; customers never depend on that item. Reject incomplete enabled customer builds. Explicit developer mode retains manual setup for troubleshooting only. User confirmed real sign-in; do not treat it as refresh or two-device sync certification.
+
+## Interactive sync latency and design consistency — 2026-10-29
+
+User-observed latency supersedes the original conservative publication timings: edit quiet time 45→2s, continuous-edit cap 300→10s, automatic publication spacing 90→2s. Pending work gets a 2s follow-up instead of falling through to the 55–65s discovery interval. Mandatory persisted Retry-After/backoff and conservative clock rollback remain enforced. Remote-only idle discovery remains 55–65s; focus/online/manual wake can run earlier.
+
+Reuse reqwest blocking Client clones across cycles for connection/TLS pooling; rotate the pool after 5 minutes and discard on a Drive send failure. No default bearer headers, credentials or identity-validation results are cached in this pool. Root/descriptor/permission verification remains intact.
+
+Use existing Aurora Paper account/workspace/settings primitives and tokens for Drive. Five tabs organize existing actions without another visual language. The development-only design fixture imports production presentational components, and is not a production Vite entry or a substitute for native flow tests.

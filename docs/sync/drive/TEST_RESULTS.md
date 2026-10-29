@@ -1,5 +1,8 @@
 # Validation results — 2026-10-29
 
+Latest UI/responsiveness follow-up: **208 native PASS / 0 FAIL / 11 ignored**, including **102 Drive tests** and both heavy media/cold-restore fixtures, 110.19s. JavaScript **234 PASS** (50 controller/layout, 173 database, 4 direction, 7 updater). TypeScript/Vite and configured macOS ARM64 debug bundle PASS. Lint 237 warnings / 0 errors; no new unique warning categories compared with the retained baseline. See [the follow-up report](UI_PERFORMANCE_FA.md). Real-account latency with the new binary remains NOT_RUN; do not infer a speed multiplier from unit tests.
+
+
 **Production-ready: NO.** TEST_MATRIX.md computes all 104 acceptance rows from observed test names: **46 PASS / 0 FAIL / 58 NOT_RUN**. A synthetic PASS is not real Google/OS certification. Unmapped/partial cases stay NOT_RUN.
 
 | Check | Result | Evidence |

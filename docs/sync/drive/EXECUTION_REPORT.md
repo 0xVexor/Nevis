@@ -27,7 +27,7 @@
 | اتصال و دریافت | بکاپ قبل از مهاجرت، آماده‌سازی خارجی قبل از fence، provider-switch receipt؛ staging با مالکیت/token و ادامهٔ دانلود قطع‌شده، بدون جایگزینی مقصد نامرتبط |
 | checkpoint/history | انتشار manifest-last پس از بازسازی مستقل، inventory/frontier/heads/coverage ledger/provenance/tombstones و dependencyهای تاریخچه؛ bootstrap از seed غالب + tail؛ restore به کپی محلی با UUID تازه |
 | GC | dry-run/verify/proof پایدار، رد proof قدیمی، guarded execute/recovery با receipt؛ حذف واقعی عمداً در این build در دسترس نیست |
-| زمان‌بندی و UI | سکون ۴۵ ثانیه، حداکثر ۵ دقیقه، فاصلهٔ خودکار ۹۰ ثانیه، دریافت هنگام throttle، poll با jitter، focus/online/background و ذخیره پیش از close؛ pause قبل از mutex علامت می‌خورد و درخواست بعدی را متوقف می‌کند |
+| زمان‌بندی و UI | سکون ۲ ثانیه، حداکثر ۱۰ ثانیه، فاصلهٔ خودکار ۲ ثانیه (اصلاح پس از گزارش کندی کاربر)، دریافت هنگام throttle، poll با jitter، focus/online/background و ذخیره پیش از close؛ pause قبل از mutex علامت می‌خورد و درخواست بعدی را متوقف می‌کند |
 | عیب‌یابی | شمارش روزانهٔ HTTP به‌ازای حساب روی این نصب، عملیات/بایت/rate limit، پنجرهٔ محدود p50/p95 زمان دریافت header، هشدار بودجهٔ نرم، deep check محلی، رابط فارسی/RTL |
 
 ورود به editor اکنون نوع Vault را از marker محلی می‌خواند و تخصیص block ID را پیش از اولین render فعال می‌کند؛ به OAuth یا poll دوثانیه‌ای وابسته نیست. پس از connect، دادهٔ مهاجرت‌یافته دوباره وارد store می‌شود.
