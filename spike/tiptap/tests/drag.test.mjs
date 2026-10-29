@@ -185,7 +185,7 @@ test('dropping at the source or outside the editor is a no-op', () => {
     const h = harness()
     try {
       const before = json(h.doc), target = outside ? null : h.source()
-      h.begin(h.source()); h.move(target, 130, 110); h.end(target, 130, 110)
+      h.begin(h.source()); h.move(target, 130, 128); h.end(target, 130, 128)
       assert.equal(json(h.doc), before)
       assert.equal(undoDepth(h.view.state), 0)
     } finally { h.cleanup() }
