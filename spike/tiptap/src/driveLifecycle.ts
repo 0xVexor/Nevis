@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core'
 import { saveForSync } from './syncActions'
 
+const ACTIVE_POLL_MS = 10_000
+
 /** Lifecycle remote flush is best effort; local save is awaited before a native close. */
 export function watchDriveLifecycle(onError: (message: string) => void = () => {}): () => void {
   let disposed = false
@@ -17,6 +19,12 @@ export function watchDriveLifecycle(onError: (message: string) => void = () => {
   window.addEventListener('focus', focus)
   window.addEventListener('online', focus)
   document.addEventListener('visibilitychange', visibility)
+  // While the window is in use, look for changes from other devices often. An unchanged workspace
+  // answers with a single small request, so this stays cheap; hidden or unfocused windows keep the slow poll.
+  const watching = window.setInterval(() => {
+    if (disposed || document.visibilityState !== 'visible' || !document.hasFocus() || !navigator.onLine) return
+    void invoke('sync_wake', { background: false, poll: true }).catch(() => {})
+  }, ACTIVE_POLL_MS)
   let unlisten: (() => void) | undefined
   let closing = false
   void import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
@@ -30,5 +38,5 @@ export function watchDriveLifecycle(onError: (message: string) => void = () => {
     })
     if (disposed) stop(); else unlisten = stop
   }).catch(() => {})
-  return () => { disposed = true; unlisten?.(); window.removeEventListener('focus', focus); window.removeEventListener('online', focus); document.removeEventListener('visibilitychange', visibility) }
+  return () => { disposed = true; window.clearInterval(watching); unlisten?.(); window.removeEventListener('focus', focus); window.removeEventListener('online', focus); document.removeEventListener('visibilitychange', visibility) }
 }
