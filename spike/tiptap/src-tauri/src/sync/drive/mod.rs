@@ -414,13 +414,31 @@ pub trait SyncStorageAdapter {
         Ok(None)
     }
     fn check(&mut self) -> Res<()>;
+    /// Identity check required right before remote writes; adapters may cache `check` for longer than this.
+    fn check_for_write(&mut self) -> Res<()> {
+        self.check()
+    }
+    /// Records how long a phase of the run took (diagnostics only).
+    fn note_phase(&mut self, _name: &str, _started: std::time::Instant) {}
     fn reserve(&mut self) -> Res<String>;
+    fn reserve_many(&mut self, count: usize) -> Res<Vec<String>> {
+        (0..count).map(|_| self.reserve()).collect()
+    }
     fn start(&mut self) -> Res<String>;
     fn inventory(&mut self) -> Res<Vec<RemoteBatch>>;
     fn changes(&mut self, cursor: &str) -> Res<ChangePage>;
     fn read_batch(&mut self, file: &RemoteBatch) -> Res<Vec<u8>>;
+    fn read_batches(&mut self, files: &[RemoteBatch]) -> Res<Vec<Vec<u8>>> {
+        files.iter().map(|f| self.read_batch(f)).collect()
+    }
     fn publish(&mut self, id: &str, batch: &Batch) -> Res<()>;
     fn object(&mut self, hash: &str, local: Option<&[u8]>) -> Res<Vec<u8>>;
+    /// (hash, target, local) triples, fetched or published in any order.
+    fn object_files(&mut self, items: &[(String, PathBuf, bool)]) -> Res<()> {
+        items
+            .iter()
+            .try_for_each(|(h, target, local)| self.object_file(h, target, *local))
+    }
     fn object_file(&mut self, hash: &str, target: &Path, local: bool) -> Res<()> {
         let data = if local {
             Some(fs::read(target).map_err(err)?)
@@ -486,51 +504,19 @@ impl SyncStorageAdapter for VaultDrive {
         checkpoint::bootstrap(&mut self.drive, &self.binding, &self.state_dir)
     }
     fn check(&mut self) -> Res<()> {
-        if auth::subject()? != self.binding.subject {
-            return Err("DRIVE:account_mismatch".into());
-        }
-        let root = self.drive.metadata(&self.binding.root_id)?;
-        let vault = self.drive.metadata(&self.binding.folder_id)?;
-        if root["appProperties"]["owner"] != self.binding.subject
-            || root["appProperties"]["nevisKind"] != "root"
-            || vault["appProperties"]["nevisVault"] != self.binding.vault_id
-            || vault["appProperties"]["owner"] != self.binding.subject
-        {
-            return Err("DRIVE:identity_mismatch".into());
-        }
-        root_descriptor(
-            &mut self.drive,
-            &self.binding.root_id,
-            &self.binding.subject,
-            None,
-        )?;
-        vault_descriptor(
-            &mut self.drive,
-            &self.binding.root_id,
-            &self.binding.folder_id,
-            &self.binding.vault_id,
-            &self.binding.subject,
-            None,
-        )?;
-        for (id, kind) in [
-            (&self.binding.streams_id, "streams"),
-            (&self.binding.objects_id, "objects"),
-            (&self.binding.checkpoints_id, "checkpoints"),
-        ] {
-            let m = self.drive.metadata(id)?;
-            if m["appProperties"]["nevisKind"] != kind
-                || m["appProperties"]["nevisVault"] != self.binding.vault_id
-                || !m["parents"]
-                    .as_array()
-                    .is_some_and(|p| p.contains(&json!(self.binding.folder_id)))
-            {
-                return Err("DRIVE:identity_mismatch".into());
-            }
-        }
-        Ok(())
+        self.ensure_identity(IDENTITY_READ_TTL)
+    }
+    fn check_for_write(&mut self) -> Res<()> {
+        self.ensure_identity(IDENTITY_WRITE_TTL)
+    }
+    fn note_phase(&mut self, name: &str, started: std::time::Instant) {
+        self.drive.meter.phase(name, started);
     }
     fn reserve(&mut self) -> Res<String> {
         self.drive.generate_id()
+    }
+    fn reserve_many(&mut self, count: usize) -> Res<Vec<String>> {
+        self.drive.generate_ids(count)
     }
     fn start(&mut self) -> Res<String> {
         self.drive.start_token()
@@ -574,12 +560,15 @@ impl SyncStorageAdapter for VaultDrive {
             checkpoint_changed,
         })
     }
+    // The listing already verified parent, kind, vault, key and digest of this file, and the
+    // download below is checked against that digest; no second metadata round trip is needed.
     fn read_batch(&mut self, f: &RemoteBatch) -> Res<Vec<u8>> {
-        let m = self.drive.metadata(&f.id)?;
-        if self.file(&m)?.as_ref().map(|m| (&m.key, &m.digest)) != Some((&f.key, &f.digest)) {
-            return Err("DRIVE:integrity".into());
-        }
         self.drive.download(&f.id, &f.digest, core::MAX_BATCH)
+    }
+    fn read_batches(&mut self, files: &[RemoteBatch]) -> Res<Vec<Vec<u8>>> {
+        transport::parallel_map(&mut self.drive, files.to_vec(), |d, f| {
+            d.download(&f.id, &f.digest, core::MAX_BATCH)
+        })
     }
     fn publish(&mut self, id: &str, b: &Batch) -> Res<()> {
         // Persist the attempt before I/O: an unknown result also consumes the automatic interval.
@@ -603,6 +592,17 @@ impl SyncStorageAdapter for VaultDrive {
             &self.state_dir,
         )
     }
+    fn object_files(&mut self, items: &[(String, PathBuf, bool)]) -> Res<()> {
+        let (objects, vault, state) = (
+            self.binding.objects_id.clone(),
+            self.binding.vault_id.clone(),
+            self.state_dir.clone(),
+        );
+        transport::parallel_map(&mut self.drive, items.to_vec(), |d, (h, target, local)| {
+            d.object_file(&objects, &vault, &h, &target, local, &state)
+        })
+        .map(|_| ())
+    }
     fn object(&mut self, h: &str, local: Option<&[u8]>) -> Res<Vec<u8>> {
         self.drive.object_with_state(
             &self.binding.objects_id,
@@ -611,6 +611,91 @@ impl SyncStorageAdapter for VaultDrive {
             local,
             &self.state_dir,
         )
+    }
+}
+const IDENTITY_READ_TTL: std::time::Duration = std::time::Duration::from_secs(600);
+const IDENTITY_WRITE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+/// When each remote identity (account, root, vault and child folders) was last verified in this process.
+static VERIFIED: std::sync::Mutex<BTreeMap<String, std::time::Instant>> =
+    std::sync::Mutex::new(BTreeMap::new());
+/// Drops the cached identity proof of a vault, so the next run verifies the remote again.
+pub fn forget_identity(vault: &str) {
+    if let Ok(mut verified) = VERIFIED.lock() {
+        verified.retain(|key, _| !key.starts_with(&format!("{vault}|")));
+    }
+}
+impl VaultDrive {
+    fn identity_key(&self) -> String {
+        let b = &self.binding;
+        format!(
+            "{}|{}|{}|{}|{}|{}|{}",
+            b.vault_id, b.subject, b.root_id, b.folder_id, b.streams_id, b.objects_id, b.checkpoints_id
+        )
+    }
+    /// Verifies the remote identity unless it was verified recently in this process. Writes demand a
+    /// shorter validity than reads; any failed run forgets the proof entirely.
+    fn ensure_identity(&mut self, ttl: std::time::Duration) -> Res<()> {
+        if auth::subject()? != self.binding.subject {
+            forget_identity(&self.binding.vault_id);
+            return Err("DRIVE:account_mismatch".into());
+        }
+        let key = self.identity_key();
+        let fresh = VERIFIED
+            .lock()
+            .ok()
+            .and_then(|v| v.get(&key).copied())
+            .is_some_and(|at| at.elapsed() < ttl);
+        if fresh {
+            return Ok(());
+        }
+        let started = std::time::Instant::now();
+        self.verify_identity()?;
+        if let Ok(mut verified) = VERIFIED.lock() {
+            verified.insert(key, std::time::Instant::now());
+        }
+        self.drive.meter.phase("identity", started);
+        Ok(())
+    }
+    fn verify_identity(&mut self) -> Res<()> {
+        let root = self.drive.metadata(&self.binding.root_id)?;
+        let vault = self.drive.metadata(&self.binding.folder_id)?;
+        if root["appProperties"]["owner"] != self.binding.subject
+            || root["appProperties"]["nevisKind"] != "root"
+            || vault["appProperties"]["nevisVault"] != self.binding.vault_id
+            || vault["appProperties"]["owner"] != self.binding.subject
+        {
+            return Err("DRIVE:identity_mismatch".into());
+        }
+        root_descriptor(
+            &mut self.drive,
+            &self.binding.root_id,
+            &self.binding.subject,
+            None,
+        )?;
+        vault_descriptor(
+            &mut self.drive,
+            &self.binding.root_id,
+            &self.binding.folder_id,
+            &self.binding.vault_id,
+            &self.binding.subject,
+            None,
+        )?;
+        for (id, kind) in [
+            (&self.binding.streams_id, "streams"),
+            (&self.binding.objects_id, "objects"),
+            (&self.binding.checkpoints_id, "checkpoints"),
+        ] {
+            let m = self.drive.metadata(id)?;
+            if m["appProperties"]["nevisKind"] != kind
+                || m["appProperties"]["nevisVault"] != self.binding.vault_id
+                || !m["parents"]
+                    .as_array()
+                    .is_some_and(|p| p.contains(&json!(self.binding.folder_id)))
+            {
+                return Err("DRIVE:identity_mismatch".into());
+            }
+        }
+        Ok(())
     }
 }
 fn documents(b: &Bundle) -> Res<(Documents, BTreeMap<String, Vec<u8>>)> {
@@ -750,12 +835,82 @@ pub fn synchronize(
     path: &Path,
     vault: &str,
     device: &str,
+    capture: impl FnMut() -> Res<Bundle>,
+    apply: impl FnMut(&Bundle, &Bundle) -> Res<()>,
+) -> Res<usize> {
+    synchronize_with(storage, path, vault, device, false, capture, apply)
+}
+/// A quiet poll: nothing changed locally, nothing waits to be sent, and the remote change feed has
+/// nothing for this vault. Answers with one request and without reading or replaying anything.
+/// `None` means the feed has news, so the caller continues with the complete run (the cursor is untouched).
+fn quiet_poll(storage: &mut impl SyncStorageAdapter, j: &mut Journal, path: &Path) -> Res<Option<usize>> {
+    let Some(open) = j.open_conflicts else {
+        return Ok(None);
+    };
+    let mut page = j.cursor.clone().ok_or("DRIVE:invalid_cursor")?;
+    let mut pages = BTreeSet::new();
+    let last = loop {
+        if !pages.insert(page.clone()) {
+            return Err("DRIVE:pagination_cycle".into());
+        }
+        let changes = match storage.changes(&page) {
+            Err(e) if e == "DRIVE:cursor_expired" => {
+                j.cursor = None;
+                j.save(path)?;
+                return Err("DRIVE:rescan_required".into());
+            }
+            r => r?,
+        };
+        if !changes.files.is_empty() || !changes.removed.is_empty() || changes.checkpoint_changed {
+            return Ok(None);
+        }
+        match changes.next {
+            Some(next) => page = next,
+            None => break changes.final_cursor.ok_or("DRIVE:invalid_cursor")?,
+        }
+    };
+    if j.cursor.as_deref() != Some(last.as_str()) {
+        j.cursor = Some(last);
+        j.save(path)?;
+    }
+    write_atomic(
+        &path.with_file_name("verified-at.json"),
+        &bytes(&crate::vault::now_ms())?,
+    )?;
+    Ok(Some(open))
+}
+/// `local_clean` says the caller knows nothing changed in the vault since the last complete run, so a
+/// run that finds nothing new remotely may skip the local capture entirely.
+pub fn synchronize_with(
+    storage: &mut impl SyncStorageAdapter,
+    path: &Path,
+    vault: &str,
+    device: &str,
+    local_clean: bool,
     mut capture: impl FnMut() -> Res<Bundle>,
     mut apply: impl FnMut(&Bundle, &Bundle) -> Res<()>,
 ) -> Res<usize> {
     let mut j = Journal::load(path, vault, device)?;
+    let phase = std::time::Instant::now();
     storage.check()?;
+    storage.note_phase("check", phase);
+    if local_clean
+        && j.apply_pending.is_none()
+        && j.outbox.is_empty()
+        && j.inbox.is_empty()
+        && j.cursor.is_some()
+        && (j.seed.is_some() || !j.batches.is_empty())
+    {
+        let phase = std::time::Instant::now();
+        let quiet = quiet_poll(storage, &mut j, path)?;
+        storage.note_phase("quiet-poll", phase);
+        if let Some(open) = quiet {
+            return Ok(open);
+        }
+    }
+    let phase = std::time::Instant::now();
     let local = capture()?;
+    storage.note_phase("capture", phase);
     let (current, local_blobs) = documents(&local)?;
     if let Some(expected) = j.apply_pending.take() {
         if current != expected && current != j.baseline && j.apply_before.as_ref() != Some(&current)
@@ -781,6 +936,7 @@ pub fn synchronize(
         }
     }
     j.save(path)?;
+    let phase_discovery = std::time::Instant::now();
     let index_path = path.with_extension("inbox.json");
     let mut index: BTreeMap<String, RemoteBatch> = match fs::read(&index_path) {
         Ok(b) => serde_json::from_slice(&b).map_err(|_| "DRIVE:inbox_corrupt")?,
@@ -842,6 +998,11 @@ pub fn synchronize(
             break;
         }
     }
+    storage.note_phase("discovery", phase_discovery);
+    let phase = std::time::Instant::now();
+    // Batches are fetched in parallel groups and ingested in order. Ingesting is idempotent, so a crash
+    // between groups only repeats the fetch of the group that was not saved.
+    let mut waiting: Vec<(String, RemoteBatch)> = vec![];
     for id in j.inbox.clone() {
         let file = index.get(&id).ok_or("DRIVE:inbox_corrupt")?;
         if j.seed
@@ -849,18 +1010,25 @@ pub fn synchronize(
             .is_some_and(|s| s.covered_batches.values().any(|h| h == &file.key))
         {
             j.inbox.remove(&id);
-            j.save(path)?;
             continue;
         }
-        let b = storage.read_batch(file)?;
-        let b: Batch = serde_json::from_slice(&b).map_err(|_| "DRIVE:invalid_batch")?;
-        if b.batch_id != file.key {
-            return Err("DRIVE:integrity".into());
+        waiting.push((id, file.clone()));
+    }
+    j.save(path)?;
+    for group in waiting.chunks(64) {
+        let files: Vec<RemoteBatch> = group.iter().map(|(_, f)| f.clone()).collect();
+        let fetched = storage.read_batches(&files)?;
+        for ((id, file), data) in group.iter().zip(fetched) {
+            let b: Batch = serde_json::from_slice(&data).map_err(|_| "DRIVE:invalid_batch")?;
+            if b.batch_id != file.key {
+                return Err("DRIVE:integrity".into());
+            }
+            j.ingest(b)?;
+            j.inbox.remove(id);
         }
-        j.ingest(b)?;
-        j.inbox.remove(&id);
         j.save(path)?;
     }
+    storage.note_phase("ingest", phase);
     if j.batches.is_empty() && j.seed.is_none() {
         return Err("DRIVE:remote_empty_or_missing".into());
     }
@@ -910,12 +1078,23 @@ pub fn synchronize(
             })
         })
         .collect();
+    let phase = std::time::Instant::now();
+    let transfers: Vec<(String, PathBuf, bool)> = required
+        .iter()
+        .filter_map(|h| {
+            let target = cache_dir.join(h);
+            let present = target.is_file();
+            ((storage.can_publish() && pending_required.contains(h)) || !present)
+                .then(|| (h.clone(), target, present))
+        })
+        .collect();
+    if transfers.iter().any(|(_, _, present)| *present) {
+        storage.check_for_write()?;
+    }
+    storage.object_files(&transfers)?;
+    storage.note_phase("objects", phase);
     for h in required {
         let target = cache_dir.join(&h);
-        let present = target.is_file();
-        if (storage.can_publish() && pending_required.contains(&h)) || !present {
-            storage.object_file(&h, &target, present)?;
-        }
         if streaming::file_hash(&target)? != h {
             return Err("DRIVE:integrity".into());
         }
@@ -931,7 +1110,26 @@ pub fn synchronize(
         }
     }
     j.save(path)?;
+    let phase = std::time::Instant::now();
     let result = core::replay_seeded(vault, &j.batches, &j.preimages, j.seed.as_ref())?;
+    storage.note_phase("replay", phase);
+    let phase = std::time::Instant::now();
+    if storage.can_publish() && !j.outbox.is_empty() {
+        storage.check_for_write()?;
+        // One request reserves the IDs of everything waiting; each ID is durable before its upload.
+        let unreserved = j.outbox.iter().filter(|o| o.remote_id.is_none()).count();
+        if unreserved > 1 {
+            let mut ids = storage.reserve_many(unreserved.min(100))?.into_iter();
+            for o in j.outbox.iter_mut().filter(|o| o.remote_id.is_none()) {
+                match ids.next() {
+                    Some(id) => o.remote_id = Some(id),
+                    None => break,
+                }
+            }
+            j.save(path)?;
+        }
+    }
+    let mut published = false;
     while storage.can_publish() && !j.outbox.is_empty() {
         if j.outbox[0].remote_id.is_none() {
             j.outbox[0].remote_id = Some(storage.reserve()?);
@@ -948,10 +1146,15 @@ pub fn synchronize(
                 key: o.batch.batch_id.clone(),
             },
         );
-        write_atomic(&index_path, &bytes(&index)?)?;
+        published = true;
         j.outbox.remove(0);
         j.save(path)?;
     }
+    if published {
+        // Discovery would find these files again, so the index is written once, not per batch.
+        write_atomic(&index_path, &bytes(&index)?)?;
+    }
+    storage.note_phase("publish", phase);
     let after = bundle(vault, &result, &local, |h| {
         let p = cache_dir.join(h);
         if p.is_file() {
@@ -961,6 +1164,7 @@ pub fn synchronize(
         }
     })?;
     let (after_docs, _) = documents(&after)?;
+    let phase_apply = std::time::Instant::now();
     j.apply_pending = Some(after_docs.clone());
     j.apply_before = Some(current.clone());
     j.save(path)?;
@@ -979,16 +1183,52 @@ pub fn synchronize(
     j.apply_pending = None;
     j.apply_before = None;
     j.last_verified_at = crate::vault::now_ms();
+    j.open_conflicts = Some(result.conflicts.len());
     j.save(path)?;
+    storage.note_phase("apply", phase_apply);
     Ok(result.conflicts.len())
 }
 pub fn run(
     data: &Path,
     b: &Binding,
     automatic: bool,
+    capture: impl FnMut() -> Res<Bundle>,
+    apply: impl FnMut(&Bundle, &Bundle) -> Res<()>,
+) -> Res<usize> {
+    run_hinted(data, b, automatic, None, capture, apply)
+}
+/// Longest a vault may go without a complete local capture, however quiet the editor reports it to be.
+const FULL_CAPTURE_EVERY: std::time::Duration = std::time::Duration::from_secs(300);
+/// (edit counter, time) of the last complete run per vault; compared with the live counter by `local_is_clean`.
+static LAST_FULL_RUN: std::sync::Mutex<BTreeMap<String, (u64, std::time::Instant)>> =
+    std::sync::Mutex::new(BTreeMap::new());
+/// True when an automatic run may skip the local capture: no edit was counted since the last complete
+/// run, and that run is recent. Manual runs and the first run always capture.
+pub fn local_is_clean(vault: &str, edits: u64, automatic: bool) -> bool {
+    automatic
+        && LAST_FULL_RUN
+            .lock()
+            .ok()
+            .and_then(|runs| runs.get(vault).copied())
+            .is_some_and(|(seen, at)| seen == edits && at.elapsed() < FULL_CAPTURE_EVERY)
+}
+/// Records the edit counter observed when a complete run started. Quiet polls leave the record alone,
+/// so the age of the last real capture keeps counting.
+pub fn note_full_run(vault: &str, edits: u64) {
+    if let Ok(mut runs) = LAST_FULL_RUN.lock() {
+        runs.insert(vault.into(), (edits, std::time::Instant::now()));
+    }
+}
+/// `edits` is the caller's count of local edits at the start of this run (None when it does not track them).
+pub fn run_hinted(
+    data: &Path,
+    b: &Binding,
+    automatic: bool,
+    edits: Option<u64>,
     mut capture: impl FnMut() -> Res<Bundle>,
     apply: impl FnMut(&Bundle, &Bundle) -> Res<()>,
 ) -> Res<usize> {
+    let local_clean = edits.is_some_and(|n| local_is_clean(&b.vault_id, n, automatic));
     if !feature_enabled() {
         return Err("DRIVE:feature_disabled".into());
     }
@@ -1023,15 +1263,24 @@ pub fn run(
         binding: b.clone(),
         state_dir,
     };
-    let mut result = synchronize(
+    let mut captured = false;
+    let mut result = synchronize_with(
         &mut storage,
         &dir(data, &b.vault_id).join("journal.json"),
         &b.vault_id,
         &device(data)?,
-        &mut capture,
+        local_clean,
+        || {
+            captured = true;
+            capture()
+        },
         apply,
     );
-    if result.is_ok() {
+    if let (Ok(_), true, Some(n)) = (&result, captured, edits) {
+        note_full_run(&b.vault_id, n);
+    }
+    // A quiet poll changed nothing, so checkpoint scheduling (days or a thousand batches) waits for the next full run.
+    if result.is_ok() && captured {
         let state = dir(data, &b.vault_id);
         let j = Journal::load(&state.join("journal.json"), &b.vault_id, &device(data)?)?;
         let last: Option<checkpoint::Checkpoint> =
@@ -1058,6 +1307,14 @@ pub fn run(
         }
     }
     if let Err(message) = &result {
+        // Transient trouble says nothing about the remote's identity; anything else re-verifies it.
+        let transient = message == "DRIVE:network"
+            || message == "DRIVE:paused"
+            || message == "DRIVE:service_unavailable"
+            || message.starts_with("DRIVE:rate_limited:");
+        if !transient {
+            forget_identity(&b.vault_id);
+        }
         schedule::record(&retry_file, message, crate::vault::now_ms())?;
     } else {
         schedule::success(&retry_file)?;
@@ -1092,8 +1349,13 @@ pub fn status(data: &Path, id: &str) -> Res<Value> {
     let metrics = fs::read(dir(data, id).join("metrics.json"))
         .ok()
         .and_then(|b| serde_json::from_slice::<Value>(&b).ok());
+    // Quiet polls record their time here instead of rewriting the whole journal.
+    let quiet_at: i64 = fs::read(dir(data, id).join("verified-at.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or(0);
     Ok(
-        json!({"currentVaultId":if id=="none"{Value::Null}else{json!(id)},"driveSyncEnabled":feature_enabled(),"auth":auth::status(),"binding":b,"pending":j.as_ref().map_or(0,|j|j.outbox.len()),"lastVerifiedAt":j.as_ref().map_or(0,|j|j.last_verified_at),"gc":j.as_ref().map(core::gc_plan),"metrics":metrics,"releaseReady":false}),
+        json!({"currentVaultId":if id=="none"{Value::Null}else{json!(id)},"driveSyncEnabled":feature_enabled(),"auth":auth::status(),"binding":b,"pending":j.as_ref().map_or(0,|j|j.outbox.len()),"lastVerifiedAt":j.as_ref().map_or(0,|j|j.last_verified_at).max(quiet_at),"gc":j.as_ref().map(core::gc_plan),"metrics":metrics,"releaseReady":false}),
     )
 }
 #[cfg(test)]

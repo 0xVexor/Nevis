@@ -1055,6 +1055,9 @@ pub struct Journal {
     pub apply_pending: Option<Documents>,
     #[serde(default)]
     pub apply_before: Option<Documents>,
+    /// Conflicts left open by the last complete run; lets a run that finds nothing new answer without replaying.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_conflicts: Option<usize>,
 }
 impl Journal {
     pub fn load(path: &Path, vault: &str, device: &str) -> Res<Self> {

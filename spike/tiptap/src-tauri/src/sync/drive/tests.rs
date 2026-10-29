@@ -1964,3 +1964,143 @@ fn missing_local_workspace_resume_keeps_original_google_account_and_folder() {
     );
     validate_resume_binding(None, "fresh-account", Some("new-folder")).unwrap();
 }
+#[test]
+fn quiet_poll_answers_from_one_request_without_capture_when_nothing_is_new() {
+    struct Quiet(FakeDrive, usize);
+    impl SyncStorageAdapter for Quiet {
+        fn check(&mut self) -> Res<()> {
+            Ok(())
+        }
+        fn reserve(&mut self) -> Res<String> {
+            panic!("a quiet poll never reserves")
+        }
+        fn start(&mut self) -> Res<String> {
+            self.0.start()
+        }
+        fn inventory(&mut self) -> Res<Vec<RemoteBatch>> {
+            self.0.inventory()
+        }
+        fn changes(&mut self, _: &str) -> Res<ChangePage> {
+            self.1 += 1;
+            Ok(ChangePage {
+                files: vec![],
+                next: None,
+                final_cursor: Some("current".into()),
+                removed: BTreeSet::new(),
+                checkpoint_changed: false,
+            })
+        }
+        fn read_batch(&mut self, _: &RemoteBatch) -> Res<Vec<u8>> {
+            panic!("a quiet poll reads no batch")
+        }
+        fn publish(&mut self, _: &str, _: &Batch) -> Res<()> {
+            panic!("a quiet poll publishes nothing")
+        }
+        fn object(&mut self, _: &str, _: Option<&[u8]>) -> Res<Vec<u8>> {
+            panic!("a quiet poll touches no object")
+        }
+    }
+    let cloud = FakeDrive::default();
+    let a = Device::new(A);
+    a.put("base", "old");
+    a.sync(&cloud).unwrap();
+    a.sync(&cloud).unwrap();
+    assert_eq!(Journal::load(&a.path(), VAULT, A).unwrap().open_conflicts, Some(0));
+    let run = |storage: &mut dyn FnMut(bool, &mut usize) -> Res<usize>| {
+        let mut captures = 0;
+        let result = storage(true, &mut captures);
+        (result, captures)
+    };
+    // Nothing changed locally and the feed is empty: one request, no capture.
+    let mut quiet = Quiet(cloud.clone(), 0);
+    let (result, captures) = run(&mut |clean, captures| {
+        synchronize_with(&mut quiet, &a.path(), VAULT, A, clean, || { *captures += 1; streaming::capture(&a.v, &a.root) }, |x, y| streaming::apply(&a.v, &a.root, x, y))
+    });
+    assert_eq!(result.unwrap(), 0);
+    assert_eq!((captures, quiet.1), (0, 1));
+    // Without the clean hint the same run captures the vault.
+    let (result, captures) = run(&mut |_, captures| {
+        synchronize_with(&mut quiet, &a.path(), VAULT, A, false, || { *captures += 1; streaming::capture(&a.v, &a.root) }, |x, y| streaming::apply(&a.v, &a.root, x, y))
+    });
+    result.unwrap();
+    assert_eq!(captures, 1);
+    // A feed with news continues into the complete run, and the edit is not lost.
+    a.put("base", "edited while the hint said clean");
+    let mut captured = 0;
+    synchronize_with(&mut cloud.clone(), &a.path(), VAULT, A, true, || { captured += 1; streaming::capture(&a.v, &a.root) }, |x, y| streaming::apply(&a.v, &a.root, x, y)).unwrap();
+    assert_eq!(captured, 1);
+    let other = Device::new(B);
+    other.cold(&cloud).unwrap();
+    assert_eq!(other.docs(), a.docs());
+}
+#[test]
+fn local_clean_hint_requires_the_same_edit_count_an_automatic_run_and_a_recent_full_run() {
+    let vault = "hint-test-vault";
+    assert!(!local_is_clean(vault, 3, true));
+    note_full_run(vault, 3);
+    assert!(local_is_clean(vault, 3, true));
+    assert!(!local_is_clean(vault, 4, true), "an edit was counted since");
+    assert!(!local_is_clean(vault, 3, false), "manual runs always capture");
+}
+#[test]
+fn queued_batches_reserve_their_ids_together_and_publish_in_order() {
+    struct Counting(FakeDrive, Arc<Mutex<(usize, usize)>>);
+    impl SyncStorageAdapter for Counting {
+        fn check(&mut self) -> Res<()> {
+            Ok(())
+        }
+        fn reserve(&mut self) -> Res<String> {
+            self.1.lock().unwrap().0 += 1;
+            self.0.reserve()
+        }
+        fn reserve_many(&mut self, n: usize) -> Res<Vec<String>> {
+            self.1.lock().unwrap().1 += 1;
+            (0..n).map(|_| self.0.reserve()).collect()
+        }
+        fn start(&mut self) -> Res<String> {
+            self.0.start()
+        }
+        fn inventory(&mut self) -> Res<Vec<RemoteBatch>> {
+            self.0.inventory()
+        }
+        fn changes(&mut self, c: &str) -> Res<ChangePage> {
+            self.0.changes(c)
+        }
+        fn read_batch(&mut self, f: &RemoteBatch) -> Res<Vec<u8>> {
+            self.0.read_batch(f)
+        }
+        fn publish(&mut self, id: &str, b: &Batch) -> Res<()> {
+            self.0.publish(id, b)
+        }
+        fn object(&mut self, h: &str, b: Option<&[u8]>) -> Res<Vec<u8>> {
+            self.0.object(h, b)
+        }
+    }
+    let cloud = FakeDrive::default();
+    let a = Device::new(A);
+    a.put("base", "old");
+    a.sync(&cloud).unwrap();
+    // Two separate edits queue two batches while publishing is refused.
+    cloud.0.lock().unwrap().rate = true;
+    a.put("first", "old");
+    a.sync(&cloud).unwrap_err();
+    a.put("second", "old");
+    a.sync(&cloud).unwrap_err();
+    let queued = Journal::load(&a.path(), VAULT, A).unwrap().outbox.len();
+    assert!(queued >= 2, "{queued} batches queued");
+    cloud.0.lock().unwrap().rate = false;
+    let counts = Arc::new(Mutex::new((0, 0)));
+    synchronize(
+        &mut Counting(cloud.clone(), counts.clone()),
+        &a.path(),
+        VAULT,
+        A,
+        || streaming::capture(&a.v, &a.root),
+        |x, y| streaming::apply(&a.v, &a.root, x, y),
+    )
+    .unwrap();
+    let (single, together) = *counts.lock().unwrap();
+    assert!(together <= 1, "ids reserved in {together} requests");
+    assert!(single <= 1, "{single} single reservations");
+    assert!(Journal::load(&a.path(), VAULT, A).unwrap().outbox.is_empty());
+}

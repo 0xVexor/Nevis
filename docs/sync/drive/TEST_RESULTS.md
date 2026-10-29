@@ -1,5 +1,7 @@
 # Validation results — 2026-10-29
 
+Speed work on `perf/drive-sync-speed` (see [SPEED_PLAN_FA.md](SPEED_PLAN_FA.md)): **218 native PASS / 0 FAIL / 11 ignored**, **112 Drive tests** (8 new: request-count stubs for marker create, checksum fallback, conflict reconcile, batched ID reservation, parallel map, quiet poll, clean-hint rules, batched publish). 52 layout, 4 direction, 7 updater JS tests PASS; TypeScript/Vite PASS; lint 237 warnings / 0 errors (unchanged). `npm run test:db` shows 167/168: `idb.test.mjs` cannot load `fake-indexeddb` because `npm ci` was not run in `db/tests/tools` (same failure on the unmodified branch). Two transport stubs changed because the request sequence changed on purpose. Real-account latency with these changes is NOT_RUN.
+
 Latest merged-dev follow-up (`origin/dev` 5bee6a6): **210 native PASS / 0 FAIL / 11 ignored**, **104 Drive tests**; **236 app JS PASS**; **64 server PASS**, **10 local legacy-sync e2e PASS**, **2 desktop build-script PASS**, **4 installer-script PASS**. TypeScript/Vite PASS; lint 237 warnings / zero errors. Upload regressions preserve unknown-response recovery while reducing small-object round trips and skipping only fresh-session probes. Shared preference menus and green-only-on-success feedback were verified in the browser. New-binary real Google transfer latency remains unmeasured.
 
 

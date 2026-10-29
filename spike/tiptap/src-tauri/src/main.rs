@@ -751,7 +751,11 @@ fn sync_set(s: St, on: bool) -> Res<()> {
 }
 
 #[tauri::command]
-fn sync_wake(s: St, background: bool) { kick_as(&s, if background { Kick::User } else { Kick::Remote }); }
+fn sync_wake(s: St, background: bool, poll: Option<bool>) {
+    // The window's periodic look for remote changes must not override the retry delays after a failure.
+    if poll == Some(true) && s.ctx.status.lock().is_ok_and(|st| !matches!(st.state, "idle" | "pending")) { return; }
+    kick_as(&s, if background { Kick::User } else { Kick::Remote });
+}
 
 #[tauri::command]
 fn sync_now(s: St) {
@@ -1273,7 +1277,7 @@ fn run_drive(ctx:&SyncCtx,e:&Entry,automatic:bool)->Res<()> {
     let app=ctx.app.as_ref().ok_or("DRIVE:no_app")?;
     if let Ok(mut st)=ctx.status.lock(){st.state="syncing";st.error.clear();st.reason.clear();}
     let generation=ctx.local_generation.load(Ordering::SeqCst);
-    let result=drive::run(&ctx.app_data,&b,automatic,
+    let result=drive::run_hinted(&ctx.app_data,&b,automatic,Some(generation),
         ||{let s=app.state::<Store>();with(&s,|v|{if v.id()!=e.id{return Err("SYNC:workspace_changed".into());}database::recover(&v.root)?;drive::streaming::capture(v,&drive::dir(&ctx.app_data,&e.id))})},
         |before,after|{let s=app.state::<Store>();with(&s,|v|{if v.id()!=e.id{return Err("SYNC:workspace_changed".into());}drive::streaming::apply(v,&drive::dir(&ctx.app_data,&e.id),before,after)})});
     let pending=drive::status(&ctx.app_data,&e.id).ok().and_then(|v|v["pending"].as_u64()).unwrap_or(0)>0;

@@ -35,6 +35,87 @@ pub struct Meter {
     pub operations: BTreeMap<String, u64>,
     #[serde(default)]
     pub header_latency_ms: Vec<u64>,
+    /// Wall-clock milliseconds spent in each phase of the last run (capture, discovery, objects, ...).
+    #[serde(default)]
+    pub phase_elapsed_ms: BTreeMap<String, u64>,
+}
+impl Meter {
+    pub fn merge(&mut self, other: Meter) {
+        self.requests += other.requests;
+        self.uploaded_bytes += other.uploaded_bytes;
+        self.downloaded_bytes += other.downloaded_bytes;
+        self.rate_limits += other.rate_limits;
+        self.elapsed_ms += other.elapsed_ms;
+        for (k, v) in other.operations {
+            *self.operations.entry(k).or_default() += v;
+        }
+        for (k, v) in other.operation_elapsed_ms {
+            *self.operation_elapsed_ms.entry(k).or_default() += v;
+        }
+        self.header_latency_ms.extend(other.header_latency_ms);
+        let excess = self.header_latency_ms.len().saturating_sub(512);
+        self.header_latency_ms.drain(..excess);
+    }
+    pub fn phase(&mut self, name: &str, started: Instant) {
+        *self.phase_elapsed_ms.entry(name.into()).or_default() += started.elapsed().as_millis() as u64;
+    }
+}
+/// Upper bound of simultaneous Drive requests from one sync run. Kept low to stay clear of per-user rate limits.
+pub const PARALLEL_REQUESTS: usize = 4;
+/// Runs `work` for every item, up to `PARALLEL_REQUESTS` at a time, each worker with its own forked client.
+/// Results come back in input order; the first failure (by input order) wins and stops the remaining items.
+pub fn parallel_map<T: Send, R: Send>(
+    drive: &mut Drive,
+    items: Vec<T>,
+    work: impl Fn(&mut Drive, T) -> Res<R> + Sync,
+) -> Res<Vec<R>> {
+    if items.len() <= 1 {
+        return items.into_iter().map(|item| work(drive, item)).collect();
+    }
+    let total = items.len();
+    let queue = Mutex::new(items.into_iter().enumerate().collect::<std::collections::VecDeque<_>>());
+    let slots: Mutex<Vec<Option<Res<R>>>> = Mutex::new((0..total).map(|_| None).collect());
+    let failed = std::sync::atomic::AtomicBool::new(false);
+    let meters = Mutex::new(Vec::new());
+    let width = PARALLEL_REQUESTS.min(total);
+    let template = &*drive;
+    std::thread::scope(|scope| {
+        for _ in 0..width {
+            scope.spawn(|| {
+                let mut fork = template.fork();
+                loop {
+                    if failed.load(std::sync::atomic::Ordering::SeqCst) {
+                        break;
+                    }
+                    let Some((index, item)) = queue.lock().ok().and_then(|mut q| q.pop_front()) else {
+                        break;
+                    };
+                    let result = work(&mut fork, item);
+                    if result.is_err() {
+                        failed.store(true, std::sync::atomic::Ordering::SeqCst);
+                    }
+                    if let Ok(mut slots) = slots.lock() {
+                        slots[index] = Some(result);
+                    }
+                }
+                if let Ok(mut meters) = meters.lock() {
+                    meters.push(fork.meter);
+                }
+            });
+        }
+    });
+    for meter in meters.into_inner().map_err(|_| "DRIVE:network")? {
+        drive.meter.merge(meter);
+    }
+    let mut out = Vec::with_capacity(total);
+    for slot in slots.into_inner().map_err(|_| "DRIVE:network")? {
+        match slot {
+            Some(Ok(value)) => out.push(value),
+            Some(Err(error)) => return Err(error),
+            None => return Err("DRIVE:network".into()),
+        }
+    }
+    Ok(out)
 }
 // Clones share reqwest's connection pool, including TLS sessions, across sync runs.
 // Rotate periodically so a changed system proxy is picked up without restarting Nevis.
@@ -132,6 +213,19 @@ impl Drive {
         self.pause_signal = Some(path);
         self
     }
+    /// Another client for a worker thread: same connection pool, token and pause signal, separate meter.
+    pub fn fork(&self) -> Drive {
+        Drive {
+            client: self.client.clone(),
+            token: self.token.clone(),
+            meter: Meter::default(),
+            api: self.api.clone(),
+            upload: self.upload.clone(),
+            pause_signal: self.pause_signal.clone(),
+            #[cfg(test)]
+            refresh: self.refresh,
+        }
+    }
     fn check_pause(&self) -> Res<()> {
         if self.pause_signal.as_ref().is_some_and(|p| p.exists()) {
             Err("DRIVE:paused".into())
@@ -193,15 +287,31 @@ impl Drive {
         Err("DRIVE:sign_in_required".into())
     }
     pub fn generate_id(&mut self) -> Res<String> {
+        self.generate_ids(1)?
+            .into_iter()
+            .next()
+            .ok_or("DRIVE:invalid_response".into())
+    }
+    /// One request reserves `count` IDs (Drive allows up to 1000 per call).
+    pub fn generate_ids(&mut self, count: usize) -> Res<Vec<String>> {
+        let count = count.clamp(1, 100);
         let u = format!("{}/files/generateIds", self.api);
+        let n = count.to_string();
         let r = self.send("generateIds", |c| {
             c.get(&u)
-                .query(&[("count", "1"), ("space", "drive"), ("type", "files")])
+                .query(&[("count", n.as_str()), ("space", "drive"), ("type", "files")])
         })?;
-        json_response(r, 8192)?["ids"][0]
-            .as_str()
-            .map(str::to_string)
-            .ok_or("DRIVE:invalid_response".into())
+        let v = json_response(r, 64 * 1024)?;
+        let ids: Vec<String> = v["ids"]
+            .as_array()
+            .ok_or("DRIVE:invalid_response")?
+            .iter()
+            .filter_map(|id| id.as_str().map(str::to_string))
+            .collect();
+        if ids.len() != count || ids.iter().any(|id| check_id(id).is_err()) {
+            return Err("DRIVE:invalid_response".into());
+        }
+        Ok(ids)
     }
     pub fn metadata(&mut self, id: &str) -> Res<Value> {
         check_id(id)?;
@@ -334,38 +444,71 @@ impl Drive {
         check_id(id)?;
         check_id(parent)?;
         let digest = hash(data);
-        match self.metadata(id) {
-            Ok(meta) => {
-                verify(&meta, parent, kind, vault, key, &digest)?;
-                self.download(id, &digest, data.len())?;
-                return Ok(());
-            }
-            Err(e) if e == "DRIVE:remote_unavailable" => (),
-            Err(e) => return Err(e),
-        }
-        let props = json!({"nevisProtocol":"1","nevisKind":kind,"nevisVault":vault,"nevisKey":key,"sha256":digest});
-        let meta = json!({"id":id,"name":key,"parents":[parent],"appProperties":props});
         if data.len() > 4 * 1024 * 1024 {
             return Err("DRIVE:marker_too_large".into());
         }
+        let props = json!({"nevisProtocol":"1","nevisKind":kind,"nevisVault":vault,"nevisKey":key,"sha256":digest});
+        let meta = json!({"id":id,"name":key,"parents":[parent],"appProperties":props});
         // Small immutable markers carry metadata and bytes in one request, not an unjournaled session.
         let boundary = format!("nevis-{}", uuid::Uuid::new_v4());
         let mut payload=format!("--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{}\r\n--{boundary}\r\nContent-Type: application/octet-stream\r\n\r\n",meta).into_bytes();
         payload.extend_from_slice(data);
         payload.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
-        let u = format!("{}/files?uploadType=multipart", self.upload);
-        self.send("upload.marker", |c| {
+        // Create directly: the reserved ID makes a repeated create harmless. The response carries the
+        // stored metadata and Drive's own MD5 of the stored bytes, so a fresh create needs no read-back.
+        let u = format!(
+            "{}/files?uploadType=multipart&fields={FIELDS},md5Checksum",
+            self.upload
+        );
+        let sent = self.send("upload.marker", |c| {
             c.post(&u)
                 .header(
                     "Content-Type",
                     format!("multipart/related; boundary={boundary}"),
                 )
                 .body(payload.clone())
-        })?;
-        self.meter.uploaded_bytes += data.len() as u64;
+        });
+        match sent {
+            Ok(r) => {
+                self.meter.uploaded_bytes += data.len() as u64;
+                if let Ok(created) = json_response(r, 64 * 1024) {
+                    if created["id"] == id
+                        && verify(&created, parent, kind, vault, key, &digest).is_ok()
+                        && created["size"].as_str() == Some(&data.len().to_string())
+                        && created["md5Checksum"].as_str() == Some(&md5_hex(data))
+                    {
+                        return Ok(());
+                    }
+                }
+                // No usable checksum in the response: confirm by reading the object back.
+                self.confirm_marker(id, parent, kind, vault, key, &digest, data.len())
+            }
+            // A pause, quota or sign-in problem says nothing about whether the create landed.
+            // Any other failure (an unknown result, or the ID already existing) is settled by
+            // looking the reserved ID up: present and identical means an earlier attempt landed.
+            Err(e) if e == "DRIVE:paused" || e == "DRIVE:sign_in_required" || e == "DRIVE:storage_full" || e.starts_with("DRIVE:rate_limited:") => Err(e),
+            Err(e) => match self.confirm_marker(id, parent, kind, vault, key, &digest, data.len()) {
+                Ok(()) => Ok(()),
+                // Nothing there (or unreachable): report the failure of the create itself.
+                Err(c) if c == "DRIVE:remote_unavailable" || c == "DRIVE:network" => Err(e),
+                // Something is there but it is not our object: that is the real problem.
+                Err(c) => Err(c),
+            },
+        }
+    }
+    fn confirm_marker(
+        &mut self,
+        id: &str,
+        parent: &str,
+        kind: &str,
+        vault: &str,
+        key: &str,
+        digest: &str,
+        len: usize,
+    ) -> Res<()> {
         let meta = self.metadata(id)?;
-        verify(&meta, parent, kind, vault, key, &digest)?;
-        self.download(id, &digest, data.len())?;
+        verify(&meta, parent, kind, vault, key, digest)?;
+        self.download(id, digest, len)?;
         Ok(())
     }
     pub fn object(
@@ -397,6 +540,10 @@ impl Drive {
         self.put(&id, parent, "object", vault, digest, b)?;
         Ok(b.to_vec())
     }
+}
+fn md5_hex(data: &[u8]) -> String {
+    use md5::{Digest, Md5};
+    format!("{:x}", Md5::digest(data))
 }
 pub fn verify(
     meta: &Value,
@@ -1049,7 +1196,7 @@ mod multipart_tests {
         let digest = hash(payload);
         let h = digest.clone();
         let server = std::thread::spawn(move || {
-            for i in 0..4 {
+            for i in 0..3 {
                 let (mut stream, _) = socket.accept().unwrap();
                 stream
                     .set_read_timeout(Some(Duration::from_secs(5)))
@@ -1078,8 +1225,7 @@ mod multipart_tests {
                     request.extend_from_slice(&buf[..n]);
                 }
                 let (status, body) = match i {
-                    0 => ("404 Not Found", vec![]),
-                    1 => {
+                    0 => {
                         assert!(header.starts_with("post /files?uploadtype=multipart"));
                         assert!(header.contains("multipart/related; boundary=nevis-"));
                         let body = String::from_utf8_lossy(&request[end..]);
@@ -1087,7 +1233,7 @@ mod multipart_tests {
                         assert!(body.contains("immutable marker"));
                         ("503 Service Unavailable", vec![])
                     }
-                    2 => {
+                    1 => {
                         assert!(header.starts_with("get /files/reserved"));
                         ("200 OK",bytes(&json!({"id":"reserved","parents":["parent"],"trashed":false,"appProperties":{"nevisProtocol":"1","nevisKind":"batch","nevisVault":"vault","nevisKey":"key","sha256":h}})).unwrap())
                     }
@@ -1116,18 +1262,14 @@ mod multipart_tests {
             #[cfg(test)]
             refresh: None,
         };
-        assert_eq!(
-            drive
-                .put("reserved", "parent", "batch", "vault", "key", payload)
-                .unwrap_err(),
-            "DRIVE:service_unavailable"
-        );
+        // The response was lost but the create landed: the same call finds the reserved ID and
+        // confirms its bytes, so there is no second create and no failed attempt left for the next run.
         drive
             .put("reserved", "parent", "batch", "vault", "key", payload)
             .unwrap();
         server.join().unwrap();
         assert_eq!(drive.meter.operations["upload.marker"], 1);
-        assert_eq!(drive.meter.requests, 4);
+        assert_eq!(drive.meter.requests, 3);
     }
 }
 
@@ -1236,6 +1378,10 @@ mod upload_latency_tests {
     fn metadata(digest: &str) -> Vec<u8> {
         bytes(&json!({"id":"reserved","parents":["parent"],"trashed":false,"appProperties":{"nevisProtocol":"1","nevisKind":"object","nevisVault":"vault","nevisKey":digest,"sha256":digest}})).unwrap()
     }
+    /// What Drive answers to a multipart create: the stored metadata, size and MD5 of the bytes.
+    fn created(digest: &str, data: &[u8]) -> Vec<u8> {
+        bytes(&json!({"id":"reserved","parents":["parent"],"trashed":false,"size":data.len().to_string(),"md5Checksum":md5_hex(data),"appProperties":{"nevisProtocol":"1","nevisKind":"object","nevisVault":"vault","nevisKey":digest,"sha256":digest}})).unwrap()
+    }
     fn drive(url: String) -> Drive {
         Drive {
             client: http().unwrap(),
@@ -1255,23 +1401,24 @@ mod upload_latency_tests {
         let digest = hash(data);
         let h = digest.clone();
         let server = std::thread::spawn(move || {
-            for i in 0..4 {
+            for i in 0..3 {
                 let (mut stream, _) = listener.accept().unwrap();
                 let (header, body) = request(&mut stream);
                 let (status, response) = match i {
-                    0 => ("404 Not Found", vec![]),
-                    1 => {
+                    0 => {
                         assert!(header.starts_with("post /files?uploadtype=multipart"));
                         assert!(String::from_utf8_lossy(&body).contains("small immutable object"));
                         ("503 Service Unavailable", vec![])
                     }
-                    2 => {
+                    // Nothing landed: the reserved ID does not exist yet.
+                    1 => {
                         assert!(header.starts_with("get /files/reserved"));
-                        ("200 OK", metadata(&h))
+                        ("404 Not Found", vec![])
                     }
+                    // The retry's create answers with the stored metadata and Drive's own checksum.
                     _ => {
-                        assert!(header.contains("alt=media"));
-                        ("200 OK", data.to_vec())
+                        assert!(header.starts_with("post /files?uploadtype=multipart"));
+                        ("200 OK", created(&h, data))
                     }
                 };
                 write!(
@@ -1305,11 +1452,100 @@ mod upload_latency_tests {
         d.put_file("parent", "vault", &digest, &source, &receipt)
             .unwrap();
         assert!(!receipt.exists());
-        assert_eq!(d.meter.operations.get("upload.marker"), Some(&1));
+        assert_eq!(d.meter.operations.get("upload.marker"), Some(&2));
+        assert_eq!(d.meter.requests, 3);
         assert!(!d.meter.operations.contains_key("upload.start"));
         assert!(!d.meter.operations.contains_key("upload.probe"));
         server.join().unwrap();
         std::fs::remove_dir_all(root).unwrap();
+    }
+    fn serve(script: Vec<(&'static str, &'static str, Vec<u8>)>) -> (String, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            for (expected, status, response) in script {
+                let (mut stream, _) = listener.accept().unwrap();
+                let (header, _) = request(&mut stream);
+                assert!(header.starts_with(expected), "{header}");
+                write!(
+                    stream,
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    response.len()
+                )
+                .unwrap();
+                stream.write_all(&response).unwrap();
+            }
+        });
+        (url, server)
+    }
+    #[test]
+    fn fresh_marker_create_is_one_request_verified_by_drives_checksum() {
+        let data = b"fresh marker";
+        let digest = hash(data);
+        let (url, server) = serve(vec![("post /files?uploadtype=multipart", "200 OK", created(&digest, data))]);
+        let mut d = drive(url);
+        d.put("reserved", "parent", "object", "vault", &digest, data).unwrap();
+        server.join().unwrap();
+        assert_eq!(d.meter.requests, 1);
+        assert_eq!(d.meter.uploaded_bytes, data.len() as u64);
+    }
+    #[test]
+    fn checksum_mismatch_falls_back_to_reading_back_and_rejects_different_bytes() {
+        let data = b"fresh marker";
+        let digest = hash(data);
+        let mut wrong = serde_json::from_slice::<Value>(&created(&digest, data)).unwrap();
+        wrong["md5Checksum"] = json!("00000000000000000000000000000000");
+        let (url, server) = serve(vec![
+            ("post /files?uploadtype=multipart", "200 OK", bytes(&wrong).unwrap()),
+            ("get /files/reserved", "200 OK", metadata(&digest)),
+            ("get /files/reserved", "200 OK", b"other bytes!".to_vec()),
+        ]);
+        let mut d = drive(url);
+        assert_eq!(
+            d.put("reserved", "parent", "object", "vault", &digest, data).unwrap_err(),
+            "DRIVE:integrity"
+        );
+        server.join().unwrap();
+        assert_eq!(d.meter.requests, 3);
+    }
+    #[test]
+    fn existing_reserved_id_after_a_conflict_is_confirmed_not_recreated() {
+        let data = b"fresh marker";
+        let digest = hash(data);
+        let (url, server) = serve(vec![
+            ("post /files?uploadtype=multipart", "409 Conflict", vec![]),
+            ("get /files/reserved", "200 OK", metadata(&digest)),
+            ("get /files/reserved", "200 OK", data.to_vec()),
+        ]);
+        let mut d = drive(url);
+        d.put("reserved", "parent", "object", "vault", &digest, data).unwrap();
+        server.join().unwrap();
+        assert_eq!(d.meter.operations["upload.marker"], 1);
+    }
+    #[test]
+    fn several_ids_are_reserved_in_one_request() {
+        let ids: Vec<String> = (0..3).map(|n| format!("id{n}")).collect();
+        let (url, server) = serve(vec![("get /files/generateids?count=3", "200 OK", bytes(&json!({"ids":ids})).unwrap())]);
+        let mut d = drive(url);
+        assert_eq!(d.generate_ids(3).unwrap(), ids);
+        server.join().unwrap();
+        assert_eq!(d.meter.requests, 1);
+    }
+    #[test]
+    fn parallel_map_keeps_input_order_merges_meters_and_reports_the_first_failure() {
+        let mut d = drive("http://127.0.0.1:9".into());
+        let doubled = parallel_map(&mut d, (0..20u64).collect(), |worker, n| {
+            worker.meter.requests += 1;
+            std::thread::sleep(Duration::from_millis(5 * (n % 3)));
+            Ok(n * 2)
+        })
+        .unwrap();
+        assert_eq!(doubled, (0..20u64).map(|n| n * 2).collect::<Vec<_>>());
+        assert_eq!(d.meter.requests, 20);
+        let failed: Res<Vec<u64>> = parallel_map(&mut d, (0..20u64).collect(), |_, n| {
+            if n == 7 { Err("DRIVE:integrity".into()) } else { Ok(n) }
+        });
+        assert_eq!(failed.unwrap_err(), "DRIVE:integrity");
     }
     #[test]
     fn fresh_large_session_sends_bytes_without_status_probe_and_still_verifies_them() {
