@@ -8,10 +8,11 @@ import { Callout, Toggle } from '../src/editor/blocks.ts'
 import StarterKit from '@tiptap/starter-kit'
 import { NodeSelection, TextSelection, EditorState } from '@tiptap/pm/state'
 import { history, undo, redo, undoDepth } from '@tiptap/pm/history'
-import { Fragment, Slice } from '@tiptap/pm/model'
+import { Fragment } from '@tiptap/pm/model'
 import { LayoutGroup, LayoutColumn, LayoutSafety } from '../src/editor/layout.ts'
 import { adjacentColumnSelection, ancestor, blockRange, boundaryKey, crossesColumns, flattenLayouts, groupColumns, layoutStructureValid, linearSelection, moveBlocks, validWidths, displayWidths } from '../src/editor/layoutModel.ts'
 import { contentProblem } from '../src/editor/contentSafety.ts'
+import { editAcrossColumns } from '../src/editor/layoutEditing.ts'
 import { toMarkdown } from '../src/markdown.ts'
 
 // The application is never opened and no real vault is read or written by this suite.
@@ -107,17 +108,15 @@ test('increasing columns adds empty content and respects the three-column cap', 
   assert.equal(h.run('setLayoutColumns', 4), false)
 })
 
-test('move retains node identity/marks, source paragraph, and creates one undo entry', () => {
+test('move retains node identity/marks, collapses the exhausted source, and creates one undo entry', () => {
   const h = harness(); inside(h, 'A1')
   const moved = h.state.doc.nodeAt(position(h.state.doc, 'A1'))
   const before = json(h.state.doc)
   const dest = groupColumns(h.state.doc).find((c) => c.group === 2 && c.column === 3)
   assert.ok(h.run('moveToLayout', dest.pos))
-  const a1 = groupColumns(h.state.doc)[0].node
-  assert.equal(a1.childCount, 1)
-  assert.equal(a1.firstChild.type.name, 'paragraph')
-  assert.equal(a1.firstChild.content.size, 0)
-  const b3 = groupColumns(h.state.doc).find((c) => c.group === 2 && c.column === 3).node
+  assert.equal(h.state.doc.firstChild.type.name, 'paragraph')
+  assert.equal(h.state.doc.firstChild.textContent, 'A2')
+  const b3 = groupColumns(h.state.doc).find((c) => c.node.textContent === 'B3A1').node
   assert.equal(b3.lastChild, moved)
   assert.equal(undoDepth(h.state), 1)
   assert.ok(undo(h.state, h.apply)); assert.equal(json(h.state.doc), before)
@@ -133,7 +132,9 @@ test('multi-block movement keeps order; self/no-op creates no transaction', () =
   assert.equal(moveBlocks(h.state, range, range.from), null)
   assert.equal(moveBlocks(h.state, range, range.to), null)
   assert.ok(h.run('moveToLayout', groupColumns(h.state.doc)[1].pos))
-  assert.equal(groupColumns(h.state.doc)[1].node.textContent, 'cab')
+  assert.equal(groupColumns(h.state.doc).length, 0)
+  assert.equal(h.state.doc.textContent, 'cab')
+  assert.deepEqual(Array.from({ length: h.state.doc.childCount }, (_, i) => h.state.doc.child(i).textContent), ['c', 'a', 'b'])
 })
 
 test('group movement remains root-only, and preserves direction and ratios', () => {
@@ -225,15 +226,23 @@ test('markdown exports every column in logical order without layout wrappers', a
   assert.ok(!md.includes('layoutGroup'))
 })
 
-test('safety plugin rejects cross-column typing, malformed structures and destructive group deletion', () => {
+test('cross-column replacement preserves wrappers and the safety plugin rejects malformed structures and destructive group deletion', () => {
   const h = harness()
   const editor = { ...h.editor, isEditable: true }
   const [plugin] = LayoutSafety.config.addProseMirrorPlugins.call({ editor })
   let state = EditorState.create({ schema, doc: h.state.doc, plugins: [plugin] })
   state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, position(state.doc, 'A1') + 2, position(state.doc, 'A2') + 2)))
-  assert.equal(state.applyTransaction(state.tr.insertText('replace')).transactions.length, 0)
-  const copied = plugin.props.transformCopied(new Slice(Fragment.empty, 0, 0), { state })
+  const copied = plugin.props.transformCopied(state.selection.content(), { state })
   assert.equal(copied.content.childCount, 2)
+  assert.equal(copied.content.textBetween(0, copied.content.size), '1A')
+  const tr = editAcrossColumns(state, 'replace')
+  assert.ok(tr)
+  state = state.apply(tr)
+  assert.equal(state.doc.firstChild.childCount, 2)
+  assert.equal(state.doc.firstChild.child(0).textContent, 'Areplace')
+  assert.equal(state.doc.firstChild.child(1).textContent, '2')
+  state.doc.check()
+  assert.equal(state.applyTransaction(state.tr.setNodeMarkup(0, undefined, { ...state.doc.firstChild.attrs, direction: 'sideways' })).transactions.length, 0)
   state = state.apply(state.tr.setSelection(NodeSelection.create(state.doc, 0)))
   assert.equal(state.applyTransaction(state.tr.deleteSelection()).transactions.length, 0)
 })
@@ -333,14 +342,15 @@ test('all existing block shapes retain attrs, marks, nested data and attachment 
   const g = (...cols) => rich.nodes.layoutGroup.create({ widths: [50, 50] }, cols)
   const h = harness(rich.nodes.doc.create(null, [g(col(blocks), col(p('other'))), g(col(p('destination')), col(p('empty')))]))
   const originals = blocks.map((n) => n.toJSON())
+  const destinationAnchor = groupColumns(h.state.doc).find((c) => c.group === 2 && c.column === 2).node.firstChild
   for (const original of blocks) {
     let at
     h.state.doc.descendants((node, pos) => { if (node === original) at = pos })
     h.select(NodeSelection.create(h.state.doc, at))
-    h.run('moveToLayout', groupColumns(h.state.doc).find((c) => c.group === 2 && c.column === 2).pos)
+    assert.ok(h.run('moveToLayout', groupColumns(h.state.doc).find((c) => c.node.firstChild === destinationAnchor).pos))
     h.state.doc.check()
   }
-  const target = groupColumns(h.state.doc).find((c) => c.group === 2 && c.column === 2)
+  const target = groupColumns(h.state.doc).find((c) => c.node.firstChild === destinationAnchor)
   for (let i = 0; i < blocks.length; i++) {
     assert.equal(target.node.child(i + 1), blocks[i])
     assert.deepEqual(target.node.child(i + 1).toJSON(), originals[i])
