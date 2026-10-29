@@ -34,7 +34,7 @@
    Compiling tauri-plugin-updater v2.14.0
    Compiling tauri-plugin-notification v2.7.0
    Compiling tauri-plugin-dialog v2.8.3
-   Compiling nevis v1.0.0 (/Users/wrangler/.codex/worktrees/google-drive-sync/Nevis/spike/tiptap/src-tauri)
+   Compiling nevis v1.0.0 (<workspace>/spike/tiptap/src-tauri)
 warning: function `run` is never used
    --> src/sync/github.rs:598:8
     |

@@ -1,6 +1,6 @@
 # Changed files
 
-Worktree root: `/Users/wrangler/.codex/worktrees/google-drive-sync/Nevis`. Includes the implementation and follow-up corrections since merge e140ce7. No original-checkout edits are included.
+Worktree root: `<workspace>`. Includes the implementation and follow-up corrections since merge e140ce7. No original-checkout edits are included.
 
 - `docs/sync/drive/ARCHITECTURE.md`
 - `docs/sync/drive/CHANGED_FILES.md`
