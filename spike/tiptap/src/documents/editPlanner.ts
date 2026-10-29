@@ -1,3 +1,4 @@
+import { EDITOR_BLOCKS, EDITOR_INLINES, EDITOR_MARKS, EDITOR_ATTRIBUTES, editorAttributesValid, editorMarkValid, safeImage } from './editorProfile.ts'
 import { tableGrid } from './tableEdits.ts'
 import { BLOCK_TYPES, BLOCK_IDENTITY_VERSION, identityVersion, isBlockId } from './blockIdentity.ts'
 import { cloneDocumentValue } from './clone.ts'
@@ -18,7 +19,7 @@ export type EditOperation =
   | { kind: 'replace_blocks'; target: EditRange; blocks: InsertedBlock[] }
   | { kind: 'move_blocks'; target: EditRange; at: EditLocation }
   | { kind: 'delete_blocks'; target: EditRange }
-  | { kind: 'set_attributes'; target: EditReference; attributes: { dir?: 'auto' | 'ltr' | 'rtl'; level?: number; checked?: boolean; language?: string | null } }
+  | { kind: 'set_attributes'; target: EditReference; attributes: Record<string, unknown> }
   | { kind: 'set_table_cell'; table: EditReference; cell: EditReference; blocks: InsertedBlock[] }
   | { kind: 'insert_table_row'; table: EditReference; row: EditReference; position: 'before' | 'after'; cells: { kind: 'cell' | 'header'; blocks: InsertedBlock[] }[] }
   | { kind: 'set_internal_link'; target: EditReference; destinationDocumentId: string; label: string }
@@ -30,6 +31,7 @@ export interface EditPlannerRuntime {
   digest(snapshot: string): Promise<string>
   /** Host-owned, side-effect-free policy snapshot. No title lookup or note dereference. */
   canLink(documentId: string): boolean
+  canUseResource?(kind: 'attachment' | 'database', id: string): boolean
 }
 type Code = 'INVALID_ARGUMENT' | 'LIMIT_EXCEEDED' | 'INVALID_TARGET' | 'UNSUPPORTED_CONTENT' | 'CAPABILITY_UNAVAILABLE' | 'REVISION_CONFLICT' | 'ACCESS_DENIED' | 'APP_UNAVAILABLE'
 export class DocumentPlanError extends Error {
@@ -38,16 +40,16 @@ export class DocumentPlanError extends Error {
   constructor(code: Code) { super(code.replaceAll('_', ' ').toLowerCase()); this.code = code; this.retryable = code === 'APP_UNAVAILABLE' }
 }
 function fail(code: Code): never { throw new DocumentPlanError(code) }
-const writable = ['paragraph', 'heading', 'blockquote', 'bulletList', 'orderedList', 'listItem', 'taskList', 'taskItem', 'codeBlock', 'horizontalRule']
-const writableSet = new Set(writable)
-const inlines = new Set(['text', 'hardBreak', 'pageLink'])
-const marks = new Set(['bold', 'italic', 'strike', 'underline', 'code'])
+const writable = EDITOR_BLOCKS
+const writableSet = new Set<string>(writable)
+const inlines = new Set(EDITOR_INLINES)
+const marks = new Set(EDITOR_MARKS)
 const blockTypes = new Set<string>(BLOCK_TYPES)
-const containers = new Set(['doc', 'blockquote', 'bulletList', 'orderedList', 'listItem', 'taskList', 'taskItem', 'layoutColumn'])
-export const EDIT_PROFILE_VERSION = 1
+const containers = new Set(['doc', 'blockquote', 'bulletList', 'orderedList', 'listItem', 'taskList', 'taskItem', 'layoutColumn', 'callout', 'toggle', 'table', 'tableRow', 'tableCell', 'tableHeader', 'layoutGroup'])
+export const EDIT_PROFILE_VERSION = 2
 export const EDIT_CAPABILITIES = Object.freeze({
   writableNodeTypes: [...writable, ...inlines], writableMarks: [...marks],
-  writableAttributes: ['dir', 'level', 'checked', 'language'],
+  writableAttributes: Object.keys(EDITOR_ATTRIBUTES),
   operations: ['insert_blocks', 'replace_blocks', 'move_blocks', 'delete_blocks', 'set_attributes', 'set_internal_link', 'set_table_cell', 'insert_table_row'],
   preservesUntouchedUnsupportedNodes: true,
 })
@@ -87,18 +89,10 @@ function location(at: EditLocation) {
   if (at?.position === 'end') { fields(at, ['position', 'parent']); if (at.parent !== null) reference(at.parent) }
   else { fields(at, ['position', 'target']); if (!['before', 'after'].includes(at.position)) fail('INVALID_ARGUMENT'); reference(at.target) }
 }
-const attributeTypes: Record<string, readonly string[]> = {
-  dir: ['paragraph', 'heading', 'blockquote', 'listItem', 'taskItem'], level: ['heading'], checked: ['taskItem'], language: ['codeBlock'],
-}
-function attributes(attrs: Record<string, unknown>) {
-  fields(attrs, Object.keys(attributeTypes), [])
-  if (!Object.keys(attrs).length) fail('INVALID_ARGUMENT')
-  for (const [key, value] of Object.entries(attrs)) {
-    if (key === 'dir' ? !['auto', 'ltr', 'rtl'].includes(value as string)
-      : key === 'level' ? !integer(value, 6)
-      : key === 'checked' ? typeof value !== 'boolean'
-      : value !== null && !string(value, 80)) fail('INVALID_ARGUMENT')
-  }
+function attributes(attrs: Record<string, unknown>, type: string) {
+  if (!object(attrs) || !Object.keys(attrs).length || Object.keys(attrs).some(key => !Object.hasOwn(EDITOR_ATTRIBUTES, key))) fail('INVALID_ARGUMENT')
+  if (Object.keys(attrs).some(key => !EDITOR_ATTRIBUTES[key].valid(attrs[key]))) fail('INVALID_ARGUMENT')
+  if (!editorAttributesValid(type, attrs)) fail('UNSUPPORTED_CONTENT')
 }
 
 type Entry = { node: EditNode; parent: EditNode; ancestors: EditNode[] }
@@ -165,18 +159,28 @@ export async function planDocumentEdit(source: Page, input: EditDocumentInput, r
     const block = (n: EditNode) => !inlines.has(n.type) && !['listItem', 'taskItem', 'layoutColumn', 'doc', 'tableRow', 'tableCell', 'tableHeader'].includes(n.type)
     let valid = true
     switch (node.type) {
-      case 'doc': case 'blockquote': case 'layoutColumn': case 'listItem': case 'taskItem':
+      case 'doc': case 'blockquote': case 'layoutColumn': case 'listItem': case 'taskItem': case 'callout': case 'toggle': case 'tableCell': case 'tableHeader':
         valid = children.length > 0 && children.every(block)
-        if (['listItem', 'taskItem'].includes(node.type)) valid &&= types[0] === 'paragraph'
+        if (['listItem', 'taskItem', 'toggle'].includes(node.type)) valid &&= types[0] === 'paragraph'
         break
       case 'bulletList': case 'orderedList': valid = children.length > 0 && types.every(type => type === 'listItem'); break
       case 'taskList': valid = children.length > 0 && types.every(type => type === 'taskItem'); break
       case 'paragraph': case 'heading': valid = children.every(child => inlines.has(child.type) || (!blockTypes.has(child.type) && !writableSet.has(child.type) && child.type !== 'doc')); break
       case 'codeBlock': valid = children.every(child => child.type === 'text' && !child.marks?.length); break
-      case 'horizontalRule': case 'hardBreak': case 'pageLink': valid = !children.length; break
+      case 'horizontalRule': case 'hardBreak': case 'pageLink': case 'mathInline': case 'inlineIcon': case 'mathBlock': case 'mermaid': case 'image': case 'drawing': case 'databaseEmbed': valid = !children.length; break
       case 'text': valid = typeof node.text === 'string' && node.text.length > 0 && !children.length; break
+      case 'table':
+        try { tableGrid(node) } catch { fail('UNSUPPORTED_CONTENT') }
+        valid = children.length > 0 && types.every(type => type === 'tableRow'); break
+      case 'tableRow': valid = children.length > 0 && types.every(type => ['tableCell', 'tableHeader'].includes(type)); break
       case 'layoutGroup': valid = parent?.type === 'doc' && children.length >= 2 && children.length <= 3 && types.every(type => type === 'layoutColumn') && [undefined, null, 'rtl', 'ltr'].includes(node.attrs?.direction as any); break
       default: protectedContent = true; return // opaque original subtree; never parsed or rewritten
+    }
+    if (['tableCell', 'tableHeader'].includes(node.type) && parent?.type !== 'tableRow') valid = false
+    if (node.type === 'tableRow' && parent?.type !== 'table') valid = false
+    if (node.type === 'layoutGroup' && node.attrs?.widths !== undefined && node.attrs.widths !== null) {
+      const widths = node.attrs.widths
+      valid &&= Array.isArray(widths) && widths.length === children.length && widths.every(value => typeof value === 'number' && Number.isFinite(value) && value >= 20) && Math.abs(widths.reduce((a, b) => a + b, 0) - 100) < 0.01
     }
     if (node.type === 'layoutColumn' && parent?.type !== 'layoutGroup') valid = false
     if (node.type === 'heading' && node.attrs?.level !== undefined && !integer(node.attrs.level, 6)) valid = false
@@ -223,27 +227,37 @@ export async function planDocumentEdit(source: Page, input: EditDocumentInput, r
     if (!containers.has(anchor.parent.type)) fail('INVALID_TARGET')
     return { parent: anchor.parent, anchor: anchor.node, position: at.position }
   }
+  function references(node: EditNode) {
+    const attrs = node.attrs ?? {}
+    if (node.type === 'pageLink') {
+      if (!string(attrs.id) || (attrs.label != null && !string(attrs.label, 512, 0))) fail('INVALID_ARGUMENT')
+      if (!runtime.canLink(attrs.id)) fail('ACCESS_DENIED')
+    }
+    if (node.type === 'image') {
+      if (!safeImage(attrs.src)) fail('INVALID_ARGUMENT')
+      if (attrs.src.startsWith('att:') && !runtime.canUseResource?.('attachment', attrs.src.slice(4))) fail('ACCESS_DENIED')
+    }
+    if (node.type === 'drawing') for (const key of ['scene', 'preview']) {
+      const id = attrs[key]
+      if (typeof id === 'string' && id && !runtime.canUseResource?.('attachment', id)) fail('ACCESS_DENIED')
+    }
+    if (node.type === 'databaseEmbed' && (!string(attrs.containerId) || !runtime.canUseResource?.('database', attrs.containerId))) fail('ACCESS_DENIED')
+  }
   function inserted(blocks: InsertedBlock[]) {
     if (!Array.isArray(blocks) || !blocks.length || blocks.length > 100) fail('INVALID_ARGUMENT')
     function prepare(node: EditNode): EditNode {
       fields(node, ['type', 'text', 'attrs', 'marks', 'content'], ['type'])
       if (!writableSet.has(node.type) && !inlines.has(node.type)) fail('UNSUPPORTED_CONTENT')
       if (node.attrs !== undefined) {
-        const allowed = node.type === 'pageLink' ? ['id', 'label'] : [...Object.keys(attributeTypes).filter(key => attributeTypes[key].includes(node.type)), ...(node.type === 'orderedList' ? ['start'] : [])]
-        fields(node.attrs, allowed, [])
-        const attrs = Object.fromEntries(Object.entries(node.attrs).filter(([key]) => key in attributeTypes))
-        if (Object.keys(attrs).length) attributes(attrs)
-        if (node.type === 'orderedList' && node.attrs.start !== undefined && !integer(node.attrs.start, Number.MAX_SAFE_INTEGER)) fail('INVALID_ARGUMENT')
+        fields(node.attrs, Object.keys(EDITOR_ATTRIBUTES).filter(key => EDITOR_ATTRIBUTES[key].types.includes(node.type)), [])
+        if (Object.keys(node.attrs).length) attributes(node.attrs, node.type)
       }
-      if (node.type === 'pageLink') {
-        if (!string(node.attrs?.id) || !string(node.attrs?.label, 512)) fail('INVALID_ARGUMENT')
-        if (!runtime.canLink(node.attrs!.id as string)) fail('ACCESS_DENIED')
-      }
+      references(node)
       if (node.text !== undefined && (node.type !== 'text' || !string(node.text, LIMITS.textChars))) fail('INVALID_ARGUMENT')
       if (node.marks !== undefined) {
-        if (node.type !== 'text' || !Array.isArray(node.marks) || node.marks.length > 5) fail('UNSUPPORTED_CONTENT')
+        if (!inlines.has(node.type) || !Array.isArray(node.marks) || node.marks.length > EDITOR_MARKS.length) fail('UNSUPPORTED_CONTENT')
         const seen = new Set<string>()
-        for (const mark of node.marks) { fields(mark, ['type']); if (!marks.has(mark.type) || seen.has(mark.type)) fail('UNSUPPORTED_CONTENT'); seen.add(mark.type) }
+        for (const mark of node.marks) { fields(mark, ['type', 'attrs'], ['type']); if (!editorMarkValid(mark) || seen.has(mark.type)) fail('UNSUPPORTED_CONTENT'); seen.add(mark.type) }
         if (seen.has('code') && seen.size > 1) fail('UNSUPPORTED_CONTENT')
       }
       if (writableSet.has(node.type)) node.attrs = { ...node.attrs, blockId: fresh() }
@@ -336,9 +350,9 @@ export async function planDocumentEdit(source: Page, input: EditDocumentInput, r
         const entry = resolve(operation.target); accessible(entry); editable(entry.node)
         const node = entry.node, old = cloneDocumentValue(node)
         if (operation.kind === 'set_attributes') {
-          attributes(operation.attributes)
-          if (Object.keys(operation.attributes).some(key => !attributeTypes[key].includes(node.type))) fail('UNSUPPORTED_CONTENT')
+          attributes(operation.attributes, node.type)
           node.attrs = { ...node.attrs, ...operation.attributes }
+          references(node)
         } else {
           if (!['paragraph', 'heading'].includes(node.type)) fail('INVALID_TARGET')
           if (!string(operation.destinationDocumentId) || !string(operation.label, 512)) fail('INVALID_ARGUMENT')
@@ -353,6 +367,7 @@ export async function planDocumentEdit(source: Page, input: EditDocumentInput, r
     index()
   }
   structure(root) // whole final known structure, including temporarily emptied source containers
+  if (before.kind === 'board' && (root.content?.length !== 1 || root.content[0].type !== 'drawing')) fail('UNSUPPORTED_CONTENT')
   let charsLeft = input.budget?.maxChars ?? LIMITS.textChars, blocksLeft = input.budget?.maxBlocks ?? 100, truncated = false
   const take = (text: string, max: number) => { const all = [...text], value = all.slice(0, max).join(''); if (all.length > max) truncated = true; return value }
   const bounded = changes.map(change => {

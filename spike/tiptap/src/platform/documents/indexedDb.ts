@@ -109,7 +109,8 @@ export class IndexedDbDocumentStorage implements DocumentStorage {
         }
         if (admission) {
           const snapshot = await result(pages.getAll()) as Page[]
-          admission.check(snapshot, record)
+          const origin = record.undoOf ? await result(kv.get(`document-operation/${operationKey(record.scopeId, record.undoOf)}`)) : null
+          admission.check(snapshot, record, origin)
           if (!this.active()) throw new Error('Document storage is unavailable')
         }
         pages.put(record.after)

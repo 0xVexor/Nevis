@@ -1,3 +1,4 @@
+import { editorAttributeSchema } from './editorProfile.ts'
 /** NV-MCP-04: proposed production wire contract. No tool handlers or vault access. */
 export type Schema = Readonly<Record<string, unknown>>
 export const CONTRACT_VERSION = '1' as const
@@ -45,7 +46,7 @@ const content = obj({ type: literal('doc'), content: array(node, LIMITS.maxNodes
 const metadataFields = {
   title: str(512, 0), icon: nullable(str(128)), titleDir: nullable(choice('rtl', 'ltr')),
   tags: { ...array(str(128), 50), uniqueItems: true }, status: nullable(choice('todo', 'doing', 'done')),
-  favorite: bool,
+  favorite: bool, cover: nullable(union(obj({ kind: literal('gradient'), id: str(80) }), obj({ kind: literal('image'), file: { type: 'string', pattern: '^[a-f0-9]{64}$' } }))),
 }
 const metadata = obj(metadataFields, ['title', 'tags', 'favorite'])
 const metadataPatch = { ...obj(metadataFields, []), minProperties: 1 }
@@ -77,7 +78,7 @@ const operations = array(union(
   obj({ kind: literal('move_blocks'), target: targetRange, at: location }),
   obj({ kind: literal('delete_blocks'), target: targetRange }),
   obj({ kind: literal('set_attributes'), target: editRef,
-    attributes: { ...obj({ dir: choice('auto', 'ltr', 'rtl'), level: integer(1, 6), checked: bool, language: nullable(str(80)) }, []), minProperties: 1 } }),
+    attributes: { ...obj(editorAttributeSchema, []), minProperties: 1 } }),
   obj({ kind: literal('set_table_cell'), table: editRef, cell: editRef, blocks: array(inserted, 100, 1) }),
   obj({ kind: literal('insert_table_row'), table: editRef, row: editRef, position: choice('before', 'after'), cells: array(tableCell, 100, 1) }),
   obj({ kind: literal('set_internal_link'), target: editRef, destinationDocumentId: id, label: str(512) }),
@@ -106,6 +107,10 @@ function tool(input: Schema, result: Schema) {
 const write = { documentId: id, expectedRevision: revision, operationId: id }
 
 export const documentToolContracts = Object.freeze({
+  get_editor_capabilities: tool(empty, obj({ profileVersion: integer(1, 1000),
+    nodes: array(obj({ type: str(80), attributes: { type: 'object' }, contentExpression: str(128, 0), example: node }), 100),
+    marks: array(obj({ type: str(80), attributes: { type: 'object' } }), 100), notes: array(str(2048)),
+  })),
   list_documents: tool(obj({
     parentId: nullable(id), recursive: bool, kinds: array(choice('page', 'folder', 'board', 'todo'), 4, 1),
     tags: array(str(128), 50), favorite: bool, ...pageRequest,

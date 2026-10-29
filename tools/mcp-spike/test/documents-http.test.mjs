@@ -9,7 +9,7 @@ import { MemoryDocumentStorage } from '../../../spike/tiptap/src/documents/memor
 import { McpDocumentSession } from '../../../spike/tiptap/src/documents/mcp.ts'
 
 // This fixture exercises the official client against the real handlers. Native HTTP guards have separate Rust tests.
-test('official HTTP client initializes, discovers eight schemas, reads Persian and receives scoped errors', { timeout: 10000 }, async t => {
+test('official HTTP client initializes, discovers nine schemas, reads Persian and receives scoped errors', { timeout: 10000 }, async t => {
   const page = { id: 'note', parentId: null, title: 'فارسی', tags: [], favorite: false, sort: 0, updatedAt: 1, deletedAt: null,
     content: { type: 'doc', attrs: { blockIdentityVersion: 1 }, content: [{ type: 'paragraph', attrs: { blockId: 'p1' }, content: [{ type: 'text', text: 'متن فارسی Java' }] }] } }
   const service = new DocumentService({ storage: new MemoryDocumentStorage('fixed', [page]), host: { now: Date.now, createId: randomUUID, defer: () => () => {}, emit() {}, report() {} } }); await service.init()
@@ -28,7 +28,7 @@ test('official HTTP client initializes, discovers eight schemas, reads Persian a
   const client = new Client({ name: 'nevis-http-check', version: '1' })
   t.after(() => client.close())
   await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.address().port}/mcp`), { requestInit: { headers: { Authorization: 'Bearer fixture-token' } } }))
-  const { tools } = await client.listTools(); assert.equal(tools.length, 8)
+  const { tools } = await client.listTools(); assert.equal(tools.length, 9)
   const result = await client.callTool({ name: 'read_document', arguments: { documentId: 'note', target: { kind: 'full' }, format: 'both' } })
   assert.equal(result.structuredContent.ok, true); assert.ok(JSON.stringify(result.structuredContent).includes('متن فارسی Java'))
   const denied = await client.callTool({ name: 'create_document', arguments: { operationId: 'create', parentId: null, kind: 'page', metadata: { title: 'new', tags: [], favorite: false }, content: { type: 'doc', content: [] } } })

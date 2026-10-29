@@ -14,8 +14,8 @@ const validate = (tool, side, data) => {
   assert.equal(check(data), true, JSON.stringify(check.errors))
 }
 
-test('all eight production contracts compile and have request/success fixtures', () => {
-  assert.equal(Object.keys(validators).length, 8)
+test('all nine production contracts compile and have request/success fixtures', () => {
+  assert.equal(Object.keys(validators).length, 9)
   assert.deepEqual(Object.keys(examples.tools).sort(), Object.keys(validators).sort())
   for (const [name, example] of Object.entries(examples.tools)) {
     validate(name, 'input', example.input)

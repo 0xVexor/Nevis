@@ -24,7 +24,6 @@ const MAX_REQUEST: usize = 266_240;
 const MAX_RESPONSE: usize = 262_144;
 const MAX_PENDING: usize = 8;
 const DEADLINE: Duration = Duration::from_secs(20);
-const KEYRING: &str = "com.vexor.noviq.mcp";
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -170,18 +169,9 @@ impl Host {
     pub fn stop(&self) {
         let session = self.revoke();
         let revoked = session.as_ref().map(|s| s.connection.revision.clone());
-        if let Some(session) = session {
-            if let Ok(entry) = keyring::Entry::new(KEYRING, &session.connection.grant_id) {
-                let _ = entry.delete_credential();
-            }
-        }
         let _ = self.emit("mcp-state", json!({"active":false,"revision":revoked}));
     }
     pub fn enable(self: &Arc<Self>, app_data: &Path, vault_id: &str, policy: Policy) -> Res<Value> {
-        // keyring defaults to a mock backend on targets without a selected native provider.
-        if !cfg!(any(target_os = "macos", target_os = "windows")) {
-            return Err("Operating system credential store unavailable on this platform".into());
-        }
         if !policy.valid() {
             return Err("Invalid connection scope".into());
         }
@@ -223,17 +213,8 @@ impl Host {
             uuid::Uuid::new_v4().simple(),
             uuid::Uuid::new_v4().simple()
         );
-        keyring::Entry::new(KEYRING, &connection.grant_id)
-            .and_then(|entry| entry.set_password(&token))
-            .map_err(|_| "Operating system credential store unavailable")?;
-        if crate::vault::write_atomic(&file, &serde_json::to_vec(&connection).map_err(err)?)
-            .is_err()
-        {
-            if let Ok(entry) = keyring::Entry::new(KEYRING, &connection.grant_id) {
-                let _ = entry.delete_credential();
-            }
-            return Err("Cannot save connection configuration".into());
-        }
+        crate::vault::write_atomic(&file, &serde_json::to_vec(&connection).map_err(err)?)
+            .map_err(|_| "Cannot save connection configuration")?;
         let revision = connection.revision.clone();
         self.inner.lock().map_err(err)?.session = Some(Session {
             connection,
@@ -329,6 +310,53 @@ impl Host {
         if next.difference(&previous).any(|id| !can_read(id)) {
             return Err("Write admission access denied".into());
         }
+        fn resources(page: &Value) -> std::collections::HashSet<String> {
+            let mut result = std::collections::HashSet::new();
+            fn walk(node: &Value, result: &mut std::collections::HashSet<String>) {
+                if node["type"] == "image" {
+                    if let Some(id) = node["attrs"]["src"].as_str().and_then(|src| src.strip_prefix("att:")) {
+                        result.insert(format!("attachment:{id}"));
+                    }
+                }
+                if node["type"] == "drawing" {
+                    for key in ["scene", "preview"] {
+                        if let Some(id) = node["attrs"][key].as_str().filter(|id| !id.is_empty()) {
+                            result.insert(format!("attachment:{id}"));
+                        }
+                    }
+                }
+                if node["type"] == "databaseEmbed" {
+                    if let Some(id) = node["attrs"]["containerId"].as_str() {
+                        result.insert(format!("database:{id}"));
+                    }
+                }
+                if let Some(children) = node["content"].as_array() {
+                    for child in children { walk(child, result); }
+                }
+            }
+            walk(&page["content"], &mut result);
+            if page["cover"]["kind"] == "image" {
+                if let Some(id) = page["cover"]["file"].as_str() { result.insert(format!("attachment:{id}")); }
+            }
+            if let Some(id) = page["dbHost"].as_str() { result.insert(format!("database:{id}")); }
+            result
+        }
+        let previous_resources = resources(before);
+        let mut available_resources: std::collections::HashSet<_> = pages.iter()
+            .filter(|(id, page)| page["deletedAt"].is_null() && can_read(id))
+            .flat_map(|(_, page)| resources(page)).collect();
+        if let Some(operation) = record["undoOf"].as_str() {
+            if let Some(origin) = crate::document_operations::find_locked(root, &connection.grant_id, operation)? {
+                if origin["scopeId"] == connection.grant_id && origin["after"]["id"] == after["id"]
+                    && !origin["before"].is_null() && origin["before"]["content"] == after["content"]
+                    && origin["before"].get("cover") == after.get("cover") {
+                    available_resources.extend(resources(&origin["before"]));
+                }
+            }
+        }
+        if resources(after).difference(&previous_resources).any(|id| !available_resources.contains(id)) {
+            return Err("Write admission access denied".into());
+        }
         let inner = self.inner.lock().map_err(err)?;
         if !inner.session.as_ref().is_some_and(|s| {
             s.connection.revision == admission.revision && s.connection.vault_id == vault_id
@@ -349,9 +377,8 @@ impl Host {
         let inner = self.inner.lock().map_err(err)?;
         let session = inner.session.as_ref().ok_or("Connection disabled")?;
         // Explicit local UI action only. Never expose credentials in status or protocol responses.
-        keyring::Entry::new(KEYRING, &session.connection.grant_id)
-            .and_then(|entry| entry.get_password())
-            .map_err(|_| "Operating system credential store unavailable".into())
+        // The listener already owns this short-lived secret. It never survives a disconnect.
+        Ok(session.token.clone())
     }
     pub fn reply(&self, request_id: &str, revision: &str, result: Value) -> Res<()> {
         if result.to_string().len() > MAX_RESPONSE {
@@ -683,6 +710,27 @@ mod tests {
     use super::*;
     use reqwest::blocking::Client;
     const TOKEN: &str = "fixture-secret";
+    #[test]
+    fn temporary_credentials_rotate_and_never_leave_session_memory() {
+        let host = Arc::new(Host::default());
+        host.set_bridge(Arc::new(|_, _| Ok(())), Arc::new(|| Some("vault".into())));
+        host.ready("vault", "owner").unwrap();
+        let directory = std::env::temp_dir().join(format!("nevis-mcp-memory-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+        let policy = Policy { whole_vault: true, root_ids: vec![], excluded_ids: vec![], allow_writes: false };
+        let first = host.enable(&directory, "vault", policy.clone()).unwrap();
+        let token = host.credential().unwrap();
+        assert_eq!(token.len(), 64);
+        assert!(!first.to_string().contains(&token));
+        assert!(!fs::read_to_string(config_path(&directory, "vault")).unwrap().contains(&token));
+        let second = host.enable(&directory, "vault", policy).unwrap();
+        assert_eq!(first["connection"]["grantId"], second["connection"]["grantId"]);
+        assert_ne!(token, host.credential().unwrap());
+        host.stop();
+        assert!(host.credential().is_err());
+        assert_eq!(host.status().unwrap()["active"], false);
+        fs::remove_dir_all(directory).unwrap();
+    }
     fn fixture(
         reply: bool,
         deadline: Duration,
