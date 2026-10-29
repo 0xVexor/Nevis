@@ -216,6 +216,9 @@
     "sync::drive::tests::streaming_media_128mib_capture_cold_restore_and_restart_avoid_bundle_bodies": "ok",
     "sync::drive::tests::benchmark_1000_pages_1000_assets_cold_restore": "ok",
     "sync::drive::schedule::tests::repeated_quota_errors_back_off_across_restarts_and_reset_after_success": "ok",
-    "sync::drive::auth::tests::manually_entered_desktop_secret_is_bounded_and_errors_never_echo_input": "ok"
+    "sync::drive::auth::tests::account_status_is_single_flight_and_stale_reads_cannot_restore_logged_out_identity": "ok",
+    "sync::drive::auth::tests::customer_client_needs_no_per_user_secret_or_keyring_setup": "ok",
+    "sync::drive::auth::tests::manually_entered_desktop_secret_is_bounded_and_errors_never_echo_input": "ok",
+    "google_build_config::tests::customer_build_requires_publisher_configuration_without_echoing_it": "ok"
   }
 }

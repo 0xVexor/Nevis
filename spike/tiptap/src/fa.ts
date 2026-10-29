@@ -1,5 +1,9 @@
 // English → Persian UI strings (see i18n.ts). Generated once from the original Persian UI, edit freely.
 export const FA: Record<string, string> = {
+  "Checking secure account storage…": "در حال بررسی مخزن امن حساب…",
+
+  "Google sign-in is unavailable in this build. Please install an updated version.": "ورود با گوگل در این نسخه در دسترس نیست. لطفاً نسخهٔ به‌روز برنامه را نصب کنید.",
+
   "Enter saved client secret": "وارد کردن Secret ذخیره‌شده",
   "Desktop client secret": "Secret کلاینت دسکتاپ",
   "Save client secret securely": "ذخیرهٔ امن Secret",

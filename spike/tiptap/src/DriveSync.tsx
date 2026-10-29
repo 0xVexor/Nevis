@@ -12,7 +12,7 @@ import './styles/github-sync.css'
 const driveAction = <T,>(action: string, args: Record<string, unknown> = {}) => invoke<T>('drive_action', { action, args })
 interface DriveStatus {
   driveSyncEnabled: boolean; releaseReady: boolean; currentVaultId: string | null
-  auth: { configured: boolean; signedIn: boolean; email?: string; subject?: string }
+  auth: { checking?: boolean; error?: string; developerSetup?: boolean; configured: boolean; signedIn: boolean; email?: string; subject?: string }
   binding: { vaultId: string; folderId: string; rootId: string; paused: boolean; backup: string } | null
   settingsPolicy?: SettingsPolicy
   pending: number; lastVerifiedAt: number; metrics: Record<string, unknown> | null; gc: Record<string, unknown> | null
@@ -35,7 +35,7 @@ const explain = (e: unknown) => {
     oauth_scope_rejected: 'Google rejected the requested scopes. Check the project Data Access configuration.',
     oauth_request_rejected: 'Google rejected the sign-in request. Check the Desktop OAuth configuration.',
     oauth_cancelled: 'Google sign-in was cancelled. Local files and pending changes were kept.',
-    oauth_not_configured: 'Google OAuth is not configured in this build. See GOOGLE_SETUP.md.',
+    oauth_not_configured: 'Google sign-in is unavailable in this build. Please install an updated version.',
     feature_disabled: 'Drive sync is disabled in this build because release checks are incomplete.',
     sign_in_required: 'Google authorization expired or was revoked. Sign in again. Pending changes are kept.',
     account_mismatch: 'This workspace belongs to another Google account. Reconnect with its original account.',
@@ -126,17 +126,18 @@ export function DriveAccountDialog({ onClose, onGitHub }: { onClose: () => void;
         {error && <p className="acct-err" role="alert">{error}</p>}{note && <p role="status">{note}</p>}
         {!st ? <p>{t('Loading…')}</p> : <>
           {!st.driveSyncEnabled && <p>{t('Drive sync is disabled in this build because release checks are incomplete.')}</p>}
-          {!st.auth.configured && <p>{t('Google OAuth is not configured in this build. See GOOGLE_SETUP.md.')}</p>}
-          <p>{st.auth.email ?? t('Signed out')}</p>
+          {!st.auth.configured && <p>{t('Google sign-in is unavailable in this build. Please install an updated version.')}</p>}
+          <p>{st.auth.checking ? t('Checking secure account storage…') : st.auth.email ?? t('Signed out')}</p>
+          {st.auth.error && <p className="acct-err" role="alert">{explain(st.auth.error)}</p>}
           <div className="acct-row">
-            <button disabled={busy || waiting || !st.driveSyncEnabled} onClick={() => void run(async () => {
+            {st.auth.developerSetup && <button disabled={busy || waiting || !st.driveSyncEnabled} onClick={() => void run(async () => {
               const path = await chooseFolder({ multiple: false, directory: false, filters: [{ name: 'Google Desktop OAuth', extensions: ['json'] }] })
               if (typeof path === 'string') { await driveAction('import-client', { path }); setNote(t('Desktop OAuth credentials saved in the operating system credential store. Sign in again.')) }
-            })}>{t('Import Desktop OAuth JSON')}</button>
-            <button disabled={busy || waiting || !st.driveSyncEnabled || !st.auth.configured} onClick={() => void run(async () => { await driveAction('begin'); setWaiting(true) })}>{st.auth.signedIn ? t('Reconnect Google') : t('Sign in with Google')}</button>
+            })}>{t('Import Desktop OAuth JSON')}</button>}
+            <button disabled={busy || waiting || st.auth.checking || !st.driveSyncEnabled || !st.auth.configured} onClick={() => void run(async () => { await driveAction('begin'); setWaiting(true) })}>{st.auth.signedIn ? t('Reconnect Google') : t('Sign in with Google')}</button>
             {waiting && <button onClick={() => void run(async () => { await driveAction('cancel'); setWaiting(false) })}>{t('Cancel')}</button>}
           </div>
-          <details onToggle={event => { if (!event.currentTarget.open && clientSecretInput.current) clientSecretInput.current.value = '' }}>
+          {st.auth.developerSetup && <details onToggle={event => { if (!event.currentTarget.open && clientSecretInput.current) clientSecretInput.current.value = '' }}>
             <summary>{t('Enter saved client secret')}</summary>
             <p>{t('Use the Desktop client secret you already saved. Google no longer offers downloads of existing secrets. This value is saved only in the operating system credential store.')}</p>
             <label htmlFor="drive-client-secret">{t('Desktop client secret')}</label>
@@ -147,7 +148,7 @@ export function DriveAccountDialog({ onClose, onGitHub }: { onClose: () => void;
               await driveAction('configure-client', { secret })
               setNote(t('Desktop OAuth credentials saved in the operating system credential store. Sign in again.'))
             })}>{t('Save client secret securely')}</button>
-          </details>
+          </details>}
           {st.auth.signedIn && <>
             <details><summary>{t('Choose or inspect a Drive root')}</summary>
               <p>{t('Choose a verified Nevis folder when more than one exists. This choice never moves connected workspaces or deletes folders.')}</p>

@@ -13,6 +13,30 @@ use std::{
     },
     time::{Duration, Instant},
 };
+mod publisher {
+    include!(concat!(env!("OUT_DIR"), "/google_desktop_client.rs"));
+}
+pub fn developer_setup() -> bool {
+    publisher::DEVELOPER_SETUP
+}
+fn configured() -> bool {
+    !client_id().is_empty()
+        && (!publisher::DESKTOP_CLIENT_PARAMETER.is_empty() || developer_setup())
+}
+fn select_client_parameter(
+    bundled: &str,
+    developer: bool,
+    local: impl FnOnce() -> Res<String>,
+) -> Res<String> {
+    if !bundled.is_empty() {
+        return Ok(bundled.to_string());
+    }
+    if developer {
+        local()
+    } else {
+        Err("DRIVE:oauth_not_configured".into())
+    }
+}
 const SCOPE: &str = "openid email https://www.googleapis.com/auth/drive.file";
 struct Flow {
     listener: TcpListener,
@@ -66,6 +90,9 @@ fn validate_client_secret(secret: &str) -> Res<&str> {
 }
 /// Explicit user setup only. Never persist Desktop configuration in Vault/app-data JSON.
 pub fn configure_client(secret: &str) -> Res<Value> {
+    if !developer_setup() {
+        return Err("DRIVE:developer_setup_disabled".into());
+    }
     if client_id().is_empty() {
         return Err("DRIVE:oauth_not_configured".into());
     }
@@ -88,6 +115,9 @@ fn parse_client(raw: &[u8], expected: &str) -> Res<String> {
         .ok_or("DRIVE:invalid_client_file".into())
 }
 pub fn import_client(path: &std::path::Path) -> Res<Value> {
+    if !developer_setup() {
+        return Err("DRIVE:developer_setup_disabled".into());
+    }
     let file = std::fs::File::open(path).map_err(|_| "DRIVE:invalid_client_file")?;
     let mut raw = Vec::new();
     file.take(65537)
@@ -100,10 +130,16 @@ pub fn import_client(path: &std::path::Path) -> Res<Value> {
     configure_client(&secret)
 }
 fn client_secret() -> Res<String> {
-    client_entry()?.get_password().map_err(|e| match e {
-        keyring::Error::NoEntry => "DRIVE:desktop_credentials_required".into(),
-        _ => "DRIVE:secure_storage_unavailable".into(),
-    })
+    select_client_parameter(
+        publisher::DESKTOP_CLIENT_PARAMETER,
+        developer_setup(),
+        || {
+            client_entry()?.get_password().map_err(|e| match e {
+                keyring::Error::NoEntry => "DRIVE:desktop_credentials_required".into(),
+                _ => "DRIVE:secure_storage_unavailable".into(),
+            })
+        },
+    )
 }
 fn load() -> Res<Credential> {
     let s = entry()?.get_password().map_err(|error| match error {
@@ -115,15 +151,73 @@ fn load() -> Res<Credential> {
 fn save(c: &Credential) -> Res<()> {
     entry()?
         .set_password(&serde_json::to_string(c).map_err(|_| "DRIVE:credential_encoding")?)
-        .map_err(|_| "DRIVE:secure_storage_unavailable".into())
+        .map_err(|_| "DRIVE:secure_storage_unavailable")?;
+    update_account_status(stored_account(c));
+    Ok(())
+}
+#[derive(Default)]
+struct AccountStatusCache {
+    generation: u64,
+    pending: bool,
+    value: Option<Value>,
+}
+impl AccountStatusCache {
+    fn start(&mut self) -> Option<u64> {
+        if self.pending || self.value.is_some() {
+            return None;
+        }
+        self.pending = true;
+        Some(self.generation)
+    }
+    fn finish(&mut self, generation: u64, value: Value) {
+        if self.generation == generation && self.pending {
+            self.pending = false;
+            self.value = Some(value);
+        }
+    }
+    fn replace(&mut self, value: Value) {
+        self.generation = self.generation.wrapping_add(1);
+        self.pending = false;
+        self.value = Some(value);
+    }
+}
+static ACCOUNT_STATUS: std::sync::LazyLock<Mutex<AccountStatusCache>> =
+    std::sync::LazyLock::new(|| Mutex::new(AccountStatusCache::default()));
+fn stored_account(c: &Credential) -> Value {
+    json!({"signedIn":true,"subject":c.subject,"email":c.email,"checking":false})
+}
+fn update_account_status(value: Value) {
+    if let Ok(mut cache) = ACCOUNT_STATUS.lock() {
+        cache.replace(value);
+    }
 }
 pub fn status() -> Value {
-    match load() {
-        Ok(c) => {
-            json!({"signedIn":true,"subject":c.subject,"email":c.email,"configured":!client_id().is_empty()})
+    let mut value = match ACCOUNT_STATUS.lock() {
+        Ok(mut cache) => {
+            if let Some(generation) = cache.start() {
+                std::thread::spawn(move || {
+                    let value = match load() {
+                        Ok(c) => stored_account(&c),
+                        Err(error) if error == "DRIVE:sign_in_required" => {
+                            json!({"signedIn":false,"checking":false})
+                        }
+                        Err(error) => json!({"signedIn":false,"checking":false,"error":error}),
+                    };
+                    if let Ok(mut cache) = ACCOUNT_STATUS.lock() {
+                        cache.finish(generation, value);
+                    }
+                });
+            }
+            cache
+                .value
+                .clone()
+                .unwrap_or_else(|| json!({"signedIn":false,"checking":true}))
         }
-        Err(_) => json!({"signedIn":false,"configured":!client_id().is_empty()}),
-    }
+        Err(_) => json!({"signedIn":false,"checking":false,"error":"DRIVE:auth_lock"}),
+    };
+    value["configured"] = json!(configured());
+    value["developerSetup"] = json!(developer_setup());
+    value
 }
 pub fn subject() -> Res<String> {
     Ok(load()?.subject)
@@ -131,7 +225,10 @@ pub fn subject() -> Res<String> {
 pub fn disconnect() -> Res<()> {
     cancel();
     match entry()?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Ok(()) | Err(keyring::Error::NoEntry) => {
+            update_account_status(json!({"signedIn":false,"checking":false}));
+            Ok(())
+        }
         Err(_) => Err("DRIVE:secure_storage_unavailable".into()),
     }
 }
@@ -142,7 +239,7 @@ pub fn cancel() {
     }
 }
 pub fn begin() -> Res<Value> {
-    if client_id().is_empty() {
+    if !configured() {
         return Err("DRIVE:oauth_not_configured".into());
     }
     client_secret()?;
@@ -404,6 +501,57 @@ pub fn access(force: bool) -> Res<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn account_status_is_single_flight_and_stale_reads_cannot_restore_logged_out_identity() {
+        let mut cache = AccountStatusCache::default();
+        let generation = cache.start().unwrap();
+        assert!(cache.start().is_none());
+        cache.replace(json!({"signedIn":false}));
+        cache.finish(generation, json!({"signedIn":true}));
+        assert_eq!(cache.value.as_ref().unwrap()["signedIn"], false);
+        assert!(cache.start().is_none());
+        let mut fresh = AccountStatusCache::default();
+        let generation = fresh.start().unwrap();
+        fresh.finish(generation, json!({"signedIn":true}));
+        assert_eq!(fresh.value.unwrap()["signedIn"], true);
+    }
+    #[test]
+    fn customer_client_needs_no_per_user_secret_or_keyring_setup() {
+        if !developer_setup() {
+            assert_eq!(
+                configure_client("dummy-client-value").unwrap_err(),
+                "DRIVE:developer_setup_disabled"
+            );
+            assert_eq!(
+                import_client(std::path::Path::new("must-not-read-this-file")).unwrap_err(),
+                "DRIVE:developer_setup_disabled"
+            );
+        }
+        assert_eq!(
+            select_client_parameter("dummy-publisher-value", false, || panic!(
+                "must not read developer keyring"
+            ))
+            .unwrap(),
+            "dummy-publisher-value"
+        );
+        assert_eq!(
+            select_client_parameter("", false, || panic!("customer must fail closed")).unwrap_err(),
+            "DRIVE:oauth_not_configured"
+        );
+        assert_eq!(
+            select_client_parameter("", true, || Ok("saved-developer-value".into())).unwrap(),
+            "saved-developer-value"
+        );
+        assert_eq!(
+            select_client_parameter(
+                "dummy-publisher-value",
+                true,
+                || Ok("obsolete-value".into())
+            )
+            .unwrap(),
+            "dummy-publisher-value"
+        );
+    }
     #[test]
     fn manually_entered_desktop_secret_is_bounded_and_errors_never_echo_input() {
         assert_eq!(

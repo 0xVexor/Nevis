@@ -87,3 +87,8 @@ Worktree root: `/Users/wrangler/.codex/worktrees/google-drive-sync/Nevis`. Inclu
 - `spike/tiptap/tests/drive-settings-policy.test.mjs`
 
 - `docs/sync/drive/validation/oauth-entry-regressions.txt`
+
+- `docs/sync/drive/validation/publisher-auth-tests.txt`
+- `docs/sync/drive/validation/publisher-config-tests.txt`
+
+- `docs/sync/drive/validation/publisher-package-check.txt`

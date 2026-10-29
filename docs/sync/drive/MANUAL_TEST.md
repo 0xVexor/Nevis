@@ -107,16 +107,12 @@
 2. یک پوشهٔ موجودِ نامرتبط با همان نام قرار دهید؛ برنامه باید از جایگزین‌کردن آن امتناع کند.
 3. هنگام ویرایش Drive، پنجره را عادی ببندید و باز کنید؛ local save باید حفظ شده باشد. انتشار هنگام بسته‌شدن best effort است و تضمین ابری ندارد.
 
-## اصلاح ورود برای Client ID فعلی
+## ورود در نسخهٔ دارای تنظیمات سازنده
 
-1. نیازی به تغییر Console، ساخت client جدید یا دانلود فایل نیست، چون Secret اصلی قبلاً نگه داشته شده است.
-2. Preview قبلی را کاملاً ببندید و نسخهٔ دارای «وارد کردن Secret ذخیره‌شده» را باز کنید.
-3. در Google Drive Sync بخش Enter saved client secret را باز کنید؛ فقط مقدار Secret را در فیلد مخفی وارد کنید و Save client secret securely را بزنید.
-4. پس از پیام ذخیرهٔ موفق، Sign in with Google را بزنید و مرحلهٔ مرورگر را خودتان کامل کنید. Secret یا توکن را دوباره در چت نفرستید.
-5. فعلاً فقط وضعیت Signed in و ایمیل را بررسی کنید؛ آزمون انتقال تنها با Vault آزمایشی انجام شود. اگر JSON اصلی را از قبل دارید، وارد کردن آن نیز همچنان پشتیبانی می‌شود.
+1. نسخهٔ قبلی Preview را کاملاً ببندید و نسخهٔ جدید دارای تنظیمات سازنده را باز کنید.
+2. اگر قبلاً وارد شده‌اید، ایمیل/وضعیت ورود باید حفظ شده باشد؛ ورود Secret یا JSON نباید نمایش داده شود.
+3. روی نصب تازه، فقط Sign in with Google را بزنید و رضایت مرورگر را کامل کنید. هیچ مرحلهٔ Google Cloud برای کاربر وجود ندارد.
+4. برنامه را ببندید و دوباره باز کنید؛ وضعیت ورود باید از مخزن امن سیستم خوانده شود. پس از انقضای access token، refresh باید بدون وارد کردن Secret انجام شود. این موارد نیاز به آزمون واقعی دارند.
+5. اگر ناشر build را بدون تنظیمات کامل بسازد، ساخت نسخهٔ فعال Drive باید خطا دهد؛ کاربر نباید برای رفع مشکل بسته‌بندی به Google Cloud هدایت شود.
 
-در آزمون بعدی دو دستگاه، رابطهٔ one با دو مقصد آفلاین متفاوت بسازید و Database link conflicts → preview → apply را بررسی کنید. هر دو نامزد و شمارش لینک‌های نگه‌داشته/آرشیوشده باید قبل از تصمیم دیده شوند. rootهای تکراری را با ID معتبر انتخاب کنید؛ binding فعال نباید خاموش به root دیگری منتقل شود. History preview عنوان‌های نمونه دارد و صحت تمام فایل‌ها را تا restore ادعا نمی‌کند.
-
-## Existing Desktop secret cannot be downloaded (user Console verified)
-
-The user's current Google Cloud client detail page explicitly says viewing and downloading existing secrets is no longer available. Earlier instructions to download the existing client's JSON were incorrect for that page. No new client or secret rotation is needed if the original secret was saved. In the corrected Preview, open **Enter saved client secret**, paste only that saved value into the password field, select **Save client secret securely**, then sign in. The field is uncontrolled/transient, is cleared before the native call and when collapsed/unmounted, and is never put in localStorage/Vault data. The native command bounds/validates input, rejects a client ID or extra text, and stores it only in the same client-scoped OS keyring item used by JSON import. If a credential JSON was already downloaded earlier, import remains supported. No Google-side secret/client change was performed by this correction.
+ورود قبلی کاربر واقعاً موفق گزارش شد. تست انتقال دو دستگاه را فقط با Vault آزمایشی ادامه دهید. تعارض رابطهٔ one را با دو مقصد آفلاین، preview تصمیم، و حفظ نامزدهای آرشیوشده بررسی کنید. هیچ Secret، callback URL یا token را در گزارش تست نفرستید.

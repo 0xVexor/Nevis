@@ -1,19 +1,20 @@
 {
   "date": "2026-10-29",
   "nativeUnique": {
-    "passed": 200,
+    "passed": 203,
     "failed": 0,
     "ignored": 11
   },
-  "drivePassed": 95,
+  "drivePassed": 97,
   "javascriptPassed": 227,
   "javascriptFailed": 0,
-  "liveGoogle": "PRIOR_SIGN_IN_FAILED_MISSING_CLIENT_SECRET; CORRECTED_BUILD_AWAITING_USER_RETEST",
+  "liveGoogle": "USER_REPORTED_SIGN_IN_PASS; PUBLISHER_BUILD_CLEAN_INSTALL_REFRESH_AND_CROSS_DEVICE_NOT_RUN",
   "windows": "NOT_RUN",
   "productionReady": false,
   "acceptance": {
     "PASS": 46,
     "FAIL": 0,
     "NOT_RUN": 58
-  }
+  },
+  "publisherBuildGui": "SIGNED_IN_IDENTITY_RELOADED; NO_SECRET_JSON_CONTROLS; SINGLE_FLIGHT_STATUS_REGRESSION_PASS"
 }

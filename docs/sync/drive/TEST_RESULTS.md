@@ -7,7 +7,7 @@
 | Full corrected native suite | PASS | 198 passed, 0 failed, 11 ignored; 132.65s |
 | Final durable exponential quota-backoff regression | PASS | 5 schedule tests, including 1 new test, after the full suite |
 | Final root-display hardening regression | PASS | 3 root tests |
-| Unique native results across final logs | PASS | 200 passed, 0 failed, 11 ignored; 95 Drive tests, no ignored Drive tests |
+| Unique native results across final logs | PASS | 203 passed, 0 failed, 11 ignored; 97 Drive tests, no ignored Drive tests |
 | `npm run test:layout` | PASS | 43 passed, including editor identity and settings policy |
 | `npm run test:db` | PASS | 173 passed |
 | `npm run test:direction` | PASS | 4 passed |
@@ -19,9 +19,10 @@
 | macOS ARM64 debug app | PASS | com.vexor.nevis.drive-preview, approximately 86.65MiB, independent data/credential identity |
 | Initial native setup smoke | PASS, limited | Missing client, disabled sign-in, Persian/RTL, Escape, GitHub access; earlier screenshot retained |
 | Corrected OAuth Preview setup smoke | PASS, limited | Full-path CUA launch, welcome → Drive dialog, Import Desktop OAuth JSON and sign-in visible; no real Vault touched |
-| Native GUI local-save / connected conflict/history flows | NOT_RUN | Earlier OS picker automation timed out; real configured client; successful connected authorization still unverified |
-| Actual Google OAuth | FAILED in prior build; corrected build NOT_RUN | Live diagnostic returned client_secret is missing; corrected native import/keychain exchange awaits user retest |
-| Actual Keychain credential lifecycle / cross-device drive.file | NOT_RUN | User authorization and real two-device verification required |
+| Native GUI local-save / connected conflict/history flows | NOT_RUN | Earlier OS picker automation timed out; real configured client; real sign-in user-reported PASS; connected conflict/history workflows still unverified |
+| Actual Google OAuth | User-reported PASS on developer-configured Preview | Publisher-configured fresh-install sign-in/refresh remain unverified |
+| Stored-account reload | PASS, limited | Previously signed-in identity reloaded in the publisher-configured GUI |
+| Actual refresh/revocation / cross-device drive.file | NOT_RUN | Real lifecycle and two-device verification required |
 | Windows packaging/startup; signed/notarized release | NOT_RUN | macOS host/debug package only |
 
 The 11 ignored tests are one explicit GitHub public diagnostic and ten legacy Hub E2E tests needing their external server. They are not passes.
@@ -76,4 +77,12 @@ The journal fault uses a directory at the rename destination, not an actual full
 
 ## Saved Desktop secret entry correction
 
-After the user's Console screenshot showed existing-secret downloads are unavailable, added direct password entry into the existing client-scoped OS keyring. All 5 OAuth tests passed, including the new manual-input bounds/redaction assertion. Combined unique results: **200 native passes, 0 failures, 11 ignored; 95 Drive passes**. No complete-suite rerun is claimed after this localized auth/UI correction. TypeScript/Vite and lint passed again; actual keyring save and live sign-in still require the user's action. No real client secret was entered by automation.
+After the user's Console screenshot showed existing-secret downloads are unavailable, added direct password entry into the existing client-scoped OS keyring. All 5 OAuth tests passed, including the new manual-input bounds/redaction assertion. Combined unique results: **200 native passes, 0 failures, 11 ignored; 95 Drive passes**. No complete-suite rerun is claimed after this localized auth/UI correction. TypeScript/Vite and lint passed again; the user subsequently confirmed successful real sign-in. No real client secret was entered by automation.
+
+## Publisher-configured customer UX
+
+User reported successful real sign-in using the prior developer-configured Preview. Customer builds now bundle the publisher's Desktop public-client parameter; per-user JSON/secret setup is hidden and its IPC commands are gated by explicit developer mode. Enabled customer builds require complete publisher configuration. Seven auth tests and two build-config tests passed, adding three unique tests: **203 unique native passes, 0 failures, 11 ignored; 97 Drive passes** across the observed logs. TypeScript/Vite, lint and macOS packaging passed again. Packaged ID/parameter presence and build-output redaction were verified without printing the value. Fresh-install Google sign-in, real refresh and cross-device transfer remain pending; no full suite rerun after this localized packaging/auth change is claimed.
+
+The publisher-build GUI smoke encountered an OS Keychain read that did not complete. A process sample showed repeated status jobs blocked inside SecKeychainFindGenericPassword. Status was changed to one asynchronous read with a generation-protected identity cache; a regression covers single-flight and stale read completion after logout. Native auth tests: 7/7. Final GUI completion/retained-session validation is still pending; neither OS permissions nor release signing was bypassed. The build/configuration fix does not claim those gates passed.
+
+Later in the publisher-build GUI smoke, the Keychain read completed: the previously signed-in identity and Reconnect Google were visible, with no Secret or JSON setup controls. No Vault was open. This verifies a basic stored-account reload and the normal customer UI in that build; it does not verify automatic token refresh or two-device transfer. The following single-flight status change has unit regression coverage; no full connected GUI certification is claimed.
