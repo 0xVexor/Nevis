@@ -28,7 +28,7 @@ class Element extends Surface {
   hidden = false
   style = { display: '', setProperty() {} }
   classes = new Set()
-  classList = { add: (...names) => names.forEach((name) => this.classes.add(name)), remove: (...names) => names.forEach((name) => this.classes.delete(name)), toggle: (name, on) => on ? this.classes.add(name) : this.classes.delete(name) }
+  classList = { contains: (name) => this.classes.has(name), add: (...names) => names.forEach((name) => this.classes.add(name)), remove: (...names) => names.forEach((name) => this.classes.delete(name)), toggle: (name, on) => on ? this.classes.add(name) : this.classes.delete(name) }
   rect = { left: 100, right: 900, top: 0, bottom: 32, width: 800, height: 32 }
   offsetWidth = 120
   offsetHeight = 30
