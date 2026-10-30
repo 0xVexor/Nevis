@@ -17,7 +17,7 @@ const TABS: { id: Tab; label: string; title: string; hint: string; icon: ReactNo
   { id: 'editor', label: 'Editor & font', title: 'Editor & font', hint: 'The typeface, size and color of your page text.', icon: <Ic.Type /> },
   { id: 'language', label: 'Language', title: 'Language & layout', hint: 'The interface language and which side things sit on.', icon: <Ic.Globe /> },
   { id: 'general', label: 'General', title: 'General', hint: 'Reminders and how files are stored.', icon: <Ic.Settings /> },
-  { id: 'data', label: 'Data & backup', title: 'Data & backup', hint: 'Import, export, back up and sync your notes.', icon: <Ic.Archive /> },
+  { id: 'data', label: 'Data & backup', title: 'Data & backup', hint: 'Import, export and back up your notes.', icon: <Ic.Archive /> },
   { id: 'database', label: 'Database', title: 'Database', hint: 'Calendar defaults, maps and connected services.', icon: <Ic.Table /> },
   { id: 'shortcuts', label: 'Shortcuts', title: 'Keyboard shortcuts', hint: 'Everything you can do without leaving the keyboard.', icon: <Ic.Keyboard /> },
   { id: 'about', label: 'About', title: 'About', hint: 'What this app is.', icon: <Ic.Info /> },
@@ -321,7 +321,7 @@ function General() {
   return (
     <Card icon={<Ic.Settings />} title={t('Reminders & files')}>
       <Toggle label={t('Flashcard reminders')} hint={t('Notifies you when cards are due and the app is in the background.')} on={s.cardReminders} onChange={(cardReminders) => updateSettings({ cardReminders })} />
-      <Toggle label={t('Compress large images')} hint={t('Shrinks big pictures when you add them, so the vault and sync stay light.')} on={s.compressImages} onChange={(compressImages) => updateSettings({ compressImages })} />
+      <Toggle label={t('Compress large images')} hint={t('Shrinks big pictures when you add them, so the vault stays light.')} on={s.compressImages} onChange={(compressImages) => updateSettings({ compressImages })} />
     </Card>
   )
 }
@@ -373,8 +373,6 @@ export interface DataActions {
   restore: () => void
   autoBackup: () => void
   workspaces: () => void
-  account?: () => void
-  syncNow?: () => void
 }
 
 const Action = ({ icon, label, hint, onClick }: { icon: ReactNode; label: string; hint?: string; onClick: () => void }) => (
@@ -401,10 +399,8 @@ function DataTab({ a }: { a: DataActions }) {
         <Action icon={<Ic.Upload />} label={t('Restore from backup…')} onClick={a.restore} />
         <Action icon={<Ic.Save />} label={t('Automatic backup to folder…')} onClick={a.autoBackup} />
       </Card>
-      <Card icon={<Ic.Cloud />} title={t('Workspaces')}>
-        {a.account && <Action icon={<Ic.Cloud />} label={t('Account and sync…')} hint={t('GitHub private repository, devices and conflicts')} onClick={a.account} />}
-        {a.syncNow && <Action icon={<Ic.Cloud />} label={t('Sync now')} onClick={a.syncNow} />}
-        <Action icon={<Ic.Layers />} label={t('Workspaces and sync…')} onClick={a.workspaces} />
+      <Card icon={<Ic.Layers />} title={t('Workspaces')}>
+        <Action icon={<Ic.Layers />} label={t('Workspaces…')} onClick={a.workspaces} />
       </Card>
     </>
   )
@@ -418,7 +414,7 @@ function About() {
           <span className="sx-logo">
             <Ic.Logo size={34} />
           </span>
-          <p>{t('Your notes, checklists and drawings in one calm place. Everything stays on your device unless you choose to sync it.')}</p>
+          <p>{t('Your notes, checklists and drawings in one calm place. Everything stays on your device.')}</p>
           <small>{t('Version {version}', { version: appPackage.version })}</small>
           <small>{t('Created by')} Vexor</small>
         </div>
