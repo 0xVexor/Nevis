@@ -16,6 +16,8 @@ export type RecordWrite = {
 export type PageWrite = {
   id: Id
   baseRevision: number
+  /** Full page observed when the batch was prepared, or null for a new page. */
+  before?: PageLike | null
   after: PageLike | null
 }
 
@@ -68,4 +70,6 @@ export interface PageHost {
   adopt(upserts: PageLike[], removed: Id[]): void
   /** wait until pending page writes reached the store, so revisions in memory and on disk agree before a batch is built */
   flush?(): Promise<void>
+  /** Prevent live editor/repository edits until durable publication finishes. */
+  reserveCommit?(): Promise<() => void>
 }

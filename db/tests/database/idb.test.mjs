@@ -104,6 +104,23 @@ test('IDB: a stale tab is refused (REVISION_CONFLICT) instead of overwriting, th
   assert.equal(b.state.get('view', f.viewId).name, 'from B')
 })
 
+test('IDB: database page writes reject a same-revision change from another writer', async () => {
+  const { h, open } = idbHarness(dbName())
+  const f = await seedFixture(h)
+  const db = await open()
+  const current = (await pagesFromIdb(open)).find(page => page.id === 'T1')
+  const external = { ...current, title: 'external change' }
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction('pages', 'readwrite')
+    tx.objectStore('pages').put(external)
+    tx.oncomplete = resolve
+    tx.onabort = () => reject(tx.error)
+  })
+  await assert.rejects(h.one('row.patch', { pageId: 'T1', cellChanges: { [f.cost]: { kind: 'number', value: 99 } } }),
+    error => error.code === 'REVISION_CONFLICT')
+  assert.deepEqual((await pagesFromIdb(open)).find(page => page.id === 'T1'), external)
+})
+
 test('IDB upgrade v1 -> v2 keeps existing pages and adds the database stores', async () => {
   const name = dbName()
   const v1 = await new Promise((resolve, reject) => {

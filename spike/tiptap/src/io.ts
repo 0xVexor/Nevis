@@ -1,5 +1,4 @@
-import { Editor } from '@tiptap/core'
-import { extensions } from './editor/extensions'
+import { htmlToDoc } from './editor/htmlToDoc'
 import { markdownToHtml } from './editor/markdownPaste'
 import { toMarkdown } from './markdown'
 import { allFiles, putFile } from './attachments'
@@ -11,13 +10,8 @@ import type { Page, PageStatus } from './repo'
 import { t } from './i18n'
 
 
-/** HTML -> ProseMirror JSON using the real schema, without mounting anything. */
-function htmlToDoc(html: string): any {
-  const ed = new Editor({ extensions, content: html })
-  const json = ed.getJSON()
-  ed.destroy()
-  return json
-}
+/** Markdown -> top-level editor block nodes, for tools that write documents from plain text. */
+export const markdownToNodes = (md: string): any[] => htmlToDoc(markdownToHtml(md)).content ?? []
 
 /** Opens a native file picker and resolves with the chosen files ([] if cancelled). */
 export function pickFiles(accept: string, multiple = false): Promise<File[]> {

@@ -1,0 +1,178 @@
+{
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "client": "official MCP TypeScript SDK 2.4.0",
+    "transport": "packaged Tauri HTTP -> webview -> native persistence",
+    "syntheticFixture": true
+  },
+  "calls": [
+    {
+      "name": "list_documents",
+      "durationMs": 139.95,
+      "returnedBytes": 1428,
+      "ok": true
+    },
+    {
+      "name": "search_documents",
+      "durationMs": 13.36,
+      "returnedBytes": 1066,
+      "ok": true
+    },
+    {
+      "name": "read_document",
+      "durationMs": 17.67,
+      "returnedBytes": 2138,
+      "ok": true
+    },
+    {
+      "name": "read_document",
+      "durationMs": 13.46,
+      "returnedBytes": 5632,
+      "ok": true
+    },
+    {
+      "name": "read_document",
+      "durationMs": 11.11,
+      "returnedBytes": 267,
+      "ok": false
+    },
+    {
+      "name": "edit_document",
+      "durationMs": 31.01,
+      "returnedBytes": 1404,
+      "ok": true
+    },
+    {
+      "name": "edit_document",
+      "durationMs": 92.17,
+      "returnedBytes": 4604,
+      "ok": true
+    },
+    {
+      "name": "edit_document",
+      "durationMs": 19.44,
+      "returnedBytes": 4602,
+      "ok": true
+    },
+    {
+      "name": "edit_document",
+      "durationMs": 15.82,
+      "returnedBytes": 283,
+      "ok": false
+    },
+    {
+      "name": "read_document",
+      "durationMs": 13.9,
+      "returnedBytes": 6328,
+      "ok": true
+    },
+    {
+      "name": "get_document_history",
+      "durationMs": 24.54,
+      "returnedBytes": 1468,
+      "ok": true
+    },
+    {
+      "name": "get_document_history",
+      "durationMs": 19.34,
+      "returnedBytes": 6140,
+      "ok": true
+    },
+    {
+      "name": "undo_document_edit",
+      "durationMs": 100.44,
+      "returnedBytes": 7670,
+      "ok": true
+    },
+    {
+      "name": "read_document",
+      "durationMs": 14.95,
+      "returnedBytes": 5632,
+      "ok": true
+    },
+    {
+      "name": "edit_document",
+      "durationMs": 88.87,
+      "returnedBytes": 7504,
+      "ok": true
+    },
+    {
+      "name": "read_document",
+      "durationMs": 21.68,
+      "returnedBytes": 7048,
+      "ok": true
+    },
+    {
+      "name": "undo_document_edit",
+      "durationMs": 87.8,
+      "returnedBytes": 7682,
+      "ok": true
+    },
+    {
+      "name": "read_document",
+      "durationMs": 12.05,
+      "returnedBytes": 5632,
+      "ok": true
+    },
+    {
+      "name": "create_document",
+      "durationMs": 69.84,
+      "returnedBytes": 4686,
+      "ok": true
+    },
+    {
+      "name": "create_document",
+      "durationMs": 23.87,
+      "returnedBytes": 4684,
+      "ok": true
+    },
+    {
+      "name": "update_document_metadata",
+      "durationMs": 99.49,
+      "returnedBytes": 4106,
+      "ok": true
+    },
+    {
+      "name": "undo_document_edit",
+      "durationMs": 74.63,
+      "returnedBytes": 4122,
+      "ok": true
+    },
+    {
+      "name": "create_document",
+      "durationMs": 67.68,
+      "returnedBytes": 4696,
+      "ok": true
+    },
+    {
+      "name": "undo_document_edit",
+      "durationMs": 77.34,
+      "returnedBytes": 3990,
+      "ok": true
+    }
+  ],
+  "assertions": [
+    "eight tools discovered",
+    "scoped browse/search/read",
+    "excluded content denied",
+    "preview without persistence",
+    "durable original retry receipt",
+    "stale revision rejected",
+    "saved read-back",
+    "retained version read",
+    "edit undo restores exact chunks",
+    "merged table cell edit, row insertion and undo",
+    "creation retry identity",
+    "metadata update and undo",
+    "creation undo tombstone"
+  ],
+  "completed": true,
+  "totalDurationMs": 3051.66,
+  "summary": {
+    "toolCalls": 24,
+    "returnedBytes": 102812,
+    "maxReturnedBytes": 7682,
+    "expectedRejections": 2
+  }
+}

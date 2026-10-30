@@ -9,10 +9,22 @@
     "lint": "oxlint",
     "test:layout": "node --import ./tests/register.mjs --test \"./tests/*.test.mjs\"",
     "test:updates": "node --test ../../db/test-updates.mjs",
+    "test:document-persistence": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-service.mjs ../../db/tests/database/idb.test.mjs src/editor/documentCommitGuard.test.mjs",
+    "test:document-operations": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-operations.mjs",
+    "test:document-planner": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-planner.mjs",
+    "test:document-edit-commits": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-edit-commits.mjs",
+    "test:document-history": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-history.mjs",
+    "test:document-mutations": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-mutations.mjs",
+    "test:document-reads": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-reads.mjs",
+    "test:document-search": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-search.mjs",
+    "test:search-freshness": "tsc -p tsconfig.documents.json && node --test ../../db/test-search-freshness.mjs",
     "test:direction": "node --test src/editor/direction.test.mjs",
+    "test:documents": "tsc -p tsconfig.documents.json && node --test ../../db/test-agent-documents.mjs ../../db/test-document-projection.mjs ../../db/test-document-contracts.mjs ../../db/test-block-identity.mjs ../../db/test-repo-identity.mjs ../../db/test-document-service.mjs ../../db/test-document-operations.mjs ../../db/test-document-planner.mjs ../../db/test-document-edit-commits.mjs ../../db/test-document-mutations.mjs ../../db/test-document-history.mjs ../../db/test-document-mcp.mjs ../../db/test-document-tables.mjs ../../db/test-document-admission.mjs ../../db/test-document-reads.mjs ../../db/test-document-search.mjs ../../db/test-search-freshness.mjs src/editor/blockIdentity.test.mjs src/editor/documentCommitGuard.test.mjs",
     "test:db": "node --test \"../../db/tests/database/*.test.mjs\"",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test:document-mcp": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-mcp.mjs",
+    "test:document-tables": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-tables.mjs"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",

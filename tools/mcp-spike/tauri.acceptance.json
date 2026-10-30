@@ -1,0 +1,5 @@
+{
+  "identifier": "com.vexor.nevis.mcp-acceptance",
+  "productName": "Nevis Acceptance",
+  "bundle": { "targets": ["app"] }
+}
