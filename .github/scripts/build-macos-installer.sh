@@ -13,8 +13,22 @@ trap 'rm -rf "$staging"' EXIT
 mkdir -p "$staging/root/Applications"
 /usr/bin/ditto "$app" "$staging/root/Applications/Nevis.app"
 /usr/bin/pkgbuild --analyze --root "$staging/root" "$staging/components.plist"
-/usr/libexec/PlistBuddy -c 'Set :0:BundleIsRelocatable false' "$staging/components.plist"
-/usr/libexec/PlistBuddy -c 'Set :0:BundleOverwriteAction upgrade' "$staging/components.plist"
+# pkgbuild may omit keys, or omit non-Mach-O fixture bundles entirely. Pin the validated app explicitly.
+/usr/bin/python3 - "$staging/components.plist" <<'PYTHON'
+import plistlib, sys
+path = sys.argv[1]
+with open(path, 'rb') as source:
+    components = plistlib.load(source)
+target = next((item for item in components if item.get('RootRelativeBundlePath') == 'Applications/Nevis.app'), None)
+if target is None:
+    target = {'RootRelativeBundlePath': 'Applications/Nevis.app', 'BundleHasStrictIdentifier': True}
+    components.append(target)
+for component in components:
+    component['BundleIsRelocatable'] = False
+target['BundleOverwriteAction'] = 'upgrade'
+with open(path, 'wb') as destination:
+    plistlib.dump(components, destination)
+PYTHON
 /usr/bin/pkgbuild --root "$staging/root" --component-plist "$staging/components.plist" \
   --scripts "$repo/.github/macos-installer" --identifier com.vexor.noviq.installer \
   --version "$version" --install-location / "$output"

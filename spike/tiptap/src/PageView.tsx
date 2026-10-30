@@ -4,8 +4,8 @@ import { registerUpdateSave } from './updateSave'
 import { createPortal } from 'react-dom'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { getSchema } from '@tiptap/core'
+import { documentCommitGuard } from './editor/documentCommitGuard'
 import { EditorState, Selection, TextSelection } from '@tiptap/pm/state'
-import { addVersion } from './db'
 import { LayoutControls } from './LayoutControls'
 import { contentProblem } from './editor/contentSafety'
 import { LAYOUT_CANCEL } from './editor/layout'
@@ -49,7 +49,21 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
   const protectedContent = useRef(!!contentIssue)
   const [originalContent, setOriginalContent] = useState(page.content)
   const dirty = useRef(false)
-  const readOnly = readerOnly || !!contentIssue
+  const [commitLocked, setCommitLocked] = useState(repo.isWriteLocked())
+  useEffect(() => {
+    const changed = () => {
+      const locked = repo.isWriteLocked()
+      const readOnly = locked || readerOnly || protectedContent.current
+      if (titleRef.current) titleRef.current.readOnly = readOnly
+      const editor = editorRef.current
+      if (editor && !editor.isDestroyed) editor.setEditable(!readOnly, false)
+      setCommitLocked(locked)
+    }
+    window.addEventListener('commit-state', changed)
+    return () => window.removeEventListener('commit-state', changed)
+  }, [readerOnly])
+  const readOnly = readerOnly || !!contentIssue || commitLocked
+  const guardedExtensions = useMemo(() => [...extensions, documentCommitGuard(repo.isWriteLocked)], [])
   const timer = useRef<number>(0)
   const editorRef = useRef<any>(null)
   const titleRef = useRef<HTMLTextAreaElement>(null)
@@ -102,6 +116,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
       const content = ed.getJSON()
       if (JSON.stringify(repo.get(page.id)?.content) !== JSON.stringify(content)) repo.update(page.id, { content })
       dirty.current = false
+      repo.setEditorDirty(page.id, false)
       void repo.flushBeforeUpdate().then(() => { if (!dirty.current) onSave('saved') }, () => onSave('saving'))
     }
   }, [page.id, onSave])
@@ -110,13 +125,14 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
 
   const editor = useEditor(
     {
-      extensions,
+      extensions: guardedExtensions,
       content: contentIssue ? { type: 'doc', content: [{ type: 'paragraph' }] } : page.content,
       editable: !readOnly,
       shouldRerenderOnTransaction: true,
       editorProps: { attributes: { spellcheck: 'false' } },
       onUpdate: () => {
         if (protectedContent.current) return
+        repo.setEditorDirty(page.id, true)
         dirty.current = true
         onSave('saving')
         window.clearTimeout(timer.current)
@@ -227,7 +243,16 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
   useEffect(() => {
     const onExternal = async (e: Event) => {
       if (!editor || editor.isDestroyed || !(e as CustomEvent<string[]>).detail.includes(page.id)) return
-      const fresh = repo.get(page.id)?.content
+      if (dirty.current) return // Keep the live draft until it can pass its own persisted precondition.
+      const current = repo.get(page.id)
+      if (current) {
+        if (titleRef.current) titleRef.current.value = current.title
+        setTitleDir(current.titleDir)
+        setIcon(current.icon)
+        setTags(current.tags ?? [])
+        setStatus(current.status)
+      }
+      const fresh = current?.content
       if (!fresh || typeof fresh === 'string') return
       const issue = contentProblem(fresh, schema)
       const doc = issue ? null : editor.schema.nodeFromJSON(fresh)
@@ -235,21 +260,6 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
       if (doc?.eq(editor.state.doc) && !protectedContent.current) return
       editor.view.dom.dispatchEvent(new Event(LAYOUT_CANCEL))
       window.clearTimeout(timer.current)
-      if (dirty.current && !protectedContent.current) {
-        const local = { ...page, content: editor.getJSON() }
-        try {
-          await addVersion({ pageId: page.id, ts: Date.now(), title: page.title, content: local.content })
-        } catch (error) {
-          setOriginalContent(local.content)
-          setContentIssue(t('The unsaved version could not be archived. Copy or export it before reloading.'))
-          protectedContent.current = true
-          editor.setEditable(false)
-          window.dispatchEvent(new CustomEvent('storage-error', { detail: String(error) }))
-          return
-        }
-        if (editor.isDestroyed) return
-        window.dispatchEvent(new Event('page-conflict'))
-      }
       dirty.current = false
       onSave('saved')
       setOriginalContent(fresh)

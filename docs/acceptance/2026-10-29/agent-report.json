@@ -1,0 +1,17 @@
+{
+  "client": "Codex CLI",
+  "exitCode": 0,
+  "completed": true,
+  "durationMs": 47799,
+  "toolCalls": 12,
+  "failedCalls": 0,
+  "returnedBytes": 52814,
+  "evidence": {
+    "preview": true,
+    "originalApply": true,
+    "replayed": true,
+    "undo": true,
+    "restored": true,
+    "sameTarget": true
+  }
+}

@@ -213,7 +213,7 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
   const copyTree = (id: string, parent: string | null, top: boolean): string => {
     const p = byId.get(id)!
     const c = repo.create(parent, p.kind)
-    repo.update(c.id, { title: top && p.title ? p.title + ' ' + t('(copy)') : p.title, icon: p.icon, cover: p.cover, titleDir: p.titleDir, tags: p.tags ? [...p.tags] : undefined, status: p.status, content: structuredClone(p.content) })
+    repo.update(c.id, { title: top && p.title ? p.title + ' ' + t('(copy)') : p.title, icon: p.icon, cover: p.cover, titleDir: p.titleDir, tags: p.tags ? [...p.tags] : undefined, status: p.status, content: structuredClone(p.content) }, { copyContent: true })
     for (const k of kids(id).sort(byOrder)) copyTree(k.id, c.id, false)
     return c.id
   }

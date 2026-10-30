@@ -7,6 +7,22 @@ on:
   pull_request:
 
 jobs:
+  mcp-spike:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tools/mcp-spike/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: tools/mcp-spike
+      - run: npm run check
+        working-directory: tools/mcp-spike
+      - run: npm test
+        working-directory: tools/mcp-spike
+
   app-platforms:
     name: app (${{ matrix.os }})
     strategy:
@@ -39,6 +55,10 @@ jobs:
       - run: npm run test:layout
         working-directory: spike/tiptap
       - run: npm run test:direction
+        working-directory: spike/tiptap
+      - run: npm ci --ignore-scripts
+        working-directory: db/tests/tools
+      - run: npm run test:documents
         working-directory: spike/tiptap
       - run: npm run test:updates
         working-directory: spike/tiptap

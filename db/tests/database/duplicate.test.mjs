@@ -54,3 +54,23 @@ test('schema-only duplicate has no rows and shares nothing mutable with the orig
   const keyCopy = h.state.props(ns).find((p) => p.kind === 'unique_id')
   assert.match(h.state.row(a.pageId).ext.allocatedIds[keyCopy.id], /:1$/)
 })
+
+test('row and database copies get fresh nested block IDs while page links and originals survive', async () => {
+  const h = createHarness()
+  const f = await seedFixture(h)
+  await h.one('page.patch_body', { pageId: 'T1', content: { type: 'doc', content: [
+    { type: 'blockquote', attrs: { blockId: 'original-quote', dir: 'rtl' }, content: [
+      { type: 'paragraph', attrs: { blockId: 'original-paragraph' }, content: [{ type: 'pageLink', attrs: { id: 'T2', label: 'پیوند' } }] },
+    ] },
+  ] } })
+  const before = JSON.stringify(h.state.pages.get('T1').content)
+  const ids = body => [body.content[0].attrs.blockId, body.content[0].content[0].attrs.blockId]
+  await h.one('row.duplicate', { rootPageIds: ['T1'] })
+  const rowCopy = h.state.rows(f.sourceId).find(r => !['T1', 'T2', 'T3', 'T4'].includes(r.page.id)).page.content
+  assert.ok(ids(rowCopy).every(id => !ids(JSON.parse(before)).includes(id)))
+  assert.equal(rowCopy.content[0].content[0].content[0].attrs.id, 'T2')
+  const copied = await h.one('database.duplicate', { containerId: f.containerId, withRows: true })
+  const copies = h.state.rows(copied.mapping[f.sourceId]).filter(r => r.page.title === 'T1')
+  assert.ok(copies.every(r => ids(r.page.content).every(id => !ids(JSON.parse(before)).includes(id))))
+  assert.equal(JSON.stringify(h.state.pages.get('T1').content), before)
+})

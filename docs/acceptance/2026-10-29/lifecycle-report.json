@@ -1,0 +1,14 @@
+{
+  "completed": true,
+  "originalReceiptAfterRestart": true,
+  "retainedHistoryAfterRestart": true,
+  "undoRestoredOriginal": true,
+  "stableGrantIdentity": true,
+  "rotatedToken": true,
+  "oldTokenRejected": true,
+  "oldEndpointClosed": true,
+  "rootUnchanged": true,
+  "excludedUnchanged": true,
+  "revokedEndpointClosed": true,
+  "evidenceRecovery": "Controller resumed after credential timeouts; native persisted receipt was mapped to its public receipt form before comparison."
+}

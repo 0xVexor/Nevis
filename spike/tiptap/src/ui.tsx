@@ -196,23 +196,38 @@ export function SearchModal({ pages, search, commands, onOpen, onClose, initialQ
   )
   const recent = useMemo(() => [...pages].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6), [pages])
   const [found, setFound] = useState<Page[]>(recent)
+  const [searchState, setSearchState] = useState<'fresh' | 'pending' | 'failed'>('fresh')
+  const [searchEpoch, setSearchEpoch] = useState(0)
   useEffect(() => {
-    if (cmdOnly) return setFound([])
-    if (!term.trim()) return setFound(recent)
+    const refreshed = (event: Event) => {
+      const state = (event as CustomEvent<string>).detail
+      if (state === 'fresh') setSearchEpoch(value => value + 1)
+      else if (term.trim() && !cmdOnly && (state === 'pending' || state === 'failed')) { setFound([]); setSearchState(state) }
+    }
+    window.addEventListener('search-state', refreshed)
+    return () => window.removeEventListener('search-state', refreshed)
+  }, [term, cmdOnly])
+  useEffect(() => {
+    if (cmdOnly) { setSearchState('fresh'); return setFound([]) }
+    if (!term.trim()) { setSearchState('fresh'); return setFound(recent) }
+    setFound([])
+    setSearchState('pending')
     let alive = true // an older, slower answer must not replace a newer one
-    const id = window.setTimeout(() => void search(term).then((r) => alive && setFound(r)), 60)
+    const id = window.setTimeout(() => void search(term).then(r => { if (alive) { setFound(r); setSearchState('fresh') } })
+      .catch(error => { if (alive) { setFound([]); setSearchState(error?.state === 'pending' ? 'pending' : 'failed') } }), 60)
     return () => {
       alive = false
       window.clearTimeout(id)
     }
-  }, [cmdOnly, term, recent, search])
+  }, [cmdOnly, term, recent, search, searchEpoch])
   const shownCmds = pagesOnly ? [] : term.trim() && !cmdOnly ? cmds.slice(0, 5) : cmds
   const items = useMemo(() => [...shownCmds.map((c) => ({ cmd: c })), ...found.map((p) => ({ page: p }))] as { cmd?: PaletteCommand; page?: Page }[], [shownCmds, found])
 
   useEffect(() => { setSel(0) }, [q, scope])
   useEffect(() => { document.querySelector('.palette .result.sel')?.scrollIntoView({ block: 'nearest' }) }, [sel])
 
-  const snippet = (p: Page) => {
+  const snippet = (p: Page & { searchPassage?: string }) => {
+    if (p.searchPassage !== undefined) return p.searchPassage
     const raw = typeof p.content === 'string' ? '' : textOf(p.content)
     if (!words.length) return raw.trim().slice(0, 70)
     const i = normalizeFa(raw).indexOf(words[0])
@@ -259,7 +274,11 @@ export function SearchModal({ pages, search, commands, onOpen, onClose, initialQ
           <span className="pal-count">{items.length}</span>
         </div>
         <div className="pal-list">
-          {items.length === 0 && (
+          {!cmdOnly && term.trim() && searchState !== 'fresh' && <div className="pal-empty" role="status">
+            {t(searchState === 'failed' ? 'Search is unavailable. Try again.' : 'Searching…')}
+            {searchState === 'failed' && <button onClick={() => setSearchEpoch(value => value + 1)}>{t('Try again')}</button>}
+          </div>}
+          {items.length === 0 && searchState === 'fresh' && (
             <div className="pal-empty">
               <span className="fc2-art"><Ic.Search size={26} /></span>
               <b>{t('No results found')}</b>
