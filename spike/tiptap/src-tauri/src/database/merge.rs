@@ -30,20 +30,6 @@ fn stamp_rank(c: &Value) -> (i64, String) {
     (s.and_then(|s| s.get("counter")).and_then(Value::as_i64).unwrap_or(0), s.and_then(|s| s.get("deviceId")).and_then(Value::as_str).unwrap_or_default().to_string())
 }
 
-/// Merge two versions of the same record. Returns the merged record and the complete versions that must be preserved.
-pub fn merge_records(a: &Value, b: &Value) -> (Value, Vec<Value>) {
-    if a == b {
-        return (a.clone(), vec![]);
-    }
-    let (win, lose) = if wins(a, b, false) { (a, b) } else { (b, a) };
-    // a tombstone never silently erases a newer edit; the higher revision decides and the other version stays in history
-    let mut merged = win.clone();
-    merged["revision"] = json!(rev(a, false).max(rev(b, false)) + 1);
-    merged["updatedAt"] = json!(updated(a).max(updated(b)));
-    merged["lastOperationId"] = json!(format!("merge:{}:{}", op(a, false), op(b, false)).chars().take(120).collect::<String>());
-    (merged, vec![lose.clone()])
-}
-
 /// Merge two versions of a page. Row cells merge per property; everything else follows the winner.
 pub fn merge_pages(a: &Value, b: &Value) -> (Value, Vec<Value>) {
     if a == b {
@@ -124,17 +110,5 @@ mod tests {
         assert_eq!(m2["database"]["cells"]["cost"]["value"]["value"], 2);
         let c = page(2, 10, json!({ "cost": cell(1, 9, "D1") }), "a");
         assert_eq!(merge_pages(&c, &b).0["database"]["cells"]["cost"]["value"]["value"], 1); // higher counter beats device order
-    }
-
-    #[test]
-    fn records_follow_the_higher_revision_and_keep_the_loser() {
-        let a = json!({ "id": "v", "revision": 4, "updatedAt": 5, "lastOperationId": "a", "name": "A", "deletedAt": null });
-        let b = json!({ "id": "v", "revision": 3, "updatedAt": 9, "lastOperationId": "b", "name": "B", "deletedAt": 7 });
-        let (m, lost) = merge_records(&a, &b);
-        assert_eq!(m["name"], "A");
-        assert_eq!(m["deletedAt"], Value::Null); // edit-vs-delete: the newer revision decides, the tombstone version is preserved
-        assert_eq!(lost[0]["name"], "B");
-        assert_eq!(m["revision"], 5);
-        assert_eq!(merge_records(&b, &a).0["name"], "A");
     }
 }
