@@ -26,7 +26,7 @@ export type ChangeEvent = {
   envelope: CommandEnvelope
   pages: PageChange[]
   records: { kind: RecordKind; id: Id; deleted: boolean }[]
-  /** set for changes that arrived from outside this process (sync, other tab) */
+  /** set for changes that arrived from outside this process (another tab, another program) */
   external?: boolean
 }
 
@@ -122,7 +122,7 @@ export class Coordinator {
     if (done) return done // retry of an applied operation: same answer, nothing duplicated
 
     const access = new Access(this.state)
-    if (!access.principal(env.actorId) && env.origin !== 'sync' && !env.commands.every((c) => c.type === 'database.create' || c.type === 'principal.ensure_owner'))
+    if (!access.principal(env.actorId) && env.origin !== 'external' && !env.commands.every((c) => c.type === 'database.create' || c.type === 'principal.ensure_owner'))
       fail('ACCESS_DENIED', 'unknown actor', { actorId: env.actorId })
 
     const stale = this.staleExpectations(env)
@@ -158,7 +158,7 @@ export class Coordinator {
     }
     this.publish(fin.batch, fin.events)
     this.opCache.set(env.operationId, fin.batch.commit)
-    if (fin.batch.undo && env.origin !== 'sync') {
+    if (fin.batch.undo && env.origin !== 'external') {
       this.undoStack.push(fin.batch.undo)
       if (this.undoStack.length > this.undoLimit) this.undoStack.splice(0, this.undoStack.length - this.undoLimit)
       void this.storage.saveUndo(this.undoStack).catch(() => undefined)
@@ -278,7 +278,7 @@ export class Coordinator {
     const commit: Commit = { operationId: env.operationId, generation: this.state.generation + 1, changed, warnings: cx.warnings, result: results.length === 1 ? results[0] : results }
     const label = env.commands.map((c) => c.type).join(', ')
     const isUndo = env.commands.some((c) => c.type === 'undo.apply')
-    const undo: UndoGroup | null = undoItems.length && env.origin !== 'sync' && !isUndo ? { operationId: env.operationId, label, ts: now, actorId: env.actorId, items: undoItems } : null
+    const undo: UndoGroup | null = undoItems.length && env.origin !== 'external' && !isUndo ? { operationId: env.operationId, label, ts: now, actorId: env.actorId, items: undoItems } : null
     return { batch: { operationId: env.operationId, vaultId: env.vaultId, records, pages, history, commit, undo } as BatchWrite, events, pageChanges }
   }
 
@@ -296,13 +296,13 @@ export class Coordinator {
     batch.commit.generation = this.state.generation
   }
 
-  /** Apply changes that another process wrote (sync, another tab): refresh records and pages, then notify. */
+  /** Apply changes that another process wrote (another tab, another program): refresh records and pages, then notify. */
   async reloadExternal(ids?: { pages?: Id[] }) {
     const loaded = await this.storage.loadAll()
     this.state.maps = (await import('../state.ts')).emptyMaps()
     for (const [kind, list] of Object.entries(loaded.records)) for (const r of list ?? []) (this.state.maps as Record<string, Map<Id, unknown>>)[kind].set(r.id, r)
     this.state.invalidate()
-    const ev: ChangeEvent = { commit: { operationId: 'external', generation: this.state.generation, changed: [], warnings: [] }, envelope: { operationId: 'external', vaultId: this.state.vaultId, actorId: '', deviceId: '', expected: [], origin: 'sync', commands: [] }, pages: (ids?.pages ?? []).map((pageId) => ({ pageId, sourceId: null, created: false, trashed: false, restored: false, titleChanged: false, cells: {}, membershipChanged: false })), records: [], external: true }
+    const ev: ChangeEvent = { commit: { operationId: 'external', generation: this.state.generation, changed: [], warnings: [] }, envelope: { operationId: 'external', vaultId: this.state.vaultId, actorId: '', deviceId: '', expected: [], origin: 'external', commands: [] }, pages: (ids?.pages ?? []).map((pageId) => ({ pageId, sourceId: null, created: false, trashed: false, restored: false, titleChanged: false, cells: {}, membershipChanged: false })), records: [], external: true }
     for (const s of this.subs) s(ev)
   }
 

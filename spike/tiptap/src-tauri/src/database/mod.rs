@@ -115,7 +115,6 @@ fn crash_point(_name: &str) -> Res<()> {
 
 /// Every record, read in parallel. Records with an unknown format are reported, never rewritten.
 pub fn load_all(root: &Path) -> Res<Value> {
-    let dead=crate::sync::snapshot::tombstones(&crate::vault::Vault::open(root.to_path_buf())?)?;
     let mut files: Vec<(&'static str, PathBuf)> = vec![];
     for (kind, dir) in KINDS {
         let d = root.join("databases").join(dir);
@@ -130,8 +129,6 @@ pub fn load_all(root: &Path) -> Res<Value> {
     let mut records = Map::new();
     let mut quarantined = vec![];
     for (kind, path, v) in loaded {
-        let rel=path.strip_prefix(root).map_err(err)?.to_string_lossy().replace('\\',"/");
-        if dead.contains(&rel){continue;}
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string();
         match v {
             Some(v) if v.get("format").and_then(Value::as_i64) == Some(1) && v.get("id").and_then(Value::as_str).is_some() => {
@@ -193,8 +190,6 @@ fn parse<'a>(b: &'a Value) -> Res<Batch<'a>> {
 fn on_disk(root: &Path, w: &Value, is_page: bool) -> Res<i64> {
     let id = w["id"].as_str().unwrap_or_default();
     let path=if is_page {page_path(root,id)?}else{rec_path(root,w["kind"].as_str().unwrap_or_default(),id)?};
-    let rel=path.strip_prefix(root).map_err(err)?.to_string_lossy().replace('\\',"/");
-    if crate::sync::snapshot::tombstones(&crate::vault::Vault::open(root.to_path_buf())?)?.contains(&rel){return Ok(0);}
     match fs::read(&path) {
         Ok(b)=>{let v:Value=serde_json::from_slice(&b).map_err(|_|format!("STORAGE:unreadable_record:{}",path.display()))?;Ok(if is_page {page_revision(&v)}else{revision_of(&v)})},
         Err(e) if e.kind()==std::io::ErrorKind::NotFound=>Ok(0),
@@ -238,10 +233,6 @@ fn apply(root: &Path, b: &Batch) -> Res<()> {
         crash_if_second("between_writes", &mut n)?;
         let (kind, id) = (w["kind"].as_str().unwrap_or_default(), w["id"].as_str().unwrap_or_default());
         let path = rec_path(root, kind, id)?;
-        let vault=crate::vault::Vault::open(root.to_path_buf())?;
-        let rel=path.strip_prefix(root).map_err(err)?.to_string_lossy().replace('\\',"/");
-        if w.get("after").is_none_or(Value::is_null) { crate::sync::snapshot::tombstone(&vault,&rel)?; }
-        else { crate::sync::snapshot::restore_record(&vault,&rel)?; }
         match w.get("after").filter(|a| !a.is_null()) {
             Some(after) => write_atomic(&path, after.to_string().as_bytes())?,
             None => {
@@ -253,9 +244,6 @@ fn apply(root: &Path, b: &Batch) -> Res<()> {
         crash_if_second("between_writes", &mut n)?;
         let id = w["id"].as_str().unwrap_or_default();
         let path = page_path(root, id)?;
-        let vault=crate::vault::Vault::open(root.to_path_buf())?;
-        if w.get("after").is_none_or(Value::is_null) { crate::sync::snapshot::tombstone(&vault,&format!("pages/{id}.json"))?; }
-        else if crate::sync::snapshot::tombstones(&vault)?.contains(&format!("pages/{id}.json")) { return Err("SYNC:permanently_deleted".into()); }
         match w.get("after").filter(|a| !a.is_null()) {
             Some(after) => {
                 // the UI loads page bodies lazily: a post-image without a body must never wipe the body on disk
@@ -409,36 +397,12 @@ pub fn runtime_keys(root: &Path, prefix: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests;
 
-// ───── conflicts (used by sync and by the vault's conflict-copy merge) ─────
+// ───── conflicts (used by the vault's conflict-copy merge) ─────
 
 fn short_hash(v: &Value) -> String {
     let mut h = Sha256::new();
     h.update(v.to_string().as_bytes());
     h.finalize().iter().take(4).map(|b| format!("{b:02x}")).collect()
-}
-
-/// A synced database path is `databases/<known dir>/<file>.json`, nothing deeper, no escapes.
-pub fn safe_database_rel(p: &str) -> bool {
-    let Some(rest) = p.strip_prefix("databases/") else { return false };
-    let mut it = rest.split('/');
-    let (Some(dir), Some(file), None) = (it.next(), it.next(), it.next()) else { return false };
-    KINDS.iter().any(|(_, d)| *d == dir) && file.ends_with(".json") && !file.starts_with('.') && file.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'~' | b'.' | b' ' | b'(' | b')'))
-}
-
-/// Both complete versions are kept: the loser becomes a history entry of its record, whichever side won.
-pub fn keep_losers(root: &Path, rel_path: &str, losers: &[Value]) -> Res<()> {
-    let dir_name = rel_path.split('/').nth(1).unwrap_or_default();
-    let Some((kind, _)) = KINDS.iter().find(|(_, d)| *d == dir_name) else { return Err(format!("not a database path: {rel_path}")) };
-    for l in losers {
-        let id = l.get("id").and_then(Value::as_str).unwrap_or_default();
-        if id.is_empty() {
-            continue;
-        }
-        let rev = revision_of(l);
-        let dir = root.join("history/records").join(enc(kind)?).join(enc(id)?);
-        write_atomic(&dir.join(format!("{rev:010}-conflict-{}.json", short_hash(l))), json!({ "revision": rev, "body": l, "conflict": true }).to_string().as_bytes())?;
-    }
-    Ok(())
 }
 
 /// The complete losing version of a page (properties, stamps, extension), not just its title and body.

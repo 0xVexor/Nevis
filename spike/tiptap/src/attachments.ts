@@ -58,19 +58,6 @@ export async function putRecord(rec: FileRec) {
   await tx('readwrite', (s) => s.put(rec))
 }
 
-export const deleteFile = async (id: string) => {
-  if (storageFrozen()) return
-  if (isTauri) await invoke('file_delete', { id })
-  else await tx('readwrite', (s) => s.delete(id))
-  const u = urls.get(id)
-  if (u) (URL.revokeObjectURL(u), urls.delete(id))
-}
-
-/** Ids and add times only (no bytes), for garbage collection. */
-export async function fileIndex(): Promise<{ id: string; addedAt?: number }[]> {
-  return isTauri ? invoke('files_list') : tx<FileRec[]>('readonly', (s) => s.getAll())
-}
-
 const types = new Map<string, string>() // desktop app: mime type per file id
 async function refreshTypes() {
   for (const m of await invoke<{ id: string; type: string }[]>('files_list')) types.set(m.id, m.type)
@@ -87,14 +74,6 @@ export async function allFiles(): Promise<FileRec[]> {
   return Promise.all(metas.map(async (m) => ({ ...m, name: decodeURIComponent(m.name), blob: await readBlob(m.id, m.type) })))
 }
 
-export const clearFiles = async () => {
-  if (isTauri) await invoke('files_clear')
-  else await tx('readwrite', (s) => s.clear())
-  urls.forEach((u) => URL.revokeObjectURL(u))
-  urls.clear()
-}
-
-/** `att:<sha256>` -> object URL (cached). Returns null if the file is missing. */
 export async function urlFor(src: string): Promise<string | null> {
   if (!src.startsWith('att:')) return src
   const id = src.slice(4)

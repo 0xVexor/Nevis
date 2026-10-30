@@ -13,7 +13,7 @@ import type { PageStore } from './state'
 import { dueReminders } from './reminders'
 import { GatewayClient, gatewayConfig, pullInbox } from './gateway/client'
 
-const DEVICE_KEY = 'not.deviceId' // per device, never synced: kv files travel with the vault, localStorage does not
+const DEVICE_KEY = 'not.deviceId' // per device: kv files travel with the vault, localStorage does not
 
 function deviceId(): string {
   try {
@@ -54,9 +54,8 @@ export function getDatabase(): Promise<DatabaseService> {
   return (starting ??= (async () => {
     const vaultId = isTauri ? (await vaultInfo()).id : 'browser'
     const storage = isTauri ? new TauriStorage((cmd, args) => invoke(cmd, args)) : new IdbStorage(db)
-    const installation = isTauri ? await invoke<string>('installation_device_id') : deviceId()
     const svc = new DatabaseService({
-      vaultId, storage, pages, host, deviceId: installation, zone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      vaultId, storage, pages, host, deviceId: deviceId(), zone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
       runtime: storage.runtime(), adapters, weekStart: weekStart(),
     })
     await svc.open()

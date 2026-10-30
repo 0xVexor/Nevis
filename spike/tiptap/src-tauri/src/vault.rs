@@ -59,14 +59,19 @@ fn updated_at(v: &Value) -> i64 {
     v.get("updatedAt").and_then(Value::as_f64).unwrap_or(0.0) as i64
 }
 
-fn marker_id(meta:&Value)->Res<String>{
-    let format=meta.get("format").and_then(Value::as_u64).unwrap_or(1);
-    let id=match format {
-        1=>meta["id"].as_str(),
-        2 if meta["id"]=="" && meta["syncProtocol"]=="nevis-drive-sync" && meta["syncSchemaVersion"]==1=>meta["driveVaultId"].as_str(),
-        _=>return Err("VAULT_UNSUPPORTED_FORMAT".into()),
-    }.filter(|id|!id.is_empty()).ok_or(VAULT_MISSING)?;
-    check_id(id)?;Ok(id.to_string())
+/// The lowercase hex SHA-256 of `b`; attachments are named by it.
+pub fn sha256_hex(b: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(b))
+}
+
+fn marker_id(meta: &Value) -> Res<String> {
+    if meta.get("format").and_then(Value::as_u64).unwrap_or(1) != 1 {
+        return Err("VAULT_UNSUPPORTED_FORMAT".into());
+    }
+    let id = meta["id"].as_str().filter(|id| !id.is_empty()).ok_or(VAULT_MISSING)?;
+    check_id(id)?;
+    Ok(id.to_string())
 }
 /// What is at `root`, reading only: the vault `id` ("ok"), another vault ("mismatch") or nothing ("missing").
 pub fn probe(root: &Path, id: &str) -> &'static str {
@@ -89,7 +94,7 @@ pub const VAULT_MISMATCH: &str = "VAULT_MISMATCH"; // the folder holds another v
 
 impl Vault {
     /// Opens a vault that exists. It never creates the folder or an identity: a vault whose folder vanished must not
-    /// come back as an empty vault under a new id (a sync would then take that as "everything was deleted").
+    /// come back as an empty vault under a new id (a sync tool would then take that as "everything was deleted").
     pub fn open(root: PathBuf) -> Res<Vault> {
         if !root.is_dir() || !root.join(".noviq/vault.json").is_file() {
             return Err(VAULT_MISSING.into());
@@ -111,15 +116,6 @@ impl Vault {
     pub fn ensure_exclusive(&self)->Res<()> {
         match probe(&self.root,&self.expected_id){"ok"=>(),"missing"=>return Err(VAULT_MISSING.into()),_=>return Err(VAULT_MISMATCH.into())}
         self._lock.check(&self.root)
-    }
-    pub fn requires_drive(&self)->bool{self.meta_value()["format"]==2}
-    /// An empty legacy `id` makes all existing v1 clients refuse both open and adopt.
-    /// The logical UUID is unchanged and only a compatible client reads driveVaultId.
-    pub fn fence_drive(&self)->Res<()> {
-        self.ensure_exclusive()?;let mut meta=self.meta_value();if self.requires_drive(){marker_id(&meta)?;return Ok(());}
-        meta["format"]=json!(2);meta["id"]=json!("");meta["driveVaultId"]=json!(self.expected_id);meta["syncProtocol"]=json!("nevis-drive-sync");meta["syncSchemaVersion"]=json!(1);
-        let bytes=serde_json::to_vec(&meta).map_err(err)?;write_atomic(&self.root.join(".noviq/vault.json"),&bytes)?;
-        if marker_id(&read_json(&self.root.join(".noviq/vault.json")).ok_or(VAULT_MISSING)?)?!=self.expected_id{return Err("VAULT_MISMATCH".into());}Ok(())
     }
     /// Like `open`, and also checks that the folder is the vault `id`.
     pub fn open_as(root: PathBuf, id: &str) -> Res<Vault> {
@@ -154,31 +150,6 @@ impl Vault {
         Ok(())
     }
 
-    /// Where files go that the sync would otherwise drop (deleted or overwritten by another device). Not synced, retained for the local trash window.
-    pub fn sync_trash_dir(&self) -> PathBuf {
-        self.root.join(".noviq/sync-trash")
-    }
-
-    /// Keeps `bytes` (the content of vault file `rel`) in the sync trash.
-    pub fn sync_trash_put(&self, rel: &str, bytes: &[u8]) -> Res<()> {
-        let mut ts = now_ms();
-        while self.sync_trash_dir().join(ts.to_string()).join(rel).exists() {
-            ts += 1;
-        }
-        write_atomic(&self.sync_trash_dir().join(ts.to_string()).join(rel), bytes)
-    }
-
-    /// Moves vault file `rel` into the sync trash instead of deleting it.
-    pub fn sync_trash_move(&self, rel: &str) -> Res<()> {
-        let mut ts = now_ms();
-        while self.sync_trash_dir().join(ts.to_string()).join(rel).exists() {
-            ts += 1;
-        }
-        let dest = self.sync_trash_dir().join(ts.to_string()).join(rel);
-        fs::create_dir_all(dest.parent().ok_or("bad path")?).map_err(err)?;
-        fs::rename(self.root.join(rel), &dest).map_err(err)
-    }
-
     fn meta_value(&self) -> Value {
         read_json(&self.root.join(".noviq/vault.json")).unwrap_or(Value::Null)
     }
@@ -193,21 +164,16 @@ impl Vault {
 
     /// A new vault in `root` with the given display name.
     pub fn create(root: PathBuf, name: &str) -> Res<Vault> {
-        Vault::create_with_id(root, name, &uuid::Uuid::new_v4().to_string())
-    }
-
-    /// Used when a vault that already exists in the cloud is downloaded: it keeps its identity.
-    pub fn create_with_id(root: PathBuf, name: &str, id: &str) -> Res<Vault> {
         fs::create_dir_all(root.join(".noviq")).map_err(err)?;
         let _initializing=crate::vault_lock::acquire(&root)?;
         let marker = root.join(".noviq/vault.json");
         if !marker.exists() {
-            write_atomic(&marker, json!({ "format": 1, "id": id, "name": name }).to_string().as_bytes())?;
+            write_atomic(&marker, json!({ "format": 1, "id": uuid::Uuid::new_v4().to_string(), "name": name }).to_string().as_bytes())?;
         }
         Vault::open(root)
     }
 
-    /// New display name, stored in the marker (it travels through sync like the id).
+    /// New display name, stored in the marker.
     pub fn rename(&self, name: &str) -> Res<()> {
         write_atomic(&self.root.join("kv/workspace.json"), &serde_json::to_vec(&json!({"name":name})).map_err(err)?)?;
         let mut meta = self.meta_value();
@@ -227,13 +193,12 @@ impl Vault {
     /// All pages. Conflict copies made by the sync tool are merged first (rule 5 of ADR-0003).
     pub fn pages_all(&self) -> Res<Vec<Value>> {
         self.resolve_conflicts()?;
-        let dead=crate::sync::snapshot::tombstones(self)?;
         let mut out = vec![];
         for e in fs::read_dir(self.pages_dir()).map_err(err)? {
             let e=e.map_err(err)?;
             let path = e.path();
             let Some(stem) = path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_suffix(".json")) else { continue };
-            if !is_id(stem) || dead.contains(&format!("pages/{stem}.json")) {
+            if !is_id(stem) {
                 continue;
             }
             match read_json(&path) {
@@ -258,7 +223,6 @@ impl Vault {
             let Some(copy) = read_json(&path) else { continue };
             let main = self.pages_dir().join(format!("{}.json", &stem[..36]));
             let id = &stem[..36];
-            if crate::sync::snapshot::tombstones(self)?.contains(&format!("pages/{id}.json")){continue;}
             if main.exists() && read_json(&main).is_none() { return Err("STORAGE:unreadable_page".into()); }
             let result = match read_json(&main) {
                 None => write_atomic(&main, copy.to_string().as_bytes()),
@@ -286,12 +250,6 @@ impl Vault {
 
     /// A page version that lost against a newer one is not dropped: it becomes a history entry.
     fn keep_loser(&self, id: &str, page: &Value) -> Res<()> {
-        use base64::Engine;
-        let cid=uuid::Uuid::new_v4().to_string();
-        let bytes=serde_json::to_vec(page).map_err(err)?;
-        let remote=fs::read(self.page_path(id)?).ok().map(|b|base64::engine::general_purpose::STANDARD.encode(b));
-        let archive=json!({"id":cid,"path":format!("pages/{id}.json"),"createdAt":now_ms(),"base":null,"local":base64::engine::general_purpose::STANDARD.encode(&bytes),"remote":remote});
-        write_atomic(&self.root.join("conflicts").join(format!("{cid}.json")),&serde_json::to_vec(&archive).map_err(err)?)?;
         let mut ts = updated_at(page);
         let dir = self.root.join("history").join(check_id(id)?);
         while dir.join(format!("{ts}.json")).exists() {
@@ -310,7 +268,6 @@ impl Vault {
         for p in upserts {
             let id = p.get("id").and_then(Value::as_str).ok_or("page without id")?;
             let path = self.page_path(id)?;
-            if crate::sync::snapshot::tombstones(self)?.contains(&format!("pages/{id}.json")) { return Err("SYNC:permanently_deleted".into()); }
             if path.exists() && read_json(&path).is_none() { return Err("STORAGE:unreadable_page".into()); }
             // `_base` is bookkeeping of the editor, not part of the page file
             let base = p.get("_base").and_then(Value::as_i64);
@@ -326,7 +283,7 @@ impl Vault {
                         continue;
                     }
                     if base.is_some_and(|b| updated_at(&cur) != b && updated_at(&cur) != updated_at(&p)) {
-                        // the file changed under the editor (the sync brought another device's edit): do not lose that version
+                        // the file changed under the editor (a file-sync tool brought another device's edit): do not lose that version
                         self.keep_loser(id, &cur)?;
                         kept.push(id.to_string());
                     }
@@ -347,7 +304,6 @@ impl Vault {
         }
         for id in gone {
             let path = self.page_path(&id)?;
-            crate::sync::snapshot::tombstone(self,&format!("pages/{id}.json"))?;
             if path.exists() { fs::remove_file(&path).map_err(err)?; }
             for p in [self.root.join(".trash/pages").join(format!("{id}.json")), self.root.join(".trash/pages").join(format!("{id}.del"))] {
                 if p.exists(){fs::remove_file(p).map_err(err)?;}
@@ -440,15 +396,14 @@ impl Vault {
 
     pub fn file_put(&self, id: &str, bytes: &[u8], mime: &str, name: &str, added_at: i64) -> Res<()> {
         let path = self.file_path(id)?;
-        if crate::sync::snapshot::hash(bytes) != id { return Err("FILE:hash_mismatch".into()); }
-        crate::sync::snapshot::restore_asset(self,id)?;
-        let same = fs::read(&path).is_ok_and(|b|crate::sync::snapshot::hash(&b)==id);
+        if sha256_hex(bytes) != id { return Err("FILE:hash_mismatch".into()); }
+        let same = fs::read(&path).is_ok_and(|b| sha256_hex(&b) == id);
         if !same {
             write_atomic(&path, bytes)?;
         }
         // Keep the first name/timestamp for content-addressed duplicate imports.
         if same && path.with_extension("json").is_file() { return Ok(()); }
-        // the sidecar is written after the bytes, so a synced sidecar always has its file
+        // the sidecar is written after the bytes, so a sidecar that a sync tool copies always has its file
         let meta = json!({ "id": id, "type": mime, "size": bytes.len(), "name": name, "addedAt": added_at });
         write_atomic(&path.with_extension("json"), meta.to_string().as_bytes())
     }
@@ -472,22 +427,6 @@ impl Vault {
         out
     }
 
-    /// Never an immediate delete: the other devices may not have synced the page that still uses the file.
-    pub fn file_delete(&self, id: &str) -> Res<()> {
-        let path = self.file_path(id)?;
-        let trash = self.root.join(".trash/files");
-        let rel=format!("files/{}/{id}",&id[..2]);
-        crate::sync::snapshot::tombstone(self,&rel)?;
-        crate::sync::snapshot::tombstone(self,&format!("{rel}.json"))?;
-        if path.exists() {
-            let _ = fs::remove_file(trash.join(id));
-            fs::rename(&path, trash.join(id)).map_err(err)?;
-            write_atomic(&trash.join(format!("{id}.del")), now_ms().to_string().as_bytes())?;
-        }
-        let _ = fs::remove_file(path.with_extension("json"));
-        Ok(())
-    }
-
     /// Permanently drops trash entries older than TRASH_KEEP_MS.
     pub fn purge_trash(&self) {
         for sub in [".trash/pages"] { // Retain trashed assets until the complete history/conflict reference index can prove them unused.
@@ -507,40 +446,6 @@ impl Vault {
                 }
             }
         }
-        // what the sync set aside (one folder per moment, named by its time)
-        for e in fs::read_dir(self.sync_trash_dir()).into_iter().flatten().flatten() {
-            let Some(at) = e.file_name().to_str().and_then(|n| n.parse::<i64>().ok()) else { continue };
-            if now_ms() - at > TRASH_KEEP_MS {
-                let _ = fs::remove_dir_all(e.path());
-            }
-        }
-    }
-
-    pub fn has_pages(&self) -> bool {
-        fs::read_dir(self.pages_dir()).is_ok_and(|rd| rd.flatten().any(|e| e.file_name().to_str().is_some_and(|n| n.ends_with(".json"))))
-    }
-
-    /// Copies everything that belongs to the vault (not the trash) into `to`.
-    pub fn copy_into(&self, to: &Path) -> Res<()> {
-        fn walk(from: &Path, to: &Path) -> Res<()> {
-            fs::create_dir_all(to).map_err(err)?;
-            for e in fs::read_dir(from).map_err(err)?.flatten() {
-                let (p, name) = (e.path(), e.file_name());
-                if name.to_str().is_some_and(|n| n.starts_with('.') && n.ends_with(".tmp")) {
-                    continue;
-                }
-                if p.is_dir() {
-                    walk(&p, &to.join(&name))?;
-                } else {
-                    fs::copy(&p, to.join(&name)).map_err(err)?;
-                }
-            }
-            Ok(())
-        }
-        for d in ["pages", "files", "history", "kv"] {
-            walk(&self.root.join(d), &to.join(d))?;
-        }
-        Ok(())
     }
 }
 
@@ -592,16 +497,11 @@ mod tests {
         v.save_pages(&[], &[A.to_string()], false).unwrap();
         assert!(v.pages_all().unwrap().is_empty());
         assert!(!v.root.join(".trash/pages").join(format!("{A}.json")).exists());
-        assert!(crate::sync::snapshot::tombstones(&v).unwrap().contains(&format!("pages/{A}.json")));
-        assert!(v.save_pages(&[page(A,"stale resurrection",2)],&[],false).is_err());
 
-        let id = crate::sync::snapshot::hash(b"hello");
+        let id = sha256_hex(b"hello");
         v.file_put(&id, b"hello", "text/plain", "a.txt", 5).unwrap();
         assert_eq!(v.file_get(&id).unwrap(), b"hello");
         assert_eq!(v.files_list().len(), 1);
-        v.file_delete(&id).unwrap();
-        assert!(v.files_list().is_empty());
-        assert_eq!(v.file_get(&id).unwrap(), b"hello"); // still recoverable from the trash
     }
 
     #[test]
@@ -655,24 +555,6 @@ mod tests {
         assert!(v.save_pages(&[next], &[], false).unwrap().is_empty());
     }
 
-    #[test]
-    fn sync_trash_keeps_files_and_purges_old_ones() {
-        let v = Vault::create(tmp("strash"), "T").unwrap();
-        v.save_pages(&[page(A, "x", 1)], &[], false).unwrap();
-        let original = fs::read(v.root.join(format!("pages/{A}.json"))).unwrap();
-        v.sync_trash_move(&format!("pages/{A}.json")).unwrap();
-        assert!(v.pages_all().unwrap().is_empty());
-        v.sync_trash_put("kv/srs.json", b"{}").unwrap();
-        let old = v.sync_trash_dir().join("1000");
-        write_atomic(&old.join("pages/old.json"), b"{}").unwrap();
-        v.purge_trash();
-        assert!(!old.exists(), "older than the retention time");
-        // Different paths may legitimately share one millisecond bucket. Verify
-        // both preserved contents rather than assuming two distinct timestamps.
-        let recent: Vec<_> = fs::read_dir(v.sync_trash_dir()).unwrap().map(|e|e.unwrap().path()).collect();
-        assert!(recent.iter().any(|dir| fs::read(dir.join(format!("pages/{A}.json"))).ok().as_deref() == Some(original.as_slice())), "recent page stays byte-for-byte");
-        assert!(recent.iter().any(|dir| fs::read(dir.join("kv/srs.json")).ok().as_deref() == Some(b"{}".as_slice())), "recent settings stay byte-for-byte");
-    }
 }
 
 #[cfg(test)]
@@ -693,11 +575,14 @@ mod locking_tests {
         assert!(child("held").status.success());drop(a);assert!(child("held").status.success());drop(b);let outcome=child("free");assert!(outcome.status.success(),"{}",String::from_utf8_lossy(&outcome.stderr));assert!(root.join("pages/child.json").is_file());fs::remove_dir_all(root).unwrap();
     }
     #[test]
-    fn drive_marker_fences_legacy_open_without_changing_logical_identity(){
-        let root=std::env::temp_dir().join(format!("nevis-format-{}",uuid::Uuid::new_v4()));let v=Vault::create(root.clone(),"T").unwrap();let id=v.id();v.fence_drive().unwrap();v.fence_drive().unwrap();
-        let marker=read_json(&root.join(".noviq/vault.json")).unwrap();assert_eq!(marker["format"],2);assert_eq!(marker["id"],"");assert_eq!(marker["driveVaultId"],id);assert_eq!(probe(&root,&id),"ok");assert_eq!(Vault::open_as(root.clone(),&id).unwrap().id(),id);
-        // Exactly the old v1 client's identity reader now returns empty and its open guard refuses the folder.
-        assert!(marker.get("id").and_then(Value::as_str).unwrap_or("").is_empty());drop(v);fs::remove_dir_all(root).unwrap();
+    fn a_marker_of_an_unknown_format_is_refused() {
+        let root = std::env::temp_dir().join(format!("nevis-format-{}", uuid::Uuid::new_v4()));
+        let v = Vault::create(root.clone(), "T").unwrap();
+        let id = v.id();
+        drop(v);
+        write_atomic(&root.join(".noviq/vault.json"), &serde_json::to_vec(&json!({"format":2,"id":id,"name":"T"})).unwrap()).unwrap();
+        assert_eq!(Vault::open(root.clone()).err().as_deref(), Some("VAULT_UNSUPPORTED_FORMAT"));
+        fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn replacing_marker_never_changes_the_open_vault_identity(){

@@ -25,7 +25,7 @@ export async function refreshConnected(svc: DatabaseService, client: GatewayClie
     message = e instanceof Error ? e.message : String(e)
   }
   // inaccessible is never read as "deleted by the user": the link and the last good cache stay, with a visible status
-  const r = await svc.tryExec([{ type: 'connected.store', payload: { pageId, propertyId, value: { provider: v.provider, externalId: v.externalId, canonicalUrl: v.canonicalUrl, cache: record ? { fields: record.fields, providerRevision: record.providerRevision, fetchedAt: record.fetchedAt } : null, status } as unknown as Json } as Json }], { origin: 'sync' })
+  const r = await svc.tryExec([{ type: 'connected.store', payload: { pageId, propertyId, value: { provider: v.provider, externalId: v.externalId, canonicalUrl: v.canonicalUrl, cache: record ? { fields: record.fields, providerRevision: record.providerRevision, fetchedAt: record.fetchedAt } : null, status } as unknown as Json } as Json }], { origin: 'external' })
   return { ok: !!record && r.ok, status, message: r.ok ? message : r.message }
 }
 
