@@ -23,7 +23,7 @@ export function importReadOnly(cx: Ctx, sourceId: Id): Set<string> {
   return new Set(s ? Object.values(s.fieldMap) : [])
 }
 export function assertNotImported(cx: Ctx, sourceId: Id, propertyOrTitle: string) {
-  if (cx.env.origin === 'import' || cx.env.origin === 'sync') return
+  if (cx.env.origin === 'import') return
   if (importReadOnly(cx, sourceId).has(propertyOrTitle)) fail('READ_ONLY', 'this value comes from the connected service; change it there', { propertyId: propertyOrTitle })
 }
 

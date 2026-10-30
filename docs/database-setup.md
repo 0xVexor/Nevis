@@ -45,6 +45,5 @@ drive (linking fails if `TEMP` is overridden at build time).
 | Public forms, outbound messages, scheduled jobs | `needs_setup` until a gateway is configured; `ready` after Settings → Database → Check connection succeeds | run `services/database-gateway`, an owner token, HTTPS in production |
 | Connected properties / imported sources | adapters exist; a connection with credentials must be added to the gateway's connections file | provider credentials (not provided) |
 | Shared workspaces (several people editing one server-side database) | `unsupported` | not implemented |
-| Sync of databases between devices through the Nevis server | merge logic implemented and unit-tested; **not verified on two real devices** | a two-device test against the server |
 
 Environment templates: `services/database-gateway/.env.example` (no credentials). Provider tokens belong in the gateway's connections file or an OS credential store, never in the Vault.

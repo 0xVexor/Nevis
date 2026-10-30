@@ -94,7 +94,7 @@ pub const VAULT_MISMATCH: &str = "VAULT_MISMATCH"; // the folder holds another v
 
 impl Vault {
     /// Opens a vault that exists. It never creates the folder or an identity: a vault whose folder vanished must not
-    /// come back as an empty vault under a new id (a sync would then take that as "everything was deleted").
+    /// come back as an empty vault under a new id (a sync tool would then take that as "everything was deleted").
     pub fn open(root: PathBuf) -> Res<Vault> {
         if !root.is_dir() || !root.join(".noviq/vault.json").is_file() {
             return Err(VAULT_MISSING.into());
@@ -283,7 +283,7 @@ impl Vault {
                         continue;
                     }
                     if base.is_some_and(|b| updated_at(&cur) != b && updated_at(&cur) != updated_at(&p)) {
-                        // the file changed under the editor (the sync brought another device's edit): do not lose that version
+                        // the file changed under the editor (a file-sync tool brought another device's edit): do not lose that version
                         self.keep_loser(id, &cur)?;
                         kept.push(id.to_string());
                     }
@@ -403,7 +403,7 @@ impl Vault {
         }
         // Keep the first name/timestamp for content-addressed duplicate imports.
         if same && path.with_extension("json").is_file() { return Ok(()); }
-        // the sidecar is written after the bytes, so a synced sidecar always has its file
+        // the sidecar is written after the bytes, so a sidecar that a sync tool copies always has its file
         let meta = json!({ "id": id, "type": mime, "size": bytes.len(), "name": name, "addedAt": added_at });
         write_atomic(&path.with_extension("json"), meta.to_string().as_bytes())
     }
