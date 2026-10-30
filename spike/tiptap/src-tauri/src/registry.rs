@@ -1,4 +1,4 @@
-//! The list of vaults known on this device (not synced) and which one is open. Lives in the app-data folder.
+//! The list of vaults known on this device and which one is open. Lives in the app-data folder.
 
 use crate::vault::{err, write_atomic, Res};
 use serde::{Deserialize, Serialize};
@@ -9,9 +9,6 @@ pub struct Entry {
     pub id: String,
     pub name: String,
     pub path: String,
-    /// keep this vault in sync with the signed-in Google account
-    #[serde(default)]
-    pub sync: bool,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
@@ -42,7 +39,7 @@ impl Registry {
             Some(p) if Path::new(p).join(".noviq/vault.json").exists() => {
                 let v = crate::vault::Vault::open(PathBuf::from(p)).ok();
                 match v {
-                    Some(v) => Registry { current: Some(v.id()), vaults: vec![Entry { id: v.id(), name: v.name(), path: p.to_string(), sync: false }] },
+                    Some(v) => Registry { current: Some(v.id()), vaults: vec![Entry { id: v.id(), name: v.name(), path: p.to_string() }] },
                     None => Registry::default(),
                 }
             }
