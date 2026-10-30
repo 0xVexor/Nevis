@@ -277,6 +277,9 @@ export class DocumentService implements PageRepo {
    * same document-local IDs on every device; persisted IDs are never positional. */
   private migrateIdentities() {
     for (const page of this.pages) {
+      if (typeof page.content === 'string' && this.host.legacyHtmlToDoc) {
+        try { page.content = this.host.legacyHtmlToDoc(page.content) as typeof page.content; this.touch(page.id) } catch { continue }
+      }
       if (identityVersion(page.content) > BLOCK_IDENTITY_VERSION) continue
       const migration = identifyBlocks(page.content)
       if (!migration.changed) continue

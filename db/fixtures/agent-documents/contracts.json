@@ -542,6 +542,157 @@
           ]
         }
       }
+    },
+    "list_databases": {
+      "input": {},
+      "output": {
+        "ok": true,
+        "result": {
+          "databases": [
+            {
+              "sourceId": "source-1",
+              "name": "Tasks",
+              "documentId": "page-1",
+              "presentation": "full",
+              "rowCount": 3
+            }
+          ]
+        }
+      }
+    },
+    "describe_database": {
+      "input": {
+        "sourceId": "source-1"
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "sourceId": "source-1",
+          "name": "Tasks",
+          "documentId": "page-1",
+          "properties": [
+            {
+              "propertyId": "prop-status",
+              "name": "Status",
+              "kind": "select",
+              "options": [
+                {
+                  "optionId": "opt-open",
+                  "name": "Open"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "query_database_rows": {
+      "input": {
+        "sourceId": "source-1",
+        "limit": 50
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "sourceId": "source-1",
+          "properties": [
+            {
+              "propertyId": "prop-status",
+              "name": "Status",
+              "kind": "select",
+              "options": [
+                {
+                  "optionId": "opt-open",
+                  "name": "Open"
+                }
+              ]
+            }
+          ],
+          "rows": [
+            {
+              "pageId": "row-1",
+              "title": "Write docs",
+              "values": {
+                "prop-status": "Open"
+              }
+            }
+          ],
+          "total": 1,
+          "nextCursor": null,
+          "truncated": false
+        }
+      }
+    },
+    "create_database": {
+      "input": {
+        "operationId": "op-db",
+        "parentId": null,
+        "title": "Tasks",
+        "properties": [
+          {
+            "name": "Status",
+            "kind": "select",
+            "options": [
+              "Open",
+              "Done"
+            ]
+          }
+        ],
+        "rows": [
+          {
+            "title": "First",
+            "values": {
+              "Status": "Open"
+            }
+          }
+        ]
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "sourceId": "source-1",
+          "properties": [
+            {
+              "propertyId": "prop-status",
+              "name": "Status",
+              "kind": "select",
+              "options": [
+                {
+                  "optionId": "opt-open",
+                  "name": "Open"
+                }
+              ]
+            }
+          ],
+          "rowIds": [
+            "row-1"
+          ],
+          "pageId": "page-1"
+        }
+      }
+    },
+    "add_database_rows": {
+      "input": {
+        "operationId": "op-rows",
+        "sourceId": "source-1",
+        "rows": [
+          {
+            "title": "Second",
+            "values": {
+              "Status": "Done"
+            }
+          }
+        ]
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "sourceId": "source-1",
+          "rowIds": [
+            "row-2"
+          ]
+        }
+      }
     }
   },
   "errors": [

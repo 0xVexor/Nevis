@@ -860,6 +860,20 @@ export const FA: Record<string, string> = {
   "Use a client that supports Streamable HTTP and a Bearer authorization header. Connection details contain a private token; share them only with your authorized client.": "از کلاینتی استفاده کنید که Streamable HTTP و هدر مجوز Bearer را پشتیبانی می‌کند. جزئیات اتصال یک توکن خصوصی دارد؛ فقط با کلاینت مجاز خود به اشتراک بگذارید.",
   "Connection URL and authorization header copied.": "نشانی اتصال و هدر مجوز کپی شد.",
   "Copy connection details": "کپی جزئیات اتصال",
-  "Agent connections": "اتصال عامل‌ها",
-  "Choose which saved documents a local client can access.": "انتخاب کنید یک کلاینت محلی به کدام سندهای ذخیره‌شده دسترسی داشته باشد."
+  "AI connection": "اتصال هوش مصنوعی",
+  "Let an AI app work with your documents.": "به یک برنامهٔ هوش مصنوعی اجازه دهید با سندهایتان کار کند.",
+  "Let an AI app read, and optionally edit, the documents in this vault. It works only while Nevis is open.": "به یک برنامهٔ هوش مصنوعی اجازه دهید سندهای این فضای کاری را بخواند و در صورت تمایل ویرایش کند. فقط تا وقتی نویس باز است کار می‌کند.",
+  "Allow AI access": "اجازهٔ دسترسی هوش مصنوعی",
+  "Off. Nothing can reach your documents.": "خاموش. هیچ چیزی به سندهای شما دسترسی ندارد.",
+  "Turn the connection off to change this.": "برای تغییر این گزینه، اتصال را خاموش کنید.",
+  "Advanced: hide documents": "پیشرفته: پنهان کردن سندها",
+  "{n} hidden": "{n} پنهان",
+  "Everything is visible": "همه‌چیز قابل‌مشاهده است",
+  "Hidden documents and their sub-pages stay private, including history and search results. Turn the connection off to change this.": "سندهای پنهان و زیرصفحه‌هایشان خصوصی می‌مانند، از جمله تاریخچه و نتایج جست‌وجو. برای تغییر، اتصال را خاموش کنید.",
+  "Connect an AI app": "اتصال یک برنامهٔ هوش مصنوعی",
+  "One click adds Nevis to the app. Do this once; it keeps working after Nevis restarts. Restart the AI app afterwards.": "با یک کلیک نویس به برنامه اضافه می‌شود. فقط یک بار لازم است و بعد از راه‌اندازی دوبارهٔ نویس هم کار می‌کند. بعد از آن برنامهٔ هوش مصنوعی را دوباره باز کنید.",
+  "Added to {file}. Restart {app}.": "به {file} اضافه شد. {app} را دوباره باز کنید.",
+  "Copy for another AI": "کپی برای هوش مصنوعی دیگر",
+  "Copied. Paste it into any AI app that supports MCP servers.": "کپی شد. آن را در هر برنامهٔ هوش مصنوعی که از سرور MCP پشتیبانی می‌کند بچسبانید.",
+  "Manual connection": "اتصال دستی"
 }

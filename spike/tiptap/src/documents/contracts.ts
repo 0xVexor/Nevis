@@ -73,7 +73,9 @@ const inserted = obj({ temporaryId: id, node })
 const targetRange = obj({ from: editRef, through: editRef })
 const tableCell = obj({ kind: choice('cell', 'header'), blocks: array(inserted, 100, 1) })
 const assets = array(obj({ temporaryId: id, mimeType: choice('image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/vnd.excalidraw+json'), name: str(256, 0), data: str(262144) }), 20, 1)
+const markdown = str(200000)
 const operations = array(union(
+  obj({ kind: literal('insert_markdown'), at: location, markdown, assets }, ['kind', 'at', 'markdown']),
   obj({ kind: literal('insert_blocks'), at: location, blocks: array(inserted, 100, 1), assets }, ['kind', 'at', 'blocks']),
   obj({ kind: literal('replace_blocks'), target: targetRange, blocks: array(inserted, 100, 1), assets }, ['kind', 'target', 'blocks']),
   obj({ kind: literal('move_blocks'), target: targetRange, at: location }),
@@ -107,6 +109,9 @@ function tool(input: Schema, result: Schema) {
 }
 const write = { documentId: id, expectedRevision: revision, operationId: id }
 
+const dbRow = obj({ title: str(1024, 0), values: { type: 'object' } }, [])
+const dbProperty = obj({ propertyId: id, name: str(512, 0), kind: str(32), options: array(obj({ optionId: id, name: str(512, 0) }), 200) }, ['propertyId', 'name', 'kind'])
+
 export const documentToolContracts = Object.freeze({
   get_editor_capabilities: tool(empty, obj({ profileVersion: integer(1, 1000),
     nodes: array(obj({ type: str(80), attributes: { type: 'object' }, contentExpression: str(128, 0), example: node }), 100),
@@ -126,7 +131,14 @@ export const documentToolContracts = Object.freeze({
       obj({ kind: literal('section'), headingBlockId: id }), obj({ kind: literal('blocks'), blockIds: array(id, 100, 1) })),
     format: choice('markdown', 'structured', 'both'), budget, cursor,
   }, ['documentId', 'target', 'format']), readResult),
-  create_document: tool(obj({ operationId: id, parentId: nullable(id), kind: choice('page', 'folder', 'board', 'todo'), metadata, content, assets }, ['operationId', 'parentId', 'kind', 'metadata', 'content']), saved),
+  list_databases: tool(empty, obj({ databases: array(obj({ sourceId: id, name: str(1024, 0), documentId: id, presentation: choice('inline', 'full'), rowCount: integer(0, 1000000000) }), 100) })),
+  describe_database: tool(obj({ sourceId: id }), obj({ sourceId: id, name: str(1024, 0), documentId: id, properties: array(dbProperty, 200) })),
+  query_database_rows: tool(obj({ sourceId: id, limit: integer(1, 100), cursor: str(2048) }, ['sourceId']),
+    obj({ sourceId: id, properties: array(dbProperty, 200), rows: array(obj({ pageId: id, title: str(1024, 0), values: { type: 'object' } }), 100), total: integer(0, 1000000000), nextCursor: nullable(str(2048)), truncated: bool })),
+  create_database: tool(obj({ operationId: id, parentId: nullable(id), title: str(512), properties: array(obj({ name: str(128), kind: choice('text', 'number', 'checkbox', 'select', 'multi_select', 'url', 'email', 'phone', 'date'), options: array(str(128), 50) }, ['name', 'kind']), 30),
+    rows: array(dbRow, 100) }, ['operationId', 'parentId', 'title']), obj({ sourceId: id, pageId: id, properties: array(dbProperty, 200), rowIds: array(id, 100) })),
+  add_database_rows: tool(obj({ operationId: id, sourceId: id, rows: array(dbRow, 100, 1) }), obj({ sourceId: id, rowIds: array(id, 100) })),
+  create_document: tool(obj({ operationId: id, parentId: nullable(id), kind: choice('page', 'folder', 'board', 'todo'), metadata, content, markdown, assets }, ['operationId', 'parentId', 'kind', 'metadata']), saved),
   edit_document: tool(obj({ ...write, mode: choice('preview', 'apply'), operations, budget },
     [...Object.keys(write), 'mode', 'operations']), union(
     obj({ mode: literal('preview'), documentId: id, baseRevision: revision, persisted: literal(false),

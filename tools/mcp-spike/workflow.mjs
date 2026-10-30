@@ -29,7 +29,7 @@ async function call(name, args, expected = true) {
 const read = documentId => call('read_document', { documentId, target: { kind: 'full' }, format: 'both' })
 try {
   await client.connect(new StreamableHTTPClientTransport(url, { requestInit: { headers: { Authorization: `Bearer ${token}` } } }))
-  assert.equal((await client.listTools()).tools.length, 9)
+  assert.equal((await client.listTools()).tools.length, 14)
   const editor = await call('get_editor_capabilities', {})
   assert.equal(editor.profileVersion, 2)
   for (const type of ['callout', 'toggle', 'mermaid', 'drawing', 'image', 'table', 'layoutGroup']) assert.ok(editor.nodes.some(node => node.type === type))
@@ -60,7 +60,7 @@ try {
   await call('undo_document_edit', { documentId: created.documentId, operationId: `undo-metadata-${run}`, undoOperationId: `metadata-${run}`, expectedRevision: metadata.revision })
   const cleanCreate = await call('create_document', { ...create, operationId: `create-undo-${run}` })
   await call('undo_document_edit', { documentId: cleanCreate.documentId, operationId: `undo-create-${run}`, undoOperationId: `create-undo-${run}`, expectedRevision: cleanCreate.revision })
-  report.assertions = ['nine tools discovered', 'scoped browse/search/read', 'excluded content denied', 'preview without persistence', 'durable original retry receipt', 'stale revision rejected', 'saved read-back', 'retained version read', 'edit undo restores exact chunks', 'merged table cell edit, row insertion and undo', 'creation retry identity', 'metadata update and undo', 'creation undo tombstone']
+  report.assertions = ['fourteen tools discovered', 'scoped browse/search/read', 'excluded content denied', 'preview without persistence', 'durable original retry receipt', 'stale revision rejected', 'saved read-back', 'retained version read', 'edit undo restores exact chunks', 'merged table cell edit, row insertion and undo', 'creation retry identity', 'metadata update and undo', 'creation undo tombstone']
   report.completed = true
 } finally {
   await client.close()
