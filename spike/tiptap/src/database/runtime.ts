@@ -13,7 +13,7 @@ import type { PageStore } from './state'
 import { dueReminders } from './reminders'
 import { GatewayClient, gatewayConfig, pullInbox } from './gateway/client'
 
-const DEVICE_KEY = 'not.deviceId' // per device, never synced: kv files travel with the vault, localStorage does not
+const DEVICE_KEY = 'not.deviceId' // per device: kv files travel with the vault, localStorage does not
 
 function deviceId(): string {
   try {

@@ -550,7 +550,7 @@ export const FA_DB: Record<string, string> = {
   "2 days before": "۲ روز قبل",
   "Reminder: {title} ({prop})": "یادآور: {title} ({prop})",
   "Gateway owner token": "توکن مالک دروازه",
-  "Kept on this device only, outside your notes and never synced. Created when you set up the gateway.": "فقط روی همین دستگاه نگه‌داری می‌شود، بیرون از یادداشت‌ها و هرگز همگام نمی‌شود. هنگام راه‌اندازی دروازه ساخته می‌شود.",
+  "Kept on this device only, outside your notes. Created when you set up the gateway.": "فقط روی همین دستگاه نگه‌داری می‌شود، بیرون از یادداشت‌ها. هنگام راه‌اندازی دروازه ساخته می‌شود.",
   "Check connection": "بررسی اتصال",
   "Checking…": "در حال بررسی…",
   "Connected": "متصل",

@@ -382,7 +382,6 @@ export const FA: Record<string, string> = {
   "Loading…": "در حال بارگذاری…",
   "Downloading…": "در حال دانلود…",
   "Vault": "Vault",
-  "Sync between devices": "همگام‌سازی بین دستگاه‌ها",
   "Full backup (JSON)": "پشتیبان‌گیری کامل (JSON)",
   "Restore from backup…": "بازیابی از پشتیبان…",
   "Undo": "بازگردانی",

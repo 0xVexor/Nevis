@@ -53,7 +53,7 @@ export function DatabaseSettings() {
         <Row label={t('Gateway address')} hint={t('The Nevis gateway publishes forms and runs scheduled messages. Without it, everything stays on this device.')} wide>
           <input className="sx-input" dir="ltr" value={gw} placeholder="https://gateway.example.com" aria-invalid={gwBad} onChange={(e) => (setGw(e.target.value), setSaved(false))} />
         </Row>
-        <Row label={t('Gateway owner token')} hint={t('Kept on this device only, outside your notes and never synced. Created when you set up the gateway.')} wide>
+        <Row label={t('Gateway owner token')} hint={t('Kept on this device only, outside your notes. Created when you set up the gateway.')} wide>
           <input className="sx-input" type="password" dir="ltr" autoComplete="off" value={token} onChange={(e) => (setToken(e.target.value), setSaved(false))} />
         </Row>
       </Card>
@@ -66,7 +66,6 @@ export function DatabaseSettings() {
       <Card icon={<Ic.Check />} title={t('Status')}>
         <ul className="db-status">
           <li><b>{t('On this device')}</b><span>{t('Working')}</span></li>
-          <li><b>{t('Sync between devices')}</b><span>{t('Not checked: needs a connected vault')}</span></li>
           <li><b>{t('Gateway (public forms, outbound messages)')}</b><span>{gw && !gwBad ? t('Address saved; not verified from here') : t('Not set up')}</span></li>
           <li><b>{t('Connected providers')}</b><span>{t('Not connected')}</span></li>
         </ul>
