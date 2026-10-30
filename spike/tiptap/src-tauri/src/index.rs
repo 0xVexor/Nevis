@@ -17,17 +17,25 @@ pub struct Doc {
     pub body: String,
 }
 
+/// Version of the index layout. The index is disposable: a file of another version is emptied and the UI refills it.
+const LAYOUT: i64 = 2;
+
 pub fn open(vault_root: &Path) -> Res<Connection> {
     let dir = vault_root.join(".noviq");
     std::fs::create_dir_all(&dir).map_err(err)?;
     let db = Connection::open(dir.join("index.db")).map_err(err)?;
+    db.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;").map_err(err)?;
+    let version: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0)).map_err(err)?;
+    if version != LAYOUT {
+        db.execute_batch("DROP TABLE IF EXISTS meta; DROP TABLE IF EXISTS fts;").map_err(err)?;
+    }
+    // `rid` is the row of the page in `fts`: deleting by it is direct, while deleting by the UNINDEXED `id` scans the whole table
     db.execute_batch(
-        "PRAGMA journal_mode = WAL;
-         PRAGMA synchronous = NORMAL;
-         CREATE TABLE IF NOT EXISTS meta(id TEXT PRIMARY KEY, updated INTEGER NOT NULL);
+        "CREATE TABLE IF NOT EXISTS meta(id TEXT PRIMARY KEY, updated INTEGER NOT NULL, rid INTEGER NOT NULL);
          CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(id UNINDEXED, title, tags, body, tokenize = 'unicode61 remove_diacritics 2');",
     )
     .map_err(err)?;
+    db.pragma_update(None, "user_version", LAYOUT).map_err(err)?;
     Ok(db)
 }
 
@@ -41,13 +49,14 @@ pub fn state(db: &Connection) -> Res<HashMap<String, i64>> {
 pub fn update(db: &mut Connection, docs: &[Doc], removed: &[String]) -> Res<()> {
     let tx = db.transaction().map_err(err)?;
     for id in removed {
-        tx.execute("DELETE FROM fts WHERE id = ?", [id]).map_err(err)?;
+        tx.execute("DELETE FROM fts WHERE rowid = (SELECT rid FROM meta WHERE id = ?)", [id]).map_err(err)?;
         tx.execute("DELETE FROM meta WHERE id = ?", [id]).map_err(err)?;
     }
     for d in docs {
-        tx.execute("DELETE FROM fts WHERE id = ?", [&d.id]).map_err(err)?;
+        tx.execute("DELETE FROM fts WHERE rowid = (SELECT rid FROM meta WHERE id = ?)", [&d.id]).map_err(err)?;
         tx.execute("INSERT INTO fts(id, title, tags, body) VALUES (?1, ?2, ?3, ?4)", params![d.id, d.title, d.tags, d.body]).map_err(err)?;
-        tx.execute("INSERT OR REPLACE INTO meta(id, updated) VALUES (?1, ?2)", params![d.id, d.updated]).map_err(err)?;
+        let rid = tx.last_insert_rowid();
+        tx.execute("INSERT OR REPLACE INTO meta(id, updated, rid) VALUES (?1, ?2, ?3)", params![d.id, d.updated, rid]).map_err(err)?;
     }
     tx.commit().map_err(err)
 }
@@ -89,5 +98,34 @@ mod tests {
         let st = state(&db).unwrap();
         assert_eq!(st.get("c"), Some(&2));
         assert!(!st.contains_key("a"));
+    }
+
+    #[test]
+    fn replacing_and_removing_a_page_leaves_exactly_one_row_per_page() {
+        let dir = std::env::temp_dir().join(format!("noviq-idx-rows-{}", crate::vault::now_ms()));
+        let mut db = open(&dir).unwrap();
+        update(&mut db, &[doc("a", "first", "", "alpha", 1), doc("b", "second", "", "beta", 1)], &[]).unwrap();
+        update(&mut db, &[doc("a", "first", "", "gamma", 2)], &[]).unwrap();
+        update(&mut db, &[doc("a", "first", "", "delta", 3)], &["b".to_string()]).unwrap();
+        let rows: i64 = db.query_row("SELECT count(*) FROM fts", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 1);
+        assert_eq!(state(&db).unwrap().len(), 1);
+        let find = |w: &str| search(&db, &[w.to_string()], 10).unwrap();
+        assert!(find("alpha").is_empty() && find("gamma").is_empty() && find("beta").is_empty());
+        assert_eq!(find("delta"), ["a"]);
+    }
+
+    #[test]
+    fn an_index_of_an_older_layout_is_emptied_not_misread() {
+        let dir = std::env::temp_dir().join(format!("noviq-idx-old-{}", crate::vault::now_ms()));
+        std::fs::create_dir_all(dir.join(".noviq")).unwrap();
+        {
+            let old = Connection::open(dir.join(".noviq/index.db")).unwrap();
+            old.execute_batch("CREATE TABLE meta(id TEXT PRIMARY KEY, updated INTEGER NOT NULL); INSERT INTO meta VALUES('ghost', 5); CREATE VIRTUAL TABLE fts USING fts5(id UNINDEXED, title, tags, body);").unwrap();
+        }
+        let mut db = open(&dir).unwrap();
+        assert!(state(&db).unwrap().is_empty(), "the UI sends every page again");
+        update(&mut db, &[doc("a", "t", "", "b", 1)], &[]).unwrap();
+        assert_eq!(state(&db).unwrap().len(), 1);
     }
 }
