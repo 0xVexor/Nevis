@@ -1,11 +1,13 @@
 // Dev only: `?bench=870` fills the (browser) database with a synthetic vault so performance can be measured without importing files.
 // Pages sit in nested folders, link each other (a few hubs get many links) and some contain Mermaid diagrams. Reload without the parameter to keep it.
-import { savePages } from './db'
+import { allPages, isTauri, savePages } from './db'
 
 const DIRS = ['Projects/Alpha', 'Projects/Beta', 'Areas/Health', 'Areas/Work', 'Resources/Books', 'Resources/Articles', 'Archive/2023', 'Archive/2024', 'Daily']
 const FLOW = (i: number) => `flowchart TD\n  A[Start ${i}] --> B{Check}\n  B -- yes --> C[Do it]\n  B -- no --> D[Skip]\n  C --> D`
 
 export async function seedBench(n: number, links = 5) {
+  if (isTauri) throw new Error('Benchmark seeding requires browser storage')
+  const expectedAll = await allPages()
   let seed = 42
   const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32)
   const now = Date.now()
@@ -51,6 +53,6 @@ export async function seedBench(n: number, links = 5) {
       deletedAt: null,
     })
   }
-  await savePages(rows, [], true)
+  await savePages(rows, [], true, { expectedVaultId: 'browser', expectedAll })
   return rows.length
 }

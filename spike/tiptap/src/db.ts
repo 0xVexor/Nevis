@@ -1,8 +1,16 @@
+import type { DocumentAdmission } from './documents/admission'
 // Storage boundary. In the desktop app (Tauri), canonical pages/records/assets live in vault files (src-tauri/src/main.rs);
 // in a plain browser it falls back to IndexedDB: one record per page (so saving a page rewrites that page only), a versions
 // store for page history, and a small key-value store.
 import { invoke } from '@tauri-apps/api/core'
 import { DB_SCHEMA_VERSION, upgradeDatabaseStores } from './database/storage/idb'
+import { IndexedDbDocumentStorage } from './platform/documents/indexedDb'
+import { publishDocumentChange } from './platform/documents/changes'
+import type { Page } from './documents/model'
+import type { DocumentWrite } from './documents/ports'
+import type { DocumentVersion } from './documents/ports'
+import type { DocumentOperationRecord, DocumentOperationReceipt, DocumentOperationCommitResult, DocumentOperationSummary } from './documents/operations'
+export type { DocumentVersion as Version } from './documents/ports'
 
 export const isTauri = '__TAURI_INTERNALS__' in window
 
@@ -50,26 +58,41 @@ const wrap = <T>(req: IDBRequest<T>) =>
     req.onerror = () => reject(req.error)
   })
 
-export async function allPages(): Promise<any[]> {
-  if (isTauri) return invoke('pages_all')
-  return wrap((await db()).transaction('pages').objectStore('pages').getAll())
+const browserDocuments = new IndexedDbDocumentStorage('browser:not.db', db, () => !frozen, publishDocumentChange)
+
+export async function listDocumentOperations(scopeId: string, documentId: string, expectedVaultId: string) {
+  if (frozen) throw new Error('Document storage is unavailable')
+  return invoke<DocumentOperationSummary[]>('document_operation_list', { scopeId, documentId, expectedVaultId })
+}
+export async function findDocumentOperation(scopeId: string, operationId: string, expectedVaultId: string) {
+  if (frozen) throw new Error('Document storage is unavailable')
+  return invoke<DocumentOperationRecord | null>('document_operation_find', { scopeId, operationId, expectedVaultId })
+}
+export async function commitDocumentOperation(record: DocumentOperationRecord, expectedVaultId: string) {
+  if (frozen) throw new Error('Document storage is unavailable')
+  return invoke<DocumentOperationReceipt>('document_operation_commit', { record, expectedVaultId })
+}
+export async function commitDocumentOperationResult(record: DocumentOperationRecord, expectedVaultId: string, admission?: DocumentAdmission['native']) {
+  if (frozen) throw new Error('Document storage is unavailable')
+  return invoke<DocumentOperationCommitResult>('document_operation_commit', { record, expectedVaultId, includeStatus: true, admission })
 }
 
-/** One transaction: either everything is written or nothing (crash safety). */
-export async function savePages(upserts: any[], removed: string[], clearFirst: boolean) {
-  if (frozen) return
+export async function allPages(): Promise<any[]> {
+  if (isTauri) return invoke('pages_all')
+  return browserDocuments.load()
+}
+
+/** Browser batches are transactional; native page files are individually atomic. */
+export async function savePages(upserts: any[], removed: string[], clearFirst: boolean, preconditions?: { expectedVaultId: string; expectedPages?: DocumentWrite['expectedPages']; expectedAll?: Page[] }) {
+  if (frozen) throw new Error('Document storage is unavailable')
+  if (!preconditions || (!preconditions.expectedPages && !preconditions.expectedAll)) throw new Error('Missing document precondition')
   if (isTauri) {
     // ids of pages whose newer version on disk (changed by another program) was kept in the page history instead of being overwritten
-    const kept = await invoke<string[]>('pages_save', { upserts, removed, clearFirst })
+    const kept = await invoke<string[]>('pages_save', { upserts, removed, clearFirst, ...preconditions })
     if (kept.length) window.dispatchEvent(new CustomEvent('page-conflict', { detail: kept }))
     return
   }
-  const tx = (await db()).transaction('pages', 'readwrite')
-  const s = tx.objectStore('pages')
-  if (clearFirst) s.clear()
-  upserts.forEach((p) => s.put(p))
-  removed.forEach((id) => s.delete(id))
-  await done(tx)
+  await browserDocuments.save({ upserts, removed, replaceAll: clearFirst, baseVersions: {}, ...preconditions })
 }
 
 // a folder handle (backupDir) cannot be serialized, so it always stays in IndexedDB
@@ -90,43 +113,21 @@ export async function kvSet(key: string, value: unknown) {
 
 // ───── page history ─────
 
-export interface Version {
-  pageId: string
-  ts: number
-  title: string
-  content: any
-}
-
-const KEEP_VERSIONS = 40
-
-export async function listVersions(pageId: string): Promise<Version[]> {
+export async function listVersions(pageId: string): Promise<DocumentVersion[]> {
   if (isTauri) return invoke('versions_list', { pageId })
-  const rows: Version[] = await wrap((await db()).transaction('versions').objectStore('versions').index('byPage').getAll(pageId))
-  return rows.sort((a, b) => b.ts - a.ts)
+  return browserDocuments.listVersions(pageId)
 }
 
-export async function addVersion(v: Version) {
+export async function addVersion(version: DocumentVersion) {
   if (frozen) return
-  if (isTauri) return invoke<void>('version_add', { version: v })
-  const tx = (await db()).transaction('versions', 'readwrite')
-  tx.objectStore('versions').put(v)
-  await done(tx)
-  const all = await listVersions(v.pageId)
-  if (all.length > KEEP_VERSIONS) {
-    const t2 = (await db()).transaction('versions', 'readwrite')
-    all.slice(KEEP_VERSIONS).forEach((old) => t2.objectStore('versions').delete([old.pageId, old.ts]))
-    await done(t2)
-  }
+  if (isTauri) return invoke<void>('version_add', { version })
+  await browserDocuments.addVersion(version)
 }
 
 export async function deleteVersions(pageId: string) {
   if (frozen) return
   if (isTauri) return invoke<void>('versions_delete', { pageId })
-  const all = await listVersions(pageId)
-  if (!all.length) return
-  const tx = (await db()).transaction('versions', 'readwrite')
-  all.forEach((v) => tx.objectStore('versions').delete([v.pageId, v.ts]))
-  await done(tx)
+  await browserDocuments.deleteVersions(pageId)
 }
 
 // ───── vaults (desktop app only, ADR-0003) ─────

@@ -1,0 +1,144 @@
+{
+  "formatVersion": 1,
+  "provenance": "Entirely synthetic, authored for NV-MCP-01. No user notes, credentials, external files, or attachments.",
+  "sourceBaseline": "1812042",
+  "pageCount": 8,
+  "longDocument": {
+    "pageId": "10000000-0000-4000-8000-000000000005",
+    "minimumSections": 80
+  },
+  "excludedPageIds": [
+    "10000000-0000-4000-8000-000000000007"
+  ],
+  "deletedPageIds": [
+    "10000000-0000-4000-8000-000000000008"
+  ],
+  "normalizationCases": [
+    {
+      "input": "كلاس يكى",
+      "expected": "کلاس یکی"
+    },
+    {
+      "input": "۱۲۳ ١٢٣",
+      "expected": "123 123"
+    },
+    {
+      "input": "برنامه‌نویسی",
+      "expected": "برنامه نویسی"
+    },
+    {
+      "input": "عَلْمـ",
+      "expected": "علم"
+    },
+    {
+      "input": "Java Count++",
+      "expected": "java count++"
+    },
+    {
+      "input": "a‎b‏c",
+      "expected": "a b c"
+    },
+    {
+      "input": "E = mc^2",
+      "expected": "e = mc^2"
+    },
+    {
+      "input": "",
+      "expected": ""
+    }
+  ],
+  "targets": [
+    {
+      "name": "second-example",
+      "pageId": "10000000-0000-4000-8000-000000000002",
+      "path": [
+        6
+      ],
+      "type": "paragraph",
+      "text": "Second example: synchronized protects this update."
+    },
+    {
+      "name": "count-cell",
+      "pageId": "10000000-0000-4000-8000-000000000004",
+      "path": [
+        1,
+        1,
+        1,
+        0
+      ],
+      "type": "paragraph",
+      "text": "۱۲۳"
+    },
+    {
+      "name": "formula",
+      "pageId": "10000000-0000-4000-8000-000000000004",
+      "path": [
+        2
+      ],
+      "type": "mathBlock",
+      "attribute": "latex",
+      "value": "E = mc^2"
+    },
+    {
+      "name": "diagram",
+      "pageId": "10000000-0000-4000-8000-000000000004",
+      "path": [
+        4
+      ],
+      "type": "mermaid",
+      "attribute": "code",
+      "value": "flowchart LR\n  Read --> Validate --> Save"
+    },
+    {
+      "name": "future-widget",
+      "pageId": "10000000-0000-4000-8000-000000000006",
+      "path": [
+        2
+      ],
+      "type": "futureWidget",
+      "attribute": "version",
+      "value": 7
+    }
+  ],
+  "workflows": [
+    {
+      "id": "find-and-explain",
+      "instruction": "Find concurrency, read its outline, then insert an explanation after the second Example paragraph and link to Happens-before.",
+      "pageId": "10000000-0000-4000-8000-000000000002",
+      "target": "second-example",
+      "gate": "Future retrieval/edit integration; not executed in NV-MCP-01."
+    },
+    {
+      "id": "table-cell",
+      "instruction": "Update only the count cell; preserve merged cells, RTL, and formulas.",
+      "pageId": "10000000-0000-4000-8000-000000000004",
+      "target": "count-cell",
+      "gate": "NV-MCP-19; not executed."
+    },
+    {
+      "id": "bounded-read",
+      "instruction": "Read section 60 without returning all 80 sections.",
+      "pageId": "10000000-0000-4000-8000-000000000005",
+      "gate": "NV-MCP-07; not executed."
+    },
+    {
+      "id": "preserve-unknown",
+      "instruction": "Edit only the paragraph before futureWidget; retain its payload unchanged or reject unsupported scope.",
+      "pageId": "10000000-0000-4000-8000-000000000006",
+      "target": "future-widget",
+      "gate": "NV-MCP-12; not executed."
+    },
+    {
+      "id": "exclusions",
+      "instruction": "Search must not disclose excluded or trashed sentinel text or titles.",
+      "pageId": "10000000-0000-4000-8000-000000000007",
+      "gate": "NV-MCP-16; not executed."
+    }
+  ],
+  "limitations": [
+    "Not an importable vault backup.",
+    "No stable block IDs exist yet; paths identify this immutable fixture revision only.",
+    "futureWidget is deliberately unsupported; preservation/rejection case only.",
+    "Fixture integrity and normalization checks do not prove editor-schema acceptance, search ranking, safe writes, or MCP interoperability."
+  ]
+}

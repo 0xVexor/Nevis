@@ -4,6 +4,13 @@ version = "1.0.0"
 description = "Nevis: offline notes with full Persian/RTL support"
 edition = "2021"
 
+[features]
+# Connections still start disabled and require a separate document-editing grant.
+default = ["mcp-writes"]
+mcp-writes = []
+# Keep existing acceptance commands compatible; app identity supplies the isolation.
+mcp-write-acceptance = ["mcp-writes"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -22,7 +29,14 @@ sha2 = "0.10"
 base64 = "0.22"
 same-file = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots", "system-proxy", "socks", "http2"] }
+hyper = { version = "1.12", features = ["server", "http1"] }
+hyper-util = { version = "0.1.21", features = ["tokio"] }
+http-body-util = "0.1.5"
+tokio = { version = "1.54", features = ["rt", "net", "time", "sync"] }
 trash = "5" # moves a vault folder to the Recycle Bin / Trash instead of deleting it
+
+[dev-dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["blocking"] }
 
 [profile.release]
 lto = true

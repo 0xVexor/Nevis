@@ -5,6 +5,7 @@ import type { Commit, Id, Json, RecordKind } from '../model/types.ts'
 import { DbError } from '../model/errors.ts'
 import type { AnyRecord } from '../state.ts'
 import type { BatchWrite, DbStorage, LoadedDatabase, UndoGroup } from './types.ts'
+import { canonicalDocumentValue } from '../../documents/revision.ts'
 
 export const DB_STORES = ['db_records', 'db_history', 'db_ops', 'db_meta', 'db_runtime'] as const
 export const DB_SCHEMA_VERSION = 2 // not.db v1 = pages/versions/kv, v2 adds the database stores
@@ -86,6 +87,8 @@ export class IdbStorage implements DbStorage {
       }
       for (const w of batch.pages) {
         const cur = (await wrap(pages.get(w.id))) as { recordMeta?: { revision?: number } } | undefined
+        if (Object.hasOwn(w, 'before') && canonicalDocumentValue(cur ?? null) !== canonicalDocumentValue(w.before))
+          throw new DbError('REVISION_CONFLICT', `page/${w.id} was changed by another tab`, { recordKind: 'page', id: w.id })
         if (cur && (cur.recordMeta?.revision ?? 0) !== w.baseRevision) throw new DbError('REVISION_CONFLICT', `page/${w.id} was changed by another tab`, { recordKind: 'page', id: w.id, expected: w.baseRevision, current: cur.recordMeta?.revision ?? 0 })
       }
       for (const w of batch.records) (w.after ? rec.put(w.after, `${w.kind}/${w.id}`) : rec.delete(`${w.kind}/${w.id}`))

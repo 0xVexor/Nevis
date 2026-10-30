@@ -4,6 +4,7 @@ import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state'
 import { closeHistory, isHistoryTransaction } from '@tiptap/pm/history'
 import { confirmDialog } from '../dialog'
 import { t } from '../i18n'
+import { blockIdentityPending, isBlockIdentityTransaction } from './blockIdentity'
 import {
   GROUP, COLUMN, GAP, MIN_WIDTH, activeGroup, ancestor, blockRange, boundaryKey,
   crossesColumns, displayWidths, equalWidths, flattenGroup, flattenLayouts, focusIn,
@@ -388,7 +389,8 @@ export const LayoutSafety = Extension.create({
         if (!tr.docChanged) return true
         if (!layoutStructureValid(tr.doc)) { layoutMessage('Layouts cannot be nested. Add full-width text after this layout first.'); return false }
         // Full document replacement and history use their own validated document.
-        if (tr.getMeta('preventUpdate') || isHistoryTransaction(tr) || tr.getMeta('layoutAction')) return true
+        if (isBlockIdentityTransaction(tr) || tr.getMeta('preventUpdate') || isHistoryTransaction(tr) || tr.getMeta('layoutAction')) return true
+        if (crossesColumns(state)) { layoutMessage('Select blocks from one column.'); return false }
         if (state.selection instanceof NodeSelection && state.selection.node.type.name === GROUP) {
           layoutMessage('Use the layout menu to delete a layout and its content.')
           return false
@@ -397,7 +399,8 @@ export const LayoutSafety = Extension.create({
       },
       appendTransaction(transactions, _previous, state) {
         // Keep later typing out of the structural action's undo event as well.
-        if (transactions.some((tr) => tr.getMeta('layoutAction'))) return closeHistory(state.tr).setMeta('addToHistory', false)
+        const layoutAction = transactions.some(tr => tr.getMeta('layoutAction') || tr.getMeta('appendedTransaction')?.getMeta('layoutAction'))
+        if (layoutAction && !blockIdentityPending(state)) return closeHistory(state.tr).setMeta('addToHistory', false)
         return null
       },
       props: {
