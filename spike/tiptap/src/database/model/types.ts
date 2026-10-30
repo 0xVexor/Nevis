@@ -236,7 +236,7 @@ export type CommandEnvelope = {
   actorId: Id
   deviceId: Id
   expected: { recordKind: string; id: Id; revision: number }[]
-  origin: 'user' | 'button' | 'automation' | 'template' | 'import'
+  origin: 'user' | 'button' | 'automation' | 'template' | 'import' | 'external'
   commands: { type: string; payload: Json }[]
 }
 
