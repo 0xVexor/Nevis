@@ -55,6 +55,8 @@ export interface DocumentHost {
   emit(event: 'data-changed' | 'external-change' | 'storage-error' | 'search-state' | 'commit-state', detail?: string[] | string): void
   report(context: 'storage' | 'history' | 'watch' | 'search', error: unknown): void
   readLegacy?(): Page[] | null
+  /** Pages saved by old versions hold an HTML string instead of a document; this turns one into editor JSON. */
+  legacyHtmlToDoc?(html: string): unknown
   clearLegacy?(): void
   requestPersistence?(): void
   watchExternal?(changed: () => void): Promise<() => void>

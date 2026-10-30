@@ -6,6 +6,7 @@
 mod database;
 mod document_operations;
 mod mcp;
+mod mcp_relay;
 mod index;
 mod portable;
 mod registry;
@@ -245,11 +246,39 @@ fn mcp_enable(s: St, window: tauri::WebviewWindow, expected_vault_id: String, po
         let config_dir = s.app_data.join("mcp");
         std::fs::create_dir_all(&config_dir).map_err(err)?;
         if std::fs::canonicalize(&config_dir).map_err(err)?.starts_with(std::fs::canonicalize(&v.root).map_err(err)?) { return Err("Connection settings must be outside the vault".into()); }
-        s.mcp.enable(&s.app_data, &expected_vault_id, policy)
+        let status = s.mcp.enable(&s.app_data, &expected_vault_id, policy.clone())?;
+        // the choice survives a restart: the connection comes back by itself when this vault opens
+        mcp_relay::autostart_set(&s.app_data, &expected_vault_id, &policy)?;
+        Ok(status)
     })
 }
 #[tauri::command]
-fn mcp_disable(s: St, window: tauri::WebviewWindow) -> Res<()> { mcp_window(&window)?; s.mcp.stop(); Ok(()) }
+fn mcp_disable(s: St, window: tauri::WebviewWindow) -> Res<()> {
+    mcp_window(&window)?;
+    s.mcp.stop();
+    let id = with(&s, |v| Ok(v.id()))?;
+    mcp_relay::autostart_remove(&s.app_data, &id)
+}
+/// The scope to switch back on for this vault, if the user left the connection on last time.
+#[tauri::command]
+fn mcp_autostart(s: St, window: tauri::WebviewWindow, expected_vault_id: String) -> Res<Option<mcp::Policy>> {
+    mcp_window(&window)?;
+    Ok(mcp_relay::autostart_get(&s.app_data, &expected_vault_id))
+}
+/// How an AI client starts the relay, for the copy-for-any-AI text.
+#[tauri::command]
+fn mcp_setup_info(window: tauri::WebviewWindow) -> Res<Value> {
+    mcp_window(&window)?;
+    let exe = std::env::current_exe().map_err(err)?;
+    Ok(json!({"command": exe.to_string_lossy(), "args": [mcp_relay::RELAY_FLAG]}))
+}
+/// Writes the Nevis entry into Claude Desktop, Codex or Gemini CLI settings (other entries are kept, a backup is made).
+#[tauri::command]
+fn mcp_install_client(window: tauri::WebviewWindow, client: String) -> Res<String> {
+    mcp_window(&window)?;
+    let exe = std::env::current_exe().map_err(err)?;
+    Ok(mcp_relay::install_client(&client, &exe)?.to_string_lossy().to_string())
+}
 #[tauri::command]
 fn mcp_credential(s: St, window: tauri::WebviewWindow, expected_vault_id: String) -> Res<String> {
     mcp_window(&window)?;
@@ -532,6 +561,10 @@ fn index_search(s: St, words: Vec<String>, limit: usize) -> Res<Vec<String>> {
 }
 
 fn main() {
+    // an AI client launches this same program as its MCP server: no window, just the relay
+    if std::env::args().any(|a| a == mcp_relay::RELAY_FLAG) {
+        std::process::exit(mcp_relay::run_stdio());
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -561,7 +594,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            mcp_ready, mcp_status, mcp_enable, mcp_disable, mcp_credential, mcp_reply,
+            mcp_ready, mcp_status, mcp_enable, mcp_disable, mcp_autostart, mcp_setup_info, mcp_install_client, mcp_credential, mcp_reply,
             updates::updates_check, updates::updates_download, updates::updates_install,
             vault_backup_save, vault_backup_export, vault_backup_restore, vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
             db_recover, db_load_all, db_commit, db_get_operation, db_history, db_undo_load, db_undo_save, db_runtime_get, db_runtime_set, db_runtime_delete,

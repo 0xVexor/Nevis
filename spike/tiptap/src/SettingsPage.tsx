@@ -20,7 +20,7 @@ const TABS: { id: Tab; label: string; title: string; hint: string; icon: ReactNo
   { id: 'general', label: 'General', title: 'General', hint: 'Reminders and how files are stored.', icon: <Ic.Settings /> },
   { id: 'data', label: 'Data & backup', title: 'Data & backup', hint: 'Import, export and back up your notes.', icon: <Ic.Archive /> },
   { id: 'database', label: 'Database', title: 'Database', hint: 'Calendar defaults, maps and connected services.', icon: <Ic.Table /> },
-  { id: 'connections', label: 'Agent connections', title: 'Agent connections', hint: 'Choose which saved documents a local client can access.', icon: <Ic.Globe /> },
+  { id: 'connections', label: 'AI connection', title: 'AI connection', hint: 'Let an AI app work with your documents.', icon: <Ic.Globe /> },
   { id: 'shortcuts', label: 'Shortcuts', title: 'Keyboard shortcuts', hint: 'Everything you can do without leaving the keyboard.', icon: <Ic.Keyboard /> },
   { id: 'about', label: 'About', title: 'About', hint: 'What this app is.', icon: <Ic.Info /> },
 ]

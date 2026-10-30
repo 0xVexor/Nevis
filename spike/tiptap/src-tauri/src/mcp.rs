@@ -86,6 +86,8 @@ type CurrentVault = Arc<dyn Fn() -> Option<String> + Send + Sync>;
 pub struct Host {
     inner: Mutex<Inner>,
     bridge: Mutex<Option<(SendEvent, CurrentVault)>>,
+    /// where the live connection is published for the stdio relay; removed whenever the connection stops
+    endpoint_file: Mutex<Option<PathBuf>>,
     deadline: Duration,
 }
 impl Default for Host {
@@ -93,6 +95,7 @@ impl Default for Host {
         Self {
             inner: Mutex::new(Inner::default()),
             bridge: Mutex::new(None),
+            endpoint_file: Mutex::new(None),
             deadline: DEADLINE,
         }
     }
@@ -154,6 +157,9 @@ impl Host {
         )
     }
     fn revoke(&self) -> Option<Session> {
+        if let Some(path) = self.endpoint_file.lock().ok().and_then(|mut f| f.take()) {
+            crate::mcp_relay::clear_endpoint(&path);
+        }
         if let Ok(mut inner) = self.inner.lock() {
             let session = inner.session.take();
             for (_, pending) in inner.pending.drain() {
@@ -215,6 +221,8 @@ impl Host {
         );
         crate::vault::write_atomic(&file, &serde_json::to_vec(&connection).map_err(err)?)
             .map_err(|_| "Cannot save connection configuration")?;
+        crate::mcp_relay::publish_endpoint(app_data, &endpoint, &token, vault_id).map_err(|_| "Cannot publish the connection")?;
+        *self.endpoint_file.lock().map_err(err)? = Some(crate::mcp_relay::endpoint_path(app_data));
         let revision = connection.revision.clone();
         self.inner.lock().map_err(err)?.session = Some(Session {
             connection,

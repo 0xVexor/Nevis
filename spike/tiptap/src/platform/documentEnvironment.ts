@@ -1,4 +1,5 @@
 import { addVersion, allPages, db, deleteVersions, isTauri, listVersions, savePages, storageFrozen, vaultInfo, vaultStamp, listDocumentOperations, findDocumentOperation, commitDocumentOperation, commitDocumentOperationResult } from '../db'
+import { htmlToDoc } from '../editor/htmlToDoc'
 import { IndexedDbDocumentStorage } from './documents/indexedDb'
 import { NativeDocumentStorage } from './documents/native'
 import { publishDocumentChange } from './documents/changes'
@@ -48,6 +49,7 @@ export function createAppDocumentEnvironment(): DocumentEnvironment {
       defer(task) { const timer = window.setTimeout(task, 0); return () => window.clearTimeout(timer) },
       emit(event, detail) { window.dispatchEvent(detail === undefined ? new Event(event) : new CustomEvent(event, { detail })) },
       report(context, error) { console.error(context, error) },
+      legacyHtmlToDoc: html => htmlToDoc(html),
       readLegacy(): Page[] | null {
         try {
           const raw = localStorage.getItem(LEGACY_KEY)

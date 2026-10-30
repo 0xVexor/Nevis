@@ -40,6 +40,8 @@ if (isTauri) {
   vaultList().then(({ current }) => {
     if (current) return start()
     root.render(<VaultPicker onOpened={() => window.location.reload()} />)
+  }).catch((e) => {
+    root.render(<div className="overlay"><div className="modal acct"><h2>Unable to open workspace / باز کردن فضای کاری ممکن نشد</h2><p role="alert">{String(e)}</p><button onClick={() => location.reload()}>Retry / تلاش دوباره</button></div></div>)
   })
 } else {
   start()
