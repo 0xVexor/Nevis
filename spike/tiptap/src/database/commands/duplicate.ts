@@ -6,6 +6,7 @@ import { fail } from '../model/errors.ts'
 import { remapIds } from '../backup2.ts'
 import { register } from './coordinator.ts'
 import { EMPTY_DOC, container, ensureOwner } from './util.ts'
+import { identifyBlocks } from '../../documents/blockIdentity.ts'
 
 register('database.duplicate', (cx, p: { containerId: Id; withRows: boolean; independentLinked?: boolean; title?: string }) => {
   ensureOwner(cx)
@@ -32,7 +33,7 @@ register('database.duplicate', (cx, p: { containerId: Id; withRows: boolean; ind
   for (const r of relations) fresh(r.id)
 
   // host page: a new page next to the original
-  const hostCopy: PageLike = { ...host!, id: cx.ids(), title: p.title ?? `${host!.title} (copy)`, favorite: false, content: host!.content ?? EMPTY_DOC, updatedAt: cx.now, deletedAt: null }
+  const hostCopy: PageLike = { ...host!, id: cx.ids(), title: p.title ?? `${host!.title} (copy)`, favorite: false, content: identifyBlocks(host!.content ?? EMPTY_DOC, cx.ids).content, updatedAt: cx.now, deletedAt: null }
   delete (hostCopy as { database?: unknown }).database
   delete (hostCopy as { recordMeta?: unknown }).recordMeta
   cx.d.addPage(hostCopy)
@@ -85,7 +86,7 @@ register('database.duplicate', (cx, p: { containerId: Id; withRows: boolean; ind
       ext.parentItemId = r.page.database!.parentItemId ? (rowIds.get(r.page.database!.parentItemId) ?? null) : null
       for (const c of Object.values(ext.cells)) c.stamp = cx.stamp()
       ext.allocatedIds = {} // new tokens are allocated on demand; copies never share numbers
-      const copy: PageLike = { ...r.page, id: newId, parentId: hostCopy.id, database: ext, deletedAt: null }
+      const copy: PageLike = { ...r.page, id: newId, content: identifyBlocks(r.page.content, cx.ids).content, parentId: hostCopy.id, database: ext, deletedAt: null }
       delete (copy as { recordMeta?: unknown }).recordMeta
       cx.d.addPage(copy)
     }

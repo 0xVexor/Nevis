@@ -1,3 +1,4 @@
+import { startMcpBridge } from './mcp/bridge'
 import 'katex/dist/katex.min.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -23,6 +24,7 @@ function start() {
     void initBackup()
     void repo.watch()
     initSearchIndex()
+    if (isTauri) void startMcpBridge().catch(() => {})
     root.render(
       <StrictMode>
         <App />

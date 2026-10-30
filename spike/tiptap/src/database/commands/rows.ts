@@ -11,6 +11,7 @@ import { assertNotImported } from './external.ts'
 import { EMPTY_DOC, LIMITS, allocate, lastKey, property, source, view } from './util.ts'
 import type { UndoItem } from '../storage/types.ts'
 import type { Row } from '../state.ts'
+import { identifyBlocks, identityVersion, BLOCK_IDENTITY_VERSION } from '../../documents/blockIdentity.ts'
 
 // ───── value precedence on creation (§11) ─────
 
@@ -131,7 +132,7 @@ export function createRow(cx: Ctx, p: RowCreate): { pageId: Id; warnings: Json }
 
   const page: PageLike = {
     id, parentId: owner?.hostPageId ?? null, title: p.title ?? (tpl ? '' : ''), favorite: false, sort: stats.count,
-    content: tpl?.body ?? EMPTY_DOC, updatedAt: cx.now, deletedAt: null,
+    content: identifyBlocks(tpl?.body ?? EMPTY_DOC, cx.ids).content, updatedAt: cx.now, deletedAt: null,
   } as PageLike
   if (tpl?.icon) page.icon = tpl.icon
   if (tpl?.cover && typeof tpl.cover === 'object') page.cover = tpl.cover
@@ -249,12 +250,13 @@ register('row.patch_bulk', (cx, p: { patches: RowPatch[] }) => {
 register('page.patch_body', (cx, p: { pageId: Id; content: Json; contentSchema?: string }) => {
   const base = cx.d.page(p.pageId)
   if (!base || base.deletedAt !== null) fail('NOT_FOUND', 'page not found', { pageId: p.pageId })
+  if (identityVersion(base!.content) > BLOCK_IDENTITY_VERSION) fail('SCHEMA_MISMATCH', 'Unsupported block identity version')
   if (base!.database) {
     const r = cx.d.row(p.pageId)
     if (r) cx.access.assertRow(cx.env.actorId, r, 'edit_rows')
   }
   const page = cx.d.mutPage(p.pageId) // the database extension rides along untouched
-  page.content = p.content
+  page.content = identifyBlocks(p.content).content
 })
 
 register('row.reorder', (cx, p: { pageId: Id; beforePageId: Id | null }) => {
@@ -342,7 +344,7 @@ register('row.duplicate', (cx, p: { rootPageIds: Id[]; includeDescendants?: bool
     ext.parentItemId = r!.ext.parentItemId && idMap.has(r!.ext.parentItemId) ? idMap.get(r!.ext.parentItemId)! : r!.ext.parentItemId
     for (const c of Object.values(ext.cells)) c.stamp = cx.stamp()
     ext.allocatedIds = {}
-    const copy: PageLike = { ...src, id: idMap.get(id)!, database: ext, deletedAt: null, favorite: false } as PageLike
+    const copy: PageLike = { ...src, id: idMap.get(id)!, content: identifyBlocks(src.content, cx.ids).content, database: ext, deletedAt: null, favorite: false } as PageLike
     delete (copy as { recordMeta?: unknown }).recordMeta
     cx.d.addPage(copy)
     for (const def of cx.d.props(r!.sourceId)) if (def.kind === 'unique_id') ext.allocatedIds[def.id] = allocate(cx, def, 1)[0]

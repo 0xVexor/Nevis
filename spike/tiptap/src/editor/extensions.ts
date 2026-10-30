@@ -24,6 +24,7 @@ import { Callout, Toggle } from './blocks'
 import { PageLink, PageLinkSuggest } from './pageLink'
 import { t } from '../i18n'
 import { createSectionDragSurface } from './snapSurface'
+import { BlockIdentity } from './blockIdentity'
 
 const BaseTableView = (Table as any).options.View
 
@@ -207,6 +208,7 @@ const Direction = Extension.create({
 })
 
 export const extensions = [
+  BlockIdentity,
   StarterKit.configure({ codeBlock: false }),
   CodeBlock,
   Table.configure({ resizable: true, View: DirTableView as any }),

@@ -1,0 +1,7 @@
+{
+  "agentNativeBeforeAndUndoAfterEqual": true,
+  "agentTitleRestored": true,
+  "agentUndoMatchesStateBeforeRestart": true,
+  "allAgentOperationsOnExpectedTarget": true,
+  "comparisonNote": "SDK and agent runs have independent baselines. Opening the fixture in the editor added schema defaults and an empty trailing paragraph between those runs."
+}

@@ -277,3 +277,23 @@ fn index_of_another_version_is_dropped_not_migrated() {
     assert!(index::needs_rebuild(&db));
     assert_eq!(db.query_row::<i64, _, _>("SELECT COUNT(*) FROM db_items", [], |r| r.get(0)).unwrap(), 0);
 }
+
+#[test]
+fn checked_revision_rejects_same_revision_page_changes_and_recovers_exact_images() {
+    let (v, root) = vault();
+    let before = page("p1", 1, "base", "s1", json!({}));
+    v.save_pages(&[before.clone()], &[], false).unwrap();
+    let after = page("p1", 2, "next", "s1", json!({}));
+    let mut write = pw(1, after.clone());
+    write["before"] = before.clone();
+    let b = batch("checked", vec![], vec![write]);
+    let mut external = before.clone(); external["title"] = json!("changed at the same revision");
+    write_atomic(&root.join("pages/p1.json"), external.to_string().as_bytes()).unwrap();
+    assert!(commit(&root, &b).unwrap_err().starts_with("REVISION_CONFLICT"));
+    write_atomic(&root.join("pages/p1.json"), before.to_string().as_bytes()).unwrap();
+    crash(Some("before_index"));
+    assert!(commit(&root, &b).is_err());
+    crash(None);
+    recover(&root).unwrap();
+    assert_eq!(v.pages_all().unwrap(), vec![after]);
+}

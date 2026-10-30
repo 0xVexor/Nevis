@@ -4,6 +4,8 @@
 //! through the commands below (spike/tiptap/src/db.ts and attachments.ts); in a plain browser the same UI falls back to IndexedDB.
 
 mod database;
+mod document_operations;
+mod mcp;
 mod index;
 mod portable;
 mod registry;
@@ -14,12 +16,13 @@ mod updates;
 use registry::{Entry, Registry};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::ipc::{InvokeBody, Request, Response};
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 use vault::{err, now_ms, Res, Vault, VAULT_MISMATCH, VAULT_MISSING};
 
 struct Store {
+    mcp: Arc<mcp::Host>,
     app_data: PathBuf, // per-device data: the list of vaults
     reg: Mutex<Registry>,
     vault: Mutex<Option<Vault>>,
@@ -74,6 +77,7 @@ fn vault_info(s: St) -> Res<Value> {
 fn activate(s: &St, e: &Entry) -> Res<()> {
     // never creates anything: a folder that vanished, or holds another vault, is reported instead of replaced by an empty one
     let v = Vault::open_as(PathBuf::from(&e.path), &e.id)?;
+    s.mcp.stop();
     v.purge_trash();
     let mut r = s.reg.lock().map_err(err)?;
     r.add(Entry { name: v.name(), ..e.clone() });
@@ -161,6 +165,7 @@ fn vault_trash_local(s: St, id: String) -> Res<()> {
     let mut r = s.reg.lock().map_err(err)?;
     r.vaults.retain(|x| x.id != id);
     if r.current.as_deref() == Some(&id) {
+        s.mcp.stop();
         r.current = None;
     }
     r.save(&s.app_data)
@@ -193,6 +198,7 @@ fn vault_open(s: St, id: String) -> Res<()> {
 /// Back to the picker (switching vaults).
 #[tauri::command]
 fn vault_close(s: St) -> Res<()> {
+    s.mcp.stop();
     let mut r = s.reg.lock().map_err(err)?;
     r.current = None;
     r.save(&s.app_data)?;
@@ -206,6 +212,7 @@ fn vault_forget(s: St, id: String) -> Res<()> {
     let mut r = s.reg.lock().map_err(err)?;
     r.vaults.retain(|e| e.id != id);
     if r.current.as_deref() == Some(&id) {
+        s.mcp.stop();
         r.current = None;
         *lock_vault(&s)? = None;
     }
@@ -218,6 +225,41 @@ fn vault_stamp(s: St) -> Res<String> {
     with(&s, |v| Ok(v.stamp()))
 }
 
+// MCP commands are local main-window controls, never protocol methods.
+fn mcp_window(window: &tauri::WebviewWindow) -> Res<()> {
+    if window.label() != "main" { return Err("Connection access denied".into()); }
+    Ok(())
+}
+#[tauri::command]
+fn mcp_ready(s: St, window: tauri::WebviewWindow, expected_vault_id: String, owner: String) -> Res<()> {
+    mcp_window(&window)?;
+    with(&s, |v| { if v.id() != expected_vault_id { return Err("Connection vault changed".into()); } s.mcp.ready(&expected_vault_id, &owner) })
+}
+#[tauri::command]
+fn mcp_status(s: St, window: tauri::WebviewWindow) -> Res<Value> { mcp_window(&window)?; s.mcp.status() }
+#[tauri::command]
+fn mcp_enable(s: St, window: tauri::WebviewWindow, expected_vault_id: String, policy: mcp::Policy) -> Res<Value> {
+    mcp_window(&window)?;
+    with(&s, |v| {
+        if v.id() != expected_vault_id { return Err("Connection vault changed".into()); }
+        let config_dir = s.app_data.join("mcp");
+        std::fs::create_dir_all(&config_dir).map_err(err)?;
+        if std::fs::canonicalize(&config_dir).map_err(err)?.starts_with(std::fs::canonicalize(&v.root).map_err(err)?) { return Err("Connection settings must be outside the vault".into()); }
+        s.mcp.enable(&s.app_data, &expected_vault_id, policy)
+    })
+}
+#[tauri::command]
+fn mcp_disable(s: St, window: tauri::WebviewWindow) -> Res<()> { mcp_window(&window)?; s.mcp.stop(); Ok(()) }
+#[tauri::command]
+fn mcp_credential(s: St, window: tauri::WebviewWindow, expected_vault_id: String) -> Res<String> {
+    mcp_window(&window)?;
+    with(&s, |v| { if v.id() != expected_vault_id { return Err("Connection vault changed".into()); } s.mcp.credential() })
+}
+#[tauri::command]
+fn mcp_reply(s: St, window: tauri::WebviewWindow, request_id: String, revision: String, result: Value) -> Res<()> {
+    mcp_window(&window)?; s.mcp.reply(&request_id, &revision, result)
+}
+
 // ───── pages ─────
 
 #[tauri::command]
@@ -227,9 +269,15 @@ fn pages_all(s: St) -> Res<Vec<Value>> {
 
 /// `clear_first` = the upserts are the whole workspace. Every page is its own atomic file write.
 #[tauri::command]
-fn pages_save(s: St, upserts: Vec<Value>, removed: Vec<String>, clear_first: bool) -> Res<Vec<String>> {
+fn pages_save(s: St, upserts: Vec<Value>, removed: Vec<String>, clear_first: bool, expected_vault_id: Option<String>, expected_pages: Option<serde_json::Map<String, Value>>, expected_all: Option<Vec<Value>>) -> Res<Vec<String>> {
     // ids of pages whose newer version on disk (changed by another program) went to the page history before ours replaced it
-    with(&s, |v| v.save_pages(&upserts, &removed, clear_first))
+    let kept = with(&s, |v| {
+        if let Some(id) = &expected_vault_id {
+            if v.id() != *id { return Err("Document vault changed".into()); }
+            v.save_pages_checked(&upserts, &removed, clear_first, expected_pages.as_ref(), expected_all.as_deref())
+        } else { Err("Missing document vault precondition".into()) }
+    })?;
+    Ok(kept)
 }
 
 #[tauri::command]
@@ -255,6 +303,33 @@ fn vault_backup_restore(s: St, data: Value) -> Res<Value> {
     let entry=Entry{id:v.id(),name:v.name(),path:v.root.to_string_lossy().into()};
     activate(&s,&entry)?;
     Ok(json!({"pages":v.pages_all()?.len(),"files":v.files_list().len()}))
+}
+
+#[tauri::command]
+fn document_operation_list(s: St, scope_id: String, document_id: String, expected_vault_id: String) -> Res<Value> {
+    with(&s, |v| {
+        if v.id() != expected_vault_id { return Err("Document vault changed".into()); }
+        document_operations::list(v, &scope_id, &document_id)
+    })
+}
+#[tauri::command]
+fn document_operation_find(s: St, scope_id: String, operation_id: String, expected_vault_id: String) -> Res<Option<Value>> {
+    with(&s, |v| {
+        if v.id() != expected_vault_id { return Err("Document vault changed".into()); }
+        document_operations::find(v, &scope_id, &operation_id)
+    })
+}
+#[tauri::command]
+fn document_operation_commit(s: St, record: Value, expected_vault_id: String, include_status: Option<bool>, admission: Option<mcp::WriteAdmission>) -> Res<Value> {
+    let receipt = with(&s, |v| {
+        if v.id() != expected_vault_id { return Err("Document vault changed".into()); }
+        if let Some(admission) = admission {
+            let result = document_operations::commit_result_authorized(v, &record, |root, record| s.mcp.write_guard(&expected_vault_id, &admission, root, record))?;
+            if include_status.unwrap_or(false) { Ok(result) } else { Ok(result["receipt"].clone()) }
+        } else if include_status.unwrap_or(false) { document_operations::commit_result(v, &record) }
+        else { document_operations::commit(v, &record) }
+    })?;
+    Ok(receipt)
 }
 
 // ───── key-value settings ─────
@@ -351,7 +426,10 @@ fn db_load_all(s: St) -> Res<Value> {
 
 #[tauri::command]
 fn db_commit(s: St, batch: Value) -> Res<()> {
-    with(&s, |v| database::commit(&v.root, &batch))?;
+    with(&s, |v| {
+        if batch.get("vaultId").and_then(Value::as_str) != Some(v.id().as_str()) { return Err("Document vault changed".into()); }
+        database::commit(&v.root, &batch)
+    })?;
     // the index is derived: a failure here never fails a durable commit, it only marks the index for a rebuild
     let r = db_index(&s, |c, root| if database::index::needs_rebuild(c) { database::index::rebuild(c, root).map(|_| ()) } else { database::index::apply_batch(c, root, &batch) });
     if r.is_err() {
@@ -462,9 +540,15 @@ fn main() {
         .setup(|app| {
             let app_data = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data)?;
-            app.manage(Store { reg: Mutex::new(Registry::load(&app_data)), app_data, vault: Mutex::new(None), index: Mutex::new(None) });
+            document_operations::configure(&app_data).map_err(std::io::Error::other)?;
+            app.manage(Store { mcp: Arc::new(mcp::Host::default()), reg: Mutex::new(Registry::load(&app_data)), app_data, vault: Mutex::new(None), index: Mutex::new(None) });
             // reopen the vault that was open last time; if it is gone, the picker is shown
             let s = app.state::<Store>();
+            let emit_handle = app.handle().clone();
+            let vault_handle = app.handle().clone();
+            s.mcp.set_bridge(Arc::new(move |event, payload| {
+                emit_handle.get_webview_window("main").ok_or("App unavailable")?.emit(event, payload).map_err(|_| "App unavailable".into())
+            }), Arc::new(move || with(&vault_handle.state::<Store>(), |v| Ok(v.id())).ok()));
             let cur = s.reg.lock().ok().and_then(|r| r.current.clone().and_then(|id| r.find(&id).cloned()));
             if let Some(e) = cur {
                 if let Err(m) = activate(&s, &e) {
@@ -477,11 +561,12 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            mcp_ready, mcp_status, mcp_enable, mcp_disable, mcp_credential, mcp_reply,
             updates::updates_check, updates::updates_download, updates::updates_install,
             vault_backup_save, vault_backup_export, vault_backup_restore, vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
             db_recover, db_load_all, db_commit, db_get_operation, db_history, db_undo_load, db_undo_save, db_runtime_get, db_runtime_set, db_runtime_delete,
             db_runtime_keys, db_index_rebuild, db_index_candidates, db_index_count,
-            vault_stamp, pages_all, pages_save, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list,
+            vault_stamp, pages_all, pages_save, document_operation_list, document_operation_find, document_operation_commit, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list,
             index_state, index_update, index_search
         ])
         .run(tauri::generate_context!())
