@@ -72,7 +72,7 @@ export class WorkflowEngine {
   zone: string
   private pendingHandlers = new Set<Promise<unknown>>()
   private detach: (() => void) | null = null
-  /** origins that may trigger automations (§21): user edits, buttons, imports. Automations, repeats and sync replays do not. */
+  /** origins that may trigger automations (§21): user edits, buttons, imports. Automations and repeats do not. */
   static TRIGGERING = new Set(['user', 'button', 'import'])
 
   constructor(o: { coord: Coordinator; runtime?: RuntimeStore; lease: LeaseStore; adapters?: ExternalAdapter[]; deviceId: Id; now?: () => number; zone?: string }) {

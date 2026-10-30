@@ -110,9 +110,6 @@
 .trash-acts button.danger, .backup-acts button.danger, .danger-link { color: var(--danger); }
 .trash-acts button.danger:hover, .backup-acts button.danger:hover, .danger-link:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
 .danger-link { border: 0; background: transparent; cursor: var(--cursor-hand, pointer); font-size: 13px; padding: 6px 10px; border-radius: 9px; }
-.sync-btn.sync-off { opacity: 0.5; }
-.sync-btn.sync-failed { color: var(--danger); }
-.sync-btn.spinning svg { animation: spin 1s linear infinite; }
 
 /* ───────── empty state ───────── */
 .blank { height: 100%; display: grid; place-content: center; justify-items: center; gap: 6px; color: var(--muted); padding: 40px; text-align: center; }
@@ -155,4 +152,3 @@
 /* user content shown in UI labels: text direction follows the text, alignment follows the UI */
 .ntitle, .nav-tx, .ol-row, .crumb button, .result-tx b { direction: inherit; unicode-bidi: plaintext; text-align: start; }
 
-.sync-btn.sync-success { color:var(--ok); }

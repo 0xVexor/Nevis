@@ -1,26 +1,12 @@
 name: Tests
 
-# Runs on every push and pull request: the sync server, the web UI and the Rust side.
+# Runs on every push and pull request: the web UI and the Rust side.
 on:
   push:
     branches: [main, dev]
   pull_request:
 
 jobs:
-  server:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: server/package-lock.json
-      - run: npm ci
-        working-directory: server
-      - run: npm test
-        working-directory: server
-
   app-platforms:
     name: app (${{ matrix.os }})
     strategy:
@@ -72,36 +58,3 @@ jobs:
         env:
           PLATFORM_RESULT: ${{ needs.app-platforms.result }}
         run: test "$PLATFORM_RESULT" = success
-
-  # The Rust sync engine against the real server: two vaults, offline edits, conflicts, big attachments.
-  end-to-end:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: |
-            server/package-lock.json
-            spike/tiptap/package-lock.json
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: spike/tiptap/src-tauri
-      - run: npm ci
-        working-directory: server
-      - run: npm ci
-        working-directory: spike/tiptap
-      - run: npm run build # the Tauri build script needs the front end in dist/
-        working-directory: spike/tiptap
-      - name: start the server
-        shell: bash
-        working-directory: server
-        run: |
-          DATA_DIR="$RUNNER_TEMP/noviq-server" STORAGE=disk REGISTRATION=open POW_BITS=12 SESSION_SECRET=ci-secret-ci-secret-ci-secret-ci-secret INSTANCE_LOCK=off PORT=3111 node --no-warnings src/index.js &
-          for i in $(seq 1 50); do curl -sf http://localhost:3111/v1/health && break; sleep 0.3; done
-      - run: cargo test e2e -- --ignored --test-threads=1
-        working-directory: spike/tiptap/src-tauri
-        env:
-          NOVIQ_TEST_SERVER: http://localhost:3111

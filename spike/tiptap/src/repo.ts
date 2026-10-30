@@ -1,7 +1,7 @@
 import { normalizeFa } from './normalize'
 import { addVersion, allPages, deleteVersions, isTauri, listVersions, savePages, vaultStamp } from './db'
 
-const WATCH_EVERY = 3000 // how often the vault folder is checked for changes made by the sync tool
+const WATCH_EVERY = 3000 // how often the vault folder is checked for changes made by other programs
 
 export type PageKind = 'page' | 'folder' | 'board' | 'todo'
 export type PageStatus = 'todo' | 'doing' | 'done'
@@ -57,7 +57,7 @@ const LEGACY_KEY = 'not.pages.v1' // the localStorage era; migrated once, then r
 const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] }
 // a board is a page whose whole content is one drawing block (ids of its scene + picture files), so files, search, history and backup need nothing special
 const EMPTY_BOARD = { type: 'doc', content: [{ type: 'drawing', attrs: { scene: '', preview: '' } }] }
-// a to-do list is a page that starts as one empty checklist; its items are ordinary taskItems, so Tasks, search and sync need nothing special
+// a to-do list is a page that starts as one empty checklist; its items are ordinary taskItems, so Tasks and search need nothing special
 const EMPTY_TODO = { type: 'doc', content: [{ type: 'taskList', content: [{ type: 'taskItem', attrs: { checked: false }, content: [{ type: 'paragraph' }] }] }] }
 const SNAPSHOT_EVERY = 10 * 60 * 1000 // at most one history entry per page per 10 minutes of editing
 
@@ -174,7 +174,7 @@ export class Repo implements PageRepo {
     this.full = false
     if (!full && !upserts.length && !removed.length) return this.queue
     this.queue = this.queue
-      // desktop: tell the vault which version each edit started from, so that a newer version brought by the sync is kept in the history, not overwritten
+      // desktop: tell the vault which version each edit started from, so that a newer version written by another program is kept in the history, not overwritten
       .then(() => savePages(isTauri && !full ? upserts.map((p) => ({ ...p, _base: this.diskAt.get(p.id) ?? null })) : upserts, removed, full))
       .then(async () => {
         this.persistenceError = null
@@ -194,17 +194,17 @@ export class Repo implements PageRepo {
     return this.queue
   }
 
-  // ───── changes made by other devices (the vault folder is synced by a drive client) ─────
+  // ───── changes made by other programs (the vault folder may be shared by a file-sync tool) ─────
 
   private stamp = ''
   private polling = false
 
-  /** Desktop app: reload pages when the sync tool changes the vault, as long as there is nothing unsaved here. */
+  /** Desktop app: reload pages when another program changes the vault, as long as there is nothing unsaved here. */
   async watch() {
     if (!isTauri) return
     this.stamp = await vaultStamp()
     window.setInterval(() => !document.hidden && void this.poll(), WATCH_EVERY) // nothing to refresh while the window is not shown; the next tick catches up
-    // the sync brought another device's change: show it now instead of at the next tick
+    // another program changed a file: show it now instead of at the next tick
     void import('@tauri-apps/api/event').then(({ listen }) => listen('vault-changed', () => void this.poll())).catch(() => {})
     window.addEventListener('focus', () => void this.poll())
   }

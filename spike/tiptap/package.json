@@ -12,10 +12,7 @@
     "test:direction": "node --test src/editor/direction.test.mjs",
     "test:db": "node --test \"../../db/tests/database/*.test.mjs\"",
     "preview": "vite preview",
-    "tauri": "tauri",
-    "build:drive-preview": "node ../../scripts/build-drive-preview.mjs",
-    "build:preview": "node ../../.github/scripts/build-github-preview.mjs",
-    "desktop:build": "node ../../scripts/build-desktop.mjs"
+    "tauri": "tauri"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",

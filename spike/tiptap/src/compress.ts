@@ -14,7 +14,7 @@ export function fitSize(w: number, h: number, max = MAX_SIDE): { w: number; h: n
 }
 
 /**
- * Large pictures are shrunk before they are stored, because every image is a file in the vault and travels through sync.
+ * Large pictures are shrunk before they are stored, because every image is a file in the vault.
  * JPEG stays JPEG; PNG becomes WebP (keeps transparency, usually far smaller). The original is kept whenever the result is not smaller.
  */
 export async function maybeCompress(file: Blob): Promise<Blob> {

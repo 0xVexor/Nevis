@@ -6,7 +6,7 @@
 
 **A local-first notes workspace with first-class Persian and right-to-left support.**
 
-Block editor · backlinks and graph · spaced-repetition flashcards · optional sync between devices · your notes stay in plain files.
+Block editor · backlinks and graph · spaced-repetition flashcards · your notes stay in plain files.
 
 [![Build installers](https://img.shields.io/github/actions/workflow/status/0xVexor/Nevis/release.yml?label=build)](https://github.com/0xVexor/Nevis/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/0xVexor/Nevis?include_prereleases&label=release)](https://github.com/0xVexor/Nevis/releases)
@@ -27,7 +27,7 @@ Block editor · backlinks and graph · spaced-repetition flashcards · optional 
 
 Most note apps treat right-to-left text as an afterthought: mixed Persian and English lines scramble punctuation, tables flip the wrong way, and code blocks inherit the wrong direction. Nevis was built the other way round. Direction is decided **per block**, mixed-language text renders correctly, and everything else (tables, lists, callouts, formulas, diagrams) follows.
 
-Your notes are plain files in a folder you own. Nothing needs an account to work. If you want your notes on more than one device, Nevis can keep that folder in sync through the Nevis sync server, which you can run yourself (see [`server/`](server/)). An account is just a user name and a password: no email address, no phone number.
+Your notes are plain files in a folder you own. Nothing needs an account to work, and the folder can be shared between computers with any file-sync tool you already use.
 
 ## Features
 
@@ -131,24 +131,6 @@ Get the latest installer from the **[Releases](https://github.com/0xVexor/Nevis/
 
 Desktop builds configured for signed updates check GitHub's Latest release automatically and show an in-app notice. Open **Settings → About → Updates** to check manually or enable **Receive pre-release updates** (off by default). Download the update, then choose **Install and restart**; pending edits are saved before installation. Existing users need one manual installation of a version with this feature. Release maintainers: [signing setup and publishing](docs/updates.md).
 
-## Sync between devices
-
-Sync is optional. It needs a Nevis sync server: the app uses `https://sync.manaz.pro` by default, and the **Server** field of the sign-in form points it at your own.
-
-1. Click the sync button in the top bar (or **Settings → Data → Account and sync**) and **create an account**: a user name and a password. Save the **recovery key** that is shown once: it is the only way to choose a new password if you forget yours.
-2. Turn on sync for your workspace. A change on one device reaches your other devices within about a second.
-3. Install Nevis on another computer, sign in, and download the vault.
-
-What to know:
-
-- **Fast.** The app holds one request open to the server and is told the moment another device saves; only what changed travels.
-- **Safe on a bad connection.** Your edits are written to your disk first. When the connection drops they wait and go out when it is back; a file that is merely missing is never read as "deleted", and deleted files stay recoverable for 30 days.
-- **Two devices, one page.** Nothing is silently overwritten: the newer edit wins and the older one is kept in that page's history. Different pages never conflict.
-- The device token is stored in the operating system's credential store (Windows Credential Manager / macOS Keychain).
-- Your notes are stored on the server in your account (not yet end-to-end encrypted). See the **[Privacy Policy](https://0xvexor.github.io/Nevis/privacy.html)**.
-
-The server is in [`server/`](server/) (Node.js, S3-compatible storage, SQLite): [how to run it](server/README.md).
-
 ## How your data is stored
 
 A **vault** is an ordinary folder (default `Documents/Nevis`), the single source of truth. Everything else is derived and rebuildable.
@@ -159,7 +141,7 @@ MyVault/
   pages/<id>.json              one file per page or folder (TipTap document + metadata)
   files/ab/<sha256>            attachments, content-addressed (never conflict)
   history/<pageId>/<ts>.json   previous versions of a page (up to 40)
-  kv/<key>.json                synced settings (e.g. flashcard schedule)
+  kv/<key>.json                settings (e.g. flashcard schedule)
   .trash/                      deleted items, purged after 30 days
 ```
 
@@ -174,7 +156,6 @@ Design notes: file names are IDs, not titles, so renames and moves never create 
 | Editor | [TipTap 3](https://tiptap.dev/) (ProseMirror) |
 | Math / diagrams | KaTeX, Mermaid |
 | Storage | Plain files in a vault folder; IndexedDB when run in a browser |
-| Sync | Nevis sync server ([`server/`](server/): Node.js, S3, SQLite): revisions with compare-and-swap, long-poll notifications |
 
 ## Build from source
 
@@ -204,19 +185,13 @@ Build installers for your platform (output in `src-tauri/target/release/bundle/`
 npm run tauri build
 ```
 
-### The sync server in your own build
-
-The app talks to the server named by the build-time environment variable `NOVIQ_SERVER` (default `https://sync.manaz.pro`). Users can also type another address under **Server** on the sign-in form. Without a reachable server the app works fully offline; only syncing waits.
-
-
 ### Tests
 
 ```bash
 # Node 22.18+ (uses node:sqlite and runs TypeScript directly)
 for t in schema crash zip detect srs mermaid-detect; do node db/test-$t.mjs; done
 node db/check-i18n.mjs                         # t('…') strings missing a Persian translation
-cd spike/tiptap/src-tauri && cargo test        # Rust: vault, index, sync engine, server client
-cd server && npm test                          # the sync server (Node 22.13+)
+cd spike/tiptap/src-tauri && cargo test        # Rust: vault, database, search index, backups
 cd .. && npx tsc -b                            # type check
 ```
 
@@ -226,15 +201,12 @@ cd .. && npx tsc -b                            # type check
 
 See [the Git workflow](docs/git-flow.md) for the complete process. The installer workflow builds Windows and universal macOS packages from final version tags on `main` and publishes a release after both platforms succeed. [Nevis 1.0.0 release notes](docs/releases/v1.0.0.md).
 
-The preferred build-time server variable is `NEVIS_SERVER`; existing `NOVIQ_SERVER` configurations remain compatible. Existing vault formats, application storage and sync accounts are preserved.
-
 ## Repository layout
 
 | Path | Contents |
 |---|---|
 | `spike/tiptap/` | The app: React UI (`src/`) and the Tauri shell (`src-tauri/`) |
-| `spike/tiptap/src-tauri/src/` | Rust: `vault`, `index`, `registry`, `legacy` migration, and `sync/` (the engine, the account, the server client) |
-| `server/` | The sync server: accounts, revisions, blobs on S3, instant change notification |
+| `spike/tiptap/src-tauri/src/` | Rust: `vault`, `database`, `index`, `portable` (backups), `registry` |
 | `db/` | SQLite migrations, Persian normalization, and the Node test suite |
 | `docs/` | Design docs, [architecture decision records](docs/adr/), and the project site |
 
@@ -242,12 +214,11 @@ The preferred build-time server variable is `NEVIS_SERVER`; existing `NOVIQ_SERV
 
 - Code-signed installers (Windows and macOS)
 - Mobile apps (iOS / Android) on the same vault format
-- Live co-editing of one page (CRDT) on top of the sync server, and end-to-end encryption of synced notes
 - A local SQLite index for full-text search and backlinks on very large vaults
 
 ## Privacy
 
-Nevis runs on your computer. It has no analytics or telemetry and sends your notes nowhere unless you turn on sync; then they go to the sync server you signed in to (by default `sync.manaz.pro`, or your own). Full details: [Privacy Policy](https://0xvexor.github.io/Nevis/privacy.html).
+Nevis runs on your computer. It has no analytics or telemetry and sends your notes nowhere. Full details: [Privacy Policy](https://0xvexor.github.io/Nevis/privacy.html).
 
 ---
 

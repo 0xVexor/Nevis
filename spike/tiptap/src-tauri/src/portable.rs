@@ -1,12 +1,11 @@
 //! Verified portable vault backups. Restore into a new disconnected workspace, leaving the source intact.
-use crate::{
-    sync::snapshot::{hash, MAX_SNAPSHOT},
-    vault::{err, write_atomic, Res, Vault},
-};
+use crate::vault::{err, sha256_hex as hash, write_atomic, Res, Vault};
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{collections::BTreeMap, fs, path::Path};
+/// The most a backup may hold in total.
+const MAX_SNAPSHOT: usize = 512 * 1024 * 1024;
 #[derive(Serialize, Deserialize)]
 pub struct File {
     data: String,
@@ -29,7 +28,6 @@ fn safe(p: &str) -> Res<()> {
         return Err("BACKUP:unsafe_path".into());
     }
     if p == ".noviq/vault.json"
-        || p == ".noviq/tombstones.json"
         || [
             "pages/",
             "files/",
@@ -109,19 +107,14 @@ pub fn export(v: &Vault) -> Res<Backup> {
     ] {
         walk(&v.root, &v.root.join(d), &mut entries, &mut total)?;
     }
-    for p in [".noviq/vault.json", ".noviq/tombstones.json"] {
-        let f = v.root.join(p);
-        if f.exists() {
-            let b = fs::read(f).map_err(err)?;
-            entries.insert(
-                p.into(),
-                File {
-                    sha256: hash(&b),
-                    data: B64.encode(b),
-                },
-            );
-        }
-    }
+    let marker = fs::read(v.root.join(".noviq/vault.json")).map_err(err)?;
+    entries.insert(
+        ".noviq/vault.json".into(),
+        File {
+            sha256: hash(&marker),
+            data: B64.encode(marker),
+        },
+    );
     Ok(Backup {
         format: "noviq-vault-backup".into(),
         version: 2,
@@ -141,6 +134,9 @@ pub fn restore(parent: &Path, raw: serde_json::Value) -> Res<Vault> {
     let mut files = BTreeMap::new();
     let mut total = 0;
     for (p, f) in b.entries {
+        if p == ".noviq/tombstones.json" {
+            continue; // backups of earlier versions hold a list of deletions that nothing reads any more
+        }
         safe(&p)?;
         let bytes = B64.decode(f.data).map_err(|_| "BACKUP:invalid_bytes")?;
         total += bytes.len();
@@ -173,7 +169,7 @@ pub fn restore(parent: &Path, raw: serde_json::Value) -> Res<Vault> {
         &stage.join("kv/workspace.json"),
         &serde_json::to_vec(&json!({"name":format!("{} (restored)",b.name)})).map_err(err)?,
     )?;
-    // A fresh identity prevents this restored snapshot from overwriting an existing remote vault.
+    // The restored vault gets a fresh identity, so it never replaces the one it was made from.
     fs::rename(&stage, &target).map_err(err)?;
     Vault::open(target)
 }
