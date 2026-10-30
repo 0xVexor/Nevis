@@ -832,4 +832,6 @@ export const FA: Record<string, string> = {
   "This page was changed outside the app while you were editing. Its version is kept in the page history.": "این صفحه هنگام ویرایش شما بیرون از برنامه تغییر کرد. نسخه‌ی آن در تاریخچه‌ی صفحه نگه داشته شد.",
   "The folder and its files stay on this computer. You can open the folder again later.": "پوشه و فایل‌هایش روی این کامپیوتر می‌مانند. بعداً می‌توانید پوشه را دوباره باز کنید.",
   "The folder with all its pages and images is moved to the Recycle Bin of this computer. Type the name of the workspace to confirm.": "پوشه با همه‌ی صفحه‌ها و تصویرهایش به سطل بازیافت این کامپیوتر منتقل می‌شود. برای تأیید، نام فضای کاری را بنویسید.",
+  "LaTeX, e.g. \\frac{a}{b}": "LaTeX، مثلاً \\frac{a}{b}",
+  "Type LaTeX above, e.g. \\frac{a}{b}": "کد LaTeX را بالا بنویس، مثلاً \\frac{a}{b}",
 }

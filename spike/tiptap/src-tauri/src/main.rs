@@ -324,22 +324,6 @@ fn files_list(s: St) -> Res<Vec<Value>> {
     with(&s, |v| Ok(v.files_list()))
 }
 
-#[tauri::command]
-fn file_delete(s: St, id: String) -> Res<()> {
-    with(&s, |v| v.file_delete(&id))
-}
-
-#[tauri::command]
-fn files_clear(s: St) -> Res<()> {
-    with(&s, |v| {
-        for f in v.files_list() {
-            if let Some(id) = f.get("id").and_then(Value::as_str) {
-                v.file_delete(id)?;
-            }
-        }
-        Ok(())
-    })
-}
 
 
 // ───── database records (see database/mod.rs; the query engine itself runs in the UI) ─────
@@ -498,7 +482,7 @@ fn main() {
             db_recover, db_load_all, db_commit, db_get_operation, db_history, db_undo_load, db_undo_save, db_runtime_get, db_runtime_set, db_runtime_delete,
             db_runtime_keys, db_index_rebuild, db_index_candidates, db_index_count,
             vault_stamp, pages_all, pages_save, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list,
-            file_delete, files_clear, index_state, index_update, index_search
+            index_state, index_update, index_search
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nevis");

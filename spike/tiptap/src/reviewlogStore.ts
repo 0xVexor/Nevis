@@ -1,7 +1,7 @@
-import { kvGet, kvSet } from './db'
-import { bump, dayKey, type ReviewLog } from './reviewlog'
+import { kvGet } from './db'
+import type { ReviewLog } from './reviewlog'
 
-// Storage of the review log (the vault's kv/reviewlog.json, synced between devices).
+// Storage of the review log (the vault's kv/reviewlog.json).
 
 export const deviceId = () => {
   try {
@@ -12,9 +12,3 @@ export const deviceId = () => {
 }
 
 export const loadLog = async (): Promise<ReviewLog> => (await kvGet<ReviewLog>('reviewlog')) ?? {}
-
-export async function recordReview(log: ReviewLog): Promise<ReviewLog> {
-  const next = bump(log, deviceId(), dayKey(Date.now()))
-  await kvSet('reviewlog', next)
-  return next
-}

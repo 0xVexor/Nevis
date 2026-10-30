@@ -427,19 +427,6 @@ impl Vault {
         out
     }
 
-    /// Never an immediate delete: the other devices may not have synced the page that still uses the file.
-    pub fn file_delete(&self, id: &str) -> Res<()> {
-        let path = self.file_path(id)?;
-        let trash = self.root.join(".trash/files");
-        if path.exists() {
-            let _ = fs::remove_file(trash.join(id));
-            fs::rename(&path, trash.join(id)).map_err(err)?;
-            write_atomic(&trash.join(format!("{id}.del")), now_ms().to_string().as_bytes())?;
-        }
-        let _ = fs::remove_file(path.with_extension("json"));
-        Ok(())
-    }
-
     /// Permanently drops trash entries older than TRASH_KEEP_MS.
     pub fn purge_trash(&self) {
         for sub in [".trash/pages"] { // Retain trashed assets until the complete history/conflict reference index can prove them unused.
@@ -515,9 +502,6 @@ mod tests {
         v.file_put(&id, b"hello", "text/plain", "a.txt", 5).unwrap();
         assert_eq!(v.file_get(&id).unwrap(), b"hello");
         assert_eq!(v.files_list().len(), 1);
-        v.file_delete(&id).unwrap();
-        assert!(v.files_list().is_empty());
-        assert_eq!(v.file_get(&id).unwrap(), b"hello"); // still recoverable from the trash
     }
 
     #[test]
