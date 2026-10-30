@@ -32,10 +32,6 @@ import { buildIndex, type PageIndex } from './pageIndex'
 import { ReaderBar, loadReaderCfg, type ReaderCfg } from './ReaderBar'
 import { BackupSettings } from './BackupSettings'
 import { Vaults } from './Vaults'
-import { AccountDialog } from './Account'
-import { SyncButton } from './SyncButton'
-import { ConflictReview } from './ConflictReview'
-import { saveForSync, syncWorkspaceNow } from './syncActions'
 import { WorkspaceCard } from './VaultSwitcher'
 import { GraphView } from './GraphView'
 import { searchPages } from './searchIndex'
@@ -229,16 +225,7 @@ export default function App() {
   const [naming, setNaming] = useState<{ title: string; label: string; initial: string; action: string; onSubmit: (name: string) => void } | null>(null)
   const [backupOpen, setBackupOpen] = useState(false)
   const [folderOpen, setFolderOpen] = useState(false)
-  const [accountOpen, setAccountOpen] = useState(false)
   const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null)
-  const [conflictReview, setConflictReview] = useState(false)
-  const reviewConflicts = useCallback(() => {
-    void saveForSync().then(() => { setAccountOpen(false); setConflictReview(true) }).catch(e => setToast({ msg: String(e) }))
-  }, [])
-  useEffect(() => {
-    window.addEventListener('github-review-conflicts', reviewConflicts)
-    return () => window.removeEventListener('github-review-conflicts', reviewConflicts)
-  }, [reviewConflicts])
   const [tableOpen, setTableOpen] = useState(false)
   const [graphOpen, setGraphOpen] = useState(false)
   const [dueCards, setDueCards] = useState(0)
@@ -313,22 +300,22 @@ export default function App() {
     window.addEventListener(OPEN_PAGE, open)
     window.addEventListener(PAGES_CHANGED, changed)
     window.addEventListener('external-change', changed)
-    // desktop: a save found a newer version on disk (another device's edit) and put it in the page history first
-    const kept = () => setToast({ msg: t('Another device changed this page while you were editing. Its version is kept in the page history.') })
-    // desktop: the vault folder vanished while the app was open (moved, deleted, drive unplugged): nothing is written until it is back
+    // desktop: a save found a newer version on disk (changed by another program) and put it in the page history first
+    const kept = () => setToast({ msg: t('This page was changed outside the app while you were editing. Its version is kept in the page history.') })
+    // desktop: the vault folder vanished while the app was open (moved, deleted, disk unplugged): nothing is written until it is back
     const storageError = (e: Event) => {
       if (String((e as CustomEvent).detail).includes('VAULT_MISSING')) setToast({ msg: t('The vault folder was not found. Open Workspaces to locate it or download it again.') })
     }
     const layoutNotice = (e: Event) => setToast({ msg: String((e as CustomEvent).detail) })
     window.addEventListener('layout-message', layoutNotice)
-    window.addEventListener('sync-conflict', kept)
+    window.addEventListener('page-conflict', kept)
     window.addEventListener('storage-error', storageError)
     return () => {
       window.removeEventListener(OPEN_PAGE, open)
       window.removeEventListener(PAGES_CHANGED, changed)
       window.removeEventListener('external-change', changed)
       window.removeEventListener('layout-message', layoutNotice)
-      window.removeEventListener('sync-conflict', kept)
+      window.removeEventListener('page-conflict', kept)
       window.removeEventListener('storage-error', storageError)
     }
   }, [refresh])
@@ -586,8 +573,7 @@ export default function App() {
     { id: 'vault', label: t('Import Obsidian vault (folder)…'), icon: <Ic.Folder />, keywords: 'obsidian', run: doVault },
     { id: 'export-all', label: t('Export all pages (zip with Markdown & images)'), icon: <Ic.Download />, keywords: 'zip', run: doExportAll },
     { id: 'backup', label: t('Full backup (JSON)'), icon: <Ic.Save />, keywords: 'پشتیبان', run: doBackup },
-    ...[{ id: 'data-folder', label: t('Workspaces and sync…'), icon: <Ic.Folder />, keywords: 'sync vault switch workspace پوشه داده همگام', run: () => setFolderOpen(true) }],
-    ...(isTauri ? [{ id: 'account', label: t('Account and sync…'), icon: <Ic.Cloud />, keywords: 'account sign in login register password device حساب ورود ثبت‌نام رمز دستگاه', run: () => setAccountOpen(true) }] : []),
+    ...[{ id: 'data-folder', label: t('Workspaces…'), icon: <Ic.Folder />, keywords: 'vault switch workspace پوشه داده', run: () => setFolderOpen(true) }],
     { id: 'auto-backup', label: t('Automatic backup to folder…'), icon: <Ic.Save />, keywords: 'پشتیبان خودکار', run: () => setBackupOpen(true) },
     { id: 'settings', label: t('Settings'), icon: <Ic.Settings />, keywords: 'preferences تنظیمات', run: () => setView('settings') },
   ]
@@ -726,11 +712,10 @@ export default function App() {
         </div>
       </aside>
 
-      <main ref={mainRef} className={'main' + (panelOpen && !reader && !conflictReview && view === 'page' && current ? ' drawer-open' : '')}>
+      <main ref={mainRef} className={'main' + (panelOpen && !reader && view === 'page' && current ? ' drawer-open' : '')}>
         <header className="topbar">
           {!sideOpen && <button className="icon-btn" title={t('Open sidebar  Ctrl+\\')} onClick={() => setSideOpen(true)}><Ic.Sidebar /></button>}
           <nav className="crumbs">
-            {conflictReview ? <span className="crumb-cur">{t('Resolve sync conflicts')}</span> : <>
             <button className="crumb-home" title={t('Home')} onClick={() => setView('home')}><Ic.Home size={15} /></button>
             {view === 'home' && <span className="crumb"><span className="crumb-cur"><Ic.Sidebar size={14} />{t('Home')}</span></span>}
             {view === 'files' && <span className="crumb"><span className="crumb-cur"><Ic.Folders size={14} />{t('Files')}</span></span>}
@@ -750,13 +735,11 @@ export default function App() {
                 )}
               </span>
             ))}
-            </>}
           </nav>
           <span className="spacer" />
           <span className={'status' + (save === 'saving' ? ' busy' : '')}><i className="dot" />{save === 'saving' ? t('Saving…') : t('Saved')}</span>
           <div className="tb-group">
-            {isTauri && <SyncButton onSetup={() => setFolderOpen(true)} onSignIn={() => setAccountOpen(true)} onConflicts={reviewConflicts} />}
-            {!conflictReview && current && view === 'page' && (
+            {current && view === 'page' && (
               <>
                 <button className="icon-btn" title={t('Reader mode  Ctrl+.')} onClick={() => setReader(true)}><Ic.Reader /></button>
                 <button className={'icon-btn' + (current.favorite ? ' fav-on' : '')} title={t('Favorite')} onClick={() => fav(current.id)}><Ic.Star filled={current.favorite} /></button>
@@ -767,12 +750,12 @@ export default function App() {
               {dark ? <Ic.Sun /> : <Ic.Moon />}
             </button>
           </div>
-          {!conflictReview && current && view === 'page' && <button className="share-btn" title={t('Share & export')} onClick={(e) => setDataMenu(e.currentTarget.getBoundingClientRect())}><Ic.Share size={15} />{t('Share')}</button>}
+          {current && view === 'page' && <button className="share-btn" title={t('Share & export')} onClick={(e) => setDataMenu(e.currentTarget.getBoundingClientRect())}><Ic.Share size={15} />{t('Share')}</button>}
         </header>
 
-        {!conflictReview && reader && view === 'page' && current && <ReaderBar cfg={readerCfg} onCfg={(c) => (setReaderCfg(c), setPreference('not.reader.cfg', JSON.stringify(c)))} onExit={() => setReader(false)} />}
+        {reader && view === 'page' && current && <ReaderBar cfg={readerCfg} onCfg={(c) => (setReaderCfg(c), setPreference('not.reader.cfg', JSON.stringify(c)))} onExit={() => setReader(false)} />}
         <div className="scroller">
-          {conflictReview ? <ConflictReview onClose={() => setConflictReview(false)} /> : view === 'home' ? (
+          {view === 'home' ? (
             <Home pages={pages} onOpen={setCurrentId} onNew={() => add(null)} onFolder={() => addFolder(null)} onTable={() => setTableOpen(true)} onCards={() => setCardsOpen(true)} onSearch={() => setSearching(true)}
               onNewDatabase={() => addDatabase(null)} onNewBoard={() => add(null, 'board')} onNewList={() => add(null, 'todo')}
               onDatabases={() => setView('databases')} onDrawings={() => setView('drawings')} onTasks={() => setView('tasks')}
@@ -786,7 +769,7 @@ export default function App() {
           ) : view === 'drawings' ? (
             <Drawings onOpen={setCurrentId} onNew={() => add(null, 'board')} onDelete={delDrawing} />
           ) : view === 'settings' ? (
-            <SettingsView data={{ importMarkdown: doImport, importVault: () => void doVault(), exportAll: doExportAll, backup: doBackup, restore: doRestore, autoBackup: () => setBackupOpen(true), workspaces: () => setFolderOpen(true), account: isTauri ? () => setAccountOpen(true) : undefined, syncNow: isTauri ? () => void syncWorkspaceNow().catch(e => setToast({ msg: String(e) })) : undefined }} />
+            <SettingsView data={{ importMarkdown: doImport, importVault: () => void doVault(), exportAll: doExportAll, backup: doBackup, restore: doRestore, autoBackup: () => setBackupOpen(true), workspaces: () => setFolderOpen(true) }} />
           ) : current?.dbHost ? (
             <Suspense fallback={<div className="page-skeleton" aria-busy="true" />}><DatabasePage key={current.id} page={current} onOpenPage={setCurrentId} onMeta={refresh} readOnly={reader} /></Suspense>
           ) : current?.kind === 'board' ? (
@@ -807,7 +790,7 @@ export default function App() {
             </div>
           )}
         </div>
-        {!conflictReview && view === 'page' && current && (
+        {view === 'page' && current && (
           <PagePanel
             open={panelOpen && !reader}
             page={current}
@@ -883,7 +866,7 @@ export default function App() {
       {dataMenu && (
         <Popover anchor={dataMenu} onClose={() => setDataMenu(null)} align="end">
           <div className="menu share-menu">
-            {!conflictReview && current && view === 'page' && (
+            {current && view === 'page' && (
               <>
                 <MenuLabel>{t('Share this page')}</MenuLabel>
                 <MenuItem icon={<Ic.Markdown />} label={t('Export Markdown')} desc={t('Download as a .md file')} onClick={() => (setDataMenu(null), exportMd(current.id))} />
@@ -895,8 +878,7 @@ export default function App() {
         </Popover>
       )}
 
-      {accountOpen && <AccountDialog onClose={() => setAccountOpen(false)} onWorkspaces={() => setFolderOpen(true)} />}
-      {folderOpen && <Vaults onClose={() => setFolderOpen(false)} onAccount={() => setAccountOpen(true)} onNew={(create) => setNaming({ title: t('New workspace'), label: t('Workspace name:'), initial: t('My notes'), action: t('Next'), onSubmit: (n) => void create(n.trim() || t('My notes')) })} />}
+      {folderOpen && <Vaults onClose={() => setFolderOpen(false)} onNew={(create) => setNaming({ title: t('New workspace'), label: t('Workspace name:'), initial: t('My notes'), action: t('Next'), onSubmit: (n) => void create(n.trim() || t('My notes')) })} />}
       {movingId && <div className="overlay" onMouseDown={() => setMovingId(null)}><div className="modal move-dialog" role="dialog" aria-modal="true" aria-label={t('Move to folder')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && setMovingId(null)}><div className="modal-head"><b>{t('Move to folder')}</b><button className="icon-btn" title={t('Close')} onClick={() => setMovingId(null)}><Ic.Close /></button></div><div className="modal-list"><button className="result" onClick={() => { move(movingId,null,null); setMovingId(null) }}><Ic.Book /><span>{t('Move to top level')}</span></button>{pages.filter((p) => { if(p.kind !== 'folder' || p.id === movingId) return false; let parent: Page | undefined = p; const seen = new Set<string>(); while(parent) { if(parent.id === movingId || seen.has(parent.id)) return false; seen.add(parent.id); parent = pages.find((x) => x.id === parent!.parentId) } return true }).map((p) => <button className="result" key={p.id} onClick={() => { move(movingId,p.id,null); setMovingId(null) }}><Ic.Folder /><span dir="auto">{p.title || t('Untitled folder')}</span></button>)}</div></div></div>}
       {backupOpen && <BackupSettings onClose={() => setBackupOpen(false)} />}
       {graphOpen && <GraphView currentId={current?.id} onOpen={setCurrentId} onClose={() => setGraphOpen(false)} />}

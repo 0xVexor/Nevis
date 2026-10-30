@@ -120,7 +120,6 @@ export const FA_DB: Record<string, string> = {
   "Choose a property…": "یک ویژگی انتخاب کنید…",
   "Some widgets are not placed in a row.": "برخی ویجت‌ها در هیچ ردیفی نیستند.",
   "This dashboard is empty": "این داشبورد خالی است",
-  "Choose Edit dashboard to add charts and views.": "برای افزودن نمودار و نما، «ویرایش داشبورد» را بزنید.",
   "Data source": "منبع داده",
   "Choose data…": "انتخاب داده…",
   "Layout": "چیدمان",

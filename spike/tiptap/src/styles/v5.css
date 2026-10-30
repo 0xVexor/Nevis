@@ -84,7 +84,6 @@
 
 /* a notice right after a button or button row gets room above it */
 button + .backup-warn, .backup-acts + .backup-warn, .wsd-acts + .backup-warn { margin-top: 14px; }
-.wsd-card .backup-warn:last-child { margin-bottom: 0; }
 
 /* flashcards: long questions and answers wrap and scroll instead of running out of the card */
 .fc2-stage { justify-content: flex-start; }

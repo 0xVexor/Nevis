@@ -5,8 +5,7 @@ import { createPortal } from 'react-dom'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { getSchema } from '@tiptap/core'
 import { EditorState, Selection, TextSelection } from '@tiptap/pm/state'
-import { invoke } from '@tauri-apps/api/core'
-import { addVersion, isTauri } from './db'
+import { addVersion } from './db'
 import { LayoutControls } from './LayoutControls'
 import { contentProblem } from './editor/contentSafety'
 import { LAYOUT_CANCEL } from './editor/layout'
@@ -224,7 +223,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
     }
   }, [editor])
 
-  // another device changed this page (arrived through the synced vault folder): show its content without saving it back
+  // another program changed this page's file: show its content without saving it back
   useEffect(() => {
     const onExternal = async (e: Event) => {
       if (!editor || editor.isDestroyed || !(e as CustomEvent<string[]>).detail.includes(page.id)) return
@@ -239,8 +238,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
       if (dirty.current && !protectedContent.current) {
         const local = { ...page, content: editor.getJSON() }
         try {
-          if (isTauri) await invoke('archive_editor_conflict', { page: local, base: { ...page, content: originalContent } })
-          else await addVersion({ pageId: page.id, ts: Date.now(), title: page.title, content: local.content })
+          await addVersion({ pageId: page.id, ts: Date.now(), title: page.title, content: local.content })
         } catch (error) {
           setOriginalContent(local.content)
           setContentIssue(t('The unsaved version could not be archived. Copy or export it before reloading.'))
@@ -250,7 +248,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
           return
         }
         if (editor.isDestroyed) return
-        window.dispatchEvent(new Event('sync-conflict'))
+        window.dispatchEvent(new Event('page-conflict'))
       }
       dirty.current = false
       onSave('saved')

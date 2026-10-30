@@ -150,7 +150,7 @@ export function Home({ pages, onOpen, onNew, onFolder, onTable, onCards, onSearc
             <button type="button" className="hm-row" onClick={onTemplates}><Ic.Blocks size={16} /><span className="hm-row-t">{t('Templates')}</span><Ic.Arrow size={14} /></button>
             <button type="button" className="hm-row" onClick={onCards}><Ic.Cards size={16} /><span className="hm-row-t">{t('Flashcards')}</span><Ic.Arrow size={14} /></button>
             <button type="button" className="hm-row" onClick={onFolder}><Ic.Folder size={16} /><span className="hm-row-t">{t('New folder')}</span><Ic.Plus size={14} /></button>
-            {onWorkspaces && <button type="button" className="hm-row" onClick={onWorkspaces}><Ic.Cloud size={16} /><span className="hm-row-t">{t('Workspaces and sync…')}</span><Ic.Arrow size={14} /></button>}
+            {onWorkspaces && <button type="button" className="hm-row" onClick={onWorkspaces}><Ic.Layers size={16} /><span className="hm-row-t">{t('Workspaces…')}</span><Ic.Arrow size={14} /></button>}
           </Box>
         </aside>
       </div>
