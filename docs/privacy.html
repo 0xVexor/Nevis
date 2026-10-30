@@ -16,26 +16,13 @@
 <p>Last updated: 24 October 2026</p>
 
 <h2>What Nevis is</h2>
-<p>Nevis is a desktop notes application. It runs on your computer. We do not collect analytics or telemetry. Unless you turn on sync, we do not receive your notes or anything else from you.</p>
+<p>Nevis is a desktop notes application. It runs on your computer. We do not collect analytics or telemetry. We do not receive your notes or anything else from you.</p>
 
 <h2>Where your data is stored</h2>
-<p>Your pages, attachments and settings are stored as files in a folder (the "vault") on your own device. That data never leaves your device unless you turn on sync.</p>
-
-<h2>Sync between devices (optional)</h2>
-<p>If you create an account and turn on sync, Nevis copies your vault to a Nevis sync server so that your devices stay in step. By default this is the server at <code>sync.manaz.pro</code>, which is run by the Nevis project; you can point Nevis at a server run by someone else, or at your own (the server is open source, in the <code>server/</code> folder of the repository).</p>
-<p><strong>What the server stores:</strong></p>
-<ul>
-  <li><strong>Your account:</strong> the user name you chose, a salted hash of your password (never the password itself), a hash of your recovery key (never the key), and the time the account was created. We do not ask for or store an email address or a phone number.</li>
-  <li><strong>Your devices:</strong> a name for each device you signed in on (by default its computer name), when it signed in and when it was last used. A device token is stored on the server only as a hash, and on your device in the operating system's credential store (Windows Credential Manager or macOS Keychain).</li>
-  <li><strong>Your synced content:</strong> the files of the vaults you sync: pages, attachments, page history and settings. <em>This content is not end-to-end encrypted</em>: whoever operates the server can technically read it. Only turn on sync with a server you trust. End-to-end encryption is planned.</li>
-  <li><strong>Older versions and deleted files:</strong> a changed or deleted file is kept for 30 days so that it can be recovered, then removed.</li>
-  <li><strong>Technical logs:</strong> the server writes the time, the request path and the network address of requests to its operating logs, which is how abuse and faults are found. Logs do not contain your notes or passwords.</li>
-</ul>
-<p><strong>Deleting your data:</strong> you can delete any synced vault from Nevis (it stays recoverable for 30 days, then is removed) and you can delete your account (the account and all its vaults are removed after 30 days; signing in again within that time cancels the deletion). The notes on your own devices are never touched by either.</p>
-<p>Nevis never sends the contents of your vault anywhere else, and the server does not share it with anyone.</p>
+<p>Your pages, attachments and settings are stored as files in a folder (the "vault") on your own device. That data never leaves your device.</p>
 
 <h2>Sharing</h2>
-<p>We do not sell, share or transfer your data to anyone. If you never turn on sync, we do not have any of it.</p>
+<p>We do not sell, share or transfer your data to anyone: we do not have it.</p>
 
 <h2>Children</h2>
 <p>Nevis is not directed at children and collects no personal information from anyone.</p>
