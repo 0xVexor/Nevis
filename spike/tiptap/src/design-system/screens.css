@@ -518,3 +518,4 @@
 .tplv-card { background: var(--ds-sunk); }
 .tplv-pv { inline-size: 100%; margin: 0; border: 0 !important; background: var(--ds-sunk); }
 .tplv-bd { background: var(--ds-raised); }
+.tplv-bd { flex: 1; }
