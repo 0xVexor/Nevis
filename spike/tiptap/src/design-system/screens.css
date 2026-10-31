@@ -347,3 +347,41 @@
 :root[dir='rtl'] .fcv-tip { transform: translateX(50%); }
 .fcv-tip b { font-size: 13px; font-weight: 600; }
 .fcv-tip small { color: var(--ds-text-3); font-size: 11.5px; }
+
+/* ───── Databases: title, view tabs, quiet toolbar, plain table ───── */
+.db-page-title { font-size: 30px; font-weight: 600; letter-spacing: -0.025em; }
+.db-tabs { gap: 2px; padding-block-end: 0; border-block-end: 1px solid var(--ds-line); }
+.db-tabs .db-tab { block-size: auto; padding: 9px 12px; margin-block-end: -1px; border: 0; border-block-end: 2px solid transparent; border-radius: 0; background: none; box-shadow: none; color: var(--ds-text-2); font-weight: 500; }
+.db-tabs .db-tab:hover { background: none; color: var(--ds-text); }
+.db-tabs .db-tab.on { border-block-end-color: var(--ds-accent); background: none; color: var(--ds-text); }
+.db-tabs .db-tab.add { color: var(--ds-text-3); }
+.db-toolbar { margin-block: 14px 12px; }
+.db-tool { border: 0; border-radius: 8px; background: none; color: var(--ds-text-2); font-weight: 500; box-shadow: none; }
+.db-tool:hover { background: var(--ds-hover); color: var(--ds-text); }
+.db-tool.on, .db-tool[aria-pressed='true'] { background: var(--ds-accent-soft); color: var(--ds-accent); }
+.db-newbtn { border-radius: var(--ds-r); box-shadow: none; }
+.db-table-wrap { overflow: hidden; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); box-shadow: none; }
+.db-thead { background: var(--ds-sunk); border-block-end: 1px solid var(--ds-line); color: var(--ds-text-2); font-size: 12.5px; font-weight: 550; }
+.db-th { color: var(--ds-text-2); }
+.db-tbody .db-tr:hover, .db-tbody .db-row:hover { background: color-mix(in oklab, var(--ds-accent) 5%, var(--ds-bg)); }
+.db-tfoot { background: var(--ds-sunk); border-block-start: 1px solid var(--ds-line); color: var(--ds-text-3); font-size: 12.5px; }
+.db-empty b { font-weight: 600; }
+.db-empty { color: var(--ds-text-3); }
+
+/* ───── Drawings: gallery and the board page ───── */
+.dw .tk-tabs { display: inline-flex; gap: 2px; padding: 2px; border: 0; border-radius: var(--ds-r); background: var(--ds-sunk); }
+.dw .tk-tabs button { block-size: 28px; padding: 0 12px; border: 0; border-radius: 8px; background: none; color: var(--ds-text-2); font: 500 14px var(--ds-font-ui); cursor: pointer; }
+.dw .tk-tabs button.on { background: var(--ds-raised); color: var(--ds-text); box-shadow: 0 0 0 1px var(--ds-line), 0 1px 2px rgb(0 0 0 / 0.06); }
+.dw-search { block-size: 34px; border-color: var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); }
+.dw-search:focus { border-color: var(--ds-accent); box-shadow: 0 0 0 3px var(--ds-accent-soft); }
+.dw-tools .primary { block-size: 34px; padding: 0 14px; border: 1px solid var(--ds-accent); border-radius: var(--ds-r); background: var(--ds-accent); color: var(--ds-accent-ink); box-shadow: none; font-weight: 550; }
+.dw-tools .primary:hover { filter: brightness(1.08); transform: none; }
+.dw-grid { gap: 14px; }
+.dw-card { border-color: var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); }
+.dw-card:hover { border-color: var(--ds-accent-line); box-shadow: none; transform: none; }
+.dw-thumb { border-block-end-color: var(--ds-line); }
+.dw-meta b { font-weight: 600; }
+.dw-del { border-color: var(--ds-line); border-radius: var(--ds-r-sm); background: var(--ds-raised); }
+.dw .hm-empty { padding: 36px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); color: var(--ds-text-3); text-align: center; }
+.board-title { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
+.board-stage { border-color: var(--ds-line); border-radius: var(--ds-r-lg); }
