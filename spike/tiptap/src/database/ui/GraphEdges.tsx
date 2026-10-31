@@ -24,7 +24,7 @@ export function useDatabaseEdges(kinds: ExtraKinds): [string, string][] {
 export function EdgeKindToggles({ kinds, onChange }: { kinds: ExtraKinds; onChange: (k: ExtraKinds) => void }) {
   if (!peekDatabase()) return null
   const item = (k: keyof ExtraKinds, label: string) => (
-    <label key={k} className="gv-kind"><input type="checkbox" checked={kinds[k]} onChange={(e) => onChange({ ...kinds, [k]: e.target.checked })} /> {t(label)}</label>
+    <button key={k} type="button" className={'gv-kind' + (kinds[k] ? ' on' : '')} aria-pressed={kinds[k]} onClick={() => onChange({ ...kinds, [k]: !kinds[k] })}>{kinds[k] && <svg className="ds-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7" /></svg>}{t(label)}</button>
   )
   return <div className="gv-kinds" role="group" aria-label={t('Database links')}>{item('relation', 'Relations')}{item('dependency', 'Dependencies')}{item('hierarchy', 'Sub-items')}</div>
 }
