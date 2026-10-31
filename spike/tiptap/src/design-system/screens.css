@@ -519,3 +519,14 @@
 .tplv-pv { inline-size: 100%; margin: 0; border: 0 !important; background: var(--ds-sunk); }
 .tplv-bd { background: var(--ds-raised); }
 .tplv-bd { flex: 1; }
+
+/* databases: layout the legacy sheets left to chance, and calmer fills */
+.db-cal-wd { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); padding: 0; }
+.db-cal-wd > span { padding: 8px 6px; }
+.db-tl-axis > span { position: absolute; inset-block: 0; display: flex; align-items: center; padding-inline-start: 8px; border-inline-start: 1px solid var(--ds-line); color: var(--ds-text-3); font-size: 12px; white-space: nowrap; }
+.db-newline, .db-newline button { border: 1.5px dashed var(--ds-line-strong); border-radius: var(--ds-r); background: none; color: var(--ds-text-3); box-shadow: none; }
+.db-newline:hover, .db-newline button:hover { border-color: var(--ds-accent); background: var(--ds-accent-soft); color: var(--ds-accent); }
+.db-body .primary, .db-dash .primary, .db-form .primary, .db-view-actions .primary, .db-dash-empty .primary { border-radius: var(--ds-r); box-shadow: none; font-weight: 550; }
+.db-dash-empty, .db-form-status, .db-notice { background: none; border-color: var(--ds-line-strong); }
+.db-seg, .db-layouts { padding: 2px; border: 0; border-radius: var(--ds-r); background: var(--ds-sunk); }
+.db-seg button.on, .db-layout.on { background: var(--ds-raised); color: var(--ds-text); box-shadow: 0 0 0 1px var(--ds-line), 0 1px 2px rgb(0 0 0 / 0.06); }
