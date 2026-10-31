@@ -1,7 +1,13 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import { t } from '../i18n'
+import { GLYPHS } from '../iconSet'
 
-const CALLOUT_EMOJIS = ['💡', '⚠️', '❗', '✅', 'ℹ️', '🔥', '📌']
+// Callout icons are the system's own stroke icons (same drawing and weight as the page icons), in the text colour.
+// Older callouts stored an emoji; those are shown as the matching icon.
+const CALLOUT_ICONS = ['bulb', 'warning', 'info', 'check', 'flame', 'pin', 'bell']
+const LEGACY_EMOJI: Record<string, string> = { '💡': 'bulb', '⚠️': 'warning', '❗': 'warning', '✅': 'check', 'ℹ️': 'info', '🔥': 'flame', '📌': 'pin' }
+const iconName = (v: string) => (GLYPHS[v] ? v : (LEGACY_EMOJI[v] ?? 'bulb'))
+const iconSvg = (v: string) => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLYPHS[iconName(v)][1]}</svg>`
 
 /** Highlighted box with a clickable emoji (cycles through CALLOUT_EMOJIS). Holds any blocks. */
 export const Callout = Node.create({
@@ -12,8 +18,8 @@ export const Callout = Node.create({
   addAttributes() {
     return {
       emoji: {
-        default: '💡',
-        parseHTML: (el) => el.getAttribute('data-emoji') || '💡',
+        default: 'bulb',
+        parseHTML: (el) => el.getAttribute('data-emoji') || 'bulb',
         renderHTML: (a) => ({ 'data-emoji': a.emoji }),
       },
     }
@@ -31,12 +37,12 @@ export const Callout = Node.create({
       btn.type = 'button'
       btn.contentEditable = 'false'
       btn.title = t('Change icon')
-      btn.textContent = node.attrs.emoji
+      btn.innerHTML = iconSvg(node.attrs.emoji)
       btn.onmousedown = (e) => e.preventDefault()
       btn.onclick = () => {
         const pos = getPos()
         if (pos == null || !editor.isEditable) return
-        const next = CALLOUT_EMOJIS[(CALLOUT_EMOJIS.indexOf(cur.attrs.emoji) + 1) % CALLOUT_EMOJIS.length]
+        const next = CALLOUT_ICONS[(CALLOUT_ICONS.indexOf(iconName(cur.attrs.emoji)) + 1) % CALLOUT_ICONS.length]
         editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...cur.attrs, emoji: next }))
       }
       const body = document.createElement('div')
@@ -48,7 +54,7 @@ export const Callout = Node.create({
         update: (n) => {
           if (n.type !== cur.type) return false
           cur = n
-          btn.textContent = n.attrs.emoji
+          btn.innerHTML = iconSvg(n.attrs.emoji)
           return true
         },
         stopEvent: (e) => e.target === btn,
