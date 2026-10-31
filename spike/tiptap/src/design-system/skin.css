@@ -153,3 +153,15 @@
 .ws-logo { display: grid; place-items: center; flex: none; line-height: 0; }
 .ws-logo svg { display: block; }
 .ws .brand, .ws-name { display: inline-flex; align-items: center; line-height: 1; }
+
+/* ───── sidebar pages: monochrome and borderless; hover turns the accent colour, like search results ───── */
+.side .pg-ic.tile { background: none; box-shadow: none; color: var(--ds-text-3); }
+.side .pg-ic.tile svg { color: inherit; }
+.side .pg-ic.emoji { filter: grayscale(1); opacity: 0.8; }
+.tree-kids { border-inline-start-color: transparent; }
+.side .row:hover { background: var(--ds-accent-soft); color: var(--ds-accent); }
+.side .row:hover .ic, .side .row:hover .twisty, .side .row:hover .tree-count { color: var(--ds-accent); }
+.side .row:hover .pg-ic.tile { color: var(--ds-accent); }
+.side .row:hover .pg-ic.emoji { filter: none; opacity: 1; }
+.side .row.cur .pg-ic.tile { color: var(--ds-accent); }
+.side .row:hover kbd { border-color: var(--ds-accent-line); color: var(--ds-accent); }
