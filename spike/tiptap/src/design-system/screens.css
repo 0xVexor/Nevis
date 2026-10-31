@@ -302,9 +302,6 @@
 .tplv-card { --c: var(--ds-text-3); display: flex; flex-direction: column; padding: 0; overflow: hidden; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); color: var(--ds-text); font: inherit; text-align: start; cursor: pointer; transition: border-color var(--ds-base), transform var(--ds-base) var(--ds-ease); }
 .tplv-card:hover { border-color: var(--ds-accent-line); transform: translateY(-2px); }
 .tplv-pv { display: flex; flex-direction: column; gap: 8px; block-size: 124px; padding: 16px; background: var(--ds-sunk); }
-.tplv-pv i { display: block; block-size: 7px; border-radius: 4px; background: var(--ds-line-strong); }
-.tplv-pv i.h { inline-size: 55%; block-size: 11px; background: var(--ds-text-3); opacity: 0.6; }
-.tplv-pv i.a { inline-size: 40%; background: var(--ds-line-strong); }
 .tplv-card.blank .tplv-pv { align-items: center; justify-content: center; border-block-end: 1px dashed var(--ds-line-strong); }
 .tplv-card.blank .tplv-pv i { display: none; }
 .tplv-bd { display: flex; align-items: center; gap: 12px; padding: 14px; }
@@ -472,3 +469,12 @@
 .tplv-card:hover { transform: none; border-color: var(--ds-line-strong); }
 .tplv-card:hover .tplv-bd .ds-tile { --c: var(--ds-text-2); background: var(--ds-sunk); }
 .tplv-card:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+/* Templates: the sample always fits its frame */
+.tplv-pv { overflow: hidden; justify-content: flex-start; padding: 16px 18px; }
+.tplv-card.blank .tplv-pv { justify-content: center; }
+.tplv-s { gap: 6px; }
+.tplv-s > i, .tplv-s .row > i { block-size: 5px; }
+.tplv-s > i.h { block-size: 8px; }
+.tplv-s u { inline-size: 10px; block-size: 10px; }
+.tplv-card:focus-visible { outline-offset: -2px; }
