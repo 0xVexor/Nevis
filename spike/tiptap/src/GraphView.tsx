@@ -1,4 +1,6 @@
+import { PageIcon } from './PageIcon'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getDatabase } from './database/runtime'
 import { useDatabaseEdges, EdgeKindToggles, type ExtraKinds } from './database/ui/GraphEdges'
 import { repo } from './store'
 import { layoutAsync } from './graphLayout'
@@ -107,12 +109,16 @@ const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v))
  * stays smooth with thousands of pages. The layout is computed in a worker.
  */
 export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; onOpen: (id: string) => void; onClose: () => void }) {
+  // the database service starts on demand; the typed links (relations, dependencies, sub-items) need it, so start it with the graph
+  const [, setDbReady] = useState(false)
+  useEffect(() => void getDatabase().then(() => setDbReady(true)).catch(() => undefined), [])
   const [kinds, setKinds] = useState<ExtraKinds>({ relation: false, dependency: false, hierarchy: false })
   const extra = useDatabaseEdges(kinds)
   const links = useMemo(() => repo.linkGraph(), [])
   const g = useMemo(() => (extra.length ? { nodes: links.nodes, edges: [...links.edges, ...extra] as [string, string][] } : links), [links, extra])
   const [scope, setScope] = useState<'local' | 'all'>(currentId && g.edges.some(([a, b]) => a === currentId || b === currentId) ? 'local' : 'all')
   const [hover, setHover] = useState<string | null>(null)
+  const [sel, setSel] = useState<string | null>(null) // the page picked on the map: it stays lit and gets the card on the side
   const [query, setQuery] = useState('')
   const [pct, setPct] = useState(100)
   const [scene, setScene] = useState<Scene | null>(null)
@@ -194,7 +200,7 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
   const nodes = scene?.nodes ?? NO_NODES
   const q = normalizeFa(query.trim())
   const matches = useMemo(() => new Set(q ? nodes.flatMap((n, i) => (normalizeFa(n.title).includes(q) ? [i] : [])) : []), [nodes, q])
-  const focusIdx = hover != null ? (scene?.byId.get(hover) ?? -1) : -1
+  const focusIdx = hover != null || sel != null ? (scene?.byId.get((hover ?? sel)!) ?? -1) : -1
   const near = useMemo(() => {
     const s = new Set<number>()
     if (!scene || focusIdx < 0) return s
@@ -206,6 +212,15 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
   const topIdx = useMemo(() => new Set(top.slice(0, 5).map((n) => scene?.byId.get(n.id) ?? -1)), [top, scene])
   const curIdx = currentId && scene ? (scene.byId.get(currentId) ?? -1) : -1
   const hovered = focusIdx >= 0 ? nodes[focusIdx] : undefined
+  const selIdx = sel != null ? (scene?.byId.get(sel) ?? -1) : -1
+  const selNode = selIdx >= 0 ? nodes[selIdx] : undefined
+  const selPage = selNode ? repo.get(selNode.id) : undefined
+  const conn = useMemo(() => {
+    if (!scene || selIdx < 0) return []
+    const out: N[] = []
+    for (let k = scene.adj.off[selIdx]; k < scene.adj.off[selIdx + 1]; k++) out.push(scene.nodes[scene.adj.nb[k]])
+    return out
+  }, [scene, selIdx])
 
   // everything the painter needs, so it can run from animation frames without React
   const paintInput = useRef({ scene, focusIdx, near, matches, topIdx, curIdx, q })
@@ -390,7 +405,7 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
     const out = cv?.getContext('2d')
     const base = paintInput.current
     const h = hoverRef.current
-    const input = h ? { ...base, focusIdx: h.idx, near: h.near } : base
+    const input = h && h.idx >= 0 ? { ...base, focusIdx: h.idx, near: h.near } : base
     const scene = input.scene
     if (!cv || !out || !scene) return
     const dpr = window.devicePixelRatio || 1
@@ -614,16 +629,6 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
 
   return (
     <div className="gv gv-page" role="region" aria-label={t('Graph view')}>
-        <header className="gv-head">
-          <div className="gv-title">
-            <b>{t('Graph view')}</b>
-          </div>
-          <EdgeKindToggles kinds={kinds} onChange={setKinds} />
-          <div className="ds-seg gv-scope">
-            {currentId && <button aria-pressed={scope === 'local'} onClick={() => setScope('local')}>{t('Around this page')}</button>}
-            <button aria-pressed={scope === 'all'} onClick={() => setScope('all')}>{t('Whole vault')}</button>
-          </div>
-        </header>
 
         {picked.pages.length === 0 ? (
           <div className="gv-empty">
@@ -673,7 +678,7 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
                 drag.current = null
                 if (d && !d.moved) {
                   const i = nodeAt(e.nativeEvent.offsetX, e.nativeEvent.offsetY)
-                  if (i >= 0) (onClose(), onOpen(scene!.nodes[i].id))
+                  setSel(i >= 0 ? scene!.nodes[i].id : null)
                 }
               }}
               onPointerLeave={() => ((drag.current = null), (hoverRef.current = { idx: -1, near: NO_SET }), redraw(), setHover(null))}
@@ -685,45 +690,62 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
               </div>
             )}
 
-            <div className="gv-tools gv-search">
-              <Ic.Search size={15} />
-              <input placeholder={t('Find a page…')} value={query} dir="auto" onChange={(e) => setQuery(e.target.value)} />
-              {q && <span className="gv-hits">{matches.size}</span>}
+            <div className="gpanel">
+              <label className="gv-search">
+                <Ic.Search size={15} />
+                <input placeholder={t('Find a page…')} value={query} dir="auto" onChange={(e) => setQuery(e.target.value)} />
+                {q && <span className="gv-hits">{matches.size}</span>}
+              </label>
+              <div className="ds-seg gv-scope">
+                {currentId && <button aria-pressed={scope === 'local'} onClick={() => setScope('local')}>{t('Around this page')}</button>}
+                <button aria-pressed={scope === 'all'} onClick={() => setScope('all')}>{t('Whole vault')}</button>
+              </div>
+              <EdgeKindToggles kinds={kinds} onChange={setKinds} />
+              <small className="ds-muted">{t('Size shows how many links a page has.')}</small>
             </div>
 
-            <div className="gv-tools gv-zoom">
+            <aside className="gsel">
+              {selNode ? (
+                <>
+                  <div className="gsel-head">
+                    <span className="ds-tile ds-tile--lg">{selPage ? <PageIcon page={selPage} /> : <Ic.Link size={20} />}</span>
+                    <span><b dir="auto">{selNode.title}</b><small className="ds-muted">{t('{n} links', { n: selNode.deg })}</small></span>
+                    <button type="button" className="ds-icon-btn" aria-label={t('Close')} onClick={() => setSel(null)}><Ic.Close size={14} /></button>
+                  </div>
+                  {selPage?.tags?.length ? <div className="gsel-tags">{selPage.tags.map((g) => <span key={g} className="tag-chip static">{g}</span>)}</div> : null}
+                  <div className="gsel-sec">{t('Connections')} · {conn.length}</div>
+                  <div className="gsel-list">
+                    {conn.map((n) => (
+                      <button key={n.id} type="button" className="gsel-row" onClick={() => setSel(n.id)}><i style={{ background: n.tone }} /><span dir="auto">{n.title}</span></button>
+                    ))}
+                  </div>
+                  <button type="button" className="ds-btn ds-btn--primary" onClick={() => onOpen(selNode.id)}>{t('Open page')}</button>
+                </>
+              ) : (
+                <>
+                  <div className="gsel-sec">{t('Most connected')}</div>
+                  <div className="gsel-list">
+                    {top.map((n) => (
+                      <button key={n.id} type="button" className={'gsel-row' + (n.id === hover ? ' on' : '')} onPointerEnter={() => ((hoverRef.current = null), setHover(n.id))} onPointerLeave={() => ((hoverRef.current = null), setHover(null))} onClick={() => setSel(n.id)}>
+                        <i style={{ background: n.tone }} /><span dir="auto">{n.title}</span><em>{n.deg}</em>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </aside>
+
+            <div className="gzoom">
               <button title={t('Zoom in')} onClick={() => zoomAt(1.3)}><Ic.Plus size={16} /></button>
               <span className="gv-pct">{pct}%</span>
               <button title={t('Zoom out')} onClick={() => zoomAt(1 / 1.3)}><span className="gv-minus" /></button>
               <button title={t('Fit to screen  (double-click)')} onClick={() => fit(true)}><Ic.SelectAll size={16} /></button>
             </div>
 
-            <div className="gv-tools gv-stats">
-              <span><b>{picked.pages.length}</b>{t('Pages')}</span>
-              <span><b>{picked.edges.length}</b>{t('Links')}</span>
+            <div className="gstat">
+              <span className="ds-chip"><b>{picked.pages.length}</b>{t('Pages')}</span>
+              <span className="ds-chip"><b>{picked.edges.length}</b>{t('Links')}</span>
             </div>
-
-            <aside className="gv-top">
-              <h4>{t('Most connected')}</h4>
-              {top.map((n) => (
-                <button key={n.id} className={n.id === hover ? 'on' : ''} onPointerEnter={() => ((hoverRef.current = null), setHover(n.id))} onPointerLeave={() => ((hoverRef.current = null), setHover(null))} onClick={() => (onClose(), onOpen(n.id))}>
-                  <i style={{ background: n.tone }} />
-                  <span dir="auto">{n.title}</span>
-                  <em>{n.deg}</em>
-                </button>
-              ))}
-            </aside>
-
-            {hovered && (
-              <div className="gv-card">
-                <i style={{ background: hovered.tone }} />
-                <div>
-                  <b dir="auto">{hovered.title}</b>
-                  <small>{t('{n} links', { n: hovered.deg })}</small>
-                </div>
-                <span>{t('Click to open')}</span>
-              </div>
-            )}
           </div>
         )}
     </div>
