@@ -450,3 +450,19 @@
 .db-pop, .db-modal, .db-peek, .db-sort-pop, .db-date-pop, .db-place-pop { border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); box-shadow: var(--ds-shadow-pop); }
 .db-panel-head, .db-modal-head, .db-peek-bar { border-color: var(--ds-line); }
 .db-empty-icon { border-radius: var(--ds-r-lg); background: var(--ds-accent-soft); color: var(--ds-accent); box-shadow: none; }
+
+/* table details: no column rules, quiet page icons, round check boxes like the design */
+.db-th, .db-td, .db-tf { border-inline-end-width: 0; }
+.db-table .pg-ic.tile { background: none; box-shadow: none; color: var(--ds-text-3); }
+.db-table input[type='checkbox'], .db-check input[type='checkbox'] { appearance: none; display: inline-grid; place-content: center; flex: none; inline-size: 18px; block-size: 18px; margin: 0; border: 1.5px solid var(--ds-line-strong); border-radius: 6px; background: var(--ds-bg); cursor: pointer; transition: background var(--ds-fast), border-color var(--ds-fast); }
+.db-table input[type='checkbox']:checked, .db-check input[type='checkbox']:checked { background: var(--ds-accent); border-color: var(--ds-accent); }
+.db-table input[type='checkbox']:checked::after, .db-check input[type='checkbox']:checked::after { content: ''; inline-size: 9px; block-size: 5px; border-left: 2px solid var(--ds-accent-ink); border-bottom: 2px solid var(--ds-accent-ink); transform: rotate(-45deg) translate(1px, -1px); }
+.db-table input[type='checkbox']:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+/* board: separate columns on the page, not one big panel; page icons stay quiet everywhere in a database */
+.db-board, .db-board-scroll, .db-board-lanes, .db-cols { background: none; border: 0; box-shadow: none; padding-inline: 0; }
+.db-board-lanes, .db-cols { gap: 14px; }
+.db-lane, .db-col { padding: 10px; }
+.db-body .pg-ic.tile, .db-peek .pg-ic.tile { background: none; box-shadow: none; color: var(--ds-text-3); }
+.db-lane-title .db-chip, .db-col-head .db-chip { background: none; color: var(--ds-text); font-weight: 600; padding-inline: 4px; }
+.db-count { background: none; color: var(--ds-text-3); font-weight: 500; }
