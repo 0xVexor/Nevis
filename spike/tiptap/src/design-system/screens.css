@@ -760,3 +760,24 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 .tb-msep { background: var(--ds-line); }
 .tb-grid span { border-radius: 5px; background: var(--ds-sunk); }
 .tb-grid span.on { background: var(--ds-accent-soft); box-shadow: inset 0 0 0 1px var(--ds-accent-line); }
+
+/* cover picker: ten washes, your own colours, an image */
+.cover-pop { inline-size: 320px; padding: 12px; }
+.cover-grid { grid-template-columns: repeat(5, 1fr); gap: 8px; max-block-size: none; overflow: visible; padding: 0; margin-block-end: 12px; }
+.cover-grid button { block-size: 44px; border: 0; outline: 1px solid var(--ds-line); outline-offset: -1px; border-radius: var(--ds-r); }
+.cover-grid button.on { border: 0; outline: 2px solid var(--ds-accent); outline-offset: 1px; }
+.cover-custom { display: flex; align-items: center; gap: 8px; padding: 10px; margin-block-end: 6px; border: 1px solid var(--ds-line); border-radius: var(--ds-r); }
+.cover-custom span { flex: 1 1 100%; color: var(--ds-text-3); font-size: 12.5px; }
+.cover-custom input[type='color'] { inline-size: 30px; block-size: 30px; padding: 0; border: 1px solid var(--ds-line); border-radius: 8px; background: none; cursor: pointer; }
+.cover-custom i { flex: 1; block-size: 30px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--ds-line); }
+.cover-custom button { block-size: 30px; padding: 0 12px; border: 0; border-radius: var(--ds-r); background: var(--ds-accent); color: var(--ds-accent-ink); font: 550 13px var(--ds-font-ui); cursor: pointer; }
+
+/* page icon: fixed size, still on hover; with a cover it straddles the cover's lower edge and the title clears it */
+.page-icon, .page-icon:hover { transition: none; transform: none; background: var(--ds-sunk); border-color: transparent; }
+.page-head:hover .page-icon.empty { opacity: 1; }
+.page-icon { flex: none; inline-size: 64px; block-size: 64px; min-inline-size: 64px; }
+.page-cols.has-cover .page-top { margin-block-start: -32px; margin-block-end: 14px; padding-block-start: 0; }
+.page-cols.has-cover .page-icon { box-shadow: 0 0 0 4px var(--ds-bg); }
+.page-top { margin-block-end: 14px; }
+/* quick start and the add-icon / add-cover buttons follow the corner radius, not a pill */
+.templates button, .page-tools button { border-radius: var(--ds-r); }
