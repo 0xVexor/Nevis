@@ -1,5 +1,11 @@
 // English → Persian UI strings (see i18n.ts). Generated once from the original Persian UI, edit freely.
 export const FA: Record<string, string> = {
+  "{n} tasks left": "{n} کار باقی مانده",
+  "{n} flashcards due": "{n} فلش‌کارت موعددار",
+  "Continue where you left off": "ادامه از همان‌جا که بودید",
+  "Checklist items from all your pages": "کارهای چک‌لیست همه‌ی صفحه‌ها",
+  "All caught up": "همه‌چیز انجام شده",
+  "Nothing left for today. Add a task to plan ahead.": "امروز کاری باقی نمانده. برای برنامه‌ریزی یک کار اضافه کنید.",
   "Preferences": "ترجیحات",
   "Deleted": "حذف‌شده",
   "Not connected": "متصل نیست",

@@ -29,4 +29,6 @@
 /* New design system (docs/design-system.md). Everything is prefixed ds-, so it never touches the legacy styles above. */
 @import './design-system/tokens.css';
 @import './design-system/components.css';
+@import './design-system/skin.css';
+@import './design-system/home.css';
 @import './styles/print.css';

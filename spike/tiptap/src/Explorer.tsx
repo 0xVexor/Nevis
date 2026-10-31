@@ -1,3 +1,4 @@
+import { FileIcon } from './design-system'
 import { setPreference } from './preferenceEvents'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { repo } from './store'
@@ -359,7 +360,7 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
         <button type="button" className={'fx-check' + (sel.has(p.id) ? ' on' : '')} role="checkbox" aria-checked={sel.has(p.id)} aria-label={t('Select')} onClick={(e) => toggleOne(e, p)} onDoubleClick={(e) => e.stopPropagation()}>
           <Ic.Check size={13} />
         </button>
-        <span className={'fx-ic' + (folder ? ' folder' : '')}>{folder ? <Ic.Folder size={mode === 'grid' ? 30 : 18} /> : <PageIcon page={p} />}</span>
+        <span className={'fx-ic' + (folder ? ' folder' : '')}>{folder ? <FileIcon kind="folder" size={mode === 'grid' ? 44 : 26} /> : <PageIcon page={p} />}</span>
         {cell(p)}
         {mode === 'list' && (
           <>

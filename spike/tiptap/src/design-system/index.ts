@@ -1,2 +1,8 @@
 export { Menu, Dropdown, type MenuItem } from './Menu'
 export { useMenu } from './useMenu'
+export { Icon } from './icons'
+export { iconNames } from './iconList'
+export { ICON_GROUPS, DS_ICONS } from './iconData'
+export { FileIcon } from './fileIcons'
+export { fileKind, extensionOf, FILE_KINDS, FILE_EXTENSIONS, type FileKind } from './fileKinds'
+export { BACKGROUNDS, BACKGROUND_GROUPS, backgroundCss, backgroundOf, type Background } from './backgrounds'

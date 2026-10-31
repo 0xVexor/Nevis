@@ -4,6 +4,7 @@ import { pickFiles } from './io'
 import { putFile, urlFor } from './attachments'
 import * as Ic from './icons'
 import { t } from './i18n'
+import { BACKGROUNDS } from './design-system/backgrounds'
 
 /** Built-in covers: ten abstract designs, pure CSS, so they cost no storage and survive backup/restore untouched. */
 const mesh = (...stops: [string, number, number][]) => stops.map(([c, x, y]) => `radial-gradient(at ${x}% ${y}%, ${c} 0, transparent 55%)`).join(', ')
@@ -46,6 +47,9 @@ const GRADIENTS: { id: string; label: string; css: string }[] = [
   { id: 'pinewood', label: 'Pinewood', css: scene('linear-gradient(180deg, #cde9d6 0%, #8fcaa6 60%, #4f9d7b 100%)', ['#2f7a5c', PINES], ['#1c5640', PEAKS_C]) },
   { id: 'ink', label: 'Ink', css: 'conic-gradient(from 160deg at 70% 130%, #2a2d4a, #0d0e14 30%, #1c1f38 60%, #0d0e14)' },
 ]
+
+// the design system's backgrounds (soft, vivid, dark, patterns, scenes) join the built-in covers; ids already present stay as they are
+for (const b of BACKGROUNDS) if (!GRADIENTS.some((g) => g.id === b.id)) GRADIENTS.push({ id: b.id, label: b.label, css: b.css })
 
 /** Covers no longer offered: pages that used them show the closest of the ten. */
 const LEGACY: Record<string, string> = { sunset: 'liquid', ocean: 'lagoon', forest: 'topo', rose: 'peachmist', dusk: 'nebula', mist: 'peachmist', nightsky: 'nebula', dunes: 'peachmist', tide: 'lagoon', 'mesh-iris': 'aurora', 'mesh-peach': 'peachmist', 'mesh-mint': 'lagoon', 'mesh-ember': 'liquid', 'mesh-deep': 'lagoon', sand: 'peachmist' }
