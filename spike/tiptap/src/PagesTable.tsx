@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Page, PageStatus } from './repo'
 import { normalizeFa } from './normalize'
 import { STATUS, allTags, wordCount } from './meta'
@@ -13,6 +13,11 @@ const ORDER: Record<string, number> = { todo: 1, doing: 2, done: 3 }
 
 /** Every page as a table: filter by text, tag and status; sort by any column; change the status in place. */
 export function PagesTable({ pages, onOpen, onStatus, onClose }: { pages: Page[]; onOpen: (id: string) => void; onStatus: (id: string, s: PageStatus | undefined) => void; onClose: () => void }) {
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [onClose])
   const [q, setQ] = useState('')
   const [tags, setTags] = useState<string[]>([])
   const [status, setStatus] = useState<'' | PageStatus | 'none'>('')
@@ -50,41 +55,37 @@ export function PagesTable({ pages, onOpen, onStatus, onClose }: { pages: Page[]
   )
 
   return (
-    <div className="overlay" onMouseDown={onClose}>
-      <div className="modal pt-modal" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()} tabIndex={-1}>
-        <div className="modal-head">
-          <div>
-            <b>{t('Pages table')}</b>
-            <small>{t('{n} of {total} pages', { n: rows.length, total: real.length })}</small>
-          </div>
-          <button className="icon-btn" onClick={onClose} title={t('Close')}><Ic.Close size={16} /></button>
+    <div className="ptv">
+      <header className="ptv-head">
+        <h1>{t('Pages table')}</h1>
+        <p>{t('{n} of {total} pages', { n: rows.length, total: real.length })}</p>
+      </header>
+      <div className="pt-filters">
+        <div className="pt-search"><Ic.Search size={15} /><input autoFocus dir="auto" placeholder={t('Filter by title, tag or path…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <Select
+          value={status}
+          onChange={(v) => setStatus(v as any)}
+          options={[
+            { value: '', label: t('All statuses') },
+            { value: 'none', label: t('No status') },
+            ...(Object.keys(STATUS) as PageStatus[]).map((s) => ({ value: s, label: t(STATUS[s].label), color: STATUS[s].color })),
+          ]}
+        />
+      </div>
+      {tagList.length > 0 && (
+        <div className="pt-tags">
+          {tagList.map((t) => {
+            const on = tags.some((x) => normalizeFa(x) === normalizeFa(t))
+            return (
+              <button key={t} className={'tag-chip' + (on ? ' on' : '')} onClick={() => setTags((s) => (on ? s.filter((x) => normalizeFa(x) !== normalizeFa(t)) : [...s, t]))}>
+                {t}
+              </button>
+            )
+          })}
         </div>
-        <div className="pt-filters">
-          <div className="pt-search"><Ic.Search size={15} /><input autoFocus dir="auto" placeholder={t('Filter by title, tag or path…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
-          <Select
-            value={status}
-            onChange={(v) => setStatus(v as any)}
-            options={[
-              { value: '', label: t('All statuses') },
-              { value: 'none', label: t('No status') },
-              ...(Object.keys(STATUS) as PageStatus[]).map((s) => ({ value: s, label: t(STATUS[s].label), color: STATUS[s].color })),
-            ]}
-          />
-        </div>
-        {tagList.length > 0 && (
-          <div className="pt-tags">
-            {tagList.map((t) => {
-              const on = tags.some((x) => normalizeFa(x) === normalizeFa(t))
-              return (
-                <button key={t} className={'tag-chip' + (on ? ' on' : '')} onClick={() => setTags((s) => (on ? s.filter((x) => normalizeFa(x) !== normalizeFa(t)) : [...s, t]))}>
-                  {t}
-                </button>
-              )
-            })}
-          </div>
-        )}
-        <div className="pt-scroll">
-          <table className="pt">
+      )}
+      <div className="ds-table-wrap pt-scroll">
+    <table className="ds-table pt">
             <thead>
               <tr>{head('title', t('Page'))}{head('path', t('Path'))}<th>{t('Tags')}</th>{head('status', t('Status'))}{head('words', t('Words'))}{head('updatedAt', t('Updated'))}</tr>
             </thead>
@@ -111,7 +112,6 @@ export function PagesTable({ pages, onOpen, onStatus, onClose }: { pages: Page[]
             </tbody>
           </table>
         </div>
-      </div>
-    </div>
+  </div>
   )
 }

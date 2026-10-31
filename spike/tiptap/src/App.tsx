@@ -384,7 +384,7 @@ export default function App() {
   }, [])
   const [tplOpen, setTplOpen] = useState(false)
   // Flashcards and Templates are pages: going to another page or view (search, links, the sidebar) leaves them
-  useEffect(() => (setCardsOpen(false), setTplOpen(false)), [view, currentId])
+  useEffect(() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false)), [view, currentId])
   const addFromTemplate = (id: string) => {
     setTplOpen(false)
     if (id === BOARD_TEMPLATE) return add(null, 'board')
@@ -629,31 +629,31 @@ export default function App() {
             <span className="ic"><Icon name="search" /></span><span className="ntitle">{t('Search')}...</span><kbd dir="ltr">{shortcutLabel(['Mod', 'K'])}</kbd>
           </button>
 
-          <button className={'row plain' + (view === 'home' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setView('home'))}>
+          <button className={'row plain' + (view === 'home' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('home'))}>
             <span className="ic"><Icon name="home" /></span><span className="ntitle">{t('Home')}</span>
           </button>
 
-          <button className={'row plain' + (view === 'tasks' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setView('tasks'))}>
+          <button className={'row plain' + (view === 'tasks' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('tasks'))}>
             <span className="ic"><Icon name="tasks" /></span><span className="ntitle">{t('Tasks')}</span>
           </button>
 
-          <button className="row plain" onClick={() => (setTplOpen(false), setCardsOpen(true))}><span className="ic"><Icon name="cards" /></span><span className="ntitle">{t('Flashcards')}</span>{dueCards > 0 && <span className="badge">{dueCards}</span>}</button>
+          <button className="row plain" onClick={() => (setTplOpen(false), setGraphOpen(false), setTableOpen(false), setCardsOpen(true))}><span className="ic"><Icon name="cards" /></span><span className="ntitle">{t('Flashcards')}</span>{dueCards > 0 && <span className="badge">{dueCards}</span>}</button>
 
-          <button className="row plain" onClick={() => (setCardsOpen(false), setTplOpen(true))}><span className="ic"><Icon name="templates" /></span><span className="ntitle">{t('Templates')}</span></button>
+          <button className="row plain" onClick={() => (setCardsOpen(false), setGraphOpen(false), setTableOpen(false), setTplOpen(true))}><span className="ic"><Icon name="templates" /></span><span className="ntitle">{t('Templates')}</span></button>
 
-          <button className={'row plain' + (view === 'databases' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setView('databases'))}>
+          <button className={'row plain' + (view === 'databases' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('databases'))}>
             <span className="ic"><Icon name="database" /></span><span className="ntitle">{t('Databases')}</span>
           </button>
 
-          <button className={'row plain' + (view === 'drawings' ? ' cur' : '')} onPointerEnter={warmDrawing} onClick={() => (setCardsOpen(false), setTplOpen(false), setView('drawings'))}>
+          <button className={'row plain' + (view === 'drawings' ? ' cur' : '')} onPointerEnter={warmDrawing} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('drawings'))}>
             <span className="ic"><Icon name="pencil" /></span><span className="ntitle">{t('Drawings')}</span>
           </button>
 
-          <button className="row plain" onClick={() => setGraphOpen(true)}>
+          <button className="row plain" onClick={() => (setCardsOpen(false), setTplOpen(false), setTableOpen(false), setGraphOpen(true))}>
             <span className="ic"><Icon name="graph" /></span><span className="ntitle">{t('Graph view')}</span>
           </button>
 
-          <button className="row plain" onClick={() => (setCardsOpen(false), setTplOpen(false), setTableOpen(true))}>
+          <button className="row plain" onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(true))}>
             <span className="ic"><Icon name="table" /></span><span className="ntitle">{t('Pages table')}</span>
           </button>
 
@@ -706,10 +706,10 @@ export default function App() {
         <SideTip />
         <div className="side-foot">
           <WorkspaceCard onOpen={() => setFolderOpen(true)} />
-          <button className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setView('settings'))}>
+          <button className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('settings'))}>
             <span className="ic"><Icon name="settings" /></span><span className="ntitle">{t('Settings')}</span>
           </button>
-          <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setView('files'))}>
+          <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('files'))}>
             <span className="ic"><Icon name="paperclip" /></span><span className="ntitle">{t('Files')}</span>
           </button>
           <button className="row plain" onClick={() => setTrashOpen(true)}>
@@ -736,15 +736,17 @@ export default function App() {
           {!sideOpen && <button className="icon-btn" title={t('Open sidebar  Ctrl+\\')} onClick={() => setSideOpen(true)}><Ic.Sidebar /></button>}
           <nav className="crumbs">
             <button className="crumb-home" title={t('Home')} onClick={() => setView('home')}><Ic.Home size={15} /></button>
-            {tplOpen && <span className="crumb"><span className="crumb-cur"><Icon name="templates" size={14} />{t('Templates')}</span></span>}
-            {cardsOpen && !tplOpen && <span className="crumb"><span className="crumb-cur"><Ic.Cards size={14} />{t('Flashcards')}</span></span>}
-            {!cardsOpen && !tplOpen && view === 'home' && <span className="crumb"><span className="crumb-cur"><Ic.Sidebar size={14} />{t('Home')}</span></span>}
-            {!cardsOpen && !tplOpen && view === 'files' && <span className="crumb"><span className="crumb-cur"><Ic.Folders size={14} />{t('Files')}</span></span>}
-            {!cardsOpen && !tplOpen && view === 'tasks' && <span className="crumb"><span className="crumb-cur"><Ic.Checklist size={14} />{t('Tasks')}</span></span>}
-            {!cardsOpen && !tplOpen && view === 'databases' && <span className="crumb"><span className="crumb-cur"><Ic.Table size={14} />{t('Databases')}</span></span>}
-            {!cardsOpen && !tplOpen && view === 'drawings' && <span className="crumb"><span className="crumb-cur"><Ic.Pencil size={14} />{t('Drawings')}</span></span>}
-            {!cardsOpen && !tplOpen && view === 'settings' && <span className="crumb"><span className="crumb-cur"><Ic.Settings size={14} />{t('Settings')}</span></span>}
-            {!cardsOpen && !tplOpen && view === 'page' && crumbs.map((c, i) => (
+            {graphOpen && <span className="crumb"><span className="crumb-cur"><Icon name="graph" size={14} />{t('Graph view')}</span></span>}
+            {tableOpen && !graphOpen && <span className="crumb"><span className="crumb-cur"><Icon name="table" size={14} />{t('Pages table')}</span></span>}
+            {tplOpen && !graphOpen && !tableOpen && <span className="crumb"><span className="crumb-cur"><Icon name="templates" size={14} />{t('Templates')}</span></span>}
+            {cardsOpen && !tplOpen && !graphOpen && !tableOpen && <span className="crumb"><span className="crumb-cur"><Ic.Cards size={14} />{t('Flashcards')}</span></span>}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'home' && <span className="crumb"><span className="crumb-cur"><Ic.Sidebar size={14} />{t('Home')}</span></span>}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'files' && <span className="crumb"><span className="crumb-cur"><Ic.Folders size={14} />{t('Files')}</span></span>}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'tasks' && <span className="crumb"><span className="crumb-cur"><Ic.Checklist size={14} />{t('Tasks')}</span></span>}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'databases' && <span className="crumb"><span className="crumb-cur"><Ic.Table size={14} />{t('Databases')}</span></span>}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'drawings' && <span className="crumb"><span className="crumb-cur"><Ic.Pencil size={14} />{t('Drawings')}</span></span>}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'settings' && <span className="crumb"><span className="crumb-cur"><Ic.Settings size={14} />{t('Settings')}</span></span>}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'page' && crumbs.map((c, i) => (
               <span key={c.id} className={'crumb' + (i === crumbs.length - 1 ? ' last' : '')}>
                 <span className="crumb-sep"><Ic.Chevron size={13} /></span>
                 {c.kind === 'folder' ? (
@@ -776,7 +778,11 @@ export default function App() {
 
         {reader && view === 'page' && current && <ReaderBar cfg={readerCfg} onCfg={(c) => (setReaderCfg(c), setPreference('not.reader.cfg', JSON.stringify(c)))} onExit={() => setReader(false)} />}
         <div className="scroller">
-          {tplOpen ? (
+          {graphOpen ? (
+            <GraphView currentId={current?.id} onOpen={setCurrentId} onClose={() => setGraphOpen(false)} />
+          ) : tableOpen ? (
+            <PagesTable pages={pages} onOpen={setCurrentId} onStatus={setStatus} onClose={() => setTableOpen(false)} />
+          ) : tplOpen ? (
             <Templates onPick={addFromTemplate} onClose={() => setTplOpen(false)} />
           ) : cardsOpen ? (
             <Flashcards pageId={view === 'page' ? current?.id : undefined} onOpenPage={(id) => (setCardsOpen(false), setCurrentId(id))} onClose={() => (setCardsOpen(false), window.dispatchEvent(new Event('cards-reviewed')))} />
@@ -904,8 +910,6 @@ export default function App() {
       {folderOpen && <Vaults onClose={() => setFolderOpen(false)} onNew={(create) => setNaming({ title: t('New workspace'), label: t('Workspace name:'), initial: t('My notes'), action: t('Next'), onSubmit: (n) => void create(n.trim() || t('My notes')) })} />}
       {movingId && <div className="overlay" onMouseDown={() => setMovingId(null)}><div className="modal move-dialog" role="dialog" aria-modal="true" aria-label={t('Move to folder')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && setMovingId(null)}><div className="modal-head"><b>{t('Move to folder')}</b><button className="icon-btn" title={t('Close')} onClick={() => setMovingId(null)}><Ic.Close /></button></div><div className="modal-list"><button className="result" onClick={() => { move(movingId,null,null); setMovingId(null) }}><Ic.Book /><span>{t('Move to top level')}</span></button>{pages.filter((p) => { if(p.kind !== 'folder' || p.id === movingId) return false; let parent: Page | undefined = p; const seen = new Set<string>(); while(parent) { if(parent.id === movingId || seen.has(parent.id)) return false; seen.add(parent.id); parent = pages.find((x) => x.id === parent!.parentId) } return true }).map((p) => <button className="result" key={p.id} onClick={() => { move(movingId,p.id,null); setMovingId(null) }}><Ic.Folder /><span dir="auto">{p.title || t('Untitled folder')}</span></button>)}</div></div></div>}
       {backupOpen && <BackupSettings onClose={() => setBackupOpen(false)} />}
-      {graphOpen && <GraphView currentId={current?.id} onOpen={setCurrentId} onClose={() => setGraphOpen(false)} />}
-      {tableOpen && <PagesTable pages={pages} onOpen={setCurrentId} onStatus={setStatus} onClose={() => setTableOpen(false)} />}
 
       {naming && <NameDialog {...naming} onClose={() => setNaming(null)} />}
       {trashOpen && (

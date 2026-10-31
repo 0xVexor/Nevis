@@ -478,3 +478,43 @@
 .tplv-s > i.h { block-size: 8px; }
 .tplv-s u { inline-size: 10px; block-size: 10px; }
 .tplv-card:focus-visible { outline-offset: -2px; }
+
+/* ───── Pages table as a page ───── */
+.ptv { max-inline-size: 1100px; margin-inline: auto; padding: 8px 40px 96px; }
+.ptv-head h1 { margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.025em; }
+.ptv-head p { margin: 6px 0 0; color: var(--ds-text-2); font-size: 15px; }
+.ptv .pt-filters { padding: 20px 0 8px; gap: 8px; }
+.ptv .pt-search { block-size: 36px; border-color: var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); }
+.ptv .pt-search:focus-within { border-color: var(--ds-accent); box-shadow: 0 0 0 3px var(--ds-accent-soft); }
+.ptv .pt-tags { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 12px; }
+.ptv .pt-tags .tag-chip { block-size: 26px; padding: 0 10px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-full); background: var(--ds-raised); color: var(--ds-text-2); font-size: 12.5px; }
+.ptv .pt-tags .tag-chip.on { border-color: var(--ds-accent-line); background: var(--ds-accent-soft); color: var(--ds-accent); }
+.ptv .pt-scroll { margin-block-start: 10px; }
+.ptv .ds-table th { cursor: pointer; user-select: none; }
+.ptv .ds-table th.sorted { color: var(--ds-text); }
+.ptv .ds-table tbody tr { cursor: pointer; }
+.ptv .ds-table .pt-title { display: flex; align-items: center; gap: 10px; min-block-size: 54px; font-weight: 550; border-bottom: 0; }
+.ptv .ds-table .pt-title .ic { display: grid; place-items: center; color: var(--ds-text-3); }
+.ptv .ds-table .pt-path { color: var(--ds-text-3); font-size: 13px; }
+.ptv .ds-table td.num { color: var(--ds-text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ptv .ds-table .tag-chip.static { display: inline-flex; align-items: center; block-size: 22px; margin-inline-end: 6px; padding: 0 8px; border-radius: var(--ds-r-full); background: var(--ds-sunk); color: var(--ds-text-2); font-size: 12px; }
+/* ───── Graph as a page: full area, floating panels in the design's panel style ───── */
+.gv.gv-page { inline-size: 100%; block-size: calc(100vh - 52px); border: 0; border-radius: 0; background: var(--ds-bg); box-shadow: none; animation: none; }
+.gv-page .gv-head { padding: 8px 40px 12px; border-bottom: 0; }
+.gv-page .gv-logo { display: none; }
+.gv-page .gv-title b { font-size: 30px; font-weight: 600; letter-spacing: -0.025em; }
+.gv-page .gv-title small { margin-block-start: 4px; color: var(--ds-text-2); font-size: 15px; }
+.gv-page .gv-stage { margin-inline: 24px; margin-block-end: 24px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: radial-gradient(circle at 1px 1px, var(--ds-line) 1px, transparent 0) 0 0 / 24px 24px, var(--ds-bg); }
+.gv-tools, .gv-top, .gv-card { border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: color-mix(in srgb, var(--ds-raised) 94%, transparent); backdrop-filter: blur(10px); box-shadow: 0 8px 24px -14px rgb(16 24 40 / 0.25); }
+.gv-search:focus-within { border-color: var(--ds-accent-line); box-shadow: none; }
+.gv-hits { background: var(--ds-accent-soft); color: var(--ds-accent); }
+.gv-zoom button:hover { background: var(--ds-hover); color: var(--ds-accent); }
+.gv-top h4 { font-size: 12.5px; font-weight: 550; letter-spacing: 0; color: var(--ds-text-3); }
+.gv-top button:hover, .gv-top button.on { background: var(--ds-hover); }
+.gv-stats b { font-weight: 600; }
+.gv-empty h3 { font-weight: 600; }
+
+/* Templates: the whole top of every card is the same grey frame */
+.tplv-card { background: var(--ds-sunk); }
+.tplv-pv { inline-size: 100%; margin: 0; border: 0 !important; background: var(--ds-sunk); }
+.tplv-bd { background: var(--ds-raised); }
