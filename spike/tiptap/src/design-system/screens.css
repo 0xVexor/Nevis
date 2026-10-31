@@ -782,3 +782,4 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 /* quick start and the add-icon / add-cover buttons follow the corner radius, not a pill */
 .templates button, .page-tools button { border-radius: var(--ds-r); }
 .page-icon, .page-cols.has-cover .page-icon { margin: 0; }
+.page-cols.has-cover .page-head .page-icon { margin: 0; }
