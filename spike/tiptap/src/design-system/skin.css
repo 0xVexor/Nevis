@@ -1,0 +1,91 @@
+/*
+ * Nevis design system — "Calm" skin for screens that have not been migrated yet.
+ *
+ * Step 1 of the migration (docs/design-system.md → Migration): the legacy tokens keep their names but take the new values,
+ * and the few decorative layers of "Aurora Paper" (aurora canvas, floating glass panels, gradient buttons, glow) are flattened.
+ * Every legacy screen picks up the new palette, borders and radii without being rewritten. Screens are then migrated one by one
+ * to ds- classes; when the last one is done this file and the legacy styles are deleted.
+ *
+ * Loaded after every legacy stylesheet so it wins by order, never by specificity.
+ */
+:root {
+  /* one accent, derived everywhere; a chosen accent still comes from settings (--user-accent) */
+  --accent: var(--ds-accent);
+  --accent-on: var(--ds-accent-ink);
+  --accent-2: var(--ds-accent);
+  --accent-bg: var(--ds-accent-soft);
+  --accent-soft: color-mix(in srgb, var(--ds-accent) 7%, transparent);
+  --accent-ring: var(--ds-accent-line);
+  --grad: var(--ds-accent);
+  --grad-soft: var(--ds-accent-soft);
+
+  /* surfaces, ink, lines */
+  --bg-app: var(--ds-side);
+  --bg: var(--ds-bg);
+  --bg-raised: var(--ds-raised);
+  --bg-sunk: var(--ds-sunk);
+  --pop: var(--ds-raised);
+  --side-bg: var(--ds-side);
+  --text: var(--ds-text);
+  --muted: var(--ds-text-2);
+  --faint: var(--ds-text-3);
+  --hover: var(--ds-hover);
+  --active: var(--ds-press);
+  --border: var(--ds-line);
+  --border-strong: var(--ds-line-strong);
+  --dot: transparent;
+  --danger: var(--ds-bad);
+  --ok: var(--ds-ok);
+  --warn: var(--ds-warn);
+
+  /* depth: only things that float get a shadow */
+  --shadow: var(--ds-shadow-pop);
+  --panel-shadow: none;
+  --glow: none;
+
+  /* no aurora behind the app; a custom background chosen in settings still works */
+  --mesh-light: none;
+  --mesh-dark: none;
+}
+
+/* ───── shell: a flat sidebar and a flat page, separated by one hairline ───── */
+.app { padding: 0; gap: 0; background: var(--ds-side); }
+.app::before { display: none; }
+.side {
+  padding: 0 12px; border: 0; border-inline-end: 1px solid var(--ds-line); border-radius: 0;
+  background: var(--ds-side); box-shadow: none; backdrop-filter: none;
+}
+.side.closed { margin-inline-start: calc(-1 * var(--sw)); transform: none; }
+.ws-logo { filter: none; }
+.ws-name { background: none; -webkit-text-fill-color: currentColor; color: var(--ds-text); font-weight: 650; letter-spacing: -0.01em; }
+.main { border: 0; border-radius: 0; background: var(--ds-bg); box-shadow: none; }
+.main::before, .main::after { display: none; }
+
+/* ───── sidebar rows ───── */
+.section { font-size: 12px; font-weight: 550; letter-spacing: 0; text-transform: none; color: var(--ds-text-3); }
+.row { min-height: 32px; border-radius: var(--ds-r-sm); }
+.row.cur, .row.plain.cur { background: var(--ds-accent-soft); color: var(--ds-accent); font-weight: 550; }
+.row.cur::before { inset-inline-start: -12px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--ds-accent); box-shadow: none; }
+:root[dir='rtl'] .row.cur::before { border-radius: 3px 0 0 3px; }
+/* nav count: a plain number in an empty circle, never a filled pill */
+.badge {
+  min-width: 22px; height: 22px; padding: 0 4px; border: 1.5px solid var(--ds-line-strong); border-radius: 50%;
+  background: none; color: var(--ds-text-2); box-shadow: none; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.row.cur .badge { border-color: var(--ds-accent); color: var(--ds-accent); }
+.pg-ic.tile { box-shadow: none; }
+.search-row, .row.plain.search-row { border-radius: var(--ds-r); box-shadow: none; }
+.search-row:hover, .row.plain.search-row:hover { border-color: var(--ds-line-strong); box-shadow: none; }
+.side-utils { border-top-style: solid; border-top-color: var(--ds-line); }
+
+/* ───── buttons: flat accent, no shine ───── */
+.new-page { height: 38px; border-radius: var(--ds-r); box-shadow: none; font-weight: 550; }
+.new-page::after { display: none; }
+.new-page:hover, .primary:hover:not(:disabled), .share-btn:hover { transform: none; }
+.primary, .pill-btn, .share-btn { border-radius: var(--ds-r); box-shadow: none; font-weight: 550; }
+.icon-btn { border-radius: var(--ds-r-sm); }
+.icon-btn.fav-on svg { filter: none; }
+
+/* ───── empty states ───── */
+.blank-ic { border-radius: var(--ds-r-lg); background: var(--ds-accent-soft); border-color: var(--ds-accent-line); box-shadow: none; }
+.blank h2 { font-weight: 650; }

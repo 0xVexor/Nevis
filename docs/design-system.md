@@ -75,6 +75,16 @@ Blocks can sit side by side in 2, 3 or 4 columns (`ds-layout`). The rule is **no
 - **Smooth:** every move slides the affected blocks to their new place (FLIP), and every change shows an Undo toast.
 - Columns stack by **container width** (560px), not viewport width. The grid is `Nfr 20px Nfr 20px Nfr`, one gutter per divider.
 
+## Icons, backgrounds and file icons
+
+All three live in `spike/tiptap/src/design-system/` and are shown, searchable, in the live reference (Icons, Backgrounds, File icons).
+
+- **Icons** (`iconData.ts`, component `Icon`): 156 design-system icons in six groups (arrows, actions, files, editor, data, system) plus the ~114 page-icon glyphs already in `iconSet`, so `<Icon name="file-pdf" />` and `<Icon name="rocket" />` both work. One style only: 24px grid, 1.6 stroke, round ends, no fill, `currentColor`. Never use emoji or filled icons as UI icons. Add a new icon to a group in `iconData.ts`.
+- **Backgrounds** (`backgrounds.ts`): 42 pure-CSS backgrounds in five groups (soft, vivid, dark, patterns, scenes), no image files. `backgroundCss(id)` returns the CSS; `dark` says text on top should be light. They are merged into the page cover picker (`Cover.tsx`), so every one is already selectable as a cover.
+- **File icons** (`fileKinds.ts`, component `FileIcon`): 23 kinds (image, audio, video, pdf, document, spreadsheet, slides, text, code, data, archive, font, design, book, 3D model, key, app, folder, page, board, to-do list, database, plus a plain file), mapped from the extension or the MIME type. Use `<FileIcon name="report.pdf" />` or `<FileIcon kind="folder" />`. The Files view already draws folders with it. Any new place that shows a file or attachment must use `FileIcon` instead of inventing its own icon.
+
+After changing `iconData.ts`, `backgrounds.ts` or `fileKinds.ts`, regenerate the reference page: `node scripts/design-system-data.mjs` (run from `spike/tiptap`).
+
 ## Direction and language
 
 - Use logical properties only: `margin-inline-start`, `inset-inline-end`, `text-align: start`, `border-start-end-radius`. No `left` / `right` in new CSS except where geometry is truly physical.
@@ -101,7 +111,11 @@ Blocks can sit side by side in 2, 3 or 4 columns (`ds-layout`). The rule is **no
 
 ## Migration from the legacy styles
 
-The legacy tokens (`--bg`, `--border`, `--accent`, …) keep working untouched. Migrate screen by screen, in this order, one pull request each: sidebar and shell → Home → page and editor chrome → tables and database views → Settings → overlays. The preview already covers all of them.
+**Done:** step 1, the skin. `design-system/skin.css` gives the legacy tokens the new values and flattens the Aurora Paper layers (aurora canvas, floating glass panels, gradient buttons, glow), so every screen already has the Calm palette, a flat sidebar, plain-number badges and the soft dark theme. **Home** is fully migrated (`Home.tsx`, `design-system/home.css`).
+
+**Next, one pull request each:** page and editor chrome → tables and database views → Files → Settings → overlays. When the last screen is migrated, delete `skin.css` and the legacy `v2`–`v5` styles.
+
+Until then the legacy tokens keep working. Mapping:
 
 | Legacy | New |
 |---|---|
@@ -117,4 +131,4 @@ The legacy tokens (`--bg`, `--border`, `--accent`, …) keep working untouched. 
 | `--radius-sm` · `--radius` · `--radius-lg` | `--ds-r-sm` · `--ds-r` · `--ds-r-lg` |
 | `--pop` + `--shadow` | `ds-pop` |
 
-Settings already writes `--user-accent` (see `settings.ts`); the design system reads it. Open follow-ups before the first migrated screen: add the `@fontsource/instrument-sans` and `@fontsource/newsreader` packages (until then the stack falls back to Vazirmatn), and make the stock accent teal (`#0f8f83`) instead of purple.
+Settings already writes `--user-accent` (see `settings.ts`); the design system reads it. Open follow-ups: add the `@fontsource/instrument-sans` and `@fontsource/newsreader` packages (until then the stack falls back to Vazirmatn), and make the stock accent teal (`#0f8f83`) instead of purple.
