@@ -312,3 +312,38 @@
 .tplv-card:hover .tplv-bd .ds-tile { --c: var(--ds-accent); background: var(--ds-accent-soft); }
 .tplv-bd b { display: block; font-weight: 600; }
 .tplv-bd small { display: block; margin-block-start: 1px; color: var(--ds-text-3); font-size: 12.5px; line-height: 1.45; }
+
+/* Tasks: one card per group, single hairlines between rows (no doubled lines) */
+.tk-group { overflow: hidden; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); }
+.tk-label { padding: 10px 14px 2px; }
+.tk-page { padding: 10px 14px; }
+.tk-item { padding: 8px 14px; }
+.tk-group > :last-child { border-block-end: 0; }
+.tk-sep { display: none; }
+/* Templates: monochrome sample inside each card's frame */
+.tplv-pv { align-items: stretch; justify-content: center; color: var(--ds-text-3); }
+.tplv-card.blank .tplv-pv { align-items: center; }
+.tplv-s { display: flex; flex-direction: column; gap: 7px; inline-size: 100%; }
+.tplv-s > i, .tplv-s .row > i { display: block; block-size: 6px; border-radius: 3px; background: var(--ds-line-strong); }
+.tplv-s > i.h { block-size: 9px; background: var(--ds-text-3); opacity: 0.55; }
+.tplv-s .row { display: flex; align-items: center; gap: 8px; }
+.tplv-s .row > i { flex: none; }
+.tplv-s u { flex: none; inline-size: 11px; block-size: 11px; border: 1.5px solid var(--ds-text-3); border-radius: 3px; opacity: 0.7; }
+.tplv-s u.on { background: var(--ds-text-3); }
+.tplv-s b { flex: none; inline-size: 5px; block-size: 5px; border-radius: 50%; background: var(--ds-text-3); opacity: 0.7; }
+.tplv-s .dots b { inline-size: 14px; block-size: 14px; background: var(--ds-line-strong); opacity: 1; }
+.tplv-s em { flex: none; inline-size: 12px; color: var(--ds-text-3); font: 600 10px var(--ds-font-ui); font-style: normal; }
+.tplv-s .quote { padding-inline-start: 8px; border-inline-start: 2px solid var(--ds-text-3); }
+.tplv-svg { inline-size: 100%; block-size: 100%; fill: none; stroke: var(--ds-text-3); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.tplv-svg .fill { fill: var(--ds-line-strong); stroke: none; }
+/* Flashcards chart: bars grow in, the hovered bar answers */
+.fcv-chart { position: relative; }
+.fcv-bar-col { position: relative; display: flex; flex: 1; align-items: flex-end; block-size: 100%; transition: opacity var(--ds-fast); }
+.fcv-bar-col > i { inline-size: 100%; transform-origin: bottom; animation: fcv-grow 0.5s var(--ds-ease) both; animation-delay: calc(var(--i, 0) * 28ms); transition: filter var(--ds-fast); }
+.fcv-bar-col.dim { opacity: 0.55; }
+.fcv-bar-col.on > i { filter: brightness(1.12); }
+@keyframes fcv-grow { from { transform: scaleY(0.05); opacity: 0; } }
+.fcv-tip { position: absolute; z-index: 3; inset-block-end: calc(100% + 8px); inset-inline-start: 50%; display: flex; flex-direction: column; gap: 1px; padding: 6px 10px; border: 1px solid var(--ds-line); border-radius: 8px; background: var(--ds-raised); box-shadow: var(--ds-shadow-pop); white-space: nowrap; pointer-events: none; transform: translateX(-50%); }
+:root[dir='rtl'] .fcv-tip { transform: translateX(50%); }
+.fcv-tip b { font-size: 13px; font-weight: 600; }
+.fcv-tip small { color: var(--ds-text-3); font-size: 11.5px; }
