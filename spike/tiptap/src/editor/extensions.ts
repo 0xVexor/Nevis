@@ -34,7 +34,10 @@ function DirTableView(this: any, node: any, ...rest: any[]) {
   const surface = createSectionDragSurface(t('Move table'), t('Drag this area to move the whole block.'))
   view.dom.prepend(surface)
   const apply = (n: any) => {
-    view.table.setAttribute('dir', n.attrs.dir || 'auto')
+    // An explicit table direction wins; otherwise the table follows the page / column it sits in. `auto` would re-resolve the
+    // whole table (and which side every border and corner is on) from whichever letters happen to come first in it.
+    if (n.attrs.dir && n.attrs.dir !== 'auto') view.table.setAttribute('dir', n.attrs.dir)
+    else view.table.removeAttribute('dir')
     // width and position belong to the wrapper <div class="tableWrapper"> around the table
     const wrap = view.dom as HTMLElement
     wrap.style.width = n.attrs.tableWidth ? `${n.attrs.tableWidth}%` : ''
