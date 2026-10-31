@@ -29,7 +29,7 @@ export function RowPeek({ svc, pageId, mode, onClose, onOpenFull, onSwitch, noti
   useEffect(() => {
     prev.current = document.activeElement
     const key = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.popover, .db-modal, .slash-menu')) return
+      if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.ds-pop, .db-modal, .slash-menu')) return
       if ((e.target as HTMLElement | null)?.closest('input, textarea, [contenteditable="true"]')) return
       closeRef.current()
     }

@@ -5,19 +5,22 @@ import { docToHtml, hydrate } from './render'
 import { FRESH, extractCards, isDue, label, schedule, type Grade, type RawCard, type Rec } from './srs'
 import { bump, countOn, dayKey, lastDays, streak, total, type ReviewLog } from './reviewlog'
 import { deviceId, loadLog } from './reviewlogStore'
-import { t } from './i18n'
-import { Select } from './ui'
-import * as Ic from './icons'
+import { t, locale } from './i18n'
+import { PageIcon } from './PageIcon'
+import { Icon } from './design-system'
 
 type Store = Record<string, Rec>
+type Card = RawCard & { title: string }
 const NEW_PER_SESSION = 20
+const ALL = '__all__'
 
 /**
- * Review mode: every toggle in your pages is a card (title = question, body = answer), scheduled with spaced repetition.
- * Keys: Space/Enter show the answer, 1–4 = again / hard / good / easy.
+ * Flashcards: every toggle in your pages is a card (title = question, body = answer), scheduled with spaced repetition.
+ * First a list of decks (one per page that has cards, plus the whole vault), then the review of one deck.
+ * Keys while reviewing: Space/Enter show the answer, 1–4 = again / hard / good / easy, Esc goes back.
  */
 export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; onOpenPage: (id: string) => void; onClose: () => void }) {
-  const [scope, setScope] = useState<'all' | 'page'>(pageId ? 'page' : 'all')
+  const [deck, setDeck] = useState<string | null>(pageId ?? null) // null = the list of decks
   const [srs, setSrs] = useState<Store | null>(null)
   const [queue, setQueue] = useState<string[]>([])
   const [pos, setPos] = useState(0)
@@ -25,34 +28,46 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
   const [done, setDone] = useState(0)
   const answerRef = useRef<HTMLDivElement>(null)
   const [log, setLog] = useState<ReviewLog>({})
-  const [stats, setStats] = useState(false)
+  const [hover, setHover] = useState<number | null>(null)
   useEffect(() => void loadLog().then(setLog), [])
-
   useEffect(() => void kvGet<Store>('srs').then((s) => setSrs(s ?? {})), [])
 
-  const cards = useMemo(() => {
-    const map = new Map<string, RawCard & { title: string }>()
+  const allCards = useMemo(() => {
+    const map = new Map<string, Card>()
     for (const p of repo.pagesOnly()) {
-      if (scope === 'page' && p.id !== pageId) continue
       if (typeof p.content === 'string') continue
       for (const c of extractCards(p.id, p.content)) map.set(c.key, { ...c, title: p.title })
     }
     return map
-  }, [scope, pageId])
+  }, [])
+  const cards = useMemo(() => {
+    if (deck === null || deck === ALL) return allCards
+    return new Map([...allCards].filter(([, c]) => c.pageId === deck))
+  }, [allCards, deck])
 
-  // (re)build the session queue when the scope or the stored schedule first loads
-  const started = useRef(false)
+  // the decks: the whole vault, then every page that has cards
+  const decks = useMemo(() => {
+    const stat = (keys: string[]) => {
+      const due = srs ? keys.filter((k) => srs[k] && isDue(srs[k])).length : 0
+      const fresh = srs ? keys.filter((k) => !srs[k]).length : 0
+      return { total: keys.length, due, fresh, learned: keys.length - fresh }
+    }
+    const byPage = new Map<string, string[]>()
+    for (const [k, c] of allCards) byPage.set(c.pageId, [...(byPage.get(c.pageId) ?? []), k])
+    return [{ id: ALL, title: t('Whole vault'), ...stat([...allCards.keys()]) }, ...[...byPage].map(([id, keys]) => ({ id, title: repo.get(id)?.title || t('Untitled'), ...stat(keys) }))]
+  }, [allCards, srs])
+
+  // (re)build the session queue when the deck changes or the stored schedule first loads
   useEffect(() => {
-    if (!srs) return
-    started.current = true
-    const all = [...cards.keys()]
-    const due = all.filter((k) => srs[k] && isDue(srs[k])).sort((a, b) => srs[a].due - srs[b].due)
-    const fresh = all.filter((k) => !srs[k]).slice(0, NEW_PER_SESSION)
-    setQueue([...due, ...fresh])
+    if (!srs || deck === null) return
+    const keys = [...cards.keys()]
+    const dueKeys = keys.filter((k) => srs[k] && isDue(srs[k])).sort((a, b) => srs[a].due - srs[b].due)
+    const fresh = keys.filter((k) => !srs[k]).slice(0, NEW_PER_SESSION)
+    setQueue([...dueKeys, ...fresh])
     setPos(0)
     setShown(false)
     setDone(0)
-  }, [cards, srs === null]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cards, deck, srs === null]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const key = queue[pos]
   const card = key ? cards.get(key) : undefined
@@ -80,129 +95,142 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') return onClose()
-      if (!card) return
+      if (e.key === 'Escape') return deck === null ? onClose() : setDeck(null)
+      if (deck === null || !card) return
       if (!shown && (e.key === ' ' || e.key === 'Enter')) (e.preventDefault(), setShown(true))
       else if (shown && '1234'.includes(e.key) && e.key.length === 1) rate((Number(e.key) - 1) as Grade)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [card, shown, rate, onClose])
+  }, [card, shown, rate, onClose, deck])
 
+  const num = (n: number) => n.toLocaleString(locale())
   const left = Math.max(0, queue.length - pos)
-  const dueCount = srs ? [...cards.keys()].filter((k) => srs[k] && isDue(srs[k])).length : 0
-  const newCount = srs ? [...cards.keys()].filter((k) => !srs[k]).length : 0
-  const nextDue = srs ? Math.min(...[...cards.keys()].map((k) => srs[k]?.due ?? Infinity).filter((d) => d > Date.now()), Infinity) : Infinity
-  const rec = key && srs ? srs[key] : undefined
-  const endOfTomorrow = new Date(new Date().setHours(23, 59, 59, 999)).getTime() + 24 * 3600 * 1000
-  const dueTomorrow = srs ? [...cards.keys()].filter((k) => srs[k] && srs[k].due > Date.now() && srs[k].due <= endOfTomorrow).length : 0
-  const chart = lastDays(log, 14, Date.now())
-  const chartMax = Math.max(1, ...chart.map((d) => d.count))
-
-  const grades: [Grade, string][] = [[0, t('Again')], [1, t('Hard')], [2, t('Good')], [3, t('Easy')]]
   const total0 = done + left
   const pct = total0 ? Math.round((done / total0) * 100) : 0
-  const tiles: [React.ReactNode, number, string][] = [
-    [<Ic.Check size={18} />, countOn(log, dayKey(Date.now())), t('Reviewed today')],
-    [<Ic.Flag size={18} />, streak(log, Date.now()), t('Day streak')],
-    [<Ic.History size={18} />, total(log), t('Reviews in total')],
-    [<Ic.Clock size={18} />, dueCount, t('Due now')],
-    [<Ic.Cards size={18} />, dueTomorrow, t('Due tomorrow')],
-    [<Ic.Plus size={18} />, newCount, t('New cards')],
-  ]
+  const rec = key && srs ? srs[key] : undefined
+  const nextDue = srs ? Math.min(...[...cards.keys()].map((k) => srs[k]?.due ?? Infinity).filter((d) => d > Date.now()), Infinity) : Infinity
+  const endOfTomorrow = new Date(new Date().setHours(23, 59, 59, 999)).getTime() + 24 * 3600 * 1000
+  const dueTomorrow = srs ? [...allCards.keys()].filter((k) => srs[k] && srs[k].due > Date.now() && srs[k].due <= endOfTomorrow).length : 0
+  const chart = lastDays(log, 14, Date.now())
+  const chartMax = Math.max(1, ...chart.map((d) => d.count))
+  const grades: [Grade, string][] = [[0, t('Again')], [1, t('Hard')], [2, t('Good')], [3, t('Easy')]]
+  const deckTitle = deck === null ? '' : deck === ALL ? t('Whole vault') : repo.get(deck)?.title || t('Untitled')
 
-  return (
-    <div className="overlay fc-overlay" onMouseDown={onClose}>
-      <div className="fc2" onMouseDown={(e) => e.stopPropagation()}>
-        <header className="fc2-head">
-          <span className="fc2-logo"><Ic.Cards size={20} /></span>
-          <div className="fc2-title">
-            <b>{t('Flashcards')}</b>
-            <small>{t('{n} to review · {m} new', { n: dueCount, m: newCount })}</small>
-          </div>
-          <div className="fc2-prog" title={pct + '%'}><i style={{ width: pct + '%' }} /></div>
-          <div className="fc-tools">
-            {pageId && (
-              <Select value={scope} onChange={(v) => setScope(v as 'all' | 'page')} options={[{ value: 'page', label: t('This page only') }, { value: 'all', label: t('All pages') }]} />
-            )}
-            <button className={'icon-btn' + (stats ? ' active' : '')} onClick={() => setStats((s) => !s)} title={t('Statistics')}><Ic.Panel /></button>
-            <button className="icon-btn" onClick={onClose} title={t('Close  Esc')}><Ic.Close /></button>
-          </div>
+  /* ───── the list of decks ───── */
+  if (deck === null) {
+    const dueAll = decks[0]?.due ?? 0
+    const tiles: [string, number, string][] = [
+      ['check', countOn(log, dayKey(Date.now())), t('Reviewed today')],
+      ['flame', streak(log, Date.now()), t('Day streak')],
+      ['history', total(log), t('Reviews in total')],
+      ['clock', dueAll, t('Due now')],
+      ['calendar', dueTomorrow, t('Due tomorrow')],
+    ]
+    return (
+      <div className="fcv">
+        <header className="fcv-head">
+          <h1>{t('Flashcards')}</h1>
+          <p>{t('Every toggle block becomes a card. The title is the question.')}</p>
         </header>
-
-        <div className="fc2-main">
-          <section className="fc2-stage">
-            {!srs ? null : cards.size === 0 ? (
-              <div className="fc2-empty">
-                <span className="fc2-art"><Ic.Cards size={34} /></span>
-                <h3>{t('No cards yet.')}</h3>
-                <p>{t('Every Toggle block with a title and content becomes a card: the title is the question, the content is the answer. Add one with /toggle.')}</p>
-              </div>
-            ) : !card ? (
-              <div className="fc2-empty done">
-                <span className="fc2-art"><Ic.Check size={34} /></span>
-                <h3>{t('All done for now!')}</h3>
-                <p>
-                  {done ? t('You reviewed {n} cards.', { n: done }) + ' ' : ''}
-                  {Number.isFinite(nextDue) ? t('Next card is due {when}.', { when: new Date(nextDue).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) }) : ''}
-                </p>
-                <button className="primary" onClick={onClose}>{t('Close')}</button>
-              </div>
-            ) : (
-              <>
-                <div className="fc2-meta">
-                  <span className="fc2-count"><b>{done + 1}</b> / {total0}</span>
-                  <button className="fc2-src" onClick={() => onOpenPage(card.pageId)} dir="auto"><Ic.Page size={13} />{card.title || t('Untitled')}<Ic.Open size={12} /></button>
-                </div>
-                <div className={'fc2-card' + (shown ? ' flipped' : '')} key={key}>
-                  <span className="fc2-tag">{t('Question')}</span>
-                  <div className="fc-q" dir="auto">{card.question}</div>
-                  {shown && (
-                    <>
-                      <span className="fc2-tag ans">{t('Answer')}</span>
-                      <div className="fc-a tiptap" ref={answerRef} dangerouslySetInnerHTML={{ __html: html }} />
-                    </>
-                  )}
-                </div>
-                {!shown ? (
-                  <button className="primary fc-show" onClick={() => setShown(true)}>{t('Show answer')} <kbd>Space</kbd></button>
-                ) : (
-                  <div className="fc-grades">
-                    {grades.map(([g, name]) => (
-                      <button key={g} className={'fc-g g' + g} onClick={() => rate(g)}>
-                        <kbd>{g + 1}</kbd>
-                        <b>{name}</b>
-                        <small>{label(rec ?? FRESH, g)}</small>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </section>
-
-          {stats && srs && (
-            <aside className="fc2-side">
-              <h4>{t('Statistics')}</h4>
-              <div className="fc2-tiles">
+        {!srs ? null : allCards.size === 0 ? (
+          <div className="ds-empty ds-card fcv-empty">
+            <b>{t('No cards yet.')}</b>
+            <p>{t('Every Toggle block with a title and content becomes a card: the title is the question, the content is the answer. Add one with /toggle.')}</p>
+          </div>
+        ) : (
+          <>
+            <div className="fcv-decks">
+              {decks.map((d) => {
+                const page = d.id === ALL ? null : repo.get(d.id)
+                return (
+                  <button type="button" key={d.id} className="fcv-deck" onClick={() => setDeck(d.id)}>
+                    <span className="fcv-deck-top">
+                      <span className="ds-tile ds-tile--md">{page ? <PageIcon page={page} /> : <Icon name="cards" />}</span>
+                      <span><b dir="auto">{d.title}</b><small>{num(d.total)} {t('cards')}</small></span>
+                    </span>
+                    <span className="ds-progress"><i style={{ width: (d.total ? (d.learned / d.total) * 100 : 0) + '%' }} /></span>
+                    <span className="fcv-deck-foot">
+                      <span><b>{num(d.due + Math.min(d.fresh, NEW_PER_SESSION))}</b> <span className="ds-muted">{t('due')}</span></span>
+                      <span className="ds-btn ds-btn--primary ds-btn--sm">{t('Review')}</span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            <section className="fcv-stats">
+              <h2>{t('Statistics')}</h2>
+              <div className="fcv-tiles">
                 {tiles.map(([ic, n, name]) => (
-                  <div key={name} className="fc2-tile">
-                    <span className="fc2-tile-ic">{ic}</span>
-                    <b>{n}</b>
+                  <div key={name} className="ds-card fcv-tile">
+                    <span className="ds-tile ds-tile--md"><Icon name={ic} /></span>
+                    <b>{num(n)}</b>
                     <small>{name}</small>
                   </div>
                 ))}
               </div>
-              <h4>{t('Last 14 days')}</h4>
-              <div className="fc-chart">
-                {chart.map((d) => (
-                  <i key={d.day} title={`${d.day}: ${d.count}`} style={{ height: `${Math.max(4, (d.count / chartMax) * 100)}%`, opacity: d.count ? 1 : 0.25 }} />
+              <h2>{t('Last 14 days')}</h2>
+              <div className="ds-card fcv-chart" onMouseLeave={() => setHover(null)}>
+                {chart.map((d, i) => (
+                  <span key={d.day} className={'fcv-bar-col' + (hover === i ? ' on' : '') + (hover !== null && hover !== i ? ' dim' : '')} style={{ ['--i' as string]: i }} onMouseEnter={() => setHover(i)}>
+                    {hover === i && (
+                      <span className="fcv-tip" role="status">
+                        <b>{t('{n} of {m} cards', { n: num(d.count), m: num(allCards.size) })}</b>
+                        <small>{new Date(d.day + 'T12:00:00').toLocaleDateString(locale(), { weekday: 'short', month: 'short', day: 'numeric' })}</small>
+                      </span>
+                    )}
+                    <i style={{ height: `${Math.max(4, (d.count / chartMax) * 100)}%`, opacity: d.count ? 1 : 0.25 }} />
+                  </span>
                 ))}
               </div>
-            </aside>
+            </section>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  /* ───── reviewing one deck ───── */
+  return (
+    <div className="fcv fcv-review">
+      <div className="fcv-bar">
+        <button type="button" className="ds-btn ds-btn--ghost ds-btn--sm" onClick={() => setDeck(null)}><Icon name="arrow-left" size={15} className="ds-flip" />{t('Back')}</button>
+        <span className="ds-muted fcv-title" dir="auto">{deckTitle}</span>
+        {card && <span className="ds-muted fcv-count">{t('Card')} {num(done + 1)} {t('of')} {num(total0)}</span>}
+        <span className="ds-progress fcv-prog"><i style={{ width: pct + '%' }} /></span>
+      </div>
+
+      {!srs ? null : !card ? (
+        <div className="fcv-end">
+          <span className="ds-tile ds-tile--lg"><Icon name={cards.size === 0 ? 'cards' : 'check'} size={26} /></span>
+          <h2>{cards.size === 0 ? t('No cards yet.') : t('All done for now!')}</h2>
+          <p>
+            {done ? t('You reviewed {n} cards.', { n: done }) + ' ' : ''}
+            {Number.isFinite(nextDue) ? t('Next card is due {when}.', { when: new Date(nextDue).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) }) : ''}
+          </p>
+          <button type="button" className="ds-btn ds-btn--primary" onClick={() => setDeck(null)}>{t('Back to decks')}</button>
+        </div>
+      ) : (
+        <div className="fcv-stage">
+          <div className="fcv-card" key={key}>
+            <button type="button" className="fcv-src" onClick={() => onOpenPage(card.pageId)} dir="auto">{card.title || t('Untitled')}<Icon name="external-link" size={12} /></button>
+            <div className="fcv-q" dir="auto">{card.question}</div>
+            {shown && <div className="fcv-a tiptap" ref={answerRef} dangerouslySetInnerHTML={{ __html: html }} />}
+          </div>
+          {!shown ? (
+            <button type="button" className="ds-btn ds-btn--primary fcv-show" onClick={() => setShown(true)}>{t('Show answer')}</button>
+          ) : (
+            <div className="fcv-grades">
+              {grades.map(([g, name]) => (
+                <button key={g} type="button" className={'fcv-g g' + g} onClick={() => rate(g)}>
+                  <b>{name}</b>
+                  <small>{label(rec ?? FRESH, g)}</small>
+                </button>
+              ))}
+            </div>
           )}
         </div>
-      </div>
+      )}
     </div>
   )
 }

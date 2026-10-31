@@ -34,7 +34,7 @@ export interface Settings {
   prereleaseUpdates: boolean
 }
 
-export const DEFAULTS: Settings = { lang: 'en', dir: 'auto', theme: 'light', accent: null, bg: { kind: 'default' }, radius: 12, font: 'vazir', fontSize: 16, textColor: null, sidebar: 'default', pagesView: 'tree', sideGlass: 0, mainGlass: 0, bgStrength: 100, showCovers: true, showIcons: true, reduceMotion: false, cardReminders: true, compressImages: true, prereleaseUpdates: false }
+export const DEFAULTS: Settings = { lang: 'en', dir: 'auto', theme: 'light', accent: null, bg: { kind: 'default' }, radius: 10, font: 'vazir', fontSize: 16, textColor: null, sidebar: 'default', pagesView: 'tree', sideGlass: 0, mainGlass: 0, bgStrength: 100, showCovers: true, showIcons: true, reduceMotion: false, cardReminders: true, compressImages: true, prereleaseUpdates: false }
 
 const KEY = 'not.settings'
 const LEGACY_THEME = 'not.theme' // 'light' | 'dark' | null from before the settings page
@@ -234,6 +234,9 @@ export function apply(s: Settings = state) {
   const set = (k: string, v: string | null) => (v === null ? root.style.removeProperty(k) : root.style.setProperty(k, v))
   set('--accent', s.accent)
   set('--accent-on', s.accent ? onAccent(s.accent) : null)
+  // the design system (src/design-system) derives every colour from this one value; null falls back to its own default
+  set('--user-accent', s.accent)
+  set('--ds-accent-ink', s.accent ? onAccent(s.accent) : null)
   // a chosen accent keeps its own hue in gradients (the stock accent drifts toward pink)
   set('--accent-2', s.accent ? 'oklch(from var(--accent) calc(l + 0.06) c calc(h + 16))' : null)
   // the mouse pointer is drawn in a shade of the accent (darker on light themes, lighter on dark), with a white edge and a dark halo so it reads on light and dark surfaces alike

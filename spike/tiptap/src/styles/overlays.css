@@ -1,15 +1,4 @@
 /* ───────── popovers + menus ───────── */
-.popover { position: fixed; z-index: 500; min-width: 220px; padding: 4px; background: var(--pop); border-radius: 16px; border: 1px solid var(--border); box-shadow: var(--shadow); animation: pop-in 0.2s var(--ease); transform-origin: top center; }
-.menu { min-width: 220px; padding: 5px; }
-.menu-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 38px; border: 0; background: transparent; padding: 7px 12px; border-radius: 10px; cursor: var(--cursor-hand, pointer); text-align: start; font-size: 13.5px; color: var(--text); transition: background 0.12s; }
-.menu-item:hover, .menu-item:focus-visible { background: var(--hover); outline: none; }
-.menu-item.danger { color: var(--danger); }
-.menu-item.danger:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
-.menu-ic { display: inline-flex; width: 20px; justify-content: center; color: var(--muted); }
-.menu-item.danger .menu-ic { color: inherit; }
-.menu-sep { height: 1px; background: var(--border); margin: 5px 6px; }
-.menu-hint { margin-inline-start: auto; padding-inline-start: 24px; font-size: 12.5px; color: var(--faint); }
-.menu-item.danger .menu-hint { color: color-mix(in srgb, var(--danger) 60%, transparent); }
 
 /* shared select */
 .selbox { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 10px 0 14px; border: 1px solid var(--border); border-radius: 11px; background: var(--bg-raised); color: var(--text); font-size: 13px; cursor: var(--cursor-hand, pointer); max-width: 100%; transition: border-color 0.15s, box-shadow 0.15s; }
@@ -20,8 +9,7 @@
 .selbox.open .sel-chev { transform: rotate(-90deg); }
 .sel-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; display: inline-block; }
 .sel-check { margin-inline-start: auto; color: var(--accent); display: inline-flex; }
-.sel-menu .menu-item.on { background: var(--accent-bg); }
-.sel-menu .menu-ic { width: 14px; }
+.sel-menu .ds-menu-ic { width: 14px; }
 .field .selbox { width: 100%; height: 38px; background: var(--bg); }
 
 /* emoji + icon picker */

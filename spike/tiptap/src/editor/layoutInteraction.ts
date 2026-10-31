@@ -10,6 +10,8 @@ export function setLayoutInteraction(dom: HTMLElement, phase: LayoutInteraction)
   dom.dispatchEvent(new CustomEvent(LAYOUT_INTERACTION, { detail: phase }))
 }
 
+/** A floating toolbar steps aside while a block is being grabbed, dragged or resized, not while the pointer merely rests over a drag area. */
 export function layoutInteractionBusy(dom: HTMLElement): boolean {
-  return !!dom.dataset.layoutInteraction
+  const phase = dom.dataset.layoutInteraction
+  return !!phase && phase !== 'hover'
 }

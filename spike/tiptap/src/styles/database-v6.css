@@ -17,11 +17,10 @@
 .db-pop, .db-date-pop { padding: 12px; gap: 10px; min-inline-size: 260px; }
 .db-pop.wide { min-inline-size: 300px; }
 .db-pop.xwide { min-inline-size: min(400px, 92vw); max-inline-size: min(520px, 92vw); }
-.db-pop .db-form, .popover .db-form { max-inline-size: none; margin: 0; padding: 0; gap: 10px; }
-.db-pop .menu { padding: 0; min-inline-size: 0; max-block-size: none; overflow: visible; }
+.db-pop .db-form, .ds-pop .db-form { max-inline-size: none; margin: 0; padding: 0; gap: 10px; }
+.db-pop .ds-menu { padding: 0; min-inline-size: 0; max-block-size: none; overflow: visible; }
 .db-pop > .db-input:first-child { inline-size: 100%; }
 .db-pop .db-types { grid-template-columns: 1fr; gap: 2px; max-block-size: min(52vh, 420px); overflow: auto; margin-inline: -4px; padding-inline: 4px; }
-.db-pop .db-types .menu-item { min-height: 38px; }
 .db-form-head { display: flex; align-items: center; gap: 8px; }
 .db-kind-line { color: var(--muted); font-size: 12.5px; padding-inline: 2px; }
 .db-date-foot { padding-block-start: 4px; }
@@ -50,17 +49,16 @@
 
 /* a select opened inside a popover or dialog unfolds right under its field */
 .sel-inline { flex: 1 0 100%; inline-size: 100%; margin-block: 2px 4px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-sunk); max-block-size: 220px; overflow: auto; animation: fade-in 0.15s var(--ease); }
-.sel-inline .menu { padding: 4px; min-inline-size: 0; max-block-size: none; overflow: visible; }
-.sel-inline .menu-item { min-height: 36px; }
-.popover .selbox, .modal .selbox { justify-content: space-between; }
-.popover .db-field .selbox { inline-size: 100%; }
-.popover .selbox .sel-label { flex: 1; text-align: start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sel-inline .ds-menu { padding: 4px; min-inline-size: 0; max-block-size: none; overflow: visible; }
+.ds-pop .selbox, .modal .selbox { justify-content: space-between; }
+.ds-pop .db-field .selbox { inline-size: 100%; }
+.ds-pop .selbox .sel-label { flex: 1; text-align: start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .db-frow { align-items: flex-start; }
 .db-frow .selbox { flex: 1 1 120px; }
 
 /* rows of a picker: an empty tile is a tick circle, a chosen one is filled */
-.db-opts .menu-item .menu-ic:empty, .db-pop .menu-item .menu-ic:empty { background: transparent; box-shadow: inset 0 0 0 1.5px var(--border-strong); border-radius: 50%; width: 20px; height: 20px; }
-.db-opts .menu-item.on .menu-ic { background: var(--accent); color: var(--accent-on); box-shadow: none; border-radius: 50%; width: 20px; height: 20px; }
+.db-opts .ds-menu-item .ds-menu-ic:empty, .db-pop .ds-menu-item .ds-menu-ic:empty { background: transparent; box-shadow: inset 0 0 0 1.5px var(--border-strong); border-radius: 50%; width: 20px; height: 20px; }
+.db-opts .ds-menu-item.on .ds-menu-ic { background: var(--accent); color: var(--accent-on); box-shadow: none; border-radius: 50%; width: 20px; height: 20px; }
 .db-opts { max-block-size: 260px; overflow: auto; gap: 2px; margin-inline: -4px; padding-inline: 4px; }
 .db-rel-cur { display: flex; flex-wrap: wrap; gap: 4px; }
 

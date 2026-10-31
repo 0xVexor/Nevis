@@ -25,7 +25,7 @@
 .layout-context .ghost-btn { display: inline-flex; align-items: center; gap: 7px; min-height: 30px; font-size: 12px; }
 .layout-context .layout-preview { width: 18px; height: 18px; }
 .layout-menu { min-width: 250px; max-width: min(360px, 90vw); }
-.layout-menu .menu-tx { white-space: normal; }
+.layout-menu .ds-menu-label { white-space: normal; }
 .layout-menu-note, .layout-protection { padding: 12px 16px; color: var(--muted); font-size: 13px; }
 .layout-protection { margin-block: 12px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); }
 .layout-protection pre { max-height: 400px; overflow: auto; white-space: pre-wrap; font-size: 11px; direction: ltr; }

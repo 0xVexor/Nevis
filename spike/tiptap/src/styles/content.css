@@ -103,9 +103,6 @@
 .lang-search { width: 100%; height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: 11px; background: var(--bg); color: var(--text); font-size: 13px; outline: none; }
 .lang-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 .lang-list { max-height: 260px; overflow: auto; padding: 4px 6px 6px; }
-.lang-list .menu-item { min-height: 34px; padding: 6px 10px; border-radius: 10px; }
-.lang-list .menu-item.hot { background: var(--hover); }
-.lang-list .menu-item.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
 .lang-none { padding: 14px; text-align: center; color: var(--muted); font-size: 13px; }
 
 /* formula editor: field, live preview and a one-line hint */
