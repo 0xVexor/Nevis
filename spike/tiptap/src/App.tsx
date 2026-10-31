@@ -627,11 +627,11 @@ export default function App() {
             <span className="ic"><Icon name="search" /></span><span className="ntitle">{t('Search')}...</span><kbd dir="ltr">{shortcutLabel(['Mod', 'K'])}</kbd>
           </button>
 
-          <button className={'row plain' + (view === 'home' ? ' cur' : '')} onClick={() => setView('home')}>
+          <button className={'row plain' + (view === 'home' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setView('home'))}>
             <span className="ic"><Icon name="home" /></span><span className="ntitle">{t('Home')}</span>
           </button>
 
-          <button className={'row plain' + (view === 'tasks' ? ' cur' : '')} onClick={() => setView('tasks')}>
+          <button className={'row plain' + (view === 'tasks' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setView('tasks'))}>
             <span className="ic"><Icon name="tasks" /></span><span className="ntitle">{t('Tasks')}</span>
           </button>
 
@@ -639,11 +639,11 @@ export default function App() {
 
           <button className="row plain" onClick={() => setTplOpen(true)}><span className="ic"><Icon name="templates" /></span><span className="ntitle">{t('Templates')}</span></button>
 
-          <button className={'row plain' + (view === 'databases' ? ' cur' : '')} onClick={() => setView('databases')}>
+          <button className={'row plain' + (view === 'databases' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setView('databases'))}>
             <span className="ic"><Icon name="database" /></span><span className="ntitle">{t('Databases')}</span>
           </button>
 
-          <button className={'row plain' + (view === 'drawings' ? ' cur' : '')} onPointerEnter={warmDrawing} onClick={() => setView('drawings')}>
+          <button className={'row plain' + (view === 'drawings' ? ' cur' : '')} onPointerEnter={warmDrawing} onClick={() => (setCardsOpen(false), setView('drawings'))}>
             <span className="ic"><Icon name="pencil" /></span><span className="ntitle">{t('Drawings')}</span>
           </button>
 
@@ -651,7 +651,7 @@ export default function App() {
             <span className="ic"><Icon name="graph" /></span><span className="ntitle">{t('Graph view')}</span>
           </button>
 
-          <button className="row plain" onClick={() => setTableOpen(true)}>
+          <button className="row plain" onClick={() => (setCardsOpen(false), setTableOpen(true))}>
             <span className="ic"><Icon name="table" /></span><span className="ntitle">{t('Pages table')}</span>
           </button>
 
@@ -704,10 +704,10 @@ export default function App() {
         <SideTip />
         <div className="side-foot">
           <WorkspaceCard onOpen={() => setFolderOpen(true)} />
-          <button className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => setView('settings')}>
+          <button className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setView('settings'))}>
             <span className="ic"><Icon name="settings" /></span><span className="ntitle">{t('Settings')}</span>
           </button>
-          <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => setView('files')}>
+          <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setView('files'))}>
             <span className="ic"><Icon name="paperclip" /></span><span className="ntitle">{t('Files')}</span>
           </button>
           <button className="row plain" onClick={() => setTrashOpen(true)}>
@@ -772,7 +772,9 @@ export default function App() {
 
         {reader && view === 'page' && current && <ReaderBar cfg={readerCfg} onCfg={(c) => (setReaderCfg(c), setPreference('not.reader.cfg', JSON.stringify(c)))} onExit={() => setReader(false)} />}
         <div className="scroller">
-          {view === 'home' ? (
+          {cardsOpen ? (
+            <Flashcards pageId={view === 'page' ? current?.id : undefined} onOpenPage={(id) => (setCardsOpen(false), setCurrentId(id))} onClose={() => (setCardsOpen(false), window.dispatchEvent(new Event('cards-reviewed')))} />
+          ) : view === 'home' ? (
             <Home pages={pages} onOpen={setCurrentId} onNew={() => add(null)} onTable={() => setTableOpen(true)} onCards={() => setCardsOpen(true)}
               onTemplates={() => setTplOpen(true)} onFiles={() => setView('files')} onTasks={() => setView('tasks')} />
           ) : view === 'files' ? (
@@ -899,7 +901,6 @@ export default function App() {
       {graphOpen && <GraphView currentId={current?.id} onOpen={setCurrentId} onClose={() => setGraphOpen(false)} />}
       {tableOpen && <PagesTable pages={pages} onOpen={setCurrentId} onStatus={setStatus} onClose={() => setTableOpen(false)} />}
       {tplOpen && <Templates onPick={addFromTemplate} onClose={() => setTplOpen(false)} />}
-      {cardsOpen && <Flashcards pageId={view === 'page' ? current?.id : undefined} onOpenPage={(id) => (setCardsOpen(false), setCurrentId(id))} onClose={() => (setCardsOpen(false), window.dispatchEvent(new Event('cards-reviewed')))} />}
 
       {naming && <NameDialog {...naming} onClose={() => setNaming(null)} />}
       {trashOpen && (
