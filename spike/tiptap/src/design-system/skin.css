@@ -139,9 +139,7 @@
 :root[data-side='icons'] .side-new > :last-child, :root[data-side='icons'] .side-credit { display: none; }
 :root[data-side='icons'] .side-new > :first-child { border-radius: var(--ds-r); padding: 0; }
 
-/* the workspace switcher heads the sidebar (logo tile, name, "Local workspace", chevron) next to the collapse button */
-.ws { height: auto; padding: 12px 0 8px; }
-.ws .wscard { flex: 1; min-width: 0; margin: 0; }
-.wscard-ic { background: var(--ds-accent); color: var(--ds-accent-ink); }
-.wscard-ic svg { color: inherit; filter: none; }
-.side-foot .row:first-of-type { margin-block-start: 0; }
+/* the brand row (logo, name, collapse) heads the sidebar; the workspace switcher sits right under it */
+.ws { height: 52px; padding: 0 2px; }
+.side-workspace { padding-block: 0 8px; }
+.side-workspace .wscard { margin: 0; }
