@@ -2,7 +2,7 @@
  * Home screen. Layout only: every surface, button, chip and tile is a ds- component (components.css).
  * Overrides the legacy .hm-* rules, which are no longer used by Home.tsx.
  */
-.home { max-inline-size: 1180px; margin-inline: auto; padding: 8px clamp(16px, 3vw, 40px) 64px; container-type: inline-size; }
+.home { max-inline-size: 1100px; margin-inline: auto; padding: 8px clamp(16px, 3vw, 40px) 64px; container-type: inline-size; }
 .home .sr-only { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); }
 .home b { font-weight: 600; }
 .home small { display: block; font-size: 12.5px; line-height: 1.5; }
@@ -88,3 +88,22 @@
   .home-grid { grid-template-columns: 1fr; }
   .home-quick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ───── matches the live reference ───── */
+.home-quick { margin-block-start: 28px; }
+.home-quick-item { padding: 16px 18px; }
+.home-hello { padding-block: 32px 0; }
+.home-card { gap: 6px; }
+.home-card-ex { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-block-size: 40px; color: var(--ds-text-2); font-size: 13px; line-height: 1.55; }
+.home-card-tags { display: flex; gap: 6px; flex-wrap: wrap; min-block-size: 22px; margin-block-start: 6px; }
+.home-streak { padding: 16px; }
+.home-streak-head { display: flex; align-items: center; gap: 8px; margin-block-end: 14px; }
+.home-streak-head b { font-size: 22px; font-weight: 650; }
+.home-flame { display: grid; color: #f0702c; }
+.home-flame .ds-icon { fill: color-mix(in oklab, #f0702c 22%, transparent); }
+.home-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; text-align: center; }
+.home-week > div { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--ds-text-3); font-size: 11.5px; }
+.home-week i { display: grid; place-items: center; inline-size: 28px; block-size: 28px; border-radius: 50%; background: var(--ds-sunk); color: #fff; }
+.home-week .done i { background: var(--ds-accent); }
+.home-week .now i { background: none; border: 2px dashed var(--ds-accent); }
+.home-week .done.now i { border: 0; background: var(--ds-accent); }
