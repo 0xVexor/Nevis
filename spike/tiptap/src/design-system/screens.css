@@ -141,3 +141,29 @@
 .find-count { color: var(--ds-text-3); font-variant-numeric: tabular-nums; }
 .tiptap .find-hit { background: color-mix(in oklab, var(--ds-warn) 30%, transparent); border-radius: 3px; }
 .tiptap .find-hit.find-cur { background: color-mix(in oklab, var(--ds-warn) 60%, transparent); outline: 1px solid var(--ds-warn); }
+
+/* ───── Workspaces: cards in a grid, like the design ───── */
+.modal.wsd { width: min(760px, 94vw); max-height: 86vh; }
+.wsd-head { align-items: flex-start; gap: 16px; padding: 20px 22px 6px; }
+.wsd-head b { display: block; font-size: 20px; font-weight: 600; letter-spacing: -0.015em; }
+.wsd-head small { display: block; margin-block-start: 4px; color: var(--ds-text-2); font-size: 14px; }
+.wsd-head-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.wsd-body { padding: 14px 22px 22px; }
+.wsd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.wsd-card { display: flex; flex-direction: column; gap: 18px; padding: 16px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); text-align: start; transition: border-color var(--ds-base); }
+.wsd-card:hover { border-color: var(--ds-line-strong); }
+.wsd-card.cur { border-color: var(--ds-accent-line); box-shadow: 0 0 0 3px var(--ds-accent-soft); }
+.wsd-card-top { display: flex; align-items: center; gap: 12px; }
+.wsd-logo { display: grid; place-items: center; flex: none; inline-size: 40px; block-size: 40px; border-radius: 11px; background: var(--ds-accent-soft); color: var(--ds-accent); font: 600 18px var(--ds-font-serif); }
+.wsd-tx { flex: 1; min-inline-size: 0; }
+.wsd-tx b { display: block; font-size: 15px; font-weight: 600; }
+.wsd-tx small { display: block; font: 400 11.5px var(--ds-font-mono); color: var(--ds-text-3); text-align: start; }
+.wsd-bad { color: var(--ds-bad); }
+.wsd-more { margin-inline-start: auto; }
+.wsd-card-foot { display: flex; align-items: center; min-block-size: 30px; }
+.wsd-add { align-items: center; justify-content: center; gap: 8px; min-block-size: 130px; border-style: dashed; background: none; color: var(--ds-text-2); cursor: pointer; }
+.wsd-add:hover:not(:disabled) { border-color: var(--ds-accent); background: var(--ds-accent-soft); color: var(--ds-accent); }
+.wsd-add b { font-weight: 600; }
+.wsd-note { margin: 18px 0 0; padding: 0; border: 0; color: var(--ds-text-3); font-size: 13px; }
+.wsd-link { margin-block-start: 10px; padding: 0; border: 0; background: none; color: var(--ds-text-2); font: inherit; font-size: 13px; cursor: pointer; }
+.wsd-link:hover { color: var(--ds-accent); }

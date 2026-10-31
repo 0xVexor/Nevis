@@ -1,5 +1,7 @@
 // English → Persian UI strings (see i18n.ts). Generated once from the original Persian UI, edit freely.
 export const FA: Record<string, string> = {
+  "Each workspace is a folder you own. Switch any time.": "هر فضای کاری یک پوشه‌ی شخصی شماست. هر زمان بخواهید جابه‌جا شوید.",
+  "Removing a workspace from the list never deletes its files.": "حذف یک فضای کاری از فهرست هرگز فایل‌هایش را پاک نمی‌کند.",
   "Import Markdown or an Obsidian vault": "درون‌ریزی Markdown یا کتابخانه‌ی Obsidian",
   "Bring pages in from Markdown files or an Obsidian folder.": "صفحه‌ها را از فایل‌های Markdown یا یک پوشه‌ی Obsidian وارد کنید.",
   "Export all pages": "برون‌بری همه‌ی صفحه‌ها",
