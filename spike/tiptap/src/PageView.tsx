@@ -675,7 +675,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
       {!readOnly && <Toolbar editor={editor} diagram={diagram} />}
       {ctx && editor && (
         <Popover anchor={ctx} onClose={() => setCtx(null)}>
-          <div className="menu ctx-menu">
+          <div className="ds-menu ctx-menu">
             {!readOnly && (
               <div className="menu-quick">
                 <button title={t('Undo') + '  ' + shortcutLabel(['Mod', 'Z'])} onClick={() => (setCtx(null), editor.chain().focus().undo().run())}><Ic.Undo size={16} /></button>

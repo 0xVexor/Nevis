@@ -52,7 +52,7 @@ export function LayoutControls({ editor }: { editor: Editor }) {
   useEffect(() => {
     if (!menu) return
     const frame = requestAnimationFrame(() => {
-      ref.current?.querySelectorAll('button.menu-item').forEach((button) => button.setAttribute('role', 'menuitem'))
+      ref.current?.querySelectorAll('button.ds-menu-item').forEach((button) => button.setAttribute('role', 'menuitem'))
       ref.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
     })
     return () => cancelAnimationFrame(frame)
@@ -98,7 +98,7 @@ export function LayoutControls({ editor }: { editor: Editor }) {
     return !!destination && fitsSnapColumns(destination.rect.width, result.plan.columns.widths)
   }
   return <Popover anchor={menu.rect} onClose={close}>
-    <div ref={ref} className="menu layout-menu" role="menu">
+    <div ref={ref} className="ds-menu layout-menu" role="menu">
       <MenuLabel>{t(selectedGroup ? 'Move layout' : 'Move block')}</MenuLabel>
       <MenuItem icon={<Ic.Arrow size={16} />} label={t('Move to…')} hint="Ctrl+Alt+M" onClick={() => move('pick')} />
       <MenuItem disabled={!available(before)} label={t('Move block up')} onClick={() => move('up')} />

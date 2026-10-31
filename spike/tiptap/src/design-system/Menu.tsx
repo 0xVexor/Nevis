@@ -78,7 +78,7 @@ function Items({ items, onPick }: { items: MenuItem[]; onPick: () => void }) {
 export function Menu({ anchor, items, onClose, align = 'start' }: { anchor: DOMRect; items: MenuItem[]; onClose: () => void; align?: 'start' | 'end' }) {
   return (
     <Popover anchor={anchor} onClose={onClose} align={align}>
-      <div className="ds-pop ds-menu" role="menu">
+      <div className="ds-menu" role="menu">
         <Items items={items} onPick={onClose} />
       </div>
     </Popover>

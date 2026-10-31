@@ -728,7 +728,7 @@ export function TableView({ svc, view, ctl }: ViewProps) {
       {newProp && <NewPropertyPopover svc={svc} sourceId={view.sourceId!} anchor={newProp} onClose={() => setNewProp(null)} onCreated={(id) => void ctl.patch({ visibleProperties: [...cols.map((c) => c.id), id] })} />}
       {rowMenu && (
         <Popover anchor={rowMenu.rect} onClose={() => setRowMenu(null)}>
-          <div className="menu">
+          <div className="ds-menu">
             <MenuItem icon={<Ic.Open size={14} />} label={t('Open')} onClick={() => (nav.openRow(rowMenu.id, 'full'), setRowMenu(null))} />
             <MenuItem icon={<Ic.Panel size={14} />} label={t('Open in side peek')} onClick={() => (nav.openRow(rowMenu.id, 'side'), setRowMenu(null))} />
             <MenuItem icon={<Ic.Copy size={14} />} label={t('Duplicate')} onClick={async () => { setRowMenu(null); const r = await svc.tryExec([{ type: 'row.duplicate', payload: { rootPageIds: [rowMenu.id] } }]); if (!r.ok) ctl.notice(errorText(r.code, r.message)) }} />
@@ -739,7 +739,7 @@ export function TableView({ svc, view, ctl }: ViewProps) {
       )}
       {totalMenu && (
         <Popover anchor={totalMenu.rect} onClose={() => setTotalMenu(null)}>
-          <div className="menu">
+          <div className="ds-menu">
             <MenuItem label={t('None')} onClick={() => { const n = { ...totals }; delete n[totalMenu.def.id]; void ctl.patch({ totals: n as never }); setTotalMenu(null) }} />
             {totalOps(totalMenu.def).map((op) => (
               <MenuItem key={op} label={aggLabel(op)} onClick={() => { void ctl.patch({ totals: { ...totals, [totalMenu.def.id]: op } as never }); setTotalMenu(null) }} />

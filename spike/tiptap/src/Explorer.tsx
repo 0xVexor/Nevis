@@ -468,7 +468,7 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
 
       {menu && (
         <Popover anchor={menu.rect} onClose={() => setMenu(null)}>
-          <div className="menu">
+          <div className="ds-menu">
             {menuTarget && subCount(menuTarget) > 0 && <MenuItem icon={<Ic.Folders />} label={t('Show subpages')} hint="Enter" onClick={() => (setMenu(null), go(menuTarget.id))} />}
             {menuTarget && subCount(menuTarget) > 0 && <MenuItem icon={<Ic.Open />} label={t('Open page')} hint="Ctrl Enter" onClick={() => (setMenu(null), open(menuTarget, true))} />}
             {menuTarget && !subCount(menuTarget) && <MenuItem icon={<Ic.Open />} label={t('Open')} hint="Enter" onClick={() => (setMenu(null), open(menuTarget))} />}

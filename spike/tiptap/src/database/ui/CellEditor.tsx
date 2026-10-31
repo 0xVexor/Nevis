@@ -160,15 +160,15 @@ function SelectEditor({ svc, row, def, anchor, onClose }: PopProps) {
         if (e.key === 'Escape') onClose()
       }} />
       <div className="db-opts" role="listbox" aria-multiselectable={multi}>
-        {!multi && def.kind === 'select' && selected.length > 0 && <button type="button" className="menu-item" onClick={() => void set([])}><span className="menu-tx dim">{t('Clear')}</span></button>}
+        {!multi && def.kind === 'select' && selected.length > 0 && <button type="button" className="ds-menu-item" onClick={() => void set([])}><span className="ds-menu-label dim">{t('Clear')}</span></button>}
         {def.kind === 'status' ? groups.map((g) => {
           const items = shown.filter((o) => (o as SelectOption & { statusGroupId?: Id }).statusGroupId === g.id)
           return items.length ? <div key={g.id}><MenuLabel>{g.label}</MenuLabel>{items.map((o) => <OptionRow key={o.id} o={o} on={selected.includes(o.id)} onClick={() => void set([o.id])} />)}</div> : null
         }) : shown.map((o) => <OptionRow key={o.id} o={o} on={selected.includes(o.id)} onClick={() => void set(multi ? (selected.includes(o.id) ? selected.filter((x) => x !== o.id) : [...selected, o.id]) : [o.id])} />)}
         {q.trim() && !exact && canSchema && def.kind !== 'status' && (
-          <button type="button" className="menu-item" onClick={() => void create(q.trim())}>
-            <span className="menu-ic"><Ic.Plus size={13} /></span>
-            <span className="menu-tx">{t('Create')} <Chip>{q.trim()}</Chip></span>
+          <button type="button" className="ds-menu-item" onClick={() => void create(q.trim())}>
+            <span className="ds-menu-ic"><Ic.Plus size={13} /></span>
+            <span className="ds-menu-label">{t('Create')} <Chip>{q.trim()}</Chip></span>
           </button>
         )}
         {shown.length === 0 && !q.trim() && <div className="db-empty-hint">{t('No options yet')}</div>}
@@ -178,9 +178,9 @@ function SelectEditor({ svc, row, def, anchor, onClose }: PopProps) {
   )
 }
 const OptionRow = ({ o, on, onClick }: { o: SelectOption; on: boolean; onClick: () => void }) => (
-  <button type="button" role="option" aria-selected={on} className={'menu-item' + (on ? ' on' : '')} onClick={onClick}>
-    <span className="menu-ic">{on && <Ic.Check size={13} />}</span>
-    <span className="menu-tx"><Chip color={o.color}>{o.name}</Chip></span>
+  <button type="button" role="option" aria-selected={on} className={'ds-menu-item' + (on ? ' on' : '')} onClick={onClick}>
+    <span className="ds-menu-ic">{on && <Ic.Check size={13} />}</span>
+    <span className="ds-menu-label"><Chip color={o.color}>{o.name}</Chip></span>
   </button>
 )
 
@@ -228,12 +228,12 @@ function PeopleEditor({ svc, row, def, anchor, onClose }: PopProps) {
         {people.map((p) => {
           const on = sel.includes(p.id)
           return (
-            <button key={p.id} type="button" role="option" aria-selected={on} className={'menu-item' + (on ? ' on' : '')} onClick={async () => {
+            <button key={p.id} type="button" role="option" aria-selected={on} className={'ds-menu-item' + (on ? ' on' : '')} onClick={async () => {
               const next = on ? sel.filter((x) => x !== p.id) : multiple ? [...sel, p.id] : [p.id]
               if (await save({ kind: 'people', principalIds: next }) && !multiple) onClose()
             }}>
-              <span className="menu-ic">{on && <Ic.Check size={13} />}</span>
-              <span className="menu-tx">{p.displayName}{p.isLocalOwner && <small> · {t('you')}</small>}</span>
+              <span className="ds-menu-ic">{on && <Ic.Check size={13} />}</span>
+              <span className="ds-menu-label">{p.displayName}{p.isLocalOwner && <small> · {t('you')}</small>}</span>
             </button>
           )
         })}
@@ -350,9 +350,9 @@ function RelationEditor({ svc, row, def, anchor, onClose }: PopProps) {
         {results.map((id) => {
           const on = linked.has(id)
           return (
-            <button key={id} type="button" role="option" aria-selected={on} className={'menu-item' + (on ? ' on' : '')} onClick={() => void run(on ? 'relation.remove' : 'relation.add', id, single)}>
-              <span className="menu-ic">{on && <Ic.Check size={13} />}</span>
-              <span className="menu-tx" dir="auto">{plainTitle(svc.state.pages.get(id)?.title)}</span>
+            <button key={id} type="button" role="option" aria-selected={on} className={'ds-menu-item' + (on ? ' on' : '')} onClick={() => void run(on ? 'relation.remove' : 'relation.add', id, single)}>
+              <span className="ds-menu-ic">{on && <Ic.Check size={13} />}</span>
+              <span className="ds-menu-label" dir="auto">{plainTitle(svc.state.pages.get(id)?.title)}</span>
             </button>
           )
         })}
