@@ -559,3 +559,9 @@
 .db-tabs .db-tab svg { color: var(--ds-text-3); }
 .db-tabs .db-tab.on svg { color: var(--ds-accent); }
 .db-table-wrap { scrollbar-width: thin; }
+
+/* graph header: title on one line, the tools wrap under it when space runs out */
+.gv-page .gv-head { flex-wrap: wrap; row-gap: 10px; }
+.gv-page .gv-title { flex: 1 1 260px; }
+.gv-page .gv-title b { white-space: nowrap; }
+.gv-page .gv-title small { white-space: normal; overflow: visible; }
