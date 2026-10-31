@@ -530,3 +530,32 @@
 .db-dash-empty, .db-form-status, .db-notice { background: none; border-color: var(--ds-line-strong); }
 .db-seg, .db-layouts { padding: 2px; border: 0; border-radius: var(--ds-r); background: var(--ds-sunk); }
 .db-seg button.on, .db-layout.on { background: var(--ds-raised); color: var(--ds-text); box-shadow: 0 0 0 1px var(--ds-line), 0 1px 2px rgb(0 0 0 / 0.06); }
+
+/* the empty Favorites drop zone floats over the list, so the tree under the cursor never shifts mid-drag */
+.fav-float { position: relative; block-size: 0; z-index: 5; }
+.fav-float > .fav-zone { position: absolute; inset-inline: 0; inset-block-start: 0; background: var(--ds-raised); box-shadow: var(--ds-shadow-pop); }
+
+/* page drawer (right side): the sidebar's surface, plain rows, no gradients */
+.page-drawer { inset-block: 0; inset-inline-end: 0; inline-size: 288px; padding: 0 12px; border: 0; border-inline-start: 1px solid var(--ds-line); border-radius: 0; background: var(--ds-surface); backdrop-filter: none; box-shadow: none; }
+.pd-head { block-size: 56px; padding: 0 6px; font-size: 15px; font-weight: 600; letter-spacing: 0; }
+.pd-head span { background: none; -webkit-background-clip: border-box; background-clip: border-box; color: var(--ds-text); }
+.pd-scroll h4 { margin: 18px 0 4px; padding: 2px 8px; font-size: 12px; font-weight: 550; letter-spacing: 0; color: var(--ds-text-3); }
+.pd-scroll section + section, .pd-scroll #outline-slot { margin-block-start: 12px; padding-block-start: 4px; border-block-start: 1px solid var(--ds-line); }
+.pd-label { margin: 10px 8px 2px; font-size: 12px; color: var(--ds-text-3); }
+.pd-row { min-block-size: 34px; margin: 1px 0; padding: 0 8px; gap: 8px; border-radius: var(--ds-r); color: var(--ds-text-2); font-size: 14px; }
+.pd-row:hover { background: var(--ds-hover); color: var(--ds-text); }
+.pd-row.on { background: var(--ds-accent-soft); color: var(--ds-accent); font-weight: 550; }
+.pd-row.on .pd-ic { color: var(--ds-accent); }
+.pd-ic { color: var(--ds-text-3); }
+.pd-row:hover .pd-ic { color: var(--ds-text-2); }
+.pd-note { color: var(--ds-text-3); }
+.pd-row .pg-ic.tile { background: none; box-shadow: none; color: var(--ds-text-3); }
+:root[dir='rtl'] .page-drawer { transform: translateX(-100%); }
+.page-drawer.open { transform: none; }
+
+/* database view tabs: wrap instead of a scrollbar */
+.db-tabs { flex-wrap: wrap; overflow: visible; }
+.db-tabs .db-tab { padding: 8px 10px; font-size: 13.5px; }
+.db-tabs .db-tab svg { color: var(--ds-text-3); }
+.db-tabs .db-tab.on svg { color: var(--ds-accent); }
+.db-table-wrap { scrollbar-width: thin; }

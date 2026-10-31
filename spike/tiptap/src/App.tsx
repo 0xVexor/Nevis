@@ -228,7 +228,8 @@ export default function App() {
   const [dragPage, setDragPage] = useState(false)
   const [favOver, setFavOver] = useState(false)
   useEffect(() => {
-    const start = (e: DragEvent) => setDragPage(!!(e.target as HTMLElement | null)?.closest?.('.row.tree'))
+    // deferred: changing the DOM inside dragstart makes the browser cancel the drag
+    const start = (e: DragEvent) => { const on = !!(e.target as HTMLElement | null)?.closest?.('.row.tree'); window.setTimeout(() => setDragPage(on), 0) }
     const end = () => (setDragPage(false), setFavOver(false))
     window.addEventListener('dragstart', start)
     window.addEventListener('dragend', end)
@@ -658,6 +659,7 @@ export default function App() {
           </button>
 
           {(favs.length > 0 || dragPage) && (
+            <div className={favs.length === 0 ? 'fav-float' : undefined}>
             <div
               className={'fav-zone' + (favOver ? ' over' : '')}
               onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-page')) (e.preventDefault(), setFavOver(true)) }}
@@ -676,6 +678,7 @@ export default function App() {
                 </div>
               ))}
               {favs.length === 0 && <div className="empty-note">{t('Drop a page here to pin it')}</div>}
+            </div>
             </div>
           )}
 
