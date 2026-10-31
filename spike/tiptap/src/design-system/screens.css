@@ -704,8 +704,10 @@
 .page-cols.has-cover .page-icon { box-shadow: 0 0 0 4px var(--ds-bg); }
 .page-tools button { block-size: 28px; padding: 0 10px; border: 1px dashed var(--ds-line-strong); border-radius: var(--ds-r-full); background: none; color: var(--ds-text-3); font-size: 12.5px; }
 .page-tools button:hover { border-style: dashed; border-color: var(--ds-accent); background: var(--ds-accent-soft); color: var(--ds-accent); }
-.title { font-size: 40px; font-weight: 600; line-height: 1.15; letter-spacing: -0.03em; }
-.title::placeholder { color: var(--ds-text-3); }
+textarea.title { font-size: 40px; font-weight: 600; line-height: 1.15; letter-spacing: -0.03em; }
+textarea.title::placeholder { color: var(--ds-text-3); }
+/* the table's Title cell also carries the class .title: it is a cell, not the page title */
+.db-td.title { display: flex; font-size: inherit; font-weight: inherit; line-height: inherit; letter-spacing: normal; }
 
 /* properties: label column, value column, no frame */
 .page-meta { display: flex; flex-direction: column; gap: 6px; margin: 16px 0 10px; padding: 0 0 14px; border: 0; border-radius: 0; background: none; border-block-end: 1px solid var(--ds-line); }
