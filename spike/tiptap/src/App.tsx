@@ -222,6 +222,7 @@ export default function App() {
   useEffect(() => void kvGet<{ id: string; name: string; query: string }[]>('savedSearches').then((s) => setSaved(Array.isArray(s) ? s : [])), [])
   const saveSaved = (next: { id: string; name: string; query: string }[]) => (setSaved(next), void kvSet('savedSearches', next))
   const [trashOpen, setTrashOpen] = useState(false)
+  const [newMenu, setNewMenu] = useState<DOMRect | null>(null)
   const [naming, setNaming] = useState<{ title: string; label: string; initial: string; action: string; onSubmit: (name: string) => void } | null>(null)
   const [backupOpen, setBackupOpen] = useState(false)
   const [folderOpen, setFolderOpen] = useState(false)
@@ -618,10 +619,6 @@ export default function App() {
             <span className="ic"><Ic.Home /></span><span className="ntitle">{t('Home')}</span>
           </button>
 
-          <button className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => setView('settings')}>
-            <span className="ic"><Ic.Settings /></span><span className="ntitle">{t('Settings')}</span>
-          </button>
-
           <button className={'row plain' + (view === 'tasks' ? ' cur' : '')} onClick={() => setView('tasks')}>
             <span className="ic"><Ic.Checklist /></span><span className="ntitle">{t('Tasks')}</span>
           </button>
@@ -637,6 +634,10 @@ export default function App() {
           <button className="row plain" onClick={() => setTplOpen(true)}><span className="ic"><Ic.Blocks /></span><span className="ntitle">{t('Templates')}</span></button>
 
           <button className="row plain" onClick={() => setCardsOpen(true)}><span className="ic"><Ic.Cards /></span><span className="ntitle">{t('Flashcards')}</span>{dueCards > 0 && <span className="badge">{dueCards}</span>}</button>
+
+          <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => setView('files')}>
+            <span className="ic"><Ic.Folders /></span><span className="ntitle">{t('Files')}</span>
+          </button>
 
           <button className="row plain" onClick={() => setGraphOpen(true)}>
             <span className="ic"><Ic.Link /></span><span className="ntitle">{t('Graph view')}</span>
@@ -676,38 +677,29 @@ export default function App() {
             <SidebarTags tags={tagList} active={tagFilter} onPick={setTagFilter} shut={!!shut.tags} onToggle={() => setShut((x) => ({ ...x, tags: !x.tags }))} pages={taggedPages} currentId={current?.id} onOpen={setCurrentId} />
           )}
 
-          <div className="side-utils">
-          <button className="row plain" onClick={() => add(null)}>
-            <span className="ic"><Ic.Page /></span><span className="ntitle">{t('New page')}</span>
-          </button>
-          <button className="row plain" onClick={() => addFolder(null)}>
-            <span className="ic"><Ic.Folder /></span><span className="ntitle">{t('New folder')}</span>
-          </button>
-          <button className="row plain" onPointerEnter={warmDrawing} onFocus={warmDrawing} onClick={() => add(null, 'board')}>
-            <span className="ic"><Ic.Pencil /></span><span className="ntitle">{t('New board')}</span>
-          </button>
-          <button className="row plain" onClick={() => addDatabase(null)}>
-            <span className="ic"><Ic.Table /></span><span className="ntitle">{t('New database')}</span>
-          </button>
-          <button className="row plain" onClick={() => add(null, 'todo')}>
-            <span className="ic"><Ic.Checklist /></span><span className="ntitle">{t('New to-do list')}</span>
-          </button>
-          <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => setView('files')}>
-            <span className="ic"><Ic.Folders /></span><span className="ntitle">{t('Files')}</span>
-          </button>
-          <button className="row plain" onClick={() => setTrashOpen(true)}>
-            <span className="ic"><Ic.Trash /></span><span className="ntitle">{t('Trash')}</span>
-            {repo.trash().length > 0 && <span className="badge">{repo.trash().length}</span>}
-          </button>
-          </div>
         </div>
 
         <SideTip />
         <div className="side-foot">
           <WorkspaceCard onOpen={() => setFolderOpen(true)} />
-          <button className="new-page" onClick={() => add(null)}>
-            <Ic.Plus size={16} /><span>{t('New page')}</span>
+          <button className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => setView('settings')}>
+            <span className="ic"><Ic.Settings /></span><span className="ntitle">{t('Settings')}</span>
           </button>
+          <button className="row plain" onClick={() => setTrashOpen(true)}>
+            <span className="ic"><Ic.Trash /></span><span className="ntitle">{t('Trash')}</span>
+            {repo.trash().length > 0 && <span className="badge">{repo.trash().length}</span>}
+          </button>
+          <div className="ds-split side-new">
+            <button className="ds-btn ds-btn--primary" onClick={() => add(null)}><Ic.Plus size={16} /><span className="ntitle">{t('New page')}</span></button>
+            <button className="ds-btn ds-btn--primary" aria-label={t('More')} aria-expanded={!!newMenu} onClick={(e) => setNewMenu(newMenu ? null : e.currentTarget.parentElement!.getBoundingClientRect())}><Ic.Chevron size={14} /></button>
+          </div>
+          {newMenu && <Popover anchor={newMenu} onClose={() => setNewMenu(null)}><div className="ds-menu">
+            <MenuItem icon={<Ic.Page />} label={t('New page')} onClick={() => (setNewMenu(null), add(null))} />
+            <MenuItem icon={<Ic.Folder />} label={t('New folder')} onClick={() => (setNewMenu(null), addFolder(null))} />
+            <MenuItem icon={<Ic.Pencil />} label={t('New board')} onClick={() => (setNewMenu(null), add(null, 'board'))} />
+            <MenuItem icon={<Ic.Table />} label={t('New database')} onClick={() => (setNewMenu(null), addDatabase(null))} />
+            <MenuItem icon={<Ic.Checklist />} label={t('New to-do list')} onClick={() => (setNewMenu(null), add(null, 'todo'))} />
+          </div></Popover>}
           <div className="side-credit">{t('Created by')} Vexor</div>
         </div>
       </aside>
