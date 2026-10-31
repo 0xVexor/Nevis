@@ -42,6 +42,7 @@ import { isTauri, kvGet, kvSet } from './db'
 import { watchDueCards } from './cardsDue'
 import { normalizeFa } from './normalize'
 import { Brand } from './Brand'
+import { Icon } from './design-system'
 import { MenuItem, MenuLabel, MenuSep, NameDialog, Popover, SearchModal, Toast, TrashModal, type PaletteCommand } from './ui'
 import { Home } from './Home'
 import { iconNode } from './iconSet'
@@ -607,40 +608,40 @@ export default function App() {
         <div className="ws">
           <span className="ws-logo"><Ic.Logo size={28} /></span>
           <Brand className="ws-name" />
-          <button className="icon-btn" title={t('Close sidebar  Ctrl+\\')} onClick={() => setSideOpen(false)}><Ic.Sidebar /></button>
+          <button className="icon-btn" title={t('Close sidebar  Ctrl+\\')} onClick={() => setSideOpen(false)}><Icon name="panel-left" /></button>
         </div>
 
         <div className="side-scroll">
           <button className="row plain search-row" onClick={() => setSearching(true)}>
-            <span className="ic"><Ic.Search /></span><span className="ntitle">{t('Search')}...</span><kbd dir="ltr">{shortcutLabel(['Mod', 'K'])}</kbd>
+            <span className="ic"><Icon name="search" /></span><span className="ntitle">{t('Search')}...</span><kbd dir="ltr">{shortcutLabel(['Mod', 'K'])}</kbd>
           </button>
 
           <button className={'row plain' + (view === 'home' ? ' cur' : '')} onClick={() => setView('home')}>
-            <span className="ic"><Ic.Home /></span><span className="ntitle">{t('Home')}</span>
+            <span className="ic"><Icon name="home" /></span><span className="ntitle">{t('Home')}</span>
           </button>
 
           <button className={'row plain' + (view === 'tasks' ? ' cur' : '')} onClick={() => setView('tasks')}>
-            <span className="ic"><Ic.Checklist /></span><span className="ntitle">{t('Tasks')}</span>
+            <span className="ic"><Icon name="tasks" /></span><span className="ntitle">{t('Tasks')}</span>
           </button>
 
-          <button className="row plain" onClick={() => setCardsOpen(true)}><span className="ic"><Ic.Cards /></span><span className="ntitle">{t('Flashcards')}</span>{dueCards > 0 && <span className="badge">{dueCards}</span>}</button>
+          <button className="row plain" onClick={() => setCardsOpen(true)}><span className="ic"><Icon name="cards" /></span><span className="ntitle">{t('Flashcards')}</span>{dueCards > 0 && <span className="badge">{dueCards}</span>}</button>
 
-          <button className="row plain" onClick={() => setTplOpen(true)}><span className="ic"><Ic.Blocks /></span><span className="ntitle">{t('Templates')}</span></button>
+          <button className="row plain" onClick={() => setTplOpen(true)}><span className="ic"><Icon name="templates" /></span><span className="ntitle">{t('Templates')}</span></button>
 
           <button className={'row plain' + (view === 'databases' ? ' cur' : '')} onClick={() => setView('databases')}>
-            <span className="ic"><Ic.Table /></span><span className="ntitle">{t('Databases')}</span>
+            <span className="ic"><Icon name="database" /></span><span className="ntitle">{t('Databases')}</span>
           </button>
 
           <button className={'row plain' + (view === 'drawings' ? ' cur' : '')} onPointerEnter={warmDrawing} onClick={() => setView('drawings')}>
-            <span className="ic"><Ic.Pencil /></span><span className="ntitle">{t('Drawings')}</span>
+            <span className="ic"><Icon name="pencil" /></span><span className="ntitle">{t('Drawings')}</span>
           </button>
 
           <button className="row plain" onClick={() => setGraphOpen(true)}>
-            <span className="ic"><Ic.Link /></span><span className="ntitle">{t('Graph view')}</span>
+            <span className="ic"><Icon name="graph" /></span><span className="ntitle">{t('Graph view')}</span>
           </button>
 
           <button className="row plain" onClick={() => setTableOpen(true)}>
-            <span className="ic"><Ic.List /></span><span className="ntitle">{t('Pages table')}</span>
+            <span className="ic"><Icon name="table" /></span><span className="ntitle">{t('Pages table')}</span>
           </button>
 
           {favs.length > 0 && (
@@ -683,13 +684,13 @@ export default function App() {
         <div className="side-foot">
           <WorkspaceCard onOpen={() => setFolderOpen(true)} />
           <button className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => setView('settings')}>
-            <span className="ic"><Ic.Settings /></span><span className="ntitle">{t('Settings')}</span>
+            <span className="ic"><Icon name="settings" /></span><span className="ntitle">{t('Settings')}</span>
           </button>
           <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => setView('files')}>
-            <span className="ic"><Ic.Folders /></span><span className="ntitle">{t('Files')}</span>
+            <span className="ic"><Icon name="paperclip" /></span><span className="ntitle">{t('Files')}</span>
           </button>
           <button className="row plain" onClick={() => setTrashOpen(true)}>
-            <span className="ic"><Ic.Trash /></span><span className="ntitle">{t('Trash')}</span>
+            <span className="ic"><Icon name="trash" /></span><span className="ntitle">{t('Trash')}</span>
             {repo.trash().length > 0 && <span className="badge">{repo.trash().length}</span>}
           </button>
           <div className="ds-split side-new">
