@@ -664,3 +664,15 @@
 
 .gv-kind:disabled { opacity: 0.5; cursor: default; background: none; color: var(--ds-text-3); }
 .gv-kind em { font-style: normal; font-size: 11.5px; opacity: 0.7; font-variant-numeric: tabular-nums; }
+
+/* tags: the design's coloured label (a tint of the tag's own colour), same shape as a status */
+.tag-chip, .tagchip { --c: light-dark(oklch(0.5 0.15 var(--hue, 270)), oklch(0.82 0.1 var(--hue, 270))); block-size: 22px; padding-inline: 9px; gap: 5px; background: color-mix(in oklab, var(--c) 13%, var(--ds-bg)); color: var(--c); font: 500 12px var(--ds-font-ui); }
+.tag-chip::before { content: none; }
+.tagchip { padding-inline: 9px; }
+.tagchip-h { display: none; }
+.tagchip-n { font-size: 11px; opacity: 0.7; }
+.tag-chip:not(.static):hover, .tagchip:hover { background: color-mix(in oklab, var(--c) 20%, var(--ds-bg)); color: var(--c); }
+.tag-chip.on, .tagchip.on { background: var(--c); color: var(--ds-bg); }
+.tagchip.more { --c: var(--ds-text-3); background: none; border: 1px dashed var(--ds-line-strong); }
+.tag-chip button { opacity: 0.6; }
+.tag-input { block-size: 22px; font-size: 12px; }
