@@ -9,6 +9,12 @@
  * Loaded after every legacy stylesheet so it wins by order, never by specificity.
  */
 :root {
+  /* the design's default corner radius; Settings → Corner radius overrides these inline */
+  --radius: 10px;
+  --radius-sm: 7px;
+  --radius-lg: 14px;
+  --radius-xl: 14px;
+
   /* one accent, derived everywhere; a chosen accent still comes from settings (--user-accent) */
   --accent: var(--ds-accent);
   --accent-on: var(--ds-accent-ink);
