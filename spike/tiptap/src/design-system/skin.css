@@ -139,7 +139,8 @@
 :root[data-side='icons'] .side-new > :last-child, :root[data-side='icons'] .side-credit { display: none; }
 :root[data-side='icons'] .side-new > :first-child { border-radius: var(--ds-r); padding: 0; }
 
-/* the brand row (logo, name, collapse) heads the sidebar; the workspace switcher sits right under it */
-.ws { height: 52px; padding: 0 2px; }
-.side-workspace { padding-block: 0 8px; }
-.side-workspace .wscard { margin: 0; }
+/* brand row: logo and name share one centre line */
+.ws { height: 52px; padding: 0 2px; gap: 8px; align-items: center; }
+.ws-logo { display: grid; place-items: center; flex: none; line-height: 0; }
+.ws-logo svg { display: block; }
+.ws .brand, .ws-name { display: inline-flex; align-items: center; line-height: 1; }

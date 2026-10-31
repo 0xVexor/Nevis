@@ -609,7 +609,6 @@ export default function App() {
           <Brand className="ws-name" />
           <button className="icon-btn" title={t('Close sidebar  Ctrl+\\')} onClick={() => setSideOpen(false)}><Ic.Sidebar /></button>
         </div>
-        <div className="side-workspace"><WorkspaceCard onOpen={() => setFolderOpen(true)} /></div>
 
         <div className="side-scroll">
           <button className="row plain search-row" onClick={() => setSearching(true)}>
@@ -686,6 +685,7 @@ export default function App() {
 
         <SideTip />
         <div className="side-foot">
+          <WorkspaceCard onOpen={() => setFolderOpen(true)} />
           <button className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => setView('settings')}>
             <span className="ic"><Ic.Settings /></span><span className="ntitle">{t('Settings')}</span>
           </button>
