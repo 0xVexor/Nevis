@@ -34,7 +34,7 @@ export interface Settings {
   prereleaseUpdates: boolean
 }
 
-export const DEFAULTS: Settings = { lang: 'en', dir: 'auto', theme: 'light', accent: null, bg: { kind: 'default' }, radius: 12, font: 'vazir', fontSize: 16, textColor: null, sidebar: 'default', pagesView: 'tree', sideGlass: 0, mainGlass: 0, bgStrength: 100, showCovers: true, showIcons: true, reduceMotion: false, cardReminders: true, compressImages: true, prereleaseUpdates: false }
+export const DEFAULTS: Settings = { lang: 'en', dir: 'auto', theme: 'light', accent: null, bg: { kind: 'default' }, radius: 10, font: 'vazir', fontSize: 16, textColor: null, sidebar: 'default', pagesView: 'tree', sideGlass: 0, mainGlass: 0, bgStrength: 100, showCovers: true, showIcons: true, reduceMotion: false, cardReminders: true, compressImages: true, prereleaseUpdates: false }
 
 const KEY = 'not.settings'
 const LEGACY_THEME = 'not.theme' // 'light' | 'dark' | null from before the settings page

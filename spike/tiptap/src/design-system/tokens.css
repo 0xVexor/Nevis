@@ -40,9 +40,10 @@
   --ds-info: light-dark(#3b6fd4, #7aa2ee);
 
   /* shape */
-  --ds-r-sm: 7px;
-  --ds-r: 10px;
-  --ds-r-lg: 14px;
+  /* follow Settings → Corner radius (it writes --radius, --radius-sm and --radius-lg) */
+  --ds-r-sm: var(--radius-sm, 7px);
+  --ds-r: var(--radius, 10px);
+  --ds-r-lg: var(--radius-lg, 14px);
   --ds-r-full: 999px;
 
   /* spacing: multiples of 4 */

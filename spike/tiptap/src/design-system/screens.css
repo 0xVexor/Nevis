@@ -109,3 +109,35 @@
 .sx-drop-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-block-start: 10px; }
 /* count badges: the digit is centred on its cap height, so it sits in the middle of the circle */
 .badge { line-height: 1; padding-block-start: 2px; }
+
+/* ───── search: the command palette (Ctrl K) and find in page (Ctrl F) ───── */
+.modal.palette { width: min(640px, 94vw); border-radius: 16px; background: var(--ds-bg); backdrop-filter: none; box-shadow: var(--ds-shadow-pop); }
+.pal-search { gap: 12px; padding: 0 18px; block-size: 54px; border-bottom: 1px solid var(--ds-line); }
+.pal-sic { inline-size: auto; block-size: auto; border-radius: 0; background: none; box-shadow: none; color: var(--ds-text-3); }
+.pal-search input { block-size: 100%; font-size: 16px; font-weight: 400; letter-spacing: 0; }
+.pal-search input::placeholder { color: var(--ds-text-3); }
+.pal-tabs { gap: 4px; padding: 8px 14px; border-bottom-color: var(--ds-line); }
+.pal-tabs button { block-size: 28px; padding: 0 12px; border: 0; border-radius: var(--ds-r-full); font-size: 13px; font-weight: 500; color: var(--ds-text-2); }
+.pal-tabs button:hover { background: var(--ds-hover); color: var(--ds-text); }
+.pal-tabs button.on { background: var(--ds-accent-soft); color: var(--ds-accent); font-weight: 550; }
+.pal-count { background: none; color: var(--ds-text-3); font-weight: 500; }
+.pal-list { padding: 6px 8px 8px; }
+.palette .result { gap: 12px; min-height: 44px; padding: 6px 10px; border-radius: 8px; }
+.palette .result.sel { background: var(--ds-hover); }
+.palette .result.sel::before { display: none; }
+.palette .result-ic { inline-size: 30px; block-size: 30px; border-radius: 8px; font-size: 15px; background: var(--ds-bg); color: var(--ds-text-2); }
+.palette .result.sel .result-ic { background: var(--ds-accent-soft); border-color: var(--ds-accent-line); color: var(--ds-accent); box-shadow: none; transform: none; }
+.palette .result-tx b { font-size: 14px; font-weight: 550; }
+.palette .result-tx small { margin-top: 1px; }
+.palette mark { background: color-mix(in oklab, var(--ds-accent) 20%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; font-weight: inherit; }
+.palette .result.sel .result-go { color: var(--ds-text-3); }
+.pal-empty { color: var(--ds-text-3); }
+.pal-empty b { font-weight: 600; }
+.palette .palette-foot { padding: 10px 16px; background: var(--ds-sunk); border-top-color: var(--ds-line); color: var(--ds-text-3); }
+.findbar { border-color: var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); box-shadow: var(--ds-shadow-pop); }
+.findbar:focus-within { border-color: var(--ds-accent-line); }
+.findbar button { border-radius: var(--ds-r-sm); }
+.findbar button:hover { background: var(--ds-hover); }
+.find-count { color: var(--ds-text-3); font-variant-numeric: tabular-nums; }
+.tiptap .find-hit { background: color-mix(in oklab, var(--ds-warn) 30%, transparent); border-radius: 3px; }
+.tiptap .find-hit.find-cur { background: color-mix(in oklab, var(--ds-warn) 60%, transparent); outline: 1px solid var(--ds-warn); }
