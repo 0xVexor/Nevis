@@ -1,5 +1,14 @@
 // English → Persian UI strings (see i18n.ts). Generated once from the original Persian UI, edit freely.
 export const FA: Record<string, string> = {
+  "Import Markdown or an Obsidian vault": "درون‌ریزی Markdown یا کتابخانه‌ی Obsidian",
+  "Bring pages in from Markdown files or an Obsidian folder.": "صفحه‌ها را از فایل‌های Markdown یا یک پوشه‌ی Obsidian وارد کنید.",
+  "Export all pages": "برون‌بری همه‌ی صفحه‌ها",
+  "Zip with Markdown and images": "فایل zip با Markdown و تصویرها",
+  "Everything in one file": "همه‌چیز در یک فایل",
+  "Bring your notes back from a backup file": "یادداشت‌ها را از فایل پشتیبان برگردانید",
+  "Keeps a copy in a folder you choose": "یک نسخه در پوشه‌ای که انتخاب می‌کنید نگه می‌دارد",
+  "Choose folder": "انتخاب پوشه",
+  "Switch or create a workspace": "جابه‌جایی یا ساخت فضای کاری",
   "{n} tasks left": "{n} کار باقی مانده",
   "{n} flashcards due": "{n} فلش‌کارت موعددار",
   "Continue where you left off": "ادامه از همان‌جا که بودید",
