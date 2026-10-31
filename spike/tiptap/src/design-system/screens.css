@@ -991,3 +991,30 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 .nav-hist { display: flex; gap: 2px; margin-inline-end: 4px; }
 .nav-hist .icon-btn { inline-size: 30px; block-size: 30px; border-radius: var(--ds-r-sm); color: var(--ds-text-2); }
 .nav-hist .icon-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* ───── Tables: the frame belongs to the wrapper, the grid inside is plain collapsed borders ─────
+   Cells carry dir=auto, so logical borders / corner radii on them would resolve per cell from its own letters (Persian vs English)
+   and tear the frame apart. Physical collapsed borders do not care, and the wrapper clips the outer edge with the corner radius. */
+.tiptap .tableWrapper { position: relative; margin: 1em 0; padding: 0; overflow: auto; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); }
+.tiptap .tableWrapper > table { margin: -1px; inline-size: calc(100% + 2px); border: 0; border-radius: 0; border-collapse: collapse; background: none; overflow: visible; table-layout: fixed; }
+.tiptap td, .tiptap th { border: 1px solid var(--ds-line); border-radius: 0 !important; }
+.tiptap tr > *, .tiptap tr:first-child > *, .tiptap tr:last-child > * { border-radius: 0 !important; }
+.tiptap th { background: var(--ds-sunk); }
+.tiptap .tableWrapper > .section-drag-surface { position: absolute; inset-block-start: 0; inset-inline: 0; z-index: 2; block-size: 8px; inline-size: auto; }
+
+/* ───── Writing streak, as in the design: a row of rounded cells, quiet until a day was written ───── */
+.home-streak { padding: 16px 18px; }
+.home-streak-head { gap: 10px; margin-block-end: 16px; }
+.home-flame { color: var(--ds-accent); }
+.home-flame .ds-icon { fill: color-mix(in oklab, var(--ds-accent) 20%, transparent); }
+.home-streak-head b { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+.home-month-head { margin-block-end: 12px; padding-block-start: 12px; border-block-start: 1px solid var(--ds-line); }
+.home-month-head b { font-size: 13.5px; font-weight: 550; }
+.home-month { gap: 6px; }
+.home-month .wd { padding: 0 0 2px; color: var(--ds-text-3); font-size: 11.5px; font-weight: 500; }
+.home-month i { aspect-ratio: auto; block-size: 30px; border-radius: calc(var(--ds-r-sm) * 0.85); background: var(--ds-sunk); color: var(--ds-text-3); font-size: 11.5px; font-weight: 500; }
+.home-month i.blank { background: none; }
+.home-month i.done { background: var(--ds-accent); color: var(--ds-accent-ink); }
+.home-month i.now { box-shadow: inset 0 0 0 1.5px var(--ds-accent); color: var(--ds-text); background: var(--ds-sunk); }
+.home-month i.now.done { background: var(--ds-accent); color: var(--ds-accent-ink); }
+.home-month i.future { background: none; box-shadow: inset 0 0 0 1px var(--ds-line); opacity: 1; color: var(--ds-text-3); }
