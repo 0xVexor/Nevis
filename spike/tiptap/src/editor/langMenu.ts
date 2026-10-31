@@ -7,7 +7,7 @@ let close: (() => void) | null = null
 export function openLangMenu(anchor: HTMLElement, items: { value: string; label: string }[], current: string, onPick: (v: string) => void) {
   close?.()
   const pop = document.createElement('div')
-  pop.className = 'popover lang-pop'
+  pop.className = 'ds-pop lang-pop'
   pop.innerHTML = '<div class="lang-head"><input class="lang-search" type="text" spellcheck="false"></div><div class="lang-list" role="listbox"></div>'
   const input = pop.querySelector('input') as HTMLInputElement
   input.placeholder = t('Search languages…')
@@ -28,9 +28,9 @@ export function openLangMenu(anchor: HTMLElement, items: { value: string; label:
       const b = document.createElement('button')
       b.type = 'button'
       b.setAttribute('role', 'option')
-      b.className = 'menu-item' + (it.value === current ? ' on' : '') + (i === sel ? ' hot' : '')
-      b.innerHTML = '<span class="menu-tx"></span>' + (it.value === current ? `<span class="sel-check">${CHECK}</span>` : '')
-      ;(b.querySelector('.menu-tx') as HTMLElement).textContent = it.label
+      b.className = 'ds-menu-item' + (it.value === current ? ' on' : '') + (i === sel ? ' hot' : '')
+      b.innerHTML = '<span class="ds-menu-label"></span>' + (it.value === current ? `<span class="sel-check">${CHECK}</span>` : '')
+      ;(b.querySelector('.ds-menu-label') as HTMLElement).textContent = it.label
       b.onmousedown = (e) => e.preventDefault()
       b.onclick = () => pick(it.value)
       b.onmousemove = () => {

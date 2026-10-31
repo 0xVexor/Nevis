@@ -58,7 +58,7 @@ async function block(n: Node, img: ImageResolver, indent = ''): Promise<string> 
       return `$$\n${n.attrs?.latex ?? ''}\n$$`
     case 'callout': {
       const lines = (await blocks(kids, img)).split('\n')
-      return lines.map((l, i) => `> ${i === 0 ? `${n.attrs?.emoji ?? '💡'} ` : ''}${l}`.trimEnd()).join('\n')
+      return lines.map((l, i) => `> ${i === 0 ? `${({ bulb: '💡', warning: '⚠️', info: 'ℹ️', check: '✅', flame: '🔥', pin: '📌', bell: '🔔' } as Record<string, string>)[n.attrs?.emoji] ?? n.attrs?.emoji ?? '💡'} ` : ''}${l}`.trimEnd()).join('\n')
     }
     case 'toggle': {
       const [head, ...rest] = kids

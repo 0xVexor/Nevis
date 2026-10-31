@@ -4,6 +4,7 @@ import { pickFiles } from './io'
 import { putFile, urlFor } from './attachments'
 import * as Ic from './icons'
 import { t } from './i18n'
+import { BACKGROUNDS } from './design-system/backgrounds'
 
 /** Built-in covers: ten abstract designs, pure CSS, so they cost no storage and survive backup/restore untouched. */
 const mesh = (...stops: [string, number, number][]) => stops.map(([c, x, y]) => `radial-gradient(at ${x}% ${y}%, ${c} 0, transparent 55%)`).join(', ')
@@ -28,7 +29,23 @@ const terracotta = `<rect x='-3.5' y='-20' width='7' height='21' rx='3.5' fill='
 const concrete = `<path d='M0 0l-6-14 3 7-1-10 4 9 4-9-1 10 3-7z' fill='#3e5f52'/><path d='M0 0l-9-8 6 3-8-1 9 1-2-4zM0 0l9-8-6 3 8-1-9 1 2-4z' fill='#4d6f5f'/><rect x='-9' y='0' width='18' height='15' rx='2.5' fill='#d9d9d4'/><path d='M-9 4h18' stroke='#c4c4be' stroke-width='.8'/>`
 const fabric = `<ellipse cx='0' cy='-6' rx='7' ry='9' fill='#668b72'/><path d='M-3-10v8M3-10v8M0-14v10' stroke='#86ab90' stroke-width='.8'/><circle cx='0' cy='-16' r='3.4' fill='#e6bca5'/><circle cx='0' cy='-16' r='1.2' fill='#f3dccd'/><path d='M-9 0h18v12a4 4 0 0 1-4 4h-10a4 4 0 0 1-4-4z' fill='#b9c9b5'/><circle cx='0' cy='8' r='3' fill='#f4f7f1' opacity='.9'/><circle cx='0' cy='8' r='1' fill='#e6bca5'/>`
 
+/** The ten covers the picker offers: soft two-colour washes from the design system. */
+const soft = (a: string, b: string, c?: string) => `linear-gradient(120deg, ${a}${c ? `, ${b} 55%, ${c}` : `, ${b}`})`
+const PICKER: { id: string; label: string; css: string }[] = [
+  { id: 'ds-lilac', label: 'Lilac', css: soft('#e7d6f7', '#bcd7f7', '#c8f0e4') },
+  { id: 'ds-periwinkle', label: 'Periwinkle', css: soft('#d9e6ff', '#e4d9ff') },
+  { id: 'ds-mint', label: 'Mint', css: soft('#cdeee8', '#dff3c9') },
+  { id: 'ds-peach', label: 'Peach', css: soft('#ffe3c7', '#ffd3dc') },
+  { id: 'ds-rose', label: 'Rose', css: soft('#ffd9e2', '#ffe9cf') },
+  { id: 'ds-sage', label: 'Sage', css: soft('#cfe3d4', '#e6efd2') },
+  { id: 'ds-sand', label: 'Sand', css: soft('#f1e5e3', '#e6edf2') },
+  { id: 'ds-slate', label: 'Slate', css: soft('#d9e4ea', '#b9c7d6') },
+  { id: 'ds-dusk', label: 'Dusk', css: soft('#3b3f6e', '#6d7fa8') },
+  { id: 'ds-ink', label: 'Ink', css: soft('#2a2d4a', '#0d0e14') },
+]
+
 const GRADIENTS: { id: string; label: string; css: string }[] = [
+  ...PICKER,
   { id: 'pots-blush', label: 'Blush cacti', css: potRow('#f1e5e3', 120, [30, 60, 90].map((x) => ({ x, art: terracotta }))) },
   { id: 'pots-azure', label: 'Azure succulents', css: potRow('#568bb0', 240, [128, 156, 184].map((x) => ({ x, art: concrete }))) },
   { id: 'pots-sage', label: 'Sage cacti', css: potRow('#96a693', 120, [20, 47, 74, 101].map((x) => ({ x, art: fabric }))) },
@@ -47,9 +64,17 @@ const GRADIENTS: { id: string; label: string; css: string }[] = [
   { id: 'ink', label: 'Ink', css: 'conic-gradient(from 160deg at 70% 130%, #2a2d4a, #0d0e14 30%, #1c1f38 60%, #0d0e14)' },
 ]
 
+// the design system's backgrounds (soft, vivid, dark, patterns, scenes) join the built-in covers; ids already present stay as they are
+for (const b of BACKGROUNDS) if (!GRADIENTS.some((g) => g.id === b.id)) GRADIENTS.push({ id: b.id, label: b.label, css: b.css })
+
 /** Covers no longer offered: pages that used them show the closest of the ten. */
 const LEGACY: Record<string, string> = { sunset: 'liquid', ocean: 'lagoon', forest: 'topo', rose: 'peachmist', dusk: 'nebula', mist: 'peachmist', nightsky: 'nebula', dunes: 'peachmist', tide: 'lagoon', 'mesh-iris': 'aurora', 'mesh-peach': 'peachmist', 'mesh-mint': 'lagoon', 'mesh-ember': 'liquid', 'mesh-deep': 'lagoon', sand: 'peachmist' }
-const gradientOf = (id: string) => GRADIENTS.find((g) => g.id === (LEGACY[id] ?? id)) ?? GRADIENTS.find((g) => g.id === 'aurora')!
+/** A cover the person made from two colours of their own is stored as `custom:#a,#b`. */
+const customOf = (id: string) => {
+  const m = /^custom:(#[0-9a-f]{6}),(#[0-9a-f]{6})$/i.exec(id)
+  return m ? { id, label: 'Custom', css: soft(m[1], m[2]) } : null
+}
+const gradientOf = (id: string) => customOf(id) ?? GRADIENTS.find((g) => g.id === (LEGACY[id] ?? id)) ?? GRADIENTS.find((g) => g.id === 'aurora')!
 
 function useCoverStyle(cover: Cover | undefined) {
   const [url, setUrl] = useState<string | null>(null)
@@ -90,18 +115,23 @@ export function CoverBanner({ cover, onChange, onRemove }: { cover: Cover; onCha
 
 export function CoverPicker({ page, onPick, onClose }: { page: Page; onPick: (c: Cover | undefined) => void; onClose: () => void }) {
   const cur = page.cover
+  const curId = cur?.kind === 'gradient' ? gradientOf(cur.id).id : null
+  const mine = curId && /^custom:/.test(curId) ? curId.slice(7).split(',') : ['#e7d6f7', '#bcd7f7']
+  const [a, setA] = useState(mine[0])
+  const [b, setB] = useState(mine[1])
   return (
     <div className="cover-pop">
       <div className="cover-grid">
-        {GRADIENTS.map((g) => (
-          <button
-            key={g.id}
-            title={t(g.label)}
-            className={cur?.kind === 'gradient' && gradientOf(cur.id).id === g.id ? 'on' : ''}
-            style={{ background: g.css }}
-            onClick={() => (onPick({ kind: 'gradient', id: g.id }), onClose())}
-          />
+        {PICKER.map((g) => (
+          <button key={g.id} title={t(g.label)} aria-label={t(g.label)} className={curId === g.id ? 'on' : ''} style={{ background: g.css }} onClick={() => (onPick({ kind: 'gradient', id: g.id }), onClose())} />
         ))}
+      </div>
+      <div className="cover-custom">
+        <span>{t('Your own colors')}</span>
+        <input type="color" value={a} aria-label={t('First color')} onChange={(e) => setA(e.target.value)} />
+        <input type="color" value={b} aria-label={t('Second color')} onChange={(e) => setB(e.target.value)} />
+        <i style={{ background: soft(a, b) }} />
+        <button type="button" onClick={() => (onPick({ kind: 'gradient', id: `custom:${a},${b}` }), onClose())}>{t('Use')}</button>
       </div>
       <button
         className="cover-row"

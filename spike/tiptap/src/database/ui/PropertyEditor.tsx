@@ -290,9 +290,9 @@ export function NewPropertyPopover({ svc, sourceId, anchor, onClose, onCreated, 
             <input className="db-input" autoFocus placeholder={t('Search property types…')} value={q} onChange={(e) => setQ(e.target.value)} />
             <div className="db-types" role="listbox">
               {kinds.map((k) => (
-                <button key={k} type="button" role="option" className="menu-item" onClick={() => { setKind(k); setName(''); setConfig(k === 'unique_id' ? { allocationMode: 'partitioned' } : k === 'connected' ? { providerId: 'github_pr', connectionId: 'default', exposedFields: [] } : {}) }}>
-                  <span className="menu-ic"><KindIcon kind={k} /></span>
-                  <span className="menu-tx">{t(KIND_LABEL[k])}</span>
+                <button key={k} type="button" role="option" className="ds-menu-item" onClick={() => { setKind(k); setName(''); setConfig(k === 'unique_id' ? { allocationMode: 'partitioned' } : k === 'connected' ? { providerId: 'github_pr', connectionId: 'default', exposedFields: [] } : {}) }}>
+                  <span className="ds-menu-ic"><KindIcon kind={k} /></span>
+                  <span className="ds-menu-label">{t(KIND_LABEL[k])}</span>
                 </button>
               ))}
             </div>
@@ -417,7 +417,7 @@ export function PropertyMenu({ svc, def, anchor, onClose, actions, onEditActions
     <Popover anchor={anchor} onClose={onClose}>
       <div className="db-pop wide" onClick={(e) => e.stopPropagation()}>
         {view === 'menu' ? (
-          <div className="menu">
+          <div className="ds-menu">
             <div className="db-form">
               <Field label={t('Name')}><input className="db-input" dir="auto" value={name} disabled={!canSchema} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name.trim() !== def.name && void save()} onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && void save()} /></Field>
               <div className="db-kind-line"><KindIcon kind={def.kind} /> {t(KIND_LABEL[def.kind])}</div>

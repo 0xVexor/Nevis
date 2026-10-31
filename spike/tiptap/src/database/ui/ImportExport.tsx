@@ -42,7 +42,7 @@ export function ImportExportMenu({ svc, container, source, view, anchor, onClose
   return (
     <>
       <Popover anchor={anchor} onClose={onClose} align="end">
-        <div className="menu">
+        <div className="ds-menu">
           <MenuLabel>{t('Import')}</MenuLabel>
           <MenuItem icon={<Ic.Upload size={14} />} label={t('Import CSV…')} onClick={() => csvInput.current?.click()} />
           <MenuLabel>{t('Export this view')}</MenuLabel>

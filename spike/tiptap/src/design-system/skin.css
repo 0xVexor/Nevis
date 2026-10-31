@@ -1,0 +1,195 @@
+/*
+ * Nevis design system — "Calm" skin for screens that have not been migrated yet.
+ *
+ * Step 1 of the migration (docs/design-system.md → Migration): the legacy tokens keep their names but take the new values,
+ * and the few decorative layers of "Aurora Paper" (aurora canvas, floating glass panels, gradient buttons, glow) are flattened.
+ * Every legacy screen picks up the new palette, borders and radii without being rewritten. Screens are then migrated one by one
+ * to ds- classes; when the last one is done this file and the legacy styles are deleted.
+ *
+ * Loaded after every legacy stylesheet so it wins by order, never by specificity.
+ */
+:root {
+  /* the design's default corner radius; Settings → Corner radius overrides these inline */
+  --radius: 10px;
+  --radius-sm: 7px;
+  --radius-lg: 14px;
+  --radius-xl: 14px;
+
+  /* the design's typeface: Instrument Sans for Latin, Vazirmatn for Persian (Settings → Font still overrides) */
+  --font: 'Instrument Sans', 'Vazirmatn', 'Segoe UI', Tahoma, system-ui, sans-serif;
+
+  /* one accent, derived everywhere; a chosen accent still comes from settings (--user-accent) */
+  --accent: var(--ds-accent);
+  --accent-on: var(--ds-accent-ink);
+  --accent-2: var(--ds-accent);
+  --accent-bg: var(--ds-accent-soft);
+  --accent-soft: color-mix(in srgb, var(--ds-accent) 7%, transparent);
+  --accent-ring: var(--ds-accent-line);
+  --grad: var(--ds-accent);
+  --grad-soft: var(--ds-accent-soft);
+
+  /* surfaces, ink, lines */
+  --bg-app: var(--ds-side);
+  --bg: var(--ds-bg);
+  --bg-raised: var(--ds-raised);
+  --bg-sunk: var(--ds-sunk);
+  --pop: var(--ds-raised);
+  --side-bg: var(--ds-side);
+  --text: var(--ds-text);
+  --muted: var(--ds-text-2);
+  --faint: var(--ds-text-3);
+  --hover: var(--ds-hover);
+  --active: var(--ds-press);
+  --border: var(--ds-line);
+  --border-strong: var(--ds-line-strong);
+  --dot: transparent;
+  --danger: var(--ds-bad);
+  --ok: var(--ds-ok);
+  --warn: var(--ds-warn);
+
+  /* depth: only things that float get a shadow */
+  --shadow: var(--ds-shadow-pop);
+  --panel-shadow: none;
+  --glow: none;
+
+  /* no aurora behind the app; a custom background chosen in settings still works */
+  --mesh-light: none;
+  --mesh-dark: none;
+}
+
+/* ───── shell: a flat sidebar and a flat page, separated by one hairline ───── */
+.app { padding: 0; gap: 0; background: transparent; }
+.app::before { display: none; }
+.side {
+  padding: 0 12px; border: 0; border-inline-end: 1px solid var(--ds-line); border-radius: 0;
+  background: color-mix(in srgb, var(--ds-side) calc(100% - var(--glass-side, 0) * 82%), transparent); box-shadow: none;
+  backdrop-filter: blur(calc(var(--glass-side, 0) * 28px)) saturate(calc(1 + var(--glass-side, 0) * 0.5));
+}
+.side.closed { margin-inline-start: calc(-1 * var(--sw)); transform: none; }
+.ws-logo { filter: none; }
+.ws-name { background: none; -webkit-text-fill-color: currentColor; color: var(--ds-text); font-weight: 650; letter-spacing: -0.01em; }
+.main { border: 0; border-radius: 0; background: color-mix(in srgb, var(--ds-bg) calc(100% - var(--glass-main, 0) * 75%), transparent); box-shadow: none; }
+.main::before { display: none; }
+/* Settings → Background: the app stays full screen and flat. The chosen background sits behind both panels and shows through
+   only as far as the glass sliders open them. */
+
+/* ───── sidebar rows ───── */
+.section { font-size: 12px; font-weight: 550; letter-spacing: 0; text-transform: none; color: var(--ds-text-3); }
+.row { min-height: 32px; border-radius: var(--ds-r-sm); }
+.row.cur, .row.plain.cur { background: var(--ds-accent-soft); color: var(--ds-accent); font-weight: 550; }
+.row.cur::before { inset-inline-start: -12px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--ds-accent); box-shadow: none; }
+:root[dir='rtl'] .row.cur::before { border-radius: 3px 0 0 3px; }
+/* nav count: a plain number in an empty circle, never a filled pill */
+.badge {
+  min-width: 22px; height: 22px; padding: 0 4px; border: 1.5px solid var(--ds-line-strong); border-radius: 50%;
+  background: none; color: var(--ds-text-2); box-shadow: none; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.row.cur .badge { border-color: var(--ds-accent); color: var(--ds-accent); }
+.pg-ic.tile { box-shadow: none; }
+.search-row, .row.plain.search-row { border-radius: var(--ds-r); box-shadow: none; }
+.search-row:hover, .row.plain.search-row:hover { border-color: var(--ds-line-strong); box-shadow: none; }
+.side-utils { border-top-style: solid; border-top-color: var(--ds-line); }
+
+/* ───── buttons: flat accent, no shine ───── */
+.new-page { height: 38px; border-radius: var(--ds-r); box-shadow: none; font-weight: 550; }
+.new-page::after { display: none; }
+.new-page:hover, .primary:hover:not(:disabled), .share-btn:hover { transform: none; }
+.primary, .pill-btn, .share-btn { border-radius: var(--ds-r); box-shadow: none; font-weight: 550; }
+.icon-btn { border-radius: var(--ds-r-sm); }
+.icon-btn.fav-on svg { filter: none; }
+
+/* ───── empty states ───── */
+.blank-ic { border-radius: var(--ds-r-lg); background: var(--ds-accent-soft); border-color: var(--ds-accent-line); box-shadow: none; }
+.blank h2 { font-weight: 650; }
+
+/* ───── floating surfaces: slash menu, toolbar menus, bubble toolbar, palette share one panel style ───── */
+.tb-menu, .bubble, .bubble.tbl, .slash-menu {
+  border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised);
+  backdrop-filter: none; box-shadow: var(--ds-shadow-pop);
+}
+.bubble, .bubble.tbl { border-radius: 12px; }
+.bubble button { border-radius: var(--ds-r-sm); }
+.bubble button.on { background: var(--ds-accent-soft); color: var(--ds-accent); }
+.toolbar .tb-menu button.tb-mi { min-height: 34px; border-radius: 8px; font-size: 14px; }
+.toolbar .tb-menu button.tb-mi.on { background: var(--ds-accent-soft); color: var(--ds-accent); font-weight: 550; }
+.slash-label { padding: 10px 14px 4px; font-size: 11.5px; font-weight: 550; letter-spacing: 0; text-transform: none; color: var(--ds-text-3); }
+.slash-list { padding: 4px 6px 6px; }
+.slash-item { min-height: 46px; gap: 12px; padding: 6px 8px; border-radius: 8px; }
+.slash-item.sel { background: var(--ds-hover); }
+.slash-item.sel::before { display: none; }
+.slash-ic { width: 32px; height: 32px; border: 1px solid var(--ds-line); border-radius: 8px; background: var(--ds-bg); color: var(--ds-text-2); }
+.slash-ic svg { width: 17px; height: 17px; }
+.slash-tx b { font-size: 14px; font-weight: 550; }
+.slash-foot { background: var(--ds-sunk); border-top-color: var(--ds-line); }
+
+/* ───── sidebar: brand, search, one list, workspace and actions at the bottom ───── */
+.ws { height: 56px; gap: 8px; padding: 0 2px; }
+.ws-name { font-size: 16px; }
+.side-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+.side-scroll::-webkit-scrollbar { display: none; }
+.row { margin: 1px 0; font-size: 14px; font-weight: 450; }
+.row .ic { color: var(--ds-text-3); }
+.row:hover .ic { color: var(--ds-text-2); }
+.row.cur .ic, .row.cur .twisty { color: var(--ds-accent); }
+.row.tree.folder { font-weight: 550; }
+.row.tree.folder .ic { color: var(--ds-text-2); }
+.tree-kids { border-inline-start-color: var(--ds-line); }
+.section { margin-block: 18px 4px; }
+.empty-note { color: var(--ds-text-3); }
+
+/* bottom: workspace switcher, settings, trash, and the New page split button */
+.side-foot { gap: 2px; padding: 8px 0 12px; border-block-start: 1px solid var(--ds-line); }
+.wscard { gap: 10px; padding: 6px 8px; margin-block-end: 6px; border: 1px solid transparent; border-radius: var(--ds-r); background: none; box-shadow: none; }
+.wscard:hover { background: var(--ds-hover); border-color: transparent; box-shadow: none; }
+.wscard-ic { width: 30px; height: 30px; border-radius: 9px; background: var(--ds-accent-soft); box-shadow: none; }
+.wscard-tx b { font-size: 13.5px; font-weight: 600; }
+.wscard-tx small { font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ds-text-3); }
+.side-new { margin-block-start: 8px; }
+.side-new .ds-btn { height: 36px; }
+.side-new .ds-btn:first-child { gap: 8px; }
+.side-credit { margin-block-start: 6px; font-size: 11px; letter-spacing: 0; }
+:root[data-side='icons'] .side-new > :last-child, :root[data-side='icons'] .side-credit { display: none; }
+:root[data-side='icons'] .side-new > :first-child { border-radius: var(--ds-r); padding: 0; }
+
+/* brand row: logo and name share one centre line */
+.ws { height: 52px; padding: 0 2px; gap: 8px; align-items: center; }
+.ws-logo { display: grid; place-items: center; flex: none; line-height: 0; }
+.ws-logo svg { display: block; }
+.ws .brand, .ws-name { display: inline-flex; align-items: center; line-height: 1; }
+
+/* ───── sidebar pages: monochrome and borderless; hover turns the accent colour, like search results ───── */
+.side .pg-ic.tile { background: none; box-shadow: none; color: var(--ds-text-3); }
+.side .pg-ic.tile svg { color: inherit; }
+.side .pg-ic.emoji { filter: grayscale(1); opacity: 0.8; }
+.tree-kids { border-inline-start-color: transparent; }
+.side .row:hover { background: var(--ds-accent-soft); color: var(--ds-accent); }
+.side .row:hover .ic, .side .row:hover .twisty, .side .row:hover .tree-count { color: var(--ds-accent); }
+.side .row:hover .pg-ic.tile { color: var(--ds-accent); }
+.side .row:hover .pg-ic.emoji { filter: none; opacity: 1; }
+.side .row.cur .pg-ic.tile { color: var(--ds-accent); }
+.side .row:hover kbd { border-color: var(--ds-accent-line); color: var(--ds-accent); }
+
+/* nested pages keep their icon (the legacy tree hid it on pages without children, which only worked next to its guide line) */
+.row.tree.leaf .ic { display: grid; }
+.row.tree.leaf { padding-inline-start: 4px; font-weight: 450; }
+
+/* ───── top bar: plain breadcrumbs, a quiet "Saved", loose icon buttons, a flat Share ───── */
+.crumbs { block-size: 32px; padding: 0; gap: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.crumb { block-size: 28px; }
+.crumb-home { background: none; border-radius: var(--ds-r-sm); }
+.crumb-home:hover { background: var(--ds-hover); color: var(--ds-text); }
+.crumb button, .crumb-folder, .crumb-cur { padding: 0 8px; border-radius: var(--ds-r-sm); font-size: 13.5px; }
+.crumb:last-child button, .crumb.last button, .crumb-cur { background: none; color: var(--ds-text); font-weight: 550; }
+.crumb button:hover { background: var(--ds-hover); }
+.status { block-size: 28px; padding: 0 8px; border: 0; background: none; font-size: 12.5px; color: var(--ds-text-3); }
+.status .dot { inline-size: 6px; block-size: 6px; box-shadow: none; }
+.tb-group { block-size: auto; padding: 0; gap: 2px; border: 0; border-radius: 0; background: none; }
+.tb-group .icon-btn { border-radius: var(--ds-r-sm); }
+.tb-group .icon-btn:hover { background: var(--ds-hover); color: var(--ds-text); }
+.tb-group .icon-btn.active { background: var(--ds-accent-soft); color: var(--ds-accent); }
+.tb-group .icon-btn.fav-on { background: none; color: var(--ds-warn); }
+.share-btn { block-size: 34px; border-radius: var(--ds-r); padding: 0 14px; font-size: 14px; font-weight: 550; }
+
+/* dropping a page on Favorites pins it */
+.fav-zone { margin-inline: -4px; padding-inline: 4px; border-radius: var(--ds-r); outline: 1.5px dashed transparent; outline-offset: -2px; transition: outline-color var(--ds-fast), background var(--ds-fast); }
+.fav-zone.over { outline-color: var(--ds-accent); background: var(--ds-accent-soft); }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { isTauri, vaultInfo } from './db'
 import * as Ic from './icons'
+import { Icon } from './design-system'
 import { t } from './i18n'
 
 /** Card at the top of the sidebar: the workspace you are in. Clicking it opens the workspaces dialog (switch, create). */
@@ -12,7 +13,7 @@ export function WorkspaceCard({ onOpen }: { onOpen: () => void }) {
   }, [])
   return (
     <button className="wscard" title={t('Workspaces')} onClick={onOpen}>
-      <span className="wscard-ic"><Ic.Layers size={18} /></span>
+      <span className="wscard-ic"><Icon name="vault" /></span>
       <span className="wscard-tx">
         <b dir="auto">{name || t('Personal space')}</b>
         <small>{t('Local workspace')}</small>

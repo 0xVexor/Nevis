@@ -44,7 +44,7 @@ export function Popover({ anchor, onClose, children, align = 'start' }: { anchor
     const down = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose()
     const key = (e: KeyboardEvent) => {
       if (e.key === 'Escape') return onClose()
-      const items = [...(ref.current?.querySelectorAll<HTMLElement>('button.menu-item:not(:disabled)') ?? [])]
+      const items = [...(ref.current?.querySelectorAll<HTMLElement>('button.ds-menu-item:not(:disabled)') ?? [])]
       if (!items.length || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return
       e.preventDefault()
       const i = items.indexOf(document.activeElement as HTMLElement)
@@ -60,7 +60,7 @@ export function Popover({ anchor, onClose, children, align = 'start' }: { anchor
   }, [onClose])
 
   return createPortal(
-    <div ref={ref} className="popover" style={{ top: pos.top, left: pos.left, ...(pos.maxH ? { maxHeight: pos.maxH, overflowY: 'auto' } : null) }}>
+    <div ref={ref} className="ds-pop" style={{ position: 'fixed', zIndex: 500, top: pos.top, left: pos.left, ...(pos.maxH ? { maxHeight: pos.maxH, overflowY: 'auto' } : null) }}>
       {children}
     </div>, document.body,
   )
@@ -87,11 +87,11 @@ export function Select({ value, options, onChange, className, title, style, disa
       const index = items.indexOf(document.activeElement as HTMLButtonElement)
       const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowDown' ? (index + 1) % items.length : (index - 1 + items.length) % items.length
       items[next]?.focus()
-    }} className="menu sel-menu" role="listbox" style={inline ? undefined : { minWidth: Math.max(rect?.width ?? 0, 180) }} onClick={(e) => e.stopPropagation()}>
+    }} className="ds-menu sel-menu" role="listbox" style={inline ? undefined : { minWidth: Math.max(rect?.width ?? 0, 180) }} onClick={(e) => e.stopPropagation()}>
       {options.map((o) => (
-        <button key={o.value} type="button" role="option" aria-selected={o.value === value} className={'menu-item' + (o.value === value ? ' on' : '')} onClick={() => (onChange(o.value), close(), btn.current?.focus())}>
-          <span className="menu-ic">{o.color ? <i className="sel-dot" style={{ background: o.color }} /> : null}</span>
-          <span className="menu-tx">{o.label}</span>
+        <button key={o.value} type="button" role="option" aria-selected={o.value === value} className={'ds-menu-item' + (o.value === value ? ' on' : '')} onClick={() => (onChange(o.value), close(), btn.current?.focus())}>
+          <span className="ds-menu-ic">{o.color ? <i className="sel-dot" style={{ background: o.color }} /> : null}</span>
+          <span className="ds-menu-label">{o.label}</span>
           {o.value === value && <span className="sel-check"><Ic.Check size={14} /></span>}
         </button>
       ))}
@@ -116,7 +116,7 @@ export function Select({ value, options, onChange, className, title, style, disa
           e.stopPropagation()
           if (open) return close()
           // inside a popover or a dialog the list opens in place, under the field, not as a second popup over it
-          if (btn.current?.closest('.popover, .modal, .db-modal-body')) setInline(true)
+          if (btn.current?.closest('.ds-pop, .modal, .db-modal-body')) setInline(true)
           else setRect(e.currentTarget.getBoundingClientRect())
         }}
       >
@@ -131,16 +131,16 @@ export function Select({ value, options, onChange, className, title, style, disa
 }
 
 export const MenuItem = ({ icon, label, onClick, danger, hint, desc, disabled }: { icon?: ReactNode; label: string; onClick: () => void; danger?: boolean; hint?: string; desc?: string; disabled?: boolean }) => (
-  <button className={'menu-item' + (danger ? ' danger' : '')} onClick={onClick} disabled={disabled}>
-    <span className="menu-ic">{icon}</span>
-    {desc ? <span className="menu-tx"><b>{label}</b><small>{desc}</small></span> : <span className="menu-tx">{label}</span>}
-    {hint && <span className="menu-hint" dir="ltr">{shortcutHint(hint)}</span>}
+  <button className="ds-menu-item" data-danger={danger || undefined} onClick={onClick} disabled={disabled}>
+    <span className="ds-menu-ic">{icon}</span>
+    {desc ? <span className="ds-menu-label"><b>{label}</b><small>{desc}</small></span> : <span className="ds-menu-label">{label}</span>}
+    {hint && <span className="ds-menu-hint" dir="ltr">{shortcutHint(hint)}</span>}
   </button>
 )
 
 /** Small caption that groups the items below it. */
-export const MenuLabel = ({ children }: { children: ReactNode }) => <div className="menu-label">{children}</div>
-export const MenuSep = () => <div className="menu-sep" />
+export const MenuLabel = ({ children }: { children: ReactNode }) => <div className="ds-menu-head">{children}</div>
+export const MenuSep = () => <div className="ds-menu-sep" />
 
 const ICON_COLORS = ['#6a5cff', '#3b82f6', '#06b6d4', '#10b981', '#84cc16', '#f59e0b', '#f97316', '#ef4444', '#ec4899', '#a855f7', '#64748b']
 

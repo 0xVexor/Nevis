@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useEditorState } from '@tiptap/react'
 import { NodeSelection } from '@tiptap/pm/state'
@@ -49,7 +49,19 @@ export function TableBubble({ editor }: { editor: any }) {
       return { hr: hasHeaderRow(e), hc: hasHeaderColumn(e), w: a.tableWidth ?? 100, align: a.tableAlign ?? null, dir: a.dir ?? null, merge: e.can().mergeCells(), split: e.can().splitCell() }
     },
   })
-  const open = !!s
+  // shown by a click on the table, gone with the next click anywhere else (not on hover, not on a keyboard move into the table)
+  const [armed, setArmed] = useState(false)
+  useEffect(() => {
+    const down = (e: PointerEvent) => {
+      const el = e.target as Element | null
+      if (el?.closest?.('.bubble.tbl')) return
+      setArmed(!!el?.closest?.('.tiptap table'))
+    }
+    document.addEventListener('pointerdown', down, true)
+    return () => document.removeEventListener('pointerdown', down, true)
+  }, [])
+  useEffect(() => { if (!s) setArmed(false) }, [s])
+  const open = !!s && armed
   const box = useAnchor(editor, open, () => tableDom(editor), [s?.w, s?.align])
 
   if (!open) return null

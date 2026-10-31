@@ -1,49 +1,78 @@
-import { shortcutLabel } from './shortcuts'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Page } from './repo'
-import { CoverThumb } from './Cover'
 import { PageIcon } from './PageIcon'
-import { MenuItem, MenuSep, Popover, ago } from './ui'
-import * as Ic from './icons'
+import { ago } from './ui'
+import { Icon } from './design-system'
 import { locale, t } from './i18n'
+import { allTasks, setChecked } from './taskData'
+import { countDue } from './cardsDue'
 
 interface Props {
   pages: Page[]
   onOpen: (id: string) => void
   onNew: () => void
-  onFolder: () => void
   onTable: () => void
   onCards: () => void
-  onSearch: () => void
-  onNewDatabase: () => void
-  onNewBoard: () => void
-  onNewList: () => void
-  onDatabases: () => void
-  onDrawings: () => void
-  onTasks: () => void
   onTemplates: () => void
-  onWorkspaces?: () => void
+  onFiles: () => void
+  onTasks: () => void
 }
 
-const greeting = (h: number) => {
-  return h < 5 || h >= 22 ? t('Good night') : h < 12 ? t('Good morning') : h < 18 ? t('Good afternoon') : t('Good evening')
+const greeting = (h: number) => (h < 5 || h >= 22 ? t('Good night') : h < 12 ? t('Good morning') : h < 18 ? t('Good afternoon') : t('Good evening'))
+
+/** The first words of a page, for its card: plain text of the first paragraphs. */
+function excerpt(content: unknown, max = 120): string {
+  let out = ''
+  const walk = (n: any) => {
+    if (!n || out.length >= max) return
+    if (typeof n.text === 'string') out += n.text
+    if (Array.isArray(n.content)) {
+      for (const c of n.content) {
+        walk(c)
+        if (out.length >= max) break
+      }
+      if (n.type === 'paragraph' || n.type === 'heading') out += ' '
+    }
+  }
+  if (content && typeof content === 'object') walk(content)
+  return out.replace(/\s+/g, ' ').trim().slice(0, max)
 }
 
-type Tone = 'violet' | 'blue' | 'green' | 'orange'
-const Action = ({ icon, tone, title, hint, onClick }: { icon: ReactNode; tone: Tone; title: string; hint: string; onClick: () => void }) => (
-  <button type="button" className="hm-act" onClick={onClick}>
-    <span className={'hm-tile ' + tone}>{icon}</span><Ic.Arrow size={15} />
-    <b>{title}</b><small>{hint}</small>
+const dayKey = (ms: number) => {
+  const d = new Date(ms)
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()
+}
+
+const Quick = ({ icon, title, hint, onClick }: { icon: string; title: string; hint: string; onClick: () => void }) => (
+  <button type="button" className="home-quick-item" onClick={onClick}>
+    <span className="ds-tile ds-tile--lg home-quick-tile"><Icon name={icon} size={22} /></span>
+    <span><b>{title}</b><small>{hint}</small></span>
   </button>
 )
-const Box = ({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) => (
-  <section className="hm-box"><header><span className="hm-box-ic">{icon}</span><h3>{title}</h3></header>{children}</section>
+
+const Section = ({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) => (
+  <section className="home-section">
+    <header><h2>{title}</h2>{action}</header>
+    {children}
+  </section>
 )
 
-/** Home lists workspace pages separately from database rows and exposes every creation path. */
-export function Home({ pages, onOpen, onNew, onFolder, onTable, onCards, onSearch, onNewDatabase, onNewBoard, onNewList, onDatabases, onDrawings, onTasks, onTemplates, onWorkspaces }: Props) {
-  const [menu, setMenu] = useState<DOMRect | null>(null)
+/** Progress ring: done / total of the checklist items across every page. */
+function Ring({ done, total }: { done: number; total: number }) {
+  const r = 34
+  const c = 2 * Math.PI * r
+  return (
+    <span className="home-ring" aria-hidden="true">
+      <svg viewBox="0 0 80 80"><circle cx="40" cy="40" r={r} className="home-ring-bg" /><circle cx="40" cy="40" r={r} className="home-ring-fg" strokeDasharray={c} strokeDashoffset={c * (1 - (total ? done / total : 0))} /></svg>
+      <b>{done.toLocaleString(locale())}/{total.toLocaleString(locale())}</b>
+    </span>
+  )
+}
+
+/** Home: greeting, ways to start, where you left off, recent pages; today's checklist, writing streak and pinned pages beside them. */
+export function Home({ pages, onOpen, onNew, onTable, onCards, onTemplates, onFiles, onTasks }: Props) {
   const [now, setNow] = useState(() => Date.now())
+  const [due, setDue] = useState(0)
   useEffect(() => {
     const refresh = () => setNow(Date.now())
     const timer = window.setInterval(refresh, 60_000)
@@ -55,103 +84,119 @@ export function Home({ pages, onOpen, onNew, onFolder, onTable, onCards, onSearc
       document.removeEventListener('visibilitychange', refresh)
     }
   }, [])
-  const hour = new Date(now).getHours()
-  const landscape = hour < 5 || hour >= 22 ? 'night' : hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening'
-  const landscapeUrl = import.meta.env.BASE_URL + 'home-landscapes/' + landscape + '.png'
-  const midnight = new Date(now).setHours(0, 0, 0, 0)
-  const { real, recent, today, favs, databases, boards, lists } = useMemo(() => {
-    const real = pages.filter((p) => p.kind !== 'folder' && !p.database).sort((a, b) => b.updatedAt - a.updatedAt)
-    return {
-      real, recent: real.slice(0, 6), today: real.filter((p) => p.updatedAt >= midnight),
-      favs: pages.filter((p) => p.kind !== 'folder' && p.favorite).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 8), databases: real.filter((p) => p.dbHost),
-      boards: real.filter((p) => p.kind === 'board'), lists: real.filter((p) => p.kind === 'todo'),
+  useEffect(() => {
+    let live = true
+    void countDue().then((n) => live && setDue(n)).catch(() => undefined)
+    return () => {
+      live = false
     }
-  }, [pages, midnight])
+  }, [pages])
+
+  const hour = new Date(now).getHours()
+  const { recent, month, streak } = useMemo(() => {
+    const real = pages.filter((p) => p.kind !== 'folder' && !p.database).sort((a, b) => b.updatedAt - a.updatedAt)
+    // writing streak: consecutive days with at least one edited page; today may still be empty
+    const days = new Set(pages.map((p) => dayKey(p.updatedAt)))
+    const today = new Date(now)
+    today.setHours(12, 0, 0, 0)
+    const back = (n: number) => dayKey(today.getTime() - n * 86_400_000)
+    let n = days.has(back(0)) ? 0 : 1
+    let streak = 0
+    while (days.has(back(n))) (streak++, n++)
+    // the current month, Sunday first: leading blanks, then one cell per day
+    const first = new Date(today.getFullYear(), today.getMonth(), 1, 12)
+    const count = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
+    const cells = [
+      ...Array.from({ length: first.getDay() }, () => null),
+      ...Array.from({ length: count }, (_, i) => {
+        const date = new Date(today.getFullYear(), today.getMonth(), i + 1, 12)
+        return { key: dayKey(date.getTime()), n: i + 1, done: days.has(dayKey(date.getTime())), now: i + 1 === today.getDate(), future: date.getTime() > today.getTime() + 43_200_000 }
+      }),
+    ]
+    return { recent: real.slice(0, 6), month: { label: new Intl.DateTimeFormat(locale(), { month: 'long', year: 'numeric' }).format(today), cells, doneCount: cells.filter((c) => c?.done).length }, streak }
+  }, [pages, now])
+  // pages is a dependency on purpose: toggling a task rewrites its page, which hands Home a new pages array
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const tasks = useMemo(() => allTasks(), [pages])
+  const open = tasks.filter((x) => !x.checked)
   const date = new Intl.DateTimeFormat(locale(), { weekday: 'long', month: 'long', day: 'numeric' }).format(now)
-  const count = (n: number) => n.toLocaleString(locale())
-  const choose = (run: () => void) => { setMenu(null); run() }
-  const row = (p: Page, meta?: string) => (
-    <button type="button" key={p.id} className="hm-row" onClick={() => onOpen(p.id)}>
-      <span className="hm-row-ic"><PageIcon page={p} /></span>
-      <span className="hm-row-t" dir="auto">{p.title || t('Untitled')}</span>
-      {meta && <span className="hm-row-m">{meta}</span>}
-    </button>
-  )
-  const collections = [
-    { title: t('Databases'), hint: t('Tables, boards, calendars, forms and dashboards.'), icon: <Ic.Table size={19} />, run: onDatabases },
-    { title: t('Drawings'), hint: t('Find your boards and drawings from every page.'), icon: <Ic.Pencil size={19} />, run: onDrawings },
-    { title: t('Tasks'), hint: t('Bring your to-do lists and page checklists together.'), icon: <Ic.Checklist size={19} />, run: onTasks },
-  ]
+  const num = (n: number) => n.toLocaleString(locale())
+  const last = recent[0]
 
   return (
-    <div className="hm">
-      <div className="hm-bar">
-        <button type="button" className="hm-search" onClick={onSearch}><Ic.Search size={16} /><span>{t('Search pages…')}</span><kbd dir="ltr">{shortcutLabel(['Mod', 'K'])}</kbd></button>
-        <div className="hm-new">
-          <button type="button" className="hm-new-main" onClick={onNew}><Ic.Plus size={16} />{t('New')}</button>
-          <button type="button" className="hm-new-more" aria-label={t('More')} aria-expanded={!!menu} onClick={(e) => setMenu(menu ? null : e.currentTarget.parentElement!.getBoundingClientRect())}><Ic.Chevron size={14} /></button>
-        </div>
-      </div>
-      {menu && <Popover anchor={menu} align="end" onClose={() => setMenu(null)}><div className="menu">
-        <MenuItem icon={<Ic.Page />} label={t('New page')} onClick={() => choose(onNew)} />
-        <MenuItem icon={<Ic.Table />} label={t('New database')} onClick={() => choose(onNewDatabase)} />
-        <MenuItem icon={<Ic.Pencil />} label={t('New board')} onClick={() => choose(onNewBoard)} />
-        <MenuItem icon={<Ic.Checklist />} label={t('New to-do list')} onClick={() => choose(onNewList)} />
-        <MenuItem icon={<Ic.Folder />} label={t('New folder')} onClick={() => choose(onFolder)} />
-        <MenuSep /><MenuItem icon={<Ic.Blocks />} label={t('Templates')} onClick={() => choose(onTemplates)} />
-      </div></Popover>}
+    <div className="home">
+      <header className="home-hello">
+        <small>{date}</small>
+        <h1>{greeting(hour)}</h1>
+        <p>{t('{n} tasks left', { n: num(open.length) })} · {t('{n} flashcards due', { n: num(due) })}</p>
+      </header>
 
-      <div className="hm-grid">
-        <div className="hm-main">
-          <section className="hm-hero hm-overview" data-landscape={landscape}>
-            <img key={landscape} className="hm-landscape" src={landscapeUrl} alt="" aria-hidden="true" decoding="async" />
-            <div className="hm-landscape-shade" aria-hidden="true" />
-            <div className="hm-hero-tx">
-              <small>{date}</small>
-              <h1>{greeting(hour)}</h1>
-              <p>{t('Write, plan, draw and organize in one workspace.')}</p>
-              <button type="button" className="hm-cta" onClick={onTemplates}><Ic.Blocks size={17} />{t('Start with a template')}<Ic.Arrow size={15} /></button>
-            </div>
-            <div className="hm-stats">
-              <button type="button" onClick={onTable}><b>{count(real.length)}</b><span>{t('Pages')}</span></button>
-              <button type="button" onClick={onDatabases}><b>{count(databases.length)}</b><span>{t('Databases')}</span></button>
-              <button type="button" onClick={onDrawings}><b>{count(boards.length)}</b><span>{t('Boards')}</span></button>
-              <button type="button" onClick={onTasks}><b>{count(lists.length)}</b><span>{t('To-do lists')}</span></button>
-            </div>
-          </section>
+      <section className="home-quick" aria-label={t('Create something new')}>
+        <Quick icon="plus" title={t('New page')} hint={t('Start with a blank page')} onClick={onNew} />
+        <Quick icon="templates" title={t('Templates')} hint={t('Start from a template')} onClick={onTemplates} />
+        <Quick icon="paperclip" title={t('Files')} hint={t('Browse and organize your pages')} onClick={onFiles} />
+        <Quick icon="cards" title={t('Flashcards')} hint={t('Review what you studied')} onClick={onCards} />
+      </section>
 
-          <section className="hm-acts" aria-label={t('Create something new')}>
-            <Action tone="violet" icon={<Ic.Page size={20} />} title={t('New page')} hint={t('Start with a blank page')} onClick={onNew} />
-            <Action tone="blue" icon={<Ic.Table size={20} />} title={t('New database')} hint={t('Tables, views, forms and dashboards')} onClick={onNewDatabase} />
-            <Action tone="green" icon={<Ic.Pencil size={20} />} title={t('New board')} hint={t('Sketch ideas on an open canvas')} onClick={onNewBoard} />
-            <Action tone="orange" icon={<Ic.Checklist size={20} />} title={t('New to-do list')} hint={t('Plan your next steps')} onClick={onNewList} />
-          </section>
+      <div className="home-grid">
+        <div className="home-main">
+          {last && (
+            <Section title={t('Continue where you left off')}>
+              <button type="button" className="home-resume" onClick={() => onOpen(last.id)}>
+                <span className="home-resume-ic"><PageIcon page={last} /></span>
+                <span className="home-resume-t"><b dir="auto">{last.title || t('Untitled')}</b><small>{t('Updated {when}', { when: ago(last.updatedAt) })}</small></span>
+                <span className="ds-btn ds-btn--primary ds-btn--sm">{t('Open')}</span>
+              </button>
+            </Section>
+          )}
 
-          <div className="hm-sec"><h2><Ic.Layers size={18} />{t('Explore your workspace')}</h2></div>
-          <nav className="hm-collections" aria-label={t('Explore your workspace')}>
-            {collections.map((c) => <button type="button" key={c.title} className="hm-collection" onClick={c.run}>
-              <span className="hm-box-ic">{c.icon}</span><span><b>{c.title}</b><small>{c.hint}</small></span><Ic.Arrow size={14} />
-            </button>)}
-          </nav>
-
-          <div className="hm-sec"><h2><Ic.History size={18} />{t('Recent pages')}</h2><button type="button" className="hm-link" onClick={onTable}>{t('View all')}<Ic.Arrow size={14} /></button></div>
-          {recent.length === 0 ? <div className="hm-empty">{t('No pages yet')}</div> : <div className="hm-cards">
-            {recent.map((p) => <button type="button" key={p.id} className="hm-card" onClick={() => onOpen(p.id)}>
-              <CoverThumb cover={p.cover ?? { kind: 'gradient', id: p.dbHost ? 'aurora' : p.kind === 'board' ? 'lagoon' : 'peachmist' }} className="hm-card-cover" />
-              <span className="hm-card-b"><span className="hm-row-ic"><PageIcon page={p} /></span><span className="hm-card-t"><b dir="auto">{p.title || t('Untitled')}</b><small>{t('Updated {when}', { when: ago(p.updatedAt) })}</small></span></span>
-            </button>)}
-          </div>}
+          <Section title={t('Recent pages')} action={<button type="button" className="home-link" onClick={onTable}>{t('View all')}<Icon name="arrow-right" size={14} /></button>}>
+            {recent.length === 0 ? <div className="ds-empty ds-card"><b>{t('No pages yet')}</b></div> : (
+              <div className="home-cards">
+                {recent.map((p) => {
+                  const text = excerpt(p.content)
+                  return (
+                    <button type="button" key={p.id} className="ds-card ds-card--interactive home-card" onClick={() => onOpen(p.id)}>
+                      <span className="home-card-top"><PageIcon page={p} /><small className="ds-muted">{ago(p.updatedAt)}</small></span>
+                      <b dir="auto">{p.title || t('Untitled')}</b>
+                      <span className="home-card-ex" dir="auto">{text}</span>
+                      <span className="home-card-tags">{p.tags?.slice(0, 2).map((g) => <span key={g} className="ds-chip">{g}</span>)}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </Section>
         </div>
 
-        <aside className="hm-side">
-          <Box icon={<Ic.Clock size={18} />} title={t('Edited today')}>{today.length ? today.slice(0, 6).map((p) => row(p, ago(p.updatedAt))) : <div className="hm-empty">{t('Nothing edited today')}</div>}</Box>
-          <Box icon={<Ic.Star size={18} />} title={t('Pinned')}>{favs.length ? favs.map((p) => row(p)) : <div className="hm-empty">{t('Star a page to pin it here')}</div>}</Box>
-          <Box icon={<Ic.Blocks size={18} />} title={t('Quick access')}>
-            <button type="button" className="hm-row" onClick={onTemplates}><Ic.Blocks size={16} /><span className="hm-row-t">{t('Templates')}</span><Ic.Arrow size={14} /></button>
-            <button type="button" className="hm-row" onClick={onCards}><Ic.Cards size={16} /><span className="hm-row-t">{t('Flashcards')}</span><Ic.Arrow size={14} /></button>
-            <button type="button" className="hm-row" onClick={onFolder}><Ic.Folder size={16} /><span className="hm-row-t">{t('New folder')}</span><Ic.Plus size={14} /></button>
-            {onWorkspaces && <button type="button" className="hm-row" onClick={onWorkspaces}><Ic.Layers size={16} /><span className="hm-row-t">{t('Workspaces…')}</span><Ic.Arrow size={14} /></button>}
-          </Box>
+        <aside className="home-side">
+          <Section title={t('Today')}>
+            <div className="ds-card home-today">
+              <div className="home-today-head">
+                <Ring done={tasks.length - open.length} total={tasks.length} />
+                <span><b>{open.length ? t('{n} tasks left', { n: num(open.length) }) : t('All caught up')}</b><small className="ds-muted">{open.length ? t('Checklist items from all your pages') : t('Nothing left for today. Add a task to plan ahead.')}</small></span>
+              </div>
+              {open.slice(0, 4).map((x) => (
+                <label key={x.pageId + ':' + x.index} className="home-task">
+                  <input type="checkbox" className="sr-only" checked={x.checked} onChange={() => setChecked(x, !x.checked)} />
+                  <span className="ds-check" aria-hidden="true"><svg className="ds-icon" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7" /></svg></span>
+                  <span dir="auto">{x.text || t('Untitled')}</span>
+                </label>
+              ))}
+              {open.length > 4 && <button type="button" className="home-link home-more" onClick={onTasks}>{t('View all')}<Icon name="arrow-right" size={14} /></button>}
+            </div>
+          </Section>
+
+          <Section title={t('Writing streak')}>
+            <div className="ds-card home-streak">
+              <div className="home-streak-head"><span className="home-flame"><Icon name="flame" size={20} /></span><b>{num(streak)}</b><span className="ds-muted">{t('days in a row')}</span></div>
+              <div className="home-month-head"><b>{month.label}</b><span className="ds-muted">{t('{n} days written', { n: num(month.doneCount) })}</span></div>
+              <div className="home-month" role="grid" aria-label={month.label}>
+                {Array.from({ length: 7 }, (_, i) => <span key={i} className="wd">{new Intl.DateTimeFormat(locale(), { weekday: 'narrow' }).format(new Date(2023, 0, 1 + i))}</span>)}
+                {month.cells.map((c, i) => c ? <i key={c.key} className={(c.done ? 'done ' : '') + (c.now ? 'now ' : '') + (c.future ? 'future' : '')} title={String(c.n)}>{c.done ? <Icon name="check" size={12} /> : c.n}</i> : <i key={'b' + i} className="blank" />)}
+              </div>
+            </div>
+          </Section>
         </aside>
       </div>
     </div>

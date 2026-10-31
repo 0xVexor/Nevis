@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { MORE_GLYPHS } from './iconSetMore'
 import { EXTRA_GLYPHS } from './iconSetExtra'
+import { ICON_GROUPS } from './design-system/iconData'
 
 /** Outline glyphs a page can use as its icon instead of an emoji. Stored on the page as `i:<name>`. */
 export const ICON_PREFIX = 'i:'
@@ -68,6 +69,8 @@ export const GLYPHS: Record<string, [string, string]> = {
 }
 
 Object.assign(GLYPHS, MORE_GLYPHS, EXTRA_GLYPHS)
+// the design system's icons are page icons too (names already taken keep their drawing)
+for (const g of ICON_GROUPS) for (const [name, def] of Object.entries(g.icons)) if (!GLYPHS[name]) GLYPHS[name] = def
 export const GLYPH_NAMES = Object.keys(GLYPHS)
 
 export const isGlyph = (icon?: string): icon is string => !!icon && icon.startsWith(ICON_PREFIX)

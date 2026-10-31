@@ -17,7 +17,7 @@ function FieldMenu({ el, at }: { el: Field; at: DOMRect }) {
   const run = (f: () => void) => () => (close(), el.focus(), f())
   return (
     <Popover anchor={at} onClose={close}>
-      <div className="menu ctx-menu">
+      <div className="ds-menu ctx-menu">
         <div className="menu-quick">
           <button title={t('Cut') + '  ' + shortcutLabel(['Mod', 'X'])} disabled={!hasSel || !editable} onClick={run(() => document.execCommand('cut'))}><Ic.Cut size={16} /></button>
           <button title={t('Copy') + '  ' + shortcutLabel(['Mod', 'C'])} disabled={!hasSel} onClick={run(() => document.execCommand('copy'))}><Ic.Copy size={16} /></button>

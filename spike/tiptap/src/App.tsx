@@ -1,5 +1,4 @@
 import { setPreference } from './preferenceEvents'
-import { Brand } from './Brand'
 import { UpdateCenter } from './UpdateUI'
 import { shortcutLabel } from './shortcuts'
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react'
@@ -42,6 +41,8 @@ import { flushPreferences } from './sharedPreferences'
 import { isTauri, kvGet, kvSet } from './db'
 import { watchDueCards } from './cardsDue'
 import { normalizeFa } from './normalize'
+import { Brand } from './Brand'
+import { Icon } from './design-system'
 import { MenuItem, MenuLabel, MenuSep, NameDialog, Popover, SearchModal, Toast, TrashModal, type PaletteCommand } from './ui'
 import { Home } from './Home'
 import { iconNode } from './iconSet'
@@ -194,11 +195,50 @@ function TreeRow(props: RowProps) {
 export default function App() {
   const [pages, setPages] = useState<Page[]>(() => repo.list())
   const [currentId, setCurrentIdRaw] = useState<string>(() => localStorage.getItem('not.current') || repo.pagesOnly()[0]?.id || '')
-  const [view, setView] = useState<'home' | 'page' | 'settings' | 'tasks' | 'drawings' | 'databases' | 'files'>('home')
+  const [view, setViewRaw] = useState<'home' | 'page' | 'settings' | 'tasks' | 'drawings' | 'databases' | 'files'>('home')
+  // back / forward through the places visited (pages and views), each remembering how far it was scrolled
+  const hist = useRef<{ view: string; id: string; scroll: number }[]>([])
+  const hpos = useRef(-1)
+  const goingTo = useRef<{ view: string; id: string } | null>(null)
+  const [, bumpHist] = useState(0)
+  const scrollerEl = () => document.querySelector<HTMLElement>('.scroller')
+  const saveScroll = () => { const e = hist.current[hpos.current]; const sc = scrollerEl(); if (e && sc) e.scroll = sc.scrollTop }
+  const setView = useCallback((v: Parameters<typeof setViewRaw>[0]) => (saveScroll(), setViewRaw(v)), []) // eslint-disable-line react-hooks/exhaustive-deps
   const [panelOpen, setPanelOpen] = useState<boolean>(() => store('not.panel.v2', false))
   const [coverMenu, setCoverMenu] = useState<DOMRect | null>(null)
   // opening any page (sidebar, search, link, breadcrumb…) also leaves the settings view
-  const setCurrentId = useCallback((id: string) => (setView('page'), setCurrentIdRaw(id)), [])
+  const setCurrentId = useCallback((id: string) => (saveScroll(), setViewRaw('page'), setCurrentIdRaw(id)), []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const goal = goingTo.current
+    if (goal && goal.view === view && goal.id === currentId) return // arrived by back / forward: already in the list
+    goingTo.current = null
+    const here = hist.current[hpos.current]
+    if (here && here.view === view && here.id === currentId) return
+    hist.current = [...hist.current.slice(0, hpos.current + 1), { view, id: currentId, scroll: 0 }].slice(-100)
+    hpos.current = hist.current.length - 1
+    bumpHist((n) => n + 1)
+  }, [view, currentId])
+  const goHist = useCallback((delta: number) => {
+    const n = hpos.current + delta
+    const to = hist.current[n]
+    if (!to) return
+    saveScroll()
+    hpos.current = n
+    goingTo.current = { view: to.view, id: to.id }
+    setViewRaw(to.view as never)
+    setCurrentIdRaw(to.id)
+    bumpHist((k) => k + 1)
+    // the page body mounts a moment after the switch: put the scroll back once it has its height
+    for (const ms of [0, 60, 160, 320, 600]) window.setTimeout(() => { const sc = scrollerEl(); if (sc && hist.current[hpos.current] === to) sc.scrollTop = to.scroll }, ms)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const mouse = (e: MouseEvent) => { if (e.button === 3 || e.button === 4) { e.preventDefault(); if (e.type === 'mouseup') goHist(e.button === 3 ? -1 : 1) } }
+    const key = (e: KeyboardEvent) => { if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !(e.target as HTMLElement | null)?.closest?.('input, textarea, [contenteditable="true"]')) { e.preventDefault(); goHist((e.key === 'ArrowLeft') === (document.documentElement.dir !== 'rtl') ? -1 : 1) } }
+    window.addEventListener('mouseup', mouse)
+    window.addEventListener('auxclick', mouse)
+    window.addEventListener('keydown', key)
+    return () => (window.removeEventListener('mouseup', mouse), window.removeEventListener('auxclick', mouse), window.removeEventListener('keydown', key))
+  }, [goHist])
   // a big vault starts with its folders closed (except the way down to the open page): thousands of rows are slow to build and no use to scan
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
     const all = repo.list()
@@ -222,6 +262,19 @@ export default function App() {
   useEffect(() => void kvGet<{ id: string; name: string; query: string }[]>('savedSearches').then((s) => setSaved(Array.isArray(s) ? s : [])), [])
   const saveSaved = (next: { id: string; name: string; query: string }[]) => (setSaved(next), void kvSet('savedSearches', next))
   const [trashOpen, setTrashOpen] = useState(false)
+  const [newMenu, setNewMenu] = useState<DOMRect | null>(null)
+  // dragging a page from the tree shows a Favorites drop zone, so a page can be pinned by dropping it there
+  const [dragPage, setDragPage] = useState(false)
+  const [favOver, setFavOver] = useState(false)
+  useEffect(() => {
+    // deferred: changing the DOM inside dragstart makes the browser cancel the drag
+    const start = (e: DragEvent) => { const on = !!(e.target as HTMLElement | null)?.closest?.('.row.tree'); window.setTimeout(() => setDragPage(on), 0) }
+    const end = () => (setDragPage(false), setFavOver(false))
+    window.addEventListener('dragstart', start)
+    window.addEventListener('dragend', end)
+    window.addEventListener('drop', end)
+    return () => (window.removeEventListener('dragstart', start), window.removeEventListener('dragend', end), window.removeEventListener('drop', end))
+  }, [])
   const [naming, setNaming] = useState<{ title: string; label: string; initial: string; action: string; onSubmit: (name: string) => void } | null>(null)
   const [backupOpen, setBackupOpen] = useState(false)
   const [folderOpen, setFolderOpen] = useState(false)
@@ -370,6 +423,8 @@ export default function App() {
     return () => window.removeEventListener('open-search', open)
   }, [])
   const [tplOpen, setTplOpen] = useState(false)
+  // Flashcards and Templates are pages: going to another page or view (search, links, the sidebar) leaves them
+  useEffect(() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false)), [view, currentId])
   const addFromTemplate = (id: string) => {
     setTplOpen(false)
     if (id === BOARD_TEMPLATE) return add(null, 'board')
@@ -604,46 +659,56 @@ export default function App() {
           }}
         />
         <div className="ws">
-          <span className="ws-logo"><Ic.Logo size={32} /></span>
+          <span className="ws-logo"><Ic.Logo size={28} /></span>
           <Brand className="ws-name" />
-          <button className="icon-btn" title={t('Close sidebar  Ctrl+\\')} onClick={() => setSideOpen(false)}><Ic.Sidebar /></button>
+          <button className="icon-btn" title={t('Close sidebar  Ctrl+\\')} onClick={() => setSideOpen(false)}><Icon name="panel-left" /></button>
         </div>
 
         <div className="side-scroll">
           <button className="row plain search-row" onClick={() => setSearching(true)}>
-            <span className="ic"><Ic.Search /></span><span className="ntitle">{t('Search')}...</span><kbd dir="ltr">{shortcutLabel(['Mod', 'K'])}</kbd>
+            <span className="ic"><Icon name="search" /></span><span className="ntitle">{t('Search')}...</span><kbd dir="ltr">{shortcutLabel(['Mod', 'K'])}</kbd>
           </button>
 
-          <button className={'row plain' + (view === 'home' ? ' cur' : '')} onClick={() => setView('home')}>
-            <span className="ic"><Ic.Home /></span><span className="ntitle">{t('Home')}</span>
+          <button className={'row plain' + (view === 'home' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('home'))}>
+            <span className="ic"><Icon name="home" /></span><span className="ntitle">{t('Home')}</span>
           </button>
 
-          <button className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => setView('settings')}>
-            <span className="ic"><Ic.Settings /></span><span className="ntitle">{t('Settings')}</span>
+          <button className={'row plain' + (view === 'tasks' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('tasks'))}>
+            <span className="ic"><Icon name="tasks" /></span><span className="ntitle">{t('Tasks')}</span>
           </button>
 
-          <button className={'row plain' + (view === 'tasks' ? ' cur' : '')} onClick={() => setView('tasks')}>
-            <span className="ic"><Ic.Checklist /></span><span className="ntitle">{t('Tasks')}</span>
+          <button className="row plain" onClick={() => (setTplOpen(false), setGraphOpen(false), setTableOpen(false), setCardsOpen(true))}><span className="ic"><Icon name="cards" /></span><span className="ntitle">{t('Flashcards')}</span>{dueCards > 0 && <span className="badge">{dueCards}</span>}</button>
+
+          <button className="row plain" onClick={() => (setCardsOpen(false), setGraphOpen(false), setTableOpen(false), setTplOpen(true))}><span className="ic"><Icon name="templates" /></span><span className="ntitle">{t('Templates')}</span></button>
+
+          <button className={'row plain' + (view === 'databases' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('databases'))}>
+            <span className="ic"><Icon name="database" /></span><span className="ntitle">{t('Databases')}</span>
           </button>
 
-          <button className={'row plain' + (view === 'databases' ? ' cur' : '')} onClick={() => setView('databases')}>
-            <span className="ic"><Ic.Table /></span><span className="ntitle">{t('Databases')}</span>
+          <button className={'row plain' + (view === 'drawings' ? ' cur' : '')} onPointerEnter={warmDrawing} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('drawings'))}>
+            <span className="ic"><Icon name="pencil" /></span><span className="ntitle">{t('Drawings')}</span>
           </button>
 
-          <button className={'row plain' + (view === 'drawings' ? ' cur' : '')} onPointerEnter={warmDrawing} onClick={() => setView('drawings')}>
-            <span className="ic"><Ic.Pencil /></span><span className="ntitle">{t('Drawings')}</span>
+          <button className="row plain" onClick={() => (setCardsOpen(false), setTplOpen(false), setTableOpen(false), setGraphOpen(true))}>
+            <span className="ic"><Icon name="graph" /></span><span className="ntitle">{t('Graph view')}</span>
           </button>
 
-          <button className="row plain" onClick={() => setTplOpen(true)}><span className="ic"><Ic.Blocks /></span><span className="ntitle">{t('Templates')}</span></button>
-
-          <button className="row plain" onClick={() => setCardsOpen(true)}><span className="ic"><Ic.Cards /></span><span className="ntitle">{t('Flashcards')}</span>{dueCards > 0 && <span className="badge">{dueCards}</span>}</button>
-
-          <button className="row plain" onClick={() => setGraphOpen(true)}>
-            <span className="ic"><Ic.Link /></span><span className="ntitle">{t('Graph view')}</span>
+          <button className="row plain" onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(true))}>
+            <span className="ic"><Icon name="table" /></span><span className="ntitle">{t('Pages table')}</span>
           </button>
 
-          {favs.length > 0 && (
-            <>
+          {(favs.length > 0 || dragPage) && (
+            <div className={favs.length === 0 ? 'fav-float' : undefined}>
+            <div
+              className={'fav-zone' + (favOver ? ' over' : '')}
+              onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-page')) (e.preventDefault(), setFavOver(true)) }}
+              onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setFavOver(false) }}
+              onDrop={(e) => {
+                const id = e.dataTransfer.getData('application/x-page')
+                setFavOver(false)
+                if (id && !repo.get(id)?.favorite) (e.preventDefault(), fav(id))
+              }}
+            >
               <button className={"section" + (shut.favs ? " shut" : "")} onClick={() => setShut((s) => ({ ...s, favs: !s.favs }))}>{t('Favorites')}<Ic.Chevron size={13} /></button>
               {!shut.favs && favs.map((p) => (
                 <div key={p.id} className={'row' + (p.id === current?.id ? ' cur' : '')} style={{ paddingInlineStart: 24 }} onClick={() => setCurrentId(p.id)}>
@@ -651,7 +716,9 @@ export default function App() {
                   <span className="ntitle" dir="auto">{p.title || t('Untitled')}</span>
                 </div>
               ))}
-            </>
+              {favs.length === 0 && <div className="empty-note">{t('Drop a page here to pin it')}</div>}
+            </div>
+            </div>
           )}
 
           {saved.length > 0 && (
@@ -676,38 +743,32 @@ export default function App() {
             <SidebarTags tags={tagList} active={tagFilter} onPick={setTagFilter} shut={!!shut.tags} onToggle={() => setShut((x) => ({ ...x, tags: !x.tags }))} pages={taggedPages} currentId={current?.id} onOpen={setCurrentId} />
           )}
 
-          <div className="side-utils">
-          <button className="row plain" onClick={() => add(null)}>
-            <span className="ic"><Ic.Page /></span><span className="ntitle">{t('New page')}</span>
-          </button>
-          <button className="row plain" onClick={() => addFolder(null)}>
-            <span className="ic"><Ic.Folder /></span><span className="ntitle">{t('New folder')}</span>
-          </button>
-          <button className="row plain" onPointerEnter={warmDrawing} onFocus={warmDrawing} onClick={() => add(null, 'board')}>
-            <span className="ic"><Ic.Pencil /></span><span className="ntitle">{t('New board')}</span>
-          </button>
-          <button className="row plain" onClick={() => addDatabase(null)}>
-            <span className="ic"><Ic.Table /></span><span className="ntitle">{t('New database')}</span>
-          </button>
-          <button className="row plain" onClick={() => add(null, 'todo')}>
-            <span className="ic"><Ic.Checklist /></span><span className="ntitle">{t('New to-do list')}</span>
-          </button>
-          <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => setView('files')}>
-            <span className="ic"><Ic.Folders /></span><span className="ntitle">{t('Files')}</span>
-          </button>
-          <button className="row plain" onClick={() => setTrashOpen(true)}>
-            <span className="ic"><Ic.Trash /></span><span className="ntitle">{t('Trash')}</span>
-            {repo.trash().length > 0 && <span className="badge">{repo.trash().length}</span>}
-          </button>
-          </div>
         </div>
 
         <SideTip />
         <div className="side-foot">
           <WorkspaceCard onOpen={() => setFolderOpen(true)} />
-          <button className="new-page" onClick={() => add(null)}>
-            <Ic.Plus size={16} /><span>{t('New page')}</span>
+          <button className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('settings'))}>
+            <span className="ic"><Icon name="settings" /></span><span className="ntitle">{t('Settings')}</span>
           </button>
+          <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('files'))}>
+            <span className="ic"><Icon name="paperclip" /></span><span className="ntitle">{t('Files')}</span>
+          </button>
+          <button className="row plain" onClick={() => setTrashOpen(true)}>
+            <span className="ic"><Icon name="trash" /></span><span className="ntitle">{t('Trash')}</span>
+            {repo.trash().length > 0 && <span className="badge">{repo.trash().length}</span>}
+          </button>
+          <div className="ds-split side-new">
+            <button className="ds-btn ds-btn--primary" onClick={() => add(null)}><Ic.Plus size={16} /><span className="ntitle">{t('New page')}</span></button>
+            <button className="ds-btn ds-btn--primary" aria-label={t('More')} aria-expanded={!!newMenu} onClick={(e) => setNewMenu(newMenu ? null : e.currentTarget.parentElement!.getBoundingClientRect())}><Ic.Chevron size={14} /></button>
+          </div>
+          {newMenu && <Popover anchor={newMenu} onClose={() => setNewMenu(null)}><div className="ds-menu">
+            <MenuItem icon={<Ic.Page />} label={t('New page')} onClick={() => (setNewMenu(null), add(null))} />
+            <MenuItem icon={<Ic.Folder />} label={t('New folder')} onClick={() => (setNewMenu(null), addFolder(null))} />
+            <MenuItem icon={<Ic.Pencil />} label={t('New board')} onClick={() => (setNewMenu(null), add(null, 'board'))} />
+            <MenuItem icon={<Ic.Table />} label={t('New database')} onClick={() => (setNewMenu(null), addDatabase(null))} />
+            <MenuItem icon={<Ic.Checklist />} label={t('New to-do list')} onClick={() => (setNewMenu(null), add(null, 'todo'))} />
+          </div></Popover>}
           <div className="side-credit">{t('Created by')} Vexor</div>
         </div>
       </aside>
@@ -715,15 +776,23 @@ export default function App() {
       <main ref={mainRef} className={'main' + (panelOpen && !reader && view === 'page' && current ? ' drawer-open' : '')}>
         <header className="topbar">
           {!sideOpen && <button className="icon-btn" title={t('Open sidebar  Ctrl+\\')} onClick={() => setSideOpen(true)}><Ic.Sidebar /></button>}
+          <div className="nav-hist">
+            <button className="icon-btn" title={t('Back  Alt+←')} aria-label={t('Back')} disabled={hpos.current <= 0} onClick={() => goHist(-1)}><Icon name="arrow-left" size={17} className="ds-flip" /></button>
+            <button className="icon-btn" title={t('Forward  Alt+→')} aria-label={t('Forward')} disabled={hpos.current >= hist.current.length - 1} onClick={() => goHist(1)}><Icon name="arrow-right" size={17} className="ds-flip" /></button>
+          </div>
           <nav className="crumbs">
             <button className="crumb-home" title={t('Home')} onClick={() => setView('home')}><Ic.Home size={15} /></button>
-            {view === 'home' && <span className="crumb"><span className="crumb-cur"><Ic.Sidebar size={14} />{t('Home')}</span></span>}
-            {view === 'files' && <span className="crumb"><span className="crumb-cur"><Ic.Folders size={14} />{t('Files')}</span></span>}
-            {view === 'tasks' && <span className="crumb"><span className="crumb-cur"><Ic.Checklist size={14} />{t('Tasks')}</span></span>}
-            {view === 'databases' && <span className="crumb"><span className="crumb-cur"><Ic.Table size={14} />{t('Databases')}</span></span>}
-            {view === 'drawings' && <span className="crumb"><span className="crumb-cur"><Ic.Pencil size={14} />{t('Drawings')}</span></span>}
-            {view === 'settings' && <span className="crumb"><span className="crumb-cur"><Ic.Settings size={14} />{t('Settings')}</span></span>}
-            {view === 'page' && crumbs.map((c, i) => (
+            {graphOpen && <span className="crumb"><span className="crumb-cur"><Icon name="graph" size={14} />{t('Graph view')}</span></span>}
+            {tableOpen && !graphOpen && <span className="crumb"><span className="crumb-cur"><Icon name="table" size={14} />{t('Pages table')}</span></span>}
+            {tplOpen && !graphOpen && !tableOpen && <span className="crumb"><span className="crumb-cur"><Icon name="templates" size={14} />{t('Templates')}</span></span>}
+            {cardsOpen && !tplOpen && !graphOpen && !tableOpen && <span className="crumb"><span className="crumb-cur"><Ic.Cards size={14} />{t('Flashcards')}</span></span>}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'home' && <span className="crumb"><span className="crumb-cur"><Ic.Sidebar size={14} />{t('Home')}</span></span>}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'files' && <span className="crumb"><span className="crumb-cur"><Ic.Folders size={14} />{t('Files')}</span></span>}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'tasks' && <span className="crumb"><span className="crumb-cur"><Ic.Checklist size={14} />{t('Tasks')}</span></span>}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'databases' && <span className="crumb"><span className="crumb-cur"><Ic.Table size={14} />{t('Databases')}</span></span>}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'drawings' && <span className="crumb"><span className="crumb-cur"><Ic.Pencil size={14} />{t('Drawings')}</span></span>}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'settings' && <span className="crumb"><span className="crumb-cur"><Ic.Settings size={14} />{t('Settings')}</span></span>}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'page' && crumbs.map((c, i) => (
               <span key={c.id} className={'crumb' + (i === crumbs.length - 1 ? ' last' : '')}>
                 <span className="crumb-sep"><Ic.Chevron size={13} /></span>
                 {c.kind === 'folder' ? (
@@ -755,11 +824,17 @@ export default function App() {
 
         {reader && view === 'page' && current && <ReaderBar cfg={readerCfg} onCfg={(c) => (setReaderCfg(c), setPreference('not.reader.cfg', JSON.stringify(c)))} onExit={() => setReader(false)} />}
         <div className="scroller">
-          {view === 'home' ? (
-            <Home pages={pages} onOpen={setCurrentId} onNew={() => add(null)} onFolder={() => addFolder(null)} onTable={() => setTableOpen(true)} onCards={() => setCardsOpen(true)} onSearch={() => setSearching(true)}
-              onNewDatabase={() => addDatabase(null)} onNewBoard={() => add(null, 'board')} onNewList={() => add(null, 'todo')}
-              onDatabases={() => setView('databases')} onDrawings={() => setView('drawings')} onTasks={() => setView('tasks')}
-              onTemplates={() => setTplOpen(true)} onWorkspaces={isTauri ? () => setFolderOpen(true) : undefined} />
+          {graphOpen ? (
+            <GraphView currentId={current?.id} onOpen={setCurrentId} onClose={() => setGraphOpen(false)} />
+          ) : tableOpen ? (
+            <PagesTable pages={pages} onOpen={setCurrentId} onStatus={setStatus} onClose={() => setTableOpen(false)} />
+          ) : tplOpen ? (
+            <Templates onPick={addFromTemplate} onClose={() => setTplOpen(false)} />
+          ) : cardsOpen ? (
+            <Flashcards pageId={view === 'page' ? current?.id : undefined} onOpenPage={(id) => (setCardsOpen(false), setCurrentId(id))} onClose={() => (setCardsOpen(false), window.dispatchEvent(new Event('cards-reviewed')))} />
+          ) : view === 'home' ? (
+            <Home pages={pages} onOpen={setCurrentId} onNew={() => add(null)} onTable={() => setTableOpen(true)} onCards={() => setCardsOpen(true)}
+              onTemplates={() => setTplOpen(true)} onFiles={() => setView('files')} onTasks={() => setView('tasks')} />
           ) : view === 'files' ? (
             <Explorer pages={pages} onOpen={setCurrentId} onChange={refresh} onToast={(msg, undo) => setToast({ msg, undo })} />
           ) : view === 'tasks' ? (
@@ -809,7 +884,7 @@ export default function App() {
 
       {menu && menuPage && (
         <Popover anchor={menu.rect} onClose={() => setMenu(null)} align="end">
-          <div className="menu">
+          <div className="ds-menu">
             {menuPage.kind !== 'folder' && <MenuItem icon={<Ic.Open />} label={t('Open')} onClick={() => (setCurrentId(menu.id), setView('page'), setMenu(null))} />}
             {menuPage.kind !== 'folder' && <MenuItem icon={<Ic.Star filled={menuPage.favorite} />} label={menuPage.favorite ? t('Remove from favorites') : t('Add to favorites')} onClick={() => (fav(menu.id), setMenu(null))} />}
             <MenuSep />
@@ -833,7 +908,7 @@ export default function App() {
 
       {blankMenu && (
         <Popover anchor={blankMenu} onClose={() => setBlankMenu(null)}>
-          <div className="menu">
+          <div className="ds-menu">
             <MenuItem icon={<Ic.Plus />} label={t('New page')} onClick={() => (add(null), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Folders />} label={t('New folder')} onClick={() => (addFolder(null), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Pencil />} label={t('New board')} onClick={() => (add(null, 'board'), setBlankMenu(null))} />
@@ -865,7 +940,7 @@ export default function App() {
 
       {dataMenu && (
         <Popover anchor={dataMenu} onClose={() => setDataMenu(null)} align="end">
-          <div className="menu share-menu">
+          <div className="ds-menu share-menu">
             {current && view === 'page' && (
               <>
                 <MenuLabel>{t('Share this page')}</MenuLabel>
@@ -881,10 +956,6 @@ export default function App() {
       {folderOpen && <Vaults onClose={() => setFolderOpen(false)} onNew={(create) => setNaming({ title: t('New workspace'), label: t('Workspace name:'), initial: t('My notes'), action: t('Next'), onSubmit: (n) => void create(n.trim() || t('My notes')) })} />}
       {movingId && <div className="overlay" onMouseDown={() => setMovingId(null)}><div className="modal move-dialog" role="dialog" aria-modal="true" aria-label={t('Move to folder')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && setMovingId(null)}><div className="modal-head"><b>{t('Move to folder')}</b><button className="icon-btn" title={t('Close')} onClick={() => setMovingId(null)}><Ic.Close /></button></div><div className="modal-list"><button className="result" onClick={() => { move(movingId,null,null); setMovingId(null) }}><Ic.Book /><span>{t('Move to top level')}</span></button>{pages.filter((p) => { if(p.kind !== 'folder' || p.id === movingId) return false; let parent: Page | undefined = p; const seen = new Set<string>(); while(parent) { if(parent.id === movingId || seen.has(parent.id)) return false; seen.add(parent.id); parent = pages.find((x) => x.id === parent!.parentId) } return true }).map((p) => <button className="result" key={p.id} onClick={() => { move(movingId,p.id,null); setMovingId(null) }}><Ic.Folder /><span dir="auto">{p.title || t('Untitled folder')}</span></button>)}</div></div></div>}
       {backupOpen && <BackupSettings onClose={() => setBackupOpen(false)} />}
-      {graphOpen && <GraphView currentId={current?.id} onOpen={setCurrentId} onClose={() => setGraphOpen(false)} />}
-      {tableOpen && <PagesTable pages={pages} onOpen={setCurrentId} onStatus={setStatus} onClose={() => setTableOpen(false)} />}
-      {tplOpen && <Templates onPick={addFromTemplate} onClose={() => setTplOpen(false)} />}
-      {cardsOpen && <Flashcards pageId={view === 'page' ? current?.id : undefined} onOpenPage={(id) => (setCardsOpen(false), setCurrentId(id))} onClose={() => (setCardsOpen(false), window.dispatchEvent(new Event('cards-reviewed')))} />}
 
       {naming && <NameDialog {...naming} onClose={() => setNaming(null)} />}
       {trashOpen && (

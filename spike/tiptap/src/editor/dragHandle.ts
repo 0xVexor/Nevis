@@ -190,7 +190,7 @@ export const DragHandle = Extension.create({
           cancel(true)
           announce(t('The move could not be completed. Please try again.'))
         }
-        const obstructed = () => [...document.querySelectorAll<HTMLElement>('.overlay, [role="dialog"], [role="alertdialog"], .popover, .tb-menu, .slash-menu')]
+        const obstructed = () => [...document.querySelectorAll<HTMLElement>('.overlay, [role="dialog"], [role="alertdialog"], .ds-pop, .tb-menu, .slash-menu')]
           .some((dom) => dom.getClientRects().length)
         const valid = () => !!session && session.doc === view.state.doc && view.editable && !view.composing
           && session.direction === getComputedStyle(view.dom).direction
@@ -362,7 +362,8 @@ export const DragHandle = Extension.create({
           tray.style.left = `${Math.max(area.left + 12, Math.min(trayAnchor.x - width / 2, area.right - width - 12))}px`
           tray.hidden = false
           const height = tray.offsetHeight
-          const top = trayAnchor.y - height - 12 >= topEdge ? trayAnchor.y - height - 12 : trayAnchor.y + 24
+          // the chooser opens centred on the pointer, so the choice is already under it
+          const top = trayAnchor.y - height / 2
           tray.style.top = `${Math.max(topEdge, Math.min(top, area.bottom - height - 8))}px`
         }
         const trayDestination = (all: SnapDestination[], x: number, y: number) => {
@@ -422,7 +423,7 @@ export const DragHandle = Extension.create({
           const group = hit instanceof Element ? hit.closest<HTMLElement>('.layout-group') : null
           const within = !!hit && view.dom.contains(hit)
           const editor = view.dom.getBoundingClientRect()
-          const margin = hit instanceof Element && !hit.closest('button, input, textarea, select, .toolbar, .popover')
+          const margin = hit instanceof Element && !hit.closest('button, input, textarea, select, .toolbar, .ds-pop')
             && !!view.dom.closest('.page')?.contains(hit) && x >= editor.left - 52 && x <= editor.right + 52 && y >= editor.top - 24 && y <= editor.bottom + 24
           const edge = group && view.dom.contains(group)
           if (!within && !edge && !margin) {
