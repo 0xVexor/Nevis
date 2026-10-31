@@ -466,3 +466,9 @@
 .db-body .pg-ic.tile, .db-peek .pg-ic.tile { background: none; box-shadow: none; color: var(--ds-text-3); }
 .db-lane-title .db-chip, .db-col-head .db-chip { background: none; color: var(--ds-text); font-weight: 600; padding-inline: 4px; }
 .db-count { background: none; color: var(--ds-text-3); font-weight: 500; }
+
+/* Templates: plain cards. No lift, no colour change on hover, nothing leaves its frame */
+.tplv-card { transition: border-color var(--ds-fast); }
+.tplv-card:hover { transform: none; border-color: var(--ds-line-strong); }
+.tplv-card:hover .tplv-bd .ds-tile { --c: var(--ds-text-2); background: var(--ds-sunk); }
+.tplv-card:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
