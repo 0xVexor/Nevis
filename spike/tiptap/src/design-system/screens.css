@@ -203,3 +203,42 @@
 .tk-item:hover .tk-del { opacity: 1; }
 .tk-del:hover { background: var(--ds-hover); color: var(--ds-bad); }
 .tk-sep { margin-block: 22px 0; border: 0; border-block-start: 1px solid var(--ds-line); }
+
+/* ───── Flashcards: review mode ───── */
+.fc2 { border-color: var(--ds-line); border-radius: 18px; background: var(--ds-bg); box-shadow: var(--ds-shadow-pop); }
+.fc2::before { display: none; }
+.fc2-head { padding: 12px 20px; border-bottom-color: var(--ds-line); }
+.fc2-logo { inline-size: 36px; block-size: 36px; border-radius: 10px; background: var(--ds-accent-soft); color: var(--ds-accent); box-shadow: none; }
+.fc2-title b { font-size: 16px; font-weight: 600; letter-spacing: 0; }
+.fc2-title small { color: var(--ds-text-3); }
+.fc2-prog { block-size: 5px; background: var(--ds-sunk); box-shadow: none; }
+.fc2-prog i { background: var(--ds-accent); box-shadow: none; }
+.fc2-count { color: var(--ds-text-3); }
+.fc2-count b { color: var(--ds-text); font-weight: 600; }
+.fc2-src { border-color: var(--ds-line); background: var(--ds-raised); color: var(--ds-text-2); }
+.fc2-src:hover { border-color: var(--ds-accent-line); color: var(--ds-accent); }
+.fc2-card { align-items: center; border-color: var(--ds-line); border-radius: 22px; background: var(--ds-raised); box-shadow: 0 20px 40px -28px rgb(16 24 40 / 0.3); text-align: center; }
+.fc2-tag { padding: 0; border-radius: 0; background: none; color: var(--ds-text-3); font-size: 12.5px; font-weight: 550; letter-spacing: 0; text-transform: none; align-self: center; }
+.fc2-tag.ans { background: none; color: var(--ds-ok); }
+.fc-q { font: 500 28px / 1.35 var(--ds-font-serif); letter-spacing: -0.01em; text-align: center; }
+:root[dir='rtl'] .fc-q { font-family: var(--ds-font-ui); font-weight: 600; font-size: 25px; letter-spacing: 0; }
+.fc-a { inline-size: 100%; border-top: 1px solid var(--ds-line); color: var(--ds-text-2); font-size: 16px; text-align: start; }
+.fc-show { block-size: 44px; padding: 0 24px; border-radius: var(--ds-r); font-weight: 550; }
+.fc-show kbd { background: color-mix(in oklab, var(--ds-accent-ink) 20%, transparent); border-color: color-mix(in oklab, var(--ds-accent-ink) 30%, transparent); }
+.fc-grades { gap: 10px; }
+.fc-g { border-color: var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); }
+.fc-g b { margin-block-start: 4px; font-size: 15px; font-weight: 600; color: var(--ds-text); }
+.fc-g small { color: var(--ds-text-3); }
+.fc-g:hover { transform: none; border-color: var(--g); background: color-mix(in oklab, var(--g) 9%, var(--ds-bg)); box-shadow: none; }
+.fc-g.g0 { --g: var(--ds-bad); } .fc-g.g1 { --g: var(--ds-warn); } .fc-g.g2 { --g: var(--ds-info); } .fc-g.g3 { --g: var(--ds-ok); }
+.fc2-art { border-radius: var(--ds-r-lg); background: var(--ds-accent-soft); border-color: var(--ds-accent-line); color: var(--ds-accent); box-shadow: none; }
+.fc2-empty.done .fc2-art { color: var(--ds-ok); border-color: color-mix(in oklab, var(--ds-ok) 40%, transparent); background: color-mix(in oklab, var(--ds-ok) 12%, transparent); box-shadow: none; }
+.fc2-empty h3 { font-weight: 600; letter-spacing: -0.01em; }
+.fc2-empty p { color: var(--ds-text-2); }
+.fc2-side { border-inline-start-color: var(--ds-line); background: var(--ds-sunk); }
+.fc2-side h4 { font-size: 12.5px; font-weight: 550; letter-spacing: 0; color: var(--ds-text-3); }
+.fc2-tile { border-color: var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); }
+.fc2-tile-ic { border-radius: 8px; background: var(--ds-accent-soft); color: var(--ds-accent); }
+.fc2-tile b { font-weight: 600; letter-spacing: 0; }
+.fc-chart { border-color: var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); }
+.fc-chart i { background: var(--ds-accent); }
