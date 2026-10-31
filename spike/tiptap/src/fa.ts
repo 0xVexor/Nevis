@@ -1,5 +1,6 @@
 // English → Persian UI strings (see i18n.ts). Generated once from the original Persian UI, edit freely.
 export const FA: Record<string, string> = {
+  "These turn on once a database has a relation, a dependency or sub-items.": "وقتی یک دیتابیس رابطه، وابستگی یا زیرآیتم داشته باشد، این‌ها فعال می‌شوند.",
   "No links of this kind in your databases yet": "هنوز در دیتابیس‌هایت پیوندی از این نوع نیست",
   "Size shows how many links a page has.": "اندازه نشان می‌دهد هر صفحه چند پیوند دارد.",
   "Connections": "اتصال‌ها",
