@@ -1,5 +1,4 @@
 import { setPreference } from './preferenceEvents'
-import { Brand } from './Brand'
 import { UpdateCenter } from './UpdateUI'
 import { shortcutLabel } from './shortcuts'
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react'
@@ -605,8 +604,7 @@ export default function App() {
           }}
         />
         <div className="ws">
-          <span className="ws-logo"><Ic.Logo size={32} /></span>
-          <Brand className="ws-name" />
+          <WorkspaceCard onOpen={() => setFolderOpen(true)} />
           <button className="icon-btn" title={t('Close sidebar  Ctrl+\\')} onClick={() => setSideOpen(false)}><Ic.Sidebar /></button>
         </div>
 
@@ -623,24 +621,28 @@ export default function App() {
             <span className="ic"><Ic.Checklist /></span><span className="ntitle">{t('Tasks')}</span>
           </button>
 
+          <button className="row plain" onClick={() => setCardsOpen(true)}><span className="ic"><Ic.Cards /></span><span className="ntitle">{t('Flashcards')}</span>{dueCards > 0 && <span className="badge">{dueCards}</span>}</button>
+
+          <button className="row plain" onClick={() => setTplOpen(true)}><span className="ic"><Ic.Blocks /></span><span className="ntitle">{t('Templates')}</span></button>
+
           <button className={'row plain' + (view === 'databases' ? ' cur' : '')} onClick={() => setView('databases')}>
             <span className="ic"><Ic.Table /></span><span className="ntitle">{t('Databases')}</span>
+          </button>
+
+          <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => setView('files')}>
+            <span className="ic"><Ic.Folders /></span><span className="ntitle">{t('Files')}</span>
           </button>
 
           <button className={'row plain' + (view === 'drawings' ? ' cur' : '')} onPointerEnter={warmDrawing} onClick={() => setView('drawings')}>
             <span className="ic"><Ic.Pencil /></span><span className="ntitle">{t('Drawings')}</span>
           </button>
 
-          <button className="row plain" onClick={() => setTplOpen(true)}><span className="ic"><Ic.Blocks /></span><span className="ntitle">{t('Templates')}</span></button>
-
-          <button className="row plain" onClick={() => setCardsOpen(true)}><span className="ic"><Ic.Cards /></span><span className="ntitle">{t('Flashcards')}</span>{dueCards > 0 && <span className="badge">{dueCards}</span>}</button>
-
-          <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => setView('files')}>
-            <span className="ic"><Ic.Folders /></span><span className="ntitle">{t('Files')}</span>
-          </button>
-
           <button className="row plain" onClick={() => setGraphOpen(true)}>
             <span className="ic"><Ic.Link /></span><span className="ntitle">{t('Graph view')}</span>
+          </button>
+
+          <button className="row plain" onClick={() => setTableOpen(true)}>
+            <span className="ic"><Ic.List /></span><span className="ntitle">{t('Pages table')}</span>
           </button>
 
           {favs.length > 0 && (
@@ -681,7 +683,6 @@ export default function App() {
 
         <SideTip />
         <div className="side-foot">
-          <WorkspaceCard onOpen={() => setFolderOpen(true)} />
           <button className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => setView('settings')}>
             <span className="ic"><Ic.Settings /></span><span className="ntitle">{t('Settings')}</span>
           </button>
