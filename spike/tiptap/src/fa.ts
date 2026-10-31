@@ -1,5 +1,7 @@
 // English → Persian UI strings (see i18n.ts). Generated once from the original Persian UI, edit freely.
 export const FA: Record<string, string> = {
+  "Back  Alt+←": "برگشت  Alt+←",
+  "Forward  Alt+→": "جلو  Alt+→",
   "Lilac": "یاسی",
   "Periwinkle": "گل‌ختمی",
   "Mint": "نعنایی",

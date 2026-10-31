@@ -987,3 +987,7 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 /* callout icon: one calm tone, not a coloured emoji */
 .callout-ic { filter: grayscale(1) opacity(0.75); }
 .callout-ic:hover { filter: grayscale(1); }
+
+.nav-hist { display: flex; gap: 2px; margin-inline-end: 4px; }
+.nav-hist .icon-btn { inline-size: 30px; block-size: 30px; border-radius: var(--ds-r-sm); color: var(--ds-text-2); }
+.nav-hist .icon-btn:disabled { opacity: 0.35; cursor: default; }
