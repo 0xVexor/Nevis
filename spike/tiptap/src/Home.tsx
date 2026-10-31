@@ -111,7 +111,7 @@ export function Home({ pages, onOpen, onNew, onFolder, onTable, onCards, onSearc
           <button type="button" className="ds-btn ds-btn--primary" aria-label={t('More')} aria-expanded={!!menu} onClick={(e) => setMenu(menu ? null : e.currentTarget.parentElement!.getBoundingClientRect())}><Ic.Chevron size={14} /></button>
         </div>
       </div>
-      {menu && <Popover anchor={menu} align="end" onClose={() => setMenu(null)}><div className="menu">
+      {menu && <Popover anchor={menu} align="end" onClose={() => setMenu(null)}><div className="ds-menu">
         <MenuItem icon={<Ic.Page />} label={t('New page')} onClick={() => choose(onNew)} />
         <MenuItem icon={<Ic.Table />} label={t('New database')} onClick={() => choose(onNewDatabase)} />
         <MenuItem icon={<Ic.Pencil />} label={t('New board')} onClick={() => choose(onNewBoard)} />

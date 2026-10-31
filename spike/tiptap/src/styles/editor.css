@@ -274,7 +274,7 @@
 .dw-meta b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dw-meta small { color: var(--faint); font-size: 12px; }
 
-/* Excalidraw menus (right-click and the main menu) drawn like the app's own menus (see .popover / .menu-item in overlays.css, v2.css) */
+/* Excalidraw menus (right-click and the main menu) drawn like the app's own menus (see .ds-pop / .ds-menu-item in overlays.css, v2.css) */
 .excalidraw.excalidraw .context-menu, .excalidraw.excalidraw .dropdown-menu-container { min-width: 230px; max-height: min(70vh, 640px); overflow-y: auto; margin: 0; padding: 6px; list-style: none; background: var(--pop) !important; color: var(--text); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow); font-family: var(--font); animation: pop-in 0.2s var(--ease); }
 .excalidraw.excalidraw .context-menu li { margin: 0; }
 .excalidraw.excalidraw .context-menu-item, .excalidraw.excalidraw .dropdown-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px 12px; border: 0; border-radius: 12px; background: transparent; color: var(--text); font: inherit; font-size: 13.5px; line-height: 1.2; text-align: start; cursor: var(--cursor-hand, pointer); transition: background 0.12s; }
@@ -286,7 +286,7 @@
 .excalidraw.excalidraw .context-menu-item.dangerous:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .excalidraw.excalidraw .context-menu-item:disabled { opacity: 0.4; cursor: default; background: transparent; }
 .excalidraw.excalidraw .context-menu-item-separator, .excalidraw.excalidraw .dropdown-menu-item-divider { height: 1px; margin: 6px 4px; border: 0; background: var(--border); }
-/* the app's global .popover styles must not leak onto Excalidraw's own .popover wrapper (the menu above draws the box itself) */
+/* the app's global .ds-pop styles must not leak onto Excalidraw's own .ds-pop wrapper (the menu above draws the box itself) */
 .excalidraw.excalidraw .popover { min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; animation: none; overflow: visible; }
 .excalidraw.excalidraw .context-menu-item__shortcut { background: transparent; border: 0; box-shadow: none; padding-block: 0; }
 /* Excalidraw's own loader says "Loading scene…" in English; the spinner alone is enough */

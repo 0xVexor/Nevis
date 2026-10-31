@@ -7,7 +7,7 @@
     --pre-bg: #f6f6f6; --code-bg: #eee; --code-text: #b3261e;
   }
   html, body, #root { height: auto !important; background: #fff !important; background-image: none !important; }
-  .side, .topbar, .page-drawer, .findbar, .templates, .block-handle, .bubble, .slash-menu, .toast, .popover, .overlay,
+  .side, .topbar, .page-drawer, .findbar, .templates, .block-handle, .bubble, .slash-menu, .toast, .ds-pop, .overlay,
   .cover-acts, .page-tools, .code-bar, .toggle-btn, .callout-ic, .backlinks-title + .backlink, .toolbar,
   .img-bar, .img-handle, .mermaid-bar, .drawing-actions, .lightbox { display: none !important; }
   .app, .main, .scroller, .page-cols { display: block !important; height: auto !important; overflow: visible !important; position: static !important; width: auto !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; border: 0 !important; border-radius: 0 !important; background: #fff !important; animation: none !important; }

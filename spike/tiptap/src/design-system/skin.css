@@ -89,3 +89,23 @@
 /* ───── empty states ───── */
 .blank-ic { border-radius: var(--ds-r-lg); background: var(--ds-accent-soft); border-color: var(--ds-accent-line); box-shadow: none; }
 .blank h2 { font-weight: 650; }
+
+/* ───── floating surfaces: slash menu, toolbar menus, bubble toolbar, palette share one panel style ───── */
+.tb-menu, .bubble, .bubble.tbl, .slash-menu {
+  border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised);
+  backdrop-filter: none; box-shadow: var(--ds-shadow-pop);
+}
+.bubble, .bubble.tbl { border-radius: 12px; }
+.bubble button { border-radius: var(--ds-r-sm); }
+.bubble button.on { background: var(--ds-accent-soft); color: var(--ds-accent); }
+.toolbar .tb-menu button.tb-mi { min-height: 34px; border-radius: 8px; font-size: 14px; }
+.toolbar .tb-menu button.tb-mi.on { background: var(--ds-accent-soft); color: var(--ds-accent); font-weight: 550; }
+.slash-label { padding: 10px 14px 4px; font-size: 11.5px; font-weight: 550; letter-spacing: 0; text-transform: none; color: var(--ds-text-3); }
+.slash-list { padding: 4px 6px 6px; }
+.slash-item { min-height: 46px; gap: 12px; padding: 6px 8px; border-radius: 8px; }
+.slash-item.sel { background: var(--ds-hover); }
+.slash-item.sel::before { display: none; }
+.slash-ic { width: 32px; height: 32px; border: 1px solid var(--ds-line); border-radius: 8px; background: var(--ds-bg); color: var(--ds-text-2); }
+.slash-ic svg { width: 17px; height: 17px; }
+.slash-tx b { font-size: 14px; font-weight: 550; }
+.slash-foot { background: var(--ds-sunk); border-top-color: var(--ds-line); }

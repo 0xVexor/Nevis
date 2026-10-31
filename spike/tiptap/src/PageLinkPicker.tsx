@@ -42,15 +42,15 @@ export function PageLinkPicker({ text, currentId, onPick }: { text: string; curr
       </div>
       <div className="plp-list" role="listbox">
         {pages.map((p, i) => (
-          <button key={p.id} type="button" role="option" aria-selected={i === sel} className={'menu-item' + (i === sel ? ' hot' : '')} onMouseMove={() => setSel(i)} onClick={() => onPick(p.id)}>
-            <span className="menu-ic">{iconNode(p.icon, 15, <Ic.Page size={15} />)}</span>
-            <span className="menu-tx" dir="auto">{p.title || t('Untitled')}</span>
+          <button key={p.id} type="button" role="option" aria-selected={i === sel} className={'ds-menu-item' + (i === sel ? ' hot' : '')} onMouseMove={() => setSel(i)} onClick={() => onPick(p.id)}>
+            <span className="ds-menu-ic">{iconNode(p.icon, 15, <Ic.Page size={15} />)}</span>
+            <span className="ds-menu-label" dir="auto">{p.title || t('Untitled')}</span>
           </button>
         ))}
         {canCreate && (
-          <button type="button" className={'menu-item' + (sel === pages.length ? ' hot' : '')} onMouseMove={() => setSel(pages.length)} onClick={() => onPick(null)}>
-            <span className="menu-ic"><Ic.Plus size={15} /></span>
-            <span className="menu-tx"><b>{t('Create a new page')}</b><small dir="auto">{q.trim()}</small></span>
+          <button type="button" className={'ds-menu-item' + (sel === pages.length ? ' hot' : '')} onMouseMove={() => setSel(pages.length)} onClick={() => onPick(null)}>
+            <span className="ds-menu-ic"><Ic.Plus size={15} /></span>
+            <span className="ds-menu-label"><b>{t('Create a new page')}</b><small dir="auto">{q.trim()}</small></span>
           </button>
         )}
         {count === 0 && <div className="lang-none">{t('No page found')}</div>}

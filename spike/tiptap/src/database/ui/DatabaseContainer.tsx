@@ -228,7 +228,7 @@ function Inner({ svc, container, fixedViewId, onOpenPage, inline }: { svc: Datab
         {panel?.kind === 'settings' && src && <ViewSettings svc={svc} view={view} anchor={panel.rect} onClose={() => setPanel(null)} ctl={ctl} />}
         {panel?.kind === 'new' && src && (
           <Popover anchor={panel.rect} onClose={() => setPanel(null)} align="end">
-            <div className="menu">
+            <div className="ds-menu">
               <MenuLabel>{t('New with template')}</MenuLabel>
               <MenuItem label={t('Blank')} onClick={() => (setPanel(null), void ctl.createRow({ edit: true }).then((r) => r && nav.openRow(r.pageId, 'side')))} />
               {svc.state.live('template').filter((tp) => tp.sourceId === src.id).map((tp) => (
@@ -258,7 +258,7 @@ function Inner({ svc, container, fixedViewId, onOpenPage, inline }: { svc: Datab
         )}
         {panel?.kind === 'source' && (
           <Popover anchor={panel.rect} onClose={() => setPanel(null)}>
-            <div className="menu">
+            <div className="ds-menu">
               {sources.map((s) => (
                 <MenuItem key={s.id} label={s.name} onClick={() => {
                   setPanel(null)
@@ -364,7 +364,7 @@ function NewViewMenu({ svc, container, anchor, onClose, onCreated, source, sourc
   }
   return (
     <Popover anchor={anchor} onClose={onClose}>
-      <div className="menu">
+      <div className="ds-menu">
         <MenuLabel>{t('Add a view')}</MenuLabel>
         {sources.length > 1 && <div className="db-form"><Select value={src ?? ''} onChange={setSrc} title={t('Data source')} options={sources.map((source) => ({ value: source.id, label: source.name }))} /></div>}
         {types.map((ty) => <MenuItem key={ty} icon={VIEW_ICON[ty]()} label={t(VIEW_LABEL[ty])} onClick={() => void create(ty)} />)}
@@ -381,7 +381,7 @@ function ViewMenu({ svc, view, views, onClose, notify, onSelect, canSchema }: { 
     return r
   }
   return (
-    <div className="menu">
+    <div className="ds-menu">
       <MenuItem icon={<Ic.Pencil size={14} />} label={t('Rename')} disabled={!canSchema} onClick={async () => { onClose(); const n = await promptDialog({ title: t('Rename view'), message: t('Name'), initial: view.name }); if (n) await run([{ type: 'view.patch', payload: { viewId: view.id, name: n } }]) }} />
       <MenuItem icon={<Ic.Copy size={14} />} label={t('Duplicate')} disabled={!canSchema} onClick={async () => { onClose(); const r = await run([{ type: 'view.duplicate', payload: { viewId: view.id } }]); if (r.ok) onSelect((r.result as { viewId: Id }).viewId) }} />
       <MenuItem icon={<Ic.Link size={14} />} label={t('Copy link to view')} onClick={() => { onClose(); void navigator.clipboard?.writeText(`noviq://view/${view.id}`); notify(t('Link copied')) }} />

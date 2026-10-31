@@ -32,7 +32,7 @@ const LIMIT = 8
 export function PagePanel({ open, page, pages, onClose, onOpen, onNewSub, onFav, onCover, onSearch, onExport, onSettings }: Props) {
   useEffect(() => {
     if (!open) return
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('.lightbox, .popover, .slash-menu') && onClose()
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('.lightbox, .ds-pop, .slash-menu') && onClose()
     window.addEventListener('keydown', esc)
     return () => window.removeEventListener('keydown', esc)
   }, [open, onClose])

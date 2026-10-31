@@ -809,7 +809,7 @@ export default function App() {
 
       {menu && menuPage && (
         <Popover anchor={menu.rect} onClose={() => setMenu(null)} align="end">
-          <div className="menu">
+          <div className="ds-menu">
             {menuPage.kind !== 'folder' && <MenuItem icon={<Ic.Open />} label={t('Open')} onClick={() => (setCurrentId(menu.id), setView('page'), setMenu(null))} />}
             {menuPage.kind !== 'folder' && <MenuItem icon={<Ic.Star filled={menuPage.favorite} />} label={menuPage.favorite ? t('Remove from favorites') : t('Add to favorites')} onClick={() => (fav(menu.id), setMenu(null))} />}
             <MenuSep />
@@ -833,7 +833,7 @@ export default function App() {
 
       {blankMenu && (
         <Popover anchor={blankMenu} onClose={() => setBlankMenu(null)}>
-          <div className="menu">
+          <div className="ds-menu">
             <MenuItem icon={<Ic.Plus />} label={t('New page')} onClick={() => (add(null), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Folders />} label={t('New folder')} onClick={() => (addFolder(null), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Pencil />} label={t('New board')} onClick={() => (add(null, 'board'), setBlankMenu(null))} />
@@ -865,7 +865,7 @@ export default function App() {
 
       {dataMenu && (
         <Popover anchor={dataMenu} onClose={() => setDataMenu(null)} align="end">
-          <div className="menu share-menu">
+          <div className="ds-menu share-menu">
             {current && view === 'page' && (
               <>
                 <MenuLabel>{t('Share this page')}</MenuLabel>

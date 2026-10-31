@@ -129,11 +129,26 @@
 @keyframes ds-pop { from { opacity: 0; transform: translateY(-4px) scale(0.985); } }
 .ds-menu { min-width: 220px; padding: 6px; }
 .ds-menu-item {
-  position: relative; display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 10px;
+  position: relative; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 6px 10px;
   border: 0; border-radius: 8px; background: none; color: var(--ds-text); font: 14px var(--ds-font-ui); text-align: start; cursor: pointer; user-select: none;
 }
 .ds-menu-item:hover, .ds-menu-item:focus-visible { background: var(--ds-hover); }
-.ds-menu-item .ds-icon { color: var(--ds-text-3); }
+.ds-menu-item .ds-icon, .ds-menu-ic { color: var(--ds-text-3); }
+.ds-menu-ic { display: inline-grid; place-items: center; flex: none; inline-size: 18px; }
+.ds-menu-item:hover .ds-menu-ic, .ds-menu-item:focus-visible .ds-menu-ic { color: var(--ds-text-2); }
+.ds-menu-item.hot { background: var(--ds-hover); }
+.ds-menu-item.on { background: var(--ds-accent-soft); color: var(--ds-accent); font-weight: 550; }
+.ds-menu-item.on .ds-menu-ic { color: var(--ds-accent); }
+.ds-menu-item:disabled { opacity: 0.4; pointer-events: none; }
+.ds-menu-item:focus-visible { outline: none; }
+.ds-menu-item[data-danger='true'] .ds-menu-hint { color: color-mix(in oklab, var(--ds-bad) 60%, transparent); }
+.ds-menu-label > b { display: block; font-weight: 550; line-height: 1.3; }
+.ds-menu-label > small { display: block; margin-top: 1px; color: var(--ds-text-3); font-size: 12px; font-weight: 400; line-height: 1.4; white-space: normal; }
+.ds-menu-hint { direction: ltr; }
+/* a row of quick actions at the top of a context menu (cut, copy, paste …) */
+.menu-quick { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 3px; margin-block-end: 4px; border-radius: var(--ds-r); background: var(--ds-sunk); }
+.menu-quick button { display: grid; place-items: center; block-size: 32px; border: 0; border-radius: var(--ds-r-sm); background: none; color: var(--ds-text-2); cursor: pointer; transition: background var(--ds-fast), color var(--ds-fast); }
+.menu-quick button:hover { background: var(--ds-raised); color: var(--ds-accent); box-shadow: 0 0 0 1px var(--ds-line); }
 .ds-menu-item[data-danger='true'], .ds-menu-item[data-danger='true'] .ds-icon { color: var(--ds-bad); }
 .ds-menu-item[data-danger='true']:hover { background: color-mix(in oklab, var(--ds-bad) 10%, transparent); }
 .ds-menu-label { flex: 1; white-space: nowrap; }
