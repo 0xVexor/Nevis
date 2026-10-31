@@ -752,10 +752,8 @@ export default function App() {
         {reader && view === 'page' && current && <ReaderBar cfg={readerCfg} onCfg={(c) => (setReaderCfg(c), setPreference('not.reader.cfg', JSON.stringify(c)))} onExit={() => setReader(false)} />}
         <div className="scroller">
           {view === 'home' ? (
-            <Home pages={pages} onOpen={setCurrentId} onNew={() => add(null)} onFolder={() => addFolder(null)} onTable={() => setTableOpen(true)} onCards={() => setCardsOpen(true)} onSearch={() => setSearching(true)}
-              onNewDatabase={() => addDatabase(null)} onNewBoard={() => add(null, 'board')} onNewList={() => add(null, 'todo')}
-              onDatabases={() => setView('databases')} onDrawings={() => setView('drawings')} onTasks={() => setView('tasks')}
-              onTemplates={() => setTplOpen(true)} onWorkspaces={isTauri ? () => setFolderOpen(true) : undefined} />
+            <Home pages={pages} onOpen={setCurrentId} onNew={() => add(null)} onTable={() => setTableOpen(true)} onCards={() => setCardsOpen(true)}
+              onTemplates={() => setTplOpen(true)} onFiles={() => setView('files')} onTasks={() => setView('tasks')} />
           ) : view === 'files' ? (
             <Explorer pages={pages} onOpen={setCurrentId} onChange={refresh} onToast={(msg, undo) => setToast({ msg, undo })} />
           ) : view === 'tasks' ? (

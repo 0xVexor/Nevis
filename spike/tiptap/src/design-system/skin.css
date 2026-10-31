@@ -15,6 +15,9 @@
   --radius-lg: 14px;
   --radius-xl: 14px;
 
+  /* the design's typeface: Instrument Sans for Latin, Vazirmatn for Persian (Settings → Font still overrides) */
+  --font: 'Instrument Sans', 'Vazirmatn', 'Segoe UI', Tahoma, system-ui, sans-serif;
+
   /* one accent, derived everywhere; a chosen accent still comes from settings (--user-accent) */
   --accent: var(--ds-accent);
   --accent-on: var(--ds-accent-ink);
