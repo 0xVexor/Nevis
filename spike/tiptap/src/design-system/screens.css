@@ -783,3 +783,6 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 .templates button, .page-tools button { border-radius: var(--ds-r); }
 .page-icon, .page-cols.has-cover .page-icon { margin: 0; }
 .page-cols.has-cover .page-head .page-icon { margin: 0; }
+
+/* reading mode scales the page title (.title); the database Title cell shares the class and must not follow it */
+.app.reading .db-td.title { font-size: inherit; padding-block-end: 0; pointer-events: auto; }
