@@ -1,5 +1,7 @@
 // English → Persian UI strings (see i18n.ts). Generated once from the original Persian UI, edit freely.
 export const FA: Record<string, string> = {
+  "Size shows how many links a page has.": "اندازه نشان می‌دهد هر صفحه چند پیوند دارد.",
+  "Connections": "اتصال‌ها",
   "{n} days written": "{n} روز نوشتن",
   "{n} of {m} cards": "{n} از {m} کارت",
   "Back to decks": "بازگشت به دسته‌ها",
