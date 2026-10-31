@@ -242,3 +242,54 @@
 .fc2-tile b { font-weight: 600; letter-spacing: 0; }
 .fc-chart { border-color: var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); }
 .fc-chart i { background: var(--ds-accent); }
+
+/* ───── Flashcards as a page: decks, then one card at a time (replaces the review styles above) ───── */
+.fcv { max-inline-size: 1000px; margin-inline: auto; padding: 8px 40px 96px; }
+.fcv-head h1 { margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.025em; }
+.fcv-head p { margin: 6px 0 0; color: var(--ds-text-2); font-size: 15px; }
+.fcv-empty { margin-block-start: 24px; }
+.fcv-empty p { margin: 6px auto 0; max-inline-size: 52ch; }
+.fcv-decks { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; margin-block-start: 24px; }
+.fcv-deck { display: flex; flex-direction: column; gap: 14px; padding: 18px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); color: var(--ds-text); font: inherit; text-align: start; cursor: pointer; transition: border-color var(--ds-base); }
+.fcv-deck:hover { border-color: var(--ds-accent-line); }
+.fcv-deck-top { display: flex; align-items: center; gap: 12px; }
+.fcv-deck-top b { display: block; font-weight: 600; }
+.fcv-deck-top small { display: block; color: var(--ds-text-3); font-size: 12.5px; }
+.fcv-deck-foot { display: flex; align-items: center; justify-content: space-between; }
+.fcv-deck-foot b { font-weight: 600; }
+.fcv-stats h2 { margin: 32px 0 12px; font-size: 15px; font-weight: 600; }
+.fcv-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.fcv-tile { display: flex; flex-direction: column; gap: 2px; padding: 14px; }
+.fcv-tile .ds-tile { margin-block-end: 8px; color: var(--ds-text-2); }
+.fcv-tile b { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.fcv-tile small { color: var(--ds-text-3); font-size: 12.5px; }
+.fcv-chart { display: flex; align-items: flex-end; gap: 5px; block-size: 100px; padding: 12px; }
+.fcv-chart i { flex: 1; min-block-size: 4px; border-radius: 4px 4px 2px 2px; background: var(--ds-accent); }
+.fcv-review { max-inline-size: 640px; }
+.fcv-bar { display: flex; align-items: center; gap: 14px; }
+.fcv-title { flex: none; max-inline-size: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fcv-count { flex: none; font-size: 13px; font-variant-numeric: tabular-nums; }
+.fcv-prog { flex: 1; }
+.fcv-stage { display: flex; flex-direction: column; gap: 20px; margin-block-start: 28px; }
+.fcv-card { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; min-block-size: 300px; padding: 44px 40px 40px; border: 1px solid var(--ds-line); border-radius: 22px; background: var(--ds-raised); box-shadow: 0 20px 40px -28px rgb(16 24 40 / 0.3); text-align: center; animation: ds-pop var(--ds-slow) var(--ds-ease); overflow-wrap: anywhere; }
+.fcv-src { position: absolute; inset-block-start: 14px; inset-inline-start: 16px; display: inline-flex; align-items: center; gap: 6px; max-inline-size: 60%; padding: 0; border: 0; background: none; color: var(--ds-text-3); font: inherit; font-size: 12.5px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fcv-src:hover { color: var(--ds-accent); }
+.fcv-q { font: 500 28px / 1.35 var(--ds-font-serif); letter-spacing: -0.01em; }
+:root[dir='rtl'] .fcv-q { font-family: var(--ds-font-ui); font-weight: 600; font-size: 25px; letter-spacing: 0; }
+.fcv-a { inline-size: 100%; padding-block-start: 16px; border-block-start: 1px solid var(--ds-line); color: var(--ds-text-2); font-size: 17px; text-align: center; }
+.fcv-a > :first-child { margin-block-start: 0; }
+.fcv-show { block-size: 44px; font-size: 15px; }
+.fcv-grades { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.fcv-g { --g: var(--ds-accent); display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 11px 6px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); color: var(--ds-text); font: inherit; cursor: pointer; transition: border-color var(--ds-fast), background var(--ds-fast); }
+.fcv-g b { font-weight: 600; }
+.fcv-g small { color: var(--ds-text-3); font-size: 12px; }
+.fcv-g:hover { border-color: var(--g); background: color-mix(in oklab, var(--g) 9%, var(--ds-bg)); }
+.fcv-g.g0 { --g: var(--ds-bad); } .fcv-g.g1 { --g: var(--ds-warn); } .fcv-g.g2 { --g: var(--ds-info); } .fcv-g.g3 { --g: var(--ds-ok); }
+.fcv-end { display: flex; flex-direction: column; align-items: center; gap: 8px; padding-block: 64px 0; text-align: center; }
+.fcv-end h2 { margin: 12px 0 0; font-size: 24px; font-weight: 600; }
+.fcv-end p { margin: 0 0 14px; color: var(--ds-text-2); }
+/* Tasks: the add form keeps no halo, its button is a plain secondary one */
+.tk-add:focus-within { border-color: transparent; box-shadow: none; }
+.tk-add input:focus { box-shadow: none; border-color: var(--ds-line-strong); }
+.tk-add .ds-btn--primary { background: var(--ds-raised); border-color: var(--ds-line); color: var(--ds-accent); filter: none; }
+.tk-add .ds-btn--primary:hover { background: var(--ds-accent-soft); border-color: var(--ds-accent-line); filter: none; }
