@@ -631,10 +631,6 @@ export default function App() {
             <span className="ic"><Ic.Table /></span><span className="ntitle">{t('Databases')}</span>
           </button>
 
-          <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => setView('files')}>
-            <span className="ic"><Ic.Folders /></span><span className="ntitle">{t('Files')}</span>
-          </button>
-
           <button className={'row plain' + (view === 'drawings' ? ' cur' : '')} onPointerEnter={warmDrawing} onClick={() => setView('drawings')}>
             <span className="ic"><Ic.Pencil /></span><span className="ntitle">{t('Drawings')}</span>
           </button>
@@ -688,6 +684,9 @@ export default function App() {
           <WorkspaceCard onOpen={() => setFolderOpen(true)} />
           <button className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => setView('settings')}>
             <span className="ic"><Ic.Settings /></span><span className="ntitle">{t('Settings')}</span>
+          </button>
+          <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => setView('files')}>
+            <span className="ic"><Ic.Folders /></span><span className="ntitle">{t('Files')}</span>
           </button>
           <button className="row plain" onClick={() => setTrashOpen(true)}>
             <span className="ic"><Ic.Trash /></span><span className="ntitle">{t('Trash')}</span>
