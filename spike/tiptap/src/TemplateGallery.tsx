@@ -1,8 +1,7 @@
-import { useEffect, useId, useRef } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect } from 'react'
 import { getTemplates } from './templates'
 import { Glyph } from './iconSet'
-import * as Ic from './icons'
+import { Icon } from './design-system'
 import { t } from './i18n'
 
 /** Glyph shown for each built-in template (new pages get it as their icon). */
@@ -12,63 +11,42 @@ export const TEMPLATE_GLYPH: Record<string, string> = { lecture: 'graduation', c
 export const BOARD_TEMPLATE = '__board'
 export const DATABASE_TEMPLATE = '__database'
 
-/** Template gallery: pick one and a new page is created from it. */
+const HUES = ['teal', 'violet', 'orange', 'blue', 'rose', 'green'] as const
+const TONE: Record<(typeof HUES)[number], string> = { teal: '#0f8f83', violet: '#7c6ae6', orange: '#d9692c', blue: '#3b82d6', rose: '#d1456f', green: '#3d9a52' }
+
+/** Template gallery as a page: pick one and a new page is created from it. */
 export function Templates({ onPick, onClose }: { onPick: (id: string) => void; onClose: () => void }) {
   const list = getTemplates()
-  const titleId = useId()
-  const closeButton = useRef<HTMLButtonElement>(null)
-  const dialog = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null
-    closeButton.current?.focus({ preventScroll: true })
-    return () => { if (previous?.isConnected) previous.focus({ preventScroll: true }) }
-  }, [])
-  return createPortal(
-    <div className="overlay tpl-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={dialog} className="modal tpl-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => {
-        if (e.key === 'Escape') { e.stopPropagation(); onClose() }
-        if (e.key === 'Tab') {
-          const buttons = [...(dialog.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])]
-          const first = buttons[0], last = buttons[buttons.length - 1]
-          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus() }
-          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus() }
-        }
-      }}>
-        <div className="modal-head">
-          <div>
-            <b id={titleId}>{t('Templates')}</b>
-            <small>{t('Start a new page from a ready-made structure.')}</small>
-          </div>
-          <button ref={closeButton} type="button" className="icon-btn" title={t('Close')} aria-label={t('Close')} onClick={onClose}><Ic.Close /></button>
-        </div>
-        <div className="tpl-grid">
-          <button className="tpl-card blank" onClick={() => onPick('')}>
-            <span className="tpl-ic"><Ic.Plus size={22} /></span>
-            <b>{t('Blank page')}</b>
-            <small>{t('Start from scratch')}</small>
-          </button>
-          <button className="tpl-card" style={{ ['--hue' as string]: 200 } as React.CSSProperties} onClick={() => onPick(DATABASE_TEMPLATE)}>
-            <span className="tpl-ic"><Ic.Table size={24} /></span>
-            <b>{t('Database')}</b>
-            <small>{t('Tables, views, forms and dashboards in one database.')}</small>
-            <span className="tpl-use">{t('Use template')}<Ic.Arrow size={14} /></span>
-          </button>
-          <button className="tpl-card" style={{ ['--hue' as string]: 20 } as React.CSSProperties} onClick={() => onPick(BOARD_TEMPLATE)}>
-            <span className="tpl-ic"><Ic.Pencil size={24} /></span>
-            <b>{t('Drawing')}</b>
-            <small>{t('A blank whiteboard for sketches and diagrams.')}</small>
-            <span className="tpl-use">{t('Use template')}<Ic.Arrow size={14} /></span>
-          </button>
-          {list.map((tp, i) => (
-            <button key={tp.id} className="tpl-card" style={{ ['--hue' as string]: [40, 200, 150, 300, 20, 260][i % 6] } as React.CSSProperties} onClick={() => onPick(tp.id)}>
-              <span className="tpl-ic"><Glyph name={TEMPLATE_GLYPH[tp.id] ?? 'page'} size={24} /></span>
-              <b dir="auto">{tp.title}</b>
-              <small dir="auto">{tp.desc}</small>
-              <span className="tpl-use">{t('Use template')}<Ic.Arrow size={14} /></span>
-            </button>
-          ))}
-        </div>
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [onClose])
+
+  const Card = ({ title, hint, icon, tone, onClick, blank }: { title: string; hint: string; icon: React.ReactNode; tone: string; onClick: () => void; blank?: boolean }) => (
+    <button type="button" className={'tplv-card' + (blank ? ' blank' : '')} style={{ ['--c' as string]: tone }} onClick={onClick}>
+      <span className="tplv-pv" aria-hidden="true"><i className="h" /><i /><i /><i className="a" /><i /></span>
+      <span className="tplv-bd">
+        <span className="ds-tile ds-tile--md">{icon}</span>
+        <span><b dir="auto">{title}</b><small dir="auto">{hint}</small></span>
+      </span>
+    </button>
+  )
+
+  return (
+    <div className="tplv">
+      <header className="tplv-head">
+        <h1>{t('Templates')}</h1>
+        <p>{t('Start a new page from a ready-made structure.')}</p>
+      </header>
+      <div className="tplv-grid">
+        <Card blank title={t('Blank page')} hint={t('Start from scratch')} icon={<Icon name="plus" />} tone="#64748b" onClick={() => onPick('')} />
+        <Card title={t('Database')} hint={t('Tables, views, forms and dashboards in one database.')} icon={<Icon name="database" />} tone={TONE.blue} onClick={() => onPick(DATABASE_TEMPLATE)} />
+        <Card title={t('Drawing')} hint={t('A blank whiteboard for sketches and diagrams.')} icon={<Icon name="pencil" />} tone={TONE.orange} onClick={() => onPick(BOARD_TEMPLATE)} />
+        {list.map((tp, i) => (
+          <Card key={tp.id} title={tp.title} hint={tp.desc} icon={<Glyph name={TEMPLATE_GLYPH[tp.id] ?? 'page'} size={17} />} tone={TONE[HUES[i % HUES.length]]} onClick={() => onPick(tp.id)} />
+        ))}
       </div>
-    </div>, document.body,
+    </div>
   )
 }

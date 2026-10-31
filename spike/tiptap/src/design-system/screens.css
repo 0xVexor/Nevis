@@ -293,3 +293,21 @@
 .tk-add input:focus { box-shadow: none; border-color: var(--ds-line-strong); }
 .tk-add .ds-btn--primary { background: var(--ds-raised); border-color: var(--ds-line); color: var(--ds-accent); filter: none; }
 .tk-add .ds-btn--primary:hover { background: var(--ds-accent-soft); border-color: var(--ds-accent-line); filter: none; }
+
+/* ───── Templates as a page ───── */
+.tplv { max-inline-size: 1000px; margin-inline: auto; padding: 8px 40px 96px; }
+.tplv-head h1 { margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.025em; }
+.tplv-head p { margin: 6px 0 0; color: var(--ds-text-2); font-size: 15px; }
+.tplv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin-block-start: 28px; }
+.tplv-card { --c: var(--ds-accent); display: flex; flex-direction: column; padding: 0; overflow: hidden; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); color: var(--ds-text); font: inherit; text-align: start; cursor: pointer; transition: border-color var(--ds-base), transform var(--ds-base) var(--ds-ease); }
+.tplv-card:hover { border-color: var(--ds-accent-line); transform: translateY(-2px); }
+.tplv-pv { display: flex; flex-direction: column; gap: 8px; block-size: 124px; padding: 16px; background: var(--ds-sunk); }
+.tplv-pv i { display: block; block-size: 7px; border-radius: 4px; background: var(--ds-line-strong); }
+.tplv-pv i.h { inline-size: 55%; block-size: 11px; background: var(--ds-text-3); opacity: 0.6; }
+.tplv-pv i.a { inline-size: 40%; background: var(--c); opacity: 0.55; }
+.tplv-card.blank .tplv-pv { align-items: center; justify-content: center; border-block-end: 1px dashed var(--ds-line-strong); }
+.tplv-card.blank .tplv-pv i { display: none; }
+.tplv-bd { display: flex; align-items: center; gap: 12px; padding: 14px; }
+.tplv-bd .ds-tile { --c: var(--c); }
+.tplv-bd b { display: block; font-weight: 600; }
+.tplv-bd small { display: block; margin-block-start: 1px; color: var(--ds-text-3); font-size: 12.5px; line-height: 1.45; }
