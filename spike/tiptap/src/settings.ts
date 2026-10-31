@@ -157,8 +157,6 @@ async function applyBackground(root: HTMLElement, bg: Background, strength: numb
     for (const [k, v] of [['--bg-custom-light', light], ['--bg-custom-dark', dark]] as const) v === null ? root.style.removeProperty(k) : root.style.setProperty(k, v)
   }
   const token = ++bgToken
-  // the design's flat layout floats its panels over the background only when one is chosen
-  bg.kind === 'default' || bg.kind === 'none' ? delete root.dataset.bgcustom : (root.dataset.bgcustom = '1')
   if (bg.kind === 'default') return set(null, null)
   if (bg.kind === 'none') return set('none', 'none')
   if (bg.kind === 'preset') {

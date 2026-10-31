@@ -61,11 +61,8 @@
 .ws-name { background: none; -webkit-text-fill-color: currentColor; color: var(--ds-text); font-weight: 650; letter-spacing: -0.01em; }
 .main { border: 0; border-radius: 0; background: color-mix(in srgb, var(--ds-bg) calc(100% - var(--glass-main, 0) * 75%), transparent); box-shadow: none; }
 .main::before { display: none; }
-/* Settings → Background: a chosen background shows behind and around the app, and the glass sliders let it through the panels.
-   Without one the app stays flat; with one the two panels float on it. */
-:root[data-bgcustom] .app { padding: 12px; gap: 12px; }
-:root[data-bgcustom] .side, :root[data-bgcustom] .main { border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); }
-:root[data-bgcustom] .side.closed { margin-inline-start: calc(-1 * var(--sw) - 12px); }
+/* Settings → Background: the app stays full screen and flat. The chosen background sits behind both panels and shows through
+   only as far as the glass sliders open them. */
 
 /* ───── sidebar rows ───── */
 .section { font-size: 12px; font-weight: 550; letter-spacing: 0; text-transform: none; color: var(--ds-text-3); }
