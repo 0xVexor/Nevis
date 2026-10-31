@@ -864,3 +864,7 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 .rb-toc-i.l2 { color: var(--ds-text-2); }
 .rb-toc-i.l3 { color: var(--ds-text-3); }
 .rb-toc-i:hover { background: var(--ds-hover); color: var(--ds-text); }
+
+/* with a cover the icon dips only a fifth of its height into it */
+.page-cols.has-cover .page-top { margin-block-start: -13px; }
+.page-cols.has-cover .page-head .page-icon { margin: 0; }
