@@ -147,7 +147,8 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           gh release download "$TAG" --pattern latest.json --dir "$RUNNER_TEMP/updater"
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$RUNNER_TEMP/updater/release.json"
+          # The tag endpoint hides draft releases, so find the draft in the full list.
+          gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq "[.[] | select(.tag_name == \"$TAG\")][0]" > "$RUNNER_TEMP/updater/release.json"
           node .github/scripts/verify-updater.cjs "$RUNNER_TEMP/updater/latest.json" "$RUNNER_TEMP/updater/release.json"
       - name: Publish the completed release
         env:
