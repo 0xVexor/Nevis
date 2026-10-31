@@ -28,6 +28,7 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
   const [done, setDone] = useState(0)
   const answerRef = useRef<HTMLDivElement>(null)
   const [log, setLog] = useState<ReviewLog>({})
+  const [hover, setHover] = useState<number | null>(null)
   useEffect(() => void loadLog().then(setLog), [])
   useEffect(() => void kvGet<Store>('srs').then((s) => setSrs(s ?? {})), [])
 
@@ -119,14 +120,12 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
   /* ───── the list of decks ───── */
   if (deck === null) {
     const dueAll = decks[0]?.due ?? 0
-    const freshAll = decks[0]?.fresh ?? 0
     const tiles: [string, number, string][] = [
       ['check', countOn(log, dayKey(Date.now())), t('Reviewed today')],
       ['flame', streak(log, Date.now()), t('Day streak')],
       ['history', total(log), t('Reviews in total')],
       ['clock', dueAll, t('Due now')],
       ['calendar', dueTomorrow, t('Due tomorrow')],
-      ['plus', freshAll, t('New cards')],
     ]
     return (
       <div className="fcv">
@@ -171,8 +170,18 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
                 ))}
               </div>
               <h2>{t('Last 14 days')}</h2>
-              <div className="ds-card fcv-chart">
-                {chart.map((d) => <i key={d.day} title={`${d.day}: ${d.count}`} style={{ height: `${Math.max(4, (d.count / chartMax) * 100)}%`, opacity: d.count ? 1 : 0.25 }} />)}
+              <div className="ds-card fcv-chart" onMouseLeave={() => setHover(null)}>
+                {chart.map((d, i) => (
+                  <span key={d.day} className={'fcv-bar-col' + (hover === i ? ' on' : '') + (hover !== null && hover !== i ? ' dim' : '')} style={{ ['--i' as string]: i }} onMouseEnter={() => setHover(i)}>
+                    {hover === i && (
+                      <span className="fcv-tip" role="status">
+                        <b>{t('{n} of {m} cards', { n: num(d.count), m: num(allCards.size) })}</b>
+                        <small>{new Date(d.day + 'T12:00:00').toLocaleDateString(locale(), { weekday: 'short', month: 'short', day: 'numeric' })}</small>
+                      </span>
+                    )}
+                    <i style={{ height: `${Math.max(4, (d.count / chartMax) * 100)}%`, opacity: d.count ? 1 : 0.25 }} />
+                  </span>
+                ))}
               </div>
             </section>
           </>

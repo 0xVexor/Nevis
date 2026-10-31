@@ -107,3 +107,16 @@
 .home-week .done i { background: var(--ds-accent); }
 .home-week .now i { background: none; border: 2px dashed var(--ds-accent); }
 .home-week .done.now i { border: 0; background: var(--ds-accent); }
+
+/* writing streak: the whole month */
+.home-month-head { display: flex; align-items: baseline; justify-content: space-between; margin-block-end: 10px; }
+.home-month-head b { font-weight: 600; }
+.home-month-head span { font-size: 12.5px; }
+.home-month { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+.home-month .wd { padding-block-end: 4px; color: var(--ds-text-3); font-size: 11.5px; }
+.home-month i { display: grid; place-items: center; aspect-ratio: 1; border-radius: 50%; background: var(--ds-sunk); color: var(--ds-text-3); font: 500 11px var(--ds-font-ui); font-style: normal; font-variant-numeric: tabular-nums; }
+.home-month i.blank { background: none; }
+.home-month i.done { background: var(--ds-accent); color: var(--ds-accent-ink); }
+.home-month i.now { box-shadow: 0 0 0 1.5px var(--ds-accent); color: var(--ds-text); }
+.home-month i.now.done { color: var(--ds-accent-ink); }
+.home-month i.future { background: none; opacity: 0.45; }

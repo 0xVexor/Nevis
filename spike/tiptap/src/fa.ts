@@ -1,5 +1,7 @@
 // English → Persian UI strings (see i18n.ts). Generated once from the original Persian UI, edit freely.
 export const FA: Record<string, string> = {
+  "{n} days written": "{n} روز نوشتن",
+  "{n} of {m} cards": "{n} از {m} کارت",
   "Back to decks": "بازگشت به دسته‌ها",
   "cards": "کارت",
   "due": "موعد",

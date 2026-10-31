@@ -93,7 +93,7 @@ export function Home({ pages, onOpen, onNew, onTable, onCards, onTemplates, onFi
   }, [pages])
 
   const hour = new Date(now).getHours()
-  const { recent, favs, week, streak } = useMemo(() => {
+  const { recent, month, streak } = useMemo(() => {
     const real = pages.filter((p) => p.kind !== 'folder' && !p.database).sort((a, b) => b.updatedAt - a.updatedAt)
     // writing streak: consecutive days with at least one edited page; today may still be empty
     const days = new Set(pages.map((p) => dayKey(p.updatedAt)))
@@ -103,12 +103,17 @@ export function Home({ pages, onOpen, onNew, onTable, onCards, onTemplates, onFi
     let n = days.has(back(0)) ? 0 : 1
     let streak = 0
     while (days.has(back(n))) (streak++, n++)
-    const sunday = today.getDay()
-    const week = Array.from({ length: 7 }, (_, i) => {
-      const off = sunday - i
-      return { key: back(off), now: off === 0, date: new Date(today.getTime() - off * 86_400_000) }
-    })
-    return { recent: real.slice(0, 6), favs: pages.filter((p) => p.kind !== 'folder' && p.favorite).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 8), week: week.map((d) => ({ ...d, done: days.has(d.key) })), streak }
+    // the current month, Sunday first: leading blanks, then one cell per day
+    const first = new Date(today.getFullYear(), today.getMonth(), 1, 12)
+    const count = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
+    const cells = [
+      ...Array.from({ length: first.getDay() }, () => null),
+      ...Array.from({ length: count }, (_, i) => {
+        const date = new Date(today.getFullYear(), today.getMonth(), i + 1, 12)
+        return { key: dayKey(date.getTime()), n: i + 1, done: days.has(dayKey(date.getTime())), now: i + 1 === today.getDate(), future: date.getTime() > today.getTime() + 43_200_000 }
+      }),
+    ]
+    return { recent: real.slice(0, 6), month: { label: new Intl.DateTimeFormat(locale(), { month: 'long', year: 'numeric' }).format(today), cells, doneCount: cells.filter((c) => c?.done).length }, streak }
   }, [pages, now])
   // pages is a dependency on purpose: toggling a task rewrites its page, which hands Home a new pages array
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -185,26 +190,11 @@ export function Home({ pages, onOpen, onNew, onTable, onCards, onTemplates, onFi
           <Section title={t('Writing streak')}>
             <div className="ds-card home-streak">
               <div className="home-streak-head"><span className="home-flame"><Icon name="flame" size={20} /></span><b>{num(streak)}</b><span className="ds-muted">{t('days in a row')}</span></div>
-              <div className="home-week">
-                {week.map((d) => (
-                  <div key={d.key} className={d.done ? 'done' : d.now ? 'now' : ''}>
-                    <i>{d.done && <Icon name="check" size={14} />}</i>
-                    <span>{new Intl.DateTimeFormat(locale(), { weekday: 'narrow' }).format(d.date)}</span>
-                  </div>
-                ))}
+              <div className="home-month-head"><b>{month.label}</b><span className="ds-muted">{t('{n} days written', { n: num(month.doneCount) })}</span></div>
+              <div className="home-month" role="grid" aria-label={month.label}>
+                {Array.from({ length: 7 }, (_, i) => <span key={i} className="wd">{new Intl.DateTimeFormat(locale(), { weekday: 'narrow' }).format(new Date(2023, 0, 1 + i))}</span>)}
+                {month.cells.map((c, i) => c ? <i key={c.key} className={(c.done ? 'done ' : '') + (c.now ? 'now ' : '') + (c.future ? 'future' : '')} title={String(c.n)}>{c.done ? <Icon name="check" size={12} /> : c.n}</i> : <i key={'b' + i} className="blank" />)}
               </div>
-            </div>
-          </Section>
-
-          <Section title={t('Pinned')}>
-            <div className="ds-card home-list">
-              {favs.length ? favs.map((p) => (
-                <button type="button" key={p.id} className="home-row" onClick={() => onOpen(p.id)}>
-                  <PageIcon page={p} />
-                  <span className="home-row-t" dir="auto">{p.title || t('Untitled')}</span>
-                  <span className="ds-muted home-row-m">{ago(p.updatedAt)}</span>
-                </button>
-              )) : <div className="ds-empty">{t('Star a page to pin it here')}</div>}
             </div>
           </Section>
         </aside>
