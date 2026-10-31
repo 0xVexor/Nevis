@@ -26,4 +26,7 @@
 @import './styles/scrollbars.css';
 @import './styles/updates.css';
 @import './styles/layout.css';
+/* New design system (docs/design-system.md). Everything is prefixed ds-, so it never touches the legacy styles above. */
+@import './design-system/tokens.css';
+@import './design-system/components.css';
 @import './styles/print.css';

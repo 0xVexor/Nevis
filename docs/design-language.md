@@ -1,5 +1,7 @@
 # زبان طراحی (Design Language)
 
+> **v6 «Calm» جایگزین این سند است.** قواعد، توکن‌ها و کامپوننت‌های جدید در [design-system.md](design-system.md) (انگلیسی) و صفحه‌ی زنده‌ی [design-system/index.html](design-system/index.html) هستند. هر ویژگی تازه باید طبق آن ساخته شود؛ این سند فقط تاریخچه‌ی ظاهر قدیمی است.
+
 > **v4 — «Aurora Paper» (فعلی).** UI از صفر بازطراحی شد؛ بخش‌های قدیمی‌تر این سند فقط تاریخچه‌اند.
 > - استایل‌ها در `spike/tiptap/src/styles/` هستند (`tokens → base → shell → page → editor → overlays → views → print`) و از `src/index.css` import می‌شوند. `App.css` و `home.css` حذف شدند.
 > - **توکن‌ها** با `light-dark()` فقط یک‌بار تعریف می‌شوند؛ تم از `color-scheme` می‌آید (سیستم، یا `data-theme` روی `<html>`).
