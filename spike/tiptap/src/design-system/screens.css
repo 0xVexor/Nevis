@@ -271,7 +271,7 @@
 .fcv-count { flex: none; font-size: 13px; font-variant-numeric: tabular-nums; }
 .fcv-prog { flex: 1; }
 .fcv-stage { display: flex; flex-direction: column; gap: 20px; margin-block-start: 28px; }
-.fcv-card { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; min-block-size: 300px; padding: 44px 40px 40px; border: 1px solid var(--ds-line); border-radius: 22px; background: var(--ds-raised); box-shadow: 0 20px 40px -28px rgb(16 24 40 / 0.3); text-align: center; animation: ds-pop var(--ds-slow) var(--ds-ease); overflow-wrap: anywhere; }
+.fcv-card { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; min-block-size: 300px; padding: 44px 40px 40px; border: 1px solid var(--ds-line); border-radius: 22px; background: var(--ds-raised); text-align: center; overflow-wrap: anywhere; }
 .fcv-src { position: absolute; inset-block-start: 14px; inset-inline-start: 16px; display: inline-flex; align-items: center; gap: 6px; max-inline-size: 60%; padding: 0; border: 0; background: none; color: var(--ds-text-3); font: inherit; font-size: 12.5px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fcv-src:hover { color: var(--ds-accent); }
 .fcv-q { font: 500 28px / 1.35 var(--ds-font-serif); letter-spacing: -0.01em; }
@@ -299,15 +299,16 @@
 .tplv-head h1 { margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.025em; }
 .tplv-head p { margin: 6px 0 0; color: var(--ds-text-2); font-size: 15px; }
 .tplv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin-block-start: 28px; }
-.tplv-card { --c: var(--ds-accent); display: flex; flex-direction: column; padding: 0; overflow: hidden; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); color: var(--ds-text); font: inherit; text-align: start; cursor: pointer; transition: border-color var(--ds-base), transform var(--ds-base) var(--ds-ease); }
+.tplv-card { --c: var(--ds-text-3); display: flex; flex-direction: column; padding: 0; overflow: hidden; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); color: var(--ds-text); font: inherit; text-align: start; cursor: pointer; transition: border-color var(--ds-base), transform var(--ds-base) var(--ds-ease); }
 .tplv-card:hover { border-color: var(--ds-accent-line); transform: translateY(-2px); }
 .tplv-pv { display: flex; flex-direction: column; gap: 8px; block-size: 124px; padding: 16px; background: var(--ds-sunk); }
 .tplv-pv i { display: block; block-size: 7px; border-radius: 4px; background: var(--ds-line-strong); }
 .tplv-pv i.h { inline-size: 55%; block-size: 11px; background: var(--ds-text-3); opacity: 0.6; }
-.tplv-pv i.a { inline-size: 40%; background: var(--c); opacity: 0.55; }
+.tplv-pv i.a { inline-size: 40%; background: var(--ds-line-strong); }
 .tplv-card.blank .tplv-pv { align-items: center; justify-content: center; border-block-end: 1px dashed var(--ds-line-strong); }
 .tplv-card.blank .tplv-pv i { display: none; }
 .tplv-bd { display: flex; align-items: center; gap: 12px; padding: 14px; }
-.tplv-bd .ds-tile { --c: var(--c); }
+.tplv-bd .ds-tile { --c: var(--ds-text-2); background: var(--ds-sunk); }
+.tplv-card:hover .tplv-bd .ds-tile { --c: var(--ds-accent); background: var(--ds-accent-soft); }
 .tplv-bd b { display: block; font-weight: 600; }
 .tplv-bd small { display: block; margin-block-start: 1px; color: var(--ds-text-3); font-size: 12.5px; line-height: 1.45; }

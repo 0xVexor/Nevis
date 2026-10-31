@@ -11,9 +11,6 @@ export const TEMPLATE_GLYPH: Record<string, string> = { lecture: 'graduation', c
 export const BOARD_TEMPLATE = '__board'
 export const DATABASE_TEMPLATE = '__database'
 
-const HUES = ['teal', 'violet', 'orange', 'blue', 'rose', 'green'] as const
-const TONE: Record<(typeof HUES)[number], string> = { teal: '#0f8f83', violet: '#7c6ae6', orange: '#d9692c', blue: '#3b82d6', rose: '#d1456f', green: '#3d9a52' }
-
 /** Template gallery as a page: pick one and a new page is created from it. */
 export function Templates({ onPick, onClose }: { onPick: (id: string) => void; onClose: () => void }) {
   const list = getTemplates()
@@ -23,8 +20,8 @@ export function Templates({ onPick, onClose }: { onPick: (id: string) => void; o
     return () => window.removeEventListener('keydown', key)
   }, [onClose])
 
-  const Card = ({ title, hint, icon, tone, onClick, blank }: { title: string; hint: string; icon: React.ReactNode; tone: string; onClick: () => void; blank?: boolean }) => (
-    <button type="button" className={'tplv-card' + (blank ? ' blank' : '')} style={{ ['--c' as string]: tone }} onClick={onClick}>
+  const Card = ({ title, hint, icon, onClick, blank }: { title: string; hint: string; icon: React.ReactNode; onClick: () => void; blank?: boolean }) => (
+    <button type="button" className={'tplv-card' + (blank ? ' blank' : '')} onClick={onClick}>
       <span className="tplv-pv" aria-hidden="true"><i className="h" /><i /><i /><i className="a" /><i /></span>
       <span className="tplv-bd">
         <span className="ds-tile ds-tile--md">{icon}</span>
@@ -40,11 +37,11 @@ export function Templates({ onPick, onClose }: { onPick: (id: string) => void; o
         <p>{t('Start a new page from a ready-made structure.')}</p>
       </header>
       <div className="tplv-grid">
-        <Card blank title={t('Blank page')} hint={t('Start from scratch')} icon={<Icon name="plus" />} tone="#64748b" onClick={() => onPick('')} />
-        <Card title={t('Database')} hint={t('Tables, views, forms and dashboards in one database.')} icon={<Icon name="database" />} tone={TONE.blue} onClick={() => onPick(DATABASE_TEMPLATE)} />
-        <Card title={t('Drawing')} hint={t('A blank whiteboard for sketches and diagrams.')} icon={<Icon name="pencil" />} tone={TONE.orange} onClick={() => onPick(BOARD_TEMPLATE)} />
-        {list.map((tp, i) => (
-          <Card key={tp.id} title={tp.title} hint={tp.desc} icon={<Glyph name={TEMPLATE_GLYPH[tp.id] ?? 'page'} size={17} />} tone={TONE[HUES[i % HUES.length]]} onClick={() => onPick(tp.id)} />
+        <Card blank title={t('Blank page')} hint={t('Start from scratch')} icon={<Icon name="plus" />} onClick={() => onPick('')} />
+        <Card title={t('Database')} hint={t('Tables, views, forms and dashboards in one database.')} icon={<Icon name="database" />} onClick={() => onPick(DATABASE_TEMPLATE)} />
+        <Card title={t('Drawing')} hint={t('A blank whiteboard for sketches and diagrams.')} icon={<Icon name="pencil" />} onClick={() => onPick(BOARD_TEMPLATE)} />
+        {list.map((tp) => (
+          <Card key={tp.id} title={tp.title} hint={tp.desc} icon={<Glyph name={TEMPLATE_GLYPH[tp.id] ?? 'page'} size={17} />} onClick={() => onPick(tp.id)} />
         ))}
       </div>
     </div>
