@@ -676,3 +676,15 @@
 .tagchip.more { --c: var(--ds-text-3); background: none; border: 1px dashed var(--ds-line-strong); }
 .tag-chip button { opacity: 0.6; }
 .tag-input { block-size: 22px; font-size: 12px; }
+
+/* adding a tag: a plain pill, no glow ring, no boxed hash */
+.tag-add { block-size: 22px; min-inline-size: 22px; padding: 0 6px; border: 1px dashed var(--ds-line-strong); border-radius: var(--ds-r-full); background: none; color: var(--ds-text-3); font-size: 12px; animation: none; }
+.tag-add:hover { border-color: var(--ds-accent); background: var(--ds-accent-soft); color: var(--ds-accent); }
+.tag-new { block-size: 24px; padding: 0 10px; gap: 4px; border: 1px solid var(--ds-accent); border-radius: var(--ds-r-full); background: var(--ds-raised); box-shadow: none; animation: none; }
+.tag-new-h { inline-size: auto; block-size: auto; background: none; color: var(--ds-text-3); font-size: 12px; font-weight: 500; }
+.tag-new .tag-input { inline-size: 110px; padding: 0; border: 0; background: none; box-shadow: none; color: var(--ds-text); font-size: 12px; font-weight: 500; }
+.tag-new .tag-input:focus { border: 0; box-shadow: none; }
+.tag-sugg { border-color: var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); box-shadow: var(--ds-shadow-pop); animation: none; }
+.tag-sugg button { border-radius: var(--ds-r); font-size: 13.5px; }
+.tag-sugg button:hover { background: var(--ds-hover); }
+.tag-sugg .tagchip-h { display: inline; background: none; color: var(--ds-text-3); font-size: 12px; font-weight: 500; inline-size: auto; block-size: auto; }
