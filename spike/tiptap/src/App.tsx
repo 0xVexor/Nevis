@@ -41,6 +41,7 @@ import { flushPreferences } from './sharedPreferences'
 import { isTauri, kvGet, kvSet } from './db'
 import { watchDueCards } from './cardsDue'
 import { normalizeFa } from './normalize'
+import { Brand } from './Brand'
 import { MenuItem, MenuLabel, MenuSep, NameDialog, Popover, SearchModal, Toast, TrashModal, type PaletteCommand } from './ui'
 import { Home } from './Home'
 import { iconNode } from './iconSet'
@@ -604,9 +605,11 @@ export default function App() {
           }}
         />
         <div className="ws">
-          <WorkspaceCard onOpen={() => setFolderOpen(true)} />
+          <span className="ws-logo"><Ic.Logo size={28} /></span>
+          <Brand className="ws-name" />
           <button className="icon-btn" title={t('Close sidebar  Ctrl+\\')} onClick={() => setSideOpen(false)}><Ic.Sidebar /></button>
         </div>
+        <div className="side-workspace"><WorkspaceCard onOpen={() => setFolderOpen(true)} /></div>
 
         <div className="side-scroll">
           <button className="row plain search-row" onClick={() => setSearching(true)}>
