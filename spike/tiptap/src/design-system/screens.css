@@ -941,3 +941,45 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 
 .home-month { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .home-month i { inline-size: auto; min-inline-size: 0; max-inline-size: 100%; }
+
+/* ───── Block drag area: no label strip, the empty part of the block is the handle ───── */
+.section-drag-surface { block-size: 12px; padding: 0; border: 0; border-radius: 0; background: none; color: transparent; font-size: 0; cursor: grab; }
+.section-drag-surface:hover { background: none; color: transparent; }
+.section-drag-surface:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: -2px; border-radius: var(--ds-r-sm); }
+.tiptap.layout-dragging .section-drag-surface { cursor: grabbing; }
+
+/* ───── Headings keep their accent line (a flat one) ───── */
+.tiptap h1 { padding-block-end: 0.4em; }
+.tiptap h1::after { content: ''; position: absolute; inset-inline-start: 0; inset-block-end: 0; inline-size: 48px; block-size: 3px; border-radius: 3px; background: var(--ds-accent); }
+.tiptap h2::before { content: ''; position: absolute; inset-inline-start: -16px; inset-block: 0.22em; inline-size: 3px; border-radius: 3px; background: var(--ds-accent); }
+.tiptap h1::after { left: auto; right: auto; }
+.tiptap h1[dir='rtl']::after, .tiptap h1[data-dir='rtl']::after { left: auto; right: 0; inset-inline-start: auto; }
+
+/* ───── Code block ───── */
+.code-wrap { margin: 1em 0; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-sunk); box-shadow: none; overflow: hidden; }
+.code-wrap::before { content: ''; position: absolute; inset: 0 0 auto 0; block-size: 38px; border-block-end: 1px solid var(--ds-line); background: var(--ds-raised); pointer-events: none; }
+.code-wrap > .section-drag-surface { position: absolute; inset: 0 0 auto 0; z-index: 1; block-size: 38px; inline-size: auto; }
+.code-wrap .code-bar { inset-block-start: 4px; inset-inline-end: 8px; z-index: 2; gap: 2px; }
+.code-wrap:has(> .section-drag-surface) > .code-bar { inset-block-start: 4px; }
+.code-wrap pre, .tiptap .code-wrap pre { padding: 52px 18px 16px; background: none; color: var(--ds-text); font-size: 13.5px; line-height: 1.7; }
+.code-bar .code-lang-btn, .code-bar .code-copy, .code-bar .code-al { block-size: 28px; border: 0; border-radius: var(--ds-r-sm); background: none; color: var(--ds-text-3); font-size: 12px; }
+.code-bar .code-lang-btn:hover, .code-bar .code-copy:hover, .code-bar .code-al:hover { background: var(--ds-hover); color: var(--ds-text); }
+
+/* ───── Table menu ───── */
+.bubble.tbl { gap: 0; padding: 6px 4px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); backdrop-filter: none; box-shadow: var(--ds-shadow-pop); animation: none; }
+.tbg { gap: 4px; padding: 2px 10px; border-inline-end: 1px solid var(--ds-line); }
+.tbg-l { color: var(--ds-text-3); font-size: 11.5px; font-weight: 500; letter-spacing: 0; text-transform: none; line-height: 1.2; }
+.tbb { min-inline-size: 30px; block-size: 30px; border-radius: var(--ds-r-sm); color: var(--ds-text-2); transition: none; }
+.tbb:hover:not(:disabled) { background: var(--ds-hover); color: var(--ds-text); transform: none; }
+.tbb.on { background: var(--ds-accent-soft); color: var(--ds-accent); box-shadow: none; }
+.tbb.danger { color: var(--ds-danger, #d4493a); }
+.tbb.danger:hover:not(:disabled) { background: color-mix(in oklab, var(--ds-danger, #d4493a) 12%, transparent); color: var(--ds-danger, #d4493a); }
+.tbb-t { font-size: 12px; font-weight: 600; letter-spacing: 0; }
+
+/* ───── Callout ───── */
+.callout { display: flex; align-items: flex-start; gap: 12px; margin: 1em 0; padding: 14px 16px; border: 1px solid var(--ds-accent-line); border-radius: var(--ds-r-lg); background: var(--ds-accent-soft); font-size: 0.96em; line-height: 1.75; }
+.callout-ic { flex: none; inline-size: 24px; block-size: 24px; margin-block-start: 2px; padding: 0; border: 0; border-radius: var(--ds-r-sm); background: none; box-shadow: none; color: var(--ds-accent); font-size: 18px; }
+.callout-ic:hover { background: color-mix(in oklab, var(--ds-accent) 12%, transparent); transform: none; }
+.callout-body > :first-child { margin-block-start: 0; }
+.callout-body > :last-child { margin-block-end: 0; }
+.callout p { margin: 0.2em 0; font-weight: 400; }
