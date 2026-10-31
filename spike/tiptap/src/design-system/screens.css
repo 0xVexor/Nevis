@@ -688,3 +688,8 @@
 .tag-sugg button { border-radius: var(--ds-r); font-size: 13.5px; }
 .tag-sugg button:hover { background: var(--ds-hover); }
 .tag-sugg .tagchip-h { display: inline; background: none; color: var(--ds-text-3); font-size: 12px; font-weight: 500; inline-size: auto; block-size: auto; }
+
+/* tables fill their frame edge to edge, so the corners stay clean at any corner radius */
+.ptv .pt-scroll, .ds-table-wrap.pt-scroll { padding: 0; }
+.db-table-wrap { overflow: clip; border-radius: var(--ds-r-lg); }
+.db-table-wrap > * { border-radius: 0; }
