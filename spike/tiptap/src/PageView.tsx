@@ -109,9 +109,10 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
     })
   }
 
-  const flush = useCallback(() => {
+  // Writes one editor's pending edit into the page. The editor is passed in (not read from the ref) so a page switch
+  // saves the page it is leaving, even when the ref already points at the next page's editor.
+  const flushOf = useCallback((ed: any) => {
     window.clearTimeout(timer.current)
-    const ed = editorRef.current
     if (ed && !ed.isDestroyed && dirty.current && !protectedContent.current) {
       const content = ed.getJSON()
       if (JSON.stringify(repo.get(page.id)?.content) !== JSON.stringify(content)) repo.update(page.id, { content })
@@ -120,13 +121,14 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
       void repo.flushBeforeUpdate().then(() => { if (!dirty.current) onSave('saved') }, () => onSave('saving'))
     }
   }, [page.id, onSave])
+  const flush = useCallback(() => flushOf(editorRef.current), [flushOf])
 
   useEffect(() => registerUpdateSave(flush), [flush])
 
   const editor = useEditor(
     {
       extensions: guardedExtensions,
-      content: contentIssue ? { type: 'doc', content: [{ type: 'paragraph' }] } : page.content,
+      content: contentIssue ? { type: 'doc', content: [{ type: 'paragraph' }] } : (repo.get(page.id)?.content ?? page.content), // the live copy, not a possibly older object the parent still holds
       editable: !readOnly,
       shouldRerenderOnTransaction: true,
       editorProps: { attributes: { spellcheck: 'false' } },
@@ -289,11 +291,16 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
 
   useEffect(() => {
     window.addEventListener('beforeunload', flush)
+    // the editor is destroyed before this cleanup runs, so the last keystrokes of the page being left are saved just before that
+    const leaving = editor
+    const saveLeaving = () => flushOf(leaving)
+    leaving?.on('destroy', saveLeaving)
     return () => {
       window.removeEventListener('beforeunload', flush)
-      flush() // switching pages must not lose the last keystrokes
+      leaving?.off('destroy', saveLeaving)
+      flushOf(leaving) // switching pages must not lose the last keystrokes
     }
-  }, [flush])
+  }, [flush, flushOf, editor])
 
   const fit = () => {
     const t = titleRef.current

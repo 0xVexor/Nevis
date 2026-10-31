@@ -383,6 +383,17 @@ export class DocumentService implements PageRepo {
     this.watching = null
   }
 
+  /**
+   * A reload swaps in freshly read page objects. The ones whose content did not change keep their old object: the UI holds those
+   * references, and a silent swap left it showing (and re-opening editors on) a copy that later edits no longer reached.
+   */
+  private keepUnchanged(rows: Page[], old: Map<string, Page>): Page[] {
+    return rows.map((r) => {
+      const was = old.get(r.id)
+      return was && canonicalSnapshot(was) === canonicalSnapshot(r) ? was : r
+    })
+  }
+
   private idle = () => !this.dirty.size && !this.gone.size && !this.full
   private canReload = () => this.idle() && !this.drafts.size && !this.commitLocked
 
@@ -397,7 +408,7 @@ export class DocumentService implements PageRepo {
       if (!this.canReload() || generation !== this.editGeneration) return // also reject drafts saved/cleared while reading
       const old = new Map(this.pages.map((p) => [p.id, p]))
       this.editGeneration++
-      this.pages = rows
+      this.pages = this.keepUnchanged(rows, old)
       this.noteDisk(rows)
       this.migrateIdentities()
       const changed = rows.filter(r => canonicalSnapshot(old.get(r.id)) !== canonicalSnapshot(r))
@@ -716,7 +727,7 @@ export class DocumentService implements PageRepo {
     if (!this.canReload() || generation !== this.editGeneration) return false
     const old = new Map(this.pages.map((p) => [p.id, p]))
     this.editGeneration++
-    this.pages = rows
+    this.pages = this.keepUnchanged(rows, old)
     this.noteDisk(rows)
     this.migrateIdentities()
     const changed = rows.filter(r => canonicalSnapshot(old.get(r.id)) !== canonicalSnapshot(r))
