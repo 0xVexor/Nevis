@@ -195,11 +195,50 @@ function TreeRow(props: RowProps) {
 export default function App() {
   const [pages, setPages] = useState<Page[]>(() => repo.list())
   const [currentId, setCurrentIdRaw] = useState<string>(() => localStorage.getItem('not.current') || repo.pagesOnly()[0]?.id || '')
-  const [view, setView] = useState<'home' | 'page' | 'settings' | 'tasks' | 'drawings' | 'databases' | 'files'>('home')
+  const [view, setViewRaw] = useState<'home' | 'page' | 'settings' | 'tasks' | 'drawings' | 'databases' | 'files'>('home')
+  // back / forward through the places visited (pages and views), each remembering how far it was scrolled
+  const hist = useRef<{ view: string; id: string; scroll: number }[]>([])
+  const hpos = useRef(-1)
+  const goingTo = useRef<{ view: string; id: string } | null>(null)
+  const [, bumpHist] = useState(0)
+  const scrollerEl = () => document.querySelector<HTMLElement>('.scroller')
+  const saveScroll = () => { const e = hist.current[hpos.current]; const sc = scrollerEl(); if (e && sc) e.scroll = sc.scrollTop }
+  const setView = useCallback((v: Parameters<typeof setViewRaw>[0]) => (saveScroll(), setViewRaw(v)), []) // eslint-disable-line react-hooks/exhaustive-deps
   const [panelOpen, setPanelOpen] = useState<boolean>(() => store('not.panel.v2', false))
   const [coverMenu, setCoverMenu] = useState<DOMRect | null>(null)
   // opening any page (sidebar, search, link, breadcrumb…) also leaves the settings view
-  const setCurrentId = useCallback((id: string) => (setView('page'), setCurrentIdRaw(id)), [])
+  const setCurrentId = useCallback((id: string) => (saveScroll(), setViewRaw('page'), setCurrentIdRaw(id)), []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const goal = goingTo.current
+    if (goal && goal.view === view && goal.id === currentId) return // arrived by back / forward: already in the list
+    goingTo.current = null
+    const here = hist.current[hpos.current]
+    if (here && here.view === view && here.id === currentId) return
+    hist.current = [...hist.current.slice(0, hpos.current + 1), { view, id: currentId, scroll: 0 }].slice(-100)
+    hpos.current = hist.current.length - 1
+    bumpHist((n) => n + 1)
+  }, [view, currentId])
+  const goHist = useCallback((delta: number) => {
+    const n = hpos.current + delta
+    const to = hist.current[n]
+    if (!to) return
+    saveScroll()
+    hpos.current = n
+    goingTo.current = { view: to.view, id: to.id }
+    setViewRaw(to.view as never)
+    setCurrentIdRaw(to.id)
+    bumpHist((k) => k + 1)
+    // the page body mounts a moment after the switch: put the scroll back once it has its height
+    for (const ms of [0, 60, 160, 320, 600]) window.setTimeout(() => { const sc = scrollerEl(); if (sc && hist.current[hpos.current] === to) sc.scrollTop = to.scroll }, ms)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const mouse = (e: MouseEvent) => { if (e.button === 3 || e.button === 4) { e.preventDefault(); if (e.type === 'mouseup') goHist(e.button === 3 ? -1 : 1) } }
+    const key = (e: KeyboardEvent) => { if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !(e.target as HTMLElement | null)?.closest?.('input, textarea, [contenteditable="true"]')) { e.preventDefault(); goHist((e.key === 'ArrowLeft') === (document.documentElement.dir !== 'rtl') ? -1 : 1) } }
+    window.addEventListener('mouseup', mouse)
+    window.addEventListener('auxclick', mouse)
+    window.addEventListener('keydown', key)
+    return () => (window.removeEventListener('mouseup', mouse), window.removeEventListener('auxclick', mouse), window.removeEventListener('keydown', key))
+  }, [goHist])
   // a big vault starts with its folders closed (except the way down to the open page): thousands of rows are slow to build and no use to scan
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
     const all = repo.list()
@@ -737,6 +776,10 @@ export default function App() {
       <main ref={mainRef} className={'main' + (panelOpen && !reader && view === 'page' && current ? ' drawer-open' : '')}>
         <header className="topbar">
           {!sideOpen && <button className="icon-btn" title={t('Open sidebar  Ctrl+\\')} onClick={() => setSideOpen(true)}><Ic.Sidebar /></button>}
+          <div className="nav-hist">
+            <button className="icon-btn" title={t('Back  Alt+←')} aria-label={t('Back')} disabled={hpos.current <= 0} onClick={() => goHist(-1)}><Icon name="arrow-left" size={17} className="ds-flip" /></button>
+            <button className="icon-btn" title={t('Forward  Alt+→')} aria-label={t('Forward')} disabled={hpos.current >= hist.current.length - 1} onClick={() => goHist(1)}><Icon name="arrow-right" size={17} className="ds-flip" /></button>
+          </div>
           <nav className="crumbs">
             <button className="crumb-home" title={t('Home')} onClick={() => setView('home')}><Ic.Home size={15} /></button>
             {graphOpen && <span className="crumb"><span className="crumb-cur"><Icon name="graph" size={14} />{t('Graph view')}</span></span>}
