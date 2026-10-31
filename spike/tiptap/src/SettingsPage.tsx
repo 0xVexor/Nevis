@@ -377,32 +377,38 @@ export interface DataActions {
   workspaces: () => void
 }
 
-const Action = ({ icon, label, hint, onClick }: { icon: ReactNode; label: string; hint?: string; onClick: () => void }) => (
-  <button className="sx-action" onClick={onClick}>
-    <span className="sx-ic">{icon}</span>
-    <span className="sx-tx">
-      <b>{label}</b>
-      {hint && <small>{hint}</small>}
-    </span>
-    <Ic.Chevron size={14} />
-  </button>
-)
-
 function DataTab({ a }: { a: DataActions }) {
   return (
     <>
-      <Card icon={<Ic.Upload />} title={t('Import')}>
-        <Action icon={<Ic.Upload />} label={t('Import Markdown files…')} onClick={a.importMarkdown} />
-        <Action icon={<Ic.Folders />} label={t('Import Obsidian vault (folder)…')} onClick={a.importVault} />
+      <Card title={t('Import')}>
+        <div className="sx-drop">
+          <span className="sx-drop-ic"><Ic.Upload size={22} /></span>
+          <b>{t('Import Markdown or an Obsidian vault')}</b>
+          <small>{t('Bring pages in from Markdown files or an Obsidian folder.')}</small>
+          <span className="sx-drop-btns">
+            <button type="button" className="ds-btn ds-btn--sm" onClick={a.importMarkdown}>{t('Import Markdown files…')}</button>
+            <button type="button" className="ds-btn ds-btn--sm" onClick={a.importVault}>{t('Import Obsidian vault (folder)…')}</button>
+          </span>
+        </div>
       </Card>
-      <Card icon={<Ic.Archive />} title={t('Export & backup')}>
-        <Action icon={<Ic.Archive />} label={t('Export all pages (zip with Markdown & images)')} onClick={a.exportAll} />
-        <Action icon={<Ic.Download />} label={t('Full backup (JSON)')} onClick={a.backup} />
-        <Action icon={<Ic.Upload />} label={t('Restore from backup…')} onClick={a.restore} />
-        <Action icon={<Ic.Save />} label={t('Automatic backup to folder…')} onClick={a.autoBackup} />
+      <Card title={t('Export & backup')}>
+        <Row label={t('Export all pages')} hint={t('Zip with Markdown and images')}>
+          <button type="button" className="ds-btn ds-btn--sm" onClick={a.exportAll}><Ic.Download size={15} />{t('Export')}</button>
+        </Row>
+        <Row label={t('Full backup (JSON)')} hint={t('Everything in one file')}>
+          <button type="button" className="ds-btn ds-btn--sm" onClick={a.backup}><Ic.Download size={15} />{t('Export')}</button>
+        </Row>
+        <Row label={t('Restore from backup…')} hint={t('Bring your notes back from a backup file')}>
+          <button type="button" className="ds-btn ds-btn--sm" onClick={a.restore}><Ic.Upload size={15} />{t('Restore')}</button>
+        </Row>
+        <Row label={t('Automatic backup to folder…')} hint={t('Keeps a copy in a folder you choose')}>
+          <button type="button" className="ds-btn ds-btn--sm" onClick={a.autoBackup}><Ic.Folders size={15} />{t('Choose folder')}</button>
+        </Row>
       </Card>
-      <Card icon={<Ic.Layers />} title={t('Workspaces')}>
-        <Action icon={<Ic.Layers />} label={t('Workspaces…')} onClick={a.workspaces} />
+      <Card title={t('Workspaces')}>
+        <Row label={t('Workspaces')} hint={t('Switch or create a workspace')}>
+          <button type="button" className="ds-btn ds-btn--sm" onClick={a.workspaces}>{t('Open')}</button>
+        </Row>
       </Card>
     </>
   )

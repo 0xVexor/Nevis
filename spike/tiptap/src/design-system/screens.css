@@ -92,3 +92,20 @@
 .trash-row { padding: 10px; }
 .trash-acts button { block-size: 28px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; }
 .danger-link { border-radius: 8px; }
+
+/* ───── details found in review ───── */
+/* optical centring: Vazirmatn sits high in its line box, so button text is trimmed to cap height and baseline and lines up with its icon */
+.fx-actions button, .trash-acts button, .danger-link, .ds-btn, .segmented button, .modal-head > span button:not(.icon-btn) { text-box: trim-both cap alphabetic; }
+.fx-actions button > svg, .trash-acts button > svg { flex: none; }
+/* result rows (Trash, search): title and meta line up on the start edge whatever the title's own script */
+.result-tx { align-items: flex-start; }
+.result-tx b, .result-tx small { text-align: left; }
+:root[dir='rtl'] .result-tx b, :root[dir='rtl'] .result-tx small { text-align: right; }
+/* settings: import panel */
+.sx-drop { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-block: 6px 18px; padding: 26px 20px; border: 1.5px dashed var(--ds-line-strong); border-radius: var(--ds-r-lg); background: var(--ds-bg); color: var(--ds-text-2); text-align: center; }
+.sx-drop-ic { display: grid; place-items: center; inline-size: 44px; block-size: 44px; border-radius: 12px; background: var(--ds-sunk); color: var(--ds-text-2); }
+.sx-drop b { color: var(--ds-text); font-weight: 550; }
+.sx-drop small { color: var(--ds-text-3); font-size: 13px; }
+.sx-drop-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-block-start: 10px; }
+/* count badges: the digit is centred on its cap height, so it sits in the middle of the circle */
+.badge { line-height: 1; text-box: trim-both cap alphabetic; }

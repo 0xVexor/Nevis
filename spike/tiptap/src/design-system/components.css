@@ -225,3 +225,4 @@
 .ds-file-icon > em { position: absolute; inset-inline: 0; inset-block-end: -5px; margin-inline: auto; inline-size: max-content; padding: 0 5px; border-radius: 999px; background: var(--c); color: #fff; font: 600 9.5px/14px var(--ds-font-ui); font-style: normal; }
 /* a background swatch: set style="background: …" from backgroundCss(id) */
 .ds-bg-swatch { display: block; inline-size: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--ds-line); border-radius: var(--ds-r); background-size: cover; background-position: center; }
+.ds-badge { line-height: 1; text-box: trim-both cap alphabetic; }
