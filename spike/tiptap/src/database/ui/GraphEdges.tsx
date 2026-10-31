@@ -40,5 +40,11 @@ export function EdgeKindToggles({ kinds, onChange }: { kinds: ExtraKinds; onChan
   const item = (k: keyof ExtraKinds, label: string) => (
     <button key={k} type="button" disabled={counts[k] === 0} title={counts[k] === 0 ? t('No links of this kind in your databases yet') : undefined} className={'gv-kind' + (kinds[k] && counts[k] ? ' on' : '')} aria-pressed={kinds[k] && counts[k] > 0} onClick={() => onChange({ ...kinds, [k]: !kinds[k] })}>{kinds[k] && counts[k] > 0 && <svg className="ds-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7" /></svg>}{t(label)}{counts[k] > 0 && <em>{counts[k]}</em>}</button>
   )
-  return <div className="gv-kinds" role="group" aria-label={t('Database links')}>{item('relation', 'Relations')}{item('dependency', 'Dependencies')}{item('hierarchy', 'Sub-items')}</div>
+  const none = !counts.relation && !counts.dependency && !counts.hierarchy
+  return (
+    <>
+      <div className="gv-kinds" role="group" aria-label={t('Database links')}>{item('relation', 'Relations')}{item('dependency', 'Dependencies')}{item('hierarchy', 'Sub-items')}</div>
+      {none && <small className="ds-muted">{t('These turn on once a database has a relation, a dependency or sub-items.')}</small>}
+    </>
+  )
 }
