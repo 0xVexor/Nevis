@@ -588,3 +588,42 @@
 .gv-page .gv-empty .fc2-art { display: grid; place-items: center; inline-size: 64px; block-size: 64px; border-radius: var(--ds-r-lg); background: var(--ds-sunk); color: var(--ds-text-3); }
 
 .gv-page .gv-stats { inset-block-start: auto; block-size: auto; }
+
+/* ───── Tags and statuses: one label style everywhere (see .ds-chip) ───── */
+.dbc-default { --c: var(--ds-text-2); }
+.dbc-gray { --c: light-dark(oklch(0.5 0.01 250), oklch(0.75 0.01 250)); }
+.dbc-brown { --c: light-dark(oklch(0.5 0.07 55), oklch(0.76 0.06 55)); }
+.dbc-orange { --c: light-dark(oklch(0.56 0.15 55), oklch(0.8 0.12 60)); }
+.dbc-yellow { --c: light-dark(oklch(0.55 0.12 90), oklch(0.84 0.12 95)); }
+.dbc-green { --c: light-dark(oklch(0.5 0.12 155), oklch(0.8 0.12 155)); }
+.dbc-blue { --c: light-dark(oklch(0.5 0.14 250), oklch(0.8 0.1 250)); }
+.dbc-purple { --c: light-dark(oklch(0.5 0.15 300), oklch(0.8 0.1 300)); }
+.dbc-pink { --c: light-dark(oklch(0.55 0.16 350), oklch(0.82 0.1 350)); }
+.dbc-red { --c: light-dark(oklch(0.52 0.17 25), oklch(0.8 0.11 25)); }
+.db-chip { --c: var(--ds-text-2); gap: 5px; block-size: 22px; padding: 0 9px; border: 0; border-radius: var(--ds-r-full); background: color-mix(in oklab, var(--c) 13%, var(--ds-bg)); color: var(--c); font: 500 12px var(--ds-font-ui); line-height: 1; }
+.db-chip.muted { opacity: 0.6; }
+.db-chip.tray, .db-chip.db-rel { --c: var(--ds-text-2); background: var(--ds-sunk); }
+.db-chip.tray:hover, .db-chip.db-rel:hover { background: var(--ds-hover); color: var(--ds-text); }
+.db-chip.pick { border: 1px solid var(--ds-line); background: var(--ds-raised); }
+.db-chip.pick.on { border-color: var(--ds-accent-line); background: var(--ds-accent-soft); color: var(--ds-accent); }
+.db-swatch { border-radius: 50%; background: var(--c, var(--ds-text-3)); box-shadow: none; border: 0; }
+.db-swatch.dbc-default { background: var(--ds-line-strong); }
+
+/* page tags */
+.tag-chip, .tagchip { --c: var(--ds-text-2); block-size: 26px; padding-inline: 10px; border: 0; border-radius: var(--ds-r-full); background: var(--ds-sunk); box-shadow: none; color: var(--ds-text-2); font: 500 12.5px var(--ds-font-ui); transition: background var(--ds-fast), color var(--ds-fast); }
+.tag-chip::before { content: '#'; opacity: 0.6; }
+.tag-chip:not(.static):hover, .tagchip:hover { transform: none; background: var(--ds-hover); color: var(--ds-text); }
+.tag-chip.on, .tagchip.on { background: var(--ds-accent-soft); color: var(--ds-accent); box-shadow: none; }
+.tagchip { padding-inline: 8px 10px; border: 0; }
+.tagchip-h { inline-size: auto; block-size: auto; background: none; font-size: inherit; font-weight: 500; opacity: 0.6; }
+.tagchip.on .tagchip-h { background: none; }
+.tagchip-n { font-size: 11.5px; font-weight: 500; opacity: 0.7; }
+.tagchip.more { border: 1px dashed var(--ds-line-strong); background: none; }
+.tag-input { block-size: 26px; border-radius: var(--ds-r-full); border-color: var(--ds-line-strong); font-size: 12.5px; }
+.tag-input:focus { border-color: var(--ds-accent); box-shadow: 0 0 0 3px var(--ds-accent-soft); }
+.tagres { border-color: var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); animation: none; }
+
+/* page status */
+.selbox.status-sel.has { border-color: transparent; background: color-mix(in oklab, var(--st) 13%, var(--ds-bg)); color: color-mix(in oklab, var(--st) 80%, var(--ds-text)); font-weight: 550; box-shadow: none; }
+.selbox.status-sel.has .sel-chev { background: none; }
+.selbox.status-sel.has .sel-dot { box-shadow: none; }
