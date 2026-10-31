@@ -224,6 +224,17 @@ export default function App() {
   const saveSaved = (next: { id: string; name: string; query: string }[]) => (setSaved(next), void kvSet('savedSearches', next))
   const [trashOpen, setTrashOpen] = useState(false)
   const [newMenu, setNewMenu] = useState<DOMRect | null>(null)
+  // dragging a page from the tree shows a Favorites drop zone, so a page can be pinned by dropping it there
+  const [dragPage, setDragPage] = useState(false)
+  const [favOver, setFavOver] = useState(false)
+  useEffect(() => {
+    const start = (e: DragEvent) => setDragPage(!!(e.target as HTMLElement | null)?.closest?.('.row.tree'))
+    const end = () => (setDragPage(false), setFavOver(false))
+    window.addEventListener('dragstart', start)
+    window.addEventListener('dragend', end)
+    window.addEventListener('drop', end)
+    return () => (window.removeEventListener('dragstart', start), window.removeEventListener('dragend', end), window.removeEventListener('drop', end))
+  }, [])
   const [naming, setNaming] = useState<{ title: string; label: string; initial: string; action: string; onSubmit: (name: string) => void } | null>(null)
   const [backupOpen, setBackupOpen] = useState(false)
   const [folderOpen, setFolderOpen] = useState(false)
@@ -644,8 +655,17 @@ export default function App() {
             <span className="ic"><Icon name="table" /></span><span className="ntitle">{t('Pages table')}</span>
           </button>
 
-          {favs.length > 0 && (
-            <>
+          {(favs.length > 0 || dragPage) && (
+            <div
+              className={'fav-zone' + (favOver ? ' over' : '')}
+              onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-page')) (e.preventDefault(), setFavOver(true)) }}
+              onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setFavOver(false) }}
+              onDrop={(e) => {
+                const id = e.dataTransfer.getData('application/x-page')
+                setFavOver(false)
+                if (id && !repo.get(id)?.favorite) (e.preventDefault(), fav(id))
+              }}
+            >
               <button className={"section" + (shut.favs ? " shut" : "")} onClick={() => setShut((s) => ({ ...s, favs: !s.favs }))}>{t('Favorites')}<Ic.Chevron size={13} /></button>
               {!shut.favs && favs.map((p) => (
                 <div key={p.id} className={'row' + (p.id === current?.id ? ' cur' : '')} style={{ paddingInlineStart: 24 }} onClick={() => setCurrentId(p.id)}>
@@ -653,7 +673,8 @@ export default function App() {
                   <span className="ntitle" dir="auto">{p.title || t('Untitled')}</span>
                 </div>
               ))}
-            </>
+              {favs.length === 0 && <div className="empty-note">{t('Drop a page here to pin it')}</div>}
+            </div>
           )}
 
           {saved.length > 0 && (

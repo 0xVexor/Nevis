@@ -1,5 +1,6 @@
 // English → Persian UI strings (see i18n.ts). Generated once from the original Persian UI, edit freely.
 export const FA: Record<string, string> = {
+  "Drop a page here to pin it": "صفحه را اینجا رها کنید تا سنجاق شود",
   "Browse and organize your pages": "مرور و سازمان‌دهی صفحه‌ها",
   "Writing streak": "پیوستگی نوشتن",
   "days in a row": "روز پیاپی",

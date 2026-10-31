@@ -189,3 +189,7 @@
 .tb-group .icon-btn.active { background: var(--ds-accent-soft); color: var(--ds-accent); }
 .tb-group .icon-btn.fav-on { background: none; color: var(--ds-warn); }
 .share-btn { block-size: 34px; border-radius: var(--ds-r); padding: 0 14px; font-size: 14px; font-weight: 550; }
+
+/* dropping a page on Favorites pins it */
+.fav-zone { margin-inline: -4px; padding-inline: 4px; border-radius: var(--ds-r); outline: 1.5px dashed transparent; outline-offset: -2px; transition: outline-color var(--ds-fast), background var(--ds-fast); }
+.fav-zone.over { outline-color: var(--ds-accent); background: var(--ds-accent-soft); }
