@@ -65,7 +65,7 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            args: ''
+            args: '--bundles nsis'
           - os: macos-latest
             args: '--target universal-apple-darwin'
     runs-on: ${{ matrix.os }}
