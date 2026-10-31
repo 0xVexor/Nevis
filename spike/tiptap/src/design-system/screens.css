@@ -1018,3 +1018,4 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 .home-month i.now { box-shadow: inset 0 0 0 1.5px var(--ds-accent); color: var(--ds-text); background: var(--ds-sunk); }
 .home-month i.now.done { background: var(--ds-accent); color: var(--ds-accent-ink); }
 .home-month i.future { background: none; box-shadow: inset 0 0 0 1px var(--ds-line); opacity: 1; color: var(--ds-text-3); }
+.home-month i.blank { block-size: 30px; height: 30px; }
