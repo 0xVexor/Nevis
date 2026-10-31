@@ -1019,3 +1019,12 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 .home-month i.now.done { background: var(--ds-accent); color: var(--ds-accent-ink); }
 .home-month i.future { background: none; box-shadow: inset 0 0 0 1px var(--ds-line); opacity: 1; color: var(--ds-text-3); }
 .home-month i.blank { block-size: 30px; height: 30px; }
+
+/* no negative-margin trick (it made a sliver of horizontal scroll): the outer edge borders are simply left off, by physical side */
+.tiptap .tableWrapper > table { margin: 0; inline-size: 100%; }
+.tiptap .tableWrapper table tr:first-child > * { border-block-start: 0; }
+.tiptap .tableWrapper table tr:last-child > * { border-block-end: 0; }
+.tiptap .tableWrapper table:dir(ltr) tr > :first-child { border-left: 0; }
+.tiptap .tableWrapper table:dir(ltr) tr > :last-child { border-right: 0; }
+.tiptap .tableWrapper table:dir(rtl) tr > :first-child { border-right: 0; }
+.tiptap .tableWrapper table:dir(rtl) tr > :last-child { border-left: 0; }
