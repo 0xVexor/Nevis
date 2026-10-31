@@ -983,3 +983,7 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 .callout-body > :first-child { margin-block-start: 0; }
 .callout-body > :last-child { margin-block-end: 0; }
 .callout p { margin: 0.2em 0; font-weight: 400; }
+
+/* callout icon: one calm tone, not a coloured emoji */
+.callout-ic { filter: grayscale(1) opacity(0.75); }
+.callout-ic:hover { filter: grayscale(1); }
