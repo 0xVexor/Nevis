@@ -1,0 +1,76 @@
+/*
+ * Nevis design system — tokens ("Calm").
+ * Source of truth for every new screen and component. Guide: docs/design-system.md. Live reference: docs/design-system/index.html.
+ *
+ * Rules
+ *  - Each token is defined once. light-dark() picks the palette from color-scheme (set by the theme setting or the system).
+ *  - Everything derives from ONE accent. Surfaces, lines and states carry a faint tint of it, so a new accent recolours the app.
+ *  - New code reads --ds-* tokens only. Never write a raw colour, radius or shadow in a component.
+ *  - Legacy tokens (--bg, --border, --accent …) stay until a screen is migrated. See docs/design-system.md → Migration.
+ */
+:root {
+  /* accent: --user-accent is written by the appearance setting; null falls back to the system default */
+  --ds-accent-base: var(--user-accent, #0f8f83);
+  --ds-accent: light-dark(var(--ds-accent-base), color-mix(in oklab, var(--ds-accent-base) 78%, #fff));
+  --ds-accent-ink: #ffffff;
+  --ds-accent-soft: color-mix(in oklab, var(--ds-accent) 14%, var(--ds-bg));
+  --ds-accent-line: color-mix(in oklab, var(--ds-accent) 34%, var(--ds-bg));
+
+  /* surfaces */
+  --ds-bg: color-mix(in oklab, var(--ds-accent) 2%, light-dark(#ffffff, #1e2128));
+  --ds-side: color-mix(in oklab, var(--ds-accent) 5.5%, light-dark(#f7f8f9, #191c22));
+  --ds-raised: color-mix(in oklab, var(--ds-accent) 2%, light-dark(#ffffff, #252931));
+  --ds-sunk: color-mix(in oklab, var(--ds-accent) 5.5%, light-dark(#f1f3f4, #292e37));
+
+  /* ink */
+  --ds-text: light-dark(#14171c, #e8eaee);
+  --ds-text-2: light-dark(#4b5360, #b8bfca);
+  --ds-text-3: light-dark(#7b8492, #8c95a3);
+
+  /* lines and states */
+  --ds-line: color-mix(in oklab, var(--ds-accent) 9%, light-dark(#e4e7ea, #343a45));
+  --ds-line-strong: color-mix(in oklab, var(--ds-accent) 13%, light-dark(#d6dae0, #434a57));
+  --ds-hover: color-mix(in oklab, var(--ds-accent) 9%, transparent);
+  --ds-press: color-mix(in oklab, var(--ds-accent) 15%, transparent);
+
+  /* status: colour is never the only signal, pair it with an icon or a label */
+  --ds-ok: light-dark(#2e9e6a, #4cc790);
+  --ds-warn: light-dark(#c77d0a, #e0a13a);
+  --ds-bad: light-dark(#cf3b3b, #ec6a6a);
+  --ds-info: light-dark(#3b6fd4, #7aa2ee);
+
+  /* shape */
+  --ds-r-sm: 7px;
+  --ds-r: 10px;
+  --ds-r-lg: 14px;
+  --ds-r-full: 999px;
+
+  /* spacing: multiples of 4 */
+  --ds-s1: 4px;
+  --ds-s2: 8px;
+  --ds-s3: 12px;
+  --ds-s4: 16px;
+  --ds-s5: 20px;
+  --ds-s6: 24px;
+  --ds-s8: 32px;
+  --ds-s10: 40px;
+
+  /* depth: borders carry most of the structure, shadows only on things that float */
+  --ds-shadow-pop: 0 1px 2px rgb(0 0 0 / 0.08), 0 14px 34px -10px rgb(0 0 0 / 0.3);
+
+  /* type */
+  --ds-font-ui: 'Instrument Sans', 'Vazirmatn', system-ui, sans-serif;
+  --ds-font-serif: 'Newsreader', 'Vazirmatn', Georgia, serif;
+  --ds-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* motion */
+  --ds-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ds-fast: 150ms;
+  --ds-base: 200ms;
+  --ds-slow: 350ms;
+
+  /* layers */
+  --ds-z-pop: 60;
+  --ds-z-modal: 70;
+  --ds-z-toast: 90;
+}
