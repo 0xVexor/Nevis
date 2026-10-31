@@ -94,9 +94,8 @@
 .danger-link { border-radius: 8px; }
 
 /* ───── details found in review ───── */
-/* optical centring: Vazirmatn sits high in its line box. The button text is dropped 1.5px (padding) while its icon keeps its place (negative margin) */
-.fx-actions button, .trash-acts button, .danger-link, .ds-btn, .segmented button, .modal-head > span button:not(.icon-btn) { padding-block-start: 3px; }
-.fx-actions button > svg, .trash-acts button > svg, .ds-btn > svg, .ds-btn > .ds-icon { flex: none; margin-block-start: -3px; }
+/* centring: with Instrument Sans the glyphs already sit within 1px of the middle of the line box, so buttons use plain flex centring (no nudges) */
+.fx-actions button > svg, .trash-acts button > svg { flex: none; }
 /* result rows (Trash, search): title and meta line up on the start edge whatever the title's own script */
 .result-tx { align-items: flex-start; }
 .result-tx b, .result-tx small { text-align: left; }
@@ -108,7 +107,7 @@
 .sx-drop small { color: var(--ds-text-3); font-size: 13px; }
 .sx-drop-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-block-start: 10px; }
 /* count badges: the digit is centred on its cap height, so it sits in the middle of the circle */
-.badge { line-height: 1; padding-block-start: 2px; }
+.badge { line-height: 1; }
 
 /* ───── search: the command palette (Ctrl K) and find in page (Ctrl F) ───── */
 .modal.palette { width: min(640px, 94vw); border-radius: 16px; background: var(--ds-bg); backdrop-filter: none; box-shadow: var(--ds-shadow-pop); }

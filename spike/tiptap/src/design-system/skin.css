@@ -172,3 +172,20 @@
 /* nested pages keep their icon (the legacy tree hid it on pages without children, which only worked next to its guide line) */
 .row.tree.leaf .ic { display: grid; }
 .row.tree.leaf { padding-inline-start: 4px; font-weight: 450; }
+
+/* ───── top bar: plain breadcrumbs, a quiet "Saved", loose icon buttons, a flat Share ───── */
+.crumbs { block-size: 32px; padding: 0; gap: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.crumb { block-size: 28px; }
+.crumb-home { background: none; border-radius: var(--ds-r-sm); }
+.crumb-home:hover { background: var(--ds-hover); color: var(--ds-text); }
+.crumb button, .crumb-folder, .crumb-cur { padding: 0 8px; border-radius: var(--ds-r-sm); font-size: 13.5px; }
+.crumb:last-child button, .crumb.last button, .crumb-cur { background: none; color: var(--ds-text); font-weight: 550; }
+.crumb button:hover { background: var(--ds-hover); }
+.status { block-size: 28px; padding: 0 8px; border: 0; background: none; font-size: 12.5px; color: var(--ds-text-3); }
+.status .dot { inline-size: 6px; block-size: 6px; box-shadow: none; }
+.tb-group { block-size: auto; padding: 0; gap: 2px; border: 0; border-radius: 0; background: none; }
+.tb-group .icon-btn { border-radius: var(--ds-r-sm); }
+.tb-group .icon-btn:hover { background: var(--ds-hover); color: var(--ds-text); }
+.tb-group .icon-btn.active { background: var(--ds-accent-soft); color: var(--ds-accent); }
+.tb-group .icon-btn.fav-on { background: none; color: var(--ds-warn); }
+.share-btn { block-size: 34px; border-radius: var(--ds-r); padding: 0 14px; font-size: 14px; font-weight: 550; }
