@@ -385,3 +385,68 @@
 .dw .hm-empty { padding: 36px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); color: var(--ds-text-3); text-align: center; }
 .board-title { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
 .board-stage { border-color: var(--ds-line); border-radius: var(--ds-r-lg); }
+
+/* ───── Databases, every view: one panel style, hairlines, accent only for selection and actions ───── */
+/* New + caret: one joined button, no gap */
+.db-newbtn { display: inline-flex; gap: 0; box-shadow: none; }
+.db-newbtn .primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; block-size: 34px; margin: 0; padding: 0 14px; border: 1px solid var(--ds-accent); border-radius: var(--ds-r) 0 0 var(--ds-r); background: var(--ds-accent); color: var(--ds-accent-ink); box-shadow: none; font-weight: 550; }
+.db-newbtn .primary.caret { inline-size: 34px; padding: 0; border-radius: 0 var(--ds-r) var(--ds-r) 0; border-inline-start-color: color-mix(in oklab, var(--ds-accent-ink) 30%, transparent); }
+.db-newbtn .primary:hover { filter: brightness(1.08); transform: none; }
+:root[dir='rtl'] .db-newbtn .primary { border-radius: 0 var(--ds-r) var(--ds-r) 0; }
+:root[dir='rtl'] .db-newbtn .primary.caret { border-radius: var(--ds-r) 0 0 var(--ds-r); }
+.db-search { border-color: var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); }
+/* table */
+.db-table-wrap { overflow: hidden; }
+.db-th { block-size: 44px; padding-inline: 14px; background: var(--ds-sunk); border-color: var(--ds-line); color: var(--ds-text-2); font-size: 12.5px; font-weight: 550; }
+.db-th-name { color: var(--ds-text-2); }
+.db-td { padding-inline: 14px; border-color: var(--ds-line); }
+.db-row { min-block-size: 54px; }
+.db-tf { background: var(--ds-sunk); color: var(--ds-text-3); border-color: var(--ds-line); }
+.db-newrow button { border-radius: 8px; color: var(--ds-text-3); }
+.db-newrow button:hover { background: var(--ds-accent-soft); color: var(--ds-accent); }
+.db-chip { border-radius: var(--ds-r-full); font-weight: 500; }
+.db-input { border-color: var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); }
+.db-input:focus { border-color: var(--ds-accent); box-shadow: 0 0 0 3px var(--ds-accent-soft); }
+.db-btn, .db-button { border-radius: var(--ds-r); }
+.db-linkbtn { color: var(--ds-accent); }
+/* board */
+.db-lane, .db-col { border: 0; border-radius: var(--ds-r-lg); background: var(--ds-sunk); }
+.db-lane-title, .db-col-head { font-weight: 600; }
+.db-card, .db-feed-card, .db-map-card { border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); box-shadow: none; transition: border-color var(--ds-fast), box-shadow var(--ds-fast); }
+.db-card:hover, .db-feed-card:hover, .db-map-card:hover { border-color: var(--ds-line-strong); box-shadow: 0 6px 16px -10px rgb(16 24 40 / 0.25); transform: none; }
+.db-card-title, .db-feed-title, .db-list-title { font-weight: 550; }
+.db-card-cover, .db-thumb { border-radius: var(--ds-r) var(--ds-r) 0 0; background: var(--ds-sunk); }
+/* list */
+.db-listrow { border-color: var(--ds-line); border-radius: 0; }
+.db-listrow:hover { background: color-mix(in oklab, var(--ds-accent) 5%, var(--ds-bg)); }
+.db-list-group, .db-gal-group, .db-group-row { color: var(--ds-text-3); font-weight: 550; }
+/* calendar */
+.db-cal { border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); overflow: hidden; background: var(--ds-raised); }
+.db-cal-head, .db-cal-wd { background: var(--ds-sunk); color: var(--ds-text-3); border-color: var(--ds-line); font-weight: 500; }
+.db-cal-day, .db-day-cell, .db-cal-week { border-color: var(--ds-line); }
+.db-cal-day.today .db-day-n, .db-day.today .db-day-n { background: var(--ds-accent); color: var(--ds-accent-ink); }
+.db-ev { border-radius: 5px; }
+/* timeline */
+.db-tl { border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); overflow: hidden; }
+.db-tl-axis { background: var(--ds-sunk); color: var(--ds-text-3); border-color: var(--ds-line); }
+.db-tl-bar { border-radius: 7px; background: var(--ds-accent); color: var(--ds-accent-ink); font-weight: 550; }
+.db-tl-today { background: var(--ds-accent); }
+.db-tl-grid, .db-tl-trow { border-color: var(--ds-line); }
+/* chart, map, feed */
+.db-chart-svg { border: 1px solid var(--ds-line); background: var(--ds-raised); }
+.db-chart-cfg, .db-map-bar { border-color: var(--ds-line); }
+.db-map, .db-map-canvas, .db-map-grid { border-radius: var(--ds-r-lg); }
+.db-map { border: 1px solid var(--ds-line); background: var(--ds-sunk); }
+/* form */
+.db-form-head { border-color: var(--ds-line); }
+.db-field-l, .db-field-h { color: var(--ds-text-2); font-weight: 550; }
+/* dashboard */
+.db-dash-global { border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-sunk); }
+.db-widget { border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); box-shadow: none; }
+.db-widget-head { background: var(--ds-sunk); border-color: var(--ds-line); font-weight: 600; }
+.db-dash-add { border: 1.5px dashed var(--ds-line-strong); background: none; }
+.db-dash-add:hover { border-color: var(--ds-accent); background: var(--ds-accent-soft); }
+/* panels and dialogs inside databases */
+.db-pop, .db-modal, .db-peek, .db-sort-pop, .db-date-pop, .db-place-pop { border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); box-shadow: var(--ds-shadow-pop); }
+.db-panel-head, .db-modal-head, .db-peek-bar { border-color: var(--ds-line); }
+.db-empty-icon { border-radius: var(--ds-r-lg); background: var(--ds-accent-soft); color: var(--ds-accent); box-shadow: none; }
