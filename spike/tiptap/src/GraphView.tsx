@@ -613,8 +613,7 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
   }
 
   return (
-    <div className="overlay graph-overlay" onMouseDown={onClose}>
-      <div className="gv" role="dialog" aria-modal="true" aria-label={t('Graph view')} onMouseDown={(e) => e.stopPropagation()}>
+    <div className="gv gv-page" role="region" aria-label={t('Graph view')}>
         <header className="gv-head">
           <span className="gv-logo"><Ic.Link size={20} /></span>
           <div className="gv-title">
@@ -626,7 +625,6 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
             {currentId && <button className={scope === 'local' ? 'on' : ''} onClick={() => setScope('local')}>{t('Around this page')}</button>}
             <button className={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')}>{t('Whole vault')}</button>
           </div>
-          <button className="icon-btn" title={t('Close  Esc')} onClick={onClose}><Ic.Close /></button>
         </header>
 
         {picked.pages.length === 0 ? (
@@ -730,7 +728,6 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
             )}
           </div>
         )}
-      </div>
     </div>
   )
 }
