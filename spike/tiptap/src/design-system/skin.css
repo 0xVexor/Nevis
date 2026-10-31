@@ -165,3 +165,7 @@
 .side .row:hover .pg-ic.emoji { filter: none; opacity: 1; }
 .side .row.cur .pg-ic.tile { color: var(--ds-accent); }
 .side .row:hover kbd { border-color: var(--ds-accent-line); color: var(--ds-accent); }
+
+/* nested pages keep their icon (the legacy tree hid it on pages without children, which only worked next to its guide line) */
+.row.tree.leaf .ic { display: grid; }
+.row.tree.leaf { padding-inline-start: 4px; font-weight: 450; }
