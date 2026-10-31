@@ -952,7 +952,6 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 .tiptap h1 { padding-block-end: 0.4em; }
 .tiptap h1::after { content: ''; position: absolute; inset-inline-start: 0; inset-block-end: 0; inline-size: 48px; block-size: 3px; border-radius: 3px; background: var(--ds-accent); }
 .tiptap h2::before { content: ''; position: absolute; inset-inline-start: -16px; inset-block: 0.22em; inline-size: 3px; border-radius: 3px; background: var(--ds-accent); }
-.tiptap h1::after { left: auto; right: auto; }
 .tiptap h1[dir='rtl']::after, .tiptap h1[data-dir='rtl']::after { left: auto; right: 0; inset-inline-start: auto; }
 
 /* ───── Code block ───── */
@@ -984,9 +983,8 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 .callout-body > :last-child { margin-block-end: 0; }
 .callout p { margin: 0.2em 0; font-weight: 400; }
 
-/* callout icon: one calm tone, not a coloured emoji */
-.callout-ic { filter: grayscale(1) opacity(0.75); }
-.callout-ic:hover { filter: grayscale(1); }
+/* callout icon: the system stroke icon in the text colour */
+.callout-ic { filter: none; color: var(--ds-text); display: grid; place-items: center; }
 
 .nav-hist { display: flex; gap: 2px; margin-inline-end: 4px; }
 .nav-hist .icon-btn { inline-size: 30px; block-size: 30px; border-radius: var(--ds-r-sm); color: var(--ds-text-2); }
@@ -1028,3 +1026,14 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 .tiptap .tableWrapper table:dir(ltr) tr > :last-child { border-right: 0; }
 .tiptap .tableWrapper table:dir(rtl) tr > :first-child { border-right: 0; }
 .tiptap .tableWrapper table:dir(rtl) tr > :last-child { border-left: 0; }
+
+/* first heading: clear air under the formatting bar */
+.tiptap > h1:first-child, .layout-column > h1:first-child { margin-block-start: 0.6em; }
+.toolbar { margin-block-end: 22px; }
+
+/* Lists: room for the marker on both sides. An item whose text runs the other way from its list (an English point in a Persian list, in a column)
+   puts its marker on the opposite side, where there was no padding, and the bullet hung out of the column. */
+.tiptap ul, .tiptap ol { padding-inline: 1.6em; }
+.tiptap ul[data-type='taskList'] { padding-inline: 0.2em; }
+.layout-column ul, .layout-column ol { padding-inline: 1.6em; }
+.layout-column ul[data-type='taskList'] { padding-inline: 0.2em; }

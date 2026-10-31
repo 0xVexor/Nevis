@@ -362,7 +362,8 @@ export const DragHandle = Extension.create({
           tray.style.left = `${Math.max(area.left + 12, Math.min(trayAnchor.x - width / 2, area.right - width - 12))}px`
           tray.hidden = false
           const height = tray.offsetHeight
-          const top = trayAnchor.y - height - 12 >= topEdge ? trayAnchor.y - height - 12 : trayAnchor.y + 24
+          // the chooser opens centred on the pointer, so the choice is already under it
+          const top = trayAnchor.y - height / 2
           tray.style.top = `${Math.max(topEdge, Math.min(top, area.bottom - height - 8))}px`
         }
         const trayDestination = (all: SnapDestination[], x: number, y: number) => {
