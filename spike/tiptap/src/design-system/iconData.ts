@@ -3,6 +3,16 @@ export interface IconGroup { id: string; label: string; icons: Record<string, [s
 
 export const ICON_GROUPS: IconGroup[] = [
   {
+    id: 'navigation',
+    label: 'Navigation',
+    icons: {
+      'home': ['home house start dashboard', '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>'],
+      'tasks': ['tasks todo checkbox done', '<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="m8 12 3 3 5-6"/>'],
+      'templates': ['templates layout starter blueprint', '<rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><path d="M3.5 9h17M9 9v11.5"/>'],
+      'folder': ['folder directory group', '<path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'],
+    },
+  },
+  {
     id: 'arrows',
     label: 'Arrows and movement',
     icons: {
