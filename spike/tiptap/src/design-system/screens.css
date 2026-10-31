@@ -565,3 +565,26 @@
 .gv-page .gv-title { flex: 1 1 260px; }
 .gv-page .gv-title b { white-space: nowrap; }
 .gv-page .gv-title small { white-space: normal; overflow: visible; }
+
+/* graph page: one calm toolbar, toggles as chips */
+.gv-page .gv-head { align-items: center; padding-block: 8px 14px; }
+.gv-page .gv-title { flex: 1 1 auto; }
+.gv-kinds { display: flex; gap: 6px; }
+.gv-kind { display: inline-flex; align-items: center; gap: 5px; block-size: 32px; padding-inline: 12px; border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); color: var(--ds-text-2); font: inherit; font-size: 13px; cursor: pointer; }
+.gv-kind:hover { background: var(--ds-hover); color: var(--ds-text); }
+.gv-kind.on { border-color: var(--ds-accent-line); background: var(--ds-accent-soft); color: var(--ds-accent); }
+.gv-kind .ds-icon { inline-size: 14px; block-size: 14px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.gv-scope { flex: none; }
+.gv-page .gv-stage { background: radial-gradient(circle at 1px 1px, var(--ds-line) 1px, transparent 0) 0 0 / 24px 24px, var(--ds-raised); }
+.gv-page .gv-search { inset-block-start: 14px; inset-inline-start: 14px; padding-inline: 12px; }
+.gv-page .gv-zoom { inset-block-end: 14px; inset-inline-start: 14px; }
+.gv-page .gv-stats { inset-block-end: 14px; inset-inline-end: 14px; color: var(--ds-text-2); }
+.gv-page .gv-top { inset-block-start: 14px; inset-inline-end: 14px; padding: 10px; }
+.gv-page .gv-top button { border-radius: var(--ds-r); }
+.gv-page .gv-top button i { inline-size: 8px; block-size: 8px; border-radius: 50%; }
+.gv-page .gv-top button em { color: var(--ds-text-3); font-style: normal; font-variant-numeric: tabular-nums; }
+.gv-page .gv-card { border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); box-shadow: var(--ds-shadow-pop); }
+.gv-page .gv-empty { flex: 1; display: grid; place-content: center; justify-items: center; gap: 8px; text-align: center; }
+.gv-page .gv-empty .fc2-art { display: grid; place-items: center; inline-size: 64px; block-size: 64px; border-radius: var(--ds-r-lg); background: var(--ds-sunk); color: var(--ds-text-3); }
+
+.gv-page .gv-stats { inset-block-start: auto; block-size: auto; }

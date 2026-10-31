@@ -615,15 +615,13 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
   return (
     <div className="gv gv-page" role="region" aria-label={t('Graph view')}>
         <header className="gv-head">
-          <span className="gv-logo"><Ic.Link size={20} /></span>
           <div className="gv-title">
             <b>{t('Graph view')}</b>
-            <small>{t('Pages linked with [[ or @ appear here. Click a page to open it.')}</small>
           </div>
           <EdgeKindToggles kinds={kinds} onChange={setKinds} />
-          <div className="segmented gv-scope">
-            {currentId && <button className={scope === 'local' ? 'on' : ''} onClick={() => setScope('local')}>{t('Around this page')}</button>}
-            <button className={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')}>{t('Whole vault')}</button>
+          <div className="ds-seg gv-scope">
+            {currentId && <button aria-pressed={scope === 'local'} onClick={() => setScope('local')}>{t('Around this page')}</button>}
+            <button aria-pressed={scope === 'all'} onClick={() => setScope('all')}>{t('Whole vault')}</button>
           </div>
         </header>
 
