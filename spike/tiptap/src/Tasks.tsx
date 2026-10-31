@@ -75,6 +75,18 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
         <button className="ds-btn ds-btn--primary" onClick={onNewList}><Ic.Plus size={15} />{t('New list')}</button>
       </div>
 
+      {inboxShown.length > 0 && (
+        <section className="tk-group">
+          <div className="tk-page static"><span className="hm-row-ic"><Ic.Checklist size={16} /></span><b>{t('Inbox')}</b><small>{inboxShown.length}</small></div>
+          {inboxShown.map((x) => (
+            <div key={x.id} className={'tk-item' + (x.checked ? ' done' : '')} dir={firstTextDirection(x.text) ?? 'auto'}>
+              <input type="checkbox" checked={x.checked} onChange={(e) => editInbox(inbox.map((y) => (y.id === x.id ? { ...y, checked: e.target.checked } : y)))} />
+              <input className="tk-text" dir="auto" value={x.text} onChange={(e) => editInbox(inbox.map((y) => (y.id === x.id ? { ...y, text: e.target.value } : y)))} onBlur={() => !x.text.trim() && editInbox(inbox.filter((y) => y.id !== x.id))} />
+              <button className="tk-del" title={t('Delete')} onClick={() => editInbox(inbox.filter((y) => y.id !== x.id))}><Ic.Close size={14} /></button>
+            </div>
+          ))}
+        </section>
+      )}
       {lists.length > 0 && (
         <section className="tk-group">
           <div className="tk-label">{t('To-do lists')}</div>
@@ -88,18 +100,6 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
         </section>
       )}
 
-      {inboxShown.length > 0 && (
-        <section className="tk-group">
-          <div className="tk-page static"><span className="hm-row-ic"><Ic.Checklist size={16} /></span><b>{t('Inbox')}</b><small>{inboxShown.length}</small></div>
-          {inboxShown.map((x) => (
-            <div key={x.id} className={'tk-item' + (x.checked ? ' done' : '')} dir={firstTextDirection(x.text) ?? 'auto'}>
-              <input type="checkbox" checked={x.checked} onChange={(e) => editInbox(inbox.map((y) => (y.id === x.id ? { ...y, checked: e.target.checked } : y)))} />
-              <input className="tk-text" dir="auto" value={x.text} onChange={(e) => editInbox(inbox.map((y) => (y.id === x.id ? { ...y, text: e.target.value } : y)))} onBlur={() => !x.text.trim() && editInbox(inbox.filter((y) => y.id !== x.id))} />
-              <button className="tk-del" title={t('Delete')} onClick={() => editInbox(inbox.filter((y) => y.id !== x.id))}><Ic.Close size={14} /></button>
-            </div>
-          ))}
-        </section>
-      )}
       {inboxShown.length > 0 && groups.size > 0 && <hr className="tk-sep" />}
 
       {groups.size === 0 && inboxShown.length === 0 ? (
