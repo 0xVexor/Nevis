@@ -952,7 +952,8 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 .tiptap h1 { padding-block-end: 0.4em; }
 .tiptap h1::after { content: ''; position: absolute; inset-inline-start: 0; inset-block-end: 0; inline-size: 48px; block-size: 3px; border-radius: 3px; background: var(--ds-accent); }
 .tiptap h2::before { content: ''; position: absolute; inset-inline-start: -16px; inset-block: 0.22em; inline-size: 3px; border-radius: 3px; background: var(--ds-accent); }
-.tiptap h1[dir='rtl']::after, .tiptap h1[data-dir='rtl']::after { left: auto; right: 0; inset-inline-start: auto; }
+/* the heading carries its own direction (inline), so inset-inline-start already means the right edge for Persian */
+.tiptap h1[dir='rtl']::after, .tiptap h1[data-dir='rtl']::after, .tiptap h1::after { left: auto; right: auto; inset-inline-start: 0; }
 
 /* ───── Code block ───── */
 .code-wrap { margin: 1em 0; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-sunk); box-shadow: none; overflow: hidden; }
@@ -1037,3 +1038,5 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 .tiptap ul[data-type='taskList'] { padding-inline: 0.2em; }
 .layout-column ul, .layout-column ol { padding-inline: 1.6em; }
 .layout-column ul[data-type='taskList'] { padding-inline: 0.2em; }
+
+.tiptap.resize-cursor, .tiptap.resize-cursor td, .tiptap.resize-cursor th { cursor: col-resize; }
