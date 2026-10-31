@@ -938,3 +938,6 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 .math-block:hover, .math-inline:hover { background: var(--ds-hover); }
 .mermaid-block { border-radius: var(--ds-r-lg); }
 .mermaid-block:hover { border-color: var(--ds-line); background: var(--ds-sunk); }
+
+.home-month { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.home-month i { inline-size: auto; min-inline-size: 0; max-inline-size: 100%; }
