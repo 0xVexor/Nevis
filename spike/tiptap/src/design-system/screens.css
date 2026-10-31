@@ -786,3 +786,81 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 
 /* reading mode scales the page title (.title); the database Title cell shares the class and must not follow it */
 .app.reading .db-td.title { font-size: inherit; padding-block-end: 0; pointer-events: auto; }
+
+/* ───── Radii follow the corner-radius setting: page icon, formatting bar, menus ───── */
+.page-icon { border-radius: var(--ds-r-lg); }
+.toolbar .tb-pill { border-radius: var(--ds-r-lg); }
+.toolbar button, .toolbar .tb-add { border-radius: var(--ds-r-sm); }
+.toolbar .tb-menu, .tb-menu { border-radius: var(--ds-r-lg); }
+.toolbar .tb-menu button.tb-mi { border-radius: var(--ds-r-sm); }
+.tb-grid span { border-radius: calc(var(--ds-r-sm) * 0.7); }
+
+/* ───── "/" menu ───── */
+.slash-menu { inline-size: 340px; max-block-size: 380px; padding: 0; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); backdrop-filter: none; box-shadow: var(--ds-shadow-pop); animation: none; }
+.slash-label { padding: 10px 14px 4px; color: var(--ds-text-3); font-size: 12px; font-weight: 550; letter-spacing: 0; text-transform: none; }
+.slash-list { padding: 4px 6px 6px; }
+.slash-item { min-block-size: 46px; padding: 5px 8px; gap: 12px; border-radius: var(--ds-r); transition: none; }
+.slash-item.sel { background: var(--ds-hover); }
+.slash-item.sel::before { content: none; }
+.slash-ic { inline-size: 32px; block-size: 32px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-sm); background: var(--ds-bg); color: var(--ds-text-2); box-shadow: none; transition: none; font-size: 12.5px; font-weight: 650; }
+.slash-ic svg { inline-size: 17px; block-size: 17px; }
+.slash-item.sel .slash-ic { border-color: var(--ds-accent-line); background: var(--ds-accent-soft); color: var(--ds-accent); box-shadow: none; }
+.slash-tx b { font-size: 14px; font-weight: 550; line-height: 1.2; }
+.slash-tx small { color: var(--ds-text-3); font-size: 12px; }
+.slash-empty { color: var(--ds-text-3); }
+.slash-foot { border-block-start: 1px solid var(--ds-line); background: var(--ds-sunk); color: var(--ds-text-3); }
+.slash-foot kbd { border-radius: 5px; }
+
+/* ───── Icon and colour picker ───── */
+.emoji-pop { inline-size: 340px; padding: 12px; }
+.emoji-search { block-size: 36px; border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-bg); font-size: 14px; }
+.emoji-search:focus { border-color: var(--ds-accent); box-shadow: 0 0 0 3px var(--ds-accent-soft); }
+.icon-colors { gap: 8px; margin: 0 2px 12px; }
+.icon-color { inline-size: 22px; block-size: 22px; border: 0; outline: 0; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12); transition: none; }
+.icon-color:hover { transform: none; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12), 0 0 0 2px var(--ds-line-strong); }
+.icon-color.on, .icon-color.on:hover { border: 0; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12), 0 0 0 2px var(--ds-raised), 0 0 0 4px var(--ds-accent); }
+.icon-color.auto { background: conic-gradient(#8a8fa8, #c9cde0, #8a8fa8); }
+.emoji-head { color: var(--ds-text-3); font-size: 12px; font-weight: 550; }
+.emoji-head .link { color: var(--ds-text-2); }
+.emoji-head .link:hover { color: var(--ds-accent); }
+.emoji-grid { grid-template-columns: repeat(7, 1fr); gap: 2px; max-block-size: 260px; }
+.emoji-grid button { block-size: 40px; border-radius: var(--ds-r-sm); transition: none; }
+.emoji-grid button:hover { background: var(--ds-hover); transform: none; }
+.emoji-grid button.glyph { color: var(--ds-text-2); }
+.emoji-grid button.glyph:hover { color: var(--ds-text); }
+.emoji-grid button.glyph.on { background: var(--ds-accent-soft); color: var(--ds-accent); box-shadow: none; }
+.emoji-tabs { gap: 2px; padding: 2px; border-radius: var(--ds-r); background: var(--ds-sunk); }
+.emoji-tabs button { block-size: 30px; border: 0; border-radius: var(--ds-r-sm); background: none; transition: none; }
+.emoji-tabs button.on { background: var(--ds-raised); box-shadow: 0 0 0 1px var(--ds-line), 0 1px 2px rgb(0 0 0 / 0.06); }
+.emoji-tabs .tab-icons { color: var(--ds-text-2); }
+
+/* ───── Reading mode: the page itself, on the plain background; serif body; a calm dock ───── */
+.app.reading .main { background: var(--ds-bg); }
+.app.reading .scroller { background: var(--ds-bg); }
+.app.reading .page { padding: 40px 24px 120px; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.app.reading .page .tiptap { font-family: var(--ds-font-serif, 'Newsreader', 'Vazirmatn', Georgia, serif); font-size: inherit; line-height: 1.9; }
+.app.reading .page .tiptap p { margin: 0.7em 0; }
+.app.reading .page .tiptap h1, .app.reading .page .tiptap h2, .app.reading .page .tiptap h3 { font-family: var(--font); }
+.app.reading .title { font-size: 2.5em; padding-block-end: 8px; }
+.app.reading .cover { margin: 0 auto 8px; block-size: 168px; border-radius: var(--ds-r-lg); }
+.reader-prog { block-size: 2px; }
+.reader-prog i { border-radius: 0; background: var(--ds-accent); box-shadow: none; }
+.rb-dock { gap: 4px; padding: 5px 6px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); box-shadow: var(--ds-shadow-pop); backdrop-filter: none; }
+.rb-exit { block-size: 32px; min-inline-size: 0; padding: 0 12px; gap: 6px; border-radius: var(--ds-r); background: var(--ds-accent); color: var(--ds-accent-ink); font-size: 13px; font-weight: 550; box-shadow: none; }
+.rb-exit:hover { filter: brightness(1.08); transform: none; }
+.rb-div { background: var(--ds-line); }
+.rb-icon { inline-size: 32px; block-size: 32px; border-radius: var(--ds-r-sm); color: var(--ds-text-2); }
+.rb-icon:hover { background: var(--ds-hover); color: var(--ds-text); }
+.rb-seg { block-size: 32px; padding: 2px; border-radius: var(--ds-r); background: var(--ds-sunk); }
+.rb-seg button { inline-size: 28px; block-size: 28px; border-radius: var(--ds-r-sm); color: var(--ds-text-2); }
+.rb-seg button:hover:not(:disabled) { background: var(--ds-raised); box-shadow: 0 0 0 1px var(--ds-line); }
+.rb-val { color: var(--ds-text-3); font-weight: 500; }
+.rb-width { block-size: 32px; border-radius: var(--ds-r); background: var(--ds-sunk); color: var(--ds-text-3); }
+.rb-range { accent-color: var(--ds-accent); }
+.rb-meta b { font-weight: 600; }
+.rb-meta small { color: var(--ds-text-3); }
+.rb-toc-i { border-radius: var(--ds-r-sm); color: var(--ds-text); }
+.rb-toc-i.l1 { font-weight: 600; }
+.rb-toc-i.l2 { color: var(--ds-text-2); }
+.rb-toc-i.l3 { color: var(--ds-text-3); }
+.rb-toc-i:hover { background: var(--ds-hover); color: var(--ds-text); }
