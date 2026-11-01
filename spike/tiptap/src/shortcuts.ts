@@ -2,8 +2,11 @@
 // in App.tsx / PageView.tsx / Flashcards.tsx / the editor extensions already do — keep it in sync with them.
 // 'Mod' is Ctrl on Windows/Linux and ⌘ on macOS.
 
+import type { BindingId } from './shortcutBindings'
+
 export interface Shortcut {
   label: string // English source string, translated at render time
+  binding?: BindingId // a shortcut the person can change in Settings (see shortcutBindings.ts); `keys` is then only its default
   keys: string[][] // alternatives; each is one chord, e.g. [['Mod', 'K']]
   macKeys?: string[][]
 }
@@ -13,17 +16,18 @@ export interface ShortcutGroup {
 }
 
 const sc = (label: string, ...keys: string[][]): Shortcut => ({ label, keys })
+const bound = (label: string, binding: BindingId, ...keys: string[][]): Shortcut => ({ label, keys, binding })
 
 export const SHORTCUTS: ShortcutGroup[] = [
   {
     title: 'App',
     items: [
-      sc('Search pages and commands', ['Mod', 'K']),
-      sc('Open or close the sidebar', ['Mod', '\\']),
-      sc('Reader mode', ['Mod', '.']),
+      bound('Search pages and commands', 'search', ['Mod', 'K']),
+      bound('Open or close the sidebar', 'sidebar', ['Mod', '\\']),
+      bound('Reader mode', 'reader', ['Mod', '.']),
       sc('Leave reader mode', ['Esc']),
-      sc('Wider text column', ['Alt', '=']),
-      sc('Narrower text column', ['Alt', '-']),
+      bound('Wider text column', 'widerColumn', ['Alt', '=']),
+      bound('Narrower text column', 'narrowerColumn', ['Alt', '-']),
     ],
   },
   {
@@ -63,7 +67,7 @@ export const SHORTCUTS: ShortcutGroup[] = [
   {
     title: 'Find in page',
     items: [
-      sc('Find in page', ['Mod', 'F']),
+      bound('Find in page', 'find', ['Mod', 'F']),
       sc('Next match', ['Enter'], ['F3'], ['Mod', 'G']),
       sc('Previous match', ['Shift', 'Enter'], ['Shift', 'F3'], ['Mod', 'Shift', 'G']),
       sc('Close find', ['Esc']),

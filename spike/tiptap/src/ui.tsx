@@ -248,7 +248,7 @@ export function SearchModal({ pages, search, commands, onOpen, onClose, initialQ
 
   return (
     <div className="overlay palette-overlay" onMouseDown={onClose}>
-      <div className="modal palette" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="modal palette" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && (e.stopPropagation(), onClose())}> {/* Esc closes the search only: reader mode, the page panel and the like stay as they are */}
         <div className="pal-search">
           <span className="pal-sic"><Ic.Search size={18} /></span>
           <input
@@ -258,8 +258,7 @@ export function SearchModal({ pages, search, commands, onOpen, onClose, initialQ
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') onClose()
-              else if (e.key === 'ArrowDown') (e.preventDefault(), setSel((s) => Math.min(s + 1, items.length - 1)))
+              if (e.key === 'ArrowDown') (e.preventDefault(), setSel((s) => Math.min(s + 1, items.length - 1)))
               else if (e.key === 'ArrowUp') (e.preventDefault(), setSel((s) => Math.max(s - 1, 0)))
               else if (e.key === 'Tab') (e.preventDefault(), setScope((s) => scopes[(scopes.findIndex(([k]) => k === s) + 1) % scopes.length][0]))
               else if (e.key === 'Enter' && items[sel]) (e.preventDefault(), choose(items[sel]))
