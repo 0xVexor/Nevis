@@ -380,3 +380,15 @@ test('list_tags and get_document_links report only what the grant may see', asyn
   assert.deepEqual(back.result.backlinks, [{ documentId: source, title: 'Source' }])
   assert.equal((await h.call('get_document_links', { documentId: 'private' })).error.code, 'NOT_FOUND')
 })
+
+test('a write whose letters were already turned into question marks is refused with a clear message and saves nothing', async () => {
+  const markdown = text => text.split('\n').filter(Boolean).map(line => ({ type: 'paragraph', content: [{ type: 'text', text: line }] }))
+  const h = await fixture({ policy: { wholeVault: true, rootIds: [], excludedIds: [], allowWrites: true }, writesReleased: true, markdown }); await h.initialize()
+  const args = { operationId: 'lost-create', parentId: 'root', kind: 'page', metadata: { title: '????? ????? ????? NGDIR', tags: [], favorite: false }, markdown: 'first line\n????? ????? ????? ????' }
+  const refused = await h.call('create_document', args)
+  assert.equal(refused.ok, false); assert.equal(refused.error.code, 'INVALID_ARGUMENT'); assert.match(refused.error.message, /UTF-8/)
+  assert.equal(refused.error.retryable, false)
+  // the same request with the real letters is saved, so nothing was left half done under that operation id
+  const fixed = await h.call('create_document', { ...args, metadata: { ...args.metadata, title: 'پیوست NGDIR' }, markdown: 'first line\nسلام دنیا' })
+  assert.equal(fixed.ok, true, JSON.stringify(fixed))
+})

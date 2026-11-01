@@ -17,8 +17,8 @@ import { CoverBanner, CoverPicker } from './Cover'
 import { PagePanel } from './PagePanel'
 import { PageIcon } from './PageIcon'
 import { isDark, updateSettings, useSettings } from './settings'
-import { BackupError, buildBackup, download, pageToMarkdown, restoreBackup } from './backup'
-import { exportAllZip, importMarkdown, importVault, pickDirectory, pickFiles } from './io'
+import { buildBackup, download, pageToMarkdown, takeRestored } from './backup'
+import { exportAllZip } from './io'
 import { PagesTable } from './PagesTable'
 import { HorizontalScroll } from './HorizontalScroll'
 import { Flashcards } from './Flashcards'
@@ -29,7 +29,6 @@ import { getTemplates } from './templates'
 import { PageView, type SaveState } from './PageView'
 import { buildIndex, type PageIndex } from './pageIndex'
 import { ReaderBar, loadReaderCfg, type ReaderCfg } from './ReaderBar'
-import { BackupSettings } from './BackupSettings'
 import { Vaults } from './Vaults'
 import { WorkspaceCard } from './VaultSwitcher'
 import { GraphView } from './GraphView'
@@ -277,7 +276,7 @@ export default function App() {
     return () => (window.removeEventListener('dragstart', start), window.removeEventListener('dragend', end), window.removeEventListener('drop', end))
   }, [])
   const [naming, setNaming] = useState<{ title: string; label: string; initial: string; action: string; onSubmit: (name: string) => void } | null>(null)
-  const [backupOpen, setBackupOpen] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<'data' | undefined>()
   const [folderOpen, setFolderOpen] = useState(false)
   const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null)
   const [tableOpen, setTableOpen] = useState(false)
@@ -522,6 +521,11 @@ export default function App() {
       if (path) await invoke('vault_backup_save', { path })
     } catch (error) { setToast({ msg: t('Backup failed') + ': ' + String(error) }) }
   }
+  useEffect(() => {
+    const r = takeRestored()
+    if (r) setToast({ msg: r.copy ? t('{pages} pages and {files} files restored. Your previous notes were saved as {copy}.', { pages: r.pages, files: r.files, copy: r.copy }) : t('{pages} pages and {files} files restored', { pages: r.pages, files: r.files }) })
+  }, [])
+  const openData = () => { setSettingsTab('data'); setView('settings') }
   const doExportAll = async () => {
     try {
       const r = await exportAllZip()
@@ -532,47 +536,9 @@ export default function App() {
       setToast({ msg: t('Export failed') })
     }
   }
-  const doVault = async () => {
-    const files = await pickDirectory()
-    if (!files.length) return
-    try {
-      setToast({ msg: t('Importing vault…') })
-      const r = await importVault(files, (done, total) => setToast({ msg: t('Importing vault… {done}/{total}', { done, total }) }))
-      refresh()
-      setToast({ msg: t('Imported “{vault}”: {pages} pages, {folders} folders, {images} images', { vault: r.vault, pages: r.pages, folders: r.folders, images: r.images }) })
-    } catch (e) {
-      console.error(e)
-      setToast({ msg: t('Import failed') })
-    }
-  }
   const setStatus = (id: string, status: PageStatus | undefined) => {
     repo.update(id, { status })
     refresh()
-  }
-  const doImport = async () => {
-    const files = await pickFiles('.md,.markdown,.txt,text/markdown,text/plain', true)
-    if (!files.length) return
-    try {
-      const made = await importMarkdown(files)
-      refresh()
-      setCurrentId(made[0].id)
-      setToast({ msg: t('{n} pages imported from Markdown', { n: made.length }) })
-    } catch (e) {
-      console.error(e)
-      setToast({ msg: t('Import failed') })
-    }
-  }
-  const doRestore = async () => {
-    const [f] = await pickFiles('application/json')
-    if (!f || !(await confirmDialog({ title: t('Restore from backup'), message: isTauri ? t('The backup will open in a new disconnected workspace. Current files stay intact. Continue?') : t('All current pages will be replaced by the backup. Continue?'), confirmLabel: t('Restore'), danger: true }))) return
-    try {
-      const r = await restoreBackup(repo, await f.text())
-      refresh()
-      setCurrentId(repo.pagesOnly()[0]?.id ?? '')
-      setToast({ msg: t('{pages} pages and {files} files restored', { pages: r.pages, files: r.files }) })
-    } catch (err) {
-      setToast({ msg: err instanceof BackupError ? err.message : t('Restore failed') })
-    }
   }
   const exportMd = async (id: string) => {
     const p = repo.get(id)
@@ -625,12 +591,11 @@ export default function App() {
     { id: 'trash', label: t('Trash'), icon: <Ic.Trash />, keywords: 'deleted سطل', run: () => setTrashOpen(true) },
     { id: 'theme', label: dark ? t('Light mode') : t('Dark mode'), icon: dark ? <Ic.Sun /> : <Ic.Moon />, keywords: 'theme dark light تم', run: () => updateSettings({ theme: dark ? 'light' : 'dark' }) },
     { id: 'sidebar', label: sideOpen ? t('Close sidebar') : t('Open sidebar'), icon: <Ic.Sidebar />, keywords: 'side panel نوار کناری', hint: 'Ctrl \\', run: () => setSideOpen((o) => !o) },
-    { id: 'import', label: t('Import Markdown files…'), icon: <Ic.Upload />, keywords: 'وارد کردن', run: doImport },
-    { id: 'vault', label: t('Import Obsidian vault (folder)…'), icon: <Ic.Folder />, keywords: 'obsidian', run: doVault },
+    { id: 'import', label: t('Import or restore…'), icon: <Ic.Upload />, keywords: 'وارد کردن بازیابی markdown obsidian restore zip', run: openData },
     { id: 'export-all', label: t('Export all pages (zip with Markdown & images)'), icon: <Ic.Download />, keywords: 'zip', run: doExportAll },
     { id: 'backup', label: t('Full backup (JSON)'), icon: <Ic.Save />, keywords: 'پشتیبان', run: doBackup },
     ...[{ id: 'data-folder', label: t('Workspaces…'), icon: <Ic.Folder />, keywords: 'vault switch workspace پوشه داده', run: () => setFolderOpen(true) }],
-    { id: 'auto-backup', label: t('Automatic backup to folder…'), icon: <Ic.Save />, keywords: 'پشتیبان خودکار', run: () => setBackupOpen(true) },
+    { id: 'auto-backup', label: t('Automatic backup to folder…'), icon: <Ic.Save />, keywords: 'پشتیبان خودکار', run: openData },
     { id: 'settings', label: t('Settings'), icon: <Ic.Settings />, keywords: 'preferences تنظیمات', run: () => setView('settings') },
   ]
   const menuPage = menu ? pages.find((p) => p.id === menu.id) : undefined
@@ -845,7 +810,7 @@ export default function App() {
           ) : view === 'drawings' ? (
             <Drawings onOpen={setCurrentId} onNew={() => add(null, 'board')} onDelete={delDrawing} />
           ) : view === 'settings' ? (
-            <SettingsView data={{ importMarkdown: doImport, importVault: () => void doVault(), exportAll: doExportAll, backup: doBackup, restore: doRestore, autoBackup: () => setBackupOpen(true), workspaces: () => setFolderOpen(true) }} />
+            <SettingsView initialTab={settingsTab} data={{ repo, refresh, toast: (msg) => setToast({ msg }), open: setCurrentId, exportAll: doExportAll, backup: doBackup, workspaces: () => setFolderOpen(true) }} />
           ) : current?.dbHost ? (
             <Suspense fallback={<div className="page-skeleton" aria-busy="true" />}><DatabasePage key={current.id} page={current} onOpenPage={setCurrentId} onMeta={refresh} readOnly={reader} /></Suspense>
           ) : current?.kind === 'board' ? (
@@ -925,7 +890,7 @@ export default function App() {
             <MenuItem icon={<Ic.Cards />} label={t('Flashcards')} onClick={() => (setCardsOpen(true), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Link />} label={t('Graph view')} onClick={() => (setGraphOpen(true), setBlankMenu(null))} />
             <MenuSep />
-            <MenuItem icon={<Ic.Upload />} label={t('Import Markdown files…')} onClick={() => (setBlankMenu(null), doImport())} />
+            <MenuItem icon={<Ic.Upload />} label={t('Import or restore…')} onClick={() => (setBlankMenu(null), openData())} />
             <MenuItem icon={<Ic.Trash />} label={t('Trash')} onClick={() => (setTrashOpen(true), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Settings />} label={t('Settings')} onClick={() => (setView('settings'), setBlankMenu(null))} />
           </div>
@@ -956,7 +921,6 @@ export default function App() {
 
       {folderOpen && <Vaults onClose={() => setFolderOpen(false)} onNew={(create) => setNaming({ title: t('New workspace'), label: t('Workspace name:'), initial: t('My notes'), action: t('Next'), onSubmit: (n) => void create(n.trim() || t('My notes')) })} />}
       {movingId && <div className="overlay" onMouseDown={() => setMovingId(null)}><div className="modal move-dialog" role="dialog" aria-modal="true" aria-label={t('Move to folder')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && setMovingId(null)}><div className="modal-head"><b>{t('Move to folder')}</b><button className="icon-btn" title={t('Close')} onClick={() => setMovingId(null)}><Ic.Close /></button></div><div className="modal-list"><button className="result" onClick={() => { move(movingId,null,null); setMovingId(null) }}><Ic.Book /><span>{t('Move to top level')}</span></button>{pages.filter((p) => { if(p.kind !== 'folder' || p.id === movingId) return false; let parent: Page | undefined = p; const seen = new Set<string>(); while(parent) { if(parent.id === movingId || seen.has(parent.id)) return false; seen.add(parent.id); parent = pages.find((x) => x.id === parent!.parentId) } return true }).map((p) => <button className="result" key={p.id} onClick={() => { move(movingId,p.id,null); setMovingId(null) }}><Ic.Folder /><span dir="auto">{p.title || t('Untitled folder')}</span></button>)}</div></div></div>}
-      {backupOpen && <BackupSettings onClose={() => setBackupOpen(false)} />}
 
       {naming && <NameDialog {...naming} onClose={() => setNaming(null)} />}
       {trashOpen && (

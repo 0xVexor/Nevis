@@ -1,4 +1,4 @@
-import type { CSSProperties, ElementType, HTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
+import { Fragment, type CSSProperties, type ElementType, type HTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react'
 import { cx } from './dir'
 
 /** A container: `interactive` for clickable cards, `selected` for the chosen one. */
@@ -41,5 +41,26 @@ export function Section({ title, action, children, className }: { title: string;
       <header><h2>{title}</h2>{action}</header>
       {children}
     </section>
+  )
+}
+
+/** Labels and values for a summary. Labels and string values are already translated by the caller. */
+export function Facts({ items, className }: { items: [string, ReactNode][]; className?: string }) {
+  return (
+    <dl className={cx('ds-facts', className)}>
+      {items.map(([label, value]) => (
+        <Fragment key={label}><dt>{label}</dt><dd dir="auto">{value}</dd></Fragment>
+      ))}
+    </dl>
+  )
+}
+
+/** One thing that needs to be seen. `warn` and `bad` always come with words and an icon. */
+export function Notice({ tone, icon, children, className }: { tone?: 'warn' | 'bad'; icon?: ReactNode; children: ReactNode; className?: string }) {
+  return (
+    <div role={tone ? 'alert' : 'note'} className={cx('ds-notice', tone && `ds-notice--${tone}`, className)}>
+      {icon}
+      <div>{children}</div>
+    </div>
   )
 }

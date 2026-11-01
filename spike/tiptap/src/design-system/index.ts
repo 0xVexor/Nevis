@@ -8,7 +8,7 @@ export { fileKind, extensionOf, FILE_KINDS, FILE_EXTENSIONS, type FileKind } fro
 export { BACKGROUNDS, BACKGROUND_GROUPS, backgroundCss, backgroundOf, type Background } from './backgrounds'
 export { Button, IconButton } from './Button'
 export { Row } from './Row'
-export { Card, Switch, Field, Chip, Tabs, Section, type TabItem } from './controls'
+export { Card, Switch, Field, Chip, Tabs, Section, Facts, Notice, type TabItem } from './controls'
 export { cx, dirOf } from './dir'
 export { COVER_SCENES, landscapeFor, phaseOf, type Landscape, type DayPhase } from './scenery'
 export { Dialog, Tooltip } from './overlay'

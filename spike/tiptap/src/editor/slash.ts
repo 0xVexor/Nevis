@@ -7,6 +7,7 @@ import { LANGS } from './codeBlock'
 import { menuRender } from './menu'
 import { looksLikeMermaid } from './mermaidText'
 import { t } from '../i18n'
+import { slashPreview } from './slashPreview'
 import { insertDatabase } from './databaseEmbed'
 
 interface Item {
@@ -78,6 +79,8 @@ function filter(query: string, list: Item[] = ITEMS): Item[] {
   return list.filter((i) => normalizeFa(`${shown(i).title} ${i.title} ${i.keywords}`).includes(q)).sort((a, b) => inTitle(b) - inTitle(a))
 }
 
+export const previewOf = (i: Item) => slashPreview(i.title, i.vars?.name)
+
 // ───────────── Ctrl+/ palette (see commandPalette.ts) ─────────────
 export type CommandItem = Item
 export const shownItem = shown
@@ -129,7 +132,7 @@ export const SlashCommand = Extension.create({
           if (props.disabled) return
           props.run(editor.chain().focus().deleteRange(range), editor).run()
         },
-        render: menuRender<Item>({ label: t('Blocks'), view: shown }),
+        render: menuRender<Item>({ label: t('Blocks'), view: shown, preview: previewOf }),
       }),
     ]
   },

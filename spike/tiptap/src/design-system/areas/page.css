@@ -85,12 +85,17 @@
 .templates button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--ds-line); background: var(--ds-raised); color: var(--ds-text-2); border-radius: 999px; padding: 5px 14px; font-size: 13px; cursor: var(--cursor-hand, pointer); transition: all 0.2s var(--ease); }
 .templates button:hover { color: var(--ds-accent); border-color: var(--ds-accent-line); background: var(--ds-accent-faint); transform: translateY(-1px); }
 
-/* find in page */
-.findbar { position: sticky; top: 8px; z-index: 6; margin: 0 0 10px auto; width: fit-content; display: flex; align-items: center; gap: 4px; background: var(--ds-raised); border: 1px solid var(--ds-line); border-radius: 14px; box-shadow: var(--ds-shadow-pop); padding: 5px 6px 5px 12px; animation: pop-in 0.25s var(--ease); }
-.findbar input { width: 220px; border: 0; outline: none; background: transparent; color: var(--ds-text); font-size: 14px; padding: 4px 6px; }
-.findbar button { border: 0; background: transparent; color: var(--ds-text-2); width: 28px; height: 28px; border-radius: 8px; cursor: var(--cursor-hand, pointer); font-size: 12px; }
-.findbar button:hover { background: var(--ds-hover); color: var(--ds-text); }
-.find-count { font-size: 12px; color: var(--ds-text-2); min-width: 56px; text-align: center; }
+/* find in page: a floating bar centred at the top of the page, out of the flow so opening it never moves the text; the editor toolbar sticks below it while it is open */
+.findbar-slot { position: sticky; inset-block-start: 6px; z-index: 6; block-size: 0; display: flex; justify-content: center; pointer-events: none; }
+.findbar { pointer-events: auto; inline-size: min(460px, calc(100% - 32px)); block-size: 48px; display: flex; align-items: center; gap: var(--ds-s2); padding-inline: 18px var(--ds-s2); border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); color: var(--ds-text-3); box-shadow: var(--ds-shadow-pop); animation: ds-pop var(--ds-fast) var(--ds-ease); }
+.page.finding .toolbar { top: 62px; }
+.findbar:focus-within { border-color: var(--ds-accent-line); }
+.findbar > svg { flex: none; }
+.findbar input { flex: 1; min-inline-size: 0; border: 0; outline: none; background: transparent; color: var(--ds-text); font: inherit; font-size: 16px; font-weight: 400; padding: 0; }
+.findbar input::placeholder { color: var(--ds-text-3); }
+.find-count { flex: none; min-inline-size: 48px; text-align: center; font-size: 12.5px; color: var(--ds-text-3); font-variant-numeric: tabular-nums; }
+.findbar .ds-icon-btn:disabled { opacity: 0.4; }
+@media (prefers-reduced-motion: reduce) { .findbar { animation: none; } }
 
 /* backlinks */
 .backlinks { margin-top: 56px; padding: 16px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-sunk); }
