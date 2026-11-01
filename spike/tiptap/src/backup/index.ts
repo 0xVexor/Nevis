@@ -6,16 +6,16 @@ import { t } from '../i18n'
 import { toMarkdown } from '../markdown'
 import { frontMatter } from '../meta'
 import type { Page, PageRepo } from '../repo'
-import { flushPreferences } from '../sharedPreferences'
-import { saveBeforeUpdate } from '../updateSave'
+import { saveWorkspace } from '../saveWorkspace'
 import { BackupError, download, fileStamp, toBase64 } from './format'
 import { inspectBackup, type BackupPlan } from './inspect'
-import { applyTauri, buildTauri, type RestoreTo } from './tauri'
+import { applyTauri, buildTauri, type MergeResult, type RestoreTo } from './tauri'
 import { applyWeb, buildWeb } from './web'
 
 export { BackupError, download, fileStamp, inspectBackup }
+export { BackupBlocked, readFolder, saveFolder, type FolderCounts, type FolderReport } from './folder'
 export type { BackupPlan, BackupSummary } from './inspect'
-export type { RestoreTo } from './tauri'
+export type { MergeResult, RestoreTo } from './tauri'
 
 const dataUri = async (src: string) => {
   if (!src.startsWith('att:')) return src
@@ -25,15 +25,9 @@ const dataUri = async (src: string) => {
 
 export const pageToMarkdown = async (p: Page) => frontMatter(p) + (await toMarkdown(p.title, p.content, dataUri))
 
-const settle = async (repo: PageRepo) => {
-  await saveBeforeUpdate()
-  await repo.flushBeforeUpdate()
-  await flushPreferences()
-}
-
 /** Full backup as one JSON file (pages incl. trash + every attachment). */
 export async function buildBackup(repo: PageRepo): Promise<Blob> {
-  await settle(repo)
+  await saveWorkspace()
   return isTauri ? buildTauri() : buildWeb(repo)
 }
 
@@ -43,6 +37,7 @@ export interface Restored {
   pages: number
   files: number
   copy?: string
+  merged?: MergeResult | null
 }
 
 /**
@@ -50,7 +45,7 @@ export interface Restored {
  * the restore stops if that fails; on desktop the backup opens as a new vault and nothing is replaced.
  */
 export async function restoreBackup(repo: PageRepo, plan: BackupPlan, opts: { saveCopy?: boolean } & RestoreTo = {}): Promise<Restored> {
-  await settle(repo)
+  await saveWorkspace()
   let copy: string | undefined
   if (!isTauri && opts.saveCopy !== false) {
     copy = `notes-before-restore-${fileStamp()}.json`
@@ -60,7 +55,7 @@ export async function restoreBackup(repo: PageRepo, plan: BackupPlan, opts: { sa
       throw new BackupError(t('Could not save a copy of your current notes, so nothing was restored.'))
     }
   }
-  let result: { pages: number; files: number; copy?: string }
+  let result: Restored
   if (isTauri) {
     freezeStorage()
     try {
