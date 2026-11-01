@@ -60,3 +60,8 @@
 .app.reading .page-cols.has-cover .page { border-top: 0; border-radius: 0 0 20px 20px; padding-top: 0; }
 .app.reading .page-cols.has-cover .page-top { padding-top: 0; }
 .app.reading .page-cols.has-cover .page-head .page-icon { margin-top: -54px; }
+
+/* A small picture of what the highlighted "/" command writes, beside the menu (see editor/slashPreview.ts) */
+.slash-preview { position: fixed; z-index: 301; inline-size: 224px; padding: 8px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); box-shadow: var(--ds-shadow-pop); pointer-events: none; animation: ds-pop var(--ds-fast) var(--ds-ease); }
+.slash-preview svg { display: block; inline-size: 100%; block-size: auto; border-radius: var(--ds-r); background: var(--ds-bg); }
+@media (prefers-reduced-motion: reduce) { .slash-preview { animation: none; } }

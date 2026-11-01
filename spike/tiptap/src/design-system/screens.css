@@ -101,6 +101,7 @@
 .result-tx b, .result-tx small { text-align: start; }
 /* settings: import panel */
 .sx-drop { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-block: 6px 18px; padding: 26px 20px; border: 1.5px dashed var(--ds-line-strong); border-radius: var(--ds-r-lg); background: var(--ds-bg); color: var(--ds-text-2); text-align: center; }
+.sx-drop[data-over='true'] { border-color: var(--ds-accent); background: var(--ds-accent-soft); }
 .sx-drop-ic { display: grid; place-items: center; inline-size: 44px; block-size: 44px; border-radius: 12px; background: var(--ds-sunk); color: var(--ds-text-2); }
 .sx-drop b { color: var(--ds-text); font-weight: 550; }
 .sx-drop small { color: var(--ds-text-3); font-size: 13px; }
@@ -110,7 +111,7 @@
 
 /* ───── search: the command palette (Ctrl K) and find in page (Ctrl F) ───── */
 .modal.palette { width: min(640px, 94vw); border-radius: 16px; background: var(--ds-bg); backdrop-filter: none; box-shadow: var(--ds-shadow-pop); }
-.pal-search { gap: 12px; padding: 0 18px; block-size: 54px; border-bottom: 1px solid var(--ds-line); }
+.pal-search { flex: none; gap: 12px; padding: 0 18px; block-size: 54px; border-bottom: 1px solid var(--ds-line); }
 .pal-sic { inline-size: auto; block-size: auto; border-radius: 0; background: none; box-shadow: none; color: var(--ds-text-3); }
 .pal-search input { block-size: 100%; font-size: 16px; font-weight: 400; letter-spacing: 0; }
 .pal-search input::placeholder { color: var(--ds-text-3); }
@@ -132,11 +133,6 @@
 .pal-empty { color: var(--ds-text-3); }
 .pal-empty b { font-weight: 600; }
 .palette .palette-foot { padding: 10px 16px; background: var(--ds-sunk); border-top-color: var(--ds-line); color: var(--ds-text-3); }
-.findbar { border-color: var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); box-shadow: var(--ds-shadow-pop); }
-.findbar:focus-within { border-color: var(--ds-accent-line); }
-.findbar button { border-radius: var(--ds-r-sm); }
-.findbar button:hover { background: var(--ds-hover); }
-.find-count { color: var(--ds-text-3); font-variant-numeric: tabular-nums; }
 .tiptap .find-hit { background: color-mix(in oklab, var(--ds-warn) 30%, transparent); border-radius: 3px; }
 .tiptap .find-hit.find-cur { background: color-mix(in oklab, var(--ds-warn) 60%, transparent); outline: 1px solid var(--ds-warn); }
 

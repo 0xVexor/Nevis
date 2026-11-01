@@ -179,20 +179,24 @@ const dataUriImage = async (src: string) =>
   src.startsWith('data:') ? putFile(await (await fetch(src)).blob(), '') : null
 
 /** Imports .md files as new top-level pages (title/tags/status from the front matter, `[[links]]` resolved). */
-export async function importMarkdown(files: File[]): Promise<Page[]> {
+export async function importMarkdown(files: File[], onError?: (name: string, error: unknown) => void): Promise<Page[]> {
   const created: Page[] = []
   for (const f of files) {
-    const { meta, body } = parseFrontMatter(await f.text())
-    let title = meta.title ?? f.name.replace(/\.(md|markdown|txt)$/i, '')
-    let md = body
-    const h1 = md.match(/^\s*#\s+(.+?)\s*#*\s*(\r?\n|$)/)
-    if (h1 && !meta.title) {
-      title = h1[1]
-      md = md.slice(h1[0].length)
+    try {
+      const { meta, body } = parseFrontMatter(await f.text())
+      let title = meta.title ?? f.name.replace(/\.(md|markdown|txt)$/i, '')
+      let md = body
+      const h1 = md.match(/^\s*#\s+(.+?)\s*#*\s*(\r?\n|$)/)
+      if (h1 && !meta.title) {
+        title = h1[1]
+        md = md.slice(h1[0].length)
+      }
+      const page = repo.create(null)
+      repo.update(page.id, { title, ...(meta.tags.length ? { tags: meta.tags } : {}), ...(meta.status ? { status: meta.status } : {}), content: await markdownToDoc(md, dataUriImage) })
+      created.push(page)
+    } catch (e) {
+      onError?.(f.name, e)
     }
-    const page = repo.create(null)
-    repo.update(page.id, { title, ...(meta.tags.length ? { tags: meta.tags } : {}), ...(meta.status ? { status: meta.status } : {}), content: await markdownToDoc(md, dataUriImage) })
-    created.push(page)
   }
   // second pass: now that every title exists, resolve [[links]] (also to pre-existing pages)
   const titles = titleMap()
@@ -220,7 +224,7 @@ interface VaultResult {
  * `![[image.png]]` embeds become stored images, front-matter and `#inline` tags become tags.
  * `.obsidian`, `.trash` and every other dot-folder are ignored.
  */
-export async function importVault(files: File[], onProgress?: (done: number, total: number) => void): Promise<VaultResult> {
+export async function importVault(files: File[], onProgress?: (done: number, total: number) => void, onError?: (name: string, error: unknown) => void): Promise<VaultResult> {
   const withPath = files.map((f) => ({ f, parts: (f.webkitRelativePath || f.name).split('/') }))
   const vault = withPath[0]?.parts.length > 1 ? withPath[0].parts[0] : 'Vault'
   const inVault = withPath
@@ -270,35 +274,39 @@ export async function importVault(files: File[], onProgress?: (done: number, tot
 
   for (let i = 0; i < notes.length; i++) {
     const { f, path } = notes[i]
-    const dir = path.slice(0, -1)
-    const { meta, body } = parseFrontMatter(await f.text())
-    const title = meta.title ?? path.at(-1)!.replace(/\.md$/i, '')
-    // Obsidian shows the file name as the title; a first line "# Same Title" would just repeat it
-    let md = body.replace(new RegExp(`^\\s*#\\s+${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\r?\\n`), '')
-    let tags = meta.tags
-    for (const t of inlineTags(md)) tags = addTag(tags, t)
-    md = await fromObsidian(md, async (name) => {
-      const f2 = images.get(lower(name)) ?? images.get(lower([...dir, name].join('/')))
-      return f2 ? storeImage(f2) : null
-    })
-    const doc = await markdownToDoc(md, async (src) => {
-      if (src.startsWith('data:')) return dataUriImage(src)
-      if (/^[a-z][a-z0-9+.-]*:/i.test(src)) return null // http(s):, mailto:… stay as they are
-      let rel = src
-      try {
-        rel = decodeURIComponent(src)
-      } catch {
-        /* keep as written */
-      }
-      const f2 = images.get(lower([...dir, rel].join('/')).replace(/[^/]+\/\.\.\//g, '')) ?? images.get(lower(rel)) ?? images.get(lower(rel.split('/').pop()!))
-      return f2 ? storeImage(f2) : null
-    })
-    const page = repo.create(folderFor(dir))
-    repo.update(page.id, { title, content: doc, ...(tags.length ? { tags } : {}), ...(meta.status ? { status: meta.status } : {}) })
-    for (const a of meta.aliases) aliasOf.push([a, page.id])
-    made.push(page)
-    result.pages++
-    result.tags += tags.length
+    try {
+      const dir = path.slice(0, -1)
+      const { meta, body } = parseFrontMatter(await f.text())
+      const title = meta.title ?? path.at(-1)!.replace(/\.md$/i, '')
+      // Obsidian shows the file name as the title; a first line "# Same Title" would just repeat it
+      let md = body.replace(new RegExp(`^\\s*#\\s+${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\r?\\n`), '')
+      let tags = meta.tags
+      for (const t of inlineTags(md)) tags = addTag(tags, t)
+      md = await fromObsidian(md, async (name) => {
+        const f2 = images.get(lower(name)) ?? images.get(lower([...dir, name].join('/')))
+        return f2 ? storeImage(f2) : null
+      })
+      const doc = await markdownToDoc(md, async (src) => {
+        if (src.startsWith('data:')) return dataUriImage(src)
+        if (/^[a-z][a-z0-9+.-]*:/i.test(src)) return null // http(s):, mailto:… stay as they are
+        let rel = src
+        try {
+          rel = decodeURIComponent(src)
+        } catch {
+          /* keep as written */
+        }
+        const f2 = images.get(lower([...dir, rel].join('/')).replace(/[^/]+\/\.\.\//g, '')) ?? images.get(lower(rel)) ?? images.get(lower(rel.split('/').pop()!))
+        return f2 ? storeImage(f2) : null
+      })
+      const page = repo.create(folderFor(dir))
+      repo.update(page.id, { title, content: doc, ...(tags.length ? { tags } : {}), ...(meta.status ? { status: meta.status } : {}) })
+      for (const a of meta.aliases) aliasOf.push([a, page.id])
+      made.push(page)
+      result.pages++
+      result.tags += tags.length
+    } catch (e) {
+      onError?.(path.join('/'), e)
+    }
     onProgress?.(i + 1, notes.length)
     await breathe()
   }

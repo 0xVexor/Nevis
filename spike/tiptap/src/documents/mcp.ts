@@ -8,6 +8,7 @@ import { canonicalDocumentValue } from './revision.ts'
 import type { DocumentService } from './service.ts'
 import type { DocumentReadRuntime } from './reader.ts'
 import type { Page } from './model.ts'
+import { LOST_TEXT_MESSAGE, lostTextField } from './lostText.ts'
 
 export const MCP_PROTOCOL = '2025-11-25'
 export interface McpPolicy { wholeVault: boolean; rootIds: string[]; excludedIds: string[]; allowWrites: boolean }
@@ -101,7 +102,7 @@ export class McpDocumentScope {
   canWrite = (id: string) => this.policy.allowWrites && this.canRead(id)
   canCreate = (parentId: string | null) => this.policy.allowWrites && (parentId === null ? this.policy.wholeVault : this.canRead(parentId))
 }
-const toolError = (code: typeof ERROR_CODES[number], field?: string) => ({ ok: false as const, error: { code, message: code.replaceAll('_', ' ').toLowerCase(), retryable: ['APP_UNAVAILABLE', 'EDITOR_BUSY'].includes(code), ...(field && ['INVALID_ARGUMENT', 'LIMIT_EXCEEDED', 'UNSUPPORTED_CONTENT'].includes(code) ? { details: { field } } : {}) } })
+const toolError = (code: typeof ERROR_CODES[number], field?: string, message?: string) => ({ ok: false as const, error: { code, message: message ?? code.replaceAll('_', ' ').toLowerCase(), retryable: ['APP_UNAVAILABLE', 'EDITOR_BUSY'].includes(code), ...(field && ['INVALID_ARGUMENT', 'LIMIT_EXCEEDED', 'UNSUPPORTED_CONTENT'].includes(code) ? { details: { field } } : {}) } })
 const rpcError = (id: unknown, code: number, message: string) => ({ jsonrpc: '2.0', id, error: { code, message } })
 type Invocation = { id: string; expiresAt: number; active(): boolean }
 
@@ -240,6 +241,8 @@ export class McpDocumentSession {
     if (expanded === 'invalid') return resultEnvelope(toolError('INVALID_ARGUMENT'))
     if (expanded === 'unavailable') return resultEnvelope(toolError('CAPABILITY_UNAVAILABLE'))
     input = expanded
+    // a write whose letters were already turned into '?' by the sender is refused, not saved
+    if (!reads.has(name)) { const lost = lostTextField(input); if (lost !== null) return resultEnvelope(toolError('INVALID_ARGUMENT', lost, LOST_TEXT_MESSAGE)) }
     // page icons: only the app's own icons (see list_icons); null clears
     const icon = name === 'create_document' ? input.metadata?.icon : name === 'update_document_metadata' ? input.patch?.icon : undefined
     if (this.icons && typeof icon === 'string' && !this.icons.valid(icon)) return resultEnvelope(toolError('INVALID_ARGUMENT', 'icon'))

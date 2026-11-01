@@ -52,6 +52,8 @@ All classes are prefixed `ds-` and use logical properties (`inline-start`, `inli
 | Container | `ds-card` (+ `--interactive`, `--selected`) |
 | Data table | `ds-table-wrap` > `ds-table` + `ds-table-foot`. Roomy rows, no vertical lines. |
 | Empty state | `ds-empty`: say what is missing and what to do. |
+| Short list of labels and values (a summary in a dialog or card) | `ds-facts` / `Facts` |
+| One thing that must be seen: a warning, a consequence, an error | `ds-notice` / `Notice` (`tone="warn"` or `"bad"`). Always has an icon and words, never color alone. |
 | Floating lists | **`Menu` / `useMenu`**: dropdowns, context menus, submenus, shortcut hints. |
 | Feedback | `ds-toast` (past tense, same verb as the button: "Saved"), `ds-modal`, `ds-drawer` |
 | Columns | `ds-layout` (below) |
@@ -73,6 +75,7 @@ Import from `src/design-system`. Use these instead of writing the class names by
 
 - Anything that picks from a list is a `Menu`. Status and priority cells, sort and filter, block type, language pickers, settings choices: all dropdowns.
 - Every object a person can point at gets a **context menu**: page in the sidebar, block in the editor, database row or card, file, graph node, task, workspace. Keep the order: open, change, duplicate or move, copy link, then a separator and the destructive item last, in danger color.
+- The `/` command menu (and `Ctrl /`) shows a small picture of what the highlighted command writes, in a frame beside the menu (`slashPreview.ts`, styled by `.slash-preview`). Every new `/` command needs a drawing there; a test fails without one. Drawings use `--ds-*` tokens only.
 - Items have an icon (or a color swatch for status), a label, and a shortcut hint where one exists. Check marks show the current value.
 
 ### Column layouts
