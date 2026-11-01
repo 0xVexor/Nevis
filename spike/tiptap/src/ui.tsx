@@ -1,3 +1,4 @@
+import type { DocNode } from './docNode'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { normalizeFa } from './normalize'
 import { createPortal } from 'react-dom'
@@ -29,9 +30,9 @@ export function Popover({ anchor, onClose, children, align = 'start' }: { anchor
       let maxH: number | undefined
       if (h <= below) top = anchor.bottom + 6
       else if (h <= above) top = anchor.top - h - 6
-      else if (Math.max(below, above) < 200) (top = 8, maxH = window.innerHeight - 16)
-      else if (below >= above) (top = anchor.bottom + 6, maxH = below)
-      else (top = anchor.top - 6 - above, maxH = above)
+      else if (Math.max(below, above) < 200) ((top = 8), (maxH = window.innerHeight - 16))
+      else if (below >= above) ((top = anchor.bottom + 6), (maxH = below))
+      else ((top = anchor.top - 6 - above), (maxH = above))
       setPos((p) => (p.top === top && p.left === left && p.maxH === maxH ? p : { top, left, maxH }))
     }
     place()
@@ -63,14 +64,38 @@ export function Popover({ anchor, onClose, children, align = 'start' }: { anchor
   return createPortal(
     <div ref={ref} className="ds-pop" style={{ position: 'fixed', zIndex: 500, top: pos.top, left: pos.left, ...(pos.maxH ? { maxHeight: pos.maxH, overflowY: 'auto' } : null) }}>
       {children}
-    </div>, document.body,
+    </div>,
+    document.body,
   )
 }
 
 type SelectOption = { value: string; label: string; color?: string }
 
 /** Dropdown selector (replaces the native select element): a field button that opens the shared menu, with a dot per option and a check on the current one. */
-export function Select({ value, options, onChange, className, title, style, disabled, id, ...aria }: { value: string; options: SelectOption[]; onChange: (v: string) => void; className?: string; title?: string; style?: React.CSSProperties; disabled?: boolean; id?: string; 'aria-label'?: string; 'aria-invalid'?: boolean; 'aria-describedby'?: string; dir?: 'auto' | 'ltr' | 'rtl' }) {
+export function Select({
+  value,
+  options,
+  onChange,
+  className,
+  title,
+  style,
+  disabled,
+  id,
+  ...aria
+}: {
+  value: string
+  options: SelectOption[]
+  onChange: (v: string) => void
+  className?: string
+  title?: string
+  style?: React.CSSProperties
+  disabled?: boolean
+  id?: string
+  'aria-label'?: string
+  'aria-invalid'?: boolean
+  'aria-describedby'?: string
+  dir?: 'auto' | 'ltr' | 'rtl'
+}) {
   const [rect, setRect] = useState<DOMRect | null>(null)
   const [inline, setInline] = useState(false)
   const btn = useRef<HTMLButtonElement>(null)
@@ -78,22 +103,49 @@ export function Select({ value, options, onChange, className, title, style, disa
   const cur = options.find((o) => o.value === value) ?? options[0]
   const open = !!rect || inline
   const close = () => (setRect(null), setInline(false))
-  useLayoutEffect(() => { if (open) menu.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus() }, [open])
+  useLayoutEffect(() => {
+    if (open) menu.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus()
+  }, [open])
   const list = (
-    <div ref={menu} onKeyDown={event => {
-      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); btn.current?.focus(); return }
-      const items = [...(menu.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])]
-      if (!items.length || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
-      event.preventDefault(); event.stopPropagation()
-      const index = items.indexOf(document.activeElement as HTMLButtonElement)
-      const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowDown' ? (index + 1) % items.length : (index - 1 + items.length) % items.length
-      items[next]?.focus()
-    }} className="ds-menu sel-menu" role="listbox" style={inline ? undefined : { minWidth: Math.max(rect?.width ?? 0, 180) }} onClick={(e) => e.stopPropagation()}>
+    <div
+      ref={menu}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          event.stopPropagation()
+          close()
+          btn.current?.focus()
+          return
+        }
+        const items = [...(menu.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])]
+        if (!items.length || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+        event.preventDefault()
+        event.stopPropagation()
+        const index = items.indexOf(document.activeElement as HTMLButtonElement)
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowDown' ? (index + 1) % items.length : (index - 1 + items.length) % items.length
+        items[next]?.focus()
+      }}
+      className="ds-menu sel-menu"
+      role="listbox"
+      style={inline ? undefined : { minWidth: Math.max(rect?.width ?? 0, 180) }}
+      onClick={(e) => e.stopPropagation()}
+    >
       {options.map((o) => (
-        <button key={o.value} type="button" role="option" aria-selected={o.value === value} className={'ds-menu-item' + (o.value === value ? ' on' : '')} onClick={() => (onChange(o.value), close(), btn.current?.focus())}>
+        <button
+          key={o.value}
+          type="button"
+          role="option"
+          aria-selected={o.value === value}
+          className={'ds-menu-item' + (o.value === value ? ' on' : '')}
+          onClick={() => (onChange(o.value), close(), btn.current?.focus())}
+        >
           <span className="ds-menu-ic">{o.color ? <i className="sel-dot" style={{ background: o.color }} /> : null}</span>
           <span className="ds-menu-label">{o.label}</span>
-          {o.value === value && <span className="sel-check"><Ic.Check size={14} /></span>}
+          {o.value === value && (
+            <span className="sel-check">
+              <Ic.Check size={14} />
+            </span>
+          )}
         </button>
       ))}
     </div>
@@ -123,19 +175,52 @@ export function Select({ value, options, onChange, className, title, style, disa
       >
         {cur?.color && <i className="sel-dot" style={{ background: cur.color }} />}
         <span className="sel-label">{cur?.label}</span>
-        <span className="sel-chev"><Ic.Chevron size={12} /></span>
+        <span className="sel-chev">
+          <Ic.Chevron size={12} />
+        </span>
       </button>
       {inline && <div className="sel-inline">{list}</div>}
-      {rect && <Popover anchor={rect} onClose={close}>{list}</Popover>}
+      {rect && (
+        <Popover anchor={rect} onClose={close}>
+          {list}
+        </Popover>
+      )}
     </>
   )
 }
 
-export const MenuItem = ({ icon, label, onClick, danger, hint, desc, disabled }: { icon?: ReactNode; label: string; onClick: () => void; danger?: boolean; hint?: string; desc?: string; disabled?: boolean }) => (
+export const MenuItem = ({
+  icon,
+  label,
+  onClick,
+  danger,
+  hint,
+  desc,
+  disabled,
+}: {
+  icon?: ReactNode
+  label: string
+  onClick: () => void
+  danger?: boolean
+  hint?: string
+  desc?: string
+  disabled?: boolean
+}) => (
   <button className="ds-menu-item" data-danger={danger || undefined} onClick={onClick} disabled={disabled}>
     <span className="ds-menu-ic">{icon}</span>
-    {desc ? <span className="ds-menu-label"><b>{label}</b><small>{desc}</small></span> : <span className="ds-menu-label">{label}</span>}
-    {hint && <span className="ds-menu-hint" dir="ltr">{shortcutHint(hint)}</span>}
+    {desc ? (
+      <span className="ds-menu-label">
+        <b>{label}</b>
+        <small>{desc}</small>
+      </span>
+    ) : (
+      <span className="ds-menu-label">{label}</span>
+    )}
+    {hint && (
+      <span className="ds-menu-hint" dir="ltr">
+        {shortcutHint(hint)}
+      </span>
+    )}
   </button>
 )
 
@@ -157,18 +242,40 @@ export function EmojiPicker({ onPick, onClear, current, clearLabel }: { onPick: 
     <div className="emoji-pop">
       <input className="emoji-search" autoFocus placeholder={t('Search icons…')} value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="icon-colors" role="radiogroup" aria-label={t('Icon colour')}>
-        <button type="button" role="radio" aria-checked={!color} className={'icon-color auto' + (!color ? ' on' : '')} title={t('Automatic')} onClick={() => (setColor(undefined), cur && onPick(make(cur.name, undefined), false))} />
+        <button
+          type="button"
+          role="radio"
+          aria-checked={!color}
+          className={'icon-color auto' + (!color ? ' on' : '')}
+          title={t('Automatic')}
+          onClick={() => (setColor(undefined), cur && onPick(make(cur.name, undefined), false))}
+        />
         {ICON_COLORS.map((c) => (
-          <button key={c} type="button" role="radio" aria-checked={color === c} className={'icon-color' + (color === c ? ' on' : '')} style={{ background: c }} title={c} onClick={() => (setColor(c), cur && onPick(make(cur.name, c), false))} />
+          <button
+            key={c}
+            type="button"
+            role="radio"
+            aria-checked={color === c}
+            className={'icon-color' + (color === c ? ' on' : '')}
+            style={{ background: c }}
+            title={c}
+            onClick={() => (setColor(c), cur && onPick(make(cur.name, c), false))}
+          />
         ))}
       </div>
       <div className="emoji-head">
-        <span>{t('Icons')} · {names.length}</span>
-        <button className="link" onClick={onClear}>{clearLabel ?? t('Remove icon')}</button>
+        <span>
+          {t('Icons')} · {names.length}
+        </span>
+        <button className="link" onClick={onClear}>
+          {clearLabel ?? t('Remove icon')}
+        </button>
       </div>
       <div className="emoji-grid">
         {names.map((n) => (
-          <button key={n} className={'glyph' + (cur?.name === n ? ' on' : '')} title={n} onClick={() => onPick(make(n))}><Glyph name={n} size={20} color={color} /></button>
+          <button key={n} className={'glyph' + (cur?.name === n ? ' on' : '')} title={n} onClick={() => onPick(make(n))}>
+            <Glyph name={n} size={20} color={color} />
+          </button>
         ))}
         {names.length === 0 && <span className="emoji-empty">{t('No icon found')}</span>}
       </div>
@@ -176,14 +283,37 @@ export function EmojiPicker({ onPick, onClear, current, clearLabel }: { onPick: 
   )
 }
 
-const textOf = (n: any): string => (n?.text ? n.text : (n?.content ?? []).map(textOf).join(' '))
+const textOf = (n: DocNode | null | undefined): string => (n?.text ? n.text : (n?.content ?? []).map(textOf).join(' '))
 
-export interface PaletteCommand { id: string; label: string; icon: ReactNode; keywords?: string; hint?: string; run: () => void }
+export interface PaletteCommand {
+  id: string
+  label: string
+  icon: ReactNode
+  keywords?: string
+  hint?: string
+  run: () => void
+}
 
 type PaletteScope = 'all' | 'pages' | 'cmds'
 
 /** Ctrl+K palette: app commands and page search (titles + content) in one list. A leading "> " (or the Commands tab) shows commands only. */
-export function SearchModal({ pages, search, commands, onOpen, onClose, initialQuery = '', onSaveSearch }: { pages: Page[]; search: (q: string) => Promise<Page[]>; commands: PaletteCommand[]; onOpen: (id: string) => void; onClose: () => void; initialQuery?: string; onSaveSearch?: (query: string) => void }) {
+export function SearchModal({
+  pages,
+  search,
+  commands,
+  onOpen,
+  onClose,
+  initialQuery = '',
+  onSaveSearch,
+}: {
+  pages: Page[]
+  search: (q: string) => Promise<Page[]>
+  commands: PaletteCommand[]
+  onOpen: (id: string) => void
+  onClose: () => void
+  initialQuery?: string
+  onSaveSearch?: (query: string) => void
+}) {
   const [q, setQ] = useState(initialQuery)
   const [sel, setSel] = useState(0)
   const [scope, setScope] = useState<PaletteScope>('all')
@@ -192,7 +322,13 @@ export function SearchModal({ pages, search, commands, onOpen, onClose, initialQ
   const term = q.startsWith('>') ? q.slice(1) : q
   const words = useMemo(() => normalizeFa(term).split(/\s+/).filter(Boolean), [term])
   const cmds = useMemo(
-    () => (words.length ? commands.filter((c) => { const h = normalizeFa(c.label + ' ' + (c.keywords ?? '')); return words.every((w) => h.includes(w)) }) : commands),
+    () =>
+      words.length
+        ? commands.filter((c) => {
+            const h = normalizeFa(c.label + ' ' + (c.keywords ?? ''))
+            return words.every((w) => h.includes(w))
+          })
+        : commands,
     [commands, words],
   )
   const recent = useMemo(() => [...pages].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6), [pages])
@@ -202,20 +338,44 @@ export function SearchModal({ pages, search, commands, onOpen, onClose, initialQ
   useEffect(() => {
     const refreshed = (event: Event) => {
       const state = (event as CustomEvent<string>).detail
-      if (state === 'fresh') setSearchEpoch(value => value + 1)
-      else if (term.trim() && !cmdOnly && (state === 'pending' || state === 'failed')) { setFound([]); setSearchState(state) }
+      if (state === 'fresh') setSearchEpoch((value) => value + 1)
+      else if (term.trim() && !cmdOnly && (state === 'pending' || state === 'failed')) {
+        setFound([])
+        setSearchState(state)
+      }
     }
     window.addEventListener('search-state', refreshed)
     return () => window.removeEventListener('search-state', refreshed)
   }, [term, cmdOnly])
   useEffect(() => {
-    if (cmdOnly) { setSearchState('fresh'); return setFound([]) }
-    if (!term.trim()) { setSearchState('fresh'); return setFound(recent) }
+    if (cmdOnly) {
+      setSearchState('fresh')
+      return setFound([])
+    }
+    if (!term.trim()) {
+      setSearchState('fresh')
+      return setFound(recent)
+    }
     setFound([])
     setSearchState('pending')
     let alive = true // an older, slower answer must not replace a newer one
-    const id = window.setTimeout(() => void search(term).then(r => { if (alive) { setFound(r); setSearchState('fresh') } })
-      .catch(error => { if (alive) { setFound([]); setSearchState(error?.state === 'pending' ? 'pending' : 'failed') } }), 60)
+    const id = window.setTimeout(
+      () =>
+        void search(term)
+          .then((r) => {
+            if (alive) {
+              setFound(r)
+              setSearchState('fresh')
+            }
+          })
+          .catch((error) => {
+            if (alive) {
+              setFound([])
+              setSearchState(error?.state === 'pending' ? 'pending' : 'failed')
+            }
+          }),
+      60,
+    )
     return () => {
       alive = false
       window.clearTimeout(id)
@@ -224,8 +384,12 @@ export function SearchModal({ pages, search, commands, onOpen, onClose, initialQ
   const shownCmds = pagesOnly ? [] : term.trim() && !cmdOnly ? cmds.slice(0, 5) : cmds
   const items = useMemo(() => [...shownCmds.map((c) => ({ cmd: c })), ...found.map((p) => ({ page: p }))] as { cmd?: PaletteCommand; page?: Page }[], [shownCmds, found])
 
-  useEffect(() => { setSel(0) }, [q, scope])
-  useEffect(() => { document.querySelector('.palette .result.sel')?.scrollIntoView({ block: 'nearest' }) }, [sel])
+  useEffect(() => {
+    setSel(0)
+  }, [q, scope])
+  useEffect(() => {
+    document.querySelector('.palette .result.sel')?.scrollIntoView({ block: 'nearest' })
+  }, [sel])
 
   const snippet = (p: Page & { searchPassage?: string }) => {
     if (p.searchPassage !== undefined) return p.searchPassage
@@ -235,7 +399,11 @@ export function SearchModal({ pages, search, commands, onOpen, onClose, initialQ
     return i < 0 ? raw.trim().slice(0, 70) : (i > 20 ? '…' : '') + raw.slice(Math.max(0, i - 20), i + 60)
   }
   const hl = (text: string): ReactNode => {
-    const ws = term.trim().split(/\s+/).filter(Boolean).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    const ws = term
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     if (!ws.length) return text
     return text.split(new RegExp('(' + ws.join('|') + ')', 'ig')).map((s, i) => (i % 2 ? <mark key={i}>{s}</mark> : s))
   }
@@ -244,13 +412,21 @@ export function SearchModal({ pages, search, commands, onOpen, onClose, initialQ
     if (it.cmd) it.cmd.run()
     else if (it.page) onOpen(it.page.id)
   }
-  const scopes: [PaletteScope, string][] = [['all', t('All')], ['pages', t('Pages')], ['cmds', t('Commands')]]
+  const scopes: [PaletteScope, string][] = [
+    ['all', t('All')],
+    ['pages', t('Pages')],
+    ['cmds', t('Commands')],
+  ]
 
   return (
     <div className="overlay palette-overlay" onMouseDown={onClose}>
-      <div className="modal palette" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && (e.stopPropagation(), onClose())}> {/* Esc closes the search only: reader mode, the page panel and the like stay as they are */}
+      <div className="modal palette" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && (e.stopPropagation(), onClose())}>
+        {' '}
+        {/* Esc closes the search only: reader mode, the page panel and the like stay as they are */}
         <div className="pal-search">
-          <span className="pal-sic"><Ic.Search size={18} /></span>
+          <span className="pal-sic">
+            <Ic.Search size={18} />
+          </span>
           <input
             autoFocus
             dir="auto"
@@ -264,23 +440,37 @@ export function SearchModal({ pages, search, commands, onOpen, onClose, initialQ
               else if (e.key === 'Enter' && items[sel]) (e.preventDefault(), choose(items[sel]))
             }}
           />
-          {onSaveSearch && term.trim() && !cmdOnly && <button className="icon-btn" title={t('Save this search')} onClick={() => (onClose(), onSaveSearch(term.trim()))}><Ic.Star /></button>}
-          {q && <button className="icon-btn" title={t('Clear')} onClick={() => setQ('')}><Ic.Close size={15} /></button>}
+          {onSaveSearch && term.trim() && !cmdOnly && (
+            <button className="icon-btn" title={t('Save this search')} onClick={() => (onClose(), onSaveSearch(term.trim()))}>
+              <Ic.Star />
+            </button>
+          )}
+          {q && (
+            <button className="icon-btn" title={t('Clear')} onClick={() => setQ('')}>
+              <Ic.Close size={15} />
+            </button>
+          )}
         </div>
         <div className="pal-tabs">
           {scopes.map(([k, label]) => (
-            <button key={k} className={scope === k ? 'on' : ''} onClick={() => setScope(k)}>{label}</button>
+            <button key={k} className={scope === k ? 'on' : ''} onClick={() => setScope(k)}>
+              {label}
+            </button>
           ))}
           <span className="pal-count">{items.length}</span>
         </div>
         <div className="pal-list">
-          {!cmdOnly && term.trim() && searchState !== 'fresh' && <div className="pal-empty" role="status">
-            {t(searchState === 'failed' ? 'Search is unavailable. Try again.' : 'Searching…')}
-            {searchState === 'failed' && <button onClick={() => setSearchEpoch(value => value + 1)}>{t('Try again')}</button>}
-          </div>}
+          {!cmdOnly && term.trim() && searchState !== 'fresh' && (
+            <div className="pal-empty" role="status">
+              {t(searchState === 'failed' ? 'Search is unavailable. Try again.' : 'Searching…')}
+              {searchState === 'failed' && <button onClick={() => setSearchEpoch((value) => value + 1)}>{t('Try again')}</button>}
+            </div>
+          )}
           {items.length === 0 && searchState === 'fresh' && (
             <div className="pal-empty">
-              <span className="fc2-art"><Ic.Search size={26} /></span>
+              <span className="fc2-art">
+                <Ic.Search size={26} />
+              </span>
               <b>{t('No results found')}</b>
               <small>{t('Try a different word, or search the content of your pages.')}</small>
             </div>
@@ -289,8 +479,18 @@ export function SearchModal({ pages, search, commands, onOpen, onClose, initialQ
           {shownCmds.map((c, i) => (
             <button key={c.id} className={'result' + (i === sel ? ' sel' : '')} onMouseMove={() => setSel(i)} onClick={() => choose({ cmd: c })}>
               <span className="result-ic">{c.icon}</span>
-              <span className="result-tx"><b dir="auto">{hl(c.label)}</b></span>
-              {c.hint ? <kbd className="result-kbd" dir="ltr">{shortcutHint(c.hint)}</kbd> : <span className="result-go"><Ic.Arrow size={14} /></span>}
+              <span className="result-tx">
+                <b dir="auto">{hl(c.label)}</b>
+              </span>
+              {c.hint ? (
+                <kbd className="result-kbd" dir="ltr">
+                  {shortcutHint(c.hint)}
+                </kbd>
+              ) : (
+                <span className="result-go">
+                  <Ic.Arrow size={14} />
+                </span>
+              )}
             </button>
           ))}
           {found.length > 0 && <div className="modal-label">{term.trim() ? t('Pages') : t('Recent')}</div>}
@@ -309,7 +509,22 @@ export function SearchModal({ pages, search, commands, onOpen, onClose, initialQ
             )
           })}
         </div>
-        <div className="palette-foot"><span><kbd>↑</kbd><kbd>↓</kbd> {t('Navigate')}</span><span><kbd>↵</kbd> {t('Select')}</span><span><kbd>Tab</kbd> {t('Switch tab')}</span><span><kbd>Esc</kbd> {t('Close')}</span><span className="palette-tip">{t('Type > for commands only')}</span></div>
+        <div className="palette-foot">
+          <span>
+            <kbd>↑</kbd>
+            <kbd>↓</kbd> {t('Navigate')}
+          </span>
+          <span>
+            <kbd>↵</kbd> {t('Select')}
+          </span>
+          <span>
+            <kbd>Tab</kbd> {t('Switch tab')}
+          </span>
+          <span>
+            <kbd>Esc</kbd> {t('Close')}
+          </span>
+          <span className="palette-tip">{t('Type > for commands only')}</span>
+        </div>
       </div>
     </div>
   )
@@ -322,11 +537,11 @@ export function Toast({ msg, action, onAction, onClose }: { msg: string; action?
   }, [msg, onClose])
   return (
     <div className="toast" role="status">
-      <span className="toast-ic"><Ic.Check size={13} /></span>
+      <span className="toast-ic">
+        <Ic.Check size={13} />
+      </span>
       <span dir="auto">{msg}</span>
-      {action && (
-        <button onClick={() => (onAction?.(), onClose())}>{action}</button>
-      )}
+      {action && <button onClick={() => (onAction?.(), onClose())}>{action}</button>}
     </div>
   )
 }
@@ -334,13 +549,25 @@ export function Toast({ msg, action, onAction, onClose }: { msg: string; action?
 const rtf = () => new Intl.RelativeTimeFormat(locale(), { numeric: 'auto' })
 export function ago(ts: number) {
   const s = Math.round((ts - Date.now()) / 1000)
-  const steps: [number, Intl.RelativeTimeFormatUnit][] = [[60, 'second'], [3600, 'minute'], [86400, 'hour'], [Infinity, 'day']]
+  const steps: [number, Intl.RelativeTimeFormatUnit][] = [
+    [60, 'second'],
+    [3600, 'minute'],
+    [86400, 'hour'],
+    [Infinity, 'day'],
+  ]
   const div = [1, 60, 3600, 86400]
   for (let i = 0; i < steps.length; i++) if (Math.abs(s) < steps[i][0]) return rtf().format(Math.round(s / div[i]), steps[i][1])
   return ''
 }
 
-export function TrashModal({ items, days, onRestore, onPurge, onEmpty, onClose }: {
+export function TrashModal({
+  items,
+  days,
+  onRestore,
+  onPurge,
+  onEmpty,
+  onClose,
+}: {
   items: Page[]
   days: number
   onRestore: (id: string) => void
@@ -357,8 +584,14 @@ export function TrashModal({ items, days, onRestore, onPurge, onEmpty, onClose }
             <small>{t('Pages are deleted permanently after {days} days.', { days })}</small>
           </div>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {items.length > 0 && <button className="danger-link" onClick={onEmpty}>{t('Empty trash')}</button>}
-            <button className="icon-btn" title={t('Close')} onClick={onClose}><Ic.Close size={16} /></button>
+            {items.length > 0 && (
+              <button className="danger-link" onClick={onEmpty}>
+                {t('Empty trash')}
+              </button>
+            )}
+            <button className="icon-btn" title={t('Close')} onClick={onClose}>
+              <Ic.Close size={16} />
+            </button>
           </span>
         </div>
         <div className="modal-list">
@@ -372,7 +605,9 @@ export function TrashModal({ items, days, onRestore, onPurge, onEmpty, onClose }
               </span>
               <span className="trash-acts">
                 <button onClick={() => onRestore(p.id)}>{t('Restore')}</button>
-                <button className="danger" onClick={() => onPurge(p)}>{t('Delete permanently')}</button>
+                <button className="danger" onClick={() => onPurge(p)}>
+                  {t('Delete permanently')}
+                </button>
               </span>
             </div>
           ))}
@@ -383,7 +618,21 @@ export function TrashModal({ items, days, onRestore, onPurge, onEmpty, onClose }
 }
 
 /** Small dialog that asks for one name (new folder, rename). Enter confirms, Esc or a click outside cancels. */
-export function NameDialog({ title, label, initial, action, onSubmit, onClose }: { title: string; label: string; initial: string; action: string; onSubmit: (name: string) => void; onClose: () => void }) {
+export function NameDialog({
+  title,
+  label,
+  initial,
+  action,
+  onSubmit,
+  onClose,
+}: {
+  title: string
+  label: string
+  initial: string
+  action: string
+  onSubmit: (name: string) => void
+  onClose: () => void
+}) {
   const [value, setValue] = useState(initial)
   const ref = useRef<HTMLInputElement>(null)
   useEffect(() => ref.current?.select(), [])
@@ -391,14 +640,20 @@ export function NameDialog({ title, label, initial, action, onSubmit, onClose }:
   return (
     <div className="overlay" onMouseDown={onClose}>
       <form className="modal name-dialog" onMouseDown={(e) => e.stopPropagation()} onSubmit={(e) => (e.preventDefault(), submit())} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
-        <div className="modal-head"><b>{title}</b></div>
+        <div className="modal-head">
+          <b>{title}</b>
+        </div>
         <label className="nd-body">
           <span>{label}</span>
           <input ref={ref} dir="auto" value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
         </label>
         <div className="nd-acts">
-          <button type="button" className="ghost-btn" onClick={onClose}>{t('Cancel')}</button>
-          <button type="submit" className="primary">{action}</button>
+          <button type="button" className="ghost-btn" onClick={onClose}>
+            {t('Cancel')}
+          </button>
+          <button type="submit" className="primary">
+            {action}
+          </button>
         </div>
       </form>
     </div>

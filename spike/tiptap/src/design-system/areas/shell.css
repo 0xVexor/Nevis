@@ -20,9 +20,6 @@
 .side-scroll { flex: 1; overflow: auto; padding: 2px 4px 8px; margin-inline: -4px;
   scrollbar-width: none;
   -ms-overflow-style: none; }
-.side-utils { margin-top: 14px; padding-top: 8px; border-top: 1px dashed var(--ds-line-strong);
-  border-top-style: solid;
-  border-top-color: var(--ds-line); }
 .side-foot { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 0 12px;
   border-block-start: 1px solid var(--ds-line); }
 .side-credit { text-align: center; font-size: 11px; color: var(--ds-text-3); letter-spacing: 0;
@@ -81,9 +78,6 @@
 .new-page:hover { transform: translateY(-1px); filter: brightness(1.06); }
 .new-page:hover::after { transform: translateX(120%); }
 .new-page:active { transform: scale(0.98); }
-.vault-switch { height: 40px; margin: 0; border: 1px solid var(--ds-line); background: var(--ds-raised); }
-.vault-switch:hover { border-color: var(--ds-line-strong); background: var(--ds-raised); }
-.vault-switch .ntitle { text-align: start; font-weight: 600; color: var(--ds-text); }
 
 /* ───────── main sheet ───────── */
 .main { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; background: color-mix(in srgb, var(--ds-bg) calc(100% - var(--glass-main, 0) * 75%), transparent); border: 0; border-radius: 0; box-shadow: none; overflow: hidden; transition: padding-inline-end 0.3s var(--ease); }
@@ -116,13 +110,12 @@
 .primary:disabled { opacity: 0.5; cursor: var(--cursor-arrow, default); box-shadow: none; }
 .link { border: 0; background: transparent; color: var(--ds-accent); cursor: var(--cursor-hand, pointer); padding: 0; font-size: 12.5px; }
 .link:hover { text-decoration: underline; text-underline-offset: 3px; }
-.pill-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border: 0; background: var(--ds-accent); color: var(--ds-accent-ink); border-radius: 11px; cursor: var(--cursor-hand, pointer); font-size: 13px; font-weight: 600; }
 .share-btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 18px; border: 0; border-radius: 12px; background: var(--ds-accent); color: var(--ds-accent-ink); font-size: 13.5px; font-weight: 700; cursor: var(--cursor-hand, pointer); box-shadow: var(--glow), inset 0 1px 0 rgb(255 255 255 / 0.28); transition: transform 0.2s var(--ease), filter 0.2s; }
 .share-btn:hover { filter: brightness(1.07); transform: translateY(-1px); }
 .share-btn:active { transform: scale(0.97); }
 
 /* secondary buttons, including the plain <button>s inside dialogs */
-.ghost-btn, .trash-acts button, .backup-acts button, .modal-head button:not(.icon-btn):not(.primary), .vault-list button:not(.primary), .fc-tools button:not(.icon-btn) { height: 34px; padding: 0 14px; border: 1px solid var(--ds-line); background: var(--ds-raised); color: var(--ds-text); border-radius: 11px; cursor: var(--cursor-hand, pointer); font-size: 13px; transition: border-color 0.15s, background 0.15s, transform 0.2s var(--ease); }
+.ghost-btn, .trash-acts button, .backup-acts button, .modal-head button:not(.icon-btn):not(.primary), .vault-list button:not(.primary) { height: 34px; padding: 0 14px; border: 1px solid var(--ds-line); background: var(--ds-raised); color: var(--ds-text); border-radius: 11px; cursor: var(--cursor-hand, pointer); font-size: 13px; transition: border-color 0.15s, background 0.15s, transform 0.2s var(--ease); }
 .ghost-btn:hover, .trash-acts button:hover, .backup-acts button:hover, .modal-head button:not(.icon-btn):not(.primary):hover, .vault-list button:not(.primary):hover { border-color: var(--ds-line-strong); background: var(--ds-hover); }
 .backup-acts button.primary, .vault-list button.primary, .modal-head button.primary { border: 0; background: var(--ds-accent); color: var(--ds-accent-ink); height: 36px; }
 .backup-acts button:disabled, .vault-list button:disabled { opacity: 0.5; cursor: var(--cursor-arrow, default); }
@@ -170,5 +163,5 @@
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
 
 /* user content shown in UI labels: text direction follows the text, alignment follows the UI */
-.ntitle, .nav-tx, .ol-row, .crumb button, .result-tx b { direction: inherit; unicode-bidi: plaintext; text-align: start; }
+.ntitle, .crumb button, .result-tx b { direction: inherit; unicode-bidi: plaintext; text-align: start; }
 

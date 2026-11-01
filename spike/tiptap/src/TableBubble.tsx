@@ -1,3 +1,5 @@
+import type { ChainedCommands } from '@tiptap/core'
+import type { Editor } from '@tiptap/core'
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useEditorState } from '@tiptap/react'
@@ -8,7 +10,7 @@ import { hasHeaderColumn, hasHeaderRow } from './editor/tableHeader'
 import { t } from './i18n'
 
 /** The DOM table the cursor is in. */
-function tableDom(editor: any): HTMLElement | null {
+function tableDom(editor: Editor): HTMLElement | null {
   const selection = editor.state.selection
   if (selection instanceof NodeSelection && selection.node.type.name === 'table') return editor.view.nodeDOM(selection.from) as HTMLElement | null
   const { $from } = editor.state.selection
@@ -24,7 +26,16 @@ function tableDom(editor: any): HTMLElement | null {
 
 function B({ icon, title, on, danger, off, onClick }: { icon: ReactNode; title: string; on?: boolean; danger?: boolean; off?: boolean; onClick: () => void }) {
   return (
-    <button type="button" className={'tbb' + (on ? ' on' : '') + (danger ? ' danger' : '')} title={title} aria-label={title} aria-pressed={on} disabled={off} onMouseDown={(e) => e.preventDefault()} onClick={onClick}>
+    <button
+      type="button"
+      className={'tbb' + (on ? ' on' : '') + (danger ? ' danger' : '')}
+      title={title}
+      aria-label={title}
+      aria-pressed={on}
+      disabled={off}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+    >
       {icon}
     </button>
   )
@@ -40,10 +51,10 @@ const Group = ({ label, children }: { label: string; children: ReactNode }) => (
  * Toolbar for the table the cursor is in: rows, columns, cells, header, direction, size, position.
  * Anchored to the complete frame; useAnchor keeps the drag surface clear while scrolling.
  */
-export function TableBubble({ editor }: { editor: any }) {
+export function TableBubble({ editor }: { editor: Editor }) {
   const s = useEditorState({
     editor,
-    selector: ({ editor: e }: any) => {
+    selector: ({ editor: e }) => {
       if (!e || !e.isEditable || !e.isActive('table')) return null
       const a = e.getAttributes('table')
       return { hr: hasHeaderRow(e), hc: hasHeaderColumn(e), w: a.tableWidth ?? 100, align: a.tableAlign ?? null, dir: a.dir ?? null, merge: e.can().mergeCells(), split: e.can().splitCell() }
@@ -60,12 +71,14 @@ export function TableBubble({ editor }: { editor: any }) {
     document.addEventListener('pointerdown', down, true)
     return () => document.removeEventListener('pointerdown', down, true)
   }, [])
-  useEffect(() => { if (!s) setArmed(false) }, [s])
+  useEffect(() => {
+    if (!s) setArmed(false)
+  }, [s])
   const open = !!s && armed
   const box = useAnchor(editor, open, () => tableDom(editor), [s?.w, s?.align])
 
   if (!open) return null
-  const run = (fn: (c: any) => any) => fn(editor.chain().focus()).run()
+  const run = (fn: (c: ChainedCommands) => ChainedCommands) => fn(editor.chain().focus()).run()
   return createPortal(
     <div ref={box} className="bubble tbl" role="toolbar" aria-label={t('Table')} dir="ltr" style={{ position: 'fixed', zIndex: 60 }} onMouseDown={(e) => e.preventDefault()}>
       <Group label={t('Row')}>

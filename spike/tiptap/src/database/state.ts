@@ -1,8 +1,23 @@
 // In-memory database state: the canonical records (loaded from the Vault / IndexedDB) plus derived indexes that are rebuilt per
 // generation. Indexes are never authoritative: reverse relations, rows-per-source and sub-item children all come from here.
 import type {
-  Allocator, CommentRecord, Container, Definition, EventRecord, Grant, Id, PageLike, Principal, RecordKind, RelationDefinition, RelationEdge,
-  RowExtension, Source, TemplateRecord, View, WorkflowRecord,
+  Allocator,
+  CommentRecord,
+  Container,
+  Definition,
+  EventRecord,
+  Grant,
+  Id,
+  PageLike,
+  Principal,
+  RecordKind,
+  RelationDefinition,
+  RelationEdge,
+  RowExtension,
+  Source,
+  TemplateRecord,
+  View,
+  WorkflowRecord,
 } from './model/types.ts'
 import { RECORD_KINDS } from './model/types.ts'
 import { compareKeys } from './model/ids.ts'

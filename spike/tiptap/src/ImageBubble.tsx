@@ -1,3 +1,4 @@
+import type { Editor } from '@tiptap/core'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useEditorState } from '@tiptap/react'
@@ -11,7 +12,15 @@ const WIDTHS = [25, 50, 75, 100]
 
 function B({ icon, title, on, danger, onClick }: { icon: ReactNode; title: string; on?: boolean; danger?: boolean; onClick: () => void }) {
   return (
-    <button type="button" className={'tbb' + (on ? ' on' : '') + (danger ? ' danger' : '')} title={title} aria-label={title} aria-pressed={on} onMouseDown={(e) => e.preventDefault()} onClick={onClick}>
+    <button
+      type="button"
+      className={'tbb' + (on ? ' on' : '') + (danger ? ' danger' : '')}
+      title={title}
+      aria-label={title}
+      aria-pressed={on}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+    >
       {icon}
     </button>
   )
@@ -24,16 +33,20 @@ const Group = ({ label, children }: { label: string; children: ReactNode }) => (
 )
 
 /** Floating toolbar over the selected image: size, position, enlarge, remove (same look as the table toolbar). */
-export function ImageBubble({ editor }: { editor: any }) {
+export function ImageBubble({ editor }: { editor: Editor }) {
   const s = useEditorState({
     editor,
-    selector: ({ editor: e }: any) => {
+    selector: ({ editor: e }) => {
       const sel = e?.state.selection
       if (!e || !e.isEditable || !(sel instanceof NodeSelection) || sel.node.type.name !== 'image') return null
       return { pos: sel.from, w: sel.node.attrs.width ?? null, align: sel.node.attrs.align ?? null }
     },
   })
-  const box = useAnchor(editor, !!s, () => (s ? ((editor.view.nodeDOM(s.pos) as HTMLElement | null)?.querySelector('img') ?? (editor.view.nodeDOM(s.pos) as HTMLElement | null)) : null), [s?.pos, s?.w, s?.align])
+  const box = useAnchor(editor, !!s, () => (s ? ((editor.view.nodeDOM(s.pos) as HTMLElement | null)?.querySelector('img') ?? (editor.view.nodeDOM(s.pos) as HTMLElement | null)) : null), [
+    s?.pos,
+    s?.w,
+    s?.align,
+  ])
   if (!s) return null
   const set = (patch: Record<string, unknown>) => editor.chain().focus().updateAttributes('image', patch).run()
   const enlarge = () => {

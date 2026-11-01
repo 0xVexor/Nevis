@@ -35,7 +35,7 @@ export function layoutGraph(n: number, edges: Int32Array | number[]): Layout {
   const margin = k * 0.5
 
   for (let it = 0; it < rounds; it++) {
-    const temp = (k * 3) * (1 - it / rounds) + 0.5
+    const temp = k * 3 * (1 - it / rounds) + 0.5
     head.fill(-1)
     for (let i = 0; i < n; i++) {
       const c = Math.min(rows - 1, Math.max(0, (py[i] / cell) | 0)) * cols + Math.min(cols - 1, Math.max(0, (px[i] / cell) | 0))
@@ -84,6 +84,6 @@ export function layoutGraph(n: number, edges: Int32Array | number[]): Layout {
     }
   }
   const xy = new Float32Array(n * 2)
-  for (let i = 0; i < n; i++) (xy[i * 2] = px[i], (xy[i * 2 + 1] = py[i]))
+  for (let i = 0; i < n; i++) ((xy[i * 2] = px[i]), (xy[i * 2 + 1] = py[i]))
   return { xy, w: W, h: H }
 }

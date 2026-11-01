@@ -114,7 +114,12 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
   const dueTomorrow = srs ? [...allCards.keys()].filter((k) => srs[k] && srs[k].due > Date.now() && srs[k].due <= endOfTomorrow).length : 0
   const chart = lastDays(log, 14, Date.now())
   const chartMax = Math.max(1, ...chart.map((d) => d.count))
-  const grades: [Grade, string][] = [[0, t('Again')], [1, t('Hard')], [2, t('Good')], [3, t('Easy')]]
+  const grades: [Grade, string][] = [
+    [0, t('Again')],
+    [1, t('Hard')],
+    [2, t('Good')],
+    [3, t('Easy')],
+  ]
   const deckTitle = deck === null ? '' : deck === ALL ? t('Whole vault') : repo.get(deck)?.title || t('Untitled')
 
   /* ───── the list of decks ───── */
@@ -147,11 +152,20 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
                   <button type="button" key={d.id} className="fcv-deck" onClick={() => setDeck(d.id)}>
                     <span className="fcv-deck-top" dir={dirOf(d.title)}>
                       <span className="ds-tile ds-tile--md">{page ? <PageIcon page={page} /> : <Icon name="cards" />}</span>
-                      <span><b dir="auto">{d.title}</b><small>{num(d.total)} {t('cards')}</small></span>
+                      <span>
+                        <b dir="auto">{d.title}</b>
+                        <small>
+                          {num(d.total)} {t('cards')}
+                        </small>
+                      </span>
                     </span>
-                    <span className="ds-progress"><i style={{ width: (d.total ? (d.learned / d.total) * 100 : 0) + '%' }} /></span>
+                    <span className="ds-progress">
+                      <i style={{ width: (d.total ? (d.learned / d.total) * 100 : 0) + '%' }} />
+                    </span>
                     <span className="fcv-deck-foot">
-                      <span><b>{num(d.due + Math.min(d.fresh, NEW_PER_SESSION))}</b> <span className="ds-muted">{t('due')}</span></span>
+                      <span>
+                        <b>{num(d.due + Math.min(d.fresh, NEW_PER_SESSION))}</b> <span className="ds-muted">{t('due')}</span>
+                      </span>
                       <span className="ds-btn ds-btn--primary ds-btn--sm">{t('Review')}</span>
                     </span>
                   </button>
@@ -163,7 +177,9 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
               <div className="fcv-tiles">
                 {tiles.map(([ic, n, name]) => (
                   <div key={name} className="ds-card fcv-tile">
-                    <span className="ds-tile ds-tile--md"><Icon name={ic} /></span>
+                    <span className="ds-tile ds-tile--md">
+                      <Icon name={ic} />
+                    </span>
                     <b>{num(n)}</b>
                     <small>{name}</small>
                   </div>
@@ -172,7 +188,12 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
               <h2>{t('Last 14 days')}</h2>
               <div className="ds-card fcv-chart" onMouseLeave={() => setHover(null)}>
                 {chart.map((d, i) => (
-                  <span key={d.day} className={'fcv-bar-col' + (hover === i ? ' on' : '') + (hover !== null && hover !== i ? ' dim' : '')} style={{ ['--i' as string]: i }} onMouseEnter={() => setHover(i)}>
+                  <span
+                    key={d.day}
+                    className={'fcv-bar-col' + (hover === i ? ' on' : '') + (hover !== null && hover !== i ? ' dim' : '')}
+                    style={{ ['--i' as string]: i }}
+                    onMouseEnter={() => setHover(i)}
+                  >
                     {hover === i && (
                       <span className="fcv-tip" role="status">
                         <b>{t('{n} of {m} cards', { n: num(d.count), m: num(allCards.size) })}</b>
@@ -194,31 +215,53 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
   return (
     <div className="fcv fcv-review">
       <div className="fcv-bar">
-        <Button variant="ghost" size="sm" type="button" onClick={() => setDeck(null)}><Icon name="arrow-left" size={15} className="ds-flip" />{t('Back')}</Button>
-        <span className="ds-muted fcv-title" dir="auto">{deckTitle}</span>
-        {card && <span className="ds-muted fcv-count">{t('Card')} {num(done + 1)} {t('of')} {num(total0)}</span>}
-        <span className="ds-progress fcv-prog"><i style={{ width: pct + '%' }} /></span>
+        <Button variant="ghost" size="sm" type="button" onClick={() => setDeck(null)}>
+          <Icon name="arrow-left" size={15} className="ds-flip" />
+          {t('Back')}
+        </Button>
+        <span className="ds-muted fcv-title" dir="auto">
+          {deckTitle}
+        </span>
+        {card && (
+          <span className="ds-muted fcv-count">
+            {t('Card')} {num(done + 1)} {t('of')} {num(total0)}
+          </span>
+        )}
+        <span className="ds-progress fcv-prog">
+          <i style={{ width: pct + '%' }} />
+        </span>
       </div>
 
       {!srs ? null : !card ? (
         <div className="fcv-end">
-          <span className="ds-tile ds-tile--lg"><Icon name={cards.size === 0 ? 'cards' : 'check'} size={26} /></span>
+          <span className="ds-tile ds-tile--lg">
+            <Icon name={cards.size === 0 ? 'cards' : 'check'} size={26} />
+          </span>
           <h2>{cards.size === 0 ? t('No cards yet.') : t('All done for now!')}</h2>
           <p>
             {done ? t('You reviewed {n} cards.', { n: done }) + ' ' : ''}
             {Number.isFinite(nextDue) ? t('Next card is due {when}.', { when: new Date(nextDue).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) }) : ''}
           </p>
-          <Button variant="primary" type="button" onClick={() => setDeck(null)}>{t('Back to decks')}</Button>
+          <Button variant="primary" type="button" onClick={() => setDeck(null)}>
+            {t('Back to decks')}
+          </Button>
         </div>
       ) : (
         <div className="fcv-stage">
           <div className="fcv-card" key={key}>
-            <button type="button" className="fcv-src" onClick={() => onOpenPage(card.pageId)} dir="auto">{card.title || t('Untitled')}<Icon name="external-link" size={12} /></button>
-            <div className="fcv-q" dir="auto">{card.question}</div>
+            <button type="button" className="fcv-src" onClick={() => onOpenPage(card.pageId)} dir="auto">
+              {card.title || t('Untitled')}
+              <Icon name="external-link" size={12} />
+            </button>
+            <div className="fcv-q" dir="auto">
+              {card.question}
+            </div>
             {shown && <div className="fcv-a tiptap" ref={answerRef} dangerouslySetInnerHTML={{ __html: html }} />}
           </div>
           {!shown ? (
-            <Button variant="primary" className="fcv-show" type="button" onClick={() => setShown(true)}>{t('Show answer')}</Button>
+            <Button variant="primary" className="fcv-show" type="button" onClick={() => setShown(true)}>
+              {t('Show answer')}
+            </Button>
           ) : (
             <div className="fcv-grades">
               {grades.map(([g, name]) => (

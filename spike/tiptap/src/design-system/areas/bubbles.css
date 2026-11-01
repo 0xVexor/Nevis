@@ -83,21 +83,9 @@
 .tag-sugg button:hover { background: var(--ds-hover); color: var(--ds-text); }
 
 /* a notice right after a button or button row gets room above it */
-button + .backup-warn, .backup-acts + .backup-warn, .wsd-acts + .backup-warn { margin-top: 14px; }
+button + .backup-warn, .backup-acts + .backup-warn { margin-top: 14px; }
 
 /* flashcards: long questions and answers wrap and scroll instead of running out of the card */
-.fc2-stage { justify-content: flex-start; }
-.fc2-stage > * { min-width: 0; }
-.fc2-card { min-width: 0; margin-block: auto; flex: none; overflow-wrap: anywhere; word-break: break-word; }
-.fc2-card .fc-q, .fc2-card .fc-a { min-width: 0; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; }
-.fc2-meta, .fc-grades { flex: none; }
-.fc2-meta { margin-top: auto; }
-.fc-grades { margin-bottom: auto; }
-.fc2-card + .fc-show, .fc2-card ~ .fc-show { margin-bottom: auto; }
-.fc-a pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
-.fc-a img, .fc-a svg { max-width: 100%; height: auto; }
-.fc-a table { display: block; max-width: 100%; overflow-x: auto; }
-.fc-a p { overflow-wrap: anywhere; }
 
 /* template chips: icon and label on the same centre line */
 .templates button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 34px; padding: 0 16px 1px; line-height: 1; }

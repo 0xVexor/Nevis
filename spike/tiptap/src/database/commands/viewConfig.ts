@@ -56,7 +56,7 @@ export function validateViewConfiguration(d: Draft, type: ViewType, sourceId: Id
     }
   }
   if ('totals' in c && isObj(c.totals)) for (const id of Object.keys(c.totals as Obj)) need(id, 'totals')
-  if (type === 'timeline' && ('startPropertyId' in c) !== ('endPropertyId' in c)) fail('INVALID_VALUE', 'timeline needs both a start and an end property, or one range property')
+  if (type === 'timeline' && 'startPropertyId' in c !== 'endPropertyId' in c) fail('INVALID_VALUE', 'timeline needs both a start and an end property, or one range property')
   if (type === 'chart' && 'categoryPropertyId' in c && c.categoryPropertyId !== null) {
     need(c.categoryPropertyId, 'categoryPropertyId')
     const k = props.get(c.categoryPropertyId as string)?.kind

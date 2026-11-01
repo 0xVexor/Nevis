@@ -13,7 +13,9 @@ export function initSearchIndex() {
   initialized = true
   const warm = () => {
     window.clearTimeout(timer)
-    timer = window.setTimeout(() => { if (!storageFrozen()) void repo.refreshSearchIndex() }, 0)
+    timer = window.setTimeout(() => {
+      if (!storageFrozen()) void repo.refreshSearchIndex()
+    }, 0)
   }
   window.addEventListener('data-changed', warm)
   window.addEventListener('external-change', warm)

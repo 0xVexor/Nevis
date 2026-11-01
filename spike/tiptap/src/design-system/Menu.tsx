@@ -43,7 +43,12 @@ function Items({ items, onPick }: { items: MenuItem[]; onPick: () => void }) {
     <>
       {items.map((it, n) => {
         if (it.kind === 'sep') return <div key={n} className="ds-menu-sep" role="separator" />
-        if (it.kind === 'head') return <div key={n} className="ds-menu-head">{t(it.label)}</div>
+        if (it.kind === 'head')
+          return (
+            <div key={n} className="ds-menu-head">
+              {t(it.label)}
+            </div>
+          )
         const label = it.raw ? it.label : t(it.label)
         return (
           <button
@@ -98,7 +103,13 @@ export function Dropdown<V extends string>({ value, options, onChange, label }: 
         className="ds-dd-btn"
         aria-haspopup="menu"
         aria-label={t(label)}
-        onClick={() => ref.current && open(options.map((o) => ({ label: o.label, checked: o.value === value, onSelect: () => onChange(o.value) })), ref.current)}
+        onClick={() =>
+          ref.current &&
+          open(
+            options.map((o) => ({ label: o.label, checked: o.value === value, onSelect: () => onChange(o.value) })),
+            ref.current,
+          )
+        }
       >
         <span>{current ? t(current.label) : ''}</span>
         <svg className="ds-icon" viewBox="0 0 24 24" aria-hidden="true">

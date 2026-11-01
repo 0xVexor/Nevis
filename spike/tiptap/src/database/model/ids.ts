@@ -40,7 +40,10 @@ function appendKey(a: string): string {
   if (a === 'z') return 'z11'
   const n = DIGITS.indexOf(a[1] ?? '')
   if (a[0] !== 'z' || n < 1 || a.length !== 2 + n) return midpoint(a, null)
-  const digits = a.slice(2).split('').map((c) => DIGITS.indexOf(c))
+  const digits = a
+    .slice(2)
+    .split('')
+    .map((c) => DIGITS.indexOf(c))
   let i = digits.length - 1
   do {
     for (i = digits.length - 1; i >= 0 && digits[i] === 61; i--) digits[i] = 0

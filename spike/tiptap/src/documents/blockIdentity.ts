@@ -1,10 +1,29 @@
 /** Document-scoped identity; independent of editor, storage and platform APIs. */
 export const BLOCK_IDENTITY_VERSION = 1
 export const BLOCK_TYPES = [
-  'paragraph', 'heading', 'blockquote', 'bulletList', 'orderedList', 'listItem',
-  'taskList', 'taskItem', 'codeBlock', 'horizontalRule', 'table', 'tableRow',
-  'tableCell', 'tableHeader', 'image', 'callout', 'toggle', 'mathBlock',
-  'mermaid', 'drawing', 'databaseEmbed', 'layoutGroup', 'layoutColumn',
+  'paragraph',
+  'heading',
+  'blockquote',
+  'bulletList',
+  'orderedList',
+  'listItem',
+  'taskList',
+  'taskItem',
+  'codeBlock',
+  'horizontalRule',
+  'table',
+  'tableRow',
+  'tableCell',
+  'tableHeader',
+  'image',
+  'callout',
+  'toggle',
+  'mathBlock',
+  'mermaid',
+  'drawing',
+  'databaseEmbed',
+  'layoutGroup',
+  'layoutColumn',
 ] as const
 const blocks = new Set<string>(BLOCK_TYPES)
 export const isBlockId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id)
@@ -57,7 +76,10 @@ export function identifyBlocks<T>(content: T, copyId?: () => string): { content:
       const old = attrs?.blockId
       const id = !copyId && isBlockId(old) && !seen.has(old) ? old : fresh(path)
       seen.add(id)
-      if (old !== id) { attrs = { ...attrs, blockId: id }; changed = true }
+      if (old !== id) {
+        attrs = { ...attrs, blockId: id }
+        changed = true
+      }
     }
     const children = n.content?.map((child, index) => walk(child, [...path, index]))
     const childChanged = children?.some((child, index) => child !== n.content![index])

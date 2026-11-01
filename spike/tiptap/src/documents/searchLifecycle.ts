@@ -9,8 +9,15 @@ export interface SearchIndexRuntime {
   yield?(): Promise<void>
 }
 export function canonicalSnapshot(value: unknown): string {
-  return JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
-    ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item)
+  return JSON.stringify(value, (_key, item) =>
+    item && typeof item === 'object' && !Array.isArray(item)
+      ? Object.fromEntries(
+          Object.keys(item)
+            .sort()
+            .map((key) => [key, item[key]]),
+        )
+      : item,
+  )
 }
 
 /** Volatile, versioned cache. Source snapshots are authoritative even if an
@@ -24,23 +31,44 @@ export class ManagedLexicalIndex {
   private readonly runtime: SearchIndexRuntime
   private readonly changed: (state: SearchFreshness) => void
   constructor(runtime: SearchIndexRuntime = {}, changed: (state: SearchFreshness) => void = () => {}) {
-    this.runtime = runtime; this.changed = changed
+    this.runtime = runtime
+    this.changed = changed
   }
-  status() { return this.state }
-  isCurrent(index: PortableLexicalIndex) { return this.state === 'fresh' && this.index === index }
+  status() {
+    return this.state
+  }
+  isCurrent(index: PortableLexicalIndex) {
+    return this.state === 'fresh' && this.index === index
+  }
   private update(state: SearchFreshness) {
     if (state === this.state) return
     this.state = state
-    try { this.changed(state) } catch { /* observers cannot fail a durable write */ }
+    try {
+      this.changed(state)
+    } catch {
+      /* observers cannot fail a durable write */
+    }
   }
-  invalidate() { this.generation++; this.key = null; this.index = null; this.running = null; this.update('pending') }
-  failed(): PreparedSearch { this.invalidate(); this.update('failed'); return { state: 'failed', index: null } }
+  invalidate() {
+    this.generation++
+    this.key = null
+    this.index = null
+    this.running = null
+    this.update('pending')
+  }
+  failed(): PreparedSearch {
+    this.invalidate()
+    this.update('failed')
+    return { state: 'failed', index: null }
+  }
   prepare(pages: Page[], snapshot: string, version = LEXICAL_PROJECTION_VERSION): Promise<PreparedSearch> {
     const key = `${version}:${snapshot}`
     if (key === this.key && this.index && this.state === 'fresh') return Promise.resolve({ state: 'fresh', index: this.index })
     if (key === this.key && this.running) return this.running
     const generation = ++this.generation
-    this.key = key; this.index = null; this.update('pending')
+    this.key = key
+    this.index = null
+    this.update('pending')
     const detached = cloneDocumentValue(pages)
     this.running = (async (): Promise<PreparedSearch> => {
       try {
@@ -48,13 +76,16 @@ export class ManagedLexicalIndex {
         if (generation !== this.generation) return { state: 'pending', index: null }
         const index = await (this.runtime.build?.(detached) ?? new PortableLexicalIndex(detached))
         if (generation !== this.generation) return { state: 'pending', index: null }
-        this.index = index; this.update('fresh')
+        this.index = index
+        this.update('fresh')
         return { state: 'fresh', index }
       } catch {
         if (generation !== this.generation) return { state: 'pending', index: null }
         this.update('failed')
         return { state: 'failed', index: null }
-      } finally { if (generation === this.generation) this.running = null }
+      } finally {
+        if (generation === this.generation) this.running = null
+      }
     })()
     return this.running
   }
@@ -62,18 +93,22 @@ export class ManagedLexicalIndex {
 
 export class SearchIndexUnavailable extends Error {
   readonly state: 'pending' | 'failed'
-  constructor(state: 'pending' | 'failed') { super('Search index is ' + state); this.state = state }
+  constructor(state: 'pending' | 'failed') {
+    super('Search index is ' + state)
+    this.state = state
+  }
 }
 
 /** UI-only transient passages are never written back into the page store. */
 export function rankedSearchPages(index: PortableLexicalIndex, pages: Page[], query: string): (Page & { searchPassage: string })[] {
   const matches = index.search(query, 'keywords')
-  const byId = new Map(pages.map(page => [page.id, page])), seen = new Set<string>()
-  return matches.flatMap(hit => {
+  const byId = new Map(pages.map((page) => [page.id, page])),
+    seen = new Set<string>()
+  return matches.flatMap((hit) => {
     const page = byId.get(hit.documentId)
     if (!page || seen.has(page.id)) return []
     seen.add(page.id)
-    const body = matches.find(match => match.documentId === page.id && match.source === 'body') ?? hit
+    const body = matches.find((match) => match.documentId === page.id && match.source === 'body') ?? hit
     return [{ ...page, searchPassage: sourcePassage(body, 512) ?? '' }]
   })
 }

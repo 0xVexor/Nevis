@@ -34,7 +34,8 @@ export const DrawingBlock = Node.create({
     return ({ node, editor, getPos }) => {
       let cur = node
       let busy = false
-      let destroyed = false, openTimer = 0
+      let destroyed = false,
+        openTimer = 0
       let shown: string | null = null
       const alive = () => !destroyed && !editor.isDestroyed
       const dom = document.createElement('div')
@@ -69,7 +70,11 @@ export const DrawingBlock = Node.create({
           return
         }
         let u: string | null = null
-        try { u = await urlFor('att:' + want) } catch { /* Show the missing-file state below. */ }
+        try {
+          u = await urlFor('att:' + want)
+        } catch {
+          /* Show the missing-file state below. */
+        }
         if (!alive() || want !== cur.attrs.preview) return // a newer version superseded this one
         url = u
         view.className = 'drawing-view'
@@ -92,7 +97,8 @@ export const DrawingBlock = Node.create({
       const open = async () => {
         if (!alive() || !editor.isEditable || busy) return
         busy = true
-        const originalScene = cur.attrs.scene, originalPreview = cur.attrs.preview
+        const originalScene = cur.attrs.scene,
+          originalPreview = cur.attrs.preview
         const current = () => alive() && editor.isEditable && cur.attrs.scene === originalScene && cur.attrs.preview === originalPreview
         try {
           const { excalidraw, loadScene } = await import('./excalidraw')
@@ -104,7 +110,8 @@ export const DrawingBlock = Node.create({
             if (r) window.dispatchEvent(new CustomEvent('layout-message', { detail: tr('The drawing changed while it was open. The newer page content was kept.') }))
             return
           }
-          if (r && !r.scene) remove() // a drawing cleared down to nothing is not worth keeping as a block
+          if (r && !r.scene)
+            remove() // a drawing cleared down to nothing is not worth keeping as a block
           else if (r) {
             const pos = getPos()
             if (pos != null) editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...cur.attrs, ...r }))
@@ -135,7 +142,10 @@ export const DrawingBlock = Node.create({
         },
         stopEvent: (event) => event.target instanceof globalThis.Node && (bar.contains(event.target) || surface.contains(event.target)),
         ignoreMutation: () => true,
-        destroy: () => { destroyed = true; clearTimeout(openTimer) },
+        destroy: () => {
+          destroyed = true
+          clearTimeout(openTimer)
+        },
       }
     }
   },

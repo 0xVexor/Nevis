@@ -7,6 +7,7 @@ export interface DocumentVersion {
   pageId: string
   ts: number
   title: string
+  // oxlint-disable-next-line typescript/no-explicit-any -- DocNode or a legacy HTML string, as in Page.content
   content: any
 }
 
@@ -16,7 +17,8 @@ export interface StoredDocumentVersion {
   recordRevision: number | null
 }
 export const storedVersion = (page: Page): StoredDocumentVersion => ({
-  updatedAt: page.updatedAt, recordRevision: page.recordMeta?.revision ?? null,
+  updatedAt: page.updatedAt,
+  recordRevision: page.recordMeta?.revision ?? null,
 })
 export interface DocumentWrite {
   upserts: Page[]

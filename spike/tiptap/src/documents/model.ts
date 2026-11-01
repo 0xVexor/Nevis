@@ -1,3 +1,4 @@
+import type { PageRecordMeta } from '../database/model/types.ts'
 export type PageKind = 'page' | 'folder' | 'board' | 'todo'
 export type PageStatus = 'todo' | 'doing' | 'done'
 export type Cover = { kind: 'gradient'; id: string } | { kind: 'image'; file: string } // image = content-addressed attachment id
@@ -14,11 +15,12 @@ export interface Page {
   status?: PageStatus
   favorite: boolean
   sort: number // order among siblings (becomes sort_key in SQLite, see ADR-0002)
+  // oxlint-disable-next-line typescript/no-explicit-any -- DocNode, or the welcome page's HTML string until it is first opened
   content: any // TipTap JSON doc
   updatedAt: number
   deletedAt: number | null
-  database?: any // present when the page is a database row (src/database); the editor never touches it
-  recordMeta?: any // revision / provenance of the record, see src/database/model/types.ts
+  database?: object // present when the page is a database row (src/database); the editor never touches it
+  recordMeta?: PageRecordMeta // revision / provenance of the record, see src/database/model/types.ts
   dbHost?: string // id of the database container this page is the home of (src/database)
 }
 

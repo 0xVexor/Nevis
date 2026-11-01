@@ -1,3 +1,4 @@
+import type { Editor } from '@tiptap/core'
 import { Extension } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
 import { menuRender } from './menu'
@@ -11,7 +12,7 @@ let closeActive: (() => void) | null = null
  * It opens at the caret, you type to filter, ↑ ↓ Enter to run, Esc to close. With text selected the commands
  * work on the selection (turn it into a heading / list / code, wrap it in a callout, draw it as a diagram…).
  */
-function openPalette(editor: any) {
+function openPalette(editor: Editor) {
   if (closeActive) return closeActive() // the shortcut toggles
 
   let query = ''

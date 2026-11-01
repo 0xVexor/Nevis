@@ -5,7 +5,7 @@ import { slashPreview } from '../src/editor/slashPreview.ts'
 
 // every command of the "/" menu, read from the source so a new command without a drawing is noticed here
 const source = readFileSync(new URL('../src/editor/slash.ts', import.meta.url), 'utf8')
-const titles = [...source.matchAll(/^\s{2}\{ title: '([^']+)'/gm)].map((m) => m[1])
+const titles = [...source.matchAll(/^\s{2}\{\s*title: '([^']+)'/gm)].map((m) => m[1])
 
 test('every "/" command has a preview drawing', () => {
   assert.ok(titles.length > 20)

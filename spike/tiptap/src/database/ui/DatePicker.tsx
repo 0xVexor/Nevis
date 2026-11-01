@@ -2,8 +2,25 @@
 import { useMemo, useState } from 'react'
 import type { DateValue } from '../model/types.ts'
 import {
-  addDays, civilOf, civilParts, civilString, civilToDays, civilToJalali, civilToTimed, formatCivil, isValidZone, jalaliMonthLength, jalaliToCivil, parseCivil,
-  parseIsoInstant, startOfWeek, timedToCivil, zonedParts, zonedToEpochDetailed, JALALI_MONTHS, toIso,
+  addDays,
+  civilOf,
+  civilParts,
+  civilString,
+  civilToDays,
+  civilToJalali,
+  civilToTimed,
+  formatCivil,
+  isValidZone,
+  jalaliMonthLength,
+  jalaliToCivil,
+  parseCivil,
+  parseIsoInstant,
+  startOfWeek,
+  timedToCivil,
+  zonedParts,
+  zonedToEpochDetailed,
+  JALALI_MONTHS,
+  toIso,
 } from '../dates.ts'
 import type { DateConfig } from '../props/config.ts'
 import { locale, t } from '../../i18n'
@@ -58,7 +75,7 @@ export function DatePicker({ value, config, zone, weekStart, todayCivil, onChang
   const isRange = !!value?.end
   const grid = useMemo(() => monthGrid(anchor, cal, weekStart), [anchor, cal, weekStart])
   const fa = locale().startsWith('fa')
-  const names = (fa ? WD.fa : WD.en)
+  const names = fa ? WD.fa : WD.en
   const header = (() => {
     if (cal === 'jalali') {
       const j = civilToJalali(anchor)
@@ -119,7 +136,8 @@ export function DatePicker({ value, config, zone, weekStart, todayCivil, onChang
   }
   const toggleTime = () => {
     if (!value) return
-    if (hasTime) onChange(timedToCivil(value as Extract<DateValue, { kind: 'datetime' }>, vz)) // preview: the time of day is dropped
+    if (hasTime)
+      onChange(timedToCivil(value as Extract<DateValue, { kind: 'datetime' }>, vz)) // preview: the time of day is dropped
     else onChange(civilToTimed(value as Extract<DateValue, { kind: 'date' }>, config.defaultZone ?? zone)) // default 09:00 local, visible in the inputs
   }
   const setTime = (which: 's' | 'e', hhmm: string) => {
@@ -139,12 +157,22 @@ export function DatePicker({ value, config, zone, weekStart, todayCivil, onChang
   return (
     <div className="db-date-pop" onKeyDown={(e) => e.key === 'Escape' && onClose()}>
       <div className="db-date-head">
-        <button type="button" className="icon-btn" aria-label={t('Previous month')} onClick={() => shift(-1)}><span style={{ display: 'inline-block', transform: 'scaleX(-1)' }}><Ic.Chevron size={14} /></span></button>
+        <button type="button" className="icon-btn" aria-label={t('Previous month')} onClick={() => shift(-1)}>
+          <span style={{ display: 'inline-block', transform: 'scaleX(-1)' }}>
+            <Ic.Chevron size={14} />
+          </span>
+        </button>
         <b>{header}</b>
-        <button type="button" className="icon-btn" aria-label={t('Next month')} onClick={() => shift(1)}><Ic.Chevron size={14} /></button>
+        <button type="button" className="icon-btn" aria-label={t('Next month')} onClick={() => shift(1)}>
+          <Ic.Chevron size={14} />
+        </button>
       </div>
       <div className="db-date-grid" role="grid" aria-label={header}>
-        {Array.from({ length: 7 }, (_, i) => <span key={i} className="db-date-wd">{names[((weekStart - 1 + i) % 7)]}</span>)}
+        {Array.from({ length: 7 }, (_, i) => (
+          <span key={i} className="db-date-wd">
+            {names[(weekStart - 1 + i) % 7]}
+          </span>
+        ))}
         {grid.map(({ civil: c, inMonth }) => (
           <button
             key={c}
@@ -163,20 +191,37 @@ export function DatePicker({ value, config, zone, weekStart, todayCivil, onChang
         <div className="db-date-time">
           <input type="time" aria-label={t('Start time')} value={timed()!.s} onChange={(e) => setTime('s', e.target.value)} />
           {isRange && <input type="time" aria-label={t('End time')} value={timed()!.e} onChange={(e) => setTime('e', e.target.value)} />}
-          <Select title={t('Time zone')} value={isValidZone(vz) ? vz : zone} onChange={(nextZone) => { if (value?.kind === 'datetime' && startCivil) onChange(build(startCivil, endCivil, { ...timed()!, zone: nextZone })) }} options={(zones.includes(vz) ? zones : [vz, ...zones]).map((value) => ({ value, label: value }))} />
+          <Select
+            title={t('Time zone')}
+            value={isValidZone(vz) ? vz : zone}
+            onChange={(nextZone) => {
+              if (value?.kind === 'datetime' && startCivil) onChange(build(startCivil, endCivil, { ...timed()!, zone: nextZone }))
+            }}
+            options={(zones.includes(vz) ? zones : [vz, ...zones]).map((value) => ({ value, label: value }))}
+          />
         </div>
       )}
       {value && (
         <div className="db-date-opts">
-          <label><input type="checkbox" checked={isRange} onChange={toggleRange} /> {t('End date')}</label>
-          <label><input type="checkbox" checked={hasTime} onChange={toggleTime} /> {t('Include time')}</label>
+          <label>
+            <input type="checkbox" checked={isRange} onChange={toggleRange} /> {t('End date')}
+          </label>
+          <label>
+            <input type="checkbox" checked={hasTime} onChange={toggleTime} /> {t('Include time')}
+          </label>
         </div>
       )}
       {hasTime && <div className="db-date-hint">{t('Switching off the time keeps only the day.')}</div>}
       <div className="db-date-foot">
-        <button type="button" onClick={() => onChange({ kind: 'date', start: todayCivil, end: null })}>{t('Today')}</button>
-        <button type="button" className="danger" onClick={() => (onChange(null), onClose())}>{t('Clear')}</button>
-        <button type="button" className="primary" onClick={onClose}>{t('Done')}</button>
+        <button type="button" onClick={() => onChange({ kind: 'date', start: todayCivil, end: null })}>
+          {t('Today')}
+        </button>
+        <button type="button" className="danger" onClick={() => (onChange(null), onClose())}>
+          {t('Clear')}
+        </button>
+        <button type="button" className="primary" onClick={onClose}>
+          {t('Done')}
+        </button>
       </div>
     </div>
   )

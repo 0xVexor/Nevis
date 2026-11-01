@@ -1,9 +1,9 @@
 import { Node, InputRule, mergeAttributes } from '@tiptap/core'
 import { createSectionDragSurface } from './snapSurface'
 import { t as tr } from '../i18n'
-import { cleanMermaid } from "./mermaidText"
-import { openLightbox } from "./lightbox"
-export { looksLikeMermaid, cleanMermaid } from "./mermaidText"
+import { cleanMermaid } from './mermaidText'
+import { openLightbox } from './lightbox'
+export { looksLikeMermaid, cleanMermaid } from './mermaidText'
 
 const MERMAID_SAMPLE = 'flowchart TD\n  A[شروع] --> B{شرط؟}\n  B -- بله --> C[انجام بده]\n  B -- نه --> D[پایان]\n  C --> D'
 
@@ -129,7 +129,11 @@ export const MermaidBlock = Node.create({
       let cur = node
       let editing = false
       let token = 0
-      let destroyed = false, previewTimer = 0, openTimer = 0, visibilityTimer = 0, watchFrame = 0
+      let destroyed = false,
+        previewTimer = 0,
+        openTimer = 0,
+        visibilityTimer = 0,
+        watchFrame = 0
       let editBase = node.attrs.code
       const dom = document.createElement('div')
       dom.className = 'mermaid-block'
@@ -209,7 +213,9 @@ export const MermaidBlock = Node.create({
         if (on && stale) draw()
       })
       let obs: IntersectionObserver | undefined
-      watchFrame = requestAnimationFrame(() => { if (!destroyed) obs = watch(dom) })
+      watchFrame = requestAnimationFrame(() => {
+        if (!destroyed) obs = watch(dom)
+      })
       // a page that is not being shown (hidden window, background tab) never reports visibility: draw anyway so printing/export still work
       visibilityTimer = window.setTimeout(() => {
         if (destroyed || reported || !dom.isConnected) return
@@ -218,7 +224,8 @@ export const MermaidBlock = Node.create({
       }, 1500)
       const commit = (value: string | null) => {
         if (destroyed || editor.isDestroyed) return
-        clearTimeout(previewTimer); token++
+        clearTimeout(previewTimer)
+        token++
         editing = false
         dom.classList.remove('editing')
         panel.remove()
@@ -253,7 +260,9 @@ export const MermaidBlock = Node.create({
         ta.oninput = () => {
           ta.rows = Math.max(5, ta.value.split('\n').length + 1)
           window.clearTimeout(previewTimer)
-          previewTimer = window.setTimeout(() => { if (!destroyed && editing) void paint(ta.value) }, 350)
+          previewTimer = window.setTimeout(() => {
+            if (!destroyed && editing) void paint(ta.value)
+          }, 350)
         }
         ta.onkeydown = (e) => {
           e.stopPropagation()
@@ -287,7 +296,10 @@ export const MermaidBlock = Node.create({
         ignoreMutation: () => true,
         destroy: () => {
           destroyed = true
-          clearTimeout(previewTimer); clearTimeout(openTimer); clearTimeout(visibilityTimer); cancelAnimationFrame(watchFrame)
+          clearTimeout(previewTimer)
+          clearTimeout(openTimer)
+          clearTimeout(visibilityTimer)
+          cancelAnimationFrame(watchFrame)
           token++ // Discard a render which resolves after its block has been removed/moved.
           views.delete(redraw)
           obs?.unobserve(dom)

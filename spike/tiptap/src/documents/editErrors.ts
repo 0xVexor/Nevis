@@ -2,15 +2,22 @@ import { DocumentAssetError } from './assets.ts'
 import { DocumentPlanError } from './editPlanner.ts'
 import type { ERROR_CODES } from './contracts.ts'
 
-export type EditCode = typeof ERROR_CODES[number]
+export type EditCode = (typeof ERROR_CODES)[number]
 export class DocumentEditError extends Error {
   readonly code: EditCode
   readonly retryable: boolean
   /** The offending request field, when the planner knew it. */
   readonly field?: string
-  constructor(code: EditCode, field?: string) { super(code.replaceAll('_', ' ').toLowerCase()); this.code = code; this.retryable = ['EDITOR_BUSY', 'APP_UNAVAILABLE'].includes(code); if (field) this.field = field }
+  constructor(code: EditCode, field?: string) {
+    super(code.replaceAll('_', ' ').toLowerCase())
+    this.code = code
+    this.retryable = ['EDITOR_BUSY', 'APP_UNAVAILABLE'].includes(code)
+    if (field) this.field = field
+  }
 }
-export function failEdit(code: EditCode, field?: string): never { throw new DocumentEditError(code, field) }
+export function failEdit(code: EditCode, field?: string): never {
+  throw new DocumentEditError(code, field)
+}
 export function translateEdit(error: unknown, fallback: EditCode): never {
   if (error instanceof DocumentEditError) throw error
   if (error instanceof DocumentPlanError) return failEdit(error.code, error.field)

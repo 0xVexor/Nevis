@@ -6,11 +6,15 @@ export function stable(v: unknown): string {
   if (v === null || typeof v !== 'object') return JSON.stringify(v)
   if (Array.isArray(v)) return `[${v.map(stable).join(',')}]`
   const o = v as Record<string, unknown>
-  return `{${Object.keys(o).filter((k) => o[k] !== undefined).sort().map((k) => `${JSON.stringify(k)}:${stable(o[k])}`).join(',')}}`
+  return `{${Object.keys(o)
+    .filter((k) => o[k] !== undefined)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${stable(o[k])}`)
+    .join(',')}}`
 }
 
 export const same = (a: unknown, b: unknown) => stable(a) === stable(b)
-export const clone = <T,>(v: T): T => structuredClone(v)
+export const clone = <T>(v: T): T => structuredClone(v)
 export const asJson = (v: unknown): Json => v as Json
 
 /** 53-bit string hash (cyrb53) of the canonical form; used for preview tokens and manifests, not for security. */

@@ -33,9 +33,28 @@ export function domToRuns(root: HTMLElement): RichRun[] {
   const push = (text: string, f: Flags, mention?: RichRun['mention']) => {
     if (!text && !mention) return
     const prev = out[out.length - 1]
-    const same = prev && !prev.mention && !mention && !!prev.bold === !!f.bold && !!prev.italic === !!f.italic && !!prev.underline === !!f.underline && !!prev.strike === !!f.strike && !!prev.code === !!f.code && prev.href === f.href
+    const same =
+      prev &&
+      !prev.mention &&
+      !mention &&
+      !!prev.bold === !!f.bold &&
+      !!prev.italic === !!f.italic &&
+      !!prev.underline === !!f.underline &&
+      !!prev.strike === !!f.strike &&
+      !!prev.code === !!f.code &&
+      prev.href === f.href
     if (same) prev.text += text
-    else out.push({ text, ...(f.bold ? { bold: true } : {}), ...(f.italic ? { italic: true } : {}), ...(f.underline ? { underline: true } : {}), ...(f.strike ? { strike: true } : {}), ...(f.code ? { code: true } : {}), ...(f.href ? { href: f.href } : {}), ...(mention ? { mention } : {}) })
+    else
+      out.push({
+        text,
+        ...(f.bold ? { bold: true } : {}),
+        ...(f.italic ? { italic: true } : {}),
+        ...(f.underline ? { underline: true } : {}),
+        ...(f.strike ? { strike: true } : {}),
+        ...(f.code ? { code: true } : {}),
+        ...(f.href ? { href: f.href } : {}),
+        ...(mention ? { mention } : {}),
+      })
   }
   const walk = (n: Node, f: Flags, first: boolean) => {
     if (n.nodeType === Node.TEXT_NODE) return push((n.textContent ?? '').replace(/​/g, ''), f)
@@ -66,7 +85,19 @@ export function domToRuns(root: HTMLElement): RichRun[] {
   return out
 }
 
-export function RichTextEditor({ runs, pages, onCommit, onCancel, autoFocus = true }: { runs: RichRun[]; pages: () => { id: string; title: string }[]; onCommit: (runs: RichRun[]) => void; onCancel: () => void; autoFocus?: boolean }) {
+export function RichTextEditor({
+  runs,
+  pages,
+  onCommit,
+  onCancel,
+  autoFocus = true,
+}: {
+  runs: RichRun[]
+  pages: () => { id: string; title: string }[]
+  onCommit: (runs: RichRun[]) => void
+  onCancel: () => void
+  autoFocus?: boolean
+}) {
   const ref = useRef<HTMLDivElement>(null)
   const done = useRef(false)
   const [mention, setMention] = useState<string | null>(null)
@@ -95,7 +126,12 @@ export function RichTextEditor({ runs, pages, onCommit, onCancel, autoFocus = tr
       document.execCommand('createLink', false, url)
     }
   }
-  const matches = mention !== null ? pages().filter((p) => matchKey(p.title).includes(matchKey(mention))).slice(0, 6) : []
+  const matches =
+    mention !== null
+      ? pages()
+          .filter((p) => matchKey(p.title).includes(matchKey(mention)))
+          .slice(0, 6)
+      : []
   const insertMention = (p: { id: string; title: string }) => {
     ref.current?.focus()
     const html = `<span data-mention="${esc(p.id)}" data-kind="page" contenteditable="false" class="db-mention">@${esc(p.title || t('Untitled'))}</span>&nbsp;`
@@ -105,11 +141,21 @@ export function RichTextEditor({ runs, pages, onCommit, onCancel, autoFocus = tr
   return (
     <div className="db-rich-ed" onMouseDown={(e) => e.stopPropagation()}>
       <div className="db-rich-bar" role="toolbar" aria-label={t('Text formatting')}>
-        <button type="button" title={t('Bold') + ' (' + shortcutLabel(['Mod', 'B']) + ')' } onMouseDown={(e) => (e.preventDefault(), cmd('bold'))}><b>B</b></button>
-        <button type="button" title={t('Italic') + ' (' + shortcutLabel(['Mod', 'I']) + ')' } onMouseDown={(e) => (e.preventDefault(), cmd('italic'))}><i>I</i></button>
-        <button type="button" title={t('Strikethrough')} onMouseDown={(e) => (e.preventDefault(), cmd('strikeThrough'))}><s>S</s></button>
-        <button type="button" title={t('Link')} onMouseDown={(e) => (e.preventDefault(), void link())}>🔗</button>
-        <button type="button" title={t('Mention a page')} onMouseDown={(e) => (e.preventDefault(), setMention(''))}>@</button>
+        <button type="button" title={t('Bold') + ' (' + shortcutLabel(['Mod', 'B']) + ')'} onMouseDown={(e) => (e.preventDefault(), cmd('bold'))}>
+          <b>B</b>
+        </button>
+        <button type="button" title={t('Italic') + ' (' + shortcutLabel(['Mod', 'I']) + ')'} onMouseDown={(e) => (e.preventDefault(), cmd('italic'))}>
+          <i>I</i>
+        </button>
+        <button type="button" title={t('Strikethrough')} onMouseDown={(e) => (e.preventDefault(), cmd('strikeThrough'))}>
+          <s>S</s>
+        </button>
+        <button type="button" title={t('Link')} onMouseDown={(e) => (e.preventDefault(), void link())}>
+          🔗
+        </button>
+        <button type="button" title={t('Mention a page')} onMouseDown={(e) => (e.preventDefault(), setMention(''))}>
+          @
+        </button>
       </div>
       <div
         ref={ref}
@@ -123,10 +169,16 @@ export function RichTextEditor({ runs, pages, onCommit, onCancel, autoFocus = tr
         dangerouslySetInnerHTML={{ __html: initial }}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return // never act on Enter / Tab while an IME composition is open
-          if (e.key === 'Escape') { e.preventDefault(); finish(false) }
-          else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); finish(true) }
-          else if (e.key === 'Enter') { e.preventDefault(); document.execCommand('insertLineBreak') }
-          else if (e.key === '@') setMention('')
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            finish(false)
+          } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault()
+            finish(true)
+          } else if (e.key === 'Enter') {
+            e.preventDefault()
+            document.execCommand('insertLineBreak')
+          } else if (e.key === '@') setMention('')
           else if (mention !== null && e.key.length === 1) setMention(mention + e.key)
           else if (mention !== null && e.key === 'Backspace') setMention(mention.length ? mention.slice(0, -1) : null)
         }}

@@ -31,7 +31,11 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
     } catch (e) {
       setError(explain(e))
     } finally {
-      try { await refresh() } catch (e) { setError(previous => previous || explain(e)) }
+      try {
+        await refresh()
+      } catch (e) {
+        setError((previous) => previous || explain(e))
+      }
       setBusy('')
     }
   }
@@ -69,13 +73,21 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
             <small>{t('A vault is a folder that holds all the pages, images and history of one workspace.')}</small>
           </div>
           <div className="segmented acct-lang" role="group" aria-label={t('Interface language')}>
-            <button className={lang === 'en' ? 'on' : ''} onClick={() => updateSettings({ lang: 'en' })}>English</button>
-            <button className={lang === 'fa' ? 'on' : ''} onClick={() => updateSettings({ lang: 'fa' })} lang="fa">فارسی</button>
+            <button className={lang === 'en' ? 'on' : ''} onClick={() => updateSettings({ lang: 'en' })}>
+              English
+            </button>
+            <button className={lang === 'fa' ? 'on' : ''} onClick={() => updateSettings({ lang: 'fa' })} lang="fa">
+              فارسی
+            </button>
           </div>
         </div>
 
         <div className="backup-body">
-          {error && <p className="backup-warn" dir="auto">{error}</p>}
+          {error && (
+            <p className="backup-warn" dir="auto">
+              {error}
+            </p>
+          )}
 
           {vaults.length > 0 && (
             <>
@@ -85,14 +97,24 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
                   <li key={v.id}>
                     <div>
                       <b dir="auto">{v.name}</b>
-                      <small dir="ltr" style={{ display: 'block', opacity: 0.7 }}>{v.path}</small>
+                      <small dir="ltr" style={{ display: 'block', opacity: 0.7 }}>
+                        {v.path}
+                      </small>
                       {v.status === 'missing' && <small className="backup-warn">{t('Folder not found')}</small>}
                       {v.status === 'mismatch' && <small className="backup-warn">{t('A different vault is in this folder.')}</small>}
                     </div>
                     <span>
-                      {v.status !== 'ok' && <button disabled={!!busy} onClick={() => locate(v)}>{t('Locate folder…')}</button>}
-                      <button className="primary" disabled={!v.exists || !!busy} onClick={() => run('open', async () => (await vaultOpen(v.id), onOpened()))}>{t('Open')}</button>
-                      <button disabled={!!busy} title={t('Remove from the list (files stay on disk)')} onClick={() => run('forget', async () => (await vaultForget(v.id), refresh()))}>✕</button>
+                      {v.status !== 'ok' && (
+                        <button disabled={!!busy} onClick={() => locate(v)}>
+                          {t('Locate folder…')}
+                        </button>
+                      )}
+                      <button className="primary" disabled={!v.exists || !!busy} onClick={() => run('open', async () => (await vaultOpen(v.id), onOpened()))}>
+                        {t('Open')}
+                      </button>
+                      <button disabled={!!busy} title={t('Remove from the list (files stay on disk)')} onClick={() => run('forget', async () => (await vaultForget(v.id), refresh()))}>
+                        ✕
+                      </button>
                     </span>
                   </li>
                 ))}
@@ -103,10 +125,14 @@ export function VaultPicker({ onOpened }: { onOpened: () => void }) {
           <h4>{t('Create a new vault')}</h4>
           <div className="backup-acts">
             <input dir="auto" placeholder={t('Vault name')} value={name} onChange={(e) => setName(e.target.value)} />
-            <button className="primary" disabled={!!busy} onClick={() => void create()}>{t('Choose location and create…')}</button>
+            <button className="primary" disabled={!!busy} onClick={() => void create()}>
+              {t('Choose location and create…')}
+            </button>
           </div>
           <div className="backup-acts">
-            <button disabled={!!busy} onClick={openExisting}>{t('Open a folder as vault…')}</button>
+            <button disabled={!!busy} onClick={openExisting}>
+              {t('Open a folder as vault…')}
+            </button>
           </div>
         </div>
       </div>

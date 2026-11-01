@@ -1,3 +1,4 @@
+import type { DocNode } from './docNode'
 import katex from 'katex'
 import { Editor, getSchema } from '@tiptap/core'
 import { contentProblem } from './editor/contentSafety'
@@ -6,7 +7,7 @@ import { renderDiagram } from './editor/mermaid'
 import { urlFor } from './attachments'
 
 /** ProseMirror doc (or array of blocks) -> HTML via the real schema, without mounting an editor. */
-export function docToHtml(doc: any): string {
+export function docToHtml(doc: DocNode | DocNode[]): string {
   const content = Array.isArray(doc) ? { type: 'doc', content: doc } : doc
   if (contentProblem(content, getSchema(extensions))) {
     const el = document.createElement('pre')
@@ -28,7 +29,7 @@ export async function hydrate(root: HTMLElement) {
     const widths = JSON.parse(group.getAttribute('data-widths') || 'null')
     const count = group.children.length
     const usable = group.clientWidth - (count - 1) * 24
-    const stacked = Array.isArray(widths) && widths.length === count ? widths.some((w: number) => usable * w / 100 < 180) : usable / count < 180
+    const stacked = Array.isArray(widths) && widths.length === count ? widths.some((w: number) => (usable * w) / 100 < 180) : usable / count < 180
     group.style.gridTemplateColumns = stacked ? 'minmax(0, 1fr)' : 'var(--layout-tracks)'
   }
   for (const img of Array.from(root.querySelectorAll<HTMLImageElement>('img[src^="att:"]'))) {
@@ -53,6 +54,6 @@ export async function hydrate(root: HTMLElement) {
   }
   for (const el of Array.from(root.querySelectorAll<HTMLElement>('[data-type="mermaid"]'))) {
     const r = await renderDiagram(el.getAttribute('data-code') ?? '')
-    if ('svg' in r) (el.innerHTML = r.svg, el.classList.add('mermaid-view'))
+    if ('svg' in r) ((el.innerHTML = r.svg), el.classList.add('mermaid-view'))
   }
 }
