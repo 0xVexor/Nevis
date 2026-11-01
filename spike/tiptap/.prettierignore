@@ -1,0 +1,8 @@
+dist
+node_modules
+public
+src-tauri
+*.css
+*.json
+*.md
+*.html
