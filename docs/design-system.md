@@ -52,6 +52,7 @@ All classes are prefixed `ds-` and use logical properties (`inline-start`, `inli
 | Container | `ds-card` (+ `--interactive`, `--selected`) |
 | Data table | `ds-table-wrap` > `ds-table` + `ds-table-foot`. Roomy rows, no vertical lines. |
 | Empty state | `ds-empty`: say what is missing and what to do. |
+| Body of a dialog or card with several parts (choice, field, notice) | `ds-stack`: an even gap between children. Choose one of 2–4 short options with `ds-seg` (`role="radiogroup"`), not custom cards. |
 | Short list of labels and values (a summary in a dialog or card) | `ds-facts` / `Facts` |
 | One thing that must be seen: a warning, a consequence, an error | `ds-notice` / `Notice` (`tone="warn"` or `"bad"`). Always has an icon and words, never color alone. |
 | Floating lists | **`Menu` / `useMenu`**: dropdowns, context menus, submenus, shortcut hints. |

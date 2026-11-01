@@ -27,7 +27,10 @@ async function vaultPayload(plan: BackupPlan) {
   }
 }
 
-export async function applyTauri(plan: BackupPlan) {
+/** `new`: a new workspace next to this one, called `name` (or as the backup itself). `here`: into the open workspace, after a copy of it is saved next to it. */
+export interface RestoreTo { target?: 'new' | 'here'; name?: string }
+
+export async function applyTauri(plan: BackupPlan, to: RestoreTo = {}) {
   const data = plan.summary.kind === 'vault' ? plan.data : await vaultPayload(plan)
-  return invoke<{ pages: number; files: number }>('vault_backup_restore', { data })
+  return invoke<{ pages: number; files: number; copy?: string }>('vault_backup_restore', { data, target: to.target ?? 'new', name: to.name?.trim() || null })
 }

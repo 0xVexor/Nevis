@@ -49,6 +49,16 @@ function Pane({ dir }: { dir: 'ltr' | 'rtl' }) {
         <Facts items={[[fa ? 'صفحه‌ها' : 'Pages', fa ? '۱۲۸' : '128'], [fa ? 'تصویرها' : 'Images', fa ? '۴۲' : '42']]} />
         <Notice tone="warn" icon={<Icon name="warning" size={16} />}>{fa ? 'همهٔ صفحه‌های فعلی جایگزین می‌شوند.' : 'All current pages will be replaced.'}</Notice>
       </Section>
+      <Section title="Stack">
+        <div className="ds-stack">
+          <div className="ds-seg" role="radiogroup" aria-label="Choice">
+            <button type="button" role="radio" aria-checked aria-pressed>{fa ? 'جدید' : 'New'}</button>
+            <button type="button" role="radio" aria-checked={false} aria-pressed={false}>{fa ? 'همین' : 'Here'}</button>
+          </div>
+          <Field placeholder={fa ? 'نام' : 'Name'} />
+          <Notice icon={<Icon name="info" size={16} />}>{fa ? 'یک جمله که باید دیده شود.' : 'One sentence that must be seen.'}</Notice>
+        </div>
+      </Section>
       <Section title="Dialog">
         <Button onClick={() => setOpen(true)}>{fa ? 'باز کردن' : 'Open dialog'}</Button>
         <Dialog open={open} title={fa ? 'تغییر نام' : 'Rename page'} onClose={() => setOpen(false)}
