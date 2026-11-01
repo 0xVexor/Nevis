@@ -9,7 +9,7 @@ export async function seedBench(n: number, links = 5) {
   if (isTauri) throw new Error('Benchmark seeding requires browser storage')
   const expectedAll = await allPages()
   let seed = 42
-  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32)
+  const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32
   const now = Date.now()
   const rows: any[] = []
   const folder = new Map<string, string>()
@@ -36,10 +36,21 @@ export async function seedBench(n: number, links = 5) {
     const content = [
       { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: `Note ${i}` }] },
       para('Lorem ipsum dolor sit amet, متن فارسی برای آزمایش و some English text. '.repeat(8)),
-      { type: 'paragraph', content: [...targets].flatMap((j) => [{ type: 'pageLink', attrs: { id: ids[j], label: null } }, { type: 'text', text: ' ' }]) },
+      {
+        type: 'paragraph',
+        content: [...targets].flatMap((j) => [
+          { type: 'pageLink', attrs: { id: ids[j], label: null } },
+          { type: 'text', text: ' ' },
+        ]),
+      },
       ...(i % 12 === 0 ? [{ type: 'mermaid', attrs: { code: FLOW(i) } }] : []),
       ...(i % 40 === 0 ? [{ type: 'mermaid', attrs: { code: 'flowchart TD\n  A --> B\n  E[Decrement numbers[left]] --> F{\n  F --> G' } }] : []), // invalid on purpose
-      ...(i % 40 === 0 ? [{ type: 'mermaid', attrs: { code: FLOW(i + 1) } }, { type: 'mermaid', attrs: { code: FLOW(i + 2) } }] : []),
+      ...(i % 40 === 0
+        ? [
+            { type: 'mermaid', attrs: { code: FLOW(i + 1) } },
+            { type: 'mermaid', attrs: { code: FLOW(i + 2) } },
+          ]
+        : []),
     ]
     rows.push({
       id: ids[i],

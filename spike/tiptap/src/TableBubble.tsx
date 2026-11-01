@@ -24,7 +24,16 @@ function tableDom(editor: any): HTMLElement | null {
 
 function B({ icon, title, on, danger, off, onClick }: { icon: ReactNode; title: string; on?: boolean; danger?: boolean; off?: boolean; onClick: () => void }) {
   return (
-    <button type="button" className={'tbb' + (on ? ' on' : '') + (danger ? ' danger' : '')} title={title} aria-label={title} aria-pressed={on} disabled={off} onMouseDown={(e) => e.preventDefault()} onClick={onClick}>
+    <button
+      type="button"
+      className={'tbb' + (on ? ' on' : '') + (danger ? ' danger' : '')}
+      title={title}
+      aria-label={title}
+      aria-pressed={on}
+      disabled={off}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+    >
       {icon}
     </button>
   )
@@ -60,7 +69,9 @@ export function TableBubble({ editor }: { editor: any }) {
     document.addEventListener('pointerdown', down, true)
     return () => document.removeEventListener('pointerdown', down, true)
   }, [])
-  useEffect(() => { if (!s) setArmed(false) }, [s])
+  useEffect(() => {
+    if (!s) setArmed(false)
+  }, [s])
   const open = !!s && armed
   const box = useAnchor(editor, open, () => tableDom(editor), [s?.w, s?.align])
 

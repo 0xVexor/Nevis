@@ -23,9 +23,7 @@ export type PageWrite = {
 
 export type HistoryWrite = { recordKind: string; id: Id; revision: number; body: Json }
 
-export type UndoItem =
-  | { t: 'record'; kind: RecordKind; id: Id; afterRevision: number; before: AnyRecord | null }
-  | { t: 'page'; id: Id; afterRevision: number; paths: UndoPath[]; created: boolean }
+export type UndoItem = { t: 'record'; kind: RecordKind; id: Id; afterRevision: number; before: AnyRecord | null } | { t: 'page'; id: Id; afterRevision: number; paths: UndoPath[]; created: boolean }
 
 /** One touched field of a page: undo only restores it while the current value is still the one this batch wrote. */
 export type UndoPath = { path: string; before: Json | null; after: Json | null }

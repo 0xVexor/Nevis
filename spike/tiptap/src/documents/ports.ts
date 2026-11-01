@@ -16,7 +16,8 @@ export interface StoredDocumentVersion {
   recordRevision: number | null
 }
 export const storedVersion = (page: Page): StoredDocumentVersion => ({
-  updatedAt: page.updatedAt, recordRevision: page.recordMeta?.revision ?? null,
+  updatedAt: page.updatedAt,
+  recordRevision: page.recordMeta?.revision ?? null,
 })
 export interface DocumentWrite {
   upserts: Page[]

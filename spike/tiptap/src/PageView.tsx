@@ -45,7 +45,19 @@ const TITLE_CMDS = [
   { id: 'auto', title: 'Auto direction', desc: 'Detect direction from the text', kw: 'auto direction خودکار جهت' },
 ]
 
-export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly = false }: { page: Page; onSave: (s: SaveState) => void; onMeta: () => void; onCover: (anchor: DOMRect) => void; readOnly?: boolean }) {
+export function PageView({
+  page,
+  onSave,
+  onMeta,
+  onCover,
+  readOnly: readerOnly = false,
+}: {
+  page: Page
+  onSave: (s: SaveState) => void
+  onMeta: () => void
+  onCover: (anchor: DOMRect) => void
+  readOnly?: boolean
+}) {
   const schema = useMemo(() => getSchema(extensions), [])
   const [contentIssue, setContentIssue] = useState(() => contentProblem(page.content, schema))
   const protectedContent = useRef(!!contentIssue)
@@ -113,16 +125,24 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
 
   // Writes one editor's pending edit into the page. The editor is passed in (not read from the ref) so a page switch
   // saves the page it is leaving, even when the ref already points at the next page's editor.
-  const flushOf = useCallback((ed: any) => {
-    window.clearTimeout(timer.current)
-    if (ed && !ed.isDestroyed && dirty.current && !protectedContent.current) {
-      const content = ed.getJSON()
-      if (JSON.stringify(repo.get(page.id)?.content) !== JSON.stringify(content)) repo.update(page.id, { content })
-      dirty.current = false
-      repo.setEditorDirty(page.id, false)
-      void repo.flushBeforeUpdate().then(() => { if (!dirty.current) onSave('saved') }, () => onSave('saving'))
-    }
-  }, [page.id, onSave])
+  const flushOf = useCallback(
+    (ed: any) => {
+      window.clearTimeout(timer.current)
+      if (ed && !ed.isDestroyed && dirty.current && !protectedContent.current) {
+        const content = ed.getJSON()
+        if (JSON.stringify(repo.get(page.id)?.content) !== JSON.stringify(content)) repo.update(page.id, { content })
+        dirty.current = false
+        repo.setEditorDirty(page.id, false)
+        void repo.flushBeforeUpdate().then(
+          () => {
+            if (!dirty.current) onSave('saved')
+          },
+          () => onSave('saving'),
+        )
+      }
+    },
+    [page.id, onSave],
+  )
   const flush = useCallback(() => flushOf(editorRef.current), [flushOf])
 
   useEffect(() => registerUpdateSave(flush), [flush])
@@ -181,10 +201,11 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
   useEffect(() => {
     if (!editor) return
     // "/" > Icon: the slash text is already removed; open the picker where the caret is
-    const open = () => window.setTimeout(() => {
-      const c = editor.view.coordsAtPos(editor.state.selection.from)
-      setIconAt(new DOMRect(c.left, c.top, 0, c.bottom - c.top))
-    }, 0)
+    const open = () =>
+      window.setTimeout(() => {
+        const c = editor.view.coordsAtPos(editor.state.selection.from)
+        setIconAt(new DOMRect(c.left, c.top, 0, c.bottom - c.top))
+      }, 0)
     window.addEventListener('pick-inline-icon', open)
     return () => window.removeEventListener('pick-inline-icon', open)
   }, [editor])
@@ -274,13 +295,15 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
         // Clear stale undo history while retaining a valid caret and scroll position.
         const previous = editor.state.selection
         const at = (pos: number) => doc.resolve(Math.min(pos, doc.content.size))
-        const selection = previous instanceof TextSelection
-          ? TextSelection.between(at(previous.anchor), at(previous.head))
-          : Selection.near(at(previous.head))
+        const selection = previous instanceof TextSelection ? TextSelection.between(at(previous.anchor), at(previous.head)) : Selection.near(at(previous.head))
         const scroller = editor.view.dom.closest<HTMLElement>('.scroller')
-        const top = scroller?.scrollTop, left = scroller?.scrollLeft
+        const top = scroller?.scrollTop,
+          left = scroller?.scrollLeft
         editor.view.updateState(EditorState.create({ schema: editor.schema, doc, selection, plugins: editor.state.plugins }))
-        if (scroller) { scroller.scrollTop = top!; scroller.scrollLeft = left! }
+        if (scroller) {
+          scroller.scrollTop = top!
+          scroller.scrollLeft = left!
+        }
       }
     }
     window.addEventListener('external-change', onExternal)
@@ -306,7 +329,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
 
   const fit = () => {
     const t = titleRef.current
-    if (t) (t.style.height = 'auto', (t.style.height = t.scrollHeight + 'px'))
+    if (t) ((t.style.height = 'auto'), (t.style.height = t.scrollHeight + 'px'))
   }
   useEffect(fit, [page.id])
   // the height is inline, so it must be recomputed when the width changes (window resize, sidebar toggle) or the font arrives
@@ -469,10 +492,18 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
                 else if (e.key === 'Escape') (e.preventDefault(), e.stopPropagation(), closeFind()) // only the find bar closes
               }}
             />
-            <span className="find-count" aria-live="polite">{find.matches.length ? t('{i} of {n}', { i: find.index + 1, n: find.matches.length }) : find.query ? t('Not found') : ''}</span>
-            <IconButton label={t('Previous  Shift+Enter')} disabled={!find.matches.length} onClick={() => stepFind(-1)}><Icon name="chevron-up" size={16} /></IconButton>
-            <IconButton label={t('Next  Enter')} disabled={!find.matches.length} onClick={() => stepFind(1)}><Icon name="chevron-down" size={16} /></IconButton>
-            <IconButton label={t('Close  Esc')} onClick={closeFind}><Icon name="x" size={16} /></IconButton>
+            <span className="find-count" aria-live="polite">
+              {find.matches.length ? t('{i} of {n}', { i: find.index + 1, n: find.matches.length }) : find.query ? t('Not found') : ''}
+            </span>
+            <IconButton label={t('Previous  Shift+Enter')} disabled={!find.matches.length} onClick={() => stepFind(-1)}>
+              <Icon name="chevron-up" size={16} />
+            </IconButton>
+            <IconButton label={t('Next  Enter')} disabled={!find.matches.length} onClick={() => stepFind(1)}>
+              <Icon name="chevron-down" size={16} />
+            </IconButton>
+            <IconButton label={t('Close  Esc')} onClick={closeFind}>
+              <Icon name="x" size={16} />
+            </IconButton>
           </div>
         </div>
       )}
@@ -486,7 +517,9 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
                 {heads.map((h) => (
                   <button key={h.pos} className={'ol-item' + (h.pos === activeHead ? ' on' : '')} style={{ ['--lv' as string]: h.level - 1 } as React.CSSProperties} onClick={() => gotoHeading(h.pos)}>
                     <i className="ol-dot" />
-                    <span className="ol-tx" dir="auto">{h.text || t('Untitled')}</span>
+                    <span className="ol-tx" dir="auto">
+                      {h.text || t('Untitled')}
+                    </span>
                   </button>
                 ))}
               </nav>
@@ -497,11 +530,27 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
       <div className="page-head">
         <div className="page-top">
           <button className={'page-icon' + (icon ? '' : ' empty')} onClick={(e) => setPicker(e.currentTarget.getBoundingClientRect())} title={t('Change icon')}>
-            {icon ? <span className="page-icon-g" style={isGlyph(icon) ? { color: parseIcon(icon).color ?? toneOf(page.id) } : undefined}>{iconNode(icon, 40)}</span> : <Ic.Page size={44} />}
+            {icon ? (
+              <span className="page-icon-g" style={isGlyph(icon) ? { color: parseIcon(icon).color ?? toneOf(page.id) } : undefined}>
+                {iconNode(icon, 40)}
+              </span>
+            ) : (
+              <Ic.Page size={44} />
+            )}
           </button>
           <div className="page-tools">
-            {!icon && <button onClick={(e) => setPicker(e.currentTarget.getBoundingClientRect())}><Ic.Star size={14} />{t('Add icon')}</button>}
-            {!page.cover && <button onClick={(e) => onCover(e.currentTarget.getBoundingClientRect())}><Ic.Image size={14} />{t('Add cover')}</button>}
+            {!icon && (
+              <button onClick={(e) => setPicker(e.currentTarget.getBoundingClientRect())}>
+                <Ic.Star size={14} />
+                {t('Add icon')}
+              </button>
+            )}
+            {!page.cover && (
+              <button onClick={(e) => onCover(e.currentTarget.getBoundingClientRect())}>
+                <Ic.Image size={14} />
+                {t('Add cover')}
+              </button>
+            )}
           </div>
         </div>
         {picker && (
@@ -551,7 +600,9 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
                 onMouseDown={(e) => (e.preventDefault(), applyTitleCmd(c))}
                 onMouseMove={() => i !== tmenu.sel && setTmenu({ ...tmenu, sel: i })}
               >
-                <span className="slash-ic"><Ic.Direction size={16} /></span>
+                <span className="slash-ic">
+                  <Ic.Direction size={16} />
+                </span>
                 <span className="slash-tx">
                   <b>{t(c.title)}</b>
                   <small>{t(c.desc)}</small>
@@ -562,119 +613,135 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
         )}
       </div>
 
-      {page.database && <Suspense fallback={null}><RowProperties pageId={page.id} /></Suspense>}
+      {page.database && (
+        <Suspense fallback={null}>
+          <RowProperties pageId={page.id} />
+        </Suspense>
+      )}
       <div className="page-meta">
         <div className="meta-row">
-        <div className="meta-cell tags">
-          <span className="meta-ic" title={t('Tags')}><Ic.Tag size={16} /></span>
-          <div className="meta-body">
-            <span className="meta-label">{t('Tags')}</span>
-            <div className="meta-val">
-        {tags.map((tag) => (
-          <span key={tag} className="tag-chip static" dir="auto" style={{ ['--hue' as string]: [...tag].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7) } as React.CSSProperties}>
-            {tag}
-            <button title={t('Remove')} onClick={() => saveTags(tags.filter((x) => x !== tag))}><Ic.Close size={11} /></button>
-          </span>
-        ))}
-        {addingTag ? (
-          <span className="tag-new">
-            <span className="tag-new-h">#</span>
-            <input
-              className="tag-input"
-              dir="auto"
-              autoFocus
-              value={tagDraft}
-              placeholder={t('Tag name…')}
-              onChange={(e) => setTagDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if ((e.key === 'Enter' || e.key === ',' || e.key === '،') && tagDraft.trim()) {
-                  e.preventDefault()
-                  saveTags(addTag(tags, tagDraft))
-                  setTagDraft('')
-                } else if (e.key === 'Escape') {
-                  e.preventDefault()
-                  setTagDraft('')
-                  setAddingTag(false)
-                } else if (e.key === 'Backspace' && !tagDraft && tags.length) saveTags(tags.slice(0, -1))
-              }}
-              onBlur={() => {
-                if (tagDraft.trim()) saveTags(addTag(tags, tagDraft))
-                setTagDraft('')
-                setAddingTag(false)
-              }}
-            />
-            {(() => {
-              const q = normalizeFa(tagDraft.trim())
-              const sugg = allTags(repo.pagesOnly())
-                .filter((x) => !tags.some((y) => normalizeFa(y) === normalizeFa(x)) && (!q || normalizeFa(x).includes(q)))
-                .slice(0, 6)
-              return (
-                sugg.length > 0 && (
-                  <div className="tag-sugg" role="listbox">
-                    {sugg.map((x) => (
-                      <button key={x} type="button" role="option" onMouseDown={(e) => (e.preventDefault(), saveTags(addTag(tags, x)), setTagDraft(''))}>
-                        <span className="tagchip-h">#</span>
-                        <span dir="auto">{x}</span>
-                      </button>
-                    ))}
-                  </div>
-                )
-              )
-            })()}
-          </span>
-        ) : (
-          <button type="button" className="tag-add" title={t('Add tag…')} aria-label={t('Add tag…')} onClick={() => setAddingTag(true)}>
-            <Ic.Plus size={14} />
-            {tags.length === 0 && <span>{t('Add tag…')}</span>}
-          </button>
-        )}
+          <div className="meta-cell tags">
+            <span className="meta-ic" title={t('Tags')}>
+              <Ic.Tag size={16} />
+            </span>
+            <div className="meta-body">
+              <span className="meta-label">{t('Tags')}</span>
+              <div className="meta-val">
+                {tags.map((tag) => (
+                  <span key={tag} className="tag-chip static" dir="auto" style={{ ['--hue' as string]: [...tag].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7) } as React.CSSProperties}>
+                    {tag}
+                    <button title={t('Remove')} onClick={() => saveTags(tags.filter((x) => x !== tag))}>
+                      <Ic.Close size={11} />
+                    </button>
+                  </span>
+                ))}
+                {addingTag ? (
+                  <span className="tag-new">
+                    <span className="tag-new-h">#</span>
+                    <input
+                      className="tag-input"
+                      dir="auto"
+                      autoFocus
+                      value={tagDraft}
+                      placeholder={t('Tag name…')}
+                      onChange={(e) => setTagDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if ((e.key === 'Enter' || e.key === ',' || e.key === '،') && tagDraft.trim()) {
+                          e.preventDefault()
+                          saveTags(addTag(tags, tagDraft))
+                          setTagDraft('')
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault()
+                          setTagDraft('')
+                          setAddingTag(false)
+                        } else if (e.key === 'Backspace' && !tagDraft && tags.length) saveTags(tags.slice(0, -1))
+                      }}
+                      onBlur={() => {
+                        if (tagDraft.trim()) saveTags(addTag(tags, tagDraft))
+                        setTagDraft('')
+                        setAddingTag(false)
+                      }}
+                    />
+                    {(() => {
+                      const q = normalizeFa(tagDraft.trim())
+                      const sugg = allTags(repo.pagesOnly())
+                        .filter((x) => !tags.some((y) => normalizeFa(y) === normalizeFa(x)) && (!q || normalizeFa(x).includes(q)))
+                        .slice(0, 6)
+                      return (
+                        sugg.length > 0 && (
+                          <div className="tag-sugg" role="listbox">
+                            {sugg.map((x) => (
+                              <button key={x} type="button" role="option" onMouseDown={(e) => (e.preventDefault(), saveTags(addTag(tags, x)), setTagDraft(''))}>
+                                <span className="tagchip-h">#</span>
+                                <span dir="auto">{x}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )
+                      )
+                    })()}
+                  </span>
+                ) : (
+                  <button type="button" className="tag-add" title={t('Add tag…')} aria-label={t('Add tag…')} onClick={() => setAddingTag(true)}>
+                    <Ic.Plus size={14} />
+                    {tags.length === 0 && <span>{t('Add tag…')}</span>}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
         </div>
         <div className="meta-row inline">
-        <div className="meta-cell">
-          <span className="meta-ic"><Ic.Flag size={16} /></span>
-          <div className="meta-body">
-            <span className="meta-label">{t('Status')}</span>
-            <div className="meta-val">
-        <Select
-          className={'status-sel' + (status ? ' has' : '')}
-          style={status ? ({ ['--st' as string]: STATUS[status].color } as React.CSSProperties) : undefined}
-          value={status ?? ''}
-          title={t('Status')}
-          onChange={(val) => {
-            const v = (val || undefined) as PageStatus | undefined
-            setStatus(v)
-            repo.update(page.id, { status: v })
-            onMeta()
-          }}
-          options={[{ value: '', label: t('No status') }, ...(Object.keys(STATUS) as PageStatus[]).map((s) => ({ value: s, label: t(STATUS[s].label), color: STATUS[s].color }))]}
-        />
+          <div className="meta-cell">
+            <span className="meta-ic">
+              <Ic.Flag size={16} />
+            </span>
+            <div className="meta-body">
+              <span className="meta-label">{t('Status')}</span>
+              <div className="meta-val">
+                <Select
+                  className={'status-sel' + (status ? ' has' : '')}
+                  style={status ? ({ ['--st' as string]: STATUS[status].color } as React.CSSProperties) : undefined}
+                  value={status ?? ''}
+                  title={t('Status')}
+                  onChange={(val) => {
+                    const v = (val || undefined) as PageStatus | undefined
+                    setStatus(v)
+                    repo.update(page.id, { status: v })
+                    onMeta()
+                  }}
+                  options={[{ value: '', label: t('No status') }, ...(Object.keys(STATUS) as PageStatus[]).map((s) => ({ value: s, label: t(STATUS[s].label), color: STATUS[s].color }))]}
+                />
+              </div>
             </div>
           </div>
-        </div>
-        <div className="meta-cell">
-          <button
-            className={'meta-ic like' + (page.favorite ? ' on' : '')}
-            title={page.favorite ? t('Remove from favorites') : t('Add to favorites')}
-            aria-pressed={!!page.favorite}
-            onClick={() => (repo.update(page.id, { favorite: !page.favorite }), onMeta())}
-          >
-            <Ic.Star size={16} filled={page.favorite} />
-          </button>
-          <div className="meta-body">
-            <span className="meta-label">{t('Favorite')}</span>
-            <div className="meta-val"><span className="meta-text">{page.favorite ? t('Yes') : t('No')}</span></div>
+          <div className="meta-cell">
+            <button
+              className={'meta-ic like' + (page.favorite ? ' on' : '')}
+              title={page.favorite ? t('Remove from favorites') : t('Add to favorites')}
+              aria-pressed={!!page.favorite}
+              onClick={() => (repo.update(page.id, { favorite: !page.favorite }), onMeta())}
+            >
+              <Ic.Star size={16} filled={page.favorite} />
+            </button>
+            <div className="meta-body">
+              <span className="meta-label">{t('Favorite')}</span>
+              <div className="meta-val">
+                <span className="meta-text">{page.favorite ? t('Yes') : t('No')}</span>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="meta-cell">
-          <span className="meta-ic"><Ic.Clock size={16} /></span>
-          <div className="meta-body">
-            <span className="meta-label">{t('Last edited')}</span>
-            <div className="meta-val"><span className="meta-text">{ago(page.updatedAt)}</span></div>
+          <div className="meta-cell">
+            <span className="meta-ic">
+              <Ic.Clock size={16} />
+            </span>
+            <div className="meta-body">
+              <span className="meta-label">{t('Last edited')}</span>
+              <div className="meta-val">
+                <span className="meta-text">{ago(page.updatedAt)}</span>
+              </div>
+            </div>
           </div>
-        </div>
         </div>
       </div>
 
@@ -683,7 +750,9 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
           <span className="templates-label">{t('Quick start with a template')}</span>
           {getTemplates().map((t) => (
             <button key={t.id} title={t.desc} onClick={() => applyTemplate(t)}>
-              <span className="tpl-chip-ic"><Glyph name={TEMPLATE_GLYPH[t.id] ?? 'page'} size={14} /></span>
+              <span className="tpl-chip-ic">
+                <Glyph name={TEMPLATE_GLYPH[t.id] ?? 'page'} size={14} />
+              </span>
               {t.title}
             </button>
           ))}
@@ -696,11 +765,25 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
           <div className="ds-menu ctx-menu">
             {!readOnly && (
               <div className="menu-quick">
-                <button title={t('Undo') + '  ' + shortcutLabel(['Mod', 'Z'])} onClick={() => (setCtx(null), editor.chain().focus().undo().run())}><Ic.Undo size={16} /></button>
-                <button title={t('Redo  Ctrl+Y')} onClick={() => (setCtx(null), editor.chain().focus().redo().run())}><Ic.Redo size={16} /></button>
-                {hasSel && <button title={t('Cut') + '  ' + shortcutLabel(['Mod', 'X'])} onClick={() => (setCtx(null), document.execCommand('cut'))}><Ic.Cut size={16} /></button>}
-                {hasSel && <button title={t('Copy') + '  ' + shortcutLabel(['Mod', 'C'])} onClick={() => (setCtx(null), document.execCommand('copy'))}><Ic.Copy size={16} /></button>}
-                <button title={t('Paste') + '  ' + shortcutLabel(['Mod', 'V'])} onClick={() => (setCtx(null), void paste(false))}><Ic.Paste size={16} /></button>
+                <button title={t('Undo') + '  ' + shortcutLabel(['Mod', 'Z'])} onClick={() => (setCtx(null), editor.chain().focus().undo().run())}>
+                  <Ic.Undo size={16} />
+                </button>
+                <button title={t('Redo  Ctrl+Y')} onClick={() => (setCtx(null), editor.chain().focus().redo().run())}>
+                  <Ic.Redo size={16} />
+                </button>
+                {hasSel && (
+                  <button title={t('Cut') + '  ' + shortcutLabel(['Mod', 'X'])} onClick={() => (setCtx(null), document.execCommand('cut'))}>
+                    <Ic.Cut size={16} />
+                  </button>
+                )}
+                {hasSel && (
+                  <button title={t('Copy') + '  ' + shortcutLabel(['Mod', 'C'])} onClick={() => (setCtx(null), document.execCommand('copy'))}>
+                    <Ic.Copy size={16} />
+                  </button>
+                )}
+                <button title={t('Paste') + '  ' + shortcutLabel(['Mod', 'V'])} onClick={() => (setCtx(null), void paste(false))}>
+                  <Ic.Paste size={16} />
+                </button>
               </div>
             )}
             {!readOnly && hasSel && (
@@ -713,7 +796,17 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
                 <MenuItem icon={<Ic.Quote />} label={t('Quote')} onClick={() => (setCtx(null), editor.chain().focus().toggleBlockquote().run())} />
               </>
             )}
-            {!readOnly && <MenuItem icon={<Ic.Arrow />} label={t('Move to…')} hint="Ctrl+Alt+M" onClick={() => { setCtx(null); editor.view.dom.dispatchEvent(new CustomEvent('layout-move-menu', { detail: ctx })) }} />}
+            {!readOnly && (
+              <MenuItem
+                icon={<Ic.Arrow />}
+                label={t('Move to…')}
+                hint="Ctrl+Alt+M"
+                onClick={() => {
+                  setCtx(null)
+                  editor.view.dom.dispatchEvent(new CustomEvent('layout-move-menu', { detail: ctx }))
+                }}
+              />
+            )}
             {!readOnly && <MenuItem icon={<Ic.Paste />} label={t('Paste as plain text')} hint="Ctrl+Shift+V" onClick={() => (setCtx(null), void paste(true))} />}
             {!readOnly && <MenuItem icon={<Ic.Code />} label={t('Convert $…$ to formulas')} onClick={() => (setCtx(null), (editor.commands as any).convertFormulas())} />}
             <MenuItem icon={<Ic.SelectAll />} label={t('Select all')} hint="Ctrl+A" onClick={() => (setCtx(null), editor.chain().focus().selectAll().run())} />
@@ -726,20 +819,34 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
         </Popover>
       )}
       {!readOnly && <LayoutControls editor={editor} />}
-      {!readOnly && (() => {
-        const group = activeGroup(editor.state)
-        return group && !validWidths(group.node.attrs.widths, group.node.childCount) ? <p className="layout-width-warning" role="status">{t('Column widths are displayed equally. Open the block menu and choose Equal widths to keep this arrangement.')}</p> : null
-      })()}
-      {contentIssue ? <div className="layout-protection" role="status">
-        <p>{t(contentIssue)}</p>
-        <details><summary>{t('View original page data')}</summary><pre>{JSON.stringify(originalContent, null, 2)}</pre></details>
-      </div> : <EditorContent editor={editor} className="ec" />}
+      {!readOnly &&
+        (() => {
+          const group = activeGroup(editor.state)
+          return group && !validWidths(group.node.attrs.widths, group.node.childCount) ? (
+            <p className="layout-width-warning" role="status">
+              {t('Column widths are displayed equally. Open the block menu and choose Equal widths to keep this arrangement.')}
+            </p>
+          ) : null
+        })()}
+      {contentIssue ? (
+        <div className="layout-protection" role="status">
+          <p>{t(contentIssue)}</p>
+          <details>
+            <summary>{t('View original page data')}</summary>
+            <pre>{JSON.stringify(originalContent, null, 2)}</pre>
+          </details>
+        </div>
+      ) : (
+        <EditorContent editor={editor} className="ec" />
+      )}
 
       {historyOpen && <History page={page} editor={editor} onClose={() => setHistoryOpen(false)} />}
 
       {backs.length > 0 && (
         <section className="backlinks">
-          <div className="backlinks-title">{t('Backlinks')} · {backs.length}</div>
+          <div className="backlinks-title">
+            {t('Backlinks')} · {backs.length}
+          </div>
           {backs.map((b) => (
             <button key={b.id} className="backlink" onClick={() => window.dispatchEvent(new CustomEvent(OPEN_PAGE, { detail: b.id }))}>
               <span className="backlink-ic">{iconNode(b.icon, 15, <Ic.Page size={15} />)}</span>
@@ -763,7 +870,11 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
                 window.dispatchEvent(new Event(PAGES_CHANGED))
               }
               setLinkPick(null)
-              editor.chain().focus().insertContentAt({ from, to }, { type: 'pageLink', attrs: { id: target, label: text.trim() } }).run()
+              editor
+                .chain()
+                .focus()
+                .insertContentAt({ from, to }, { type: 'pageLink', attrs: { id: target, label: text.trim() } })
+                .run()
               onMeta()
             }}
           />
@@ -776,7 +887,11 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
             onPick={(ic) => {
               const g = parseIcon(ic)
               setIconAt(null)
-              editor.chain().focus().insertContent({ type: 'inlineIcon', attrs: { name: g.name, color: g.color ?? null } }).run()
+              editor
+                .chain()
+                .focus()
+                .insertContent({ type: 'inlineIcon', attrs: { name: g.name, color: g.color ?? null } })
+                .run()
             }}
             clearLabel={t('Cancel')}
           />

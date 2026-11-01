@@ -83,7 +83,12 @@ export async function allPages(): Promise<any[]> {
 }
 
 /** Browser batches are transactional; native page files are individually atomic. */
-export async function savePages(upserts: any[], removed: string[], clearFirst: boolean, preconditions?: { expectedVaultId: string; expectedPages?: DocumentWrite['expectedPages']; expectedAll?: Page[] }) {
+export async function savePages(
+  upserts: any[],
+  removed: string[],
+  clearFirst: boolean,
+  preconditions?: { expectedVaultId: string; expectedPages?: DocumentWrite['expectedPages']; expectedAll?: Page[] },
+) {
   if (frozen) throw new Error('Document storage is unavailable')
   if (!preconditions || (!preconditions.expectedPages && !preconditions.expectedAll)) throw new Error('Missing document precondition')
   if (isTauri) {

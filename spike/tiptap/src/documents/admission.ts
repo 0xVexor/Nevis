@@ -33,14 +33,17 @@ export function documentResources(page: Partial<Page> | null, result = new Set<s
   return result
 }
 export function canUseDocumentResource(pages: Page[], canRead: (id: string) => boolean, kind: 'attachment' | 'database', id: string) {
-  return pages.some(page => page.deletedAt === null && canRead(page.id) && documentResources(page).has(`${kind}:${id}`))
+  return pages.some((page) => page.deletedAt === null && canRead(page.id) && documentResources(page).has(`${kind}:${id}`))
 }
 
 /** Only the storage adapter can supply the committed origin of an exact undo. */
 export function undoResources(record: DocumentOperationRecord, origin?: DocumentOperationRecord | null): Set<string> {
   if (!origin || !record.undoOf || origin.operationId !== record.undoOf || origin.scopeId !== record.scopeId || origin.after.id !== record.after.id || !origin.before) return new Set()
   validateOperationRecord(origin)
-  if (canonicalDocumentValue(origin.before.content) !== canonicalDocumentValue(record.after.content)
-    || canonicalDocumentValue(origin.before.cover ?? null) !== canonicalDocumentValue(record.after.cover ?? null)) return new Set()
+  if (
+    canonicalDocumentValue(origin.before.content) !== canonicalDocumentValue(record.after.content) ||
+    canonicalDocumentValue(origin.before.cover ?? null) !== canonicalDocumentValue(record.after.cover ?? null)
+  )
+    return new Set()
   return documentResources(origin.before)
 }

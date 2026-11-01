@@ -61,7 +61,15 @@ export class DatabaseService {
     this.storage = o.storage
     this.state = new DbState(o.vaultId, o.pages)
     this.coord = new Coordinator({ state: this.state, storage: o.storage, pageHost: o.host, deviceId: o.deviceId, now: this.now })
-    this.engine = new WorkflowEngine({ coord: this.coord, runtime: o.runtime ?? new MemoryRuntime(), lease: o.leases ?? new MemoryLeases(), adapters: o.adapters, deviceId: o.deviceId, now: this.now, zone: o.zone })
+    this.engine = new WorkflowEngine({
+      coord: this.coord,
+      runtime: o.runtime ?? new MemoryRuntime(),
+      lease: o.leases ?? new MemoryLeases(),
+      adapters: o.adapters,
+      deviceId: o.deviceId,
+      now: this.now,
+      zone: o.zone,
+    })
     this.coord.subscribe((e) => this.bump(e))
   }
 
@@ -143,5 +151,3 @@ export class DatabaseService {
     return this.state.get(kind, id)
   }
 }
-
-

@@ -51,7 +51,16 @@ export function Toolbar({ editor, diagram }: { editor: any; diagram?: { from: nu
     { key: 'link', icon: <Ic.Link size={16} />, title: t('Link'), on: is('link'), run: link },
     { key: 'at', icon: <Ic.At size={16} />, title: t('Link to page'), run: (c: Chain) => linkSelection(c, editor) },
     { key: 'cb', icon: <span className="tb-tx">{'{ }'}</span>, title: t('Code block'), on: is('codeBlock'), run: (c: Chain) => c.toggleCodeBlock() },
-    ...(diagram ? [{ key: 'diagram', icon: <Ic.Diagram size={16} />, title: t('Turn the selected text into a Mermaid diagram'), run: (c: Chain) => c.insertContentAt({ from: diagram.from, to: diagram.to }, { type: 'mermaid', attrs: { code: diagram.code } }) }] : []),
+    ...(diagram
+      ? [
+          {
+            key: 'diagram',
+            icon: <Ic.Diagram size={16} />,
+            title: t('Turn the selected text into a Mermaid diagram'),
+            run: (c: Chain) => c.insertContentAt({ from: diagram.from, to: diagram.to }, { type: 'mermaid', attrs: { code: diagram.code } }),
+          },
+        ]
+      : []),
     { key: 'undo', icon: <Ic.Undo size={16} />, title: t('Undo  Ctrl+Z'), run: (c: Chain) => c.undo() },
     { key: 'redo', icon: <Ic.Redo size={16} />, title: t('Redo  Ctrl+Y'), run: (c: Chain) => c.redo() },
   ]
@@ -74,7 +83,13 @@ export function Toolbar({ editor, diagram }: { editor: any; diagram?: { from: nu
         <DirMenu editor={editor} />
         <span className="sep" />
         {(['left', 'center', 'right'] as const).map((a) => (
-          <B key={a} label={{ left: <Ic.AlignLeft size={16} />, center: <Ic.AlignCenter size={16} />, right: <Ic.AlignRight size={16} /> }[a]} title={t({ left: 'Align left', center: 'Center', right: 'Align right' }[a])} on={editor.getAttributes('paragraph').textAlign === a || editor.getAttributes('heading').textAlign === a} run={(c) => c.setTextAlign(a)} />
+          <B
+            key={a}
+            label={{ left: <Ic.AlignLeft size={16} />, center: <Ic.AlignCenter size={16} />, right: <Ic.AlignRight size={16} /> }[a]}
+            title={t({ left: 'Align left', center: 'Center', right: 'Align right' }[a])}
+            on={editor.getAttributes('paragraph').textAlign === a || editor.getAttributes('heading').textAlign === a}
+            run={(c) => c.setTextAlign(a)}
+          />
         ))}
         <span className="sep" />
         {compact ? <MoreMenu editor={editor} items={extras} /> : extras.map(({ key, icon, title, on, run }) => <B key={key} label={icon} title={title} on={on} run={run} />)}
@@ -94,7 +109,13 @@ function MoreMenu({ editor, items }: { editor: any; items: { key: string; icon: 
       {open && (
         <div className="tb-menu" role="menu">
           {items.map((it) => (
-            <button key={it.key} className={'tb-mi' + (it.on ? ' on' : '')} role="menuitem" onMouseDown={(e) => e.preventDefault()} onClick={() => (it.run(editor.chain().focus()).run(), setOpen(false))}>
+            <button
+              key={it.key}
+              className={'tb-mi' + (it.on ? ' on' : '')}
+              role="menuitem"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => (it.run(editor.chain().focus()).run(), setOpen(false))}
+            >
               <span className="tb-mi-ic">{it.icon}</span>
               <span className="tb-mi-l">{it.title}</span>
             </button>
@@ -127,16 +148,28 @@ function DirMenu({ editor }: { editor: any }) {
   const pick = (d: 'ltr' | 'rtl') => (editor.chain().focus().setDirection(d).run(), setOpen(false))
   const Item = ({ d, label }: { d: 'ltr' | 'rtl'; label: string }) => (
     <button className={'tb-mi' + (cur === d ? ' on' : '')} role="menuitem" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(d)}>
-      <span className="tb-mi-ic"><Ic.Direction size={16} /></span>
+      <span className="tb-mi-ic">
+        <Ic.Direction size={16} />
+      </span>
       <span className="tb-mi-l">{label}</span>
       {cur === d && <Ic.Check size={14} />}
     </button>
   )
   return (
     <div className="tb-dd" ref={ref}>
-      <button className={open ? 'on' : ''} title={t('Line direction')} aria-label={t('Line direction')} aria-haspopup="menu" aria-expanded={open} onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen(!open)}>
+      <button
+        className={open ? 'on' : ''}
+        title={t('Line direction')}
+        aria-label={t('Line direction')}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen(!open)}
+      >
         <Ic.Direction size={16} />
-        <span className="tb-chev"><Ic.Chevron size={12} /></span>
+        <span className="tb-chev">
+          <Ic.Chevron size={12} />
+        </span>
       </button>
       {open && (
         <div className="tb-menu" role="menu">
@@ -179,7 +212,9 @@ function TableMenu({ editor }: { editor: any }) {
               return <span key={i} className={r <= hover.r && c <= hover.c ? 'on' : ''} onMouseEnter={() => setHover({ r, c })} onMouseDown={(e) => e.preventDefault()} onClick={() => insert(r, c)} />
             })}
           </div>
-          <div className="tb-grid-size">{hover.r} × {hover.c}</div>
+          <div className="tb-grid-size">
+            {hover.r} × {hover.c}
+          </div>
           <div className="tb-msep" />
           <Item icon={<Ic.Table size={16} />} label={t('Insert table')} onClick={() => insert(hover.r, hover.c)} />
           <Item icon={<Ic.Plus size={16} />} label={t('Insert row above')} off={!inTable} onClick={() => run((c) => c.addRowBefore())} />

@@ -23,7 +23,7 @@ export function allTags(pages: Page[]): string[] {
   return [...seen.values()].sort((a, b) => a.localeCompare(b, 'fa'))
 }
 
-const textOf = (n: any): string => (!n || typeof n === 'string' ? '' : n.text ?? (n.content ?? []).map(textOf).join(' '))
+const textOf = (n: any): string => (!n || typeof n === 'string' ? '' : (n.text ?? (n.content ?? []).map(textOf).join(' ')))
 
 export function wordCount(content: any): number {
   const t = textOf(content).trim()

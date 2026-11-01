@@ -28,7 +28,7 @@ export async function hydrate(root: HTMLElement) {
     const widths = JSON.parse(group.getAttribute('data-widths') || 'null')
     const count = group.children.length
     const usable = group.clientWidth - (count - 1) * 24
-    const stacked = Array.isArray(widths) && widths.length === count ? widths.some((w: number) => usable * w / 100 < 180) : usable / count < 180
+    const stacked = Array.isArray(widths) && widths.length === count ? widths.some((w: number) => (usable * w) / 100 < 180) : usable / count < 180
     group.style.gridTemplateColumns = stacked ? 'minmax(0, 1fr)' : 'var(--layout-tracks)'
   }
   for (const img of Array.from(root.querySelectorAll<HTMLImageElement>('img[src^="att:"]'))) {
@@ -53,6 +53,6 @@ export async function hydrate(root: HTMLElement) {
   }
   for (const el of Array.from(root.querySelectorAll<HTMLElement>('[data-type="mermaid"]'))) {
     const r = await renderDiagram(el.getAttribute('data-code') ?? '')
-    if ('svg' in r) (el.innerHTML = r.svg, el.classList.add('mermaid-view'))
+    if ('svg' in r) ((el.innerHTML = r.svg), el.classList.add('mermaid-view'))
   }
 }

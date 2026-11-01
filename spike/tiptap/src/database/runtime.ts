@@ -54,18 +54,34 @@ export function getDatabase(): Promise<DatabaseService> {
     const vaultId = isTauri ? (await vaultInfo()).id : 'browser'
     const storage = isTauri ? new TauriStorage((cmd, args) => invoke(cmd, args)) : new IdbStorage(db)
     const svc = new DatabaseService({
-      vaultId, storage, pages, host, deviceId: deviceId(), zone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-      runtime: storage.runtime(), adapters, weekStart: weekStart(),
+      vaultId,
+      storage,
+      pages,
+      host,
+      deviceId: deviceId(),
+      zone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      runtime: storage.runtime(),
+      adapters,
+      weekStart: weekStart(),
     })
     await svc.open()
     instance = svc
     window.addEventListener('external-change', (e) => void svc.reloadExternal((e as CustomEvent<string[]>).detail))
     if (storage instanceof IdbStorage) {
-      storage.onExternal(() => void repo.refreshFromStore().then(() => svc.reloadExternal()).catch((err) => console.error('database refresh', err)))
+      storage.onExternal(
+        () =>
+          void repo
+            .refreshFromStore()
+            .then(() => svc.reloadExternal())
+            .catch((err) => console.error('database refresh', err)),
+      )
     }
     startJobs(svc)
     return svc
-  })().catch(error => { starting = null; throw error }))
+  })().catch((error) => {
+    starting = null
+    throw error
+  }))
 }
 
 /** The service if it has been started (for code that must not wait, e.g. the graph). */
@@ -93,7 +109,9 @@ async function fireReminders(svc: DatabaseService) {
     window.dispatchEvent(new CustomEvent(REMINDER_EVENT, { detail: r }))
     try {
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') new Notification(r.title || r.propertyName, { body: r.propertyName })
-    } catch { /* notifications are optional */ }
+    } catch {
+      /* notifications are optional */
+    }
   }
 }
 export const REMINDER_EVENT = 'db-reminder'
@@ -107,7 +125,8 @@ function startJobs(svc: DatabaseService) {
       await svc.engine.dispatchOutbox()
       await fireReminders(svc)
       await pullGateway(svc)
-      if (svc.state.live('template').some((t) => t.repeat)) await svc.exec([{ type: 'template.run_repeats', payload: {} }], { operationId: `repeats:${Math.floor(Date.now() / JOB_EVERY)}`, origin: 'automation' })
+      if (svc.state.live('template').some((t) => t.repeat))
+        await svc.exec([{ type: 'template.run_repeats', payload: {} }], { operationId: `repeats:${Math.floor(Date.now() / JOB_EVERY)}`, origin: 'automation' })
     } catch (e) {
       console.error('database jobs', e)
     }

@@ -16,7 +16,13 @@ export interface BackupSummary {
   bytes: number
 }
 
-export interface PreparedFile { id: string; type: string; name: string; size: number; blob: Blob }
+export interface PreparedFile {
+  id: string
+  type: string
+  name: string
+  size: number
+  blob: Blob
+}
 
 export interface BackupPlan {
   summary: BackupSummary
@@ -54,18 +60,33 @@ export async function inspectBackup(text: string): Promise<BackupPlan> {
         const p = JSON.parse(atob(data.entries[n].data))
         if (p?.kind === 'folder') folders++
         if (p?.deletedAt) trashed++
-      } catch { /* counted as a page; the vault validates it when it opens */ }
+      } catch {
+        /* counted as a page; the vault validates it when it opens */
+      }
     }
     const files = names.filter((n) => /^files\/[^/]+\/[^/.]+$/.test(n)).length
-    return { summary: { kind: 'vault', version: 2, createdAt: dateOf(data.created_at), name: typeof data.name === 'string' ? data.name : undefined, pages: pageFiles.length - folders, folders, trashed, files, bytes }, data, prepared: [] }
+    return {
+      summary: {
+        kind: 'vault',
+        version: 2,
+        createdAt: dateOf(data.created_at),
+        name: typeof data.name === 'string' ? data.name : undefined,
+        pages: pageFiles.length - folders,
+        folders,
+        trashed,
+        files,
+        bytes,
+      },
+      data,
+      prepared: [],
+    }
   }
 
   if (data?.format !== FORMAT || ![1, 2].includes(data.version) || !Array.isArray(data.pages) || !Array.isArray(data.files))
     throw new BackupError(t('This is not a backup of this app, or its version is not supported.'))
   const ids = new Set<string>()
   for (const p of data.pages) {
-    if (typeof p?.id !== 'string' || typeof p.title !== 'string' || !p.content || ids.has(p.id))
-      throw new BackupError(t('The page structure is corrupted.'))
+    if (typeof p?.id !== 'string' || typeof p.title !== 'string' || !p.content || ids.has(p.id)) throw new BackupError(t('The page structure is corrupted.'))
     ids.add(p.id)
   }
   for (const p of data.pages) if (p.parentId && !ids.has(p.parentId)) throw new BackupError(t('A page has no parent.'))
@@ -74,7 +95,8 @@ export async function inspectBackup(text: string): Promise<BackupPlan> {
   const prepared: PreparedFile[] = []
   const fileIds = new Set<string>()
   for (const f of data.files) {
-    if (typeof f.id !== 'string' || !/^[a-f0-9]{64}$/.test(f.id) || fileIds.has(f.id) || typeof f.data !== 'string' || typeof f.type !== 'string' || typeof f.name !== 'string') throw new BackupError(t('The attachment structure is corrupted.'))
+    if (typeof f.id !== 'string' || !/^[a-f0-9]{64}$/.test(f.id) || fileIds.has(f.id) || typeof f.data !== 'string' || typeof f.type !== 'string' || typeof f.name !== 'string')
+      throw new BackupError(t('The attachment structure is corrupted.'))
     const blob = fromBase64(f.data, f.type)
     if (blob.size !== f.size || (await digest(await blob.arrayBuffer())) !== f.id) throw new BackupError(t('An attachment failed verification.'))
     fileIds.add(f.id)
@@ -82,8 +104,10 @@ export async function inspectBackup(text: string): Promise<BackupPlan> {
   }
 
   if (data.version === 2) {
-    if (typeof data.recordsHash !== 'string' || (await digest(new TextEncoder().encode(JSON.stringify(data.records)))) !== data.recordsHash) throw new BackupError(t('The backup records are corrupted.'))
-    if (!data.records || Object.keys(data.records).some((k) => !STORES.includes(k)) || STORES.some((k) => !Array.isArray(data.records[k]))) throw new BackupError(t('The backup records are corrupted.'))
+    if (typeof data.recordsHash !== 'string' || (await digest(new TextEncoder().encode(JSON.stringify(data.records)))) !== data.recordsHash)
+      throw new BackupError(t('The backup records are corrupted.'))
+    if (!data.records || Object.keys(data.records).some((k) => !STORES.includes(k)) || STORES.some((k) => !Array.isArray(data.records[k])))
+      throw new BackupError(t('The backup records are corrupted.'))
     for (const rows of Object.values(data.records) as { key: IDBValidKey; value: unknown }[][]) {
       const keys = new Set<string>()
       for (const row of rows) {

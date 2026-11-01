@@ -65,8 +65,14 @@ export const AttImage = Image.extend({
       const sizeBtns = WIDTHS.map((w) => btn(`${w}%`, t('Width {w}%', { w }), () => setAttrs({ width: w === 100 ? 100 : w })))
       const reset = btn(svgIcon.reset, t('Original size'), () => setAttrs({ width: null }))
       // physical sides (what "left" and "right" mean on screen); clicking the active one returns to the natural position
-      const aligns: [ImageAlign, string][] = [['left', t('Align left')], ['center', t('Center')], ['right', t('Align right')]]
-      const alignBtns = aligns.map(([a, title]) => btn({ left: svgIcon.left, center: svgIcon.center, right: svgIcon.right, start: '', end: '' }[a], title, () => setAttrs({ align: cur.attrs.align === a ? null : a })))
+      const aligns: [ImageAlign, string][] = [
+        ['left', t('Align left')],
+        ['center', t('Center')],
+        ['right', t('Align right')],
+      ]
+      const alignBtns = aligns.map(([a, title]) =>
+        btn({ left: svgIcon.left, center: svgIcon.center, right: svgIcon.right, start: '', end: '' }[a], title, () => setAttrs({ align: cur.attrs.align === a ? null : a })),
+      )
       const big = btn(svgIcon.enlarge, t('Enlarge'), () => img.src && openLightbox({ src: img.src, alt: cur.attrs.alt }))
       big.classList.add('img-big')
       const del = btn(svgIcon.close, t('Remove image'), () => {

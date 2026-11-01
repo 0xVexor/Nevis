@@ -113,53 +113,60 @@ const Direction = Extension.create({
     ]
   },
   addCommands() {
-    const setDirection = (dir: string) => ({ state, tr, dispatch }: any) => {
-      const { from, to } = state.selection
-      state.doc.nodesBetween(from, to, (node: any, pos: number) => {
-        if ([...LEAF, ...CONTAINER].includes(node.type.name) && node.type.name !== 'table') {
-          tr.setNodeMarkup(pos, undefined, { ...node.attrs, dir })
-        }
-      })
-      if (dispatch) dispatch(tr)
-      return true
-    }
-    const setTableDirection = (dir: string) => ({ state, tr, dispatch }: any) => {
-      const { $from } = state.selection
-      for (let d = $from.depth; d > 0; d--) {
-        if ($from.node(d).type.name === 'table') {
-          tr.setNodeMarkup($from.before(d), undefined, { ...$from.node(d).attrs, dir })
-          if (dispatch) dispatch(tr)
-          return true
-        }
+    const setDirection =
+      (dir: string) =>
+      ({ state, tr, dispatch }: any) => {
+        const { from, to } = state.selection
+        state.doc.nodesBetween(from, to, (node: any, pos: number) => {
+          if ([...LEAF, ...CONTAINER].includes(node.type.name) && node.type.name !== 'table') {
+            tr.setNodeMarkup(pos, undefined, { ...node.attrs, dir })
+          }
+        })
+        if (dispatch) dispatch(tr)
+        return true
       }
-      return false
-    }
+    const setTableDirection =
+      (dir: string) =>
+      ({ state, tr, dispatch }: any) => {
+        const { $from } = state.selection
+        for (let d = $from.depth; d > 0; d--) {
+          if ($from.node(d).type.name === 'table') {
+            tr.setNodeMarkup($from.before(d), undefined, { ...$from.node(d).attrs, dir })
+            if (dispatch) dispatch(tr)
+            return true
+          }
+        }
+        return false
+      }
     // patch the table the caret (or a cell selection) is in
-    const patchTable = (patch: (attrs: any) => any) => ({ state, tr, dispatch }: any) => {
-      const { $from } = state.selection
-      for (let d = $from.depth; d > 0; d--) {
-        if ($from.node(d).type.name === 'table') {
-          tr.setNodeMarkup($from.before(d), undefined, { ...$from.node(d).attrs, ...patch($from.node(d).attrs) })
-          if (dispatch) dispatch(tr)
-          return true
+    const patchTable =
+      (patch: (attrs: any) => any) =>
+      ({ state, tr, dispatch }: any) => {
+        const { $from } = state.selection
+        for (let d = $from.depth; d > 0; d--) {
+          if ($from.node(d).type.name === 'table') {
+            tr.setNodeMarkup($from.before(d), undefined, { ...$from.node(d).attrs, ...patch($from.node(d).attrs) })
+            if (dispatch) dispatch(tr)
+            return true
+          }
         }
+        return false
       }
-      return false
-    }
     const setTableWidth = (w: number | null) => patchTable(() => ({ tableWidth: w && w < 100 ? w : null }))
     // a full-width table has nowhere to move to, so choosing a side also narrows it to 75 %
-    const setTableAlign = (a: 'left' | 'center' | 'right' | null) =>
-      patchTable((attrs) => ({ tableAlign: a, ...(a && !attrs.tableWidth ? { tableWidth: 75 } : {}) }))
+    const setTableAlign = (a: 'left' | 'center' | 'right' | null) => patchTable((attrs) => ({ tableAlign: a, ...(a && !attrs.tableWidth ? { tableWidth: 75 } : {}) }))
     // paragraphs and headings in the selection; choosing the side that is already set clears it
-    const setTextAlign = (a: 'left' | 'center' | 'right' | 'justify') => ({ state, tr, dispatch }: any) => {
-      const { from, to } = state.selection
-      const nodes: [any, number][] = []
-      state.doc.nodesBetween(from, to, (node: any, pos: number) => void (([...LEAF, 'codeBlock'].includes(node.type.name)) && nodes.push([node, pos])))
-      const clear = nodes.length > 0 && nodes.every(([n]) => n.attrs.textAlign === a)
-      for (const [node, pos] of nodes) tr.setNodeMarkup(pos, undefined, { ...node.attrs, textAlign: clear ? null : a })
-      if (dispatch) dispatch(tr)
-      return nodes.length > 0
-    }
+    const setTextAlign =
+      (a: 'left' | 'center' | 'right' | 'justify') =>
+      ({ state, tr, dispatch }: any) => {
+        const { from, to } = state.selection
+        const nodes: [any, number][] = []
+        state.doc.nodesBetween(from, to, (node: any, pos: number) => void ([...LEAF, 'codeBlock'].includes(node.type.name) && nodes.push([node, pos])))
+        const clear = nodes.length > 0 && nodes.every(([n]) => n.attrs.textAlign === a)
+        for (const [node, pos] of nodes) tr.setNodeMarkup(pos, undefined, { ...node.attrs, textAlign: clear ? null : a })
+        if (dispatch) dispatch(tr)
+        return nodes.length > 0
+      }
     return { setDirection, setTableDirection, setTableWidth, setTableAlign, setTextAlign } as any
   },
   // Word's shortcut: left Ctrl + left Shift = LTR, right Ctrl + right Shift = RTL. It fires when the two keys are

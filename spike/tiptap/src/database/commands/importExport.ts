@@ -14,7 +14,9 @@ import type { Draft } from './draft.ts'
 import type { Cell } from '../model/types.ts'
 
 const draftWorld = (d: Draft): ImportWorld => ({
-  props: (s) => d.props(s), row: (id) => d.row(id), relationOf: (id) => d.relationOf(id),
+  props: (s) => d.props(s),
+  row: (id) => d.row(id),
+  relationOf: (id) => d.relationOf(id),
   titlesIn: (s) => d.rowsOf(s).map((r) => ({ id: r.page.id, title: r.page.title })),
 })
 
@@ -103,10 +105,17 @@ register('backup.restore', (cx, p: { bundle: Bundle; expectedManifestHash: strin
   for (const kind of RECORD_KINDS) {
     if (p.mode === 'replace' && retain && SECURITY_KINDS.includes(kind)) {
       // keep current security state; add only principals / grants that do not exist yet so references from restored data resolve
-      for (const r of (records[kind] ?? []) as unknown as { id: Id }[]) if (!cx.d.get(kind, r.id)) { cx.d.add(kind, structuredClone(r) as never); n++ }
+      for (const r of (records[kind] ?? []) as unknown as { id: Id }[])
+        if (!cx.d.get(kind, r.id)) {
+          cx.d.add(kind, structuredClone(r) as never)
+          n++
+        }
       continue
     }
-    for (const r of (records[kind] ?? []) as unknown as { id: Id }[]) { cx.d.add(kind, structuredClone(r) as never); n++ }
+    for (const r of (records[kind] ?? []) as unknown as { id: Id }[]) {
+      cx.d.add(kind, structuredClone(r) as never)
+      n++
+    }
   }
   return { restored: n }
 })

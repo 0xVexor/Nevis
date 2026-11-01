@@ -14,9 +14,14 @@ export function Dialog({ open, title, onClose, children, actions }: { open: bool
     if (!open) return
     const before = document.activeElement as HTMLElement | null
     box.current?.querySelector<HTMLElement>('input, textarea, select, button')?.focus()
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') (e.stopPropagation(), close.current()) }
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') (e.stopPropagation(), close.current())
+    }
     window.addEventListener('keydown', key, true)
-    return () => { window.removeEventListener('keydown', key, true); before?.focus?.() }
+    return () => {
+      window.removeEventListener('keydown', key, true)
+      before?.focus?.()
+    }
   }, [open])
   if (!open) return null
   return createPortal(
@@ -34,5 +39,9 @@ export function Dialog({ open, title, onClose, children, actions }: { open: bool
 
 /** A short label on hover or keyboard focus. Wraps one control; the control keeps its own accessible name. */
 export function Tooltip({ label, children }: { label: string; children: ReactNode }) {
-  return <span className="ds-tip" data-tip={label}>{children}</span>
+  return (
+    <span className="ds-tip" data-tip={label}>
+      {children}
+    </span>
+  )
 }

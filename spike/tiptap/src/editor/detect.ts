@@ -19,7 +19,12 @@ const JS: Sig[] = [
 ]
 
 const SIGS: Record<string, Sig[]> = {
-  php: [[/<\?php/, 6], [/\$\w+\s*=/, 1], [/\b(echo|foreach)\b/, 1], [/->\w+\(/, 1]],
+  php: [
+    [/<\?php/, 6],
+    [/\$\w+\s*=/, 1],
+    [/\b(echo|foreach)\b/, 1],
+    [/->\w+\(/, 1],
+  ],
   java: [
     [/\bpublic\s+(static\s+)?(final\s+)?(class|interface|enum|void|int|String|boolean)\b/, 3],
     [/System\.(out|err)\.\w+/, 5],
@@ -128,7 +133,11 @@ const SIGS: Record<string, Sig[]> = {
     [/\b(color|margin|padding|display|font-size|font-family|background(-color)?|border(-radius)?|width|height)\s*:/, 2],
     [/@media\b|@import\b|@keyframes\b|@font-face\b/, 3],
   ],
-  diff: [[/^@@ .* @@/m, 6], [/^(\+\+\+|---) \S/m, 4], [/^[+-]\s*\S.*\n[+-]\s*\S/m, 1]],
+  diff: [
+    [/^@@ .* @@/m, 6],
+    [/^(\+\+\+|---) \S/m, 4],
+    [/^[+-]\s*\S.*\n[+-]\s*\S/m, 1],
+  ],
 }
 
 const ORDER = Object.keys(SIGS)

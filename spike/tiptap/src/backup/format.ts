@@ -38,7 +38,10 @@ export async function digest(bytes: BufferSource): Promise<string> {
 }
 
 export function request<T>(r: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => { r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error) })
+  return new Promise((resolve, reject) => {
+    r.onsuccess = () => resolve(r.result)
+    r.onerror = () => reject(r.error)
+  })
 }
 
 /** 2026-11-01_10-55: sortable, and safe in a file name. */

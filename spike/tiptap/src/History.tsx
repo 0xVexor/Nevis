@@ -33,11 +33,25 @@ export function History({ page, editor, onClose }: { page: Page; editor: any; on
     const issue = contentProblem(v.content, editor.schema)
     if (issue) return void alertDialog({ title: t('Restore this version'), message: t(issue) })
     const before = editor.state.doc
-    if (!(await confirmDialog({ title: t('Restore this version'), message: t('Replace the current content of this page with this version? The current content is saved as a version first.'), confirmLabel: t('Restore') }))) return
+    if (
+      !(await confirmDialog({
+        title: t('Restore this version'),
+        message: t('Replace the current content of this page with this version? The current content is saved as a version first.'),
+        confirmLabel: t('Restore'),
+      }))
+    )
+      return
     if (!editor.isEditable || editor.isDestroyed) return
     if (editor.state.doc !== before) return void alertDialog({ title: t('Restore this version'), message: t('The page changed while the dialog was open. Please try again.') })
     await addVersion({ pageId: page.id, ts: Date.now(), title: page.title, content: editor.getJSON() })
-    editor.chain().command(({ tr }: any) => { structural(tr); return true }).setContent(v.content).run()
+    editor
+      .chain()
+      .command(({ tr }: any) => {
+        structural(tr)
+        return true
+      })
+      .setContent(v.content)
+      .run()
     onClose()
   }
 
@@ -49,7 +63,9 @@ export function History({ page, editor, onClose }: { page: Page; editor: any; on
             <b>{t('Version history')}</b>
             <small>{t('A version is saved automatically when you start editing, at most every 10 minutes.')}</small>
           </div>
-          <button className="icon-btn" onClick={onClose} title={t('Close')}><Ic.Close size={16} /></button>
+          <button className="icon-btn" onClick={onClose} title={t('Close')}>
+            <Ic.Close size={16} />
+          </button>
         </div>
         <div className="hist-body">
           <div className="hist-list">
@@ -59,15 +75,25 @@ export function History({ page, editor, onClose }: { page: Page; editor: any; on
               versions.map((x, i) => (
                 <button key={x.ts} className={'hist-row' + (i === sel ? ' sel' : '')} onClick={() => setSel(i)}>
                   <b>{new Date(x.ts).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</b>
-                  <small>{ago(x.ts)} · {t('{n} words', { n: words(x.content) })}</small>
+                  <small>
+                    {ago(x.ts)} · {t('{n} words', { n: words(x.content) })}
+                  </small>
                 </button>
               ))
             )}
           </div>
           <div className="hist-preview">
-            {v && <div className="hist-title" dir="auto">{v.title || t('Untitled')}</div>}
+            {v && (
+              <div className="hist-title" dir="auto">
+                {v.title || t('Untitled')}
+              </div>
+            )}
             <div className="tiptap" ref={preview} dangerouslySetInnerHTML={{ __html: html }} />
-            {v && <button className="primary hist-restore" disabled={!editor.isEditable} onClick={restore}>{t('Restore this version')}</button>}
+            {v && (
+              <button className="primary hist-restore" disabled={!editor.isEditable} onClick={restore}>
+                {t('Restore this version')}
+              </button>
+            )}
           </div>
         </div>
       </div>

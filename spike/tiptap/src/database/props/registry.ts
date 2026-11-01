@@ -26,7 +26,12 @@ export interface Descriptor {
 }
 
 const D = (kind: Kind, storage: Storage, writable: boolean, cellKind: Cell['kind'] | null, valueClass: ValueClass, queryable = true): Descriptor => ({
-  kind, storage, writable, cellKind, valueClass, queryable,
+  kind,
+  storage,
+  writable,
+  cellKind,
+  valueClass,
+  queryable,
 })
 
 export const DESCRIPTORS: Record<Kind, Descriptor> = {
@@ -57,7 +62,6 @@ export const DESCRIPTORS: Record<Kind, Descriptor> = {
   connected: D('connected', 'cell', true, 'connected', 'derived'),
 }
 
-
 /** Operators per value class (handoff §10 table). */
 export const OPS: Record<ValueClass, string[]> = {
   text: ['equals', 'not_equals', 'contains', 'not_contains', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty'],
@@ -77,21 +81,34 @@ export const OPS: Record<ValueClass, string[]> = {
 /** New-property default cell (handoff §7). Relations / computed / system kinds have no stored cell. */
 export function defaultCell(def: Definition): Cell | undefined {
   switch (def.kind) {
-    case 'text': return { kind: 'text', runs: [] }
-    case 'number': return { kind: 'number', value: null }
-    case 'select': return { kind: 'select', optionId: null }
-    case 'multi_select': return { kind: 'multi_select', optionIds: [] }
-    case 'status': return { kind: 'status', optionId: cfgOf.status(def).defaultOptionId }
-    case 'date': return { kind: 'date', value: null }
-    case 'people': return { kind: 'people', principalIds: [] }
-    case 'files': return { kind: 'files', attachmentIds: [] }
-    case 'checkbox': return { kind: 'checkbox', value: false }
+    case 'text':
+      return { kind: 'text', runs: [] }
+    case 'number':
+      return { kind: 'number', value: null }
+    case 'select':
+      return { kind: 'select', optionId: null }
+    case 'multi_select':
+      return { kind: 'multi_select', optionIds: [] }
+    case 'status':
+      return { kind: 'status', optionId: cfgOf.status(def).defaultOptionId }
+    case 'date':
+      return { kind: 'date', value: null }
+    case 'people':
+      return { kind: 'people', principalIds: [] }
+    case 'files':
+      return { kind: 'files', attachmentIds: [] }
+    case 'checkbox':
+      return { kind: 'checkbox', value: false }
     case 'url':
     case 'email':
-    case 'phone': return { kind: def.kind, value: null }
-    case 'place': return { kind: 'place', value: null }
-    case 'verification': return { kind: 'verification', value: { state: 'unverified', verifierId: null, verifiedAt: null, expiresAt: null } }
-    default: return undefined
+    case 'phone':
+      return { kind: def.kind, value: null }
+    case 'place':
+      return { kind: 'place', value: null }
+    case 'verification':
+      return { kind: 'verification', value: { state: 'unverified', verifierId: null, verifiedAt: null, expiresAt: null } }
+    default:
+      return undefined
   }
 }
 
@@ -101,21 +118,34 @@ export function defaultCell(def: Definition): Cell | undefined {
 export function isEmptyCell(cell: Cell | undefined): boolean {
   if (!cell) return true
   switch (cell.kind) {
-    case 'text': return runsToText(cell.runs).length === 0
-    case 'number': return cell.value === null
-    case 'select': return cell.optionId === null
-    case 'multi_select': return cell.optionIds.length === 0
-    case 'status': return !cell.optionId
-    case 'date': return cell.value === null
-    case 'people': return cell.principalIds.length === 0
-    case 'files': return cell.attachmentIds.length === 0
-    case 'checkbox': return false
+    case 'text':
+      return runsToText(cell.runs).length === 0
+    case 'number':
+      return cell.value === null
+    case 'select':
+      return cell.optionId === null
+    case 'multi_select':
+      return cell.optionIds.length === 0
+    case 'status':
+      return !cell.optionId
+    case 'date':
+      return cell.value === null
+    case 'people':
+      return cell.principalIds.length === 0
+    case 'files':
+      return cell.attachmentIds.length === 0
+    case 'checkbox':
+      return false
     case 'url':
     case 'email':
-    case 'phone': return cell.value === null || cell.value.length === 0
-    case 'place': return cell.value === null
-    case 'verification': return cell.value.state === 'unverified'
-    case 'connected': return cell.value === null
+    case 'phone':
+      return cell.value === null || cell.value.length === 0
+    case 'place':
+      return cell.value === null
+    case 'verification':
+      return cell.value.state === 'unverified'
+    case 'connected':
+      return cell.value === null
   }
 }
 
@@ -170,7 +200,7 @@ function validPlace(p: Place): Place {
   return out
 }
 
-const dedupe = <T,>(a: T[]) => [...new Set(a)]
+const dedupe = <T>(a: T[]) => [...new Set(a)]
 
 /** Normalize and validate a cell against its definition. Throws INVALID_VALUE / SCHEMA_MISMATCH; never silently coerces. */
 export function validateCell(def: Definition, cell: Cell): Cell {
@@ -178,7 +208,8 @@ export function validateCell(def: Definition, cell: Cell): Cell {
   if (!want) return fail('INVALID_VALUE', `${def.kind} properties have no writable cell`, { propertyId: def.id })
   if (!cell || cell.kind !== want) return fail('INVALID_VALUE', `expected a ${want} value for ${def.name}`, { propertyId: def.id })
   switch (cell.kind) {
-    case 'text': return { kind: 'text', runs: cleanRuns(cell.runs) }
+    case 'text':
+      return { kind: 'text', runs: cleanRuns(cell.runs) }
     case 'number': {
       if (cell.value !== null && (typeof cell.value !== 'number' || !Number.isFinite(cell.value))) return fail('INVALID_VALUE', 'number must be finite', { propertyId: def.id })
       return { kind: 'number', value: cell.value }
@@ -197,13 +228,15 @@ export function validateCell(def: Definition, cell: Cell): Cell {
       if (!optionsOf(def).some((o) => o.id === cell.optionId)) return fail('INVALID_VALUE', 'unknown status option', { propertyId: def.id })
       return cell
     }
-    case 'date': return { kind: 'date', value: cell.value === null ? null : normalizeDate(cell.value) }
+    case 'date':
+      return { kind: 'date', value: cell.value === null ? null : normalizeDate(cell.value) }
     case 'people': {
       const ids = dedupe(cell.principalIds)
       if (!cfgOf.people(def).multiple && ids.length > 1) return fail('INVALID_VALUE', 'this property allows one person', { propertyId: def.id })
       return { kind: 'people', principalIds: ids }
     }
-    case 'files': return { kind: 'files', attachmentIds: dedupe(cell.attachmentIds) }
+    case 'files':
+      return { kind: 'files', attachmentIds: dedupe(cell.attachmentIds) }
     case 'checkbox': {
       if (typeof cell.value !== 'boolean') return fail('INVALID_VALUE', 'checkbox must be true or false', { propertyId: def.id })
       return cell
@@ -229,9 +262,12 @@ export function validateCell(def: Definition, cell: Cell): Cell {
       if (!PHONE_RE.test(asciiDigits(v))) return fail('INVALID_VALUE', `invalid phone number: ${v}`, { propertyId: def.id })
       return { kind: 'phone', value: v }
     }
-    case 'place': return { kind: 'place', value: cell.value === null ? null : validPlace(cell.value) }
-    case 'verification': return { kind: 'verification', value: validVerification(cell.value) }
-    case 'connected': return { kind: 'connected', value: cell.value === null ? null : validConnected(def, cell.value) }
+    case 'place':
+      return { kind: 'place', value: cell.value === null ? null : validPlace(cell.value) }
+    case 'verification':
+      return { kind: 'verification', value: validVerification(cell.value) }
+    case 'connected':
+      return { kind: 'connected', value: cell.value === null ? null : validConnected(def, cell.value) }
   }
 }
 
@@ -239,7 +275,8 @@ function validConnected(def: Definition, v: ConnectedValue): ConnectedValue {
   const want = (def.config as { providerId?: string }).providerId
   const ref = parseReference(v.canonicalUrl, want)
   if (!ref || ref.externalId !== v.externalId || ref.provider !== v.provider) return fail('INVALID_VALUE', 'this link does not belong to the provider of this property', { propertyId: def.id })
-  if (v.cache !== null && (typeof v.cache.fetchedAt !== 'number' || typeof v.cache.providerRevision !== 'string' || typeof v.cache.fields !== 'object')) return fail('INVALID_VALUE', 'malformed provider cache', { propertyId: def.id })
+  if (v.cache !== null && (typeof v.cache.fetchedAt !== 'number' || typeof v.cache.providerRevision !== 'string' || typeof v.cache.fields !== 'object'))
+    return fail('INVALID_VALUE', 'malformed provider cache', { propertyId: def.id })
   return { provider: ref.provider, externalId: ref.externalId, canonicalUrl: ref.canonicalUrl, cache: v.cache, ...(v.status ? { status: v.status } : {}) }
 }
 
@@ -270,21 +307,37 @@ export function dateToText(v: DateValue): string {
 export function cellToText(def: Definition, cell: Cell | undefined, ctx: TextCtx = {}): string {
   if (!cell) return ''
   switch (cell.kind) {
-    case 'text': return runsToText(cell.runs)
-    case 'number': return cell.value === null ? '' : String(cell.value)
-    case 'select': return optionName(def, cell.optionId)
-    case 'multi_select': return cell.optionIds.map((i) => optionName(def, i)).filter(Boolean).join(', ')
-    case 'status': return optionName(def, cell.optionId)
-    case 'date': return cell.value ? dateToText(cell.value) : ''
-    case 'people': return cell.principalIds.map((i) => ctx.personName?.(i) ?? i).join(', ')
-    case 'files': return cell.attachmentIds.map((i) => ctx.fileName?.(i) ?? i).join(', ')
-    case 'checkbox': return cell.value ? 'true' : 'false'
+    case 'text':
+      return runsToText(cell.runs)
+    case 'number':
+      return cell.value === null ? '' : String(cell.value)
+    case 'select':
+      return optionName(def, cell.optionId)
+    case 'multi_select':
+      return cell.optionIds
+        .map((i) => optionName(def, i))
+        .filter(Boolean)
+        .join(', ')
+    case 'status':
+      return optionName(def, cell.optionId)
+    case 'date':
+      return cell.value ? dateToText(cell.value) : ''
+    case 'people':
+      return cell.principalIds.map((i) => ctx.personName?.(i) ?? i).join(', ')
+    case 'files':
+      return cell.attachmentIds.map((i) => ctx.fileName?.(i) ?? i).join(', ')
+    case 'checkbox':
+      return cell.value ? 'true' : 'false'
     case 'url':
     case 'email':
-    case 'phone': return cell.value ?? ''
-    case 'place': return cell.value ? [cell.value.name, cell.value.address].filter(Boolean).join(' — ') : ''
-    case 'verification': return cell.value.state
-    case 'connected': return connectedText(cell)
+    case 'phone':
+      return cell.value ?? ''
+    case 'place':
+      return cell.value ? [cell.value.name, cell.value.address].filter(Boolean).join(' — ') : ''
+    case 'verification':
+      return cell.value.state
+    case 'connected':
+      return connectedText(cell)
   }
 }
 
@@ -332,7 +385,8 @@ export function parseCellText(def: Definition, text: string, ctx: ParseCtx = {})
   if (!kind) return fail('INVALID_VALUE', `${def.kind} cannot be pasted into`, { propertyId: def.id })
   const trimmed = text.trim()
   switch (kind) {
-    case 'text': return { kind: 'text', runs: textToRuns(text) }
+    case 'text':
+      return { kind: 'text', runs: textToRuns(text) }
     case 'number': {
       if (!trimmed) return { kind: 'number', value: null }
       const n = parseStrictNumber(trimmed, ctx.decimalSeparator)
@@ -352,7 +406,12 @@ export function parseCellText(def: Definition, text: string, ctx: ParseCtx = {})
     }
     case 'multi_select': {
       if (!trimmed) return { kind: 'multi_select', optionIds: [] }
-      const parts = ctx.listDelimiter ? trimmed.split(ctx.listDelimiter).map((s) => s.trim()).filter(Boolean) : [trimmed]
+      const parts = ctx.listDelimiter
+        ? trimmed
+            .split(ctx.listDelimiter)
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [trimmed]
       const opts = optionsOf(def)
       const ids: Id[] = []
       for (const p of parts) {
@@ -373,7 +432,12 @@ export function parseCellText(def: Definition, text: string, ctx: ParseCtx = {})
     }
     case 'people': {
       if (!trimmed) return { kind: 'people', principalIds: [] }
-      const names = ctx.listDelimiter ? trimmed.split(ctx.listDelimiter).map((s) => s.trim()).filter(Boolean) : [trimmed]
+      const names = ctx.listDelimiter
+        ? trimmed
+            .split(ctx.listDelimiter)
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [trimmed]
       const ids: Id[] = []
       for (const n of names) {
         const hits = ctx.principalsByName?.(n) ?? []
@@ -382,12 +446,16 @@ export function parseCellText(def: Definition, text: string, ctx: ParseCtx = {})
       }
       return validateCell(def, { kind: 'people', principalIds: ids })
     }
-    case 'files': return fail('INVALID_VALUE', 'files cannot be created from text', { propertyId: def.id })
+    case 'files':
+      return fail('INVALID_VALUE', 'files cannot be created from text', { propertyId: def.id })
     case 'url':
     case 'email':
-    case 'phone': return validateCell(def, { kind, value: trimmed || null } as Cell)
-    case 'place': return { kind: 'place', value: trimmed ? validPlace({ lat: null, lon: null, name: '', address: trimmed }) : null }
-    case 'verification': return fail('INVALID_VALUE', 'verification cannot be pasted into', { propertyId: def.id })
+    case 'phone':
+      return validateCell(def, { kind, value: trimmed || null } as Cell)
+    case 'place':
+      return { kind: 'place', value: trimmed ? validPlace({ lat: null, lon: null, name: '', address: trimmed }) : null }
+    case 'verification':
+      return fail('INVALID_VALUE', 'verification cannot be pasted into', { propertyId: def.id })
     case 'connected': {
       if (!trimmed) return { kind: 'connected', value: null }
       const ref = parseReference(trimmed, (def.config as { providerId?: string }).providerId)
@@ -415,6 +483,5 @@ export function parseIsoDateText(text: string, zone: string): DateValue {
     return normalizeDate({ kind: 'datetime', start: new Date(a.ms).toISOString(), end: b ? new Date(b.ms!).toISOString() : null, timeZone: zone === 'UTC' ? null : zone })
   return fail('INVALID_VALUE', `date range mixes a day and a time: ${text}`)
 }
-
 
 export const jsonOf = (c: Cell): Json => c as unknown as Json

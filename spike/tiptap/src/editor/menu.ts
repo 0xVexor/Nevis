@@ -67,7 +67,7 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
         b.disabled = !!v.disabled
         b.className = 'slash-item' + (i === selected ? ' sel' : '')
         b.innerHTML = '<span class="slash-ic"></span><span class="slash-tx"><b></b><small></small></span>'
-        ;const ic = b.querySelector('.slash-ic') as HTMLElement
+        const ic = b.querySelector('.slash-ic') as HTMLElement
         if (v.icon.startsWith(ICON_PREFIX)) ic.innerHTML = iconSvg(v.icon.slice(ICON_PREFIX.length))
         else ic.textContent = v.icon
         const t = b.querySelector('b') as HTMLElement
@@ -120,13 +120,19 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
         el.className = 'slash-menu'
         document.body.append(el)
         items = props.items
-        selected = Math.max(0, items.findIndex((item) => !cfg.view(item).disabled))
+        selected = Math.max(
+          0,
+          items.findIndex((item) => !cfg.view(item).disabled),
+        )
         cmd = (i) => props.command(i)
         show(props)
       },
       onUpdate: (props: any) => {
         items = props.items
-        selected = Math.max(0, items.findIndex((item) => !cfg.view(item).disabled))
+        selected = Math.max(
+          0,
+          items.findIndex((item) => !cfg.view(item).disabled),
+        )
         cmd = (i) => props.command(i)
         show(props)
       },

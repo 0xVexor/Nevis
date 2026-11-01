@@ -242,18 +242,35 @@ export const MathAuto = Extension.create({
         const { selection: sel, doc } = editor.state
         const $from = sel.$from
         if (sel.empty && $from.parent.type.name === 'paragraph' && $from.parent.content.size === 0) {
-          return editor.chain().focus().insertContentAt({ from: $from.before(), to: $from.after() }, { type: 'mathBlock', attrs: { latex: '' } }).run()
+          return editor
+            .chain()
+            .focus()
+            .insertContentAt({ from: $from.before(), to: $from.after() }, { type: 'mathBlock', attrs: { latex: '' } })
+            .run()
         }
         if (!sel.empty) {
           const text = doc.textBetween(sel.from, sel.to, ' ').trim()
-          if (text) return editor.chain().focus().insertContentAt({ from: sel.from, to: sel.to }, { type: 'mathInline', attrs: { latex: text } }).run()
+          if (text)
+            return editor
+              .chain()
+              .focus()
+              .insertContentAt({ from: sel.from, to: sel.to }, { type: 'mathInline', attrs: { latex: text } })
+              .run()
         }
-        return editor.chain().focus().insertContent({ type: 'mathInline', attrs: { latex: '' } }).run()
+        return editor
+          .chain()
+          .focus()
+          .insertContent({ type: 'mathInline', attrs: { latex: '' } })
+          .run()
       },
     }
   },
   addCommands() {
-    return { convertFormulas: () => ({ tr, dispatch }: any) => (dispatch?.(tr.setMeta(autoKey, 'all')), true) } as any
+    return {
+      convertFormulas:
+        () =>
+        ({ tr, dispatch }: any) => (dispatch?.(tr.setMeta(autoKey, 'all')), true),
+    } as any
   },
   addProseMirrorPlugins() {
     return [

@@ -11,7 +11,10 @@ export function useDb(): DatabaseService | null {
   const [svc, setSvc] = useState<DatabaseService | null>(peekDatabase())
   useEffect(() => {
     let live = true
-    if (!svc) void getDatabase().then((s) => live && setSvc(s)).catch((e) => console.error('database', e))
+    if (!svc)
+      void getDatabase()
+        .then((s) => live && setSvc(s))
+        .catch((e) => console.error('database', e))
     return () => void (live = false)
   }, [svc])
   useSyncExternalStore(svc ? svc.subscribe : noSubscribe, svc ? svc.getVersion : zero)
@@ -36,16 +39,59 @@ export function useRepoTick(): number {
 }
 
 export const KIND_LABEL: Record<Kind, string> = {
-  title: 'Title', text: 'Text', number: 'Number', select: 'Select', multi_select: 'Multi-select', status: 'Status', date: 'Date', people: 'People',
-  files: 'Files & media', checkbox: 'Checkbox', url: 'URL', email: 'Email', phone: 'Phone', relation: 'Relation', rollup: 'Rollup', formula: 'Formula',
-  created_time: 'Created time', created_by: 'Created by', last_edited_time: 'Last edited time', last_edited_by: 'Last edited by', button: 'Button',
-  unique_id: 'ID', place: 'Place', verification: 'Verification', connected: 'Connected',
+  title: 'Title',
+  text: 'Text',
+  number: 'Number',
+  select: 'Select',
+  multi_select: 'Multi-select',
+  status: 'Status',
+  date: 'Date',
+  people: 'People',
+  files: 'Files & media',
+  checkbox: 'Checkbox',
+  url: 'URL',
+  email: 'Email',
+  phone: 'Phone',
+  relation: 'Relation',
+  rollup: 'Rollup',
+  formula: 'Formula',
+  created_time: 'Created time',
+  created_by: 'Created by',
+  last_edited_time: 'Last edited time',
+  last_edited_by: 'Last edited by',
+  button: 'Button',
+  unique_id: 'ID',
+  place: 'Place',
+  verification: 'Verification',
+  connected: 'Connected',
 }
 
 /** Kinds offered in the "new property" picker (Title exists once; Connected needs a provider and is offered in Connections). */
 export const PICKABLE_KINDS: Kind[] = [
-  'text', 'number', 'select', 'multi_select', 'status', 'date', 'people', 'files', 'checkbox', 'url', 'email', 'phone', 'relation', 'rollup', 'formula',
-  'created_time', 'created_by', 'last_edited_time', 'last_edited_by', 'button', 'unique_id', 'place', 'verification', 'connected',
+  'text',
+  'number',
+  'select',
+  'multi_select',
+  'status',
+  'date',
+  'people',
+  'files',
+  'checkbox',
+  'url',
+  'email',
+  'phone',
+  'relation',
+  'rollup',
+  'formula',
+  'created_time',
+  'created_by',
+  'last_edited_time',
+  'last_edited_by',
+  'button',
+  'unique_id',
+  'place',
+  'verification',
+  'connected',
 ]
 
 const P = ({ d }: { d: string }) => (
@@ -91,7 +137,9 @@ export const OPTION_COLOR_LIST: OptionColor[] = ['default', 'gray', 'brown', 'or
 
 export const Chip = ({ color, children, title, onRemove, muted }: { color?: string; children: ReactNode; title?: string; onRemove?: () => void; muted?: boolean }) => (
   <span className={'db-chip ' + COLOR_CLASS(color) + (muted ? ' muted' : '')} title={title}>
-    <span className="db-chip-t" dir="auto">{children}</span>
+    <span className="db-chip-t" dir="auto">
+      {children}
+    </span>
     {onRemove && (
       <button type="button" className="db-chip-x" aria-label={t('Remove')} onClick={(e) => (e.stopPropagation(), onRemove())}>
         ×
@@ -103,15 +151,20 @@ export const Chip = ({ color, children, title, onRemove, muted }: { color?: stri
 /** Human text of an error from a command. Codes are stable; messages are shown as they are. */
 export function errorText(code: string, message: string): string {
   switch (code) {
-    case 'REVISION_CONFLICT': return t('Someone changed this meanwhile. Reload and try again.')
-    case 'ACCESS_DENIED': return t('You do not have access to do this.')
-    case 'READ_ONLY': return t('This value comes from a connected service; change it there.')
-    case 'QUOTA': return t('Storage limit reached: {m}', { m: message })
-    case 'RECOVERY_REQUIRED': return t('The database needs repair before it can be edited.')
-    default: return message
+    case 'REVISION_CONFLICT':
+      return t('Someone changed this meanwhile. Reload and try again.')
+    case 'ACCESS_DENIED':
+      return t('You do not have access to do this.')
+    case 'READ_ONLY':
+      return t('This value comes from a connected service; change it there.')
+    case 'QUOTA':
+      return t('Storage limit reached: {m}', { m: message })
+    case 'RECOVERY_REQUIRED':
+      return t('The database needs repair before it can be edited.')
+    default:
+      return message
   }
 }
-
 
 /** Safe link opener: only http(s), mailto, tel. */
 export function openSafe(url: string) {

@@ -1,4 +1,8 @@
-export interface IconEntry { name: string; icon: string; keywords: string }
+export interface IconEntry {
+  name: string
+  icon: string
+  keywords: string
+}
 
 /**
  * The page icons the app ships. The host builds it from the UI's icon set, so documents/ never imports UI code.

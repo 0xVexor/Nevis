@@ -41,22 +41,33 @@ export function aggregate(op: RollupAggregation, input: AggInput): QValue {
   for (const v of values) if (v.c === 'blocked') return v // restricted / pending input gives restricted / pending output, never a fake number
   const rows = values.length
   switch (op) {
-    case 'count_all': return num(rows)
-    case 'count_values': return num(values.reduce((n, v) => n + leaves(v).length, 0))
+    case 'count_all':
+      return num(rows)
+    case 'count_values':
+      return num(values.reduce((n, v) => n + leaves(v).length, 0))
     case 'count_unique': {
       const seen = new Set<string>()
       for (const v of values) for (const l of leaves(v)) seen.add(leafKey(l, zone))
       return num(seen.size)
     }
-    case 'count_empty': return num(values.filter(qEmpty).length)
-    case 'count_not_empty': return num(values.filter((v) => !qEmpty(v)).length)
-    case 'percent_empty': return ratio(values.filter(qEmpty).length, rows)
-    case 'percent_not_empty': return ratio(values.filter((v) => !qEmpty(v)).length, rows)
-    case 'checked': return num(values.filter((v) => v.c === 'bool' && v.b).length)
-    case 'unchecked': return num(values.filter((v) => v.c === 'bool' && !v.b).length)
-    case 'percent_checked': return ratio(values.filter((v) => v.c === 'bool' && v.b).length, rows)
-    case 'percent_unchecked': return ratio(values.filter((v) => v.c === 'bool' && !v.b).length, rows)
-    case 'sum': return num(numericLeaves(values).reduce((a, b) => a + b, 0)) // sum([]) = 0
+    case 'count_empty':
+      return num(values.filter(qEmpty).length)
+    case 'count_not_empty':
+      return num(values.filter((v) => !qEmpty(v)).length)
+    case 'percent_empty':
+      return ratio(values.filter(qEmpty).length, rows)
+    case 'percent_not_empty':
+      return ratio(values.filter((v) => !qEmpty(v)).length, rows)
+    case 'checked':
+      return num(values.filter((v) => v.c === 'bool' && v.b).length)
+    case 'unchecked':
+      return num(values.filter((v) => v.c === 'bool' && !v.b).length)
+    case 'percent_checked':
+      return ratio(values.filter((v) => v.c === 'bool' && v.b).length, rows)
+    case 'percent_unchecked':
+      return ratio(values.filter((v) => v.c === 'bool' && !v.b).length, rows)
+    case 'sum':
+      return num(numericLeaves(values).reduce((a, b) => a + b, 0)) // sum([]) = 0
     case 'average': {
       const n = numericLeaves(values)
       return n.length ? num(n.reduce((a, b) => a + b, 0) / n.length) : EMPTY
@@ -98,16 +109,25 @@ export function aggregate(op: RollupAggregation, input: AggInput): QValue {
       const last = d.reduce((a, b) => (dateInterval(b, zone).e > dateInterval(a, zone).e ? b : a))
       if (first.kind !== last.kind) return bad('date range mixes all-day and timed values')
       const lastEnd = last.end ?? last.start
-      return { c: 'date', v: normalizeDate(first.kind === 'date' ? { kind: 'date', start: first.start, end: lastEnd === first.start ? null : lastEnd } : { kind: 'datetime', start: first.start, end: lastEnd, timeZone: first.timeZone }) }
+      return {
+        c: 'date',
+        v: normalizeDate(
+          first.kind === 'date'
+            ? { kind: 'date', start: first.start, end: lastEnd === first.start ? null : lastEnd }
+            : { kind: 'datetime', start: first.start, end: lastEnd, timeZone: first.timeZone },
+        ),
+      }
     }
-    case 'show_original': return { c: 'list', items: values.flatMap((v) => leaves(v)) }
+    case 'show_original':
+      return { c: 'list', items: values.flatMap((v) => leaves(v)) }
     case 'show_unique': {
       const seen = new Set<string>()
       const items: QValue[] = []
-      for (const v of values) for (const l of leaves(v)) {
-        const k = leafKey(l, zone)
-        if (!seen.has(k)) (seen.add(k), items.push(l))
-      }
+      for (const v of values)
+        for (const l of leaves(v)) {
+          const k = leafKey(l, zone)
+          if (!seen.has(k)) (seen.add(k), items.push(l))
+        }
       return { c: 'list', items }
     }
   }

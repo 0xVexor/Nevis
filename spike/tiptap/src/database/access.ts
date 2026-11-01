@@ -34,7 +34,7 @@ export class Access {
   closure(principalId: Id): Set<Id> {
     const out = new Set<Id>([principalId])
     const groups = this.state.live('principal').filter((p) => p.type === 'group')
-    for (let changed = true; changed; ) {
+    for (let changed = true; changed;) {
       changed = false
       for (const g of groups) if (!out.has(g.id) && g.memberIds.some((m) => out.has(m))) (out.add(g.id), (changed = true))
     }

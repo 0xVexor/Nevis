@@ -94,14 +94,26 @@ register('template.run_repeats', (cx, p: { now?: string; approveMany?: boolean; 
     const cursor = cx.d.get('event', curId)
     const after = cursor ? ((cursor.data as { lastMs: number }).lastMs ?? 0) : Date.parse(`${t.repeat.startDate}T00:00:00Z`) - 86400000
     const occ = repeatOccurrences(t.repeat, t.id, t.scheduleVersion, after, nowMs)
-    if (!occ.length) { out.push({ templateId: t.id, created: 0, pending: 0 }); continue }
-    if (occ.length > MAX_CATCH_UP_WITHOUT_PREVIEW && !p.approveMany) { out.push({ templateId: t.id, created: 0, pending: occ.length }); continue }
+    if (!occ.length) {
+      out.push({ templateId: t.id, created: 0, pending: 0 })
+      continue
+    }
+    if (occ.length > MAX_CATCH_UP_WITHOUT_PREVIEW && !p.approveMany) {
+      out.push({ templateId: t.id, created: 0, pending: occ.length })
+      continue
+    }
     let created = 0
     for (const o of occ) {
       const evId = `rep:${o.key}`
       if (cx.d.get('event', evId)) continue // already generated: idempotent
       const r = createRow(cx, { sourceId: t.sourceId, templateId: t.id })
-      cx.d.add('event', { ...cx.meta(evId), type: 'workflow_run', pageId: r.pageId, principalId: cx.env.actorId, data: { templateId: t.id, scheduledMs: o.scheduledMs, key: o.key, adjusted: o.adjusted } as Json })
+      cx.d.add('event', {
+        ...cx.meta(evId),
+        type: 'workflow_run',
+        pageId: r.pageId,
+        principalId: cx.env.actorId,
+        data: { templateId: t.id, scheduledMs: o.scheduledMs, key: o.key, adjusted: o.adjusted } as Json,
+      })
       created++
     }
     const lastMs = occ[occ.length - 1].scheduledMs
@@ -128,7 +140,7 @@ export function planMove(cx: Pick<Ctx, 'd'>, p: MovePlan) {
   const dest = cx.d.get('source', p.destinationSourceId)
   const ids = new Set(p.pageIds)
   if (p.includeDescendants !== false) {
-    for (let grew = true; grew; ) {
+    for (let grew = true; grew;) {
       grew = false
       for (const pg of cx.d.allPages()) if (pg.database?.parentItemId && ids.has(pg.database.parentItemId) && !ids.has(pg.id)) (ids.add(pg.id), (grew = true))
     }
@@ -170,11 +182,16 @@ register('row.move', (cx, p: MovePlan) => {
     const next: typeof old = {}
     for (const [pid, c] of Object.entries(old)) {
       const to = p.mapping[pid]
-      if (!to) { archive[pid] = c as unknown as Json; continue }
+      if (!to) {
+        archive[pid] = c as unknown as Json
+        continue
+      }
       const dd = cx.d.prop(to)!
       let value = c.value
-      if (value.kind === 'select' || value.kind === 'status') { const m = p.optionMap?.[value.optionId ?? ''] ?? value.optionId; value = { ...value, optionId: m } as Cell }
-      else if (value.kind === 'multi_select') value = { kind: 'multi_select', optionIds: value.optionIds.map((o) => p.optionMap?.[o] ?? o) }
+      if (value.kind === 'select' || value.kind === 'status') {
+        const m = p.optionMap?.[value.optionId ?? ''] ?? value.optionId
+        value = { ...value, optionId: m } as Cell
+      } else if (value.kind === 'multi_select') value = { kind: 'multi_select', optionIds: value.optionIds.map((o) => p.optionMap?.[o] ?? o) }
       try {
         next[to] = { value: validateCell(dd, value), stamp: cx.stamp() }
       } catch {
@@ -198,4 +215,3 @@ register('row.move', (cx, p: MovePlan) => {
   bumpSchema(cx, dest.id)
   return { moved: plan.ids.length, archivedEdges: plan.invalidEdges.length }
 })
-

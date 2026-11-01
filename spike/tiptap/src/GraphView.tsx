@@ -112,7 +112,13 @@ const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v))
 export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; onOpen: (id: string) => void; onClose: () => void }) {
   // the database service starts on demand; the typed links (relations, dependencies, sub-items) need it, so start it with the graph
   const [, setDbReady] = useState(false)
-  useEffect(() => void getDatabase().then(() => setDbReady(true)).catch(() => undefined), [])
+  useEffect(
+    () =>
+      void getDatabase()
+        .then(() => setDbReady(true))
+        .catch(() => undefined),
+    [],
+  )
   const [kinds, setKinds] = useState<ExtraKinds>({ relation: false, dependency: false, hierarchy: false })
   const extra = useDatabaseEdges(kinds)
   const links = useMemo(() => repo.linkGraph(), [])
@@ -266,8 +272,10 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
     const seg = [0, 0, 0, 0]
     const clip = (ax: number, ay: number, bx: number, by: number) => {
       const pad = 20
-      const dx = bx - ax, dy = by - ay
-      let t0 = 0, t1 = 1
+      const dx = bx - ax,
+        dy = by - ay
+      let t0 = 0,
+        t1 = 1
       const P = [-dx, dx, -dy, dy]
       const Q = [ax + pad, W + pad - ax, ay + pad, H + pad - ay]
       for (let i = 0; i < 4; i++) {
@@ -284,7 +292,10 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
           }
         }
       }
-      seg[0] = ax + t0 * dx; seg[1] = ay + t0 * dy; seg[2] = ax + t1 * dx; seg[3] = ay + t1 * dy
+      seg[0] = ax + t0 * dx
+      seg[1] = ay + t0 * dy
+      seg[2] = ax + t1 * dx
+      seg[3] = ay + t1 * dy
       return true
     }
     const link = (ax: number, ay: number, bx: number, by: number, curved: boolean) => {
@@ -307,7 +318,10 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
     for (let e = 0; e < edges.length; e += 2) {
       const a = nodes[edges[e]]
       const b = nodes[edges[e + 1]]
-      const ax = sx(a), ay = sy(a), bx = sx(b), by = sy(b)
+      const ax = sx(a),
+        ay = sy(a),
+        bx = sx(b),
+        by = sy(b)
       const on = focusIdx >= 0 ? edges[e] === focusIdx || edges[e + 1] === focusIdx : q ? matches.has(edges[e]) || matches.has(edges[e + 1]) : false
       if (overlay && !on) continue
       if (on) {
@@ -316,9 +330,17 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
       }
       const o = nq * 5
       if (inView(ax, ay, 20) && inView(bx, by, 20)) {
-        quiet[o] = ax; quiet[o + 1] = ay; quiet[o + 2] = bx; quiet[o + 3] = by; quiet[o + 4] = 1
+        quiet[o] = ax
+        quiet[o + 1] = ay
+        quiet[o + 2] = bx
+        quiet[o + 3] = by
+        quiet[o + 4] = 1
       } else if (clip(ax, ay, bx, by)) {
-        quiet[o] = seg[0]; quiet[o + 1] = seg[1]; quiet[o + 2] = seg[2]; quiet[o + 3] = seg[3]; quiet[o + 4] = 0
+        quiet[o] = seg[0]
+        quiet[o + 1] = seg[1]
+        quiet[o + 2] = seg[2]
+        quiet[o + 3] = seg[3]
+        quiet[o + 4] = 0
       } else continue
       drawn += Math.abs(quiet[o + 2] - quiet[o]) + Math.abs(quiet[o + 3] - quiet[o + 1])
       nq++
@@ -329,7 +351,8 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
     for (let i = 0; i < nq; i += stride) {
       const o = i * 5
       ctx.moveTo(quiet[o], quiet[o + 1])
-      if (curved && quiet[o + 4]) ctx.quadraticCurveTo((quiet[o] + quiet[o + 2]) / 2 - (quiet[o + 3] - quiet[o + 1]) * 0.12, (quiet[o + 1] + quiet[o + 3]) / 2 + (quiet[o + 2] - quiet[o]) * 0.12, quiet[o + 2], quiet[o + 3])
+      if (curved && quiet[o + 4])
+        ctx.quadraticCurveTo((quiet[o] + quiet[o + 2]) / 2 - (quiet[o + 3] - quiet[o + 1]) * 0.12, (quiet[o + 1] + quiet[o + 3]) / 2 + (quiet[o + 2] - quiet[o]) * 0.12, quiet[o + 2], quiet[o + 3])
       else ctx.lineTo(quiet[o + 2], quiet[o + 3])
     }
     ctx.strokeStyle = line
@@ -354,7 +377,8 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
     const labels: number[] = []
     for (let i = 0; i < nodes.length; i++) {
       const n = nodes[i]
-      const x = sx(n), y = sy(n)
+      const x = sx(n),
+        y = sy(n)
       if (!inView(x, y)) continue
       if (overlay && i !== focusIdx && !near.has(i)) continue
       const cur = i === curIdx
@@ -528,31 +552,37 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
     [glide],
   )
 
-  const fit = useCallback((smooth?: boolean) => {
-    const s = paintInput.current.scene
-    const el = stage.current
-    if (el && el.clientWidth > 1 && el.clientHeight > 1) size.current = { w: el.clientWidth, h: el.clientHeight } // measured now, not the size from an earlier layout
-    const { w, h } = size.current
-    if (!s || !s.nodes.length) return
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
-    for (const n of s.nodes) (x0 = Math.min(x0, n.x), y0 = Math.min(y0, n.y), x1 = Math.max(x1, n.x), y1 = Math.max(y1, n.y))
-    const pad = 70
-    const k = Math.max(Math.min((w - pad * 2) / Math.max(x1 - x0, 1), (h - pad * 2) / Math.max(y1 - y0, 1), 3), 0.001)
-    base.current = k
-    const next = { k, x: w / 2 - ((x0 + x1) / 2) * k, y: h / 2 - ((y0 + y1) / 2) * k }
-    if (smooth) {
-      moveTo(next)
+  const fit = useCallback(
+    (smooth?: boolean) => {
+      const s = paintInput.current.scene
+      const el = stage.current
+      if (el && el.clientWidth > 1 && el.clientHeight > 1) size.current = { w: el.clientWidth, h: el.clientHeight } // measured now, not the size from an earlier layout
+      const { w, h } = size.current
+      if (!s || !s.nodes.length) return
+      let x0 = Infinity,
+        y0 = Infinity,
+        x1 = -Infinity,
+        y1 = -Infinity
+      for (const n of s.nodes) ((x0 = Math.min(x0, n.x)), (y0 = Math.min(y0, n.y)), (x1 = Math.max(x1, n.x)), (y1 = Math.max(y1, n.y)))
+      const pad = 70
+      const k = Math.max(Math.min((w - pad * 2) / Math.max(x1 - x0, 1), (h - pad * 2) / Math.max(y1 - y0, 1), 3), 0.001)
+      base.current = k
+      const next = { k, x: w / 2 - ((x0 + x1) / 2) * k, y: h / 2 - ((y0 + y1) / 2) * k }
+      if (smooth) {
+        moveTo(next)
+        moved.current = false
+        return
+      }
       moved.current = false
-      return
-    }
-    moved.current = false
-    cancelAnimationFrame(glideFrame.current)
-    glideFrame.current = 0
-    view.current = next
-    target.current = next
-    syncPct(true)
-    redraw()
-  }, [redraw, syncPct, moveTo])
+      cancelAnimationFrame(glideFrame.current)
+      glideFrame.current = 0
+      view.current = next
+      target.current = next
+      syncPct(true)
+      redraw()
+    },
+    [redraw, syncPct, moveTo],
+  )
 
   // canvas size follows the stage
   useEffect(() => {
@@ -569,7 +599,8 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
       cv.height = Math.round(h * dpr)
       cv.style.width = w + 'px'
       cv.style.height = h + 'px'
-      if (changed && !moved.current && w > 1 && h > 1) fit() // the stage got its real size after the picture was fitted (opening animation, window resize)
+      if (changed && !moved.current && w > 1 && h > 1)
+        fit() // the stage got its real size after the picture was fitted (opening animation, window resize)
       else redraw()
     }
     resize()
@@ -623,132 +654,180 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
     for (let i = 0; i < s.nodes.length; i++) {
       const n = s.nodes[i]
       const d = Math.hypot(v.x + n.x * v.k - mx, v.y + n.y * v.k - my)
-      if (d <= baseRadius(n.deg) * grow + 4 && d < bestD) (best = i, (bestD = d))
+      if (d <= baseRadius(n.deg) * grow + 4 && d < bestD) ((best = i), (bestD = d))
     }
     return best
   }
 
   return (
     <div className="gv gv-page" role="region" aria-label={t('Graph view')}>
-
-        {picked.pages.length === 0 ? (
-          <div className="gv-empty">
-            <span className="fc2-art"><Ic.Link size={34} /></span>
-            <h3>{t('No links yet')}</h3>
-            <p>{t('No links between pages yet. Link pages with [[ or @ to see them here.')}</p>
-          </div>
-        ) : (
-          <div className="gv-stage" ref={stage}>
-            <canvas
-              ref={canvas}
-              className={'gv-svg' + (drag.current?.moved ? ' grabbing' : '')}
-              style={hovered ? { cursor: 'var(--cursor-hand, pointer)' } : undefined}
-              onPointerDown={(e) => {
-                try {
-                  e.currentTarget.setPointerCapture(e.pointerId)
-                } catch {
-                  /* not an active pointer (synthetic events); dragging still works while the pointer stays over the map */
-                }
-                drag.current = { x: e.clientX, y: e.clientY, moved: false }
-              }}
-              onPointerMove={(e) => {
-                const d = drag.current
-                if (!d) {
-                  const i = nodeAt(e.nativeEvent.offsetX, e.nativeEvent.offsetY)
-                  if (hoverRef.current ? hoverRef.current.idx === i : i < 0 && !hover) return
-                  const near = new Set<number>()
-                  if (i >= 0 && scene) for (let k = scene.adj.off[i]; k < scene.adj.off[i + 1]; k++) near.add(scene.adj.nb[k])
-                  hoverRef.current = { idx: i, near }
-                  redraw() // painted before React has re-rendered the side card
-                  setHover(i >= 0 ? scene!.nodes[i].id : null)
-                  return
-                }
-                const dx = e.clientX - d.x
-                const dy = e.clientY - d.y
-                if (!d.moved && Math.hypot(dx, dy) < 4) return
-                d.moved = true
-                drag.current = { x: e.clientX, y: e.clientY, moved: true }
-                view.current = { ...view.current, x: view.current.x + dx, y: view.current.y + dy }
-                target.current = view.current // dragging follows the pointer exactly; only zoom and fit glide
-                moved.current = true
-                touch()
-                redraw()
-              }}
-              onPointerUp={(e) => {
-                const d = drag.current
-                drag.current = null
-                if (d && !d.moved) {
-                  const i = nodeAt(e.nativeEvent.offsetX, e.nativeEvent.offsetY)
-                  setSel(i >= 0 ? scene!.nodes[i].id : null)
-                }
-              }}
-              onPointerLeave={() => ((drag.current = null), (hoverRef.current = { idx: -1, near: NO_SET }), redraw(), setHover(null))}
-              onDoubleClick={() => fit(true)}
-            />
-            {!scene && (
-              <div className="gv-empty" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-                <small>{t('Arranging the map…')}</small>
-              </div>
-            )}
-
-            <div className="gpanel">
-              <label className="gv-search">
-                <Ic.Search size={15} />
-                <input placeholder={t('Find a page…')} value={query} dir="auto" onChange={(e) => setQuery(e.target.value)} />
-                {q && <span className="gv-hits">{matches.size}</span>}
-              </label>
-              <div className="ds-seg gv-scope">
-                {currentId && <button aria-pressed={scope === 'local'} onClick={() => setScope('local')}>{t('Around this page')}</button>}
-                <button aria-pressed={scope === 'all'} onClick={() => setScope('all')}>{t('Whole vault')}</button>
-              </div>
-              <EdgeKindToggles kinds={kinds} onChange={setKinds} />
-              <small className="ds-muted">{t('Size shows how many links a page has.')}</small>
+      {picked.pages.length === 0 ? (
+        <div className="gv-empty">
+          <span className="fc2-art">
+            <Ic.Link size={34} />
+          </span>
+          <h3>{t('No links yet')}</h3>
+          <p>{t('No links between pages yet. Link pages with [[ or @ to see them here.')}</p>
+        </div>
+      ) : (
+        <div className="gv-stage" ref={stage}>
+          <canvas
+            ref={canvas}
+            className={'gv-svg' + (drag.current?.moved ? ' grabbing' : '')}
+            style={hovered ? { cursor: 'var(--cursor-hand, pointer)' } : undefined}
+            onPointerDown={(e) => {
+              try {
+                e.currentTarget.setPointerCapture(e.pointerId)
+              } catch {
+                /* not an active pointer (synthetic events); dragging still works while the pointer stays over the map */
+              }
+              drag.current = { x: e.clientX, y: e.clientY, moved: false }
+            }}
+            onPointerMove={(e) => {
+              const d = drag.current
+              if (!d) {
+                const i = nodeAt(e.nativeEvent.offsetX, e.nativeEvent.offsetY)
+                if (hoverRef.current ? hoverRef.current.idx === i : i < 0 && !hover) return
+                const near = new Set<number>()
+                if (i >= 0 && scene) for (let k = scene.adj.off[i]; k < scene.adj.off[i + 1]; k++) near.add(scene.adj.nb[k])
+                hoverRef.current = { idx: i, near }
+                redraw() // painted before React has re-rendered the side card
+                setHover(i >= 0 ? scene!.nodes[i].id : null)
+                return
+              }
+              const dx = e.clientX - d.x
+              const dy = e.clientY - d.y
+              if (!d.moved && Math.hypot(dx, dy) < 4) return
+              d.moved = true
+              drag.current = { x: e.clientX, y: e.clientY, moved: true }
+              view.current = { ...view.current, x: view.current.x + dx, y: view.current.y + dy }
+              target.current = view.current // dragging follows the pointer exactly; only zoom and fit glide
+              moved.current = true
+              touch()
+              redraw()
+            }}
+            onPointerUp={(e) => {
+              const d = drag.current
+              drag.current = null
+              if (d && !d.moved) {
+                const i = nodeAt(e.nativeEvent.offsetX, e.nativeEvent.offsetY)
+                setSel(i >= 0 ? scene!.nodes[i].id : null)
+              }
+            }}
+            onPointerLeave={() => ((drag.current = null), (hoverRef.current = { idx: -1, near: NO_SET }), redraw(), setHover(null))}
+            onDoubleClick={() => fit(true)}
+          />
+          {!scene && (
+            <div className="gv-empty" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+              <small>{t('Arranging the map…')}</small>
             </div>
+          )}
 
-            <aside className="gsel">
-              {selNode ? (
-                <>
-                  <div className="gsel-head" dir={dirOf(selNode.title)}>
-                    <span className="ds-tile ds-tile--lg">{selPage ? <PageIcon page={selPage} /> : <Ic.Link size={20} />}</span>
-                    <span><b dir="auto">{selNode.title}</b><small className="ds-muted">{t('{n} links', { n: selNode.deg })}</small></span>
-                    <IconButton type="button" label={t('Close')} onClick={() => setSel(null)}><Ic.Close size={14} /></IconButton>
-                  </div>
-                  {selPage?.tags?.length ? <div className="gsel-tags">{selPage.tags.map((g) => <span key={g} className="tag-chip static">{g}</span>)}</div> : null}
-                  <div className="gsel-sec">{t('Connections')} · {conn.length}</div>
-                  <div className="gsel-list">
-                    {conn.map((n) => (
-                      <button key={n.id} type="button" dir={dirOf(n.title)} className="gsel-row" onClick={() => setSel(n.id)}><i style={{ background: n.tone }} /><span dir="auto">{n.title}</span></button>
-                    ))}
-                  </div>
-                  <Button variant="primary" type="button" onClick={() => onOpen(selNode.id)}>{t('Open page')}</Button>
-                </>
-              ) : (
-                <>
-                  <div className="gsel-sec">{t('Most connected')}</div>
-                  <div className="gsel-list">
-                    {top.map((n) => (
-                      <button key={n.id} type="button" className={'gsel-row' + (n.id === hover ? ' on' : '')} onPointerEnter={() => ((hoverRef.current = null), setHover(n.id))} onPointerLeave={() => ((hoverRef.current = null), setHover(null))} onClick={() => setSel(n.id)}>
-                        <i style={{ background: n.tone }} /><span dir="auto">{n.title}</span><em>{n.deg}</em>
-                      </button>
-                    ))}
-                  </div>
-                </>
+          <div className="gpanel">
+            <label className="gv-search">
+              <Ic.Search size={15} />
+              <input placeholder={t('Find a page…')} value={query} dir="auto" onChange={(e) => setQuery(e.target.value)} />
+              {q && <span className="gv-hits">{matches.size}</span>}
+            </label>
+            <div className="ds-seg gv-scope">
+              {currentId && (
+                <button aria-pressed={scope === 'local'} onClick={() => setScope('local')}>
+                  {t('Around this page')}
+                </button>
               )}
-            </aside>
-
-            <div className="gzoom">
-              <button title={t('Zoom in')} onClick={() => zoomAt(1.3)}><Ic.Plus size={16} /></button>
-              <span className="gv-pct">{pct}%</span>
-              <button title={t('Zoom out')} onClick={() => zoomAt(1 / 1.3)}><span className="gv-minus" /></button>
-              <button title={t('Fit to screen  (double-click)')} onClick={() => fit(true)}><Ic.SelectAll size={16} /></button>
+              <button aria-pressed={scope === 'all'} onClick={() => setScope('all')}>
+                {t('Whole vault')}
+              </button>
             </div>
-
-            <div className="gstat">
-              <span className="ds-chip"><b>{picked.pages.length}</b>{t('Pages')}</span>
-              <span className="ds-chip"><b>{picked.edges.length}</b>{t('Links')}</span>
-            </div>
+            <EdgeKindToggles kinds={kinds} onChange={setKinds} />
+            <small className="ds-muted">{t('Size shows how many links a page has.')}</small>
           </div>
-        )}
+
+          <aside className="gsel">
+            {selNode ? (
+              <>
+                <div className="gsel-head" dir={dirOf(selNode.title)}>
+                  <span className="ds-tile ds-tile--lg">{selPage ? <PageIcon page={selPage} /> : <Ic.Link size={20} />}</span>
+                  <span>
+                    <b dir="auto">{selNode.title}</b>
+                    <small className="ds-muted">{t('{n} links', { n: selNode.deg })}</small>
+                  </span>
+                  <IconButton type="button" label={t('Close')} onClick={() => setSel(null)}>
+                    <Ic.Close size={14} />
+                  </IconButton>
+                </div>
+                {selPage?.tags?.length ? (
+                  <div className="gsel-tags">
+                    {selPage.tags.map((g) => (
+                      <span key={g} className="tag-chip static">
+                        {g}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="gsel-sec">
+                  {t('Connections')} · {conn.length}
+                </div>
+                <div className="gsel-list">
+                  {conn.map((n) => (
+                    <button key={n.id} type="button" dir={dirOf(n.title)} className="gsel-row" onClick={() => setSel(n.id)}>
+                      <i style={{ background: n.tone }} />
+                      <span dir="auto">{n.title}</span>
+                    </button>
+                  ))}
+                </div>
+                <Button variant="primary" type="button" onClick={() => onOpen(selNode.id)}>
+                  {t('Open page')}
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="gsel-sec">{t('Most connected')}</div>
+                <div className="gsel-list">
+                  {top.map((n) => (
+                    <button
+                      key={n.id}
+                      type="button"
+                      className={'gsel-row' + (n.id === hover ? ' on' : '')}
+                      onPointerEnter={() => ((hoverRef.current = null), setHover(n.id))}
+                      onPointerLeave={() => ((hoverRef.current = null), setHover(null))}
+                      onClick={() => setSel(n.id)}
+                    >
+                      <i style={{ background: n.tone }} />
+                      <span dir="auto">{n.title}</span>
+                      <em>{n.deg}</em>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </aside>
+
+          <div className="gzoom">
+            <button title={t('Zoom in')} onClick={() => zoomAt(1.3)}>
+              <Ic.Plus size={16} />
+            </button>
+            <span className="gv-pct">{pct}%</span>
+            <button title={t('Zoom out')} onClick={() => zoomAt(1 / 1.3)}>
+              <span className="gv-minus" />
+            </button>
+            <button title={t('Fit to screen  (double-click)')} onClick={() => fit(true)}>
+              <Ic.SelectAll size={16} />
+            </button>
+          </div>
+
+          <div className="gstat">
+            <span className="ds-chip">
+              <b>{picked.pages.length}</b>
+              {t('Pages')}
+            </span>
+            <span className="ds-chip">
+              <b>{picked.edges.length}</b>
+              {t('Links')}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

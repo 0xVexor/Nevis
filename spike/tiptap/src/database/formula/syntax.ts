@@ -50,7 +50,10 @@ export function lex(src: string): Tok[] {
   let i = 0
   while (i < src.length) {
     const c = src[i]
-    if (/\s/.test(c)) { i++; continue }
+    if (/\s/.test(c)) {
+      i++
+      continue
+    }
     const from = i
     if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(src[i + 1] ?? ''))) {
       const m = /^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(src.slice(i))!
@@ -66,7 +69,10 @@ export function lex(src: string): Tok[] {
       for (;;) {
         if (i >= src.length) throw new FormulaSyntaxError('unterminated string', from, i)
         const d = src[i]
-        if (d === c) { i++; break }
+        if (d === c) {
+          i++
+          break
+        }
         if (d === '\\') {
           const e = src[i + 1]
           if (e === undefined) throw new FormulaSyntaxError('unterminated string', from, i)
@@ -102,10 +108,22 @@ export function lex(src: string): Tok[] {
       continue
     }
     const three = src.slice(i, i + 3)
-    if (OPS3.includes(three)) { out.push({ k: 'op', v: three === '===' ? '==' : '!=', from, to: i + 3 }); i += 3; continue }
+    if (OPS3.includes(three)) {
+      out.push({ k: 'op', v: three === '===' ? '==' : '!=', from, to: i + 3 })
+      i += 3
+      continue
+    }
     const two = src.slice(i, i + 2)
-    if (OPS2.includes(two)) { out.push({ k: 'op', v: two, from, to: i + 2 }); i += 2; continue }
-    if (OPS1.includes(c)) { out.push({ k: 'op', v: c, from, to: i + 1 }); i++; continue }
+    if (OPS2.includes(two)) {
+      out.push({ k: 'op', v: two, from, to: i + 2 })
+      i += 2
+      continue
+    }
+    if (OPS1.includes(c)) {
+      out.push({ k: 'op', v: c, from, to: i + 1 })
+      i++
+      continue
+    }
     throw new FormulaSyntaxError(`unexpected character ${JSON.stringify(c)}`, i, i + 1)
   }
   out.push({ k: 'eof', from: src.length, to: src.length })
@@ -243,7 +261,10 @@ class Parser {
     if (this.isOp(')')) return out
     for (;;) {
       out.push(this.ternary())
-      if (this.isOp(',')) { this.next(); continue }
+      if (this.isOp(',')) {
+        this.next()
+        continue
+      }
       break
     }
     return out
@@ -251,8 +272,10 @@ class Parser {
   primary(): Node {
     const t = this.next()
     switch (t.k) {
-      case 'num': return this.mk({ t: 'num', v: t.v, from: t.from, to: t.to })
-      case 'str': return this.mk({ t: 'str', v: t.v, from: t.from, to: t.to })
+      case 'num':
+        return this.mk({ t: 'num', v: t.v, from: t.from, to: t.to })
+      case 'str':
+        return this.mk({ t: 'str', v: t.v, from: t.from, to: t.to })
       case 'id': {
         if (t.v === 'true' || t.v === 'false') return this.mk({ t: 'bool', v: t.v === 'true', from: t.from, to: t.to })
         if (this.isOp('(')) {
@@ -279,7 +302,10 @@ class Parser {
           if (!this.isOp(']')) {
             for (;;) {
               items.push(this.ternary())
-              if (this.isOp(',')) { this.next(); continue }
+              if (this.isOp(',')) {
+                this.next()
+                continue
+              }
               break
             }
           }
@@ -288,7 +314,8 @@ class Parser {
         }
         throw new FormulaSyntaxError(`unexpected "${t.v}"`, t.from, t.to)
       }
-      case 'eof': throw new FormulaSyntaxError('unexpected end of formula', t.from, t.to)
+      case 'eof':
+        throw new FormulaSyntaxError('unexpected end of formula', t.from, t.to)
     }
   }
 }
@@ -310,12 +337,28 @@ export const astFromJson = (j: Json): Node => j as unknown as Node
 export function walk(n: Node, f: (n: Node) => void): void {
   f(n)
   switch (n.t) {
-    case 'list': n.items.forEach((c) => walk(c, f)); break
-    case 'prop': if (n.recv) walk(n.recv, f); break
-    case 'call': n.args.forEach((c) => walk(c, f)); break
-    case 'un': walk(n.arg, f); break
-    case 'bin': walk(n.l, f); walk(n.r, f); break
-    case 'cond': walk(n.test, f); walk(n.a, f); walk(n.b, f); break
-    default: break
+    case 'list':
+      n.items.forEach((c) => walk(c, f))
+      break
+    case 'prop':
+      if (n.recv) walk(n.recv, f)
+      break
+    case 'call':
+      n.args.forEach((c) => walk(c, f))
+      break
+    case 'un':
+      walk(n.arg, f)
+      break
+    case 'bin':
+      walk(n.l, f)
+      walk(n.r, f)
+      break
+    case 'cond':
+      walk(n.test, f)
+      walk(n.a, f)
+      walk(n.b, f)
+      break
+    default:
+      break
   }
 }
