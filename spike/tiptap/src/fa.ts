@@ -988,5 +988,12 @@ export const FA: Record<string, string> = {
   "Same as the Persian font": "مثل فونت فارسی",
   "Default (Instrument Sans)": "پیش‌فرض (Instrument Sans)",
   "For Persian and Arabic letters only. English letters use the English font below. Every font is built in, so it works offline.": "فقط برای حروف فارسی و عربی. حروف انگلیسی از فونت انگلیسی پایین استفاده می‌کنند. همهٔ فونت‌ها داخل برنامه هستند و بدون اینترنت کار می‌کنند.",
-  "For Latin letters and numbers, whatever the Persian font is.": "برای حروف لاتین و عددهای انگلیسی، فارغ از فونت فارسی."
+  "For Latin letters and numbers, whatever the Persian font is.": "برای حروف لاتین و عددهای انگلیسی، فارغ از فونت فارسی.",
+  "This backup was made by the Nevis desktop app. Restore it in the desktop app.": "این پشتیبان را برنامهٔ دسکتاپ Nevis ساخته است. آن را در برنامهٔ دسکتاپ بازیابی کنید.",
+  "Restore into": "بازیابی در",
+  "A new workspace": "یک فضای کاری جدید",
+  "Opens next to your current one. Nothing you have is changed.": "کنار فضای کاری فعلی باز می‌شود. چیزی از آنچه دارید تغییر نمی‌کند.",
+  "Pages, files, databases and history from the backup are written into it. A page in both is replaced by the backup's version; nothing is deleted. A copy of this workspace is saved next to it first.": "صفحه‌ها، فایل‌ها، پایگاه‌داده‌ها و تاریخچهٔ بکاپ داخل آن نوشته می‌شوند. صفحه‌ای که در هر دو باشد با نسخهٔ بکاپ جایگزین می‌شود و چیزی پاک نمی‌شود. اول یک نسخه از این فضای کاری کنار آن ذخیره می‌شود.",
+  "Workspace": "فضای کاری",
+  "Pages, files, databases and history from the backup are written into this workspace. A page in both is replaced by the backup's version; nothing is deleted. A copy of this workspace is saved next to it first.": "صفحه‌ها، فایل‌ها، پایگاه‌داده‌ها و تاریخچهٔ بکاپ داخل همین فضای کاری نوشته می‌شوند. صفحه‌ای که در هر دو باشد با نسخهٔ بکاپ جایگزین می‌شود و چیزی پاک نمی‌شود. اول یک نسخه از این فضای کاری کنار آن ذخیره می‌شود."
 }
