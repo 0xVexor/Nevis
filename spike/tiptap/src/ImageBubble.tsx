@@ -36,7 +36,7 @@ const Group = ({ label, children }: { label: string; children: ReactNode }) => (
 export function ImageBubble({ editor }: { editor: Editor }) {
   const s = useEditorState({
     editor,
-    selector: ({ editor: e }: any) => {
+    selector: ({ editor: e }) => {
       const sel = e?.state.selection
       if (!e || !e.isEditable || !(sel instanceof NodeSelection) || sel.node.type.name !== 'image') return null
       return { pos: sel.from, w: sel.node.attrs.width ?? null, align: sel.node.attrs.align ?? null }

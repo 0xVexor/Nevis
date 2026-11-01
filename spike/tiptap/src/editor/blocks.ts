@@ -113,7 +113,7 @@ export const Toggle = Node.create({
           dom.classList.toggle('open', !!n.attrs.open)
           return true
         },
-        stopEvent: (e) => btn.contains(e.target as any), // `Node` here is TipTap's, hence the cast
+        stopEvent: (e) => btn.contains(e.target as HTMLElement), // `Node` here is TipTap's, hence the cast
         ignoreMutation: (m) => btn.contains(m.target) || (m.type === 'attributes' && m.target === dom),
       }
     }

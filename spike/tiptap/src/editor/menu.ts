@@ -1,6 +1,16 @@
 import { t } from '../i18n'
 import { ICON_PREFIX, iconSvg } from './menuIcons'
 /** Shared popup list for Suggestion-based menus (/ commands, [[ page links). */
+/** The part of TipTap's suggestion props the menu reads (the command palette calls it with just these). */
+interface MenuProps<T> {
+  items: T[]
+  command: (item: T) => void
+  clientRect?: (() => DOMRect | null) | null
+}
+interface MenuKeyProps {
+  event: KeyboardEvent
+}
+
 interface MenuView {
   icon: string
   title: string
@@ -100,12 +110,12 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
         else if (cur.offsetTop + cur.offsetHeight + 6 > list.scrollTop + list.clientHeight) list.scrollTop = cur.offsetTop + cur.offsetHeight + 6 - list.clientHeight
       }
     }
-    const show = (props: any) => {
+    const show = (props: MenuProps<T>) => {
       draw()
       place(props)
       drawPreview()
     }
-    const place = (props: any) => {
+    const place = (props: MenuProps<T>) => {
       const r = props.clientRect?.()
       if (!el || !r) return
       const h = Math.min(el.offsetHeight || 400, 400)
@@ -115,7 +125,7 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
     }
 
     return {
-      onStart: (props: any) => {
+      onStart: (props: MenuProps<T>) => {
         el = document.createElement('div')
         el.className = 'slash-menu'
         document.body.append(el)
@@ -127,7 +137,7 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
         cmd = (i) => props.command(i)
         show(props)
       },
-      onUpdate: (props: any) => {
+      onUpdate: (props: MenuProps<T>) => {
         items = props.items
         selected = Math.max(
           0,
@@ -136,7 +146,7 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
         cmd = (i) => props.command(i)
         show(props)
       },
-      onKeyDown: ({ event }: any) => {
+      onKeyDown: ({ event }: MenuKeyProps) => {
         if (!items.length) return false
         const move = (d: number) => {
           for (let n = 0; n < items.length; n++) {

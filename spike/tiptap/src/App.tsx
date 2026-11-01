@@ -1,3 +1,4 @@
+import { cssVars } from './cssVars'
 import { setPreference } from './preferenceEvents'
 import { UpdateCenter } from './UpdateUI'
 import { shortcutLabel } from './shortcuts'
@@ -355,7 +356,7 @@ export default function App() {
     const tp = getTemplates().find((x) => x.id === id)
     if (tp) {
       repo.update(p.id, { title: tp.pageTitle, icon: 'i:' + (TEMPLATE_GLYPH[tp.id] ?? 'page') })
-      ;(window as any).__pendingTpl = { pageId: p.id, id }
+      window.__pendingTpl = { pageId: p.id, id }
     }
     refresh()
     setView('page')
@@ -624,13 +625,10 @@ export default function App() {
   const rowProps = { index, currentId: current?.id ?? '', collapsed, onToggle: toggle, onOpen: setCurrentId, onAdd: add, onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }), onMove: move }
 
   return (
-    <div
-      className={'app' + (reader && view === 'page' && current ? ' reading' : '')}
-      style={{ ['--page-w' as any]: pageW + 'px', ['--r-scale' as any]: readerCfg.scale, ['--r-width' as any]: readerCfg.width + 'px' }}
-    >
+    <div className={'app' + (reader && view === 'page' && current ? ' reading' : '')} style={cssVars({ '--page-w': pageW + 'px', '--r-scale': readerCfg.scale, '--r-width': readerCfg.width + 'px' })}>
       <aside
         className={'side' + (sideOpen ? '' : ' closed') + (sideDrag ? ' resizing' : '')}
-        style={sideW ? { ['--side-w' as any]: sideW + 'px' } : undefined}
+        style={sideW ? cssVars({ '--side-w': sideW + 'px' }) : undefined}
         onContextMenu={(e) => (e.preventDefault(), setBlankMenu(new DOMRect(e.clientX, e.clientY, 0, 0)))}
       >
         <div

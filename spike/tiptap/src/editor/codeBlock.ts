@@ -47,7 +47,7 @@ const nameOf = (id: string) => LANGS.find((l) => l.id === id)?.name ?? id
  */
 const hljsAuto = lowlight.highlightAuto.bind(lowlight)
 const SUBSET = LANGS.map((l) => l.id).filter((id) => id !== 'plaintext')
-lowlight.highlightAuto = ((value: string, options?: any) => {
+lowlight.highlightAuto = ((value: string, options?: Parameters<typeof lowlight.highlightAuto>[1]) => {
   const lang = detectLanguage(value)
   if (lang && lowlight.registered(lang)) return lowlight.highlight(lang, value)
   const r = hljsAuto(value, { ...options, subset: SUBSET })
@@ -169,12 +169,12 @@ export const CodeBlock = CodeBlockLowlight.extend({
       textAlign: {
         default: null,
         parseHTML: (el: HTMLElement) => (el.querySelector('pre') ?? el).style.textAlign || el.getAttribute('data-align') || null,
-        renderHTML: (a: any) => (a.textAlign ? { 'data-align': a.textAlign } : {}),
+        renderHTML: (a: Record<string, unknown>) => (a.textAlign ? { 'data-align': a.textAlign } : {}),
       },
     }
   },
   addKeyboardShortcuts() {
-    const parent = (this.parent?.() ?? {}) as Record<string, (ctx: any) => boolean>
+    const parent = (this.parent?.() ?? {}) as Record<string, (ctx: { editor: Editor }) => boolean>
     return {
       ...parent,
       Tab: ({ editor }) => inCode(editor) && indent(editor),
@@ -311,7 +311,7 @@ export const CodeBlock = CodeBlockLowlight.extend({
           sync(n)
           return true
         },
-        stopEvent: (e) => bar.contains(e.target as any) || surface.contains(e.target as any),
+        stopEvent: (e) => bar.contains(e.target as HTMLElement) || surface.contains(e.target as HTMLElement),
         ignoreMutation: (m) => bar.contains(m.target) || surface.contains(m.target),
         destroy: () => {
           destroyed = true

@@ -1,3 +1,5 @@
+import type { Node as PMNode } from '@tiptap/pm/model'
+import type { EditorState } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/core'
 import { Extension, InputRule, Node, mergeAttributes } from '@tiptap/core'
 import { plainIcon } from '../iconSet'
@@ -12,7 +14,7 @@ export const PAGES_CHANGED = 'pages-changed'
 export const OPEN_PAGE = 'open-page'
 
 /** A link is followed by a space so typing can continue, unless punctuation or a space already follows. */
-const gap = (doc: any, pos: number) => (/^[\s.,;:!?)\]}،؛؟]/.test(doc.textBetween(pos, Math.min(pos + 1, doc.content.size), undefined, '￼')) ? [] : [{ type: 'text', text: ' ' }])
+const gap = (doc: PMNode, pos: number) => (/^[\s.,;:!?)\]}،؛؟]/.test(doc.textBetween(pos, Math.min(pos + 1, doc.content.size), undefined, '￼')) ? [] : [{ type: 'text', text: ' ' }])
 
 const byTitle = (name: string) => repo.pagesOnly().find((p) => normalizeFa(p.title).trim() === normalizeFa(name).trim())
 
@@ -117,9 +119,9 @@ const rank = (title: string, q: string) => {
 }
 
 /** Never offer the picker inside code (`a / b`, `x[[0]]`) or inline code. */
-const notInCode = ({ state }: any) => {
+const notInCode = ({ state }: { state: EditorState }) => {
   const $from = state.selection.$from
-  return $from.parent.type.name !== 'codeBlock' && !$from.marks().some((m: any) => m.type.name === 'code')
+  return $from.parent.type.name !== 'codeBlock' && !$from.marks().some((m) => m.type.name === 'code')
 }
 
 /**
@@ -141,7 +143,7 @@ export const PageLinkSuggest = Extension.create({
         startOfLine: false,
         allow: notInCode,
         items: ({ query }) => {
-          const here = (editor.storage as any).currentPageId
+          const here = editor.storage.currentPageId
           // the caret may be in the middle of an already written «[[full name]]»: use all of it
           const full = (query + (char === '[[' ? (restOfBrackets(editor)?.text ?? '') : '')).replace(/\|.*$/, '') // [[Title|alias]]: search by Title
           const q = normalizeFa(full).trim()
@@ -179,3 +181,10 @@ export const PageLinkSuggest = Extension.create({
     ]
   },
 })
+
+declare module '@tiptap/core' {
+  interface Storage {
+    /** The id of the page the editor shows, so a link to the page itself can be told apart. */
+    currentPageId?: string
+  }
+}

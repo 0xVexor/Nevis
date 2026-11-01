@@ -25,12 +25,12 @@ export const AttImage = Image.extend({
       width: {
         default: null,
         parseHTML: (el: HTMLElement) => Number(el.getAttribute('data-w')) || null,
-        renderHTML: (a: any) => (a.width ? { 'data-w': a.width } : {}),
+        renderHTML: (a: Record<string, unknown>) => (a.width ? { 'data-w': a.width } : {}),
       },
       align: {
         default: null,
         parseHTML: (el: HTMLElement) => el.getAttribute('data-align'),
-        renderHTML: (a: any) => (a.align ? { 'data-align': a.align } : {}),
+        renderHTML: (a: Record<string, unknown>) => (a.align ? { 'data-align': a.align } : {}),
       },
     }
   },
@@ -149,7 +149,7 @@ export const AttImage = Image.extend({
           load(n)
           return true
         },
-        stopEvent: (e) => bar.contains(e.target as any) || e.target === handle,
+        stopEvent: (e) => bar.contains(e.target as HTMLElement) || e.target === handle,
         ignoreMutation: () => true,
       }
     }

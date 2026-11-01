@@ -1,4 +1,5 @@
 // Full-screen editor for the "Drawing" block. Loaded on demand (it pulls in the whole library).
+import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import { useEffect, useRef, useState } from 'react'
 import { registerUpdateSave } from './updateSave'
 import { createRoot } from 'react-dom/client'
@@ -13,7 +14,7 @@ export interface DrawingResult {
 }
 
 function DrawingEditor({ initial, onClose }: { initial: SceneData | null; onClose: (r: DrawingResult | null) => void }) {
-  const api = useRef<any>(null)
+  const api = useRef<ExcalidrawImperativeAPI | null>(null)
   const [saving, setSaving] = useState(false)
   useEffect(
     () =>

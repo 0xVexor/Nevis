@@ -1,6 +1,8 @@
 import { setPreference } from '../preferenceEvents'
 import { putFile, urlFor } from '../attachments'
 import { hasArabicScript, loadPersianFont, persianFontCss } from './persianFont'
+import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types'
+import type { AppState, BinaryFiles, LibraryItems } from '@excalidraw/excalidraw/types'
 
 type Lib = typeof import('@excalidraw/excalidraw')
 let lib: Promise<Lib> | null = null
@@ -11,9 +13,9 @@ export function excalidraw(): Promise<Lib> {
 }
 
 export interface SceneData {
-  elements: readonly any[]
-  appState: Record<string, any>
-  files: Record<string, any>
+  elements: readonly ExcalidrawElement[]
+  appState: Partial<AppState>
+  files: BinaryFiles
 }
 
 /** Reads a stored scene (`att:` id of its JSON) and normalises it for the current Excalidraw version. */
@@ -37,11 +39,11 @@ export async function saveScene(scene: SceneData): Promise<{ scene: string; prev
   const live = scene.elements.filter((e) => !e.isDeleted)
   if (!live.length) return null
   const { serializeAsJSON, exportToSvg } = await excalidraw()
-  const json = serializeAsJSON(scene.elements as any, scene.appState as any, scene.files as any, 'local')
+  const json = serializeAsJSON(scene.elements, scene.appState, scene.files, 'local')
   const svg = await exportToSvg({
-    elements: scene.elements as any,
-    appState: { exportBackground: true, viewBackgroundColor: '#ffffff', exportWithDarkMode: false } as any,
-    files: scene.files as any,
+    elements: scene.elements,
+    appState: { exportBackground: true, viewBackgroundColor: '#ffffff', exportWithDarkMode: false },
+    files: scene.files,
     exportPadding: 16,
   })
   if (live.some((e) => e.type === 'text' && hasArabicScript(e.text ?? ''))) {
@@ -64,7 +66,7 @@ export async function saveScene(scene: SceneData): Promise<{ scene: string; prev
 
 const LIBRARY_KEY = 'not.drawing.library'
 
-export function loadLibrary(): any[] {
+export function loadLibrary(): LibraryItems {
   try {
     return JSON.parse(localStorage.getItem(LIBRARY_KEY) ?? '[]')
   } catch {
