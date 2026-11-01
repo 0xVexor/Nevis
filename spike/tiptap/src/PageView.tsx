@@ -11,6 +11,7 @@ import { contentProblem } from './editor/contentSafety'
 import { LAYOUT_CANCEL } from './editor/layout'
 import { activeGroup, validWidths } from './editor/layoutModel'
 import { getFind, scrollToMatch } from './editor/find'
+import { Icon, IconButton } from './design-system'
 import { looksLikeMermaid } from './editor/mermaid'
 import { TableBubble } from './TableBubble'
 import { PageLinkPicker } from './PageLinkPicker'
@@ -443,26 +444,30 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
   }
 
   return (
-    <div className="page">
+    <div className={'page' + (findOpen ? ' finding' : '')}>
       {findOpen && (
-        <div className="findbar" role="search">
-          <input
-            ref={findInput}
-            dir="auto"
-            placeholder={t('Search in this page…')}
-            onChange={(e) => {
-              ;(editor.commands as any).setFind(e.target.value)
-              scrollToMatch(editor)
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') (e.preventDefault(), stepFind(e.shiftKey ? -1 : 1))
-              else if (e.key === 'Escape') (e.preventDefault(), closeFind())
-            }}
-          />
-          <span className="find-count">{find.matches.length ? t('{i} of {n}', { i: find.index + 1, n: find.matches.length }) : find.query ? t('Not found') : ''}</span>
-          <button title={t('Previous  Shift+Enter')} onClick={() => stepFind(-1)}><span style={{ display: 'inline-flex', transform: 'rotate(-90deg)' }}><Ic.Chevron size={14} /></span></button>
-          <button title={t('Next  Enter')} onClick={() => stepFind(1)}><span style={{ display: 'inline-flex', transform: 'rotate(90deg)' }}><Ic.Chevron size={14} /></span></button>
-          <button title={t('Close  Esc')} onClick={closeFind}><Ic.Close size={14} /></button>
+        <div className="findbar-slot">
+          <div className="findbar" role="search">
+            <Ic.Search size={18} />
+            <input
+              ref={findInput}
+              dir="auto"
+              aria-label={t('Search in this page…')}
+              placeholder={t('Search in this page…')}
+              onChange={(e) => {
+                ;(editor.commands as any).setFind(e.target.value)
+                scrollToMatch(editor)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.preventDefault(), stepFind(e.shiftKey ? -1 : 1))
+                else if (e.key === 'Escape') (e.preventDefault(), closeFind())
+              }}
+            />
+            <span className="find-count" aria-live="polite">{find.matches.length ? t('{i} of {n}', { i: find.index + 1, n: find.matches.length }) : find.query ? t('Not found') : ''}</span>
+            <IconButton label={t('Previous  Shift+Enter')} disabled={!find.matches.length} onClick={() => stepFind(-1)}><Icon name="chevron-up" size={16} /></IconButton>
+            <IconButton label={t('Next  Enter')} disabled={!find.matches.length} onClick={() => stepFind(1)}><Icon name="chevron-down" size={16} /></IconButton>
+            <IconButton label={t('Close  Esc')} onClick={closeFind}><Icon name="x" size={16} /></IconButton>
+          </div>
         </div>
       )}
       {slot &&

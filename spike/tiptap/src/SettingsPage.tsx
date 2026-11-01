@@ -2,16 +2,18 @@ import { McpConnectionSettings } from './mcp/ConnectionSettings'
 import { Brand } from './Brand'
 import { UpdateSettings } from './UpdateUI'
 import appPackage from '../package.json'
-import { Suspense, lazy, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 const DatabaseSettings = lazy(() => import('./database/ui/DatabaseSettings').then((m) => ({ default: m.DatabaseSettings })))
 import { confirmDialog } from './dialog'
-import { ACCENTS, DEFAULTS, FONTS, PRESETS, TEXT_COLORS, loadFont, updateSettings, useSettings, type FontGroup, type FontId, type SidebarStyle, type Theme } from './settings'
+import { ACCENTS, DEFAULTS, FONTS, PRESETS, TEXT_COLORS, loadFontPreview, updateSettings, useSettings, type FontDef, type FontGroup, type FontId, type SidebarStyle, type Theme } from './settings'
 import { pickFiles } from './io'
 import { putFile } from './attachments'
 import * as Ic from './icons'
 import { t } from './i18n'
 import { SHORTCUTS, keyLabel, shortcutKeys } from './shortcuts'
-import { Button } from './design-system'
+import { Card, Row } from './SettingsParts'
+import { LATIN_DEFAULT } from './fontStack'
+import { DataTab, type DataApi } from './DataTab'
 
 type Tab = 'appearance' | 'editor' | 'language' | 'general' | 'data' | 'database' | 'shortcuts' | 'connections' | 'about'
 const TABS: { id: Tab; label: string; title: string; hint: string; icon: ReactNode }[] = [
@@ -39,30 +41,6 @@ const SIDEBAR_STYLES: { id: SidebarStyle; label: string }[] = [
 ]
 
 // ───── building blocks: a card holds rows; a row is "label + hint" on one side and its control on the other ─────
-
-const Card = ({ icon, title, hint, children }: { icon?: ReactNode; title: ReactNode; hint?: string; children: ReactNode }) => (
-  <section className="sx-card">
-    <header className="sx-card-head">
-      {icon && <span className="sx-ic">{icon}</span>}
-      <div>
-        <h3>{title}</h3>
-        {hint && <p>{hint}</p>}
-      </div>
-    </header>
-    <div className="sx-card-body">{children}</div>
-  </section>
-)
-
-/** `wide` rows put the control under the text (swatches, grids); the others keep it beside it. */
-const Row = ({ label, hint, children, wide }: { label: string; hint?: string; children: ReactNode; wide?: boolean }) => (
-  <div className={'sx-row' + (wide ? ' wide' : '')}>
-    <div className="sx-tx">
-      <b>{label}</b>
-      {hint && <small>{hint}</small>}
-    </div>
-    <div className="sx-ctl">{children}</div>
-  </div>
-)
 
 const Switch = ({ label, on, onChange }: { label: string; on: boolean; onChange: (v: boolean) => void }) => (
   <button role="switch" aria-checked={on} aria-label={label} className={'switch' + (on ? ' on' : '')} onClick={() => onChange(!on)} />
@@ -238,24 +216,52 @@ const GROUPS: { id: FontGroup; label: string; sample: string }[] = [
   { id: 'system', label: 'System', sample: 'Aa  آب' },
 ]
 
-function FontPicker({ value, onPick }: { value: FontId; onPick: (id: FontId) => void }) {
-  useEffect(() => FONTS.forEach(loadFont), []) // every card previews its own face
+/** Cards for each face, grouped. `none` adds a first card for "no choice" (value null). */
+/** One face. It previews itself in its own font, loaded only when the card scrolls into view. */
+function FontCard({ face, sample, on, onPick }: { face: FontDef; sample: string; on: boolean; onPick: () => void }) {
+  const ref = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || !face.css) return
+    const watch = new IntersectionObserver((seen) => seen.some((e) => e.isIntersecting) && (loadFontPreview(face), watch.disconnect()), { rootMargin: '200px' })
+    watch.observe(el)
+    return () => watch.disconnect()
+  }, [face])
+  return (
+    <button ref={ref} className={'fp-card' + (on ? ' on' : '')} aria-pressed={on} onClick={onPick}>
+      <span className="fp-name">
+        {t(face.label)}
+        {on && <Ic.Check size={14} />}
+      </span>
+      <span className="fp-sample" dir="auto" style={{ fontFamily: face.stack }}>
+        {sample}
+      </span>
+    </button>
+  )
+}
+
+function FontPicker({ value, groups, none, onPick }: { value: FontId | null; groups: FontGroup[]; none?: { label: string; stack: string }; onPick: (id: FontId | null) => void }) {
   return (
     <div className="fp">
-      {GROUPS.map((g) => (
+      {none && (
+        <div className="fp-group">
+          <div className="fp-grid">
+            <button className={'fp-card' + (value === null ? ' on' : '')} aria-pressed={value === null} onClick={() => onPick(null)}>
+              <span className="fp-name">
+                {none.label}
+                {value === null && <Ic.Check size={14} />}
+              </span>
+              <span className="fp-sample" dir="auto" style={{ fontFamily: none.stack }}>The quick brown fox 123</span>
+            </button>
+          </div>
+        </div>
+      )}
+      {GROUPS.filter((g) => groups.includes(g.id)).map((g) => (
         <div key={g.id} className="fp-group">
           <div className="fp-label">{t(g.label)}</div>
           <div className="fp-grid">
             {FONTS.filter((f) => f.group === g.id).map((f) => (
-              <button key={f.id} className={'fp-card' + (value === f.id ? ' on' : '')} aria-pressed={value === f.id} onClick={() => onPick(f.id)}>
-                <span className="fp-name">
-                  {t(f.label)}
-                  {value === f.id && <Ic.Check size={14} />}
-                </span>
-                <span className="fp-sample" dir="auto" style={{ fontFamily: f.stack }}>
-                  {f.sample ?? g.sample}
-                </span>
-              </button>
+              <FontCard key={f.id} face={f} sample={f.sample ?? g.sample} on={value === f.id} onPick={() => onPick(f.id)} />
             ))}
           </div>
         </div>
@@ -268,8 +274,12 @@ function Editor() {
   const s = useSettings()
   return (
     <>
-      <Card icon={<Ic.Type />} title={t('Font')} hint={t('Applies to the text of your pages. Every font is built in, so it works offline.')}>
-        <FontPicker value={s.font} onPick={(font) => updateSettings({ font })} />
+      <Card icon={<Ic.Type />} title={t('Persian font')} hint={t('For Persian and Arabic letters only. English letters use the English font below. Every font is built in, so it works offline.')}>
+        <FontPicker value={s.font} groups={['persian', 'system']} onPick={(font) => font && updateSettings({ font })} />
+      </Card>
+
+      <Card icon={<Ic.Type />} title={t('English font')} hint={t('For Latin letters and numbers, whatever the Persian font is.')}>
+        <FontPicker value={s.fontEn} groups={['english', 'system']} none={{ label: t('Default (Instrument Sans)'), stack: LATIN_DEFAULT }} onPick={(fontEn) => updateSettings({ fontEn })} />
       </Card>
 
       <Card icon={<Ic.Settings />} title={t('Text')}>
@@ -368,53 +378,6 @@ function Shortcuts() {
   )
 }
 
-export interface DataActions {
-  importMarkdown: () => void
-  importVault: () => void
-  exportAll: () => void
-  backup: () => void
-  restore: () => void
-  autoBackup: () => void
-  workspaces: () => void
-}
-
-function DataTab({ a }: { a: DataActions }) {
-  return (
-    <>
-      <Card title={t('Import')}>
-        <div className="sx-drop">
-          <span className="sx-drop-ic"><Ic.Upload size={22} /></span>
-          <b>{t('Import Markdown or an Obsidian vault')}</b>
-          <small>{t('Bring pages in from Markdown files or an Obsidian folder.')}</small>
-          <span className="sx-drop-btns">
-            <Button size="sm" type="button" onClick={a.importMarkdown}>{t('Import Markdown files…')}</Button>
-            <Button size="sm" type="button" onClick={a.importVault}>{t('Import Obsidian vault (folder)…')}</Button>
-          </span>
-        </div>
-      </Card>
-      <Card title={t('Export & backup')}>
-        <Row label={t('Export all pages')} hint={t('Zip with Markdown and images')}>
-          <Button size="sm" type="button" onClick={a.exportAll}><Ic.Download size={15} />{t('Export')}</Button>
-        </Row>
-        <Row label={t('Full backup (JSON)')} hint={t('Everything in one file')}>
-          <Button size="sm" type="button" onClick={a.backup}><Ic.Download size={15} />{t('Export')}</Button>
-        </Row>
-        <Row label={t('Restore from backup…')} hint={t('Bring your notes back from a backup file')}>
-          <Button size="sm" type="button" onClick={a.restore}><Ic.Upload size={15} />{t('Restore')}</Button>
-        </Row>
-        <Row label={t('Automatic backup to folder…')} hint={t('Keeps a copy in a folder you choose')}>
-          <Button size="sm" type="button" onClick={a.autoBackup}><Ic.Folders size={15} />{t('Choose folder')}</Button>
-        </Row>
-      </Card>
-      <Card title={t('Workspaces')}>
-        <Row label={t('Workspaces')} hint={t('Switch or create a workspace')}>
-          <Button size="sm" type="button" onClick={a.workspaces}>{t('Open')}</Button>
-        </Row>
-      </Card>
-    </>
-  )
-}
-
 function About() {
   return (
     <>
@@ -433,8 +396,8 @@ function About() {
   )
 }
 
-export function SettingsView({ data }: { data: DataActions }) {
-  const [tab, setTab] = useState<Tab>('appearance')
+export function SettingsView({ data, initialTab }: { data: DataApi; initialTab?: Tab }) {
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'appearance')
   const s = useSettings()
   const cur = TABS.find((x) => x.id === tab)!
   const reset = async () => {
@@ -465,7 +428,7 @@ export function SettingsView({ data }: { data: DataActions }) {
             <h3>{t(cur.title)}</h3>
             <p>{t(cur.hint)}</p>
           </header>
-          {tab === 'connections' ? <McpConnectionSettings /> : tab === 'appearance' ? <Appearance /> : tab === 'editor' ? <Editor /> : tab === 'language' ? <LanguageTab /> : tab === 'general' ? <General /> : tab === 'data' ? <DataTab a={data} /> : tab === 'database' ? <Suspense fallback={null}><DatabaseSettings /></Suspense> : tab === 'shortcuts' ? <Shortcuts /> : <About />}
+          {tab === 'connections' ? <McpConnectionSettings /> : tab === 'appearance' ? <Appearance /> : tab === 'editor' ? <Editor /> : tab === 'language' ? <LanguageTab /> : tab === 'general' ? <General /> : tab === 'data' ? <DataTab api={data} /> : tab === 'database' ? <Suspense fallback={null}><DatabaseSettings /></Suspense> : tab === 'shortcuts' ? <Shortcuts /> : <About />}
         </div>
       </div>
     </div>

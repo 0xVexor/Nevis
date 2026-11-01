@@ -31,6 +31,7 @@
 .sx-tx b { font-weight: 600; font-size: 14px; }
 .sx-tx small { color: var(--ds-text-2); font-size: 12.5px; line-height: 1.6; }
 .sx-ctl { flex: none; max-width: 100%; }
+.sx-row:not(.wide) .sx-ctl { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--ds-s2); }
 .sx-row.wide .sx-ctl { flex: 1; }
 
 .sx-range { display: flex; align-items: center; gap: 12px; width: 260px; max-width: 100%; }

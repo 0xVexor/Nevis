@@ -1,7 +1,7 @@
 import { Extension } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
 import { menuRender } from './menu'
-import { INSERTS, paletteItems, shownItem, type CommandItem } from './slash'
+import { INSERTS, paletteItems, shownItem, type CommandItem, previewOf } from './slash'
 import { t } from '../i18n'
 
 let closeActive: (() => void) | null = null
@@ -15,7 +15,7 @@ function openPalette(editor: any) {
   if (closeActive) return closeActive() // the shortcut toggles
 
   let query = ''
-  const render = menuRender<CommandItem>({ label: () => (query ? `${t('Commands')} · ${query}` : t('Commands')), view: shownItem })()
+  const render = menuRender<CommandItem>({ label: () => (query ? `${t('Commands')} · ${query}` : t('Commands')), view: shownItem, preview: previewOf })()
   const caret = () => {
     const c = editor.view.coordsAtPos(editor.state.selection.head)
     return new DOMRect(c.left, c.top, 0, c.bottom - c.top)

@@ -245,3 +245,15 @@
 .ds-tip { position: relative; display: inline-flex; }
 .ds-tip::after { content: attr(data-tip); position: absolute; inset-block-end: calc(100% + 6px); inset-inline: 0; margin-inline: auto; inline-size: max-content; max-inline-size: 240px; padding: 5px 9px; border-radius: 7px; background: var(--ds-text); color: var(--ds-bg); font-size: 12px; line-height: 1.3; text-align: center; opacity: 0; pointer-events: none; transition: opacity var(--ds-fast); z-index: var(--ds-z-pop); }
 .ds-tip:hover::after, .ds-tip:focus-within::after { opacity: 1; transition-delay: 0.35s; }
+
+/* Facts: a short list of labels and values, for a summary in a dialog or a card */
+.ds-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--ds-s2) var(--ds-s6); margin: 0; padding: var(--ds-s4); border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-sunk); }
+.ds-facts dt { color: var(--ds-text-2); }
+.ds-facts dd { margin: 0; color: var(--ds-text); font-weight: 550; overflow-wrap: anywhere; }
+
+/* Notice: one sentence that needs to be seen. Pair the color with the words, never color alone. */
+.ds-notice { display: flex; gap: var(--ds-s3); align-items: flex-start; margin-block-start: var(--ds-s3); padding: var(--ds-s3) var(--ds-s4); border: 1px solid color-mix(in oklab, var(--c, var(--ds-info)) 35%, transparent); border-radius: var(--ds-r); background: color-mix(in oklab, var(--c, var(--ds-info)) 9%, transparent); color: var(--ds-text); font-size: 13px; line-height: 1.5; }
+.ds-notice > svg { flex: none; margin-block-start: 2px; color: var(--c, var(--ds-info)); }
+.ds-notice--warn { --c: var(--ds-warn); }
+.ds-notice--bad { --c: var(--ds-bad); }
+.ds-notice ul { margin: 0; padding-inline-start: 18px; }

@@ -1,4 +1,5 @@
 import { setPreference } from './preferenceEvents'
+import { composeFonts } from './fontStack'
 // Appearance settings. Everything is applied as CSS variables on <html> (see docs/design-language.md),
 // so no component needs to know about them. Persisted in localStorage (small, per device).
 import { useSyncExternalStore } from 'react'
@@ -18,7 +19,8 @@ export interface Settings {
   accent: string | null // null = the theme's own default
   bg: Background
   radius: number // px of --user-radius; the small/large steps derive from it
-  font: FontId
+  font: FontId // the face for Persian and Arabic letters (and for everything, while fontEn is null)
+  fontEn: FontId | null // the face for Latin letters and digits; null = the app's own Latin face (Instrument Sans)
   fontSize: number // editor text, px
   textColor: string | null // editor text colour, null = theme text colour
   sidebar: SidebarStyle
@@ -34,7 +36,7 @@ export interface Settings {
   prereleaseUpdates: boolean
 }
 
-export const DEFAULTS: Settings = { lang: 'en', dir: 'auto', theme: 'light', accent: null, bg: { kind: 'default' }, radius: 10, font: 'vazir', fontSize: 16, textColor: null, sidebar: 'default', pagesView: 'tree', sideGlass: 0, mainGlass: 0, bgStrength: 100, showCovers: true, showIcons: true, reduceMotion: false, cardReminders: true, compressImages: true, prereleaseUpdates: false }
+export const DEFAULTS: Settings = { lang: 'en', dir: 'auto', theme: 'light', accent: null, bg: { kind: 'default' }, radius: 10, font: 'vazir', fontEn: null, fontSize: 16, textColor: null, sidebar: 'default', pagesView: 'tree', sideGlass: 0, mainGlass: 0, bgStrength: 100, showCovers: true, showIcons: true, reduceMotion: false, cardReminders: true, compressImages: true, prereleaseUpdates: false }
 
 const KEY = 'not.settings'
 const LEGACY_THEME = 'not.theme' // 'light' | 'dark' | null from before the settings page
@@ -49,11 +51,11 @@ export interface FontDef {
   group: FontGroup
   stack: string
   sample?: string // what the picker shows in this face (defaults to the group's sample)
-  css?: () => Promise<unknown>
+  css?: (() => Promise<unknown>) & { regular?: () => Promise<unknown> } // `regular`: just the 400 weight, enough for a preview
 }
 
 const FA_TAIL = "'Vazirmatn', 'Segoe UI', Tahoma, sans-serif" // Persian letters fall back to Vazirmatn in the Latin faces
-const w3 = (a: () => Promise<unknown>, b: () => Promise<unknown>, c: () => Promise<unknown>) => () => Promise.all([a(), b(), c()])
+const w3 = (a: () => Promise<unknown>, b: () => Promise<unknown>, c: () => Promise<unknown>) => Object.assign(() => Promise.all([a(), b(), c()]), { regular: a })
 
 /** Faces for page text, grouped for the picker. Every web font is bundled (@fontsource) and loaded only when chosen or previewed. */
 export const FONTS: FontDef[] = [
@@ -114,7 +116,10 @@ function load(): Settings {
   }
   const old = saved as { glass?: boolean }
   if (old.glass && saved.sideGlass === undefined) saved.sideGlass = 60 // the old on/off switch became a slider
-  return { ...DEFAULTS, ...Object.fromEntries(Object.entries(saved).filter(([key]) => key in DEFAULTS)) }
+  const merged: Settings = { ...DEFAULTS, ...Object.fromEntries(Object.entries(saved).filter(([key]) => key in DEFAULTS)) }
+  // before there were two pickers, an English face in `font` styled everything: it becomes the English face, Persian letters use the default
+  if (saved.fontEn === undefined && FONTS.find((x) => x.id === merged.font)?.group === 'english') return { ...merged, fontEn: merged.font, font: DEFAULTS.font }
+  return merged
 }
 
 let state: Settings = load()
@@ -197,8 +202,18 @@ const cursors = () => ({
   nesw: `${lines('M18 6h-5M18 6v5M18 6L6 18M6 18h5M6 18v-5')} 12 12, nesw-resize`,
 })
 
+/** The <style> that holds the @font-face rules the chosen faces need. */
+const fontStyle = () => document.getElementById('nevis-fonts') ?? document.head.appendChild(Object.assign(document.createElement('style'), { id: 'nevis-fonts' }))
+
 const loadedFonts = new Set<FontId>()
 /** Pulls in a bundled face's CSS once (also used by the font picker to preview each face in itself). */
+/** A picker card needs only the regular weight, and only once it is on screen. The full set loads when the face is chosen. */
+const previewed = new Set<FontId>()
+export function loadFontPreview(f: FontDef) {
+  if (!f.css || loadedFonts.has(f.id) || previewed.has(f.id)) return
+  previewed.add(f.id)
+  void (f.css.regular ?? f.css)().catch(() => previewed.delete(f.id))
+}
 export function loadFont(f: FontDef) {
   if (f.css && !loadedFonts.has(f.id)) (loadedFonts.add(f.id), void f.css().catch(() => loadedFonts.delete(f.id)))
 }
@@ -238,9 +253,16 @@ export function apply(s: Settings = state) {
   flag('data-icons', !s.showIcons, 'off')
   flag('data-motion', s.reduceMotion, 'reduce')
 
+  // each script gets its own face (see fontStack.ts)
   const f = FONTS.find((x) => x.id === s.font) ?? FONTS[0]
-  set('--font', f.id === 'vazir' ? null : f.stack)
+  const en = s.fontEn ? FONTS.find((x) => x.id === s.fontEn) : undefined
+  const fonts = composeFonts(f, en)
+  set('--font', fonts.sans)
+  set('--ds-font-ui', fonts.sans) // components styled with the design-system token follow the same two faces
+  set('--ds-font-serif', fonts.serif) // the display serif keeps Newsreader until an English face is chosen
+  fontStyle().textContent = fonts.css
   loadFont(f)
+  if (en) loadFont(en)
 
   void applyBackground(root, s.bg, s.bgStrength)
 }

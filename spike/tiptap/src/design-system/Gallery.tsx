@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button, IconButton } from './Button'
-import { Card, Chip, Field, Section, Switch, Tabs } from './controls'
+import { Card, Chip, Facts, Field, Notice, Section, Switch, Tabs } from './controls'
 import { Row } from './Row'
 import { Dialog, Tooltip } from './overlay'
 import { Icon } from './icons'
@@ -44,6 +44,10 @@ function Pane({ dir }: { dir: 'ltr' | 'rtl' }) {
           <Chip color="#0f8f83" dot>{fa ? 'در حال انجام' : 'Doing'}</Chip>
         </div>
         <Tabs items={[{ id: 'one', label: fa ? 'یک' : 'One' }, { id: 'two', label: fa ? 'دو' : 'Two' }]} value={tab} onChange={setTab} />
+      </Section>
+      <Section title="Facts and notice">
+        <Facts items={[[fa ? 'صفحه‌ها' : 'Pages', fa ? '۱۲۸' : '128'], [fa ? 'تصویرها' : 'Images', fa ? '۴۲' : '42']]} />
+        <Notice tone="warn" icon={<Icon name="warning" size={16} />}>{fa ? 'همهٔ صفحه‌های فعلی جایگزین می‌شوند.' : 'All current pages will be replaced.'}</Notice>
       </Section>
       <Section title="Dialog">
         <Button onClick={() => setOpen(true)}>{fa ? 'باز کردن' : 'Open dialog'}</Button>
