@@ -7,7 +7,8 @@ import { firstTextDirection } from '../textDirection.ts'
 export { firstTextDirection } from '../textDirection.ts'
 
 const LISTS = new Set(['bulletList', 'orderedList', 'taskList'])
-const BLOCKS = new Set(['paragraph', 'heading', 'listItem', 'taskItem', ...LISTS])
+// Containers that draw something on their start side (a quote bar, a callout icon, a toggle arrow) carry the direction of their text too.
+const BLOCKS = new Set(['paragraph', 'heading', 'listItem', 'taskItem', 'blockquote', 'callout', 'toggle', ...LISTS])
 const explicit = (dir: unknown): 'rtl' | 'ltr' | null => dir === 'rtl' || dir === 'ltr' ? dir : null
 
 /** Render-only direction: it never rewrites notes or adds automatic changes to undo history.

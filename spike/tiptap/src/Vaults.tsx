@@ -10,7 +10,7 @@ import {
 import { alertDialog, confirmDialog, promptDialog } from './dialog'
 import { explain } from './vaultErrors'
 import * as Ic from './icons'
-import { Icon } from './design-system'
+import { Icon, Button } from './design-system'
 import { MenuItem, MenuSep, Popover } from './ui'
 import { t } from './i18n'
 
@@ -141,8 +141,8 @@ export function Vaults({ onClose, onNew }: { onClose: () => void; onNew: (create
       </div>
       <div className="wsd-card-foot">
         {v.id === id ? <span className="ds-chip ds-chip--dot" style={{ ['--c' as string]: 'var(--ds-accent)' }}>{t('Current workspace')}</span>
-          : v.status === 'ok' ? <button className="ds-btn ds-btn--sm" disabled={busy} onClick={() => void switchTo(v.id)}>{t('Switch')}</button>
-          : <button className="ds-btn ds-btn--sm" disabled={busy} onClick={() => void locate(v)}><Icon name="folder" size={15} />{t('Locate folder…')}</button>}
+          : v.status === 'ok' ? <Button size="sm" disabled={busy} onClick={() => void switchTo(v.id)}>{t('Switch')}</Button>
+          : <Button size="sm" disabled={busy} onClick={() => void locate(v)}><Icon name="folder" size={15} />{t('Locate folder…')}</Button>}
       </div>
     </div>
   )
@@ -156,8 +156,8 @@ export function Vaults({ onClose, onNew }: { onClose: () => void; onNew: (create
             <small>{t('Each workspace is a folder you own. Switch any time.')}</small>
           </div>
           <span className="wsd-head-acts">
-            {isTauri && <button className="ds-btn" disabled={busy} onClick={() => void openFolder()}><Icon name="folder" size={16} />{t('Open a folder as vault…')}</button>}
-            {isTauri && <button className="ds-btn ds-btn--primary" disabled={busy} onClick={() => (onClose(), onNew(create))}><Icon name="plus" size={16} />{t('New workspace…')}</button>}
+            {isTauri && <Button disabled={busy} onClick={() => void openFolder()}><Icon name="folder" size={16} />{t('Open a folder as vault…')}</Button>}
+            {isTauri && <Button variant="primary" disabled={busy} onClick={() => (onClose(), onNew(create))}><Icon name="plus" size={16} />{t('New workspace…')}</Button>}
             <button className="icon-btn" title={t('Close  Esc')} onClick={onClose}><Ic.Close size={16} /></button>
           </span>
         </div>

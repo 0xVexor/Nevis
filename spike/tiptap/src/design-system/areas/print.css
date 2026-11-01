@@ -2,8 +2,8 @@
 @media print {
   :root:root:root {
     color-scheme: light;
-    --bg: #fff; --bg-app: #fff; --bg-sunk: #fff; --pop: #fff; --app-bg-image: none;
-    --text: #111; --muted: #444; --faint: #777; --hover: rgb(0 0 0 / 0.05); --active: rgb(0 0 0 / 0.1); --border: rgb(0 0 0 / 0.22);
+    --ds-bg: #fff; --ds-side: #fff; --ds-sunk: #fff; --ds-raised: #fff; --app-bg-image: none;
+    --ds-text: #111; --ds-text-2: #444; --ds-text-3: #777; --ds-hover: rgb(0 0 0 / 0.05); --ds-press: rgb(0 0 0 / 0.1); --ds-line: rgb(0 0 0 / 0.22);
     --pre-bg: #f6f6f6; --code-bg: #eee; --code-text: #b3261e;
   }
   html, body, #root { height: auto !important; background: #fff !important; background-image: none !important; }

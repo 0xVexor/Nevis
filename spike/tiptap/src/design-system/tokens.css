@@ -15,6 +15,15 @@
   --ds-accent-ink: #ffffff;
   --ds-accent-soft: color-mix(in oklab, var(--ds-accent) 14%, var(--ds-bg));
   --ds-accent-line: color-mix(in oklab, var(--ds-accent) 34%, var(--ds-bg));
+  --ds-white: #fff;
+  /* hues for tiles, tags and chips */
+  --ds-violet: light-dark(#6a5cff, #9a90ff);
+  --ds-blue: light-dark(#2f7cf6, #6aa5ff);
+  --ds-green: light-dark(#17a56a, #3ccf92);
+  --ds-orange: light-dark(#ee8412, #ffa84a);
+  --ds-pink: light-dark(#e1459a, #ff7ab9);
+  --ds-danger: #d4493a; /* toolbar and menu delete actions */
+  --ds-accent-faint: color-mix(in srgb, var(--ds-accent) 7%, transparent);
 
   /* surfaces */
   --ds-bg: color-mix(in oklab, var(--ds-accent) 2%, light-dark(#ffffff, #1e2128));
@@ -40,10 +49,10 @@
   --ds-info: light-dark(#3b6fd4, #7aa2ee);
 
   /* shape */
-  /* follow Settings → Corner radius (it writes --radius, --radius-sm and --radius-lg) */
-  --ds-r-sm: var(--radius-sm, 7px);
-  --ds-r: var(--radius, 10px);
-  --ds-r-lg: var(--radius-lg, 14px);
+  /* follow Settings → Corner radius (it writes --user-radius, --user-radius-sm and --user-radius-lg) */
+  --ds-r-sm: var(--user-radius-sm, 7px);
+  --ds-r: var(--user-radius, 10px);
+  --ds-r-lg: var(--user-radius-lg, 14px);
   --ds-r-full: 999px;
 
   /* spacing: multiples of 4 */

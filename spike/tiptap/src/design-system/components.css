@@ -5,7 +5,7 @@
  */
 
 .ds-icon { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-:where([dir='rtl']) .ds-flip { transform: scaleX(-1); }
+.ds-flip:dir(rtl) { transform: scaleX(-1); }
 .ds-muted { color: var(--ds-text-3); }
 
 /* focus: one visible ring everywhere */
@@ -19,7 +19,7 @@
   display: inline-flex; align-items: center; justify-content: center; gap: var(--ds-s2);
   height: 34px; padding: 0 14px; border-radius: var(--ds-r);
   border: 1px solid var(--ds-line); background: var(--ds-raised); color: var(--ds-text);
-  font: 550 14px/1 var(--ds-font-ui); white-space: nowrap; cursor: pointer;
+  font: 550 14px/1 var(--ds-font-ui); white-space: nowrap; cursor: var(--cursor-hand, pointer);
   transition: background var(--ds-fast), border-color var(--ds-fast), transform 0.1s;
 }
 .ds-btn:hover { background: var(--ds-sunk); border-color: var(--ds-line-strong); }
@@ -33,7 +33,7 @@
 .ds-btn--sm { height: 28px; padding: 0 10px; font-size: 13px; border-radius: 8px; }
 .ds-icon-btn {
   width: 32px; height: 32px; display: grid; place-items: center; border-radius: var(--ds-r-sm);
-  color: var(--ds-text-2); background: none; border: 0; cursor: pointer; transition: background var(--ds-fast);
+  color: var(--ds-text-2); background: none; border: 0; cursor: var(--cursor-hand, pointer); transition: background var(--ds-fast);
 }
 .ds-icon-btn:hover { background: var(--ds-hover); color: var(--ds-text); }
 .ds-icon-btn[aria-pressed='true'] { background: var(--ds-accent-soft); color: var(--ds-accent); }
@@ -53,7 +53,7 @@
 .ds-dd-btn {
   display: inline-flex; align-items: center; justify-content: space-between; gap: var(--ds-s3);
   height: 34px; min-width: 160px; padding: 0 12px; border-radius: var(--ds-r);
-  border: 1px solid var(--ds-line); background: var(--ds-raised); color: var(--ds-text); font: inherit; cursor: pointer;
+  border: 1px solid var(--ds-line); background: var(--ds-raised); color: var(--ds-text); font: inherit; cursor: var(--cursor-hand, pointer);
   transition: border-color var(--ds-fast);
 }
 .ds-dd-btn:hover { border-color: var(--ds-line-strong); }
@@ -68,20 +68,20 @@
 .ds-check[aria-checked='true'] { background: var(--ds-accent); border-color: var(--ds-accent); color: var(--ds-accent-ink); }
 .ds-switch {
   position: relative; width: 36px; height: 20px; flex: none; border-radius: 10px; border: 0; padding: 0;
-  background: var(--ds-line-strong); cursor: pointer; transition: background var(--ds-base);
+  background: var(--ds-line-strong); cursor: var(--cursor-hand, pointer); transition: background var(--ds-base);
 }
 .ds-switch::after {
   content: ''; position: absolute; top: 2px; inset-inline-start: 2px; width: 16px; height: 16px; border-radius: 50%;
-  background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.25); transition: transform var(--ds-base) var(--ds-ease);
+  background: var(--ds-white); box-shadow: 0 1px 2px rgb(0 0 0 / 0.25); transition: transform var(--ds-base) var(--ds-ease);
 }
 .ds-switch[aria-checked='true'] { background: var(--ds-accent); }
 .ds-switch[aria-checked='true']::after { transform: translateX(16px); }
 :where([dir='rtl']) .ds-switch[aria-checked='true']::after { transform: translateX(-16px); }
 .ds-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--ds-r); background: var(--ds-sunk); }
-.ds-seg button { height: 28px; padding: 0 12px; border: 0; border-radius: 8px; background: none; color: var(--ds-text-2); font: 500 14px var(--ds-font-ui); cursor: pointer; white-space: nowrap; }
+.ds-seg button { height: 28px; padding: 0 12px; border: 0; border-radius: 8px; background: none; color: var(--ds-text-2); font: 500 14px var(--ds-font-ui); cursor: var(--cursor-hand, pointer); white-space: nowrap; }
 .ds-seg button[aria-pressed='true'] { background: var(--ds-raised); color: var(--ds-text); box-shadow: 0 0 0 1px var(--ds-line), 0 1px 2px rgb(0 0 0 / 0.06); }
 .ds-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--ds-line); overflow-x: auto; }
-.ds-tabs button { display: flex; align-items: center; gap: 7px; padding: 9px 12px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--ds-text-2); font: 500 14px var(--ds-font-ui); white-space: nowrap; cursor: pointer; }
+.ds-tabs button { display: flex; align-items: center; gap: 7px; padding: 9px 12px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--ds-text-2); font: 500 14px var(--ds-font-ui); white-space: nowrap; cursor: var(--cursor-hand, pointer); }
 .ds-tabs button:hover { color: var(--ds-text); }
 .ds-tabs button[aria-selected='true'] { color: var(--ds-text); border-bottom-color: var(--ds-accent); }
 
@@ -97,7 +97,7 @@
   display: grid; place-items: center; min-width: 22px; height: 22px; padding: 0 4px; border-radius: 50%;
   border: 1.5px solid var(--ds-line-strong); color: var(--ds-text-2); font: 600 11.5px var(--ds-font-ui); font-variant-numeric: tabular-nums;
 }
-.ds-avatar { --c: var(--ds-accent); display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--c); color: #fff; font: 650 10.5px var(--ds-font-ui); }
+.ds-avatar { --c: var(--ds-accent); display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--c); color: var(--ds-white); font: 650 10.5px var(--ds-font-ui); }
 .ds-tile { --c: var(--ds-text-2); display: grid; place-items: center; width: 20px; height: 20px; flex: none; border-radius: 6px; background: color-mix(in oklab, var(--c) 14%, var(--ds-bg)); color: var(--c); }
 .ds-tile .ds-icon { width: 13px; height: 13px; stroke-width: 1.9; }
 .ds-tile--md { width: 32px; height: 32px; border-radius: 9px; }
@@ -109,7 +109,7 @@
 
 /* ───── surfaces ───── */
 .ds-card { border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); }
-.ds-card--interactive { cursor: pointer; transition: border-color var(--ds-base); }
+.ds-card--interactive { cursor: var(--cursor-hand, pointer); transition: border-color var(--ds-base); }
 .ds-card--interactive:hover { border-color: var(--ds-line-strong); }
 .ds-card--selected { border-color: var(--ds-accent-line); box-shadow: 0 0 0 3px var(--ds-accent-soft); }
 .ds-empty { padding: 36px; text-align: center; color: var(--ds-text-3); }
@@ -130,7 +130,7 @@
 .ds-menu { min-width: 220px; padding: 6px; }
 .ds-menu-item {
   position: relative; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 6px 10px;
-  border: 0; border-radius: 8px; background: none; color: var(--ds-text); font: 14px var(--ds-font-ui); text-align: start; cursor: pointer; user-select: none;
+  border: 0; border-radius: 8px; background: none; color: var(--ds-text); font: 14px var(--ds-font-ui); text-align: start; cursor: var(--cursor-hand, pointer); user-select: none;
 }
 .ds-menu-item:hover, .ds-menu-item:focus-visible { background: var(--ds-hover); }
 .ds-menu-item .ds-icon, .ds-menu-ic { color: var(--ds-text-3); }
@@ -147,7 +147,7 @@
 .ds-menu-hint { direction: ltr; }
 /* a row of quick actions at the top of a context menu (cut, copy, paste …) */
 .menu-quick { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 3px; margin-block-end: 4px; border-radius: var(--ds-r); background: var(--ds-sunk); }
-.menu-quick button { display: grid; place-items: center; block-size: 32px; border: 0; border-radius: var(--ds-r-sm); background: none; color: var(--ds-text-2); cursor: pointer; transition: background var(--ds-fast), color var(--ds-fast); }
+.menu-quick button { display: grid; place-items: center; block-size: 32px; border: 0; border-radius: var(--ds-r-sm); background: none; color: var(--ds-text-2); cursor: var(--cursor-hand, pointer); transition: background var(--ds-fast), color var(--ds-fast); }
 .menu-quick button:hover { background: var(--ds-raised); color: var(--ds-accent); box-shadow: 0 0 0 1px var(--ds-line); }
 .ds-menu-item[data-danger='true'], .ds-menu-item[data-danger='true'] .ds-icon { color: var(--ds-bad); }
 .ds-menu-item[data-danger='true']:hover { background: color-mix(in oklab, var(--ds-bad) 10%, transparent); }
@@ -183,7 +183,7 @@
 }
 .ds-layout:hover .ds-layout-col, .ds-layout:focus-within .ds-layout-col { outline-color: var(--ds-line-strong); }
 .ds-layout-col > * + * { margin-top: var(--ds-s3); }
-.ds-layout-resizer { position: relative; align-self: stretch; cursor: col-resize; touch-action: none; outline: none; }
+.ds-layout-resizer { position: relative; align-self: stretch; cursor: var(--cursor-ew, col-resize); touch-action: none; outline: none; }
 .ds-layout-resizer::after { content: ''; position: absolute; inset-block: 0; inset-inline-start: calc(50% - 1px); width: 2px; border-radius: 2px; background: var(--ds-line); opacity: 0; transition: opacity var(--ds-fast), background var(--ds-fast); }
 .ds-layout-resizer::before { content: ''; position: absolute; z-index: 1; top: 50%; inset-inline-start: calc(50% - 4px); width: 8px; height: 30px; margin-top: -15px; border: 1px solid var(--ds-line-strong); border-radius: 4px; background: var(--ds-raised); opacity: 0; transition: opacity var(--ds-fast); }
 .ds-layout:hover .ds-layout-resizer::after, .ds-layout:focus-within .ds-layout-resizer::after { opacity: 1; }
@@ -197,7 +197,7 @@
 .ds-layout-assist b { color: var(--ds-text); font-weight: 600; }
 .ds-layout-mini { width: 20px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.3; color: var(--ds-text-2); }
 /* dragging: grip beside a block, ghost under the pointer, preview of the landing zone */
-.ds-grip { position: fixed; z-index: 40; width: 22px; height: 26px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--ds-text-3); cursor: grab; opacity: 0; pointer-events: none; transition: opacity 0.12s; }
+.ds-grip { position: fixed; z-index: 40; width: 24px; height: 28px; display: grid; place-items: center; padding: 0; border: 1px solid var(--ds-line); border-radius: 7px; background: var(--ds-raised); box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); color: var(--ds-text-2); cursor: var(--cursor-grab, grab); opacity: 0; pointer-events: none; transition: opacity 0.12s; }
 .ds-grip[data-show='true'] { opacity: 1; pointer-events: auto; }
 .ds-grip:hover { background: var(--ds-hover); color: var(--ds-text); }
 .ds-dragging { opacity: 0.3; transition: opacity var(--ds-fast); }
@@ -222,7 +222,26 @@
   position: relative; display: inline-grid; place-items: center; flex: none; inline-size: var(--s); block-size: var(--s);
   border-radius: calc(var(--s) * 0.28); background: color-mix(in oklab, var(--c) 14%, var(--ds-bg)); color: var(--c);
 }
-.ds-file-icon > em { position: absolute; inset-inline: 0; inset-block-end: -5px; margin-inline: auto; inline-size: max-content; padding: 0 5px; border-radius: 999px; background: var(--c); color: #fff; font: 600 9.5px/14px var(--ds-font-ui); font-style: normal; }
+.ds-file-icon > em { position: absolute; inset-inline: 0; inset-block-end: -5px; margin-inline: auto; inline-size: max-content; padding: 0 5px; border-radius: 999px; background: var(--c); color: var(--ds-white); font: 600 9.5px/14px var(--ds-font-ui); font-style: normal; }
 /* a background swatch: set style="background: …" from backgroundCss(id) */
 .ds-bg-swatch { display: block; inline-size: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--ds-line); border-radius: var(--ds-r); background-size: cover; background-position: center; }
 .ds-badge { line-height: 1; }
+
+/* Row: an icon next to user text. The row itself carries the text's direction (dir), so the icon and the
+   trailing content sit on the text's start side: right for Persian, left for English. */
+.ds-row { display: flex; align-items: center; gap: 8px; min-inline-size: 0; }
+.ds-row > .ds-row-text { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: start; }
+
+/* Section: heading, optional action at the end, content */
+.ds-section { margin-block-start: 28px; }
+.ds-section > header { display: flex; align-items: baseline; gap: 12px; margin-block-end: 12px; }
+.ds-section h2 { margin: 0; font-size: 15px; font-weight: 600; }
+
+/* Dialog body and actions (the box itself is .ds-modal) */
+.ds-modal h2 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
+.ds-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-block-start: 18px; }
+
+/* Tooltip: a short label on hover or keyboard focus, centred above the control it wraps */
+.ds-tip { position: relative; display: inline-flex; }
+.ds-tip::after { content: attr(data-tip); position: absolute; inset-block-end: calc(100% + 6px); inset-inline: 0; margin-inline: auto; inline-size: max-content; max-inline-size: 240px; padding: 5px 9px; border-radius: 7px; background: var(--ds-text); color: var(--ds-bg); font-size: 12px; line-height: 1.3; text-align: center; opacity: 0; pointer-events: none; transition: opacity var(--ds-fast); z-index: var(--ds-z-pop); }
+.ds-tip:hover::after, .ds-tip:focus-within::after { opacity: 1; transition-delay: 0.35s; }

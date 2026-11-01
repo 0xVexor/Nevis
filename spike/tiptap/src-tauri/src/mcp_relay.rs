@@ -172,6 +172,25 @@ fn launch_and_wait(app_data: &Path) -> Option<Endpoint> {
     None
 }
 
+/// The server answers 429 when a client sends more than a few requests per second. Wait and try again instead of failing the call.
+const RETRY_AFTER_BUSY_MS: [u64; 4] = [250, 500, 1000, 1000];
+
+fn forward(endpoint: &Endpoint, session: Option<&str>, body: &str, waits: &[u64]) -> Result<Reply, String> {
+    let mut reply = post(endpoint, session, body);
+    for wait in waits {
+        if !matches!(&reply, Ok(r) if r.status == 429) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(*wait));
+        reply = post(endpoint, session, body);
+    }
+    reply
+}
+
+fn busy_error(id: &Value) -> String {
+    json!({"jsonrpc":"2.0","id":id,"error":{"code":-32000,"message":"Nevis is busy with other requests. Wait a moment and try again."}}).to_string()
+}
+
 fn offline_error(id: &Value) -> String {
     json!({"jsonrpc":"2.0","id":id,"error":{"code":-32000,"message":"Nevis is not reachable. Open Nevis, go to Settings > AI connection and turn on 'Allow AI access'."}}).to_string()
 }
@@ -198,13 +217,13 @@ pub fn run_stdio() -> i32 {
             launched = true;
             endpoint = launch_and_wait(&app_data);
         }
-        let reply = endpoint.ok_or_else(|| "offline".to_string()).and_then(|e| post(&e, session.as_deref(), &line));
+        let reply = endpoint.ok_or_else(|| "offline".to_string()).and_then(|e| forward(&e, session.as_deref(), &line, &RETRY_AFTER_BUSY_MS));
         let output = match reply {
             Ok(r) => {
                 if r.session.is_some() {
                     session = r.session;
                 }
-                if r.body.trim().is_empty() { id.as_ref().filter(|_| r.status >= 400).map(offline_error) } else { Some(r.body.trim().to_string()) }
+                if r.body.trim().is_empty() { id.as_ref().filter(|_| r.status >= 400).map(|id| if r.status == 429 { busy_error(id) } else { offline_error(id) }) } else { Some(r.body.trim().to_string()) }
             }
             Err(_) => id.as_ref().map(offline_error),
         };
@@ -341,6 +360,35 @@ mod tests {
         let request = server.join().unwrap();
         assert!(request.starts_with("POST /mcp HTTP/1.1") && request.contains("Authorization: Bearer secret") && request.contains("Mcp-Session-Id: prev") && request.ends_with("{\"id\":1}"));
         assert_eq!((reply.status, reply.session.as_deref()), (200, Some("s1")));
+        assert!(reply.body.contains("\"ok\":true"));
+    }
+
+    #[test]
+    fn relay_waits_and_retries_when_the_server_is_busy() {
+        let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let server = std::thread::spawn(move || {
+            let mut statuses = 0;
+            for answer in ["HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\n\r\n".to_string(), {
+                let body = "{\"ok\":true}";
+                format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len())
+            }] {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buf = [0u8; 4096];
+                let mut request = String::new();
+                while !request.ends_with("}") {
+                    let n = stream.read(&mut buf).unwrap();
+                    request.push_str(&String::from_utf8_lossy(&buf[..n]));
+                }
+                stream.write_all(answer.as_bytes()).unwrap();
+                statuses += 1;
+            }
+            statuses
+        });
+        let endpoint = Endpoint { addr, token: "secret".into() };
+        let reply = forward(&endpoint, None, "{\"id\":1}", &[5, 5]).unwrap();
+        assert_eq!(server.join().unwrap(), 2);
+        assert_eq!(reply.status, 200);
         assert!(reply.body.contains("\"ok\":true"));
     }
 

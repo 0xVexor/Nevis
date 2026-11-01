@@ -1,6 +1,6 @@
 # Nevis design system
 
-Every new screen, feature and component is built from this system. It replaces the layered "Aurora Paper" styles (`v2`–`v5`) over time; until a screen is migrated, its legacy styles stay as they are.
+Every new screen, feature and component is built from this system. The old layered "Aurora Paper" styles and the `skin.css` that flattened them are gone: every stylesheet now lives in `src/design-system/` (the `ds-` components and tokens, plus `areas/` for the per-screen layouts).
 
 - **Live reference:** open [`docs/design-system/index.html`](design-system/index.html) in a browser. It shows every token and component, in light and dark, English and Persian, with working menus, right-click menus and column layouts. Settings → About → Design system, or `Ctrl K` → "Design system", opens the same page inside it (`#system`).
 - **Tokens:** `spike/tiptap/src/design-system/tokens.css`
@@ -56,6 +56,19 @@ All classes are prefixed `ds-` and use logical properties (`inline-start`, `inli
 | Feedback | `ds-toast` (past tense, same verb as the button: "Saved"), `ds-modal`, `ds-drawer` |
 | Columns | `ds-layout` (below) |
 
+### React components
+
+Import from `src/design-system`. Use these instead of writing the class names by hand: they set the roles, labels and direction for you.
+
+| Component | Use |
+|---|---|
+| `Button`, `IconButton` | `variant="primary" \| "ghost" \| "danger"`, `size="sm"`, `icon`. `IconButton` requires `label` (its accessible name and tooltip). |
+| `Row` | An icon next to user text: sidebar items, list rows, card headers. Pass the text as `text`; the row takes that text's direction, so the icon and trailing content sit on the side the text starts from. |
+| `Card`, `Section` | `Card` has `interactive` and `selected`. `Section` is a titled group with an optional action. |
+| `Switch`, `Field`, `Chip`, `Tabs` | Switch is `role="switch"`. `Field` follows what is typed (`ltr` for codes and URLs). |
+| `dirOf(text)` | `'rtl' \| 'ltr' \| undefined` by the first letter, the same rule the editor uses. Use it for `dir=` on a row or card when `Row` does not fit. |
+| `Menu`, `Dropdown`, `useMenu`, `Icon` | Already here (below). |
+
 ### Menus, dropdowns and right-click
 
 - Anything that picks from a list is a `Menu`. Status and priority cells, sort and filter, block type, language pickers, settings choices: all dropdowns.
@@ -92,6 +105,9 @@ After changing `iconData.ts`, `backgrounds.ts` or `fileKinds.ts`, regenerate the
 - All text goes through `t('English key')`; the Persian text lives in `src/fa.ts`. Page content is never translated.
 - **The text-direction control in the page toolbar changes the direction of the page's text (the current block), never the interface.** It must not move menus, the sidebar or the toolbar. Interface direction is set only in Settings → Language. Shortcut: `Ctrl Shift ←` / `→` sets the current block RTL / LTR.
 - Each paragraph picks its own direction (`dir="auto"` by default). Do not force a direction on a whole page.
+- **The interface language decides the layout of a row or card; the text inside follows itself.** In an English interface a row keeps its left-to-right layout (chevron, icon, count, actions stay where they are) even when the title is Persian; only the title text is aligned by its own direction (`dir="auto"`). In a right-to-left interface the whole row or card follows its text: put the direction on the row (use `Row`, or `dir={dirOf(title)}`), not only on the title, so the icon, the gap and the trailing content sit on the text's start side. `dirOf` returns nothing in an English interface, so the same code is right in both. Menus, the toolbar and Settings always follow the interface language.
+- Blocks that draw something on their start side (quote bar, callout icon, toggle arrow, heading accent) take the direction of their own text in the editor too.
+- A text block is picked up only by its grip (or a block's own drag surface). Pressing on text or on the blank space around it always selects text.
 
 ## Accessibility
 
@@ -103,32 +119,20 @@ After changing `iconData.ts`, `backgrounds.ts` or `fileKinds.ts`, regenerate the
 
 ## Building a feature
 
-1. Find each piece in the table above. If it exists, use it. If not, go to step 5.
+1. Find each piece in the tables above and in `src/design-system`. If it exists, use it. If not, go to step 5.
 2. Layout from tokens and the spacing scale. Do not invent paddings, radii or colors.
 3. Every pickable list is a `Menu`; every object gets a context menu.
 4. Check it in light and dark, English and Persian (RTL), with a custom accent, at a narrow width, and with the keyboard.
 5. **Need something new?** Add the class to `components.css`, add it to `docs/design-system/index.html`, and add a row to the table above, in the same pull request as the feature. Do not style a one-off in the feature's own CSS.
 
-## Migration from the legacy styles
+## Guard
 
-**Done:** step 1, the skin. `design-system/skin.css` gives the legacy tokens the new values and flattens the Aurora Paper layers (aurora canvas, floating glass panels, gradient buttons, glow), so every screen already has the Calm palette, a flat sidebar, plain-number badges and the soft dark theme. **Home** is fully migrated (`Home.tsx`, `design-system/home.css`).
+`npm run check:ui` (also in CI) keeps new code on this system. It fails on a `<button>` that carries `ds-btn` or `ds-icon-btn` classes instead of using `Button` / `IconButton` (a button with its own area class, such as a tab, a tree twisty or a toolbar item, is a custom control and is fine), a native `<select>`, physical CSS (`left`, `right`, `margin-left`, `text-align: left`...), literal colors outside `tokens.css` and `print.css`, and the old variables (`var(--bg)`...). The baseline in `spike/tiptap/scripts/ui-guard-baseline.json` is empty: any new violation fails, and `npm run check:ui -- --update` is only for recording a deliberate exception. For a rule that is truly one-off (geometry, always-left-to-right code) write `ui-allow <rule>: reason` on the line above, for example `/* ui-allow physical-direction: lightbox geometry */`.
 
-**Next, one pull request each:** page and editor chrome → tables and database views → Files → Settings → overlays. When the last screen is migrated, delete `skin.css` and the legacy `v2`–`v5` styles.
+## Where the styles live
 
-Until then the legacy tokens keep working. Mapping:
+`src/index.css` imports, in order: the fonts, `design-system/areas/tokens.css` (the few shared tokens that are not `--ds-*`: fonts, motion, code colors), the area stylesheets (`areas/base`, `shell`, `page`, `editor`, `overlays`, `views`, `settings`, `panels`, `page-meta`, `palette`, `bubbles`, `notices`, `content`, `explorer`, `database*`, `home-templates`, `scrollbars`, `updates`, `layout`), then `tokens.css`, `components.css`, `areas/surfaces.css` (the flat sidebar, buttons and popovers), `home.css`, `screens.css` and `areas/print.css`. Order matters: later files win.
 
-| Legacy | New |
-|---|---|
-| `--bg` | `--ds-bg` |
-| `--side-bg` | `--ds-side` |
-| `--bg-raised` | `--ds-raised` |
-| `--bg-sunk` | `--ds-sunk` |
-| `--text` · `--muted` · `--faint` | `--ds-text` · `--ds-text-2` · `--ds-text-3` |
-| `--border` · `--border-strong` | `--ds-line` · `--ds-line-strong` |
-| `--hover` · `--active` | `--ds-hover` · `--ds-press` |
-| `--accent` · `--accent-bg` | `--ds-accent` · `--ds-accent-soft` |
-| `--danger` · `--ok` · `--warn` | `--ds-bad` · `--ds-ok` · `--ds-warn` |
-| `--radius-sm` · `--radius` · `--radius-lg` | `--ds-r-sm` · `--ds-r` · `--ds-r-lg` |
-| `--pop` + `--shadow` | `ds-pop` |
+Every color, radius and shadow in those files is a `--ds-*` token. Settings writes `--user-accent`, `--user-radius`, `--user-radius-sm`, `--user-radius-lg` and `--font`; the design system reads them. The five hue tokens (`--ds-violet`, `--ds-blue`, `--ds-green`, `--ds-orange`, `--ds-pink`) and `--ds-white` replace the literals that used to be repeated.
 
-Settings already writes `--user-accent` (see `settings.ts`); the design system reads it. Open follow-ups: add the `@fontsource/instrument-sans` and `@fontsource/newsreader` packages (until then the stack falls back to Vazirmatn), and make the stock accent teal (`#0f8f83`) instead of purple.
+Screens that still style their own controls (tabs, row actions, toolbar items) do it with an area class in `areas/`; moving one of them onto `Button` / `IconButton` / `Row` is welcome but not required. Open follow-ups: `areas/surfaces.css` and `screens.css` still override some area rules and could be folded into them.

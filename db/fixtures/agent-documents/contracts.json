@@ -693,6 +693,147 @@
           ]
         }
       }
+    },
+    "list_icons": {
+      "input": {
+        "query": "home",
+        "limit": 5
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "icons": [
+            {
+              "name": "home",
+              "icon": "i:home",
+              "keywords": "home house"
+            }
+          ],
+          "total": 1,
+          "truncated": false
+        }
+      }
+    },
+    "update_database_rows": {
+      "input": {
+        "operationId": "op-1",
+        "sourceId": "source-1",
+        "rows": [
+          {
+            "pageId": "row-1",
+            "title": "Acme",
+            "values": {
+              "Plan": "Pro"
+            }
+          }
+        ]
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "sourceId": "source-1",
+          "count": 1
+        }
+      }
+    },
+    "trash_database_rows": {
+      "input": {
+        "operationId": "op-2",
+        "sourceId": "source-1",
+        "pageIds": [
+          "row-1"
+        ]
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "sourceId": "source-1",
+          "count": 1
+        }
+      }
+    },
+    "restore_database_rows": {
+      "input": {
+        "operationId": "op-3",
+        "sourceId": "source-1",
+        "pageIds": [
+          "row-1"
+        ]
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "sourceId": "source-1",
+          "count": 1
+        }
+      }
+    },
+    "add_database_property": {
+      "input": {
+        "operationId": "op-4",
+        "sourceId": "source-1",
+        "name": "Plan",
+        "kind": "select",
+        "options": [
+          "Pro"
+        ]
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "sourceId": "source-1",
+          "properties": [
+            {
+              "propertyId": "prop-1",
+              "name": "Plan",
+              "kind": "select",
+              "options": [
+                {
+                  "optionId": "opt-1",
+                  "name": "Pro"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "list_tags": {
+      "input": {
+        "limit": 10
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "tags": [
+            {
+              "name": "java",
+              "count": 3
+            }
+          ],
+          "total": 1,
+          "truncated": false
+        }
+      }
+    },
+    "get_document_links": {
+      "input": {
+        "documentId": "page-1"
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "documentId": "page-1",
+          "outgoing": [
+            {
+              "documentId": "page-2",
+              "title": "Two"
+            }
+          ],
+          "backlinks": [],
+          "truncated": false
+        }
+      }
     }
   },
   "errors": [

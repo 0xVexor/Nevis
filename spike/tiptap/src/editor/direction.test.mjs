@@ -11,6 +11,7 @@ const schema = new Schema({ nodes: {
   bulletList: { group: 'block', content: 'listItem+' },
   orderedList: { group: 'block', content: 'listItem+' },
   taskList: { group: 'block', content: 'taskItem+' },
+  blockquote: { group: 'block', content: 'block+' },
   listItem: { content: 'paragraph block*', attrs },
   taskItem: { content: 'paragraph block*', attrs },
 } })
@@ -42,4 +43,8 @@ test('typing, replacing and clearing text recomputes automatic direction', () =>
   assert.equal(firstTextDirection('123 hello سلام'), 'ltr')
   assert.equal(firstTextDirection('۱۲۳ ...'), null)
   assert.equal(firstTextDirection('中文'), 'ltr')
+})
+test('a quote follows its own text so its bar sits on the text side', () => {
+  const doc = schema.node('doc', null, [schema.node('blockquote', null, p('نقل قول')), schema.node('blockquote', null, p('A quote'))])
+  assert.deepEqual(directions(doc), ['rtl', 'rtl', 'ltr', 'ltr'])
 })

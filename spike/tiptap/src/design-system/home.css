@@ -10,7 +10,7 @@
 .home-bar { display: flex; gap: var(--ds-s3); margin-block-end: var(--ds-s2); }
 .home-search {
   flex: 1; display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 14px; border: 1px solid var(--ds-line); border-radius: var(--ds-r);
-  background: var(--ds-raised); color: var(--ds-text-3); font: inherit; text-align: start; cursor: pointer; transition: border-color var(--ds-fast);
+  background: var(--ds-raised); color: var(--ds-text-3); font: inherit; text-align: start; cursor: var(--cursor-hand, pointer); transition: border-color var(--ds-fast);
 }
 .home-search:hover { border-color: var(--ds-line-strong); }
 .home-search span { flex: 1; }
@@ -26,25 +26,22 @@
 .home-quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--ds-s3); margin-block: var(--ds-s5) 0; }
 .home-quick-item {
   display: flex; align-items: center; gap: 14px; padding: 16px 18px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg);
-  background: var(--ds-raised); color: var(--ds-text); font: inherit; text-align: start; cursor: pointer; transition: border-color var(--ds-base);
+  background: var(--ds-raised); color: var(--ds-text); font: inherit; text-align: start; cursor: var(--cursor-hand, pointer); transition: border-color var(--ds-base);
 }
 .home-quick-item:hover { border-color: var(--ds-accent-line); }
 .home-quick-item small { color: var(--ds-text-3); }
 .home-quick-tile { background: var(--ds-sunk); color: var(--ds-text-2); transition: background var(--ds-base), color var(--ds-base); }
 .home-quick-item:hover .home-quick-tile { background: var(--ds-accent-soft); color: var(--ds-accent); }
 
-.home-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 40px; align-items: start; }
-.home-section { margin-block-start: 28px; }
-.home-section > header { display: flex; align-items: baseline; gap: 12px; margin-block-end: 12px; }
-.home-section h2 { margin: 0; font-size: 15px; font-weight: 600; }
-.home-link { margin-inline-start: auto; display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: var(--ds-text-2); font: inherit; font-size: 13px; cursor: pointer; }
+.home-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 40px; align-items: stretch; }
+.home-link { margin-inline-start: auto; display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: var(--ds-text-2); font: inherit; font-size: 13px; cursor: var(--cursor-hand, pointer); }
 .home-link:hover { color: var(--ds-accent); }
 .home-link .ds-icon { width: 14px; height: 14px; }
 :root[dir='rtl'] .home-link .ds-icon { transform: scaleX(-1); }
 
 .home-resume {
   display: flex; align-items: center; gap: 16px; inline-size: 100%; padding: 18px 20px; border: 1px solid var(--ds-line); border-inline-start: 3px solid var(--ds-accent);
-  border-radius: var(--ds-r-lg); background: var(--ds-raised); color: var(--ds-text); font: inherit; text-align: start; cursor: pointer; transition: border-color var(--ds-base);
+  border-radius: var(--ds-r-lg); background: var(--ds-raised); color: var(--ds-text); font: inherit; text-align: start; cursor: var(--cursor-hand, pointer); transition: border-color var(--ds-base);
 }
 .home-resume:hover { border-color: var(--ds-accent-line); border-inline-start-color: var(--ds-accent); }
 .home-resume-t { flex: 1; min-inline-size: 0; }
@@ -71,13 +68,13 @@
 .home-ring-bg { stroke: var(--ds-sunk); }
 .home-ring-fg { stroke: var(--ds-accent); transition: stroke-dashoffset 0.7s var(--ds-ease); }
 .home-ring b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12.5px; font-variant-numeric: tabular-nums; }
-.home-task { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-block-end: 1px solid var(--ds-line); cursor: pointer; font-size: 14px; line-height: 1.4; }
+.home-task { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-block-end: 1px solid var(--ds-line); cursor: var(--cursor-hand, pointer); font-size: 14px; line-height: 1.4; }
 .home-task:last-child { border-block-end: 0; }
 .home-task input:checked + .ds-check { background: var(--ds-accent); border-color: var(--ds-accent); color: var(--ds-accent-ink); }
 .home-task input:focus-visible + .ds-check { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
 .home-more { padding: 10px 6px 4px; }
 .home-list { padding: 6px; }
-.home-row { display: flex; align-items: center; gap: 10px; inline-size: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: none; color: var(--ds-text); font: inherit; font-size: 14px; text-align: start; cursor: pointer; }
+.home-row { display: flex; align-items: center; gap: 10px; inline-size: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: none; color: var(--ds-text); font: inherit; font-size: 14px; text-align: start; cursor: var(--cursor-hand, pointer); }
 .home-row:hover { background: var(--ds-hover); }
 .home-row .ds-icon, .home-row > svg { color: var(--ds-text-3); }
 .home-row-t { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -99,11 +96,13 @@
 .home-streak { padding: 16px; }
 .home-streak-head { display: flex; align-items: center; gap: 8px; margin-block-end: 14px; }
 .home-streak-head b { font-size: 22px; font-weight: 650; }
+/* ui-allow hard-coded-color: the streak flame is always this orange */
 .home-flame { display: grid; color: #f0702c; }
+/* ui-allow hard-coded-color: the streak flame is always this orange */
 .home-flame .ds-icon { fill: color-mix(in oklab, #f0702c 22%, transparent); }
 .home-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; text-align: center; }
 .home-week > div { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--ds-text-3); font-size: 11.5px; }
-.home-week i { display: grid; place-items: center; inline-size: 28px; block-size: 28px; border-radius: 50%; background: var(--ds-sunk); color: #fff; }
+.home-week i { display: grid; place-items: center; inline-size: 28px; block-size: 28px; border-radius: 50%; background: var(--ds-sunk); color: var(--ds-white); }
 .home-week .done i { background: var(--ds-accent); }
 .home-week .now i { background: none; border: 2px dashed var(--ds-accent); }
 .home-week .done.now i { border: 0; background: var(--ds-accent); }
@@ -115,8 +114,27 @@
 .home-month { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
 .home-month .wd { padding-block-end: 4px; color: var(--ds-text-3); font-size: 11.5px; }
 .home-month i { display: grid; place-items: center; aspect-ratio: 1; border-radius: 50%; background: var(--ds-sunk); color: var(--ds-text-3); font: 500 11px var(--ds-font-ui); font-style: normal; font-variant-numeric: tabular-nums; }
-.home-month i.blank { background: none; }
+.home-month i.pad { background: none; }
 .home-month i.done { background: var(--ds-accent); color: var(--ds-accent-ink); }
 .home-month i.now { box-shadow: 0 0 0 1.5px var(--ds-accent); color: var(--ds-text); }
 .home-month i.now.done { color: var(--ds-accent-ink); }
 .home-month i.future { background: none; opacity: 0.45; }
+
+/* Home banner: a minimal landscape that follows the time of day (design-system/scenery.ts) */
+.home-hello { position: relative; min-block-size: 220px; margin-block-start: 20px; padding: 28px clamp(20px, 3vw, 36px); border-radius: var(--ds-r-lg); background-color: var(--ds-sunk); background-repeat: no-repeat; background-size: 100% 100%; overflow: hidden; }
+.home-hello[data-tone='light'] { color: rgb(19 32 47); }
+.home-hello[data-tone='light'] small, .home-hello[data-tone='light'] p { color: rgb(19 32 47 / 0.72); }
+.home-hello[data-tone='dark'] { color: white; }
+.home-hello[data-tone='dark'] small, .home-hello[data-tone='dark'] p { color: rgb(255 255 255 / 0.84); }
+
+/* the side column ends level with the Recent pages column: its last card (Writing streak) takes any room left over */
+.home-grid > aside { display: flex; flex-direction: column; }
+.home-grid > aside > .ds-section:last-child { flex: 1; display: flex; flex-direction: column; }
+.home-grid > aside > .ds-section:last-child > .home-streak { flex: 1; }
+
+/* Writing streak: the card is as tall as the Recent pages column. It always shows this month; when it is tall enough for a second
+   month it shows the month before too. The card is a size container, so the answer comes from the space it is given and never
+   from its own content (no feedback loop). */
+.home-streak { container: streak / size; min-block-size: 250px; overflow: hidden; }
+.home-month-block + .home-month-block { display: none; margin-block-start: 14px; }
+@container streak (min-height: 430px) { .home-month-block + .home-month-block { display: block; } }

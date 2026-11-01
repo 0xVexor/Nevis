@@ -6,6 +6,7 @@ import * as Ic from './icons'
 import { GLYPHS, GLYPH_NAMES, Glyph, ICON_PREFIX, iconNode, parseIcon } from './iconSet'
 import { t, locale } from './i18n'
 import { shortcutHint } from './shortcuts'
+import { dirOf } from './design-system/dir'
 
 /** Fixed-position popover anchored to a rect; closes on outside click / Escape. Arrow keys / Home / End move through its items. */
 export function Popover({ anchor, onClose, children, align = 'start' }: { anchor: DOMRect; onClose: () => void; children: ReactNode; align?: 'start' | 'end' }) {
@@ -68,7 +69,7 @@ export function Popover({ anchor, onClose, children, align = 'start' }: { anchor
 
 type SelectOption = { value: string; label: string; color?: string }
 
-/** Dropdown selector (replaces the native <select>): a field button that opens the shared menu, with a dot per option and a check on the current one. */
+/** Dropdown selector (replaces the native select element): a field button that opens the shared menu, with a dot per option and a check on the current one. */
 export function Select({ value, options, onChange, className, title, style, disabled, id, ...aria }: { value: string; options: SelectOption[]; onChange: (v: string) => void; className?: string; title?: string; style?: React.CSSProperties; disabled?: boolean; id?: string; 'aria-label'?: string; 'aria-invalid'?: boolean; 'aria-describedby'?: string; dir?: 'auto' | 'ltr' | 'rtl' }) {
   const [rect, setRect] = useState<DOMRect | null>(null)
   const [inline, setInline] = useState(false)
@@ -298,7 +299,7 @@ export function SearchModal({ pages, search, commands, onOpen, onClose, initialQ
             const i = shownCmds.length + j
             const sn = snippet(p)
             return (
-              <button key={p.id} className={'result' + (i === sel ? ' sel' : '')} onMouseMove={() => setSel(i)} onClick={() => choose({ page: p })}>
+              <button key={p.id} dir={dirOf(p.title)} className={'result' + (i === sel ? ' sel' : '')} onMouseMove={() => setSel(i)} onClick={() => choose({ page: p })}>
                 <span className="result-ic">{iconNode(p.icon, 17, <Ic.Page size={17} />)}</span>
                 <span className="result-tx">
                   <b dir="auto">{hl(p.title || t('Untitled'))}</b>
@@ -364,7 +365,7 @@ export function TrashModal({ items, days, onRestore, onPurge, onEmpty, onClose }
         <div className="modal-list">
           {items.length === 0 && <div className="modal-empty">{t('The trash is empty')}</div>}
           {items.map((p) => (
-            <div key={p.id} className="result trash-row">
+            <div key={p.id} dir={dirOf(p.title)} className="result trash-row">
               <span className="result-ic">{iconNode(p.icon, 16, <Ic.Page />)}</span>
               <span className="result-tx">
                 <b dir="auto">{p.title || t('Untitled')}</b>
