@@ -57,11 +57,7 @@ export type ConnectedConfig = { providerId: string; connectionId: Id; exposedFie
 
 export const NUMBER_PRECISION_MAX = 12
 
-export const defaultNumberConfig = (): NumberConfig => ({ format: 'plain', precision: 0 })
 
-export function newOption(id: Id, name: string, color: OptionColor, sortKey: string): SelectOption {
-  return { id, name, color, sortKey }
-}
 
 export function defaultStatusConfig(ids: () => Id): StatusConfig {
   const [k1, k2, k3] = keysBetween(null, null, 3)

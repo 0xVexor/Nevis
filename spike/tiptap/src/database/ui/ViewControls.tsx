@@ -8,7 +8,6 @@ import type { DatabaseService } from '../service.ts'
 import { Select } from '../../ui'
 import { t } from '../../i18n'
 import * as Ic from '../../icons'
-import { KindIcon } from './common'
 
 const OP_LABEL: Record<string, string> = {
   equals: 'is', not_equals: 'is not', contains: 'contains', not_contains: 'does not contain', starts_with: 'starts with', ends_with: 'ends with', is_empty: 'is empty', is_not_empty: 'is not empty',
@@ -176,7 +175,6 @@ export function GroupEditor({ svc, sourceId, group, onChange, allowNone = true }
   )
 }
 
-export const PropBadge = ({ def }: { def: Definition }) => <span className="db-pb"><KindIcon kind={def.kind} /> {def.name}</span>
 
 export { defaultOperand as defaultFilterOperand }
 export const filterOperatorLabel = (op: string) => t(OP_LABEL[op] ?? op)

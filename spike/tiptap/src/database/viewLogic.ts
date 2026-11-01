@@ -147,7 +147,7 @@ export function mapModel(state: DbState, rs: Resolver, pageIds: Id[], placePrope
 
 // ───── dashboard ─────
 
-export type GlobalFilter = { filter: Filter | null; mappings: Record<Id, Id> } // sourceId -> propertyId the filter's property maps to
+ // sourceId -> propertyId the filter's property maps to
 
 /** Effective filter = view filter AND widget-local filter AND the mapped global filter. Unmapped widgets are "not affected". */
 export function effectiveFilter(base: Filter | null, local: Filter | null, global: { predicate: { op: string; operand?: Json } | null; mappings: Record<Id, Id> } | null, sourceId: Id): { filter: Filter | null; affected: boolean } {

@@ -1,7 +1,7 @@
 // CSV / Markdown interchange (handoff §27). CSV is a readable exchange format, never a lossless backup: it cannot carry schemas,
 // formulas or permissions. Import appends rows (explicit upsert is a labeled extension); export honours scope and permissions
 // and guards cells that a spreadsheet would execute.
-import type { Cell, Definition, Id, Json, QueryPage } from './model/types.ts'
+import type { Cell, Definition, Id, QueryPage } from './model/types.ts'
 import { DbError, fail } from './model/errors.ts'
 import { startsLikeFormula, matchKey, runsToText } from './text.ts'
 import { DESCRIPTORS, cellToText, parseCellText, defaultCell, type ParseCtx } from './props/registry.ts'
@@ -219,7 +219,6 @@ export function planImport(state: ImportWorld, data: string[][], o: ImportOption
   return { rows, problems, newOptions, inferred: inferColumnKinds(body, Math.max(0, ...data.map((r) => r.length))) }
 }
 
-export const rowToJson = (r: ImportRow): Json => r as unknown as Json
 export { runsToText }
 
 /** Option labels in select-like columns that do not exist yet (created first, with schema permission, when the user allows it). */

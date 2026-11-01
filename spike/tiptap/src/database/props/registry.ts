@@ -57,9 +57,6 @@ export const DESCRIPTORS: Record<Kind, Descriptor> = {
   connected: D('connected', 'cell', true, 'connected', 'derived'),
 }
 
-export const descriptor = (k: Kind): Descriptor => DESCRIPTORS[k]
-export const isWritable = (d: Definition) => DESCRIPTORS[d.kind].writable
-export const isStoredCell = (k: Kind) => DESCRIPTORS[k].storage === 'cell'
 
 /** Operators per value class (handoff §10 table). */
 export const OPS: Record<ValueClass, string[]> = {
@@ -419,8 +416,5 @@ export function parseIsoDateText(text: string, zone: string): DateValue {
   return fail('INVALID_VALUE', `date range mixes a day and a time: ${text}`)
 }
 
-export function cellEquals(a: Cell | undefined, b: Cell | undefined): boolean {
-  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
-}
 
 export const jsonOf = (c: Cell): Json => c as unknown as Json

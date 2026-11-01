@@ -12,7 +12,6 @@ import type { DbStorage, PageHost } from './storage/types.ts'
 import { MemoryLeases, type LeaseStore } from './workflows/lease.ts'
 import { MemoryRuntime, WorkflowEngine, type RuntimeStore } from './workflows/engine.ts'
 import type { ExternalAdapter } from './workflows/outbox.ts'
-import { MemoryPages } from './state.ts'
 import { selectGraph, type GraphQuery, type GraphResult, type PageSummary } from './graph.ts'
 
 export const LOCAL_OWNER = 'local-owner'
@@ -145,17 +144,4 @@ export class DatabaseService {
   }
 }
 
-/** For tests and storybook-like previews: a fully in-memory service. */
-export async function memoryService(vaultId = 'preview', over: Partial<ServiceOptions> = {}) {
-  const { MemoryStorage } = await import('./storage/memory.ts')
-  const pages = new MemoryPages()
-  const storage = new MemoryStorage(pages)
-  const svc = new DatabaseService({
-    vaultId, storage, pages,
-    host: { get: pages.get, all: pages.all, adopt: (u, r) => { u.forEach((p) => pages.put(p)); r.forEach((id) => pages.delete(id)) } },
-    deviceId: 'preview', zone: 'UTC', ...over,
-  })
-  await svc.open()
-  return svc
-}
 

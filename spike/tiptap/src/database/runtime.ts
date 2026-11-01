@@ -44,8 +44,6 @@ const host: PageHost = {
 }
 
 const adapters: ExternalAdapter[] = []
-/** Gateways / providers register their external effects here (webhook, email, Slack). Credentials stay outside the Vault. */
-export const registerAdapter = (a: ExternalAdapter) => void adapters.push(a)
 
 let instance: DatabaseService | null = null
 let starting: Promise<DatabaseService> | null = null

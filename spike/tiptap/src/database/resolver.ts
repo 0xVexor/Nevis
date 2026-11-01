@@ -6,7 +6,7 @@ import { Access } from './access.ts'
 import { aggregateSafe } from './query/aggregate.ts'
 import { EMPTY, type QValue } from './query/values.ts'
 import { cellToText, defaultCell, isEmptyCell, optionName } from './props/registry.ts'
-import { cfgOf, optionsOf, rollupConfig, type RollupAggregation } from './props/config.ts'
+import { cfgOf, rollupConfig, type RollupAggregation } from './props/config.ts'
 import { DbState, type Row } from './state.ts'
 import { BUDGET, Blocked, FormulaError, type FormulaEnv } from './formula/runtime.ts'
 import { evaluate } from './formula/eval.ts'
@@ -18,7 +18,7 @@ import type { PropInfo, Schema } from './formula/compile.ts'
 
 export type ResolverOptions = { principalId: Id; nowMs: number; zone: string; weekStart: number; clock?: () => number }
 
-export const DEFAULT_WEEK_START = 6 // Saturday: Persian UI default (week start and weekend are workspace settings, independent of time zone)
+ // Saturday: Persian UI default (week start and weekend are workspace settings, independent of time zone)
 
 /** Static type of a property for the formula compiler. */
 export interface SchemaView {
@@ -399,9 +399,5 @@ export function cellToFormula(def: Definition, cell: Cell | undefined): FormulaV
   }
 }
 
-export function optionRank(def: Definition, id: Id): number {
-  const i = optionsOf(def).findIndex((o) => o.id === id)
-  return i < 0 ? Number.MAX_SAFE_INTEGER : i
-}
 
 export const asJson = (v: unknown): Json => v as Json
