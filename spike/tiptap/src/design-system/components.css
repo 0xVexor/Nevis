@@ -257,3 +257,7 @@
 .ds-notice--warn { --c: var(--ds-warn); }
 .ds-notice--bad { --c: var(--ds-bad); }
 .ds-notice ul { margin: 0; padding-inline-start: 18px; }
+
+/* Stack: children one under another with an even gap, for the body of a dialog or a card. A notice in it needs no margin of its own. */
+.ds-stack { display: grid; gap: var(--ds-s3); }
+.ds-stack > .ds-notice { margin-block-start: 0; }

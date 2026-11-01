@@ -10,11 +10,12 @@ import { flushPreferences } from '../sharedPreferences'
 import { saveBeforeUpdate } from '../updateSave'
 import { BackupError, download, fileStamp, toBase64 } from './format'
 import { inspectBackup, type BackupPlan } from './inspect'
-import { applyTauri, buildTauri } from './tauri'
+import { applyTauri, buildTauri, type RestoreTo } from './tauri'
 import { applyWeb, buildWeb } from './web'
 
 export { BackupError, download, fileStamp, inspectBackup }
 export type { BackupPlan, BackupSummary } from './inspect'
+export type { RestoreTo } from './tauri'
 
 const dataUri = async (src: string) => {
   if (!src.startsWith('att:')) return src
@@ -44,7 +45,7 @@ export interface Restored { pages: number; files: number; copy?: string }
  * Applies a checked backup. In the browser every page is replaced, so a copy of the current notes is downloaded first and
  * the restore stops if that fails; on desktop the backup opens as a new vault and nothing is replaced.
  */
-export async function restoreBackup(repo: PageRepo, plan: BackupPlan, opts: { saveCopy?: boolean } = {}): Promise<Restored> {
+export async function restoreBackup(repo: PageRepo, plan: BackupPlan, opts: { saveCopy?: boolean } & RestoreTo = {}): Promise<Restored> {
   await settle(repo)
   let copy: string | undefined
   if (!isTauri && opts.saveCopy !== false) {
@@ -55,17 +56,17 @@ export async function restoreBackup(repo: PageRepo, plan: BackupPlan, opts: { sa
       throw new BackupError(t('Could not save a copy of your current notes, so nothing was restored.'))
     }
   }
-  let result: { pages: number; files: number }
+  let result: { pages: number; files: number; copy?: string }
   if (isTauri) {
     freezeStorage()
     try {
-      result = await applyTauri(plan)
+      result = await applyTauri(plan, opts)
     } catch (e) { thawStorage(); throw e }
   } else {
     await applyWeb(repo, plan)
     result = { pages: plan.summary.pages + plan.summary.folders, files: plan.summary.files }
   }
-  const restored: Restored = { ...result, copy }
+  const restored: Restored = { ...result, copy: result.copy ?? copy }
   try { sessionStorage.setItem(RESTORED_KEY, JSON.stringify(restored)) } catch { /* the toast is a courtesy */ }
   window.location.reload()
   return restored

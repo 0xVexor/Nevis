@@ -4,7 +4,8 @@ import { repo } from './store'
 import { importMarkdown, importVault } from './io'
 import { t } from './i18n'
 import { readZip } from './zip'
-import { inspectBackup, type BackupPlan } from './backup'
+import { BackupError, inspectBackup, type BackupPlan } from './backup'
+import { isTauri } from './db'
 
 export type ImportKind = 'markdown' | 'vault' | 'backup'
 
@@ -58,6 +59,8 @@ export async function reviewImport(picked: File[]): Promise<ImportReview> {
 
   if (single && /\.json$/i.test(single.name)) {
     const backup = await inspectBackup(await single.text())
+    // a desktop backup is a copy of the vault's files; the browser version keeps its notes in a different store and cannot take it
+    if (backup.summary.kind === 'vault' && !isTauri) throw new BackupError(t('This backup was made by the Nevis desktop app. Restore it in the desktop app.'))
     return { ...review, kind: 'backup', name: single.name, pages: backup.summary.pages, folders: backup.summary.folders, images: backup.summary.files, backup }
   }
 
