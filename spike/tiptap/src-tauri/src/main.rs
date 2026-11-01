@@ -327,8 +327,23 @@ fn vault_backup_save(s: St, path: String) -> Res<()> {
     })
 }
 #[tauri::command]
-fn vault_backup_restore(s: St, data: Value) -> Res<Value> {
-    let v=with(&s,|v|portable::restore(v.root.parent().ok_or("no parent directory")?,data))?;
+fn vault_backup_restore(s: St, data: Value, target: Option<String>, name: Option<String>) -> Res<Value> {
+    // "here": into the open workspace; anything else: a new workspace, named `name` or as the backup itself
+    if target.as_deref()==Some("here") {
+        // a copy of the workspace as it is now goes next to it first, so a restore into it can always be undone
+        let (pages,files,copy)=with(&s,|v|{
+            let parent=v.root.parent().ok_or("no parent directory")?;
+            let safe:String=v.name().chars().filter(|c|!"<>:\"/\\|?*".contains(*c)&&!c.is_control()).collect();
+            let copy=format!("{} before restore {}.json",safe.trim(),vault::now_ms());
+            database::recover(&v.root)?;
+            let bytes=serde_json::to_vec(&portable::export(v)?).map_err(err)?;
+            vault::write_atomic(&parent.join(&copy),&bytes)?;
+            portable::restore_into(v,data)?;
+            Ok((v.pages_all()?.len(),v.files_list().len(),copy))
+        })?;
+        return Ok(json!({"pages":pages,"files":files,"copy":copy}));
+    }
+    let v=with(&s,|v|portable::restore(v.root.parent().ok_or("no parent directory")?,data,name.as_deref()))?;
     let entry=Entry{id:v.id(),name:v.name(),path:v.root.to_string_lossy().into()};
     activate(&s,&entry)?;
     Ok(json!({"pages":v.pages_all()?.len(),"files":v.files_list().len()}))

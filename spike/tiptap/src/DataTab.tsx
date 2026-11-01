@@ -2,7 +2,7 @@ import { useEffect, useState, type DragEvent } from 'react'
 import { backupNow, backupStatus, chooseBackupFolder, disableBackup, grantAccess } from './autobackup'
 import { BackupError, restoreBackup } from './backup'
 import { isTauri } from './db'
-import { Button, Chip, Dialog, Facts, Icon, Notice } from './design-system'
+import { Button, Chip, Dialog, Facts, Field, Icon, Notice, Section } from './design-system'
 import { locale, t } from './i18n'
 import * as Ic from './icons'
 import { pickDirectory, pickFiles } from './io'
@@ -20,6 +20,9 @@ export interface DataApi {
   workspaces: () => void
 }
 
+/** Where a desktop backup goes: a new workspace with this name, or into the open one. */
+interface Where { target: 'new' | 'here'; name: string }
+
 type Phase =
   | { step: 'review'; review: ImportReview }
   | { step: 'running'; review: ImportReview; done: number; total: number }
@@ -34,12 +37,16 @@ export function DataTab({ api }: { api: DataApi }) {
   const [phase, setPhase] = useState<Phase | null>(null)
   const [reading, setReading] = useState(false)
   const [over, setOver] = useState(false)
+  const [where, setWhere] = useState<Where>({ target: 'new', name: '' })
 
   const look = async (files: File[]) => {
     if (!files.length) return
     setReading(true)
     try {
-      setPhase({ step: 'review', review: await reviewImport(files) })
+      const review = await reviewImport(files)
+      // a backup is called what its workspace was called
+      if (review.kind === 'backup') setWhere({ target: 'new', name: review.backup?.summary.name ?? review.name.replace(/\.json$/i, '') })
+      setPhase({ step: 'review', review })
     } catch (e) {
       setPhase({ step: 'error', message: e instanceof BackupError ? e.message : t('The file could not be read.') })
     } finally {
@@ -60,7 +67,7 @@ export function DataTab({ api }: { api: DataApi }) {
     setPhase({ step: 'running', review, done: 0, total: review.pages })
     try {
       if (review.kind === 'backup') {
-        await restoreBackup(api.repo, review.backup!) // reloads the app when it is done
+        await restoreBackup(api.repo, review.backup!, isTauri ? where : {}) // reloads the app when it is done
         return
       }
       const outcome = await runImport(review, (done, total) => setPhase({ step: 'running', review, done, total }))
@@ -103,12 +110,12 @@ export function DataTab({ api }: { api: DataApi }) {
         </Row>
       </Card>
 
-      <ImportDialog phase={phase} api={api} go={go} close={() => setPhase(null)} />
+      <ImportDialog phase={phase} api={api} go={go} close={() => setPhase(null)} where={where} setWhere={setWhere} />
     </>
   )
 }
 
-function ImportDialog({ phase, api, go, close }: { phase: Phase | null; api: DataApi; go: () => void; close: () => void }) {
+function ImportDialog({ phase, api, go, close, where, setWhere }: { phase: Phase | null; api: DataApi; go: () => void; close: () => void; where: Where; setWhere: (w: Where) => void }) {
   if (!phase) return null
   const warn = <Icon name="warning" size={16} />
 
@@ -179,6 +186,7 @@ function ImportDialog({ phase, api, go, close }: { phase: Phase | null; api: Dat
     >
       <Facts items={b ? [
         [t('File'), review.name],
+        ...(b.name ? [[t('Workspace'), b.name] as [string, string]] : []),
         ...(b.createdAt ? [[t('Created'), when(b.createdAt)] as [string, string]] : []),
         [t('Pages'), num(b.pages)],
         ...(b.folders ? [[t('Folders'), num(b.folders)] as [string, string]] : []),
@@ -192,7 +200,27 @@ function ImportDialog({ phase, api, go, close }: { phase: Phase | null; api: Dat
         ...(review.images ? [[t('Images'), num(review.images)] as [string, string]] : []),
       ]} />
       {replaces && <Notice tone="warn" icon={warn}>{t('All {n} pages you have now will be replaced. A copy of them is saved to your downloads first.', { n: num(current) })}</Notice>}
-      {isBackup && isTauri && <Notice icon={<Icon name="info" size={16} />}>{t('The backup opens as a new workspace. Your current notes stay as they are.')}</Notice>}
+      {isBackup && isTauri && (
+        <Section title={t('Restore into')}>
+          <div className="ds-stack">
+            <div className="ds-seg" role="radiogroup" aria-label={t('Restore into')}>
+              {(['new', 'here'] as const).map((target) => (
+                <button key={target} type="button" role="radio" aria-checked={where.target === target} aria-pressed={where.target === target} onClick={() => setWhere({ ...where, target })}>
+                  {target === 'new' ? t('A new workspace') : t('This workspace')}
+                </button>
+              ))}
+            </div>
+            {where.target === 'new' ? (
+              <>
+                <Field aria-label={t('Workspace name')} value={where.name} onChange={(e) => setWhere({ ...where, name: e.target.value })} />
+                <Notice icon={<Icon name="info" size={16} />}>{t('Opens next to your current one. Nothing you have is changed.')}</Notice>
+              </>
+            ) : (
+              <Notice tone="warn" icon={warn}>{t("Pages, files, databases and history from the backup are written into this workspace. A page in both is replaced by the backup's version; nothing is deleted. A copy of this workspace is saved next to it first.")}</Notice>
+            )}
+          </div>
+        </Section>
+      )}
       {!isBackup && <Notice icon={<Icon name="info" size={16} />}>{t('These are added as new pages. Nothing you have is replaced.')}</Notice>}
       {skipped.length > 0 && <Notice icon={<Icon name="info" size={16} />}>{t('Left out: {list}.', { list: skipped.map(([ext, n]) => `${num(n)} ${ext}`).join('، ') })}</Notice>}
       {review.notes.length > 0 && <Notice tone="warn" icon={warn}><ul>{review.notes.slice(0, 5).map((n) => <li key={n} dir="auto">{n}</li>)}</ul></Notice>}
