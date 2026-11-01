@@ -1,10 +1,12 @@
 import { setPreference } from './preferenceEvents'
 import { UpdateCenter } from './UpdateUI'
 import { shortcutLabel } from './shortcuts'
+import { bindingHint, matches } from './shortcutBindings'
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react'
 import { repo, gcFiles, TRASH_DAYS } from './store'
 import type { Cover, Page, PageStatus } from './repo'
-import { SettingsView } from './SettingsPage'
+import { SETTINGS_TABS, SettingsView, type SettingsTab } from './SettingsPage'
+import { updates } from './updates'
 import { Tasks } from './Tasks'
 import { Drawings } from './Drawings'
 import { Databases } from './Databases'
@@ -276,7 +278,8 @@ export default function App() {
     return () => (window.removeEventListener('dragstart', start), window.removeEventListener('dragend', end), window.removeEventListener('drop', end))
   }, [])
   const [naming, setNaming] = useState<{ title: string; label: string; initial: string; action: string; onSubmit: (name: string) => void } | null>(null)
-  const [settingsTab, setSettingsTab] = useState<'data' | undefined>()
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>() // the tab a command asked for; only while the settings are open
+  useEffect(() => { if (view !== 'settings') setSettingsTab(undefined) }, [view])
   const [folderOpen, setFolderOpen] = useState(false)
   const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null)
   const [tableOpen, setTableOpen] = useState(false)
@@ -374,17 +377,17 @@ export default function App() {
   }, [refresh])
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      const mod = e.ctrlKey || e.metaKey
-      if (mod && e.key === '\\') (e.preventDefault(), setSideOpen((s) => !s))
+      if (matches(e, 'sidebar')) (e.preventDefault(), setSideOpen((s) => !s))
       // Alt + = / Alt + -: wider / narrower text column (in reader mode: the reader page)
-      if (e.altKey && !mod && !e.shiftKey && (e.code === 'Equal' || e.code === 'Minus')) {
+      const wider = matches(e, 'widerColumn')
+      if (wider || matches(e, 'narrowerColumn')) {
         e.preventDefault()
-        const d = e.code === 'Equal' ? PAGE_W.step : -PAGE_W.step
+        const d = wider ? PAGE_W.step : -PAGE_W.step
         if (readerRef.current) setReaderCfg((c) => { const n = { ...c, width: Math.min(1400, Math.max(480, c.width + d)) }; setPreference('not.reader.cfg', JSON.stringify(n)); return n })
         else setPageW((w) => { const n = Math.min(PAGE_W.max, Math.max(PAGE_W.min, w + d)); setPreference('not.page.width', String(n)); return n })
       }
-      if (mod && !e.altKey && !e.shiftKey && e.code === 'Period') (e.preventDefault(), setReader((r) => !r)) // physical key: works with the Persian layout
-      if (e.key === 'Escape' && !document.querySelector('.lightbox')) setReader(false)
+      if (matches(e, 'reader')) (e.preventDefault(), setReader((r) => !r)) // physical key: works with the Persian layout
+      if (e.key === 'Escape' && !document.querySelector('.lightbox, .palette-overlay')) setReader(false)
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
@@ -393,7 +396,7 @@ export default function App() {
   // (so it also works with the Persian keyboard layout, where e.key is not “k”)
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === 'KeyK' || e.key.toLowerCase() === 'k')) {
+      if (matches(e, 'search')) {
         e.preventDefault()
         e.stopPropagation()
         setSearching(true)
@@ -525,7 +528,8 @@ export default function App() {
     const r = takeRestored()
     if (r) setToast({ msg: r.copy ? t('{pages} pages and {files} files restored. Your previous notes were saved as {copy}.', { pages: r.pages, files: r.files, copy: r.copy }) : t('{pages} pages and {files} files restored', { pages: r.pages, files: r.files }) })
   }, [])
-  const openData = () => { setSettingsTab('data'); setView('settings') }
+  const openSettings = (tab?: SettingsTab) => { setSettingsTab(tab); setView('settings') }
+  const openData = () => openSettings('data')
   const doExportAll = async () => {
     try {
       const r = await exportAllZip()
@@ -577,8 +581,11 @@ export default function App() {
     ...(current && view === 'page' ? [
       { id: 'subpage', label: t('Add subpage'), icon: <Ic.Plus />, keywords: 'زیرصفحه', run: () => add(current.id) },
       { id: 'fav', label: current.favorite ? t('Remove from favorites') : t('Add to favorites'), icon: <Ic.Star filled={current.favorite} />, keywords: 'star pin علاقه‌مندی', run: () => fav(current.id) },
-      { id: 'reader', label: t('Reader mode'), icon: <Ic.Reader />, keywords: 'read مطالعه', hint: 'Ctrl .', run: () => setReader(true) },
+      { id: 'reader', label: t('Reader mode'), icon: <Ic.Reader />, keywords: 'read مطالعه', hint: bindingHint('reader'), run: () => setReader(true) },
+      { id: 'find', label: t('Find in page'), icon: <Ic.Search />, keywords: 'search ctrl+f جست‌وجو پیدا', hint: bindingHint('find'), run: () => window.setTimeout(() => window.dispatchEvent(new Event('open-find')), 0) },
+      { id: 'history', label: t('Version history'), icon: <Ic.History />, keywords: 'versions restore earlier تاریخچه نسخه', run: () => window.setTimeout(() => window.dispatchEvent(new Event('open-history')), 0) },
       { id: 'export-md', label: t('Export Markdown'), icon: <Ic.Markdown />, keywords: 'download خروجی', run: () => exportMd(current.id) },
+      { id: 'print', label: t('Print / PDF'), icon: <Ic.Pdf />, keywords: 'pdf print چاپ', run: () => printPage(current.title) },
     ] : []),
     { id: 'home', label: t('Home'), icon: <Ic.Home />, keywords: 'dashboard خانه', run: () => setView('home') },
     { id: 'table', label: t('Pages table'), icon: <Ic.Table />, keywords: 'database جدول', run: () => setTableOpen(true) },
@@ -590,13 +597,17 @@ export default function App() {
     { id: 'cards', label: t('Flashcards'), icon: <Ic.Cards />, keywords: 'review srs فلش‌کارت', run: () => setCardsOpen(true) },
     { id: 'trash', label: t('Trash'), icon: <Ic.Trash />, keywords: 'deleted سطل', run: () => setTrashOpen(true) },
     { id: 'theme', label: dark ? t('Light mode') : t('Dark mode'), icon: dark ? <Ic.Sun /> : <Ic.Moon />, keywords: 'theme dark light تم', run: () => updateSettings({ theme: dark ? 'light' : 'dark' }) },
-    { id: 'sidebar', label: sideOpen ? t('Close sidebar') : t('Open sidebar'), icon: <Ic.Sidebar />, keywords: 'side panel نوار کناری', hint: 'Ctrl \\', run: () => setSideOpen((o) => !o) },
+    { id: 'sidebar', label: sideOpen ? t('Close sidebar') : t('Open sidebar'), icon: <Ic.Sidebar />, keywords: 'side panel نوار کناری', hint: bindingHint('sidebar'), run: () => setSideOpen((o) => !o) },
     { id: 'import', label: t('Import or restore…'), icon: <Ic.Upload />, keywords: 'وارد کردن بازیابی markdown obsidian restore zip', run: openData },
+    { id: 'restore', label: t('Restore from backup'), icon: <Ic.Upload />, keywords: 'backup restore desktop workspace بازیابی پشتیبان بکاپ', run: openData },
     { id: 'export-all', label: t('Export all pages (zip with Markdown & images)'), icon: <Ic.Download />, keywords: 'zip', run: doExportAll },
     { id: 'backup', label: t('Full backup (JSON)'), icon: <Ic.Save />, keywords: 'پشتیبان', run: doBackup },
     ...[{ id: 'data-folder', label: t('Workspaces…'), icon: <Ic.Folder />, keywords: 'vault switch workspace پوشه داده', run: () => setFolderOpen(true) }],
     { id: 'auto-backup', label: t('Automatic backup to folder…'), icon: <Ic.Save />, keywords: 'پشتیبان خودکار', run: openData },
-    { id: 'settings', label: t('Settings'), icon: <Ic.Settings />, keywords: 'preferences تنظیمات', run: () => setView('settings') },
+    { id: 'check-updates', label: t('Check for updates'), icon: <Ic.Download />, keywords: 'update version beta release upgrade به‌روزرسانی نسخه', run: () => void updates.check(true) },
+    { id: 'settings', label: t('Settings'), icon: <Ic.Settings />, keywords: 'preferences تنظیمات', run: () => openSettings() },
+    // every page of the settings, one command each: "Settings › Shortcuts", "Settings › Data & backup"…
+    ...SETTINGS_TABS.map((x) => ({ id: 'settings-' + x.id, label: t('Settings') + ' › ' + t(x.label), icon: x.icon, keywords: x.id + ' ' + x.hint + ' ' + t(x.hint), run: () => openSettings(x.id) })),
   ]
   const menuPage = menu ? pages.find((p) => p.id === menu.id) : undefined
 
@@ -810,7 +821,7 @@ export default function App() {
           ) : view === 'drawings' ? (
             <Drawings onOpen={setCurrentId} onNew={() => add(null, 'board')} onDelete={delDrawing} />
           ) : view === 'settings' ? (
-            <SettingsView initialTab={settingsTab} data={{ repo, refresh, toast: (msg) => setToast({ msg }), open: setCurrentId, exportAll: doExportAll, backup: doBackup, workspaces: () => setFolderOpen(true) }} />
+            <SettingsView key={settingsTab ?? 'settings'} initialTab={settingsTab} data={{ repo, refresh, toast: (msg) => setToast({ msg }), open: setCurrentId, exportAll: doExportAll, backup: doBackup, workspaces: () => setFolderOpen(true) }} />
           ) : current?.dbHost ? (
             <Suspense fallback={<div className="page-skeleton" aria-busy="true" />}><DatabasePage key={current.id} page={current} onOpenPage={setCurrentId} onMeta={refresh} readOnly={reader} /></Suspense>
           ) : current?.kind === 'board' ? (
@@ -826,7 +837,7 @@ export default function App() {
             <div className="blank">
               <div className="blank-ic"><Ic.Page size={40} /></div>
               <h2>{t('No page open')}</h2>
-              <p>{t('Create a page or search with Ctrl+K.')}</p>
+              <p>{t('Create a page or search with {keys}.', { keys: bindingHint('search').replace(/ /g, '+') })}</p>
               <button className="primary" onClick={() => add(null)}>{t('New page')}</button>
             </div>
           )}

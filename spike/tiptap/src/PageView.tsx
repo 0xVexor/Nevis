@@ -33,6 +33,7 @@ import { iconNode } from './iconSet'
 import * as Ic from './icons'
 import { Toolbar } from './Toolbar'
 import { t } from './i18n'
+import { bindingHint, matches } from './shortcutBindings'
 import { lazy, Suspense } from 'react'
 const RowProperties = lazy(() => import('./database/ui/RowProperties').then((m) => ({ default: m.RowProperties })))
 
@@ -346,31 +347,36 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
   }
   useEffect(() => {
     if (!editor) return
+    const openFind = () => {
+      const { from, to } = editor.state.selection
+      const picked = from !== to ? editor.state.doc.textBetween(from, to, ' ') : ''
+      setFindOpen(true)
+      requestAnimationFrame(() => {
+        const el = findInput.current
+        if (!el) return
+        if (picked && !picked.includes('\n')) {
+          el.value = picked
+          ;(editor.commands as any).setFind(picked)
+          scrollToMatch(editor)
+        }
+        el.focus()
+        el.select()
+      })
+    }
     const key = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey
-      if (mod && !e.shiftKey && e.key.toLowerCase() === 'f') {
+      // by the physical key (event.code), so Ctrl+F also works while the system keyboard is Persian
+      if (matches(e, 'find')) {
         e.preventDefault() // replaces the browser's own find: ours understands Persian letter variants and ZWNJ
-        const { from, to } = editor.state.selection
-        const picked = from !== to ? editor.state.doc.textBetween(from, to, ' ') : ''
-        setFindOpen(true)
-        requestAnimationFrame(() => {
-          const el = findInput.current
-          if (!el) return
-          if (picked && !picked.includes('\n')) {
-            el.value = picked
-            ;(editor.commands as any).setFind(picked)
-            scrollToMatch(editor)
-          }
-          el.focus()
-          el.select()
-        })
-      } else if (e.key === 'F3' || (mod && e.key.toLowerCase() === 'g')) {
+        openFind()
+      } else if (e.key === 'F3' || (mod && !e.altKey && e.code === 'KeyG')) {
         e.preventDefault()
         stepFind(e.shiftKey ? -1 : 1)
       }
     }
     window.addEventListener('keydown', key)
-    return () => window.removeEventListener('keydown', key)
+    window.addEventListener('open-find', openFind)
+    return () => (window.removeEventListener('keydown', key), window.removeEventListener('open-find', openFind))
   }, [editor])
 
   // a page created from the Templates gallery: fill it once its editor exists
@@ -460,7 +466,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') (e.preventDefault(), stepFind(e.shiftKey ? -1 : 1))
-                else if (e.key === 'Escape') (e.preventDefault(), closeFind())
+                else if (e.key === 'Escape') (e.preventDefault(), e.stopPropagation(), closeFind()) // only the find bar closes
               }}
             />
             <span className="find-count" aria-live="polite">{find.matches.length ? t('{i} of {n}', { i: find.index + 1, n: find.matches.length }) : find.query ? t('Not found') : ''}</span>
@@ -712,7 +718,7 @@ export function PageView({ page, onSave, onMeta, onCover, readOnly: readerOnly =
             {!readOnly && <MenuItem icon={<Ic.Code />} label={t('Convert $…$ to formulas')} onClick={() => (setCtx(null), (editor.commands as any).convertFormulas())} />}
             <MenuItem icon={<Ic.SelectAll />} label={t('Select all')} hint="Ctrl+A" onClick={() => (setCtx(null), editor.chain().focus().selectAll().run())} />
             <MenuSep />
-            <MenuItem icon={<Ic.Search />} label={t('Find in page')} hint="Ctrl+F" onClick={() => (setCtx(null), window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true })))} />
+            <MenuItem icon={<Ic.Search />} label={t('Find in page')} hint={bindingHint('find')} onClick={() => (setCtx(null), window.dispatchEvent(new Event('open-find')))} />
             <MenuItem icon={<Ic.History />} label={t('History')} onClick={() => (setCtx(null), window.dispatchEvent(new Event('open-history')))} />
             <MenuItem icon={<Ic.Reader />} label={t('Reader mode')} hint="Ctrl ." onClick={() => (setCtx(null), window.dispatchEvent(new Event('toggle-reader')))} />
             <MenuItem icon={<Ic.Print />} label={t('Print / PDF')} onClick={() => (setCtx(null), printPage(page.title))} />
