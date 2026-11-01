@@ -82,3 +82,36 @@ export function makeZipBytes(entries: ZipEntry[], date = new Date()): Uint8Array
 }
 
 export const makeZip = (entries: ZipEntry[]): Blob => new Blob([makeZipBytes(entries) as BlobPart], { type: 'application/zip' })
+
+/** Reads a ZIP (stored or deflated) from the central directory. Throws on anything that is not a readable zip. */
+export async function readZip(buf: ArrayBuffer): Promise<ZipEntry[]> {
+  const bytes = new Uint8Array(buf)
+  const v = new DataView(buf)
+  let end = -1
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 22 - 0xffff); i--) {
+    if (v.getUint32(i, true) === 0x06054b50) { end = i; break }
+  }
+  if (end < 0) throw new Error('Not a zip file')
+  const count = v.getUint16(end + 10, true)
+  let at = v.getUint32(end + 16, true)
+  const dec = new TextDecoder()
+  const out: ZipEntry[] = []
+  for (let n = 0; n < count; n++) {
+    if (v.getUint32(at, true) !== 0x02014b50) throw new Error('Corrupted zip')
+    const method = v.getUint16(at + 10, true)
+    const size = v.getUint32(at + 20, true)
+    const nameLen = v.getUint16(at + 28, true)
+    const extraLen = v.getUint16(at + 30, true)
+    const commentLen = v.getUint16(at + 32, true)
+    const local = v.getUint32(at + 42, true)
+    const path = dec.decode(bytes.subarray(at + 46, at + 46 + nameLen))
+    at += 46 + nameLen + extraLen + commentLen
+    if (path.endsWith('/')) continue
+    const start = local + 30 + v.getUint16(local + 26, true) + v.getUint16(local + 28, true)
+    const raw = bytes.subarray(start, start + size)
+    if (method === 0) out.push({ path, data: raw.slice() })
+    else if (method === 8) out.push({ path, data: new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer()) })
+    else throw new Error('Unsupported zip compression')
+  }
+  return out
+}

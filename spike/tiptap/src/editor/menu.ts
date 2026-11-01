@@ -8,12 +8,40 @@ interface MenuView {
   disabled?: boolean
 }
 
-export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T) => MenuView; empty?: string }) {
+/** `preview` returns trusted SVG markup (see slashPreview.ts) for the highlighted item, drawn in a small frame beside the menu. */
+export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T) => MenuView; empty?: string; preview?: (i: T) => string | null }) {
   return () => {
     let el: HTMLDivElement | null = null
+    let pv: HTMLDivElement | null = null
     let items: T[] = []
     let selected = 0
     let cmd: ((i: T) => void) | null = null
+
+    const dropPreview = () => {
+      pv?.remove()
+      pv = null
+    }
+    /** The frame sits on the menu's inline-end side, or the other side when there is no room; on a very narrow screen it is left out. */
+    const drawPreview = () => {
+      const art = items[selected] !== undefined ? cfg.preview?.(items[selected]) : null
+      if (!el || !art) return dropPreview()
+      if (!pv) {
+        pv = document.createElement('div')
+        pv.className = 'slash-preview'
+        document.body.append(pv)
+      }
+      pv.innerHTML = art
+      const r = el.getBoundingClientRect()
+      const w = pv.offsetWidth
+      const rtl = getComputedStyle(el).direction === 'rtl'
+      const fits = (x: number) => x >= 8 && x + w <= window.innerWidth - 8
+      const first = rtl ? r.left - w - 8 : r.right + 8
+      const second = rtl ? r.right + 8 : r.left - w - 8
+      const x = fits(first) ? first : fits(second) ? second : null
+      if (x === null) return dropPreview()
+      pv.style.left = `${x}px`
+      pv.style.top = `${Math.max(8, Math.min(r.top, window.innerHeight - pv.offsetHeight - 8))}px`
+    }
 
     const draw = () => {
       if (!el) return
@@ -55,6 +83,7 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
             selected = i
             list.querySelector('.sel')?.classList.remove('sel')
             b.classList.add('sel')
+            drawPreview()
           }
         }
         list.append(b)
@@ -70,6 +99,11 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
         if (cur.offsetTop - 6 < list.scrollTop) list.scrollTop = Math.max(0, cur.offsetTop - 6)
         else if (cur.offsetTop + cur.offsetHeight + 6 > list.scrollTop + list.clientHeight) list.scrollTop = cur.offsetTop + cur.offsetHeight + 6 - list.clientHeight
       }
+    }
+    const show = (props: any) => {
+      draw()
+      place(props)
+      drawPreview()
     }
     const place = (props: any) => {
       const r = props.clientRect?.()
@@ -88,15 +122,13 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
         items = props.items
         selected = Math.max(0, items.findIndex((item) => !cfg.view(item).disabled))
         cmd = (i) => props.command(i)
-        draw()
-        place(props)
+        show(props)
       },
       onUpdate: (props: any) => {
         items = props.items
         selected = Math.max(0, items.findIndex((item) => !cfg.view(item).disabled))
         cmd = (i) => props.command(i)
-        draw()
-        place(props)
+        show(props)
       },
       onKeyDown: ({ event }: any) => {
         if (!items.length) return false
@@ -106,6 +138,7 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
             if (!cfg.view(items[selected]).disabled) break
           }
           draw()
+          drawPreview()
           return true
         }
         if (event.key === 'ArrowDown') return move(1)
@@ -117,6 +150,7 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
         return false
       },
       onExit: () => {
+        dropPreview()
         el?.remove()
         el = null
       },

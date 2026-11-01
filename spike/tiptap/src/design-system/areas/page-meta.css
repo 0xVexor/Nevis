@@ -230,7 +230,7 @@ button.wsd-row:hover:not(:disabled) { border-color: var(--ds-accent-line); trans
 .sort-arrow.asc { transform: rotate(-90deg); }
 .sort-arrow.desc { transform: rotate(90deg); }
 .tpl-chip-ic { display: inline-flex; color: var(--ds-accent); }
-.findbar button svg, .tag-chip button svg { display: block; margin: auto; }
+.tag-chip button svg { display: block; margin: auto; }
 .img-bar button svg, .lb-bar button svg { display: block; margin: auto; }
 .img-bar button, .lb-bar button { display: inline-grid; place-items: center; }
 
