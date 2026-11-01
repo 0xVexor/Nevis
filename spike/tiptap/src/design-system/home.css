@@ -7,16 +7,6 @@
 .home b { font-weight: 600; }
 .home small { display: block; font-size: 12.5px; line-height: 1.5; }
 
-.home-bar { display: flex; gap: var(--ds-s3); margin-block-end: var(--ds-s2); }
-.home-search {
-  flex: 1; display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 14px; border: 1px solid var(--ds-line); border-radius: var(--ds-r);
-  background: var(--ds-raised); color: var(--ds-text-3); font: inherit; text-align: start; cursor: var(--cursor-hand, pointer); transition: border-color var(--ds-fast);
-}
-.home-search:hover { border-color: var(--ds-line-strong); }
-.home-search span { flex: 1; }
-.home-search kbd { padding: 3px 6px; border: 1px solid var(--ds-line); border-radius: 5px; background: var(--ds-bg); font: 500 11px var(--ds-font-ui); }
-.home-new .ds-btn { height: 40px; }
-
 .home-hello { padding-block: 28px 4px; }
 .home-hello small { color: var(--ds-text-3); font-size: 13.5px; margin-block-end: 10px; }
 .home-hello h1 { margin: 0; font: 500 clamp(32px, 4vw, 46px) / 1.1 var(--ds-font-serif); letter-spacing: -0.03em; }
@@ -54,10 +44,6 @@
 .home-card-top { display: flex; align-items: center; justify-content: space-between; margin-block-end: 4px; }
 .home-card b { font-size: 14.5px; line-height: 1.4; }
 .home-card-tags { display: flex; gap: 6px; flex-wrap: wrap; }
-.home-collections { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
-.home-collections .ds-card { display: flex; gap: 12px; align-items: flex-start; padding: 16px; color: var(--ds-text); font: inherit; text-align: start; }
-.home-collections small { color: var(--ds-text-3); }
-.home-collections .ds-tile { color: var(--ds-text-2); }
 
 .home-today { padding: 6px 12px 8px; }
 .home-today-head { display: flex; align-items: center; gap: 14px; padding: 12px 4px 10px; border-block-end: 1px solid var(--ds-line); }
@@ -73,12 +59,6 @@
 .home-task input:checked + .ds-check { background: var(--ds-accent); border-color: var(--ds-accent); color: var(--ds-accent-ink); }
 .home-task input:focus-visible + .ds-check { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
 .home-more { padding: 10px 6px 4px; }
-.home-list { padding: 6px; }
-.home-row { display: flex; align-items: center; gap: 10px; inline-size: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: none; color: var(--ds-text); font: inherit; font-size: 14px; text-align: start; cursor: var(--cursor-hand, pointer); }
-.home-row:hover { background: var(--ds-hover); }
-.home-row .ds-icon, .home-row > svg { color: var(--ds-text-3); }
-.home-row-t { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.home-row-m { font-size: 12px; }
 .home .ds-empty { padding: 20px; font-size: 13px; }
 
 @container (max-width: 900px) {
@@ -100,12 +80,6 @@
 .home-flame { display: grid; color: #f0702c; }
 /* ui-allow hard-coded-color: the streak flame is always this orange */
 .home-flame .ds-icon { fill: color-mix(in oklab, #f0702c 22%, transparent); }
-.home-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; text-align: center; }
-.home-week > div { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--ds-text-3); font-size: 11.5px; }
-.home-week i { display: grid; place-items: center; inline-size: 28px; block-size: 28px; border-radius: 50%; background: var(--ds-sunk); color: var(--ds-white); }
-.home-week .done i { background: var(--ds-accent); }
-.home-week .now i { background: none; border: 2px dashed var(--ds-accent); }
-.home-week .done.now i { border: 0; background: var(--ds-accent); }
 
 /* writing streak: the whole month */
 .home-month-head { display: flex; align-items: baseline; justify-content: space-between; margin-block-end: 10px; }
