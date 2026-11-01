@@ -1,4 +1,5 @@
 import { PageIcon } from './PageIcon'
+import { dirOf, Button, IconButton } from './design-system'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getDatabase } from './database/runtime'
 import { useDatabaseEdges, EdgeKindToggles, type ExtraKinds } from './database/ui/GraphEdges'
@@ -44,7 +45,7 @@ const NO_NODES: N[] = []
 const NO_SET = new Set<number>()
 const LINE_BUDGET = 1_500_000 // px of link (|dx| + |dy| summed) drawn per full repaint before evenly spread links start being skipped; the repaint cost grows with it
 let quiet = new Float32Array(0) // scratch for the links of one repaint
-const VARS = ['--accent', '--border-strong', '--text', '--bg-sunk'] as const
+const VARS = ['--ds-accent', '--ds-line-strong', '--ds-text', '--ds-sunk'] as const
 let palette: { key: string; at: number; c: Record<(typeof VARS)[number], string>; font: string } | null = null
 
 /** Theme colours as plain rgb() strings (the canvas does not understand light-dark() or color-mix() that the stylesheet uses) and the font; looked up at most twice a second, not on every frame. */
@@ -244,10 +245,10 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     if (!overlay) ctx.clearRect(0, 0, W, H)
     const pal = colors(cv.parentElement!)
-    const accent = pal.c['--accent']
-    const line = pal.c['--border-strong']
-    const text = pal.c['--text']
-    const halo = pal.c['--bg-sunk']
+    const accent = pal.c['--ds-accent']
+    const line = pal.c['--ds-line-strong']
+    const text = pal.c['--ds-text']
+    const halo = pal.c['--ds-sunk']
     const v = frame?.v ?? view.current
     const z = v.k / base.current
     const grow = radiusScale(scene, v.k)
@@ -707,19 +708,19 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
             <aside className="gsel">
               {selNode ? (
                 <>
-                  <div className="gsel-head">
+                  <div className="gsel-head" dir={dirOf(selNode.title)}>
                     <span className="ds-tile ds-tile--lg">{selPage ? <PageIcon page={selPage} /> : <Ic.Link size={20} />}</span>
                     <span><b dir="auto">{selNode.title}</b><small className="ds-muted">{t('{n} links', { n: selNode.deg })}</small></span>
-                    <button type="button" className="ds-icon-btn" aria-label={t('Close')} onClick={() => setSel(null)}><Ic.Close size={14} /></button>
+                    <IconButton type="button" label={t('Close')} onClick={() => setSel(null)}><Ic.Close size={14} /></IconButton>
                   </div>
                   {selPage?.tags?.length ? <div className="gsel-tags">{selPage.tags.map((g) => <span key={g} className="tag-chip static">{g}</span>)}</div> : null}
                   <div className="gsel-sec">{t('Connections')} · {conn.length}</div>
                   <div className="gsel-list">
                     {conn.map((n) => (
-                      <button key={n.id} type="button" className="gsel-row" onClick={() => setSel(n.id)}><i style={{ background: n.tone }} /><span dir="auto">{n.title}</span></button>
+                      <button key={n.id} type="button" dir={dirOf(n.title)} className="gsel-row" onClick={() => setSel(n.id)}><i style={{ background: n.tone }} /><span dir="auto">{n.title}</span></button>
                     ))}
                   </div>
-                  <button type="button" className="ds-btn ds-btn--primary" onClick={() => onOpen(selNode.id)}>{t('Open page')}</button>
+                  <Button variant="primary" type="button" onClick={() => onOpen(selNode.id)}>{t('Open page')}</Button>
                 </>
               ) : (
                 <>

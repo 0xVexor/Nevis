@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Page } from './repo'
 import { PageIcon } from './PageIcon'
 import { ago } from './ui'
-import { Icon } from './design-system'
+import { Icon, Section, dirOf, landscapeFor } from './design-system'
 import { locale, t } from './i18n'
 import { allTasks, setChecked } from './taskData'
 import { countDue } from './cardsDue'
@@ -50,13 +50,6 @@ const Quick = ({ icon, title, hint, onClick }: { icon: string; title: string; hi
   </button>
 )
 
-const Section = ({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) => (
-  <section className="home-section">
-    <header><h2>{title}</h2>{action}</header>
-    {children}
-  </section>
-)
-
 /** Progress ring: done / total of the checklist items across every page. */
 function Ring({ done, total }: { done: number; total: number }) {
   const r = 34
@@ -68,6 +61,9 @@ function Ring({ done, total }: { done: number; total: number }) {
     </span>
   )
 }
+
+/** Recent pages on Home: never more than this many cards. */
+const RECENT_MAX = 6
 
 /** Home: greeting, ways to start, where you left off, recent pages; today's checklist, writing streak and pinned pages beside them. */
 export function Home({ pages, onOpen, onNew, onTable, onCards, onTemplates, onFiles, onTasks }: Props) {
@@ -93,7 +89,9 @@ export function Home({ pages, onOpen, onNew, onTable, onCards, onTemplates, onFi
   }, [pages])
 
   const hour = new Date(now).getHours()
-  const { recent, month, streak } = useMemo(() => {
+  // the banner paints the sky of the current time of day
+  const scenery = useMemo(() => landscapeFor(hour), [hour])
+  const { recent, months, streak } = useMemo(() => {
     const real = pages.filter((p) => p.kind !== 'folder' && !p.database).sort((a, b) => b.updatedAt - a.updatedAt)
     // writing streak: consecutive days with at least one edited page; today may still be empty
     const days = new Set(pages.map((p) => dayKey(p.updatedAt)))
@@ -103,17 +101,21 @@ export function Home({ pages, onOpen, onNew, onTable, onCards, onTemplates, onFi
     let n = days.has(back(0)) ? 0 : 1
     let streak = 0
     while (days.has(back(n))) (streak++, n++)
-    // the current month, Sunday first: leading blanks, then one cell per day
-    const first = new Date(today.getFullYear(), today.getMonth(), 1, 12)
-    const count = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
-    const cells = [
-      ...Array.from({ length: first.getDay() }, () => null),
-      ...Array.from({ length: count }, (_, i) => {
-        const date = new Date(today.getFullYear(), today.getMonth(), i + 1, 12)
-        return { key: dayKey(date.getTime()), n: i + 1, done: days.has(dayKey(date.getTime())), now: i + 1 === today.getDate(), future: date.getTime() > today.getTime() + 43_200_000 }
-      }),
-    ]
-    return { recent: real.slice(0, 6), month: { label: new Intl.DateTimeFormat(locale(), { month: 'long', year: 'numeric' }).format(today), cells, doneCount: cells.filter((c) => c?.done).length }, streak }
+    // a month, Sunday first: leading blanks, then one cell per day. The card shows the current month and, when it is tall enough, the one before it.
+    const monthOf = (back: number) => {
+      const year = today.getFullYear(), month = today.getMonth() - back
+      const first = new Date(year, month, 1, 12)
+      const count = new Date(year, month + 1, 0).getDate()
+      const cells = [
+        ...Array.from({ length: first.getDay() }, () => null),
+        ...Array.from({ length: count }, (_, i) => {
+          const date = new Date(year, month, i + 1, 12)
+          return { key: dayKey(date.getTime()), n: i + 1, done: days.has(dayKey(date.getTime())), now: dayKey(date.getTime()) === dayKey(today.getTime()), future: date.getTime() > today.getTime() + 43_200_000 }
+        }),
+      ]
+      return { label: new Intl.DateTimeFormat(locale(), { month: 'long', year: 'numeric' }).format(first), cells, doneCount: cells.filter((c) => c?.done).length }
+    }
+    return { recent: real.slice(0, RECENT_MAX), months: [monthOf(0), monthOf(1)], streak }
   }, [pages, now])
   // pages is a dependency on purpose: toggling a task rewrites its page, which hands Home a new pages array
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -125,7 +127,7 @@ export function Home({ pages, onOpen, onNew, onTable, onCards, onTemplates, onFi
 
   return (
     <div className="home">
-      <header className="home-hello">
+      <header className="home-hello" data-tone={scenery.dark ? 'dark' : 'light'} data-phase={scenery.phase} style={{ backgroundImage: scenery.css }}>
         <small>{date}</small>
         <h1>{greeting(hour)}</h1>
         <p>{t('{n} tasks left', { n: num(open.length) })} · {t('{n} flashcards due', { n: num(due) })}</p>
@@ -142,7 +144,7 @@ export function Home({ pages, onOpen, onNew, onTable, onCards, onTemplates, onFi
         <div className="home-main">
           {last && (
             <Section title={t('Continue where you left off')}>
-              <button type="button" className="home-resume" onClick={() => onOpen(last.id)}>
+              <button type="button" dir={dirOf(last.title)} className="home-resume" onClick={() => onOpen(last.id)}>
                 <span className="home-resume-ic"><PageIcon page={last} /></span>
                 <span className="home-resume-t"><b dir="auto">{last.title || t('Untitled')}</b><small>{t('Updated {when}', { when: ago(last.updatedAt) })}</small></span>
                 <span className="ds-btn ds-btn--primary ds-btn--sm">{t('Open')}</span>
@@ -156,7 +158,7 @@ export function Home({ pages, onOpen, onNew, onTable, onCards, onTemplates, onFi
                 {recent.map((p) => {
                   const text = excerpt(p.content)
                   return (
-                    <button type="button" key={p.id} className="ds-card ds-card--interactive home-card" onClick={() => onOpen(p.id)}>
+                    <button type="button" key={p.id} dir={dirOf(p.title)} className="ds-card ds-card--interactive home-card" onClick={() => onOpen(p.id)}>
                       <span className="home-card-top"><PageIcon page={p} /><small className="ds-muted">{ago(p.updatedAt)}</small></span>
                       <b dir="auto">{p.title || t('Untitled')}</b>
                       <span className="home-card-ex" dir="auto">{text}</span>
@@ -190,11 +192,15 @@ export function Home({ pages, onOpen, onNew, onTable, onCards, onTemplates, onFi
           <Section title={t('Writing streak')}>
             <div className="ds-card home-streak">
               <div className="home-streak-head"><span className="home-flame"><Icon name="flame" size={20} /></span><b>{num(streak)}</b><span className="ds-muted">{t('days in a row')}</span></div>
-              <div className="home-month-head"><b>{month.label}</b><span className="ds-muted">{t('{n} days written', { n: num(month.doneCount) })}</span></div>
-              <div className="home-month" role="grid" aria-label={month.label}>
-                {Array.from({ length: 7 }, (_, i) => <span key={i} className="wd">{new Intl.DateTimeFormat(locale(), { weekday: 'narrow' }).format(new Date(2023, 0, 1 + i))}</span>)}
-                {month.cells.map((c, i) => c ? <i key={c.key} className={(c.done ? 'done ' : '') + (c.now ? 'now ' : '') + (c.future ? 'future' : '')} title={String(c.n)}>{c.done ? <Icon name="check" size={12} /> : c.n}</i> : <i key={'b' + i} className="blank" />)}
-              </div>
+              {months.map((month) => (
+                <div key={month.label} className="home-month-block">
+                  <div className="home-month-head"><b>{month.label}</b><span className="ds-muted">{t('{n} days written', { n: num(month.doneCount) })}</span></div>
+                  <div className="home-month" role="grid" aria-label={month.label}>
+                    {Array.from({ length: 7 }, (_, i) => <span key={i} className="wd">{new Intl.DateTimeFormat(locale(), { weekday: 'narrow' }).format(new Date(2023, 0, 1 + i))}</span>)}
+                    {month.cells.map((c, i) => c ? <i key={c.key} className={(c.done ? 'done ' : '') + (c.now ? 'now ' : '') + (c.future ? 'future' : '')} title={String(c.n)}>{c.done ? <Icon name="check" size={12} /> : c.n}</i> : <i key={'b' + i} className="pad" />)}
+                  </div>
+                </div>
+              ))}
             </div>
           </Section>
         </aside>

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Nevis",
-  "version": "1.1.0-beta.3",
+  "version": "1.1.0-beta.4",
   "identifier": "com.vexor.noviq",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -14,10 +14,10 @@
       {
         "label": "main",
         "title": "Nevis.",
-        "width": 1280,
-        "height": 820,
-        "minWidth": 820,
-        "minHeight": 560,
+        "width": 1366,
+        "height": 825,
+        "minWidth": 1366,
+        "minHeight": 825,
         "dragDropEnabled": false
       }
     ],

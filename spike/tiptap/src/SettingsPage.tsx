@@ -11,6 +11,7 @@ import { putFile } from './attachments'
 import * as Ic from './icons'
 import { t } from './i18n'
 import { SHORTCUTS, keyLabel, shortcutKeys } from './shortcuts'
+import { Button } from './design-system'
 
 type Tab = 'appearance' | 'editor' | 'language' | 'general' | 'data' | 'database' | 'shortcuts' | 'connections' | 'about'
 const TABS: { id: Tab; label: string; title: string; hint: string; icon: ReactNode }[] = [
@@ -386,28 +387,28 @@ function DataTab({ a }: { a: DataActions }) {
           <b>{t('Import Markdown or an Obsidian vault')}</b>
           <small>{t('Bring pages in from Markdown files or an Obsidian folder.')}</small>
           <span className="sx-drop-btns">
-            <button type="button" className="ds-btn ds-btn--sm" onClick={a.importMarkdown}>{t('Import Markdown files…')}</button>
-            <button type="button" className="ds-btn ds-btn--sm" onClick={a.importVault}>{t('Import Obsidian vault (folder)…')}</button>
+            <Button size="sm" type="button" onClick={a.importMarkdown}>{t('Import Markdown files…')}</Button>
+            <Button size="sm" type="button" onClick={a.importVault}>{t('Import Obsidian vault (folder)…')}</Button>
           </span>
         </div>
       </Card>
       <Card title={t('Export & backup')}>
         <Row label={t('Export all pages')} hint={t('Zip with Markdown and images')}>
-          <button type="button" className="ds-btn ds-btn--sm" onClick={a.exportAll}><Ic.Download size={15} />{t('Export')}</button>
+          <Button size="sm" type="button" onClick={a.exportAll}><Ic.Download size={15} />{t('Export')}</Button>
         </Row>
         <Row label={t('Full backup (JSON)')} hint={t('Everything in one file')}>
-          <button type="button" className="ds-btn ds-btn--sm" onClick={a.backup}><Ic.Download size={15} />{t('Export')}</button>
+          <Button size="sm" type="button" onClick={a.backup}><Ic.Download size={15} />{t('Export')}</Button>
         </Row>
         <Row label={t('Restore from backup…')} hint={t('Bring your notes back from a backup file')}>
-          <button type="button" className="ds-btn ds-btn--sm" onClick={a.restore}><Ic.Upload size={15} />{t('Restore')}</button>
+          <Button size="sm" type="button" onClick={a.restore}><Ic.Upload size={15} />{t('Restore')}</Button>
         </Row>
         <Row label={t('Automatic backup to folder…')} hint={t('Keeps a copy in a folder you choose')}>
-          <button type="button" className="ds-btn ds-btn--sm" onClick={a.autoBackup}><Ic.Folders size={15} />{t('Choose folder')}</button>
+          <Button size="sm" type="button" onClick={a.autoBackup}><Ic.Folders size={15} />{t('Choose folder')}</Button>
         </Row>
       </Card>
       <Card title={t('Workspaces')}>
         <Row label={t('Workspaces')} hint={t('Switch or create a workspace')}>
-          <button type="button" className="ds-btn ds-btn--sm" onClick={a.workspaces}>{t('Open')}</button>
+          <Button size="sm" type="button" onClick={a.workspaces}>{t('Open')}</Button>
         </Row>
       </Card>
     </>

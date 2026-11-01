@@ -1,12 +1,13 @@
 {
   "name": "nevis",
   "private": true,
-  "version": "1.1.0-beta.3",
+  "version": "1.1.0-beta.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "check:ui": "node scripts/check-ui.mjs",
     "test:layout": "node --import ./tests/register.mjs --test \"./tests/*.test.mjs\"",
     "test:updates": "node --test ../../db/test-updates.mjs",
     "test:document-persistence": "tsc -p tsconfig.documents.json && node --test ../../db/test-document-service.mjs ../../db/tests/database/idb.test.mjs src/editor/documentCommitGuard.test.mjs",

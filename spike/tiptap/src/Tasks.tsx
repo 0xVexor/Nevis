@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { repo } from './store'
 import { PageIcon } from './PageIcon'
+import { dirOf, Button } from './design-system'
 import { allTasks, loadInbox, saveInbox, setChecked, type InboxTask, type Task } from './taskData'
 import { t } from './i18n'
 import * as Ic from './icons'
@@ -59,7 +60,7 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
 
       <form className="tk-add" onSubmit={(e) => (e.preventDefault(), add())}>
         <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t('Add a task…')} dir="auto" />
-        <button className="ds-btn ds-btn--primary" type="submit" disabled={!draft.trim()}><Ic.Plus size={16} />{t('Add')}</button>
+        <Button variant="primary" type="submit" disabled={!draft.trim()}><Ic.Plus size={16} />{t('Add')}</Button>
       </form>
 
       <div className="dw-tools">
@@ -71,7 +72,7 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
           ))}
         </div>
         <span className="spacer" />
-        <button className="ds-btn ds-btn--primary" onClick={onNewList}><Ic.Plus size={15} />{t('New list')}</button>
+        <Button variant="primary" onClick={onNewList}><Ic.Plus size={15} />{t('New list')}</Button>
       </div>
 
       {inboxShown.length > 0 && (
@@ -90,7 +91,7 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
         <section className="tk-group">
           <div className="tk-label">{t('To-do lists')}</div>
           {lists.map(({ page, all }) => (
-            <button key={page.id} className="tk-page" onClick={() => onOpen(page.id)}>
+            <button key={page.id} dir={dirOf(page.title)} className="tk-page" onClick={() => onOpen(page.id)}>
               <span className="hm-row-ic"><PageIcon page={page} /></span>
               <b dir="auto">{page.title || t('Untitled')}</b>
               <small>{all.filter((x) => x.checked).length}/{all.length}</small>
@@ -110,7 +111,7 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
           return (
             <section key={pageId} className="tk-group">
               {head && <div className="tk-label">{head}</div>}
-              <button className="tk-page" onClick={() => onOpen(pageId)}>
+              <button dir={dirOf(page.title)} className="tk-page" onClick={() => onOpen(pageId)}>
                 <span className="hm-row-ic"><PageIcon page={page} /></span>
                 <b dir="auto">{page.title || t('Untitled')}</b>
                 <small>{items.length}</small>

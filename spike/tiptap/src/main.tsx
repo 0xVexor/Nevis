@@ -1,6 +1,6 @@
 import { startMcpBridge } from './mcp/bridge'
 import 'katex/dist/katex.min.css'
-import { StrictMode } from 'react'
+import { lazy, StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import './settings'
@@ -15,6 +15,9 @@ import { initInputMenu } from './inputMenu'
 
 initInputMenu()
 const root = createRoot(document.getElementById('root')!)
+// the component gallery: development only, open /#/design-system
+const Gallery = import.meta.env.DEV ? lazy(() => import('./design-system/Gallery').then((m) => ({ default: m.Gallery }))) : null
+const showGallery = () => !!Gallery && location.hash === '#/design-system'
 
 function start() {
   // the workspace is loaded before the first render
@@ -27,7 +30,7 @@ function start() {
     if (isTauri) void startMcpBridge().catch(() => {})
     root.render(
       <StrictMode>
-        <App />
+        {Gallery && showGallery() ? <Suspense fallback={null}><Gallery /></Suspense> : <App />}
       </StrictMode>,
     )
   }).catch((e) => {
