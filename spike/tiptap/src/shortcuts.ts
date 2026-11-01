@@ -59,10 +59,7 @@ export const SHORTCUTS: ShortcutGroup[] = [
   },
   {
     title: 'Text direction',
-    items: [
-      sc('Line direction: left-to-right', ['Mod', 'Shift', '→']),
-      sc('Line direction: right-to-left', ['Mod', 'Shift', '←']),
-    ],
+    items: [sc('Line direction: left-to-right', ['Mod', 'Shift', '→']), sc('Line direction: right-to-left', ['Mod', 'Shift', '←'])],
   },
   {
     title: 'Find in page',
@@ -88,11 +85,7 @@ export const SHORTCUTS: ShortcutGroup[] = [
   },
   {
     title: 'Flashcards',
-    items: [
-      sc('Show the answer', ['Space'], ['Enter']),
-      sc('Rate the card: again, hard, good, easy', ['1'], ['2'], ['3'], ['4']),
-      sc('End the session', ['Esc']),
-    ],
+    items: [sc('Show the answer', ['Space'], ['Enter']), sc('Rate the card: again, hard, good, easy', ['1'], ['2'], ['3'], ['4']), sc('End the session', ['Esc'])],
   },
 ]
 
@@ -104,32 +97,60 @@ export const isMac = () => {
 }
 
 const MAC: Record<string, string> = {
-  Mod: '⌘', Cmd: '⌘', Command: '⌘', Meta: '⌘', Ctrl: '⌃', Control: '⌃',
-  Alt: '⌥', Option: '⌥', Shift: '⇧', Enter: '↵', Return: '↵', Esc: '⎋', Escape: '⎋',
-  Tab: '⇥', Backspace: '⌫', Delete: '⌦', Del: '⌦',
-  ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓',
+  Mod: '⌘',
+  Cmd: '⌘',
+  Command: '⌘',
+  Meta: '⌘',
+  Ctrl: '⌃',
+  Control: '⌃',
+  Alt: '⌥',
+  Option: '⌥',
+  Shift: '⇧',
+  Enter: '↵',
+  Return: '↵',
+  Esc: '⎋',
+  Escape: '⎋',
+  Tab: '⇥',
+  Backspace: '⌫',
+  Delete: '⌦',
+  Del: '⌦',
+  ArrowLeft: '←',
+  ArrowRight: '→',
+  ArrowUp: '↑',
+  ArrowDown: '↓',
 }
-const labelFor = (key: string, mac: boolean) => mac ? (MAC[key] ?? key) : key === 'Mod' ? 'Ctrl' : key
+const labelFor = (key: string, mac: boolean) => (mac ? (MAC[key] ?? key) : key === 'Mod' ? 'Ctrl' : key)
 
 /** One actual key; keep the single-argument API safe to pass directly to Array.map. */
 export const keyLabel = (key: string) => labelFor(key, isMac())
 export const shortcutLabel = (keys: readonly string[], mac = isMac()) => keys.map((key) => labelFor(key, mac)).join(mac ? '' : '+')
-export const shortcutKeys = (shortcut: Shortcut) => isMac() && shortcut.macKeys ? shortcut.macKeys : shortcut.keys
+export const shortcutKeys = (shortcut: Shortcut) => (isMac() && shortcut.macKeys ? shortcut.macKeys : shortcut.keys)
 
 // Legacy UI strings use Ctrl to mean the cross-platform Mod binding. Only match key chords,
 // so ordinary phrases such as "Enter your name" and translated prose are preserved.
-const CHORD = /\b(?:Ctrl|Mod|Cmd|Command|Control|Meta|Alt|Option|Shift)(?:[ +]+(?:Ctrl|Mod|Cmd|Command|Control|Meta|Alt|Option|Shift))*[ +]+(?:ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Enter|Return|Backspace|Delete|Escape|Space|Tab|Esc|Del|F\d{1,2}|[A-Z0-9./\\=←→↑↓-])(?![A-Za-z0-9])/g
+const CHORD =
+  /\b(?:Ctrl|Mod|Cmd|Command|Control|Meta|Alt|Option|Shift)(?:[ +]+(?:Ctrl|Mod|Cmd|Command|Control|Meta|Alt|Option|Shift))*[ +]+(?:ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Enter|Return|Backspace|Delete|Escape|Space|Tab|Esc|Del|F\d{1,2}|[A-Z0-9./\\=←→↑↓-])(?![A-Za-z0-9])/g
 export function formatShortcutText(text: string, mac = isMac()): string {
   if (!mac) return text
   const rtl = /[֐-ࣿ]/.test(text)
-  const display = (value: string) => rtl ? '⁦' + value + '⁩' : value
-  const family = text.replace(/\b(?:Ctrl|Mod)\+([A-Z](?:\/[A-Z])+)(?![A-Za-z0-9])/g, (_match, letters: string) => display(letters.split('/').map((key) => shortcutLabel(['Mod', key], true)).join(' / ')))
+  const display = (value: string) => (rtl ? '⁦' + value + '⁩' : value)
+  const family = text.replace(/\b(?:Ctrl|Mod)\+([A-Z](?:\/[A-Z])+)(?![A-Za-z0-9])/g, (_match, letters: string) =>
+    display(
+      letters
+        .split('/')
+        .map((key) => shortcutLabel(['Mod', key], true))
+        .join(' / '),
+    ),
+  )
   return family.replace(CHORD, (chord) => {
-    let keys = chord.trim().split(/[ +]+/).map((key) => ['Ctrl', 'Cmd', 'Command', 'Meta'].includes(key) ? 'Mod' : key === 'Option' ? 'Alt' : key)
+    let keys = chord
+      .trim()
+      .split(/[ +]+/)
+      .map((key) => (['Ctrl', 'Cmd', 'Command', 'Meta'].includes(key) ? 'Mod' : key === 'Option' ? 'Alt' : key))
     if (keys.length === 2 && keys[0] === 'Mod' && keys[1] === 'Y') keys = ['Mod', 'Shift', 'Z']
     return display(shortcutLabel(keys, true))
   })
 }
 
 /** Menu hints may also be one navigation key; action labels are never passed here. */
-export const shortcutHint = (hint: string) => isMac() && MAC[hint] ? MAC[hint] : formatShortcutText(hint)
+export const shortcutHint = (hint: string) => (isMac() && MAC[hint] ? MAC[hint] : formatShortcutText(hint))

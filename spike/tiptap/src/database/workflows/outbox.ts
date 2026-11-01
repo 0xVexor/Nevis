@@ -18,9 +18,7 @@ export type OutboxEntry = {
   error?: string
 }
 
-export type SendResult =
-  | { ok: true }
-  | { ok: false; retryable: boolean; retryAfterMs?: number; code?: 'MISSING_CREDENTIALS' | 'PROVIDER_UNAVAILABLE' | 'UNCERTAIN'; message: string }
+export type SendResult = { ok: true } | { ok: false; retryable: boolean; retryAfterMs?: number; code?: 'MISSING_CREDENTIALS' | 'PROVIDER_UNAVAILABLE' | 'UNCERTAIN'; message: string }
 
 export interface ExternalAdapter {
   type: string

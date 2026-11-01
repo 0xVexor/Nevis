@@ -33,7 +33,12 @@ export async function buildBackup(repo: PageRepo): Promise<Blob> {
 
 /** Set before the page reloads so the next load can say what happened. */
 export const RESTORED_KEY = 'nevis-restored'
-export interface Restored { pages: number; files: number; copy?: string; merged?: MergeResult | null }
+export interface Restored {
+  pages: number
+  files: number
+  copy?: string
+  merged?: MergeResult | null
+}
 
 /**
  * Applies a checked backup. In the browser every page is replaced, so a copy of the current notes is downloaded first and
@@ -55,13 +60,20 @@ export async function restoreBackup(repo: PageRepo, plan: BackupPlan, opts: { sa
     freezeStorage()
     try {
       result = await applyTauri(plan, opts)
-    } catch (e) { thawStorage(); throw e }
+    } catch (e) {
+      thawStorage()
+      throw e
+    }
   } else {
     await applyWeb(repo, plan)
     result = { pages: plan.summary.pages + plan.summary.folders, files: plan.summary.files }
   }
   const restored: Restored = { ...result, copy: result.copy ?? copy }
-  try { sessionStorage.setItem(RESTORED_KEY, JSON.stringify(restored)) } catch { /* the toast is a courtesy */ }
+  try {
+    sessionStorage.setItem(RESTORED_KEY, JSON.stringify(restored))
+  } catch {
+    /* the toast is a courtesy */
+  }
   window.location.reload()
   return restored
 }
@@ -73,6 +85,7 @@ export function takeRestored(): Restored | null {
     if (!raw) return null
     sessionStorage.removeItem(RESTORED_KEY)
     return JSON.parse(raw) as Restored
-  } catch { return null }
+  } catch {
+    return null
+  }
 }
-

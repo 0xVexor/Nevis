@@ -32,7 +32,17 @@ register('comment.add', (cx, p: { pageId: Id; propertyId?: Id | null; parentComm
     const parent = cx.d.get('comment', p.parentCommentId)
     if (!parent || parent.deletedAt !== null || parent.pageId !== p.pageId) fail('NOT_FOUND', 'the comment you reply to is gone')
   }
-  const rec: CommentRecord = { ...cx.meta(p.id), pageId: p.pageId, propertyId: p.propertyId ?? null, parentCommentId: p.parentCommentId ?? null, authorId: cx.env.actorId, body: p.body, resolved: false, editedAt: null, readBy: [cx.env.actorId] }
+  const rec: CommentRecord = {
+    ...cx.meta(p.id),
+    pageId: p.pageId,
+    propertyId: p.propertyId ?? null,
+    parentCommentId: p.parentCommentId ?? null,
+    authorId: cx.env.actorId,
+    body: p.body,
+    resolved: false,
+    editedAt: null,
+    readBy: [cx.env.actorId],
+  }
   cx.d.add('comment', rec)
   return { commentId: rec.id }
 })
@@ -76,7 +86,13 @@ register('reminder.fire', (cx, p: { pageId: Id; propertyId: Id; offsetMinutes: n
   cx.access.assertRow(cx.env.actorId, row, 'read')
   const id = reminderEventId(cx.env.actorId, p.pageId, p.propertyId, p.offsetMinutes, p.startKey)
   if (cx.d.get('event', id)) return { fired: false }
-  cx.d.add('event', { ...cx.meta(id), type: 'reminder', pageId: p.pageId, principalId: cx.env.actorId, data: { propertyId: p.propertyId, offsetMinutes: p.offsetMinutes, startKey: p.startKey } as Json })
+  cx.d.add('event', {
+    ...cx.meta(id),
+    type: 'reminder',
+    pageId: p.pageId,
+    principalId: cx.env.actorId,
+    data: { propertyId: p.propertyId, offsetMinutes: p.offsetMinutes, startKey: p.startKey } as Json,
+  })
   return { fired: true }
 })
 

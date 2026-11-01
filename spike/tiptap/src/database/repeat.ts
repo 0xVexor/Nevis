@@ -13,10 +13,11 @@ function* civilDays(r: RepeatSchedule, fromCivil: string, toCivil: string): Gene
   } else if (r.frequency === 'weekly') {
     const wds = (r.weekdays?.length ? r.weekdays : [weekdayOf(start)]).slice().sort((a, b) => a - b)
     const weekStart = startOfWeek(start, 1) // intervals count ISO weeks from the start week
-    for (let w = weekStart; w <= toCivil; w = addDays(w, 7 * step)) for (const wd of wds) {
-      const d = addDays(w, wd - 1)
-      if (d >= start && d >= fromCivil && d <= toCivil) yield d
-    }
+    for (let w = weekStart; w <= toCivil; w = addDays(w, 7 * step))
+      for (const wd of wds) {
+        const d = addDays(w, wd - 1)
+        if (d >= start && d >= fromCivil && d <= toCivil) yield d
+      }
   } else if (r.frequency === 'monthly') {
     const dom = r.dayOfMonth ?? parseCivil(start).d
     for (let i = 0; ; i += step) {

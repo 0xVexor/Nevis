@@ -77,13 +77,18 @@ export async function commitDocumentOperationResult(record: DocumentOperationRec
   return invoke<DocumentOperationCommitResult>('document_operation_commit', { record, expectedVaultId, includeStatus: true, admission })
 }
 
-export async function allPages(): Promise<any[]> {
+export async function allPages(): Promise<Page[]> {
   if (isTauri) return invoke('pages_all')
   return browserDocuments.load()
 }
 
 /** Browser batches are transactional; native page files are individually atomic. */
-export async function savePages(upserts: any[], removed: string[], clearFirst: boolean, preconditions?: { expectedVaultId: string; expectedPages?: DocumentWrite['expectedPages']; expectedAll?: Page[] }) {
+export async function savePages(
+  upserts: Page[],
+  removed: string[],
+  clearFirst: boolean,
+  preconditions?: { expectedVaultId: string; expectedPages?: DocumentWrite['expectedPages']; expectedAll?: Page[] },
+) {
   if (frozen) throw new Error('Document storage is unavailable')
   if (!preconditions || (!preconditions.expectedPages && !preconditions.expectedAll)) throw new Error('Missing document precondition')
   if (isTauri) {

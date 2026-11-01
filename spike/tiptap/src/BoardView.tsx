@@ -1,5 +1,7 @@
 // A Board page: the whole page is one drawing (Excalidraw), saved automatically.
 // The page content is a doc holding a single `drawing` block, so files, search, history and backup treat it like any page.
+import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types'
+import type { AppState, BinaryFiles } from '@excalidraw/excalidraw/types'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { repo, gcFiles } from './store'
 import type { Page } from './repo'
@@ -12,7 +14,7 @@ import { registerUpdateSave } from './updateSave'
 const Canvas = lazy(() => import('./DrawingCanvas')) // the library loads only when a board is opened
 
 const SAVE_DELAY = 1500
-const signature = (elements: readonly any[]) => elements.map((e) => e.id + ':' + e.version).join(',')
+const signature = (elements: readonly ExcalidrawElement[]) => elements.map((e) => e.id + ':' + e.version).join(',')
 const boardDoc = (ids: { scene: string; preview: string }) => ({ type: 'doc', content: [{ type: 'drawing', attrs: ids }] })
 
 export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Page; onSave: (s: SaveState) => void; onMeta: () => void; readOnly?: boolean }) {
@@ -104,7 +106,7 @@ export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Pa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page.id])
 
-  const changed = (elements: readonly any[], appState: any, files: any) => {
+  const changed = (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
     latest.current = { elements, appState, files }
     if (readOnly || signature(elements) === saved.current) return
     notify.current('saving')

@@ -14,7 +14,16 @@ const hueOf = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) 
 const VISIBLE = 10
 
 /** Sidebar tag browser: a wrap of colour-tinted chips (most used first); picking one lists the pages that carry it right below. */
-export function SidebarTags({ tags, active, onPick, shut, onToggle, pages, currentId, onOpen }: {
+export function SidebarTags({
+  tags,
+  active,
+  onPick,
+  shut,
+  onToggle,
+  pages,
+  currentId,
+  onOpen,
+}: {
   tags: TagInfo[]
   active: string | null
   onPick: (key: string | null) => void
@@ -32,7 +41,9 @@ export function SidebarTags({ tags, active, onPick, shut, onToggle, pages, curre
   return (
     <>
       <button className={'section' + (shut ? ' shut' : '')} onClick={onToggle}>
-        {t('Tags')}<span className="section-n">{tags.length}</span><Ic.Chevron size={13} />
+        {t('Tags')}
+        <span className="section-n">{tags.length}</span>
+        <Ic.Chevron size={13} />
       </button>
       {!shut && (
         <div className="tagbox">
@@ -46,7 +57,9 @@ export function SidebarTags({ tags, active, onPick, shut, onToggle, pages, curre
                 onClick={() => onPick(active === g.key ? null : g.key)}
               >
                 <span className="tagchip-h">#</span>
-                <span className="tagchip-t" dir="auto">{g.label}</span>
+                <span className="tagchip-t" dir="auto">
+                  {g.label}
+                </span>
                 <span className="tagchip-n">{g.count}</span>
               </button>
             ))}
@@ -60,13 +73,21 @@ export function SidebarTags({ tags, active, onPick, shut, onToggle, pages, curre
           {pick && (
             <div className="tagres">
               <div className="tagres-head">
-                <span>{t('Pages tagged')} <b dir="auto">#{pick.label}</b></span>
-                <button title={t('Clear filter')} onClick={() => onPick(null)}><Ic.Close size={13} /></button>
+                <span>
+                  {t('Pages tagged')} <b dir="auto">#{pick.label}</b>
+                </span>
+                <button title={t('Clear filter')} onClick={() => onPick(null)}>
+                  <Ic.Close size={13} />
+                </button>
               </div>
               {pages.map((p) => (
                 <div key={p.id} className={'row' + (p.id === currentId ? ' cur' : '')} onClick={() => onOpen(p.id)}>
-                  <span className="ic"><PageIcon page={p} /></span>
-                  <span className="ntitle" dir="auto">{p.title || t('Untitled')}</span>
+                  <span className="ic">
+                    <PageIcon page={p} />
+                  </span>
+                  <span className="ntitle" dir="auto">
+                    {p.title || t('Untitled')}
+                  </span>
                 </div>
               ))}
               {pages.length === 0 && <div className="empty-note">{t('No pages yet')}</div>}

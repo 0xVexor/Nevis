@@ -37,7 +37,30 @@ export interface Settings {
   shortcuts: Record<string, string[]> // changed keyboard shortcuts by action id (see shortcutBindings.ts); an action not listed keeps its default
 }
 
-export const DEFAULTS: Settings = { lang: 'en', dir: 'auto', theme: 'light', accent: null, bg: { kind: 'default' }, radius: 10, font: 'vazir', fontEn: null, fontSize: 16, textColor: null, sidebar: 'default', pagesView: 'tree', sideGlass: 0, mainGlass: 0, bgStrength: 100, showCovers: true, showIcons: true, reduceMotion: false, cardReminders: true, compressImages: true, prereleaseUpdates: false, shortcuts: {} }
+export const DEFAULTS: Settings = {
+  lang: 'en',
+  dir: 'auto',
+  theme: 'light',
+  accent: null,
+  bg: { kind: 'default' },
+  radius: 10,
+  font: 'vazir',
+  fontEn: null,
+  fontSize: 16,
+  textColor: null,
+  sidebar: 'default',
+  pagesView: 'tree',
+  sideGlass: 0,
+  mainGlass: 0,
+  bgStrength: 100,
+  showCovers: true,
+  showIcons: true,
+  reduceMotion: false,
+  cardReminders: true,
+  compressImages: true,
+  prereleaseUpdates: false,
+  shortcuts: {},
+}
 
 const KEY = 'not.settings'
 const LEGACY_THEME = 'not.theme' // 'light' | 'dark' | null from before the settings page
@@ -61,18 +84,124 @@ const w3 = (a: () => Promise<unknown>, b: () => Promise<unknown>, c: () => Promi
 /** Faces for page text, grouped for the picker. Every web font is bundled (@fontsource) and loaded only when chosen or previewed. */
 export const FONTS: FontDef[] = [
   { id: 'vazir', group: 'persian', label: 'Vazirmatn (default)', stack: "'Vazirmatn', 'Segoe UI', Tahoma, system-ui, sans-serif" },
-  { id: 'estedad', group: 'persian', label: 'Estedad', stack: "'Estedad', 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif", css: w3(() => import('@fontsource/estedad/400.css'), () => import('@fontsource/estedad/500.css'), () => import('@fontsource/estedad/700.css')) },
-  { id: 'notosans', group: 'persian', label: 'Noto Sans Arabic', stack: "'Noto Sans Arabic', 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif", css: w3(() => import('@fontsource/noto-sans-arabic/400.css'), () => import('@fontsource/noto-sans-arabic/500.css'), () => import('@fontsource/noto-sans-arabic/700.css')) },
-  { id: 'ibm', group: 'persian', label: 'IBM Plex Sans Arabic', stack: "'IBM Plex Sans Arabic', 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif", css: w3(() => import('@fontsource/ibm-plex-sans-arabic/400.css'), () => import('@fontsource/ibm-plex-sans-arabic/500.css'), () => import('@fontsource/ibm-plex-sans-arabic/700.css')) },
-  { id: 'kufi', group: 'persian', label: 'Noto Kufi Arabic', stack: "'Noto Kufi Arabic', 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif", css: w3(() => import('@fontsource/noto-kufi-arabic/400.css'), () => import('@fontsource/noto-kufi-arabic/500.css'), () => import('@fontsource/noto-kufi-arabic/700.css')) },
-  { id: 'naskh', group: 'persian', label: 'Noto Naskh', stack: "'Noto Naskh Arabic', 'Vazirmatn', 'Times New Roman', serif", css: w3(() => import('@fontsource/noto-naskh-arabic/400.css'), () => import('@fontsource/noto-naskh-arabic/500.css'), () => import('@fontsource/noto-naskh-arabic/700.css')) },
-  { id: 'amiri', group: 'persian', label: 'Amiri', stack: "'Amiri', 'Vazirmatn', 'Times New Roman', serif", css: () => Promise.all([import('@fontsource/amiri/400.css'), import('@fontsource/amiri/700.css')]) },
+  {
+    id: 'estedad',
+    group: 'persian',
+    label: 'Estedad',
+    stack: "'Estedad', 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif",
+    css: w3(
+      () => import('@fontsource/estedad/400.css'),
+      () => import('@fontsource/estedad/500.css'),
+      () => import('@fontsource/estedad/700.css'),
+    ),
+  },
+  {
+    id: 'notosans',
+    group: 'persian',
+    label: 'Noto Sans Arabic',
+    stack: "'Noto Sans Arabic', 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif",
+    css: w3(
+      () => import('@fontsource/noto-sans-arabic/400.css'),
+      () => import('@fontsource/noto-sans-arabic/500.css'),
+      () => import('@fontsource/noto-sans-arabic/700.css'),
+    ),
+  },
+  {
+    id: 'ibm',
+    group: 'persian',
+    label: 'IBM Plex Sans Arabic',
+    stack: "'IBM Plex Sans Arabic', 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif",
+    css: w3(
+      () => import('@fontsource/ibm-plex-sans-arabic/400.css'),
+      () => import('@fontsource/ibm-plex-sans-arabic/500.css'),
+      () => import('@fontsource/ibm-plex-sans-arabic/700.css'),
+    ),
+  },
+  {
+    id: 'kufi',
+    group: 'persian',
+    label: 'Noto Kufi Arabic',
+    stack: "'Noto Kufi Arabic', 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif",
+    css: w3(
+      () => import('@fontsource/noto-kufi-arabic/400.css'),
+      () => import('@fontsource/noto-kufi-arabic/500.css'),
+      () => import('@fontsource/noto-kufi-arabic/700.css'),
+    ),
+  },
+  {
+    id: 'naskh',
+    group: 'persian',
+    label: 'Noto Naskh',
+    stack: "'Noto Naskh Arabic', 'Vazirmatn', 'Times New Roman', serif",
+    css: w3(
+      () => import('@fontsource/noto-naskh-arabic/400.css'),
+      () => import('@fontsource/noto-naskh-arabic/500.css'),
+      () => import('@fontsource/noto-naskh-arabic/700.css'),
+    ),
+  },
+  {
+    id: 'amiri',
+    group: 'persian',
+    label: 'Amiri',
+    stack: "'Amiri', 'Vazirmatn', 'Times New Roman', serif",
+    css: () => Promise.all([import('@fontsource/amiri/400.css'), import('@fontsource/amiri/700.css')]),
+  },
 
-  { id: 'inter', group: 'english', label: 'Inter', stack: `'Inter', ${FA_TAIL}`, css: w3(() => import('@fontsource/inter/400.css'), () => import('@fontsource/inter/500.css'), () => import('@fontsource/inter/700.css')) },
-  { id: 'geist', group: 'english', label: 'Geist', stack: `'Geist', ${FA_TAIL}`, css: w3(() => import('@fontsource/geist-sans/400.css'), () => import('@fontsource/geist-sans/500.css'), () => import('@fontsource/geist-sans/700.css')) },
-  { id: 'jakarta', group: 'english', label: 'Plus Jakarta Sans', stack: `'Plus Jakarta Sans', ${FA_TAIL}`, css: w3(() => import('@fontsource/plus-jakarta-sans/400.css'), () => import('@fontsource/plus-jakarta-sans/500.css'), () => import('@fontsource/plus-jakarta-sans/700.css')) },
-  { id: 'sourceserif', group: 'english', label: 'Source Serif', stack: "'Source Serif 4', 'Vazirmatn', Georgia, serif", css: w3(() => import('@fontsource/source-serif-4/400.css'), () => import('@fontsource/source-serif-4/500.css'), () => import('@fontsource/source-serif-4/700.css')) },
-  { id: 'jetbrains', group: 'english', label: 'JetBrains Mono', stack: "'JetBrains Mono', 'Cascadia Mono', Consolas, 'Vazirmatn', monospace", css: w3(() => import('@fontsource/jetbrains-mono/400.css'), () => import('@fontsource/jetbrains-mono/500.css'), () => import('@fontsource/jetbrains-mono/700.css')) },
+  {
+    id: 'inter',
+    group: 'english',
+    label: 'Inter',
+    stack: `'Inter', ${FA_TAIL}`,
+    css: w3(
+      () => import('@fontsource/inter/400.css'),
+      () => import('@fontsource/inter/500.css'),
+      () => import('@fontsource/inter/700.css'),
+    ),
+  },
+  {
+    id: 'geist',
+    group: 'english',
+    label: 'Geist',
+    stack: `'Geist', ${FA_TAIL}`,
+    css: w3(
+      () => import('@fontsource/geist-sans/400.css'),
+      () => import('@fontsource/geist-sans/500.css'),
+      () => import('@fontsource/geist-sans/700.css'),
+    ),
+  },
+  {
+    id: 'jakarta',
+    group: 'english',
+    label: 'Plus Jakarta Sans',
+    stack: `'Plus Jakarta Sans', ${FA_TAIL}`,
+    css: w3(
+      () => import('@fontsource/plus-jakarta-sans/400.css'),
+      () => import('@fontsource/plus-jakarta-sans/500.css'),
+      () => import('@fontsource/plus-jakarta-sans/700.css'),
+    ),
+  },
+  {
+    id: 'sourceserif',
+    group: 'english',
+    label: 'Source Serif',
+    stack: "'Source Serif 4', 'Vazirmatn', Georgia, serif",
+    css: w3(
+      () => import('@fontsource/source-serif-4/400.css'),
+      () => import('@fontsource/source-serif-4/500.css'),
+      () => import('@fontsource/source-serif-4/700.css'),
+    ),
+  },
+  {
+    id: 'jetbrains',
+    group: 'english',
+    label: 'JetBrains Mono',
+    stack: "'JetBrains Mono', 'Cascadia Mono', Consolas, 'Vazirmatn', monospace",
+    css: w3(
+      () => import('@fontsource/jetbrains-mono/400.css'),
+      () => import('@fontsource/jetbrains-mono/500.css'),
+      () => import('@fontsource/jetbrains-mono/700.css'),
+    ),
+  },
 
   { id: 'system', group: 'system', label: 'System font', stack: "system-ui, 'Segoe UI', Tahoma, sans-serif" },
   { id: 'serif', group: 'system', label: 'Serif (Georgia)', stack: "Georgia, 'Times New Roman', 'Vazirmatn', serif" },
@@ -160,7 +289,11 @@ const onAccent = (hex: string) => {
 let bgToken = 0
 async function applyBackground(root: HTMLElement, bg: Background, strength: number) {
   const set = (light: string | null, dark: string | null) => {
-    for (const [k, v] of [['--bg-custom-light', light], ['--bg-custom-dark', dark]] as const) v === null ? root.style.removeProperty(k) : root.style.setProperty(k, v)
+    for (const [k, v] of [
+      ['--bg-custom-light', light],
+      ['--bg-custom-dark', dark],
+    ] as const)
+      v === null ? root.style.removeProperty(k) : root.style.setProperty(k, v)
   }
   const token = ++bgToken
   if (bg.kind === 'default') return set(null, null)
@@ -177,13 +310,16 @@ async function applyBackground(root: HTMLElement, bg: Background, strength: numb
 }
 
 const ARROW = 'M4 2.5V18.5L8.2 14.6L11 20.6L13.6 19.4L10.9 13.6L16.8 13.4Z'
-const HAND = 'M9 4Q9 2 10.5 2Q12 2 12 4V8.6Q12.7 8 13.5 8Q15 8 15 9.6Q15.7 9 16.5 9Q18 9 18 10.6Q18.7 10 19.5 10Q21 10 21 11.6V16Q21 21 15.5 21.5H13Q10 21.5 8 19L4.4 14.6Q3.6 13.4 4.8 12.6Q6 12 7 13L9 15Z'
+const HAND =
+  'M9 4Q9 2 10.5 2Q12 2 12 4V8.6Q12.7 8 13.5 8Q15 8 15 9.6Q15.7 9 16.5 9Q18 9 18 10.6Q18.7 10 19.5 10Q21 10 21 11.6V16Q21 21 15.5 21.5H13Q10 21.5 8 19L4.4 14.6Q3.6 13.4 4.8 12.6Q6 12 7 13L9 15Z'
 const wrapSvg = (inner: string) => 'url("data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24">${inner}</svg>`) + '")'
 // One drawing language for every pointer: a white body with a thin ink edge; line glyphs get a white halo. No accent colour, so every state reads the same on light and dark surfaces.
 const INK = '#14151c'
 const shape = (d: string) => wrapSvg(`<path d="${d}" fill="#fff" stroke="${INK}" stroke-width="1.4" stroke-linejoin="round"/>`)
-const lines = (d: string) => wrapSvg(`<g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="${d}" stroke="#fff" stroke-width="4"/><path d="${d}" stroke="${INK}" stroke-width="1.6"/></g>`)
-const GRAB = 'M7 9.5V5.5Q7 4 8.5 4Q10 4 10 5.5V8.5V4.5Q10 3 11.5 3Q13 3 13 4.5V8.5V5Q13 3.5 14.5 3.5Q16 3.5 16 5V9V7.5Q16 6 17.5 6Q19 6 19 7.5V14Q19 20 13 20H11.5Q8.5 20 6.5 17.5L3.8 13.5Q3.2 12.4 4.3 11.8Q5.4 11.3 6.2 12.2L7 13Z'
+const lines = (d: string) =>
+  wrapSvg(`<g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="${d}" stroke="#fff" stroke-width="4"/><path d="${d}" stroke="${INK}" stroke-width="1.6"/></g>`)
+const GRAB =
+  'M7 9.5V5.5Q7 4 8.5 4Q10 4 10 5.5V8.5V4.5Q10 3 11.5 3Q13 3 13 4.5V8.5V5Q13 3.5 14.5 3.5Q16 3.5 16 5V9V7.5Q16 6 17.5 6Q19 6 19 7.5V14Q19 20 13 20H11.5Q8.5 20 6.5 17.5L3.8 13.5Q3.2 12.4 4.3 11.8Q5.4 11.3 6.2 12.2L7 13Z'
 const GRABBING = 'M5 12Q5 9 7 9Q7.6 7.5 9 7.5Q10 7.5 10.5 8.3Q11.3 7 12.5 7Q13.7 7 14.3 8.3Q15.1 7.6 16 7.6Q17.7 7.6 18 9.2Q20 9.4 20 12V15.5Q20 20 14.5 20H10.5Q5 20 5 15.5Z'
 // magnifier with a plus: a line handle and a white lens
 const zoomCursor = () =>

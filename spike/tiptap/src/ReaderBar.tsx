@@ -37,7 +37,9 @@ export function ReaderBar({ cfg, onCfg, onExit }: { cfg: ReaderCfg; onCfg: (c: R
   }, [])
 
   const openToc = (r: DOMRect) => {
-    setHeads([...document.querySelectorAll<HTMLElement>('.tiptap h1, .tiptap h2, .tiptap h3')].map((el) => ({ el, text: el.textContent?.trim() || '…', level: Number(el.tagName[1]) })).filter((h) => h.text))
+    setHeads(
+      [...document.querySelectorAll<HTMLElement>('.tiptap h1, .tiptap h2, .tiptap h3')].map((el) => ({ el, text: el.textContent?.trim() || '…', level: Number(el.tagName[1]) })).filter((h) => h.text),
+    )
     setToc(r)
   }
   const set = (patch: Partial<ReaderCfg>) => onCfg({ ...cfg, ...patch })
@@ -45,22 +47,36 @@ export function ReaderBar({ cfg, onCfg, onExit }: { cfg: ReaderCfg; onCfg: (c: R
 
   return (
     <div className="reader-bar" dir="auto">
-      <div className="reader-prog"><i style={{ width: `${pct}%` }} /></div>
+      <div className="reader-prog">
+        <i style={{ width: `${pct}%` }} />
+      </div>
       <div className="rb-dock">
-        <button className="rb-exit" onClick={onExit} title={t('Exit reader mode (Esc)')}><Ic.Close size={15} />{t('Exit reading')}</button>
+        <button className="rb-exit" onClick={onExit} title={t('Exit reader mode (Esc)')}>
+          <Ic.Close size={15} />
+          {t('Exit reading')}
+        </button>
         <span className="rb-div" />
-        <button className="rb-icon" onClick={(e) => openToc(e.currentTarget.getBoundingClientRect())} title={t('Contents')}><Ic.List size={17} /></button>
+        <button className="rb-icon" onClick={(e) => openToc(e.currentTarget.getBoundingClientRect())} title={t('Contents')}>
+          <Ic.List size={17} />
+        </button>
         <div className="rb-seg" title={t('Text size')}>
-          <button onClick={() => step(-0.1)} disabled={cfg.scale <= 0.8} title={t('Smaller text')}><span className="rb-a sm">A</span></button>
+          <button onClick={() => step(-0.1)} disabled={cfg.scale <= 0.8} title={t('Smaller text')}>
+            <span className="rb-a sm">A</span>
+          </button>
           <span className="rb-val">{Math.round(cfg.scale * 100)}%</span>
-          <button onClick={() => step(0.1)} disabled={cfg.scale >= 1.8} title={t('Larger text')}><span className="rb-a lg">A</span></button>
+          <button onClick={() => step(0.1)} disabled={cfg.scale >= 1.8} title={t('Larger text')}>
+            <span className="rb-a lg">A</span>
+          </button>
         </div>
         <div className="rb-width" title={t('Page width')}>
           <Ic.Sidebar size={15} />
           <input className="rb-range" type="range" min={MIN_W} max={MAX_W} step={10} value={cfg.width} aria-label={t('Page width')} onChange={(e) => set({ width: Number(e.target.value) })} />
         </div>
         <span className="rb-div" />
-        <span className="rb-meta"><b>{pct}%</b><small>{t('{n} min read', { n: mins })}</small></span>
+        <span className="rb-meta">
+          <b>{pct}%</b>
+          <small>{t('{n} min read', { n: mins })}</small>
+        </span>
       </div>
       {toc && (
         <Popover anchor={toc} onClose={() => setToc(null)}>

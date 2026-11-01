@@ -95,23 +95,35 @@ export function validateFilter(state: DbState, sourceId: Id, f: Filter | null, p
 function validateOperand(def: Definition, cls: ValueClass, op: string, operand: Json | undefined) {
   if (op === 'is_empty' || op === 'is_not_empty') return
   switch (cls) {
-    case 'text': if (typeof operand !== 'string') operandError(op, 'text expected'); break
-    case 'number': if (typeof operand !== 'number' || !Number.isFinite(operand)) operandError(op, 'finite number expected'); break
-    case 'checkbox': if (typeof operand !== 'boolean') operandError(op, 'true or false expected'); break
+    case 'text':
+      if (typeof operand !== 'string') operandError(op, 'text expected')
+      break
+    case 'number':
+      if (typeof operand !== 'number' || !Number.isFinite(operand)) operandError(op, 'finite number expected')
+      break
+    case 'checkbox':
+      if (typeof operand !== 'boolean') operandError(op, 'true or false expected')
+      break
     case 'select':
     case 'status': {
       if (typeof operand !== 'string') operandError(op, 'option id expected')
-      if (op === 'group_equals') { if (!statusConfig(def.config).groups.some((g) => g.id === operand)) operandError(op, 'unknown status group') }
-      else if (!optionsOf(def).some((o) => o.id === operand)) operandError(op, 'unknown option')
+      if (op === 'group_equals') {
+        if (!statusConfig(def.config).groups.some((g) => g.id === operand)) operandError(op, 'unknown status group')
+      } else if (!optionsOf(def).some((o) => o.id === operand)) operandError(op, 'unknown option')
       break
     }
     case 'members':
-      if (op === 'contains_any' || op === 'contains_all') { if (!Array.isArray(operand) || operand.some((x) => typeof x !== 'string')) operandError(op, 'array of ids expected') }
-      else if (typeof operand !== 'string') operandError(op, 'id expected')
+      if (op === 'contains_any' || op === 'contains_all') {
+        if (!Array.isArray(operand) || operand.some((x) => typeof x !== 'string')) operandError(op, 'array of ids expected')
+      } else if (typeof operand !== 'string') operandError(op, 'id expected')
       break
-    case 'date': validateDateOperand(op, operand); break
-    case 'verification': break
-    default: break
+    case 'date':
+      validateDateOperand(op, operand)
+      break
+    case 'verification':
+      break
+    default:
+      break
   }
 }
 
@@ -139,7 +151,8 @@ function validateDateOperand(op: string, operand: Json | undefined) {
 // ───── predicate evaluation ─────
 
 function boundary(x: unknown, zone: string, endSide: boolean): number {
-  const v = typeof x === 'object' && x && 'start' in (x as object) ? ((endSide ? ((x as { end?: unknown }).end ?? (x as { start: unknown }).start) : (x as { start: unknown }).start) as string) : (x as string)
+  const v =
+    typeof x === 'object' && x && 'start' in (x as object) ? ((endSide ? ((x as { end?: unknown }).end ?? (x as { start: unknown }).start) : (x as { start: unknown }).start) as string) : (x as string)
   if (isCivil(v)) return startOfDayMs(endSide ? addDays(v, 1) : v, zone)
   const ms = parseIsoInstant(v, zone)!
   return endSide ? ms + 1 : ms
@@ -165,12 +178,18 @@ export function evalPredicate(cls: ValueClass, def: Definition, op: string, oper
       const hay = q.c === 'text' ? matchKey(q.text) : ''
       const needle = matchKey(String(operand ?? ''))
       switch (op) {
-        case 'equals': return !empty && hay === needle
-        case 'not_equals': return empty || hay !== needle
-        case 'contains': return !empty && hay.includes(needle)
-        case 'not_contains': return empty || !hay.includes(needle)
-        case 'starts_with': return !empty && hay.startsWith(needle)
-        case 'ends_with': return !empty && hay.endsWith(needle)
+        case 'equals':
+          return !empty && hay === needle
+        case 'not_equals':
+          return empty || hay !== needle
+        case 'contains':
+          return !empty && hay.includes(needle)
+        case 'not_contains':
+          return empty || !hay.includes(needle)
+        case 'starts_with':
+          return !empty && hay.startsWith(needle)
+        case 'ends_with':
+          return !empty && hay.endsWith(needle)
       }
       break
     }
@@ -178,16 +197,23 @@ export function evalPredicate(cls: ValueClass, def: Definition, op: string, oper
       if (q.c !== 'number') return op === 'not_equals'
       const o = operand as number
       switch (op) {
-        case 'equals': return q.n === o
-        case 'not_equals': return q.n !== o
-        case 'gt': return q.n > o
-        case 'gte': return q.n >= o
-        case 'lt': return q.n < o
-        case 'lte': return q.n <= o
+        case 'equals':
+          return q.n === o
+        case 'not_equals':
+          return q.n !== o
+        case 'gt':
+          return q.n > o
+        case 'gte':
+          return q.n >= o
+        case 'lt':
+          return q.n < o
+        case 'lte':
+          return q.n <= o
       }
       break
     }
-    case 'checkbox': return q.c === 'bool' && q.b === operand
+    case 'checkbox':
+      return q.c === 'bool' && q.b === operand
     case 'select':
     case 'status': {
       const id = q.c === 'members' ? q.ids[0] : undefined
@@ -199,10 +225,14 @@ export function evalPredicate(cls: ValueClass, def: Definition, op: string, oper
     case 'members': {
       const ids = q.c === 'members' ? q.ids : []
       switch (op) {
-        case 'contains': return ids.includes(operand as string)
-        case 'not_contains': return !ids.includes(operand as string)
-        case 'contains_any': return (operand as string[]).some((x) => ids.includes(x))
-        case 'contains_all': return (operand as string[]).every((x) => ids.includes(x))
+        case 'contains':
+          return ids.includes(operand as string)
+        case 'not_contains':
+          return !ids.includes(operand as string)
+        case 'contains_any':
+          return (operand as string[]).some((x) => ids.includes(x))
+        case 'contains_all':
+          return (operand as string[]).every((x) => ids.includes(x))
       }
       break
     }
@@ -221,11 +251,16 @@ export function evalPredicate(cls: ValueClass, def: Definition, op: string, oper
       }
       const o = operandInterval(operand, ec.zone)
       switch (op) {
-        case 'equals': return r.s < o.e && o.s < r.e
-        case 'before': return r.e <= o.s
-        case 'after': return r.s >= o.e
-        case 'on_or_before': return r.s < o.e
-        case 'on_or_after': return r.e > o.s
+        case 'equals':
+          return r.s < o.e && o.s < r.e
+        case 'before':
+          return r.e <= o.s
+        case 'after':
+          return r.s >= o.e
+        case 'on_or_before':
+          return r.s < o.e
+        case 'on_or_after':
+          return r.e > o.s
       }
       break
     }
@@ -233,7 +268,8 @@ export function evalPredicate(cls: ValueClass, def: Definition, op: string, oper
       const cell = row.ext.cells[def.id]?.value
       if (cell?.kind !== 'verification') return false
       const expired = cell.value.expiresAt !== null && cell.value.expiresAt <= ec.nowMs
-      if (op === 'equals') return operand === 'expired' ? cell.value.state === 'verified' && expired : operand === 'verified' ? cell.value.state === 'verified' && !expired : cell.value.state === 'unverified'
+      if (op === 'equals')
+        return operand === 'expired' ? cell.value.state === 'verified' && expired : operand === 'verified' ? cell.value.state === 'verified' && !expired : cell.value.state === 'unverified'
       if (op === 'verifier') return cell.value.verifierId === operand
       if (op === 'expired') return expired === operand
       break
@@ -250,7 +286,7 @@ function evalFilter(f: Filter, row: Row, rs: Resolver, state: DbState, ec: EvalC
   const def = state.prop(f.propertyId)!
   const key = `${row.page.id}|${def.id}`
   let q = memo.get(key)
-  if (!q) (q = rs.value(row, def), memo.set(key, q))
+  if (!q) ((q = rs.value(row, def)), memo.set(key, q))
   return evalPredicate(filterClass(state, def), def, f.op, f.operand, q, row, ec)
 }
 
@@ -287,7 +323,11 @@ function compareValuesQ(a: QValue, b: QValue, def: Definition, rs: Resolver, zon
     }
     if (def.kind === 'select' || def.kind === 'multi_select') {
       const opts = optionsOf(def)
-      const ranks = (q: typeof a) => q.ids.map((id) => opts.findIndex((o) => o.id === id)).map((i) => (i < 0 ? 999 : i)).sort((x, y) => x - y)
+      const ranks = (q: typeof a) =>
+        q.ids
+          .map((id) => opts.findIndex((o) => o.id === id))
+          .map((i) => (i < 0 ? 999 : i))
+          .sort((x, y) => x - y)
       const ra = ranks(a)
       const rb = ranks(b)
       for (let i = 0; i < Math.min(ra.length, rb.length); i++) if (ra[i] !== rb[i]) return ra[i] - rb[i]
@@ -369,9 +409,18 @@ function groupKeys(rs: Resolver, def: Definition, spec: GroupSpec, row: Row, ec:
     const startMs = dateInterval(q.v, ec.zone).s
     const day = civilOf(startMs, ec.zone)
     switch (mode) {
-      case 'week': { const w = startOfWeek(day, ec.weekStart); return [{ key: w, label: w, memberId: null, rank: startMs }] }
-      case 'month': { const m = startOfMonth(day).slice(0, 7); return [{ key: m, label: m, memberId: null, rank: startMs }] }
-      case 'year': { const y = String(parseCivil(day).y); return [{ key: y, label: y, memberId: null, rank: startMs }] }
+      case 'week': {
+        const w = startOfWeek(day, ec.weekStart)
+        return [{ key: w, label: w, memberId: null, rank: startMs }]
+      }
+      case 'month': {
+        const m = startOfMonth(day).slice(0, 7)
+        return [{ key: m, label: m, memberId: null, rank: startMs }]
+      }
+      case 'year': {
+        const y = String(parseCivil(day).y)
+        return [{ key: y, label: y, memberId: null, rank: startMs }]
+      }
       case 'relative': {
         const today = civilOf(ec.nowMs, ec.zone)
         const d = (a: string, b: string) => (new Date(a + 'T00:00:00Z').getTime() - new Date(b + 'T00:00:00Z').getTime()) / 86400000
@@ -379,7 +428,8 @@ function groupKeys(rs: Resolver, def: Definition, spec: GroupSpec, row: Row, ec:
         const [k, rank] = delta < 0 ? ['before', 0] : delta === 0 ? ['today', 1] : delta === 1 ? ['tomorrow', 2] : delta <= 7 ? ['next_7_days', 3] : ['later', 4]
         return [{ key: k as string, label: k as string, memberId: null, rank: rank as number }]
       }
-      default: return [{ key: day, label: day, memberId: null, rank: startMs }]
+      default:
+        return [{ key: day, label: day, memberId: null, rank: startMs }]
     }
   }
   return [none]
@@ -454,7 +504,8 @@ export function runQuery(state: DbState, req: QueryRequest, resolverOverride?: R
     const d = state.prop(spec.propertyId)
     if (!d || d.sourceId !== req.sourceId) fail('INVALID_FILTER', 'unknown group property', { propertyId: spec.propertyId })
     if (!rs.access.canReadProperty(req.principalId, d!)) fail('ACCESS_DENIED', 'group uses a property you cannot read', { propertyId: spec.propertyId })
-    if (['button', 'files', 'connected'].includes(d!.kind) || (d!.kind === 'formula' && cfgOf.formula(d!).resultType.startsWith('list<list'))) fail('INVALID_FILTER', `cannot group by ${d!.kind}`, { propertyId: d!.id })
+    if (['button', 'files', 'connected'].includes(d!.kind) || (d!.kind === 'formula' && cfgOf.formula(d!).resultType.startsWith('list<list')))
+      fail('INVALID_FILTER', `cannot group by ${d!.kind}`, { propertyId: d!.id })
   }
   for (const pid of Object.keys(req.totals ?? {})) {
     const d = state.prop(pid)
@@ -470,7 +521,9 @@ export function runQuery(state: DbState, req: QueryRequest, resolverOverride?: R
   if (req.filter) rows = rows.filter((r) => evalFilter(req.filter!, r, rs, state, ec, memo))
 
   // 4. search: every word must appear in the union of title + property projections (never the body)
-  const words = matchKey(req.search ?? '').split(/\s+/).filter(Boolean)
+  const words = matchKey(req.search ?? '')
+    .split(/\s+/)
+    .filter(Boolean)
   if (words.length) {
     const defs = state.props(req.sourceId)
     rows = rows.filter((r) => {
@@ -519,7 +572,7 @@ export function runQuery(state: DbState, req: QueryRequest, resolverOverride?: R
   const keyFor = (row: Row, def: Definition) => {
     const k = `${row.page.id}|${def.id}`
     let q = memo.get(k)
-    if (!q) (q = rs.value(row, def), memo.set(k, q))
+    if (!q) ((q = rs.value(row, def)), memo.set(k, q))
     return q
   }
   const cmp = (a: Row, b: Row): number => {
@@ -550,7 +603,7 @@ export function runQuery(state: DbState, req: QueryRequest, resolverOverride?: R
     const inSet = new Set(rows.map((r) => r.page.id))
     const need = new Map<Id, Row>()
     for (const r of rows) {
-      for (let p = r.ext.parentItemId; p; ) {
+      for (let p = r.ext.parentItemId; p;) {
         const pr = state.row(p)
         if (!pr || pr.page.deletedAt !== null || need.has(p) || inSet.has(p)) break
         if (!rs.access.canSeeRow(req.principalId, pr)) break
@@ -616,4 +669,3 @@ export function runQuery(state: DbState, req: QueryRequest, resolverOverride?: R
 export function makeQuery(state: DbState, sourceId: Id, principalId: Id, nowIso: string, zone: string, over: Partial<QueryRequest> = {}): QueryRequest {
   return { vaultId: state.vaultId, sourceId, principalId, filter: null, sorts: [], search: '', projection: [], limit: DEFAULT_LIMIT, now: nowIso, timeZone: zone, ...over }
 }
-

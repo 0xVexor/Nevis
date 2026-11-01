@@ -18,9 +18,24 @@ export const BINDINGS: Record<BindingId, Chord> = {
 const MODIFIERS = new Set(['Mod', 'Alt', 'Shift'])
 
 const PUNCT: Record<string, string> = {
-  Period: '.', Comma: ',', Backslash: '\\', Slash: '/', Equal: '=', Minus: '-', BracketLeft: '[', BracketRight: ']',
-  Semicolon: ';', Quote: "'", Backquote: '`', Space: 'Space', Enter: 'Enter', Tab: 'Tab',
-  ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓',
+  Period: '.',
+  Comma: ',',
+  Backslash: '\\',
+  Slash: '/',
+  Equal: '=',
+  Minus: '-',
+  BracketLeft: '[',
+  BracketRight: ']',
+  Semicolon: ';',
+  Quote: "'",
+  Backquote: '`',
+  Space: 'Space',
+  Enter: 'Enter',
+  Tab: 'Tab',
+  ArrowLeft: '←',
+  ArrowRight: '→',
+  ArrowUp: '↑',
+  ArrowDown: '↓',
 }
 
 /** The key of an event as a chord names it, from the physical key; null for a modifier on its own. */
@@ -52,7 +67,9 @@ let paused = 0
 export function pauseBindings() {
   paused++
   let done = false
-  return () => { if (!done) (done = true, paused--) }
+  return () => {
+    if (!done) ((done = true), paused--)
+  }
 }
 
 export function matches(e: KeyboardEvent, id: BindingId): boolean {
@@ -62,11 +79,14 @@ export function matches(e: KeyboardEvent, id: BindingId): boolean {
 }
 
 /** A chord is usable if it cannot be typed as text: Ctrl/⌘ or Alt is held, or it is a function key. */
-export const usableChord = (chord: Chord) => chord.some((k) => k === 'Mod' || k === 'Alt') || /^F\d{1,2}$/.test(chord[chord.length - 1]) && chord.every((k, i) => i === chord.length - 1 || MODIFIERS.has(k))
+export const usableChord = (chord: Chord) =>
+  chord.some((k) => k === 'Mod' || k === 'Alt') || (/^F\d{1,2}$/.test(chord[chord.length - 1]) && chord.every((k, i) => i === chord.length - 1 || MODIFIERS.has(k)))
 
 /** Which other binding already uses this chord, if any. */
-export const takenBy = (chord: Chord, except: BindingId): BindingId | null =>
-  (Object.keys(BINDINGS) as BindingId[]).find((id) => id !== except && sameChord(bindingKeys(id), chord)) ?? null
+export const takenBy = (chord: Chord, except: BindingId): BindingId | null => (Object.keys(BINDINGS) as BindingId[]).find((id) => id !== except && sameChord(bindingKeys(id), chord)) ?? null
 
 /** The hint text a menu or command shows for a binding, e.g. "Ctrl K". */
-export const bindingHint = (id: BindingId) => bindingKeys(id).map((k) => (k === 'Mod' ? 'Ctrl' : k)).join(' ')
+export const bindingHint = (id: BindingId) =>
+  bindingKeys(id)
+    .map((k) => (k === 'Mod' ? 'Ctrl' : k))
+    .join(' ')

@@ -7,7 +7,8 @@ import { insideTable } from './layoutEditing'
 export function navigateLayout(view: EditorView, direction: 'left' | 'right' | 'up' | 'down'): { selection: Selection | null } | null {
   const state = view.state
   if (!state.selection.empty || !(state.selection instanceof TextSelection) || insideTable(state)) return null
-  const column = ancestor(state.selection.$from, COLUMN), group = ancestor(state.selection.$from, GROUP)
+  const column = ancestor(state.selection.$from, COLUMN),
+    group = ancestor(state.selection.$from, GROUP)
   if (!column || !group || !view.endOfTextblock(direction)) return null
   if (state.selection.$from.depth > column.depth + 1 && !boundaryKey(state, true) && !boundaryKey(state, false)) return null
   const dom = view.nodeDOM(group.pos)
@@ -35,9 +36,9 @@ export function navigateLayout(view: EditorView, direction: 'left' | 'right' | '
   for (let i = 0; i < index; i++) nextPos += group.node.child(i).nodeSize
   const next = view.nodeDOM(nextPos)
   if (!(next instanceof HTMLElement)) return null
-  const r = next.getBoundingClientRect(), padding = getComputedStyle(next)
-  const x = direction === 'right' ? r.left + (parseFloat(padding.paddingLeft) || 0) + 2
-    : r.right - (parseFloat(padding.paddingRight) || 0) - 2
+  const r = next.getBoundingClientRect(),
+    padding = getComputedStyle(next)
+  const x = direction === 'right' ? r.left + (parseFloat(padding.paddingLeft) || 0) + 2 : r.right - (parseFloat(padding.paddingRight) || 0) - 2
   const caret = view.coordsAtPos(state.selection.head)
   const y = Math.max(r.top + 2, Math.min(r.bottom - 2, (caret.top + caret.bottom) / 2))
   const hit = view.posAtCoords({ left: x, top: y })

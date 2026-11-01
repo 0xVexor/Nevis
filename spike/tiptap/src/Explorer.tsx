@@ -69,7 +69,11 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
     const list = nq ? pages.filter((p) => normalizeFa(p.title).includes(nq)) : kids(cwd)
     const cmp = (a: Page, b: Page) => {
       const d =
-        sort.key === 'modified' ? a.updatedAt - b.updatedAt : sort.key === 'kind' ? Number(a.kind === 'folder') - Number(b.kind === 'folder') : (a.title || t('Untitled')).localeCompare(b.title || t('Untitled'), undefined, { numeric: true, sensitivity: 'base' })
+        sort.key === 'modified'
+          ? a.updatedAt - b.updatedAt
+          : sort.key === 'kind'
+            ? Number(a.kind === 'folder') - Number(b.kind === 'folder')
+            : (a.title || t('Untitled')).localeCompare(b.title || t('Untitled'), undefined, { numeric: true, sensitivity: 'base' })
       return d * sort.dir
     }
     return [...list].sort((a, b) => folderFirst(a, b) || (sort.key === 'name' && !nq && sort.dir === 1 ? byOrder(a, b) : cmp(a, b)))
@@ -209,12 +213,27 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
     ids.forEach((id) => repo.remove(id))
     onChange()
     setSel(new Set())
-    onToast(ids.length === 1 ? t('“{title}” moved to trash', { title: byId.get(ids[0])?.title || t('Untitled') }) : t('{n} items moved to trash', { n: ids.length }), () => (ids.forEach((id) => repo.restoreFromTrash(id)), onChange()))
+    onToast(
+      ids.length === 1 ? t('“{title}” moved to trash', { title: byId.get(ids[0])?.title || t('Untitled') }) : t('{n} items moved to trash', { n: ids.length }),
+      () => (ids.forEach((id) => repo.restoreFromTrash(id)), onChange()),
+    )
   }
   const copyTree = (id: string, parent: string | null, top: boolean): string => {
     const p = byId.get(id)!
     const c = repo.create(parent, p.kind)
-    repo.update(c.id, { title: top && p.title ? p.title + ' ' + t('(copy)') : p.title, icon: p.icon, cover: p.cover, titleDir: p.titleDir, tags: p.tags ? [...p.tags] : undefined, status: p.status, content: structuredClone(p.content) }, { copyContent: true })
+    repo.update(
+      c.id,
+      {
+        title: top && p.title ? p.title + ' ' + t('(copy)') : p.title,
+        icon: p.icon,
+        cover: p.cover,
+        titleDir: p.titleDir,
+        tags: p.tags ? [...p.tags] : undefined,
+        status: p.status,
+        content: structuredClone(p.content),
+      },
+      { copyContent: true },
+    )
     for (const k of kids(id).sort(byOrder)) copyTree(k.id, c.id, false)
     return c.id
   }
@@ -357,7 +376,15 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
         onDragLeave={() => dropOn === p.id && setDropOn(null)}
         onDrop={holder ? (e) => dropTo(e, p.id) : undefined}
       >
-        <button type="button" className={'fx-check' + (sel.has(p.id) ? ' on' : '')} role="checkbox" aria-checked={sel.has(p.id)} aria-label={t('Select')} onClick={(e) => toggleOne(e, p)} onDoubleClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          className={'fx-check' + (sel.has(p.id) ? ' on' : '')}
+          role="checkbox"
+          aria-checked={sel.has(p.id)}
+          aria-label={t('Select')}
+          onClick={(e) => toggleOne(e, p)}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
           <Ic.Check size={13} />
         </button>
         <span className={'fx-ic' + (folder ? ' folder' : '')}>{folder ? <FileIcon kind="folder" size={mode === 'grid' ? 44 : 26} /> : <PageIcon page={p} />}</span>
@@ -380,18 +407,42 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
     <div className="fx" ref={box} tabIndex={0} onKeyDown={onKey}>
       <header className="fx-bar">
         <div className="fx-nav">
-          <button className="icon-btn" title={t('Back')} disabled={!hist.back.length} onClick={back}><span className="fx-flip"><Ic.Chevron size={16} /></span></button>
-          <button className="icon-btn" title={t('Forward')} disabled={!hist.fwd.length} onClick={forward}><Ic.Chevron size={16} /></button>
-          <button className="icon-btn" title={t('Up one level  Backspace')} disabled={!cwd} onClick={up}><Ic.Up size={16} /></button>
+          <button className="icon-btn" title={t('Back')} disabled={!hist.back.length} onClick={back}>
+            <span className="fx-flip">
+              <Ic.Chevron size={16} />
+            </span>
+          </button>
+          <button className="icon-btn" title={t('Forward')} disabled={!hist.fwd.length} onClick={forward}>
+            <Ic.Chevron size={16} />
+          </button>
+          <button className="icon-btn" title={t('Up one level  Backspace')} disabled={!cwd} onClick={up}>
+            <Ic.Up size={16} />
+          </button>
         </div>
         <nav className="fx-path" aria-label={t('Path')}>
-          <button className={'fx-seg' + (dropOn === '__root' ? ' drop' : '')} onClick={() => go(null)} onDragOver={(e) => (dragOver(e, null), setDropOn('__root'))} onDragLeave={() => setDropOn(null)} onDrop={(e) => dropTo(e, null)}>
-            <Ic.Layers size={14} />{t('Vault')}
+          <button
+            className={'fx-seg' + (dropOn === '__root' ? ' drop' : '')}
+            onClick={() => go(null)}
+            onDragOver={(e) => (dragOver(e, null), setDropOn('__root'))}
+            onDragLeave={() => setDropOn(null)}
+            onDrop={(e) => dropTo(e, null)}
+          >
+            <Ic.Layers size={14} />
+            {t('Vault')}
           </button>
           {path.map((p) => (
             <span key={p.id} className="fx-crumb">
-              <span className="fx-sep"><Ic.Chevron size={12} /></span>
-              <button className={'fx-seg' + (dropOn === 'p' + p.id ? ' drop' : '')} onClick={() => go(p.id)} onDragOver={(e) => (dragOver(e, p.id), setDropOn('p' + p.id))} onDragLeave={() => setDropOn(null)} onDrop={(e) => dropTo(e, p.id)} dir="auto">
+              <span className="fx-sep">
+                <Ic.Chevron size={12} />
+              </span>
+              <button
+                className={'fx-seg' + (dropOn === 'p' + p.id ? ' drop' : '')}
+                onClick={() => go(p.id)}
+                onDragOver={(e) => (dragOver(e, p.id), setDropOn('p' + p.id))}
+                onDragLeave={() => setDropOn(null)}
+                onDrop={(e) => dropTo(e, p.id)}
+                dir="auto"
+              >
                 {p.title || t('Untitled')}
               </button>
             </span>
@@ -402,23 +453,55 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
           <input value={q} dir="auto" placeholder={t('Search in all folders…')} onChange={(e) => setQ(e.target.value)} />
         </label>
         <div className="fx-view" role="group" aria-label={t('View')}>
-          <button className={mode === 'list' ? 'on' : ''} title={t('List')} onClick={() => setMode('list')}><Ic.List size={16} /></button>
-          <button className={mode === 'grid' ? 'on' : ''} title={t('Icons')} onClick={() => setMode('grid')}><Ic.Blocks size={16} /></button>
+          <button className={mode === 'list' ? 'on' : ''} title={t('List')} onClick={() => setMode('list')}>
+            <Ic.List size={16} />
+          </button>
+          <button className={mode === 'grid' ? 'on' : ''} title={t('Icons')} onClick={() => setMode('grid')}>
+            <Ic.Blocks size={16} />
+          </button>
         </div>
       </header>
 
       <div className="fx-actions">
-        <button onClick={() => create('page')}><Ic.Plus size={15} />{t('New page')}</button>
-        <button onClick={() => create('folder')}><Ic.Folders size={15} />{t('New folder')}</button>
-        <button disabled={!items.length} onClick={toggleAll}><Ic.Check size={15} />{allSelected ? t('Deselect all') : t('Select all')}</button>
+        <button onClick={() => create('page')}>
+          <Ic.Plus size={15} />
+          {t('New page')}
+        </button>
+        <button onClick={() => create('folder')}>
+          <Ic.Folders size={15} />
+          {t('New folder')}
+        </button>
+        <button disabled={!items.length} onClick={toggleAll}>
+          <Ic.Check size={15} />
+          {allSelected ? t('Deselect all') : t('Select all')}
+        </button>
         <span className="fx-div" />
-        <button disabled={!ids.length} onClick={() => doCut(ids)}><Ic.Cut size={15} />{t('Cut')}</button>
-        <button disabled={!ids.length} onClick={() => doCopy(ids)}><Ic.Copy size={15} />{t('Copy')}</button>
-        <button disabled={!clip} onClick={paste}><Ic.Paste size={15} />{t('Paste')}{clip && <em>{clip.ids.length}</em>}</button>
+        <button disabled={!ids.length} onClick={() => doCut(ids)}>
+          <Ic.Cut size={15} />
+          {t('Cut')}
+        </button>
+        <button disabled={!ids.length} onClick={() => doCopy(ids)}>
+          <Ic.Copy size={15} />
+          {t('Copy')}
+        </button>
+        <button disabled={!clip} onClick={paste}>
+          <Ic.Paste size={15} />
+          {t('Paste')}
+          {clip && <em>{clip.ids.length}</em>}
+        </button>
         <span className="fx-div" />
-        <button disabled={ids.length !== 1} onClick={() => startRename(ids[0])}><Ic.Pencil size={15} />{t('Rename')}</button>
-        <button disabled={!ids.length} onClick={() => duplicate(ids)}><Ic.Copy size={15} />{t('Duplicate')}</button>
-        <button className="danger" disabled={!ids.length} onClick={() => remove(ids)}><Ic.Trash size={15} />{t('Delete')}</button>
+        <button disabled={ids.length !== 1} onClick={() => startRename(ids[0])}>
+          <Ic.Pencil size={15} />
+          {t('Rename')}
+        </button>
+        <button disabled={!ids.length} onClick={() => duplicate(ids)}>
+          <Ic.Copy size={15} />
+          {t('Duplicate')}
+        </button>
+        <button className="danger" disabled={!ids.length} onClick={() => remove(ids)}>
+          <Ic.Trash size={15} />
+          {t('Delete')}
+        </button>
       </div>
 
       {mode === 'list' && (
@@ -426,10 +509,31 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
           <button type="button" className={'fx-check' + (allSelected ? ' on' : sel.size ? ' some' : '')} role="checkbox" aria-checked={allSelected} aria-label={t('Select all')} onClick={toggleAll}>
             <Ic.Check size={13} />
           </button>
-          <button className="fx-h name" onClick={() => sortBy('name')}>{t('Name')}{sort.key === 'name' && <span className={'sort-arrow ' + (sort.dir === 1 ? 'asc' : 'desc')}><Ic.Chevron size={11} /></span>}</button>
-          <button className="fx-h kind" onClick={() => sortBy('kind')}>{t('Type')}{sort.key === 'kind' && <span className={'sort-arrow ' + (sort.dir === 1 ? 'asc' : 'desc')}><Ic.Chevron size={11} /></span>}</button>
+          <button className="fx-h name" onClick={() => sortBy('name')}>
+            {t('Name')}
+            {sort.key === 'name' && (
+              <span className={'sort-arrow ' + (sort.dir === 1 ? 'asc' : 'desc')}>
+                <Ic.Chevron size={11} />
+              </span>
+            )}
+          </button>
+          <button className="fx-h kind" onClick={() => sortBy('kind')}>
+            {t('Type')}
+            {sort.key === 'kind' && (
+              <span className={'sort-arrow ' + (sort.dir === 1 ? 'asc' : 'desc')}>
+                <Ic.Chevron size={11} />
+              </span>
+            )}
+          </button>
           <span className="fx-h meta">{t('Size')}</span>
-          <button className="fx-h when" onClick={() => sortBy('modified')}>{nq ? t('Location') : t('Modified')}{sort.key === 'modified' && <span className={'sort-arrow ' + (sort.dir === 1 ? 'asc' : 'desc')}><Ic.Chevron size={11} /></span>}</button>
+          <button className="fx-h when" onClick={() => sortBy('modified')}>
+            {nq ? t('Location') : t('Modified')}
+            {sort.key === 'modified' && (
+              <span className={'sort-arrow ' + (sort.dir === 1 ? 'asc' : 'desc')}>
+                <Ic.Chevron size={11} />
+              </span>
+            )}
+          </button>
         </div>
       )}
 
@@ -450,7 +554,9 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
         {items.map(row)}
         {items.length === 0 && (
           <div className="fx-empty">
-            <span className="fc2-art"><Ic.Folders size={30} /></span>
+            <span className="fc2-art">
+              <Ic.Folders size={30} />
+            </span>
             <b>{nq ? t('No results found') : t('This folder is empty')}</b>
             {!nq && <small>{t('Create a page or folder, or drag items here.')}</small>}
           </div>

@@ -9,10 +9,14 @@ export function insertionAnchor(editor: Editor) {
   const track = ({ transaction, appendedTransactions = [] }: { transaction: Transaction; appendedTransactions?: Transaction[] }) => {
     for (const tr of [transaction, ...appendedTransactions]) {
       if (tr.before !== anchorDoc) valid = false
-      if (tr.docChanged && tr.steps.some((step) => {
-        const range = step as unknown as { from?: number; to?: number }
-        return range.from === 0 && range.to === tr.before.content.size
-      })) valid = false
+      if (
+        tr.docChanged &&
+        tr.steps.some((step) => {
+          const range = step as unknown as { from?: number; to?: number }
+          return range.from === 0 && range.to === tr.before.content.size
+        })
+      )
+        valid = false
       const mapped = tr.mapping.mapResult(position, 1)
       if (mapped.deletedAcross) valid = false
       position = mapped.pos
@@ -20,7 +24,11 @@ export function insertionAnchor(editor: Editor) {
     }
   }
   const isValid = () => valid && !editor.isDestroyed && editor.isEditable && editor.state.doc === anchorDoc
-  const release = () => { valid = false; editor.off('transaction', track); editor.off('destroy', release) }
+  const release = () => {
+    valid = false
+    editor.off('transaction', track)
+    editor.off('destroy', release)
+  }
   editor.on('transaction', track)
   editor.on('destroy', release)
   return {

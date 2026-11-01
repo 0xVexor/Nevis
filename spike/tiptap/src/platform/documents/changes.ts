@@ -6,5 +6,7 @@ export function publishDocumentChange() {
     if (typeof BroadcastChannel === 'undefined') return
     publisher ??= new BroadcastChannel('nevis-documents')
     publisher.postMessage('committed')
-  } catch { /* notifications cannot turn a successful save into a failure */ }
+  } catch {
+    /* notifications cannot turn a successful save into a failure */
+  }
 }

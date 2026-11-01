@@ -1,7 +1,10 @@
 // Even more outline glyphs for page icons (same format as GLYPHS in iconSet.tsx): name -> [search keywords, inner SVG of a 24×24 stroke icon]
 export const EXTRA_GLYPHS: Record<string, [string, string]> = {
   cactus: ['cactus desert plant succulent', '<path d="M10 21V6a2 2 0 0 1 4 0v15M10 15H7a1 1 0 0 1-1-1V9M14 13h3a1 1 0 0 0 1-1V8M8 21h8"/>'],
-  pot: ['pot plant houseplant garden', '<path d="M5 11h14l-1.5 9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1zM4 11h16M12 11V7M12 8c-2 0-3.5-1-3.5-3.5 2 0 3.5 1 3.5 3.5zM12 9c2 0 3.5-1 3.5-3.5-2 0-3.5 1-3.5 3.5z"/>'],
+  pot: [
+    'pot plant houseplant garden',
+    '<path d="M5 11h14l-1.5 9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1zM4 11h16M12 11V7M12 8c-2 0-3.5-1-3.5-3.5 2 0 3.5 1 3.5 3.5zM12 9c2 0 3.5-1 3.5-3.5-2 0-3.5 1-3.5 3.5z"/>',
+  ],
   mushroom: ['mushroom fungus forest', '<path d="M3 12a9 8 0 0 1 18 0zM9 12v6a3 3 0 0 0 6 0v-6M8 8.5h.01M14 7h.01"/>'],
   rainbow: ['rainbow weather colors', '<path d="M2 18a10 10 0 0 1 20 0M6 18a6 6 0 0 1 12 0"/>'],
   wind: ['wind air breeze', '<path d="M3 8h11a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h7a2 2 0 1 1-2 2"/>'],

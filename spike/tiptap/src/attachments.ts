@@ -96,7 +96,8 @@ export async function fileMeta(ids: string[]): Promise<Map<string, { name: strin
   if (!ids.length) return out
   if (isTauri) {
     const want = new Set(ids)
-    for (const m of await invoke<{ id: string; type: string; name: string; size: number }[]>('files_list')) if (want.has(m.id)) out.set(m.id, { name: decodeURIComponent(m.name), type: m.type, size: m.size })
+    for (const m of await invoke<{ id: string; type: string; name: string; size: number }[]>('files_list'))
+      if (want.has(m.id)) out.set(m.id, { name: decodeURIComponent(m.name), type: m.type, size: m.size })
   } else {
     for (const id of ids) {
       const r = await tx<FileRec | undefined>('readonly', (s) => s.get(id))

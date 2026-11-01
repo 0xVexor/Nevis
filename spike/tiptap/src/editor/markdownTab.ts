@@ -1,6 +1,7 @@
+import type { ChainedCommands } from '@tiptap/core'
 import { Extension } from '@tiptap/core'
 
-type Apply = (chain: any, m: RegExpMatchArray) => any
+type Apply = (chain: ChainedCommands, m: RegExpMatchArray) => ChainedCommands
 
 // Marker typed by hand + Tab (no space needed), same result as the live input rules.
 const RULES: [RegExp, Apply][] = [
@@ -9,7 +10,7 @@ const RULES: [RegExp, Apply][] = [
   [/^\d+[.)]$/, (c) => c.toggleOrderedList()],
   [/^>$/, (c) => c.toggleBlockquote()],
   [/^\[ ?\]$/, (c) => c.toggleTaskList()],
-  [/^```(\w*)$/, (c, m) => (m[1] === 'mermaid' ? c.insertContent({ type: 'mermaid', attrs: { code: '' } }) : c.setCodeBlock(m[1] ? { language: m[1] } : {}))],
+  [/^```(\w*)$/, (c, m) => (m[1] === 'mermaid' ? c.insertContent({ type: 'mermaid', attrs: { code: '' } }) : c.setCodeBlock(m[1] ? { language: m[1] } : undefined))],
   [/^(---|___|\*\*\*)$/, (c) => c.setHorizontalRule()],
   [/^\$\$$/, (c) => c.insertContent({ type: 'mathBlock', attrs: { latex: '' } })],
 ]

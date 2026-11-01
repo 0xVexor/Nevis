@@ -11,9 +11,12 @@ export function formatNumber(value: number, cfg: NumberConfig, locale = 'en-US')
       const s = cfg.precision ? value.toFixed(cfg.precision) : String(roundPlain(value))
       return locale.startsWith('fa') ? s.replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]).replace('.', '٫') : s
     }
-    case 'grouped': return new Intl.NumberFormat(locale, { ...frac, useGrouping: true }).format(value)
-    case 'percent': return new Intl.NumberFormat(locale, { ...frac, style: 'percent' }).format(value)
-    case 'currency': return new Intl.NumberFormat(locale, { ...frac, style: 'currency', currency: cfg.currencyCode ?? 'USD' }).format(value)
+    case 'grouped':
+      return new Intl.NumberFormat(locale, { ...frac, useGrouping: true }).format(value)
+    case 'percent':
+      return new Intl.NumberFormat(locale, { ...frac, style: 'percent' }).format(value)
+    case 'currency':
+      return new Intl.NumberFormat(locale, { ...frac, style: 'currency', currency: cfg.currencyCode ?? 'USD' }).format(value)
   }
 }
 

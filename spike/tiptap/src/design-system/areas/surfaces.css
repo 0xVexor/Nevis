@@ -21,7 +21,7 @@
 
 /* ───── buttons: flat accent, no shine ───── */
 .new-page:hover, .primary:hover:not(:disabled), .share-btn:hover { transform: none; }
-.primary, .pill-btn, .share-btn { border-radius: var(--ds-r); box-shadow: none; font-weight: 550; }
+.primary, .share-btn { border-radius: var(--ds-r); box-shadow: none; font-weight: 550; }
 
 /* ───── empty states ───── */
 

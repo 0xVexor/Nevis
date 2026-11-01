@@ -81,9 +81,7 @@ export async function reviewImport(picked: File[]): Promise<ImportReview> {
     review.name = picked.length === 1 ? picked[0].name : t('{n} files', { n: picked.length })
   }
 
-  const inside = files
-    .map((f) => ({ f, parts: (f.webkitRelativePath || f.name).split('/') }))
-    .filter((x) => !(review.kind === 'vault' && hidden(x.parts.slice(1))))
+  const inside = files.map((f) => ({ f, parts: (f.webkitRelativePath || f.name).split('/') })).filter((x) => !(review.kind === 'vault' && hidden(x.parts.slice(1))))
   const notes = inside.filter((x) => NOTE.test(x.parts.at(-1)!) && (review.kind === 'markdown' || /\.md$/i.test(x.parts.at(-1)!)))
   for (const x of inside) {
     const name = x.parts.at(-1)!

@@ -1,3 +1,4 @@
+/* oxlint-disable typescript/no-explicit-any -- node attrs are free-form JSON here; converting them is what the file does */
 // ProseMirror JSON -> GitHub-flavoured Markdown. Pure function; images are resolved by the caller.
 
 type Node = { type: string; attrs?: any; content?: Node[]; text?: string; marks?: { type: string; attrs?: any }[] }
@@ -15,7 +16,7 @@ async function inline(nodes: Node[] = [], img: ImageResolver): Promise<string> {
     if (n.type === 'hardBreak') out += '  \n'
     else if (n.type === 'mathInline') out += `$${n.attrs?.latex ?? ''}$`
     else if (n.type === 'pageLink') out += n.attrs?.label && n.attrs.label !== titleOf(n.attrs?.id) ? `[[${titleOf(n.attrs?.id)}|${n.attrs.label}]]` : `[[${titleOf(n.attrs?.id)}]]`
-    else if (n.type === 'image') out +=`![${esc(n.attrs?.alt ?? '')}](${await img(n.attrs.src)})`
+    else if (n.type === 'image') out += `![${esc(n.attrs?.alt ?? '')}](${await img(n.attrs.src)})`
     else if (n.type === 'text') {
       const marks = n.marks?.map((m) => m.type) ?? []
       let t = marks.includes('code') ? '`' + n.text!.replace(/`/g, '\\`') + '`' : esc(n.text!)
@@ -45,7 +46,11 @@ async function block(n: Node, img: ImageResolver, indent = ''): Promise<string> 
       return await inline([n], img)
     case 'databaseEmbed': {
       // Markdown can carry the existing embed as HTML; retain its reference instead of omitting it.
-      const id = String(n.attrs?.containerId ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      const id = String(n.attrs?.containerId ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
       return `<div data-type="database-embed" data-container="${id}">Database</div>`
     }
     case 'horizontalRule':
@@ -58,7 +63,11 @@ async function block(n: Node, img: ImageResolver, indent = ''): Promise<string> 
       return `$$\n${n.attrs?.latex ?? ''}\n$$`
     case 'callout': {
       const lines = (await blocks(kids, img)).split('\n')
-      return lines.map((l, i) => `> ${i === 0 ? `${({ bulb: '💡', warning: '⚠️', info: 'ℹ️', check: '✅', flame: '🔥', pin: '📌', bell: '🔔' } as Record<string, string>)[n.attrs?.emoji] ?? n.attrs?.emoji ?? '💡'} ` : ''}${l}`.trimEnd()).join('\n')
+      return lines
+        .map((l, i) =>
+          `> ${i === 0 ? `${({ bulb: '💡', warning: '⚠️', info: 'ℹ️', check: '✅', flame: '🔥', pin: '📌', bell: '🔔' } as Record<string, string>)[n.attrs?.emoji] ?? n.attrs?.emoji ?? '💡'} ` : ''}${l}`.trimEnd(),
+        )
+        .join('\n')
     }
     case 'toggle': {
       const [head, ...rest] = kids
@@ -68,7 +77,10 @@ async function block(n: Node, img: ImageResolver, indent = ''): Promise<string> 
     case 'codeBlock':
       return '```' + (n.attrs?.language ?? '') + '\n' + kids.map((k) => k.text ?? '').join('') + '\n```'
     case 'blockquote':
-      return (await blocks(kids, img)).split('\n').map((l) => `> ${l}`.trimEnd()).join('\n')
+      return (await blocks(kids, img))
+        .split('\n')
+        .map((l) => `> ${l}`.trimEnd())
+        .join('\n')
     case 'bulletList':
     case 'orderedList':
     case 'taskList': {
@@ -95,7 +107,12 @@ async function block(n: Node, img: ImageResolver, indent = ''): Promise<string> 
         for (const td of tr.content ?? []) {
           if (td.type === 'tableHeader') hasHeader = true
           const parts = await Promise.all((td.content ?? []).map((c) => block(c, img)))
-          cells.push(parts.join('<br>').replace(/(?<!\\)\|/g, '\\|').replace(/\n/g, '<br>'))
+          cells.push(
+            parts
+              .join('<br>')
+              .replace(/(?<!\\)\|/g, '\\|')
+              .replace(/\n/g, '<br>'),
+          )
         }
         rows.push(cells)
       }
