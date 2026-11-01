@@ -29,13 +29,21 @@ async function vaultPayload(plan: BackupPlan) {
   }
 }
 
-/** `new`: a new workspace next to this one, called `name` (or as the backup itself). `here`: into the open workspace, after a copy of it is saved next to it. */
+/** `new`: a new workspace next to this one, called `name` (or as the backup itself). `here`: into the open workspace, after a copy of it is saved next to it. `merge`: the same, but a page that is newer here stays and nothing is replaced by an older version. */
 export interface RestoreTo {
-  target?: 'new' | 'here'
+  target?: 'new' | 'merge' | 'here'
   name?: string
+}
+
+/** What a merge did: pages added, pages replaced by a newer version, pages left alone, images added. */
+export interface MergeResult {
+  added: number
+  updated: number
+  kept: number
+  files: number
 }
 
 export async function applyTauri(plan: BackupPlan, to: RestoreTo = {}) {
   const data = plan.summary.kind === 'vault' ? plan.data : await vaultPayload(plan)
-  return invoke<{ pages: number; files: number; copy?: string }>('vault_backup_restore', { data, target: to.target ?? 'new', name: to.name?.trim() || null })
+  return invoke<{ pages: number; files: number; copy?: string; merged?: MergeResult | null }>('vault_backup_restore', { data, target: to.target ?? 'new', name: to.name?.trim() || null })
 }
