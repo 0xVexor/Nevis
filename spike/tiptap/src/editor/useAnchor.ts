@@ -1,8 +1,9 @@
+import type { Editor } from '@tiptap/core'
 import { useLayoutEffect, useRef } from 'react'
 import { LAYOUT_INTERACTION, layoutInteractionBusy } from './layoutInteraction'
 
 /** Editor-local floating tools never cover block chrome or intercept a layout interaction. */
-export function useAnchor(editor: any, open: boolean, getEl: () => HTMLElement | null, deps: unknown[] = []) {
+export function useAnchor(editor: Editor, open: boolean, getEl: () => HTMLElement | null, deps: unknown[] = []) {
   const box = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     if (!open || editor.isDestroyed) return

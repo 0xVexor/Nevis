@@ -1,3 +1,4 @@
+import type { Editor } from '@tiptap/core'
 import Image from '@tiptap/extension-image'
 import { Extension } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
@@ -155,7 +156,7 @@ export const AttImage = Image.extend({
   },
 })
 
-export async function insertImages(editor: any, files: File[], pos?: number) {
+export async function insertImages(editor: Editor, files: File[], pos?: number) {
   const imgs = files.filter((f) => f.type.startsWith('image/'))
   for (const f of imgs) {
     const id = await putFile(f)
@@ -166,7 +167,7 @@ export async function insertImages(editor: any, files: File[], pos?: number) {
   return imgs.length
 }
 
-export function pickImages(editor: any) {
+export function pickImages(editor: Editor) {
   const input = document.createElement('input')
   input.type = 'file'
   input.accept = 'image/*'
@@ -179,7 +180,7 @@ export function pickImages(editor: any) {
  * Image from an address. It is downloaded and stored like any other image, so the page keeps working offline;
  * if the site does not allow that (CORS), the link itself is used and the image then needs the internet.
  */
-export async function insertImageFromUrl(editor: any, url?: string | null) {
+export async function insertImageFromUrl(editor: Editor, url?: string | null) {
   const u = (url ?? (await promptDialog({ title: t('Image from the web'), message: t('Image address (URL):'), placeholder: 'https://', ltr: true })) ?? '').trim()
   if (!u) return false
   let src = u

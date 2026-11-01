@@ -1,3 +1,4 @@
+import type { DocNode } from './docNode'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { normalizeFa } from './normalize'
 import { createPortal } from 'react-dom'
@@ -282,7 +283,7 @@ export function EmojiPicker({ onPick, onClear, current, clearLabel }: { onPick: 
   )
 }
 
-const textOf = (n: any): string => (n?.text ? n.text : (n?.content ?? []).map(textOf).join(' '))
+const textOf = (n: DocNode | null | undefined): string => (n?.text ? n.text : (n?.content ?? []).map(textOf).join(' '))
 
 export interface PaletteCommand {
   id: string

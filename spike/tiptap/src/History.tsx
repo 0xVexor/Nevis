@@ -1,3 +1,5 @@
+import type { Editor } from '@tiptap/core'
+import type { DocNode } from './docNode'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { addVersion, listVersions, type Version } from './db'
 import { docToHtml, hydrate } from './render'
@@ -9,14 +11,14 @@ import { contentProblem } from './editor/contentSafety'
 import { structural } from './editor/layoutModel'
 import * as Ic from './icons'
 
-const words = (n: any): number => {
-  const text = (x: any): string => (!x || typeof x === 'string' ? '' : (x.text ?? (x.content ?? []).map(text).join(' ')))
+const words = (n: DocNode | string | null | undefined): number => {
+  const text = (x: DocNode | string | null | undefined): string => (!x || typeof x === 'string' ? '' : (x.text ?? (x.content ?? []).map(text).join(' ')))
   const s = text(n).trim()
   return s ? s.split(/\s+/).length : 0
 }
 
 /** Earlier states of a page (kept automatically while you edit). Restoring first saves the current state, so it can be undone too. */
-export function History({ page, editor, onClose }: { page: Page; editor: any; onClose: () => void }) {
+export function History({ page, editor, onClose }: { page: Page; editor: Editor; onClose: () => void }) {
   const [versions, setVersions] = useState<Version[] | null>(null)
   const [sel, setSel] = useState(0)
   const preview = useRef<HTMLDivElement>(null)

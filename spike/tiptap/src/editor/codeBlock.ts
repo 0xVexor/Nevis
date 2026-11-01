@@ -1,3 +1,4 @@
+import type { Editor } from '@tiptap/core'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { TextSelection } from '@tiptap/pm/state'
 import { common, createLowlight } from 'lowlight'
@@ -83,12 +84,12 @@ function touchedLineStarts(text: string, a: number, b: number): number[] {
   return starts
 }
 
-function inCode(editor: any) {
+function inCode(editor: Editor) {
   const { $from, $to } = editor.state.selection
   return $from.parent.type.name === 'codeBlock' && $from.sameParent($to)
 }
 
-function indent(editor: any) {
+function indent(editor: Editor) {
   const { state, view } = editor
   const { $from, $to } = state.selection
   const text: string = $from.parent.textContent
@@ -106,7 +107,7 @@ function indent(editor: any) {
   return true
 }
 
-function outdent(editor: any) {
+function outdent(editor: Editor) {
   const { state, view } = editor
   const { $from, $to } = state.selection
   const text: string = $from.parent.textContent
@@ -122,7 +123,7 @@ function outdent(editor: any) {
   return true
 }
 
-function smartEnter(editor: any) {
+function smartEnter(editor: Editor) {
   const { state, view } = editor
   const { $from, $to } = state.selection
   if (!inCode(editor)) return false
@@ -147,7 +148,7 @@ function smartEnter(editor: any) {
   return true
 }
 
-function smartBackspace(editor: any) {
+function smartBackspace(editor: Editor) {
   const { state, view } = editor
   const { $from, empty } = state.selection
   if (!empty || !inCode(editor)) return false

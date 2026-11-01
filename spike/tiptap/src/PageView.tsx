@@ -180,7 +180,7 @@ export function PageView({
   // plain $…$ text becomes a formula once the editor loses focus (it already does when the cursor leaves the paragraph)
   useEffect(() => {
     if (!editor) return
-    const onBlur = () => !editor.isDestroyed && editor.isEditable && (editor.commands as any).convertFormulas()
+    const onBlur = () => !editor.isDestroyed && editor.isEditable && editor.commands.convertFormulas()
     editor.on('blur', onBlur)
     return () => void editor.off('blur', onBlur)
   }, [editor])
@@ -362,9 +362,9 @@ export function PageView({
   // ───── find in page (Ctrl+F) ─────
   const [findOpen, setFindOpen] = useState(false)
   const findInput = useRef<HTMLInputElement>(null)
-  const stepFind = (dir: 1 | -1) => (editor?.commands as any).stepFind(dir)
+  const stepFind = (dir: 1 | -1) => editor?.commands.stepFind(dir)
   const closeFind = () => {
-    ;(editor?.commands as any).clearFind()
+    editor?.commands.clearFind()
     setFindOpen(false)
     editor?.commands.focus()
   }
@@ -379,7 +379,7 @@ export function PageView({
         if (!el) return
         if (picked && !picked.includes('\n')) {
           el.value = picked
-          ;(editor.commands as any).setFind(picked)
+          editor.commands.setFind(picked)
           scrollToMatch(editor)
         }
         el.focus()
@@ -484,7 +484,7 @@ export function PageView({
               aria-label={t('Search in this page…')}
               placeholder={t('Search in this page…')}
               onChange={(e) => {
-                ;(editor.commands as any).setFind(e.target.value)
+                editor.commands.setFind(e.target.value)
                 scrollToMatch(editor)
               }}
               onKeyDown={(e) => {
@@ -808,7 +808,7 @@ export function PageView({
               />
             )}
             {!readOnly && <MenuItem icon={<Ic.Paste />} label={t('Paste as plain text')} hint="Ctrl+Shift+V" onClick={() => (setCtx(null), void paste(true))} />}
-            {!readOnly && <MenuItem icon={<Ic.Code />} label={t('Convert $…$ to formulas')} onClick={() => (setCtx(null), (editor.commands as any).convertFormulas())} />}
+            {!readOnly && <MenuItem icon={<Ic.Code />} label={t('Convert $…$ to formulas')} onClick={() => (setCtx(null), editor.commands.convertFormulas())} />}
             <MenuItem icon={<Ic.SelectAll />} label={t('Select all')} hint="Ctrl+A" onClick={() => (setCtx(null), editor.chain().focus().selectAll().run())} />
             <MenuSep />
             <MenuItem icon={<Ic.Search />} label={t('Find in page')} hint={bindingHint('find')} onClick={() => (setCtx(null), window.dispatchEvent(new Event('open-find')))} />
