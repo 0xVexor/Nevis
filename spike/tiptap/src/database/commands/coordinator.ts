@@ -44,7 +44,7 @@ export interface Ctx {
   /** result of the previous command in this batch, so a later command can use a freshly created id */
   last: Json
 }
-export type Handler = (cx: Ctx, payload: any) => Json | void
+export type Handler = (cx: Ctx, payload: never) => Json | void
 
 export const HANDLERS: Record<string, Handler> = {}
 export const register = (type: string, h: Handler) => void (HANDLERS[type] = h)
@@ -169,7 +169,7 @@ export class Coordinator {
     for (const c of env.commands) {
       const h = HANDLERS[c.type]
       if (!h) fail('INVALID_COMMAND', `unknown command ${c.type}`)
-      const r = h(cx, c.payload) ?? null
+      const r = h(cx, c.payload as never) ?? null
       cx.last = r
       results.push(r)
     }

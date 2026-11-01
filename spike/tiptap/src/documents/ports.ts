@@ -7,6 +7,7 @@ export interface DocumentVersion {
   pageId: string
   ts: number
   title: string
+  // oxlint-disable-next-line typescript/no-explicit-any -- DocNode or a legacy HTML string, as in Page.content
   content: any
 }
 

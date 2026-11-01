@@ -26,6 +26,7 @@ export interface PreparedFile {
 
 export interface BackupPlan {
   summary: BackupSummary
+  // oxlint-disable-next-line typescript/no-explicit-any -- the parsed backup file, validated field by field in inspectBackup
   data: any
   prepared: PreparedFile[]
 }
@@ -37,6 +38,7 @@ const dateOf = (v: unknown) => {
 
 /** Parses and validates. Throws `BackupError` with a message that says what is wrong. */
 export async function inspectBackup(text: string): Promise<BackupPlan> {
+  // oxlint-disable-next-line typescript/no-explicit-any -- untrusted JSON.parse result, validated below
   let data: any
   try {
     data = JSON.parse(text)
@@ -123,7 +125,7 @@ export async function inspectBackup(text: string): Promise<BackupPlan> {
     }
   }
 
-  const folders = data.pages.filter((p: any) => p.kind === 'folder').length
-  const trashed = data.pages.filter((p: any) => p.deletedAt).length
+  const folders = data.pages.filter((p: { kind?: string }) => p.kind === 'folder').length
+  const trashed = data.pages.filter((p: { deletedAt?: unknown }) => p.deletedAt).length
   return { summary: { kind: 'web', version: data.version, createdAt: dateOf(data.createdAt), pages: data.pages.length - folders, folders, trashed, files: data.files.length, bytes }, data, prepared }
 }

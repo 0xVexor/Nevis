@@ -1,3 +1,4 @@
+/* oxlint-disable typescript/no-explicit-any -- node attrs are free-form JSON here; converting them is what the file does */
 // ProseMirror JSON -> GitHub-flavoured Markdown. Pure function; images are resolved by the caller.
 
 type Node = { type: string; attrs?: any; content?: Node[]; text?: string; marks?: { type: string; attrs?: any }[] }
