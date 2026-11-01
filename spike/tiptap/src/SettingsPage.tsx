@@ -10,13 +10,15 @@ import { pickFiles } from './io'
 import { putFile } from './attachments'
 import * as Ic from './icons'
 import { t } from './i18n'
-import { SHORTCUTS, keyLabel, shortcutKeys } from './shortcuts'
+import { SHORTCUTS, keyLabel, shortcutKeys, type Shortcut } from './shortcuts'
+import { BINDINGS, bindingKeys, chordOf, pauseBindings, takenBy, usableChord, type BindingId } from './shortcutBindings'
 import { Card, Row } from './SettingsParts'
 import { LATIN_DEFAULT } from './fontStack'
 import { DataTab, type DataApi } from './DataTab'
+import { Button } from './design-system'
 
-type Tab = 'appearance' | 'editor' | 'language' | 'general' | 'data' | 'database' | 'shortcuts' | 'connections' | 'about'
-const TABS: { id: Tab; label: string; title: string; hint: string; icon: ReactNode }[] = [
+export type SettingsTab = 'appearance' | 'editor' | 'language' | 'general' | 'data' | 'database' | 'shortcuts' | 'connections' | 'about'
+export const SETTINGS_TABS: { id: SettingsTab; label: string; title: string; hint: string; icon: ReactNode }[] = [
   { id: 'appearance', label: 'Appearance', title: 'Appearance', hint: 'Colors, background, glass and the shape of the app.', icon: <Ic.Palette /> },
   { id: 'editor', label: 'Editor & font', title: 'Editor & font', hint: 'The typeface, size and color of your page text.', icon: <Ic.Type /> },
   { id: 'language', label: 'Language', title: 'Language & layout', hint: 'The interface language and which side things sit on.', icon: <Ic.Globe /> },
@@ -339,13 +341,43 @@ function General() {
   )
 }
 
+/** Keys of a shortcut row; the ones a person can change come from their settings. */
+const keysOf = (i: Shortcut) => (i.binding ? [bindingKeys(i.binding)] : shortcutKeys(i))
+
 function Shortcuts() {
+  const s = useSettings()
   const [q, setQ] = useState('')
+  const [recording, setRecording] = useState<BindingId | null>(null)
+  const [problem, setProblem] = useState<{ id: BindingId; text: string } | null>(null)
   const needle = q.trim().toLowerCase()
   const groups = SHORTCUTS.map((g) => ({
     ...g,
-    items: g.items.filter((i) => !needle || i.label.toLowerCase().includes(needle) || t(i.label).toLowerCase().includes(needle) || shortcutKeys(i).some((k) => k.map(keyLabel).join('+').toLowerCase().includes(needle))),
+    items: g.items.filter((i) => !needle || i.label.toLowerCase().includes(needle) || t(i.label).toLowerCase().includes(needle) || keysOf(i).some((k) => k.map(keyLabel).join('+').toLowerCase().includes(needle))),
   })).filter((g) => g.items.length)
+  const setBinding = (id: BindingId, chord: string[] | null) => {
+    const { [id]: _old, ...rest } = s.shortcuts
+    updateSettings({ shortcuts: chord ? { ...rest, [id]: chord } : rest })
+  }
+  // while recording, the next key chord becomes the shortcut; Esc gives up
+  useEffect(() => {
+    if (!recording) return
+    const resume = pauseBindings()
+    const key = (e: KeyboardEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.key === 'Escape') return setRecording(null)
+      const chord = chordOf(e)
+      if (!chord) return // a modifier on its own: wait for the key
+      if (!usableChord(chord)) return setProblem({ id: recording, text: t('Use Ctrl or Alt with the key, or a function key.') })
+      const other = takenBy(chord, recording)
+      if (other) return setProblem({ id: recording, text: t('Already used by “{action}”.', { action: t(SHORTCUTS.flatMap((g) => g.items).find((x) => x.binding === other)?.label ?? other) }) })
+      setProblem(null)
+      setBinding(recording, chord.join('+') === BINDINGS[recording].join('+') ? null : chord)
+      setRecording(null)
+    }
+    window.addEventListener('keydown', key, true)
+    return () => (window.removeEventListener('keydown', key, true), resume())
+  }, [recording]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
       <div className="sc-search">
@@ -357,16 +389,27 @@ function Shortcuts() {
           <ul className="sc-list">
             {g.items.map((i) => (
               <li key={i.label}>
-                <span>{t(i.label)}</span>
+                <span>
+                  {t(i.label)}
+                  {i.binding && problem?.id === i.binding && <small className="sc-problem" role="alert">{problem.text}</small>}
+                </span>
                 <span className="sc-keys">
-                  {shortcutKeys(i).map((chord, n) => (
-                    <span key={n} className="sc-chord" dir="ltr">
-                      {n > 0 && <em>{t('or')}</em>}
-                      {chord.map((k, j) => (
-                        <kbd key={j}>{keyLabel(k)}</kbd>
+                  {i.binding && recording === i.binding
+                    ? <kbd className="sc-recording" dir="auto">{t('Press the new keys…')}</kbd>
+                    : keysOf(i).map((chord, n) => (
+                        <span key={n} className="sc-chord" dir="ltr">
+                          {n > 0 && <em>{t('or')}</em>}
+                          {chord.map((k, j) => (
+                            <kbd key={j}>{keyLabel(k)}</kbd>
+                          ))}
+                        </span>
                       ))}
+                  {i.binding && (
+                    <span className="sc-edit">
+                      <Button size="sm" variant="ghost" onClick={() => (setProblem(null), setRecording(recording === i.binding ? null : i.binding!))}>{recording === i.binding ? t('Cancel') : t('Change')}</Button>
+                      {s.shortcuts[i.binding] && recording !== i.binding && <Button size="sm" variant="ghost" onClick={() => (setProblem(null), setBinding(i.binding!, null))}>{t('Reset')}</Button>}
                     </span>
-                  ))}
+                  )}
                 </span>
               </li>
             ))}
@@ -396,10 +439,10 @@ function About() {
   )
 }
 
-export function SettingsView({ data, initialTab }: { data: DataApi; initialTab?: Tab }) {
-  const [tab, setTab] = useState<Tab>(initialTab ?? 'appearance')
+export function SettingsView({ data, initialTab }: { data: DataApi; initialTab?: SettingsTab }) {
+  const [tab, setTab] = useState<SettingsTab>(initialTab ?? 'appearance')
   const s = useSettings()
-  const cur = TABS.find((x) => x.id === tab)!
+  const cur = SETTINGS_TABS.find((x) => x.id === tab)!
   const reset = async () => {
     if (await confirmDialog({ title: t('Reset all settings'), message: t('Reset all settings to their defaults? Language and direction stay as they are.'), confirmLabel: t('Reset'), danger: true })) updateSettings({ ...DEFAULTS, lang: s.lang, dir: s.dir })
   }
@@ -416,7 +459,7 @@ export function SettingsView({ data, initialTab }: { data: DataApi; initialTab?:
       </header>
       <div className="sx-layout">
         <nav className="set-tabs" role="tablist" aria-label={t('Settings')}>
-          {TABS.map((th) => (
+          {SETTINGS_TABS.map((th) => (
             <button key={th.id} role="tab" aria-selected={tab === th.id} className={tab === th.id ? 'on' : ''} onClick={() => setTab(th.id)}>
               {th.icon}
               {t(th.label)}
