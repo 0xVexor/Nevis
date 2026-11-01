@@ -526,7 +526,8 @@ export default function App() {
   }
   useEffect(() => {
     const r = takeRestored()
-    if (r) setToast({ msg: r.copy ? t('{pages} pages and {files} files restored. Your previous notes were saved as {copy}.', { pages: r.pages, files: r.files, copy: r.copy }) : t('{pages} pages and {files} files restored', { pages: r.pages, files: r.files }) })
+    if (r?.merged) setToast({ msg: t('Merged: {added} new pages, {updated} updated, {kept} kept as they were. Your notes before were saved as {copy}.', { added: r.merged.added, updated: r.merged.updated, kept: r.merged.kept, copy: r.copy ?? '' }) })
+    else if (r) setToast({ msg: r.copy ? t('{pages} pages and {files} files restored. Your previous notes were saved as {copy}.', { pages: r.pages, files: r.files, copy: r.copy }) : t('{pages} pages and {files} files restored', { pages: r.pages, files: r.files }) })
   }, [])
   const openSettings = (tab?: SettingsTab) => { setSettingsTab(tab); setView('settings') }
   const openData = () => openSettings('data')

@@ -326,22 +326,43 @@ fn vault_backup_save(s: St, path: String) -> Res<()> {
         Ok(())
     })
 }
+/// Brings the backup folder of the open workspace up to date inside `dir` (see `portable::export_folder`).
+#[tauri::command]
+fn vault_backup_folder_save(s: St, dir: String, force: Option<bool>) -> Res<portable::FolderReport> {
+    let parent = PathBuf::from(dir);
+    if !parent.is_absolute() { return Err("BACKUP:invalid_destination".into()); }
+    with(&s, |v| {
+        let parent = parent.canonicalize().map_err(err)?;
+        if parent.starts_with(v.root.canonicalize().map_err(err)?) || parent.starts_with(s.app_data.canonicalize().map_err(err)?) { return Err("BACKUP:destination_inside_live_data".into()); }
+        database::recover(&v.root)?;
+        portable::export_folder(v, &parent, force.unwrap_or(false))
+    })
+}
+/// A backup folder as the same data a backup file holds. Nothing is written.
+#[tauri::command]
+fn vault_backup_folder_read(dir: String) -> Res<Value> {
+    let dir = PathBuf::from(dir);
+    if !dir.is_absolute() { return Err("BACKUP:invalid_destination".into()); }
+    portable::read_folder(&dir)
+}
 #[tauri::command]
 fn vault_backup_restore(s: St, data: Value, target: Option<String>, name: Option<String>) -> Res<Value> {
     // "here": into the open workspace; anything else: a new workspace, named `name` or as the backup itself
-    if target.as_deref()==Some("here") {
+    // "merge": the same, but a page that is newer here stays and nothing is replaced by an older version
+    let merge=target.as_deref()==Some("merge");
+    if merge || target.as_deref()==Some("here") {
         // a copy of the workspace as it is now goes next to it first, so a restore into it can always be undone
-        let (pages,files,copy)=with(&s,|v|{
+        let (pages,files,copy,merged)=with(&s,|v|{
             let parent=v.root.parent().ok_or("no parent directory")?;
             let safe:String=v.name().chars().filter(|c|!"<>:\"/\\|?*".contains(*c)&&!c.is_control()).collect();
             let copy=format!("{} before restore {}.json",safe.trim(),vault::now_ms());
             database::recover(&v.root)?;
             let bytes=serde_json::to_vec(&portable::export(v)?).map_err(err)?;
             vault::write_atomic(&parent.join(&copy),&bytes)?;
-            portable::restore_into(v,data)?;
-            Ok((v.pages_all()?.len(),v.files_list().len(),copy))
+            let merged=if merge { Some(portable::restore_merge(v,data)?) } else { portable::restore_into(v,data)?; None };
+            Ok((v.pages_all()?.len(),v.files_list().len(),copy,merged))
         })?;
-        return Ok(json!({"pages":pages,"files":files,"copy":copy}));
+        return Ok(json!({"pages":pages,"files":files,"copy":copy,"merged":merged}));
     }
     let v=with(&s,|v|portable::restore(v.root.parent().ok_or("no parent directory")?,data,name.as_deref()))?;
     let entry=Entry{id:v.id(),name:v.name(),path:v.root.to_string_lossy().into()};
@@ -611,7 +632,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             mcp_ready, mcp_status, mcp_enable, mcp_disable, mcp_autostart, mcp_setup_info, mcp_install_client, mcp_credential, mcp_reply,
             updates::updates_check, updates::updates_download, updates::updates_install,
-            vault_backup_save, vault_backup_export, vault_backup_restore, vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
+            vault_backup_save, vault_backup_folder_save, vault_backup_folder_read, vault_backup_export, vault_backup_restore, vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
             db_recover, db_load_all, db_commit, db_get_operation, db_history, db_undo_load, db_undo_save, db_runtime_get, db_runtime_set, db_runtime_delete,
             db_runtime_keys, db_index_rebuild, db_index_candidates, db_index_count,
             vault_stamp, pages_all, pages_save, document_operation_list, document_operation_find, document_operation_commit, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list,

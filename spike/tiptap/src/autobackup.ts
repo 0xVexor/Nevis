@@ -1,24 +1,31 @@
-import { kvGet, kvSet } from './db'
-import { buildBackup } from './backup'
+import { isTauri, kvGet, kvSet } from './db'
+import { BackupBlocked, buildBackup, saveFolder, type FolderCounts } from './backup'
+import { saveWorkspace } from './saveWorkspace'
 import { repo } from './store'
 
 /**
- * Automatic backup into a folder the user picks (File System Access API, Chromium/Edge).
- * - `notes-backup-latest.json` is rewritten after changes (at most every MIN_GAP) and when the tab is hidden
- * - `notes-backup-YYYY-MM-DD.json` is written once per day; the newest KEEP_DAILY are kept
- * Restoring is the normal "restore from backup" flow with any of these files.
+ * One backup, taken by hand ("Back up now") or by itself ("Automatic"), into a folder the person picks.
+ * - Desktop: the workspace's own files, one per page, in `<folder>/<workspace> [<id>]/`; only what changed is written.
+ * - Browser (File System Access API, Chromium/Edge): `notes-backup-latest.json` after changes (at most every MIN_GAP) and
+ *   when the tab is hidden, and `notes-backup-YYYY-MM-DD.json` holding the day's last state; the newest KEEP_DAILY are kept.
+ * Restoring is the normal restore flow with the folder or any of these files.
  */
 
 const MIN_GAP = 2 * 60 * 1000
 const KEEP_DAILY = 14
 const LATEST = 'notes-backup-latest.json'
 const DAILY = /^notes-backup-(\d{4}-\d{2}-\d{2})\.json$/
+const DEVICE_KEY = 'nevis-backup' // desktop: the folder is a path on this computer, so it is kept here, not in the workspace
 
 interface Cfg {
+  /** Automatic backup is on. A backup by hand works whenever a folder is chosen. */
   enabled: boolean
   lastAt?: number
   lastDaily?: string
+  counts?: FolderCounts
+  dir?: string // desktop only
   error?: string // 'NEEDS_PERMISSION' or a message
+  blocked?: boolean // the last backup was held back because pages suddenly went missing
 }
 
 type Dir = FileSystemDirectoryHandle & {
@@ -26,31 +33,45 @@ type Dir = FileSystemDirectoryHandle & {
   requestPermission?: (o: { mode: 'readwrite' }) => Promise<PermissionState>
 }
 
-interface BackupStatus {
+export interface BackupStatus {
   supported: boolean
+  /** A folder is chosen, so a backup can be taken. */
+  ready: boolean
+  /** Automatic backup is on. */
   enabled: boolean
   folder?: string
   lastAt?: number
+  counts?: FolderCounts
   error?: string
+  blocked: boolean
 }
 
 let handle: Dir | null = null
 let cfg: Cfg = { enabled: false }
 let timer = 0
 let running = false
+let manual = false // a backup by hand runs even when automatic backup is off
 
 const emit = () => void window.dispatchEvent(new Event('backup-status'))
-const persistCfg = () => kvSet('backupCfg', cfg)
+const persistCfg = async () => {
+  if (!isTauri) return kvSet('backupCfg', cfg)
+  try { localStorage.setItem(DEVICE_KEY, JSON.stringify(cfg)) } catch { /* the folder is asked for again */ }
+}
+const loadCfg = async (): Promise<Cfg> => {
+  if (!isTauri) return (await kvGet<Cfg>('backupCfg')) ?? { enabled: false }
+  try { return JSON.parse(localStorage.getItem(DEVICE_KEY) ?? 'null') ?? { enabled: false } } catch { return { enabled: false } }
+}
 
-export const backupSupported = () => 'showDirectoryPicker' in window
+export const backupSupported = () => isTauri || 'showDirectoryPicker' in window
+const ready = () => (isTauri ? !!cfg.dir : !!handle)
 
 export function backupStatus(): BackupStatus {
-  return { supported: backupSupported(), enabled: cfg.enabled, folder: handle?.name, lastAt: cfg.lastAt, error: cfg.error }
+  return { supported: backupSupported(), ready: ready(), enabled: cfg.enabled && ready(), folder: isTauri ? cfg.dir : handle?.name, lastAt: cfg.lastAt, counts: cfg.counts, error: cfg.error, blocked: !!cfg.blocked }
 }
 
 export async function initBackup() {
-  handle = ((await kvGet<Dir>('backupDir')) ?? null) as Dir | null
-  cfg = (await kvGet<Cfg>('backupCfg')) ?? { enabled: false }
+  if (!isTauri) handle = ((await kvGet<Dir>('backupDir')) ?? null) as Dir | null
+  cfg = await loadCfg()
   window.addEventListener('data-changed', schedule)
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) void runBackup()
@@ -82,27 +103,45 @@ async function prune(dir: FileSystemDirectoryHandle) {
   for (const old of names.slice(0, Math.max(0, names.length - KEEP_DAILY))) await dir.removeEntry(old).catch(() => {})
 }
 
-async function runBackup(): Promise<void> {
-  if (!cfg.enabled || !handle || running) return
-  if ((await handle.queryPermission?.({ mode: 'readwrite' })) !== 'granted') {
+/** The browser build: the whole workspace as one file, plus the day's file. */
+async function backupToFiles(dir: Dir) {
+  const blob = await buildBackup(repo)
+  await write(dir, LATEST, blob)
+  // the day's file is rewritten on every backup, so it always holds the last state of that day, not the first
+  await write(dir, `notes-backup-${today()}.json`, blob)
+  if (cfg.lastDaily !== today()) {
+    cfg.lastDaily = today()
+    await prune(dir)
+  }
+  cfg.counts = undefined
+}
+
+/** `force`: write even when far fewer pages are left than in the last backup (after the person said so). */
+async function runBackup(force = false): Promise<void> {
+  if (!ready() || running) return
+  if (!force && !cfg.enabled && !manual) return // nothing asks for it
+  if (!isTauri && (await handle!.queryPermission?.({ mode: 'readwrite' })) !== 'granted') {
     cfg.error = 'NEEDS_PERMISSION'
     return emit()
   }
   running = true
   try {
     await repo.flushed()
-    const blob = await buildBackup(repo)
-    await write(handle, LATEST, blob)
-    if (cfg.lastDaily !== today()) {
-      await write(handle, `notes-backup-${today()}.json`, blob)
-      cfg.lastDaily = today()
-      await prune(handle)
+    if (isTauri) {
+      await saveWorkspace()
+      const r = await saveFolder(cfg.dir!, force)
+      cfg.counts = r.counts
+      cfg.lastAt = r.created_at
+    } else {
+      await backupToFiles(handle!)
+      cfg.lastAt = Date.now()
     }
-    cfg.lastAt = Date.now()
     cfg.error = undefined
+    cfg.blocked = false
   } catch (e) {
     console.error('auto-backup', e)
     cfg.error = String((e as Error)?.message ?? e)
+    cfg.blocked = e instanceof BackupBlocked
   } finally {
     running = false
     await persistCfg().catch(() => {})
@@ -112,15 +151,24 @@ async function runBackup(): Promise<void> {
 
 /** Must be called from a click: opens the folder picker. */
 export async function chooseBackupFolder() {
+  if (isTauri) {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const dir = await open({ directory: true, title: undefined })
+    if (typeof dir === 'string') await configureBackupFolder({ dir })
+    return
+  }
   const picked = await (window as any).showDirectoryPicker({ id: 'notes-backup', mode: 'readwrite' }).catch(() => null)
-  if (picked) await configureBackupFolder(picked)
+  if (picked) await configureBackupFolder({ handle: picked })
 }
 
 /** Also the seam for tests: any FileSystemDirectoryHandle (e.g. from the origin-private file system) works. */
-async function configureBackupFolder(dir: FileSystemDirectoryHandle) {
-  handle = dir as Dir
-  cfg = { enabled: true }
-  await kvSet('backupDir', dir)
+async function configureBackupFolder(to: { dir: string } | { handle: FileSystemDirectoryHandle }) {
+  if ('dir' in to) cfg = { enabled: true, dir: to.dir }
+  else {
+    handle = to.handle as Dir
+    cfg = { enabled: true }
+    await kvSet('backupDir', to.handle)
+  }
   await persistCfg()
   await runBackup()
 }
@@ -131,11 +179,17 @@ export async function grantAccess() {
   emit()
 }
 
-export async function disableBackup() {
-  cfg.enabled = false
+/** Automatic backup on or off. The folder and the files already in it stay. */
+export async function setAutomatic(on: boolean) {
+  cfg.enabled = on
   cfg.error = undefined
   await persistCfg()
   emit()
+  if (on) await runBackup()
 }
 
-export const backupNow = () => runBackup()
+/** Back up now, whether or not automatic backup is on. */
+export async function backupNow(force = false) {
+  manual = true
+  try { await runBackup(force) } finally { manual = false }
+}
