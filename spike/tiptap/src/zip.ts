@@ -89,7 +89,10 @@ export async function readZip(buf: ArrayBuffer): Promise<ZipEntry[]> {
   const v = new DataView(buf)
   let end = -1
   for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 22 - 0xffff); i--) {
-    if (v.getUint32(i, true) === 0x06054b50) { end = i; break }
+    if (v.getUint32(i, true) === 0x06054b50) {
+      end = i
+      break
+    }
   }
   if (end < 0) throw new Error('Not a zip file')
   const count = v.getUint16(end + 10, true)

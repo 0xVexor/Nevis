@@ -19,7 +19,21 @@ export const personV = (id: Id): FormulaValue => ({ kind: 'person', id })
 export const plain = (v: FormulaValue): string => (v.kind === 'text' ? runsToText(v.runs) : '')
 
 export function typeName(v: FormulaValue): string {
-  return v.kind === 'empty' ? 'Empty' : v.kind === 'number' ? 'Number' : v.kind === 'boolean' ? 'Boolean' : v.kind === 'text' ? 'Text' : v.kind === 'date' ? 'Date' : v.kind === 'page' ? 'Page' : v.kind === 'person' ? 'Person' : 'List'
+  return v.kind === 'empty'
+    ? 'Empty'
+    : v.kind === 'number'
+      ? 'Number'
+      : v.kind === 'boolean'
+        ? 'Boolean'
+        : v.kind === 'text'
+          ? 'Text'
+          : v.kind === 'date'
+            ? 'Date'
+            : v.kind === 'page'
+              ? 'Page'
+              : v.kind === 'person'
+                ? 'Person'
+                : 'List'
 }
 
 /**
@@ -28,12 +42,18 @@ export function typeName(v: FormulaValue): string {
  */
 export function formulaEmpty(v: FormulaValue): boolean {
   switch (v.kind) {
-    case 'empty': return true
-    case 'number': return v.value === 0
-    case 'boolean': return !v.value
-    case 'text': return plain(v).length === 0
-    case 'list': return v.items.length === 0
-    default: return false
+    case 'empty':
+      return true
+    case 'number':
+      return v.value === 0
+    case 'boolean':
+      return !v.value
+    case 'text':
+      return plain(v).length === 0
+    case 'list':
+      return v.items.length === 0
+    default:
+      return false
   }
 }
 
@@ -41,10 +61,14 @@ export function formulaEmpty(v: FormulaValue): boolean {
 export function valuesEqual(a: FormulaValue, b: FormulaValue, zone = 'UTC'): boolean {
   if (a.kind !== b.kind) return false
   switch (a.kind) {
-    case 'empty': return true
-    case 'number': return a.value === (b as typeof a).value
-    case 'boolean': return a.value === (b as typeof a).value
-    case 'text': return plain(a) === plain(b)
+    case 'empty':
+      return true
+    case 'number':
+      return a.value === (b as typeof a).value
+    case 'boolean':
+      return a.value === (b as typeof a).value
+    case 'text':
+      return plain(a) === plain(b)
     case 'date': {
       const x = a.value
       const y = (b as typeof a).value
@@ -54,8 +78,10 @@ export function valuesEqual(a: FormulaValue, b: FormulaValue, zone = 'UTC'): boo
       const j = dateInterval(y, zone)
       return i.s === j.s && i.e === j.e
     }
-    case 'page': return a.id === (b as typeof a).id && a.vaultId === (b as typeof a).vaultId
-    case 'person': return a.id === (b as typeof a).id
+    case 'page':
+      return a.id === (b as typeof a).id && a.vaultId === (b as typeof a).vaultId
+    case 'person':
+      return a.id === (b as typeof a).id
     case 'list': {
       const y = b as typeof a
       return a.items.length === y.items.length && a.items.every((v, i) => valuesEqual(v, y.items[i], zone))
@@ -67,8 +93,10 @@ export function valuesEqual(a: FormulaValue, b: FormulaValue, zone = 'UTC'): boo
 export function compareValues(a: FormulaValue, b: FormulaValue, zone = 'UTC', titleOf?: (id: Id) => string | undefined): number | null {
   if (a.kind !== b.kind) return null
   switch (a.kind) {
-    case 'number': return a.value < (b as typeof a).value ? -1 : a.value > (b as typeof a).value ? 1 : 0
-    case 'boolean': return Number(a.value) - Number((b as typeof a).value)
+    case 'number':
+      return a.value < (b as typeof a).value ? -1 : a.value > (b as typeof a).value ? 1 : 0
+    case 'boolean':
+      return Number(a.value) - Number((b as typeof a).value)
     case 'text': {
       const x = plain(a)
       const y = plain(b)
@@ -84,35 +112,52 @@ export function compareValues(a: FormulaValue, b: FormulaValue, zone = 'UTC', ti
       const y = titleOf?.((b as typeof a).id) ?? (b as typeof a).id
       return x < y ? -1 : x > y ? 1 : a.id < (b as typeof a).id ? -1 : a.id > (b as typeof a).id ? 1 : 0
     }
-    case 'person': return a.id < (b as typeof a).id ? -1 : a.id > (b as typeof a).id ? 1 : 0
-    default: return null
+    case 'person':
+      return a.id < (b as typeof a).id ? -1 : a.id > (b as typeof a).id ? 1 : 0
+    default:
+      return null
   }
 }
 
 /** Deterministic text of any value for `format()` / `join()`: shortest decimal, ISO dates, visible titles, comma-joined lists. */
 export function formatValue(v: FormulaValue, titleOf?: (id: Id) => string | undefined, personName?: (id: Id) => string | undefined): string {
   switch (v.kind) {
-    case 'empty': return ''
-    case 'number': return plainDecimal(v.value)
-    case 'boolean': return v.value ? 'true' : 'false'
-    case 'text': return plain(v)
-    case 'date': return v.value.end && v.value.end !== v.value.start ? `${v.value.start} → ${v.value.end}` : v.value.start
-    case 'page': return titleOf?.(v.id) ?? ''
-    case 'person': return personName?.(v.id) ?? ''
-    case 'list': return v.items.map((i) => formatValue(i, titleOf, personName)).join(', ')
+    case 'empty':
+      return ''
+    case 'number':
+      return plainDecimal(v.value)
+    case 'boolean':
+      return v.value ? 'true' : 'false'
+    case 'text':
+      return plain(v)
+    case 'date':
+      return v.value.end && v.value.end !== v.value.start ? `${v.value.start} → ${v.value.end}` : v.value.start
+    case 'page':
+      return titleOf?.(v.id) ?? ''
+    case 'person':
+      return personName?.(v.id) ?? ''
+    case 'list':
+      return v.items.map((i) => formatValue(i, titleOf, personName)).join(', ')
   }
 }
 
 /** FormulaValue -> QValue so a formula / rollup result can be filtered, sorted and grouped by its actual static type. */
 export function toQValue(v: FormulaValue): QValue {
   switch (v.kind) {
-    case 'empty': return { c: 'empty' }
-    case 'number': return { c: 'number', n: v.value }
-    case 'boolean': return { c: 'bool', b: v.value }
-    case 'text': return { c: 'text', text: plain(v) }
-    case 'date': return { c: 'date', v: v.value }
-    case 'page': return { c: 'members', ids: [v.id], shape: 'relation' }
-    case 'person': return { c: 'members', ids: [v.id], shape: 'people' }
+    case 'empty':
+      return { c: 'empty' }
+    case 'number':
+      return { c: 'number', n: v.value }
+    case 'boolean':
+      return { c: 'bool', b: v.value }
+    case 'text':
+      return { c: 'text', text: plain(v) }
+    case 'date':
+      return { c: 'date', v: v.value }
+    case 'page':
+      return { c: 'members', ids: [v.id], shape: 'relation' }
+    case 'person':
+      return { c: 'members', ids: [v.id], shape: 'people' }
     case 'list': {
       if (v.items.length && v.items.every((i) => i.kind === 'page')) return { c: 'members', ids: v.items.map((i) => (i as { id: Id }).id), shape: 'relation' }
       if (v.items.length && v.items.every((i) => i.kind === 'person')) return { c: 'members', ids: v.items.map((i) => (i as { id: Id }).id), shape: 'people' }
@@ -124,13 +169,21 @@ export function toQValue(v: FormulaValue): QValue {
 /** QValue -> FormulaValue for rollup results consumed by other formulas. */
 export function fromQValue(q: QValue, vaultId: Id): FormulaValue {
   switch (q.c) {
-    case 'empty': return EMPTY_V
-    case 'text': return textV(q.text)
-    case 'number': return numV(q.n)
-    case 'bool': return boolV(q.b)
-    case 'date': return dateV(q.v)
-    case 'members': return listV(q.ids.map((id) => (q.shape === 'relation' ? pageV(id, vaultId) : q.shape === 'people' || q.shape === 'created_by' || q.shape === 'last_edited_by' ? personV(id) : textV(id))))
-    case 'list': return listV(q.items.map((i) => fromQValue(i, vaultId)))
-    case 'blocked': return EMPTY_V
+    case 'empty':
+      return EMPTY_V
+    case 'text':
+      return textV(q.text)
+    case 'number':
+      return numV(q.n)
+    case 'bool':
+      return boolV(q.b)
+    case 'date':
+      return dateV(q.v)
+    case 'members':
+      return listV(q.ids.map((id) => (q.shape === 'relation' ? pageV(id, vaultId) : q.shape === 'people' || q.shape === 'created_by' || q.shape === 'last_edited_by' ? personV(id) : textV(id))))
+    case 'list':
+      return listV(q.items.map((i) => fromQValue(i, vaultId)))
+    case 'blocked':
+      return EMPTY_V
   }
 }

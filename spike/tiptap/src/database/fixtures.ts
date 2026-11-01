@@ -48,13 +48,29 @@ export async function seedFixture(h: Harness) {
   const P = await h.one('database.create', { title: 'Projects', presentation: 'full' }, { operationId: 'seed-projects' })
   const projSrc = P.sourceId as Id
   const mk = async (sid: Id, name: string, kind: string, config?: unknown) => (await h.one('property.create', { sourceId: sid, name, kind, config }, {})).propertyId as Id
-  const status = await mk(sourceId, 'Status', 'status', { options: [{ name: 'todo', group: 'todo' }, { name: 'doing', group: 'active' }, { name: 'done', group: 'complete' }] })
+  const status = await mk(sourceId, 'Status', 'status', {
+    options: [
+      { name: 'todo', group: 'todo' },
+      { name: 'doing', group: 'active' },
+      { name: 'done', group: 'complete' },
+    ],
+  })
   const cost = await mk(sourceId, 'Cost', 'number')
   const due = await mk(sourceId, 'Due', 'date')
-  const tags = await mk(sourceId, 'Tags', 'multi_select', { options: [{ name: 'red', color: 'red' }, { name: 'blue', color: 'blue' }, { name: 'green', color: 'green' }] })
+  const tags = await mk(sourceId, 'Tags', 'multi_select', {
+    options: [
+      { name: 'red', color: 'red' },
+      { name: 'blue', color: 'blue' },
+      { name: 'green', color: 'green' },
+    ],
+  })
   const done = await mk(sourceId, 'Done', 'checkbox')
   const notes = await mk(sourceId, 'Notes', 'text')
-  const rel = await h.one('property.create', { sourceId, name: 'Project', kind: 'relation', config: { targetSourceId: projSrc, mode: 'paired', cardinality: 'one', inverseCardinality: 'many', inverseName: 'Tasks' } }, {})
+  const rel = await h.one(
+    'property.create',
+    { sourceId, name: 'Project', kind: 'relation', config: { targetSourceId: projSrc, mode: 'paired', cardinality: 'one', inverseCardinality: 'many', inverseName: 'Tasks' } },
+    {},
+  )
   const project = rel.propertyId as Id
   const projectRelation = rel.definitionId as Id
   const tasksOnProject = rel.inversePropertyId as Id
@@ -66,13 +82,66 @@ export async function seedFixture(h: Harness) {
   const P2 = (await h.one('row.create', { sourceId: projSrc, title: 'P2', id: 'P2' })).pageId as Id
   const text = (s: string): Cell => ({ kind: 'text', runs: s ? [{ text: s }] : [] })
   const rows: Record<string, { title: string; v: Record<Id, Cell> }> = {
-    T1: { title: 'T1', v: { [status]: { kind: 'status', optionId: so('todo') }, [cost]: { kind: 'number', value: 0 }, [due]: { kind: 'date', value: { kind: 'date', start: '2026-10-25', end: null } }, [tags]: { kind: 'multi_select', optionIds: [to('red'), to('blue')] }, [done]: { kind: 'checkbox', value: false } } },
-    T2: { title: 'T2', v: { [status]: { kind: 'status', optionId: so('doing') }, [cost]: { kind: 'number', value: 10 }, [due]: { kind: 'date', value: { kind: 'date', start: '2026-10-26', end: '2026-10-28' } }, [tags]: { kind: 'multi_select', optionIds: [to('blue')] }, [done]: { kind: 'checkbox', value: true }, [notes]: text('   ') } },
+    T1: {
+      title: 'T1',
+      v: {
+        [status]: { kind: 'status', optionId: so('todo') },
+        [cost]: { kind: 'number', value: 0 },
+        [due]: { kind: 'date', value: { kind: 'date', start: '2026-10-25', end: null } },
+        [tags]: { kind: 'multi_select', optionIds: [to('red'), to('blue')] },
+        [done]: { kind: 'checkbox', value: false },
+      },
+    },
+    T2: {
+      title: 'T2',
+      v: {
+        [status]: { kind: 'status', optionId: so('doing') },
+        [cost]: { kind: 'number', value: 10 },
+        [due]: { kind: 'date', value: { kind: 'date', start: '2026-10-26', end: '2026-10-28' } },
+        [tags]: { kind: 'multi_select', optionIds: [to('blue')] },
+        [done]: { kind: 'checkbox', value: true },
+        [notes]: text('   '),
+      },
+    },
     T3: { title: 'T3', v: { [status]: { kind: 'status', optionId: so('done') }, [done]: { kind: 'checkbox', value: false }, [notes]: text('alpha') } },
-    T4: { title: 'T4', v: { [status]: { kind: 'status', optionId: so('todo') }, [cost]: { kind: 'number', value: -5 }, [due]: { kind: 'date', value: { kind: 'date', start: '2026-10-24', end: null } }, [tags]: { kind: 'multi_select', optionIds: [to('green')] }, [done]: { kind: 'checkbox', value: true }, [notes]: text('beta') } },
+    T4: {
+      title: 'T4',
+      v: {
+        [status]: { kind: 'status', optionId: so('todo') },
+        [cost]: { kind: 'number', value: -5 },
+        [due]: { kind: 'date', value: { kind: 'date', start: '2026-10-24', end: null } },
+        [tags]: { kind: 'multi_select', optionIds: [to('green')] },
+        [done]: { kind: 'checkbox', value: true },
+        [notes]: text('beta'),
+      },
+    },
   }
   for (const [id, r] of Object.entries(rows)) await h.one('row.create', { sourceId, title: r.title, id, explicitValues: r.v })
-  await h.run([{ type: 'relation.add', payload: { definitionId: projectRelation, fromPageId: 'T1', toPageId: P1 } }, { type: 'relation.add', payload: { definitionId: projectRelation, fromPageId: 'T2', toPageId: P1 } }, { type: 'relation.add', payload: { definitionId: projectRelation, fromPageId: 'T3', toPageId: P2 } }])
-  return { containerId: db.containerId as Id, sourceId, projSrc, status, cost, due, tags, done, notes, project, projectRelation, tasksOnProject, viewId: db.viewId as Id, so, to, P1, P2, projTitle: P.titlePropertyId as Id, titleId: db.titlePropertyId as Id }
+  await h.run([
+    { type: 'relation.add', payload: { definitionId: projectRelation, fromPageId: 'T1', toPageId: P1 } },
+    { type: 'relation.add', payload: { definitionId: projectRelation, fromPageId: 'T2', toPageId: P1 } },
+    { type: 'relation.add', payload: { definitionId: projectRelation, fromPageId: 'T3', toPageId: P2 } },
+  ])
+  return {
+    containerId: db.containerId as Id,
+    sourceId,
+    projSrc,
+    status,
+    cost,
+    due,
+    tags,
+    done,
+    notes,
+    project,
+    projectRelation,
+    tasksOnProject,
+    viewId: db.viewId as Id,
+    so,
+    to,
+    P1,
+    P2,
+    projTitle: P.titlePropertyId as Id,
+    titleId: db.titlePropertyId as Id,
+  }
 }
 export type Fixture = Awaited<ReturnType<typeof seedFixture>>

@@ -15,7 +15,7 @@ import { property, source } from './util.ts'
 import { createRow } from './rows.ts'
 
 const PROVIDERS = ['github_issues', 'gitlab', 'jira', 'asana']
-export const importSettings = (cx: Ctx, sourceId: Id): ImportSettings | null => ((source(cx, sourceId).settings as { import?: ImportSettings } | null)?.import ?? null)
+export const importSettings = (cx: Ctx, sourceId: Id): ImportSettings | null => (source(cx, sourceId).settings as { import?: ImportSettings } | null)?.import ?? null
 
 /** Properties (and '$title') a person may not edit because a provider owns them. */
 export function importReadOnly(cx: Ctx, sourceId: Id): Set<string> {
@@ -27,7 +27,13 @@ export function assertNotImported(cx: Ctx, sourceId: Id, propertyOrTitle: string
   if (importReadOnly(cx, sourceId).has(propertyOrTitle)) fail('READ_ONLY', 'this value comes from the connected service; change it there', { propertyId: propertyOrTitle })
 }
 
-type ConnectedPayload = { provider: string; externalId: string; canonicalUrl: string; cache: { fields: Record<string, Json>; providerRevision: string; fetchedAt: number } | null; status?: 'ok' | 'unauthorized' | 'not_visible' | 'unavailable' }
+type ConnectedPayload = {
+  provider: string
+  externalId: string
+  canonicalUrl: string
+  cache: { fields: Record<string, Json>; providerRevision: string; fetchedAt: number } | null
+  status?: 'ok' | 'unauthorized' | 'not_visible' | 'unavailable'
+}
 
 register('connected.store', (cx, p: { pageId: Id; propertyId: Id; value: ConnectedPayload }) => {
   const row = cx.d.row(p.pageId)
@@ -46,22 +52,25 @@ register('connected.store', (cx, p: { pageId: Id; propertyId: Id; value: Connect
 
 const NO_IMPORT_KINDS = ['formula', 'rollup', 'button', 'relation', 'unique_id', 'files', 'created_time', 'created_by', 'last_edited_time', 'last_edited_by', 'verification', 'connected']
 
-register('external.configure', (cx, p: { sourceId: Id; provider: string; externalSourceId: string; fieldMap: Record<string, Id>; identityMap?: Record<string, Id>; statusMap?: Record<string, Id> }) => {
-  const src = source(cx, p.sourceId)
-  cx.access.assertSource(cx.env.actorId, src.id, 'edit_schema')
-  if (!PROVIDERS.includes(p.provider)) fail('INVALID_VALUE', `unknown import provider ${String(p.provider)}`)
-  if (typeof p.externalSourceId !== 'string' || !p.externalSourceId || p.externalSourceId.length > 200) fail('INVALID_VALUE', 'externalSourceId is required')
-  for (const [field, target] of Object.entries(p.fieldMap ?? {})) {
-    if (target === '$title') continue
-    const d = property(cx, target)
-    if (d.sourceId !== src.id) fail('SCHEMA_MISMATCH', `field ${field} maps to a property of another source`, { propertyId: target })
-    if (NO_IMPORT_KINDS.includes(d.kind)) fail('INVALID_VALUE', `${d.name} cannot receive imported values`, { propertyId: target })
-  }
-  for (const principal of Object.values(p.identityMap ?? {})) if (!cx.d.get('principal', principal)) fail('NOT_FOUND', 'identity map refers to an unknown person', { principalId: principal })
-  const settings = { ...((src.settings as Record<string, Json>) ?? {}) }
-  settings.import = { provider: p.provider, externalSourceId: p.externalSourceId, fieldMap: p.fieldMap ?? {}, identityMap: p.identityMap ?? {}, statusMap: p.statusMap ?? {} } as unknown as Json
-  cx.d.mut('source', src.id).settings = settings as Json
-})
+register(
+  'external.configure',
+  (cx, p: { sourceId: Id; provider: string; externalSourceId: string; fieldMap: Record<string, Id>; identityMap?: Record<string, Id>; statusMap?: Record<string, Id> }) => {
+    const src = source(cx, p.sourceId)
+    cx.access.assertSource(cx.env.actorId, src.id, 'edit_schema')
+    if (!PROVIDERS.includes(p.provider)) fail('INVALID_VALUE', `unknown import provider ${String(p.provider)}`)
+    if (typeof p.externalSourceId !== 'string' || !p.externalSourceId || p.externalSourceId.length > 200) fail('INVALID_VALUE', 'externalSourceId is required')
+    for (const [field, target] of Object.entries(p.fieldMap ?? {})) {
+      if (target === '$title') continue
+      const d = property(cx, target)
+      if (d.sourceId !== src.id) fail('SCHEMA_MISMATCH', `field ${field} maps to a property of another source`, { propertyId: target })
+      if (NO_IMPORT_KINDS.includes(d.kind)) fail('INVALID_VALUE', `${d.name} cannot receive imported values`, { propertyId: target })
+    }
+    for (const principal of Object.values(p.identityMap ?? {})) if (!cx.d.get('principal', principal)) fail('NOT_FOUND', 'identity map refers to an unknown person', { principalId: principal })
+    const settings = { ...((src.settings as Record<string, Json>) ?? {}) }
+    settings.import = { provider: p.provider, externalSourceId: p.externalSourceId, fieldMap: p.fieldMap ?? {}, identityMap: p.identityMap ?? {}, statusMap: p.statusMap ?? {} } as unknown as Json
+    cx.d.mut('source', src.id).settings = settings as Json
+  },
+)
 
 type Item = { externalObjectId: string; title: string; url: string; fields: Record<string, Json>; revision: string; deleted?: boolean }
 
@@ -69,20 +78,26 @@ function toCell(def: Definition, value: Json, imp: ImportSettings): { cell: Cell
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && !value.length)) return { cell: null }
   try {
     switch (def.kind) {
-      case 'text': return { cell: validateCell(def, { kind: 'text', runs: textToRuns(Array.isArray(value) ? value.join(', ') : String(value)) }) }
+      case 'text':
+        return { cell: validateCell(def, { kind: 'text', runs: textToRuns(Array.isArray(value) ? value.join(', ') : String(value)) }) }
       case 'number': {
         const n = typeof value === 'number' ? value : parseStrictNumber(String(value))
         return n === null ? { unmapped: String(value) } : { cell: validateCell(def, { kind: 'number', value: n }) }
       }
-      case 'checkbox': return { cell: { kind: 'checkbox', value: value === true || value === 'closed' || value === 'merged' || value === 'done' } }
-      case 'url': case 'email': case 'phone': return { cell: validateCell(def, { kind: def.kind, value: String(value) } as Cell) }
+      case 'checkbox':
+        return { cell: { kind: 'checkbox', value: value === true || value === 'closed' || value === 'merged' || value === 'done' } }
+      case 'url':
+      case 'email':
+      case 'phone':
+        return { cell: validateCell(def, { kind: def.kind, value: String(value) } as Cell) }
       case 'date': {
         const s = String(value)
         if (isCivil(s)) return { cell: validateCell(def, { kind: 'date', value: { kind: 'date', start: s, end: null } }) }
         const ms = parseIsoInstant(s, null)
         return ms === null ? { unmapped: s } : { cell: validateCell(def, { kind: 'date', value: { kind: 'datetime', start: new Date(ms).toISOString(), end: null, timeZone: null } }) }
       }
-      case 'select': case 'status': {
+      case 'select':
+      case 'status': {
         const label = String(value)
         const mapped = imp.statusMap[label]
         const opt = (mapped && optionsOf(def).find((o) => o.id === mapped)) || optionsOf(def).find((o) => matchKey(o.name) === matchKey(label))
@@ -101,7 +116,8 @@ function toCell(def: Definition, value: Json, imp: ImportSettings): { cell: Cell
         const who = imp.identityMap[String(value)]
         return who ? { cell: { kind: 'people', principalIds: [who] } } : { unmapped: String(value) } // never guess a person from a login
       }
-      default: return { unmapped: String(value) }
+      default:
+        return { unmapped: String(value) }
     }
   } catch {
     return { unmapped: String(value) }
@@ -115,9 +131,18 @@ register('external.apply', (cx, p: { sourceId: Id; items: Item[]; complete?: boo
   const imp = importSettings(cx, src.id)
   if (!imp) fail('SCHEMA_MISMATCH', 'this source is not linked to an external source')
   if (p.items.length > 5000) fail('QUOTA', 'apply at most 5000 items per batch')
-  const identity = (id: string): ExternalIdentity => ({ provider: imp!.provider, externalSourceId: imp!.externalSourceId, externalObjectId: id, revision: '', fetchedAt: p.fetchedAt, url: '', tombstoned: false })
+  const identity = (id: string): ExternalIdentity => ({
+    provider: imp!.provider,
+    externalSourceId: imp!.externalSourceId,
+    externalObjectId: id,
+    revision: '',
+    fetchedAt: p.fetchedAt,
+    url: '',
+    tombstoned: false,
+  })
   const known = new Map<string, Id>()
-  for (const r of cx.d.rowsOf(src.id)) if (r.ext.external && r.ext.external.provider === imp!.provider && r.ext.external.externalSourceId === imp!.externalSourceId) known.set(r.ext.external.externalObjectId, r.page.id)
+  for (const r of cx.d.rowsOf(src.id))
+    if (r.ext.external && r.ext.external.provider === imp!.provider && r.ext.external.externalSourceId === imp!.externalSourceId) known.set(r.ext.external.externalObjectId, r.page.id)
   const out = { created: 0, updated: 0, unchanged: 0, tombstoned: 0, restored: 0, unmapped: [] as { field: string; value: string }[] }
   const seen = new Set<string>()
   const values = (item: Item): { explicit: Record<Id, Cell>; clear: Id[]; title: string | null } => {
@@ -126,10 +151,16 @@ register('external.apply', (cx, p: { sourceId: Id; items: Item[]; complete?: boo
     let title: string | null = null
     for (const [field, target] of Object.entries(imp!.fieldMap)) {
       const v = field === 'title' ? item.title : item.fields[field]
-      if (target === '$title') { title = typeof v === 'string' ? v : item.title; continue }
+      if (target === '$title') {
+        title = typeof v === 'string' ? v : item.title
+        continue
+      }
       const def = property(cx, target)
       const r = toCell(def, v as Json, imp!)
-      if ('unmapped' in r) { out.unmapped.push({ field, value: r.unmapped }); continue }
+      if ('unmapped' in r) {
+        out.unmapped.push({ field, value: r.unmapped })
+        continue
+      }
       if (r.cell) explicit[target] = r.cell
       else clear.push(target)
     }
@@ -152,10 +183,16 @@ register('external.apply', (cx, p: { sourceId: Id; items: Item[]; complete?: boo
     const ext = page.database!
     const was = ext.external!
     if (item.deleted) {
-      if (!was.tombstoned) { ext.external = { ...was, tombstoned: true, fetchedAt: p.fetchedAt }; out.tombstoned++ }
+      if (!was.tombstoned) {
+        ext.external = { ...was, tombstoned: true, fetchedAt: p.fetchedAt }
+        out.tombstoned++
+      }
       continue
     }
-    if (was.revision === item.revision && !was.tombstoned) { out.unchanged++; continue }
+    if (was.revision === item.revision && !was.tombstoned) {
+      out.unchanged++
+      continue
+    }
     const v = values(item)
     if (v.title !== null && page.title !== v.title) page.title = v.title
     for (const [pid, cell] of Object.entries(v.explicit)) {

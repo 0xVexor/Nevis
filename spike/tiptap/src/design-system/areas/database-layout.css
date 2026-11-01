@@ -89,7 +89,6 @@
 .db-dash-row { gap: 20px; min-inline-size: 0; }
 .db-dash-global { padding: 16px; gap: 12px; border-radius: var(--ds-r-lg); background: var(--ds-sunk); }
 .db-dash-global > input, .db-dash-global > .selbox, .db-dash-add > .selbox { flex: 1 1 160px; min-inline-size: 0; }
-.db-map-pick { display: grid; gap: 6px; flex: 1 1 160px; }
 .db-widget { overflow: visible; border-radius: var(--ds-r-lg); }
 .db-widget-head { min-block-size: 48px; border-start-start-radius: var(--ds-r-lg); border-start-end-radius: var(--ds-r-lg); flex-wrap: wrap; padding: 12px 16px; }
 .db-widget-body { max-block-size: none; overflow: visible; padding: 12px; }
@@ -201,7 +200,7 @@
 .db-widget .db-chart-svg { border: 0; padding: 4px; background: transparent; }
 .db-seg { align-self: start; inline-size: fit-content; border-color: var(--ds-line); border-radius: var(--ds-r); padding: 3px; background: var(--ds-sunk); gap: 3px; }
 .db-seg button { min-block-size: 30px; padding: 5px 12px; border-radius: var(--ds-r-sm); line-height: 1.5; }
-.db-map-bar, .db-cal-bar { padding: 10px 12px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); }
+.db-map-bar { padding: 10px 12px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); }
 .db-feed { gap: 20px; }
 .db-feed-card { padding: 20px; gap: 14px; }
 .db-feed-card header { gap: 12px; flex-wrap: wrap; }

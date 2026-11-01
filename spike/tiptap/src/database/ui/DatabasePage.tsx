@@ -13,9 +13,19 @@ export function DatabasePage({ page, onOpenPage, onMeta, readOnly }: { page: Pag
     <div className="page-cols db-cols-wrap">
       <div className="page db-page">
         <input
-          className="title db-page-title" dir="auto" value={title} readOnly={readOnly} placeholder={t('Untitled database')} aria-label={t('Database title')}
+          className="title db-page-title"
+          dir="auto"
+          value={title}
+          readOnly={readOnly}
+          placeholder={t('Untitled database')}
+          aria-label={t('Database title')}
           onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => { if (title !== page.title) { repo.update(page.id, { title }); onMeta() } }}
+          onBlur={() => {
+            if (title !== page.title) {
+              repo.update(page.id, { title })
+              onMeta()
+            }
+          }}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
         />
         <DatabaseContainer containerId={page.dbHost!} onOpenPage={onOpenPage} />

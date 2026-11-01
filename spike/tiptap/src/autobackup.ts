@@ -77,7 +77,7 @@ async function write(dir: FileSystemDirectoryHandle, name: string, blob: Blob) {
 
 async function prune(dir: FileSystemDirectoryHandle) {
   const names: string[] = []
-  for await (const [name] of (dir as any).entries() as AsyncIterable<[string, unknown]>) if (DAILY.test(name)) names.push(name)
+  for await (const [name] of dir.entries()) if (DAILY.test(name)) names.push(name)
   names.sort()
   for (const old of names.slice(0, Math.max(0, names.length - KEEP_DAILY))) await dir.removeEntry(old).catch(() => {})
 }
@@ -112,7 +112,7 @@ async function runBackup(): Promise<void> {
 
 /** Must be called from a click: opens the folder picker. */
 export async function chooseBackupFolder() {
-  const picked = await (window as any).showDirectoryPicker({ id: 'notes-backup', mode: 'readwrite' }).catch(() => null)
+  const picked = await window.showDirectoryPicker({ id: 'notes-backup', mode: 'readwrite' }).catch(() => null)
   if (picked) await configureBackupFolder(picked)
 }
 

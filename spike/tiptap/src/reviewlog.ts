@@ -1,4 +1,3 @@
-
 /**
  * How many cards were reviewed on which day, per device: { '2026-10-24': { <deviceId>: 12 } }.
  * Counters per device only ever grow, so two devices can be merged by taking the larger one.
@@ -25,7 +24,8 @@ export function streak(log: ReviewLog, now: number): number {
   let n = 0
   for (let t = now; ; t -= DAY_MS) {
     if (countOn(log, dayKey(t)) > 0) n++
-    else if (t === now) continue // nothing yet today
+    else if (t === now)
+      continue // nothing yet today
     else break
     if (n > 3660) break
   }

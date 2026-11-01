@@ -23,29 +23,69 @@ function start() {
   // the workspace is loaded before the first render
   const bench = import.meta.env.DEV && !isTauri ? Number(new URLSearchParams(location.search).get('bench')) : 0
   const seeded = bench > 0 ? import('./devBench').then((m) => m.seedBench(bench)) : Promise.resolve()
-  seeded.then(initPreferences).then(initStore).then(() => {
-    void initBackup()
-    void repo.watch()
-    initSearchIndex()
-    if (isTauri) void startMcpBridge().catch(() => {})
-    root.render(
-      <StrictMode>
-        {Gallery && showGallery() ? <Suspense fallback={null}><Gallery /></Suspense> : <App />}
-      </StrictMode>,
-    )
-  }).catch((e) => {
-    root.render(<div className="overlay"><div className="modal acct"><h2>Unable to open workspace / باز کردن فضای کاری ممکن نشد</h2><p role="alert">{String(e)}</p><p>The original files were kept. / فایل‌های اصلی حفظ شده‌اند.</p><button onClick={() => location.reload()}>Retry / تلاش دوباره</button>{isTauri && <button onClick={() => void vaultClose().then(() => location.reload()).catch(console.error)}>Choose workspace / انتخاب فضای کاری</button>}</div></div>)
-  })
+  seeded
+    .then(initPreferences)
+    .then(initStore)
+    .then(() => {
+      void initBackup()
+      void repo.watch()
+      initSearchIndex()
+      if (isTauri) void startMcpBridge().catch(() => {})
+      root.render(
+        <StrictMode>
+          {Gallery && showGallery() ? (
+            <Suspense fallback={null}>
+              <Gallery />
+            </Suspense>
+          ) : (
+            <App />
+          )}
+        </StrictMode>,
+      )
+    })
+    .catch((e) => {
+      root.render(
+        <div className="overlay">
+          <div className="modal acct">
+            <h2>Unable to open workspace / باز کردن فضای کاری ممکن نشد</h2>
+            <p role="alert">{String(e)}</p>
+            <p>The original files were kept. / فایل‌های اصلی حفظ شده‌اند.</p>
+            <button onClick={() => location.reload()}>Retry / تلاش دوباره</button>
+            {isTauri && (
+              <button
+                onClick={() =>
+                  void vaultClose()
+                    .then(() => location.reload())
+                    .catch(console.error)
+                }
+              >
+                Choose workspace / انتخاب فضای کاری
+              </button>
+            )}
+          </div>
+        </div>,
+      )
+    })
 }
 
 // Desktop app: a vault must be open first; otherwise the user picks or creates one (there is no default location).
 if (isTauri) {
-  vaultList().then(({ current }) => {
-    if (current) return start()
-    root.render(<VaultPicker onOpened={() => window.location.reload()} />)
-  }).catch((e) => {
-    root.render(<div className="overlay"><div className="modal acct"><h2>Unable to open workspace / باز کردن فضای کاری ممکن نشد</h2><p role="alert">{String(e)}</p><button onClick={() => location.reload()}>Retry / تلاش دوباره</button></div></div>)
-  })
+  vaultList()
+    .then(({ current }) => {
+      if (current) return start()
+      root.render(<VaultPicker onOpened={() => window.location.reload()} />)
+    })
+    .catch((e) => {
+      root.render(
+        <div className="overlay">
+          <div className="modal acct">
+            <h2>Unable to open workspace / باز کردن فضای کاری ممکن نشد</h2>
+            <p role="alert">{String(e)}</p>
+            <button onClick={() => location.reload()}>Retry / تلاش دوباره</button>
+          </div>
+        </div>,
+      )
+    })
 } else {
   start()
 }

@@ -36,7 +36,8 @@ export function planBoardDrop(state: DbState, d: BoardDrop): Plan {
   const none = d.toKey === NONE_GROUP
   const cell = row.ext.cells[def.id]?.value
   switch (def.kind) {
-    case 'select': return none ? patch(null) : patch({ kind: 'select', optionId: d.toKey })
+    case 'select':
+      return none ? patch(null) : patch({ kind: 'select', optionId: d.toKey })
     case 'status': {
       if (none) return { ok: false, reason: 'a status cannot be empty' }
       if (d.mode === 'status_group') {
@@ -47,13 +48,21 @@ export function planBoardDrop(state: DbState, d: BoardDrop): Plan {
       }
       return patch({ kind: 'status', optionId: d.toKey })
     }
-    case 'checkbox': return patch({ kind: 'checkbox', value: d.toKey === 'true' })
+    case 'checkbox':
+      return patch({ kind: 'checkbox', value: d.toKey === 'true' })
     case 'multi_select':
     case 'people': {
-      const cur = cell && (cell.kind === 'multi_select' ? cell.optionIds : cell.kind === 'people' ? cell.principalIds : []) || []
+      const cur = (cell && (cell.kind === 'multi_select' ? cell.optionIds : cell.kind === 'people' ? cell.principalIds : [])) || []
       let next = cur.filter((x) => x !== d.fromKey) // leaves the origin, keeps every other membership
       if (none) {
-        if (cur.length > 1) return { ok: true, confirm: 'clear_multiple', commands: [{ type: 'row.patch', payload: { pageId: d.pageId, cellChanges: { [def.id]: def.kind === 'people' ? { kind: 'people', principalIds: [] } : { kind: 'multi_select', optionIds: [] } } } }] }
+        if (cur.length > 1)
+          return {
+            ok: true,
+            confirm: 'clear_multiple',
+            commands: [
+              { type: 'row.patch', payload: { pageId: d.pageId, cellChanges: { [def.id]: def.kind === 'people' ? { kind: 'people', principalIds: [] } : { kind: 'multi_select', optionIds: [] } } } },
+            ],
+          }
         next = []
       } else if (!next.includes(d.toKey)) next = [...next, d.toKey]
       return patch(def.kind === 'people' ? { kind: 'people', principalIds: next } : { kind: 'multi_select', optionIds: next })
@@ -67,12 +76,19 @@ export function planBoardDrop(state: DbState, d: BoardDrop): Plan {
       const single = forward ? rel.cardinality === 'one' : rel.inverseCardinality === 'one'
       if (d.fromKey !== NONE_GROUP) cmds.push({ type: 'relation.remove', payload: { propertyId: def.id, fromPageId: d.pageId, toPageId: d.fromKey } })
       if (!none) cmds.push({ type: 'relation.add', payload: { propertyId: def.id, fromPageId: d.pageId, toPageId: d.toKey, replace: single } })
-      if (none && out.length > 1) return { ok: true, confirm: 'clear_multiple', commands: [{ type: 'relation.replace', payload: { propertyId: def.id, fromPageId: d.pageId, orderedTargetPageIds: [] } }] }
+      if (none && out.length > 1)
+        return { ok: true, confirm: 'clear_multiple', commands: [{ type: 'relation.replace', payload: { propertyId: def.id, fromPageId: d.pageId, orderedTargetPageIds: [] } }] }
       return { ok: true, commands: cmds }
     }
-    case 'text': case 'number': case 'url': case 'email': case 'phone': case 'date':
+    case 'text':
+    case 'number':
+    case 'url':
+    case 'email':
+    case 'phone':
+    case 'date':
       return { ok: false, reason: `dropping onto a ${def.kind} group is not supported; edit the value instead` }
-    default: return { ok: false, reason: `cannot group by ${def.kind}` }
+    default:
+      return { ok: false, reason: `cannot group by ${def.kind}` }
   }
 }
 
@@ -112,7 +128,10 @@ export function scheduleModel(state: DbState, rs: Resolver, pageIds: Id[], dateP
     const row = state.row(id)
     if (!row || !def) continue
     const q = rs.value(row, def)
-    if (q.c !== 'date') { unscheduled.push(id); continue }
+    if (q.c !== 'date') {
+      unscheduled.push(id)
+      continue
+    }
     const iv = dateInterval(q.v, zone)
     if (iv.e <= lo || iv.s >= hi) continue
     items.push({ pageId: id, title: row.page.title, startMs: iv.s, endMs: iv.e, startCivil: civilOf(iv.s, zone), endCivil: civilOf(Math.max(iv.s, iv.e - 1), zone), allDay: q.v.kind === 'date' })
@@ -123,7 +142,10 @@ export function scheduleModel(state: DbState, rs: Resolver, pageIds: Id[], dateP
 export function dependencyArrows(state: DbState, sourceId: Id, visible: Set<Id>): { from: Id; to: Id }[] {
   const id = (state.get('source', sourceId)?.settings as { dependencyRelationId?: Id } | undefined)?.dependencyRelationId
   if (!id) return []
-  return state.live('edge').filter((e) => e.definitionId === id && visible.has(e.fromPageId) && visible.has(e.toPageId)).map((e) => ({ from: e.fromPageId, to: e.toPageId }))
+  return state
+    .live('edge')
+    .filter((e) => e.definitionId === id && visible.has(e.fromPageId) && visible.has(e.toPageId))
+    .map((e) => ({ from: e.fromPageId, to: e.toPageId }))
 }
 
 // ───── map ─────
@@ -147,10 +169,15 @@ export function mapModel(state: DbState, rs: Resolver, pageIds: Id[], placePrope
 
 // ───── dashboard ─────
 
-export type GlobalFilter = { filter: Filter | null; mappings: Record<Id, Id> } // sourceId -> propertyId the filter's property maps to
+// sourceId -> propertyId the filter's property maps to
 
 /** Effective filter = view filter AND widget-local filter AND the mapped global filter. Unmapped widgets are "not affected". */
-export function effectiveFilter(base: Filter | null, local: Filter | null, global: { predicate: { op: string; operand?: Json } | null; mappings: Record<Id, Id> } | null, sourceId: Id): { filter: Filter | null; affected: boolean } {
+export function effectiveFilter(
+  base: Filter | null,
+  local: Filter | null,
+  global: { predicate: { op: string; operand?: Json } | null; mappings: Record<Id, Id> } | null,
+  sourceId: Id,
+): { filter: Filter | null; affected: boolean } {
   const parts: Filter[] = []
   if (base) parts.push(base)
   if (local) parts.push(local)
@@ -163,7 +190,10 @@ export function effectiveFilter(base: Filter | null, local: Filter | null, globa
 export function suggestMappings(state: DbState, fromPropertyId: Id): { sourceId: Id; propertyId: Id }[] {
   const from = state.prop(fromPropertyId)
   if (!from) return []
-  return state.live('property').filter((p) => p.sourceId !== from.sourceId && p.kind === from.kind && p.name.toLowerCase() === from.name.toLowerCase()).map((p) => ({ sourceId: p.sourceId, propertyId: p.id }))
+  return state
+    .live('property')
+    .filter((p) => p.sourceId !== from.sourceId && p.kind === from.kind && p.name.toLowerCase() === from.name.toLowerCase())
+    .map((p) => ({ sourceId: p.sourceId, propertyId: p.id }))
 }
 
 // ───── feed ─────
@@ -177,4 +207,3 @@ export function feedCounts(state: DbState, pageId: Id): { views: number; comment
   const comments = state.live('comment').filter((c) => c.pageId === pageId && c.propertyId === null).length
   return { views, comments }
 }
-

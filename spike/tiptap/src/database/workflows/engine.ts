@@ -34,10 +34,18 @@ export interface RuntimeStore {
 
 export class MemoryRuntime implements RuntimeStore {
   m = new Map<string, Json>()
-  async get(k: string) { return this.m.get(k) }
-  async set(k: string, v: Json) { this.m.set(k, structuredClone(v)) }
-  async delete(k: string) { this.m.delete(k) }
-  async keys(prefix: string) { return [...this.m.keys()].filter((k) => k.startsWith(prefix)) }
+  async get(k: string) {
+    return this.m.get(k)
+  }
+  async set(k: string, v: Json) {
+    this.m.set(k, structuredClone(v))
+  }
+  async delete(k: string) {
+    this.m.delete(k)
+  }
+  async keys(prefix: string) {
+    return [...this.m.keys()].filter((k) => k.startsWith(prefix))
+  }
 }
 
 export type RunState = 'queued' | 'running' | 'succeeded' | 'failed' | 'paused' | 'cancelled'
@@ -119,7 +127,11 @@ export class WorkflowEngine {
       } else if (t.type === 'property_changed') {
         if (!ch.cells[t.propertyId]) return
         if (t.predicate) {
-          try { if (!matchesFilter(this.state, rs, t.predicate, row, this.now(), this.zone)) return } catch { return }
+          try {
+            if (!matchesFilter(this.state, rs, t.predicate, row, this.now(), this.zone)) return
+          } catch {
+            return
+          }
         }
         hits.add(i)
       }
@@ -149,8 +161,10 @@ export class WorkflowEngine {
           const t = this.now()
           for (const i of hits) cur.hits[i] = t
           for (const [i, at] of Object.entries(cur.hits)) if (t - at > ALL_WINDOW_MS) delete cur.hits[i]
-          if (wf.triggers.every((_, i) => cur.hits[i] !== undefined)) { fire = true; await this.runtime.delete(key) }
-          else await this.runtime.set(key, cur as unknown as Json)
+          if (wf.triggers.every((_, i) => cur.hits[i] !== undefined)) {
+            fire = true
+            await this.runtime.delete(key)
+          } else await this.runtime.set(key, cur as unknown as Json)
         }
         if (!fire) continue
         // the page must be inside the trigger view *after* the mutation; pages that left the scope do not trigger
@@ -189,13 +203,19 @@ export class WorkflowEngine {
   private matching(a: Extract<Action, { type: 'edit_matching' }>, wf: WorkflowRecord, pageId: Id | null): Id[] {
     const q = a.query as { sourceId?: Id; filter?: never }
     const sid = q.sourceId ?? wf.sourceId
-    const res = runQuery(this.state, makeQuery(this.state, sid, this.coord.state.live('principal').find((p) => p.isLocalOwner)?.id ?? '', new Date(this.now()).toISOString(), this.zone, { filter: q.filter ?? null, limit: 500 }))
+    const res = runQuery(
+      this.state,
+      makeQuery(this.state, sid, this.coord.state.live('principal').find((p) => p.isLocalOwner)?.id ?? '', new Date(this.now()).toISOString(), this.zone, { filter: q.filter ?? null, limit: 500 }),
+    )
     void pageId
     return res.matchIds
   }
 
   /** Run a button or automation. Idempotent per run key (workflow + definition revision + event / click). */
-  async run(workflowId: Id, o: { kind: 'button' | 'automation' | 'schedule'; pageId?: Id | null; eventId: string; actorId: Id; confirmed?: boolean; approve?: boolean; dryRun?: boolean; scheduledAt?: number }): Promise<RunData> {
+  async run(
+    workflowId: Id,
+    o: { kind: 'button' | 'automation' | 'schedule'; pageId?: Id | null; eventId: string; actorId: Id; confirmed?: boolean; approve?: boolean; dryRun?: boolean; scheduledAt?: number },
+  ): Promise<RunData> {
     const wf = this.workflow(workflowId)
     if (!wf.enabled || wf.paused) fail('INVALID_VALUE', 'this workflow is off or paused')
     const runKey = `${wf.id}|${wf.definitionRevision}|${o.eventId}`
@@ -204,19 +224,31 @@ export class WorkflowEngine {
     if (prior && !o.dryRun) return prior.data as unknown as RunData // double click / duplicate event / restart: the same run
     if (wf.actions.length > MAX_ACTIONS) fail('INVALID_VALUE', `a workflow has at most ${MAX_ACTIONS} actions`)
     const pre = this.preview(wf.id, o.pageId ?? null)
-    if (pre.confirmations.length && o.kind === 'button' && !o.confirmed && !o.dryRun) fail('INVALID_VALUE', 'this button needs confirmation first', { confirmations: pre.confirmations as unknown as Json })
+    if (pre.confirmations.length && o.kind === 'button' && !o.confirmed && !o.dryRun)
+      fail('INVALID_VALUE', 'this button needs confirmation first', { confirmations: pre.confirmations as unknown as Json })
     if (pre.needsApproval && !o.approve) fail('INVALID_VALUE', `this run would change ${pre.rowMutations} rows; approve the bounded bulk scope first`)
 
     const data: RunData = {
-      runKey, workflowId: wf.id, definitionRevision: wf.definitionRevision, state: 'running', attempt: 1, retryAt: null, triggerPageId: o.pageId ?? null,
-      origin: o.kind, actions: wf.actions.map((a, index) => ({ index, type: a.type, state: 'pending' })), ui: [],
+      runKey,
+      workflowId: wf.id,
+      definitionRevision: wf.definitionRevision,
+      state: 'running',
+      attempt: 1,
+      retryAt: null,
+      triggerPageId: o.pageId ?? null,
+      origin: o.kind,
+      actions: wf.actions.map((a, index) => ({ index, type: a.type, state: 'pending' })),
+      ui: [],
     }
     const trigRow = o.pageId ? this.state.row(o.pageId) : undefined
     if (o.kind === 'button') {
       if (!trigRow) fail('NOT_FOUND', 'the button row was not found')
       new Access(this.state).assertRow(o.actorId, trigRow!, 'edit_rows')
     }
-    const vars: Record<string, Value> = { actor: personV(o.actorId), scheduledAt: dateV({ kind: 'datetime', start: new Date(o.scheduledAt ?? this.now()).toISOString(), end: null, timeZone: this.zone }) }
+    const vars: Record<string, Value> = {
+      actor: personV(o.actorId),
+      scheduledAt: dateV({ kind: 'datetime', start: new Date(o.scheduledAt ?? this.now()).toISOString(), end: null, timeZone: this.zone }),
+    }
     if (o.pageId) vars.triggerPage = pageV(o.pageId, this.state.vaultId)
     const created = new Map<string, Id>()
     const segments: { commands: { type: string; payload: Json }[]; external?: { index: number; action: Action } }[] = [{ commands: [] }]
@@ -227,8 +259,13 @@ export class WorkflowEngine {
       wf.actions.forEach((a, index) => {
         const st = data.actions[index]
         switch (a.type) {
-          case 'confirm': st.state = 'skipped'; break
-          case 'open': data.ui!.push({ type: 'open', pageId: a.pageId ?? (a.url ? undefined : o.pageId ?? undefined), url: a.url }); st.state = 'done'; break
+          case 'confirm':
+            st.state = 'skipped'
+            break
+          case 'open':
+            data.ui!.push({ type: 'open', pageId: a.pageId ?? (a.url ? undefined : (o.pageId ?? undefined)), url: a.url })
+            st.state = 'done'
+            break
           case 'define_variable': {
             vars[a.name] = this.evalExpr(a.expression, wf.sourceId, o.pageId ?? null, vars, o.actorId)
             st.state = 'done'
@@ -237,7 +274,10 @@ export class WorkflowEngine {
           case 'set_values': {
             const target = this.targetIds(a.target, o.pageId ?? null, created)
             for (const pid of target) {
-              seg().commands.push({ type: 'row.patch', payload: { pageId: pid, cellChanges: this.cells(a.changes as Record<string, Json>, wf.sourceId, o.pageId ?? null, vars, o.actorId) as unknown as Json } })
+              seg().commands.push({
+                type: 'row.patch',
+                payload: { pageId: pid, cellChanges: this.cells(a.changes as Record<string, Json>, wf.sourceId, o.pageId ?? null, vars, o.actorId) as unknown as Json },
+              })
               mutations++
             }
             st.state = 'done'
@@ -248,7 +288,10 @@ export class WorkflowEngine {
             const values = this.cells(a.values as Record<string, Json>, a.sourceId, o.pageId ?? null, vars, o.actorId)
             const title = (a.values as { __title?: { expr?: string; text?: string } }).__title
             const t = title?.expr ? formatValue(this.evalExpr(title.expr, wf.sourceId, o.pageId ?? null, vars, o.actorId)) : (title?.text ?? '')
-            seg().commands.push({ type: 'row.create', payload: { id, sourceId: a.sourceId, ...(a.templateId ? { templateId: a.templateId } : {}), explicitValues: values as unknown as Json, title: t } })
+            seg().commands.push({
+              type: 'row.create',
+              payload: { id, sourceId: a.sourceId, ...(a.templateId ? { templateId: a.templateId } : {}), explicitValues: values as unknown as Json, title: t },
+            })
             const as = (a as { as?: string }).as
             if (as) created.set(as, id)
             mutations++
@@ -258,7 +301,10 @@ export class WorkflowEngine {
           case 'edit_matching': {
             const ids = this.matching(a, wf, o.pageId ?? null)
             for (const pid of ids) {
-              seg().commands.push({ type: 'row.patch', payload: { pageId: pid, cellChanges: this.cells(a.changes as Record<string, Json>, (a.query as { sourceId?: Id }).sourceId ?? wf.sourceId, pid, vars, o.actorId) as unknown as Json } })
+              seg().commands.push({
+                type: 'row.patch',
+                payload: { pageId: pid, cellChanges: this.cells(a.changes as Record<string, Json>, (a.query as { sourceId?: Id }).sourceId ?? wf.sourceId, pid, vars, o.actorId) as unknown as Json },
+              })
               mutations++
             }
             st.state = 'done'
@@ -289,7 +335,15 @@ export class WorkflowEngine {
     try {
       for (const s of segments) {
         if (s.commands.length) {
-          await this.coord.execute({ operationId: `wf:${hash(runKey)}:${segIndex}`, vaultId: this.state.vaultId, actorId: o.actorId, deviceId: this.deviceId, expected: [], origin, commands: s.commands })
+          await this.coord.execute({
+            operationId: `wf:${hash(runKey)}:${segIndex}`,
+            vaultId: this.state.vaultId,
+            actorId: o.actorId,
+            deviceId: this.deviceId,
+            expected: [],
+            origin,
+            commands: s.commands,
+          })
           for (const [i, a] of wf.actions.entries()) if (data.actions[i].state === 'pending' && a.type !== 'confirm') data.actions[i].state = 'done'
         }
         if (s.external) {
@@ -311,7 +365,12 @@ export class WorkflowEngine {
 
   private async saveRun(id: Id, data: RunData, actorId: Id, exists: boolean) {
     await this.coord.execute({
-      operationId: `wfrun:${id}:${data.state}:${data.attempt}`, vaultId: this.state.vaultId, actorId, deviceId: this.deviceId, expected: [], origin: 'automation',
+      operationId: `wfrun:${id}:${data.state}:${data.attempt}`,
+      vaultId: this.state.vaultId,
+      actorId,
+      deviceId: this.deviceId,
+      expected: [],
+      origin: 'automation',
       commands: [{ type: 'workflow.record_run', payload: { id, data: data as unknown as Json, create: !exists } }],
     })
   }
@@ -335,7 +394,11 @@ export class WorkflowEngine {
     if (target === 'trigger' || target === null) return triggerPageId ? [triggerPageId] : fail('INVALID_VALUE', 'this action needs a trigger page')
     if (typeof target === 'object' && !Array.isArray(target)) {
       const t = target as { created?: string; pageIds?: Id[] }
-      if (t.created) { const id = created.get(t.created); if (!id) fail('INVALID_VALUE', `unknown created page "${t.created}" (handles are usable only after they are created)`); return [id!] }
+      if (t.created) {
+        const id = created.get(t.created)
+        if (!id) fail('INVALID_VALUE', `unknown created page "${t.created}" (handles are usable only after they are created)`)
+        return [id!]
+      }
       if (t.pageIds) return t.pageIds
     }
     return fail('INVALID_VALUE', 'unknown action target')
@@ -348,7 +411,10 @@ export class WorkflowEngine {
       const def = this.state.prop(pid)
       if (!def) fail('NOT_FOUND', 'property not found', { propertyId: pid })
       const s = spec as { cell?: Cell | null; expr?: string }
-      if (s.cell !== undefined) { out[pid] = s.cell; continue }
+      if (s.cell !== undefined) {
+        out[pid] = s.cell
+        continue
+      }
       if (s.expr) out[pid] = this.valueToCell(def!, this.evalExpr(s.expr, sourceId, pageId, vars, actorId))
     }
     return out
@@ -359,17 +425,31 @@ export class WorkflowEngine {
     const kind = DESCRIPTORS[def.kind as keyof typeof DESCRIPTORS].cellKind
     if (v.kind === 'empty') return null
     switch (kind) {
-      case 'number': return v.kind === 'number' ? validateCell(d, { kind: 'number', value: v.value }) : fail('INVALID_VALUE', `${def.name} needs a number`)
-      case 'text': return validateCell(d, { kind: 'text', runs: textToRuns(formatValue(v)) })
-      case 'checkbox': return v.kind === 'boolean' ? { kind: 'checkbox', value: v.value } : fail('INVALID_VALUE', `${def.name} needs true or false`)
-      case 'date': return v.kind === 'date' ? validateCell(d, { kind: 'date', value: v.value }) : fail('INVALID_VALUE', `${def.name} needs a date`)
-      case 'select': case 'status': {
+      case 'number':
+        return v.kind === 'number' ? validateCell(d, { kind: 'number', value: v.value }) : fail('INVALID_VALUE', `${def.name} needs a number`)
+      case 'text':
+        return validateCell(d, { kind: 'text', runs: textToRuns(formatValue(v)) })
+      case 'checkbox':
+        return v.kind === 'boolean' ? { kind: 'checkbox', value: v.value } : fail('INVALID_VALUE', `${def.name} needs true or false`)
+      case 'date':
+        return v.kind === 'date' ? validateCell(d, { kind: 'date', value: v.value }) : fail('INVALID_VALUE', `${def.name} needs a date`)
+      case 'select':
+      case 'status': {
         const o = findOptionByLabel(optionsOf(d), formatValue(v))
-        return o ? { kind: kind as 'select' | 'status', optionId: o.id } as Cell : fail('INVALID_VALUE', `no option "${formatValue(v)}" in ${def.name}`)
+        return o ? ({ kind: kind as 'select' | 'status', optionId: o.id } as Cell) : fail('INVALID_VALUE', `no option "${formatValue(v)}" in ${def.name}`)
       }
-      case 'url': case 'email': case 'phone': return validateCell(d, { kind, value: formatValue(v) } as Cell)
-      case 'people': return v.kind === 'person' ? { kind: 'people', principalIds: [v.id] } : v.kind === 'list' ? { kind: 'people', principalIds: v.items.flatMap((i) => (i.kind === 'person' ? [i.id] : [])) } : fail('INVALID_VALUE', `${def.name} needs a person`)
-      default: return fail('INVALID_VALUE', `${def.name} cannot be set from an expression`)
+      case 'url':
+      case 'email':
+      case 'phone':
+        return validateCell(d, { kind, value: formatValue(v) } as Cell)
+      case 'people':
+        return v.kind === 'person'
+          ? { kind: 'people', principalIds: [v.id] }
+          : v.kind === 'list'
+            ? { kind: 'people', principalIds: v.items.flatMap((i) => (i.kind === 'person' ? [i.id] : [])) }
+            : fail('INVALID_VALUE', `${def.name} needs a person`)
+      default:
+        return fail('INVALID_VALUE', `${def.name} cannot be set from an expression`)
     }
   }
 
@@ -380,42 +460,94 @@ export class WorkflowEngine {
     if (this.state.get('event', id)) return
     const fmt = (s: string) => s.replace(/\{(\w+)\}/g, (_m, n) => (vars[n] ? formatValue(vars[n], (pid) => this.state.pages.get(pid)?.title) : `{${n}}`))
     const payload: Json =
-      a.type === 'notify' ? { recipients: a.recipients, message: fmt(a.message) }
-      : a.type === 'webhook' ? { request: a.request }
-      : a.type === 'email' || a.type === 'slack' ? { message: JSON.parse(fmt(JSON.stringify(a.message))) }
-      : null
-    const entry: OutboxEntry = { id, runKey, actionIndex: index, type: a.type, connectionId: 'connectionId' in a ? a.connectionId : null, payload, state: 'queued', attempt: 0, retryAt: null, idempotencyKey: hash(runKey + ':' + index) }
+      a.type === 'notify'
+        ? { recipients: a.recipients, message: fmt(a.message) }
+        : a.type === 'webhook'
+          ? { request: a.request }
+          : a.type === 'email' || a.type === 'slack'
+            ? { message: JSON.parse(fmt(JSON.stringify(a.message))) }
+            : null
+    const entry: OutboxEntry = {
+      id,
+      runKey,
+      actionIndex: index,
+      type: a.type,
+      connectionId: 'connectionId' in a ? a.connectionId : null,
+      payload,
+      state: 'queued',
+      attempt: 0,
+      retryAt: null,
+      idempotencyKey: hash(runKey + ':' + index),
+    }
     await this.coord.execute({
-      operationId: `wfout:${id}`, vaultId: this.state.vaultId, actorId, deviceId: this.deviceId, expected: [], origin: 'automation',
+      operationId: `wfout:${id}`,
+      vaultId: this.state.vaultId,
+      actorId,
+      deviceId: this.deviceId,
+      expected: [],
+      origin: 'automation',
       commands: [{ type: 'workflow.record_run', payload: { id, data: entry as unknown as Json, create: true } }],
     })
   }
 
   outbox(): OutboxEntry[] {
-    return this.state.live('event').filter((e) => e.type === 'workflow_run' && e.id.startsWith('out:')).map((e) => e.data as unknown as OutboxEntry)
+    return this.state
+      .live('event')
+      .filter((e) => e.type === 'workflow_run' && e.id.startsWith('out:'))
+      .map((e) => e.data as unknown as OutboxEntry)
   }
 
   /** Deliver due outbox entries. Needs the execution lease; a second device does nothing. */
   async dispatchOutbox(limit = 50): Promise<{ sent: number; failed: number; paused: number; skipped: boolean }> {
     const token = await this.lease.acquire('outbox', this.deviceId, 30_000, this.now())
     if (!token) return { sent: 0, failed: 0, paused: 0, skipped: true }
-    let sent = 0, failed = 0, paused = 0
+    let sent = 0,
+      failed = 0,
+      paused = 0
     const actor = this.state.live('principal').find((p) => p.isLocalOwner)?.id ?? ''
-    const due = this.outbox().filter((e) => (e.state === 'queued' || e.state === 'retry') && (e.retryAt ?? 0) <= this.now()).slice(0, limit)
+    const due = this.outbox()
+      .filter((e) => (e.state === 'queued' || e.state === 'retry') && (e.retryAt ?? 0) <= this.now())
+      .slice(0, limit)
     for (const e of due) {
       await this.lease.renew('outbox', this.deviceId, 30_000, this.now())
       const adapter = this.adapters.get(e.type)
-      const upd = (patch: Partial<OutboxEntry>) => this.coord.execute({
-        operationId: `wfout:${e.id}:${e.attempt}:${patch.state}`, vaultId: this.state.vaultId, actorId: actor, deviceId: this.deviceId, expected: [], origin: 'automation',
-        commands: [{ type: 'workflow.record_run', payload: { id: e.id, data: { ...e, ...patch } as unknown as Json, create: false } }],
-      })
-      if (!adapter) { await upd({ state: 'paused', error: `no adapter for ${e.type}` }); paused++; continue }
+      const upd = (patch: Partial<OutboxEntry>) =>
+        this.coord.execute({
+          operationId: `wfout:${e.id}:${e.attempt}:${patch.state}`,
+          vaultId: this.state.vaultId,
+          actorId: actor,
+          deviceId: this.deviceId,
+          expected: [],
+          origin: 'automation',
+          commands: [{ type: 'workflow.record_run', payload: { id: e.id, data: { ...e, ...patch } as unknown as Json, create: false } }],
+        })
+      if (!adapter) {
+        await upd({ state: 'paused', error: `no adapter for ${e.type}` })
+        paused++
+        continue
+      }
       const attempt = e.attempt + 1
       const res: SendResult = await adapter.send({ entry: e, idempotencyKey: e.idempotencyKey }).catch((err): SendResult => ({ ok: false, retryable: true, code: 'UNCERTAIN', message: String(err) }))
-      if (res.ok) { await upd({ state: 'succeeded', attempt, retryAt: null, error: undefined }); sent++; continue }
-      if (res.code === 'MISSING_CREDENTIALS') { await upd({ state: 'paused', attempt, error: redact(res.message) }); paused++; continue }
-      if (res.code === 'UNCERTAIN' && !adapter.supportsIdempotency) { await upd({ state: 'uncertain', attempt, error: redact(res.message) }); failed++; continue } // never blindly resend
-      if (!res.retryable || attempt >= MAX_ATTEMPTS) { await upd({ state: 'failed', attempt, error: redact(res.message) }); failed++; continue }
+      if (res.ok) {
+        await upd({ state: 'succeeded', attempt, retryAt: null, error: undefined })
+        sent++
+        continue
+      }
+      if (res.code === 'MISSING_CREDENTIALS') {
+        await upd({ state: 'paused', attempt, error: redact(res.message) })
+        paused++
+        continue
+      }
+      if (res.code === 'UNCERTAIN' && !adapter.supportsIdempotency) {
+        await upd({ state: 'uncertain', attempt, error: redact(res.message) })
+        failed++
+        continue
+      } // never blindly resend
+      if (!res.retryable || attempt >= MAX_ATTEMPTS) {
+        await upd({ state: 'failed', attempt, error: redact(res.message) })
+        failed++
+        continue
+      }
       const wait = Math.max(res.retryAfterMs ?? 0, BACKOFF_MS[Math.min(attempt - 1, BACKOFF_MS.length - 1)])
       await upd({ state: 'retry', attempt, retryAt: this.now() + wait, error: redact(res.message) })
       failed++
@@ -430,7 +562,8 @@ export class WorkflowEngine {
   async runSchedules(nowMs = this.now(), approveMany = false): Promise<{ ran: number; pending: number; skipped: boolean }> {
     const token = await this.lease.acquire('schedules', this.deviceId, 60_000, nowMs)
     if (!token) return { ran: 0, pending: 0, skipped: true }
-    let ran = 0, pending = 0
+    let ran = 0,
+      pending = 0
     const actor = this.state.live('principal').find((p) => p.isLocalOwner)?.id ?? ''
     for (const wf of this.state.live('workflow')) {
       if (wf.kind !== 'automation' || !wf.enabled || wf.paused) continue
@@ -440,7 +573,10 @@ export class WorkflowEngine {
       const cursorKey = `cursor:${wf.id}:${wf.definitionRevision}`
       const after = ((await this.runtime.get(cursorKey)) as number | undefined) ?? Date.parse(`${r.startDate}T00:00:00Z`) - 86400000
       const occ = repeatOccurrences(r, wf.id, wf.definitionRevision, after, nowMs)
-      if (occ.length > 30 && !approveMany) { pending += occ.length; continue }
+      if (occ.length > 30 && !approveMany) {
+        pending += occ.length
+        continue
+      }
       for (const o of occ) {
         await this.run(wf.id, { kind: 'schedule', eventId: o.key, actorId: actor, scheduledAt: o.scheduledMs, approve: approveMany }).catch(() => undefined)
         ran++
@@ -452,4 +588,8 @@ export class WorkflowEngine {
   }
 }
 
-const redact = (s: string) => s.replace(/(bearer\s+)[\w.\-]+/gi, '$1***').replace(/(token|secret|key|password)=[^\s&]+/gi, '$1=***').slice(0, 300)
+const redact = (s: string) =>
+  s
+    .replace(/(bearer\s+)[\w.\-]+/gi, '$1***')
+    .replace(/(token|secret|key|password)=[^\s&]+/gi, '$1=***')
+    .slice(0, 300)

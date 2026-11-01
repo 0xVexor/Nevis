@@ -1,3 +1,4 @@
+import { cssVars } from './cssVars'
 import { useEffect, useMemo, useState } from 'react'
 import type { Page, PageStatus } from './repo'
 import { normalizeFa } from './normalize'
@@ -42,7 +43,8 @@ export function PagesTable({ pages, onOpen, onStatus, onClose }: { pages: Page[]
     const val = (r: (typeof list)[number]) =>
       sort.key === 'title' ? r.p.title : sort.key === 'path' ? r.path : sort.key === 'status' ? (r.p.status ? ORDER[r.p.status] : 9) : sort.key === 'words' ? r.words : r.p.updatedAt
     return list.sort((a, b) => {
-      const x = val(a), y = val(b)
+      const x = val(a),
+        y = val(b)
       return (typeof x === 'string' ? x.localeCompare(String(y), 'fa') : (x as number) - (y as number)) * sort.dir
     })
   }, [real, q, tags, status, sort])
@@ -50,7 +52,11 @@ export function PagesTable({ pages, onOpen, onStatus, onClose }: { pages: Page[]
   const head = (key: SortKey, label: string) => (
     <th onClick={() => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : 1 }))} className={sort.key === key ? 'sorted' : ''}>
       {label}
-      {sort.key === key && <span className={'sort-arrow ' + (sort.dir === 1 ? 'asc' : 'desc')}><Ic.Chevron size={11} /></span>}
+      {sort.key === key && (
+        <span className={'sort-arrow ' + (sort.dir === 1 ? 'asc' : 'desc')}>
+          <Ic.Chevron size={11} />
+        </span>
+      )}
     </th>
   )
 
@@ -61,10 +67,13 @@ export function PagesTable({ pages, onOpen, onStatus, onClose }: { pages: Page[]
         <p>{t('{n} of {total} pages', { n: rows.length, total: real.length })}</p>
       </header>
       <div className="pt-filters">
-        <div className="pt-search"><Ic.Search size={15} /><input autoFocus dir="auto" placeholder={t('Filter by title, tag or path…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <div className="pt-search">
+          <Ic.Search size={15} />
+          <input autoFocus dir="auto" placeholder={t('Filter by title, tag or path…')} value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
         <Select
           value={status}
-          onChange={(v) => setStatus(v as any)}
+          onChange={(v) => setStatus(v as typeof status)}
           options={[
             { value: '', label: t('All statuses') },
             { value: 'none', label: t('No status') },
@@ -85,33 +94,57 @@ export function PagesTable({ pages, onOpen, onStatus, onClose }: { pages: Page[]
         </div>
       )}
       <div className="ds-table-wrap pt-scroll">
-    <table className="ds-table pt">
-            <thead>
-              <tr>{head('title', t('Page'))}{head('path', t('Path'))}<th>{t('Tags')}</th>{head('status', t('Status'))}{head('words', t('Words'))}{head('updatedAt', t('Updated'))}</tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && <tr><td colSpan={6} className="modal-empty">{t('No pages match this filter')}</td></tr>}
-              {rows.map(({ p, path, words }) => (
-                <tr key={p.id} onClick={() => (onOpen(p.id), onClose())}>
-                  <td className="pt-title" dir="auto"><span className="ic">{iconNode(p.icon, 15, <Ic.Page size={15} />)}</span>{p.title || t('Untitled')}</td>
-                  <td className="pt-path" dir="auto">{path || '—'}</td>
-                  <td>{(p.tags ?? []).map((t) => <span key={t} className="tag-chip static">{t}</span>)}</td>
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <Select
-                      className={'status-sel' + (p.status ? ' has' : '')}
-                      style={p.status ? { ['--st' as any]: STATUS[p.status].color } : undefined}
-                      value={p.status ?? ''}
-                      onChange={(v) => onStatus(p.id, (v || undefined) as PageStatus | undefined)}
-                      options={[{ value: '', label: '—' }, ...(Object.keys(STATUS) as PageStatus[]).map((s) => ({ value: s, label: t(STATUS[s].label), color: STATUS[s].color }))]}
-                    />
-                  </td>
-                  <td className="num">{words.toLocaleString(locale())}</td>
-                  <td className="num">{ago(p.updatedAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-  </div>
+        <table className="ds-table pt">
+          <thead>
+            <tr>
+              {head('title', t('Page'))}
+              {head('path', t('Path'))}
+              <th>{t('Tags')}</th>
+              {head('status', t('Status'))}
+              {head('words', t('Words'))}
+              {head('updatedAt', t('Updated'))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={6} className="modal-empty">
+                  {t('No pages match this filter')}
+                </td>
+              </tr>
+            )}
+            {rows.map(({ p, path, words }) => (
+              <tr key={p.id} onClick={() => (onOpen(p.id), onClose())}>
+                <td className="pt-title" dir="auto">
+                  <span className="ic">{iconNode(p.icon, 15, <Ic.Page size={15} />)}</span>
+                  {p.title || t('Untitled')}
+                </td>
+                <td className="pt-path" dir="auto">
+                  {path || '—'}
+                </td>
+                <td>
+                  {(p.tags ?? []).map((t) => (
+                    <span key={t} className="tag-chip static">
+                      {t}
+                    </span>
+                  ))}
+                </td>
+                <td onClick={(e) => e.stopPropagation()}>
+                  <Select
+                    className={'status-sel' + (p.status ? ' has' : '')}
+                    style={p.status ? cssVars({ '--st': STATUS[p.status].color }) : undefined}
+                    value={p.status ?? ''}
+                    onChange={(v) => onStatus(p.id, (v || undefined) as PageStatus | undefined)}
+                    options={[{ value: '', label: '—' }, ...(Object.keys(STATUS) as PageStatus[]).map((s) => ({ value: s, label: t(STATUS[s].label), color: STATUS[s].color }))]}
+                  />
+                </td>
+                <td className="num">{words.toLocaleString(locale())}</td>
+                <td className="num">{ago(p.updatedAt)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   )
 }

@@ -48,12 +48,20 @@ export function parseTsv(text: string): string[][] {
   for (let i = 0; i < text.length; i++) {
     const c = text[i]
     if (q) {
-      if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++ } else q = false } else f += c
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          f += '"'
+          i++
+        } else q = false
+      } else f += c
     } else if (c === '"' && f === '') q = true
     else if (c === '\t') (row.push(f), (f = ''))
     else if (c === '\n' || c === '\r') {
       if (c === '\r' && text[i + 1] === '\n') i++
-      row.push(f); rows.push(row); row = []; f = ''
+      row.push(f)
+      rows.push(row)
+      row = []
+      f = ''
     } else f += c
   }
   if (f !== '' || row.length) (row.push(f), rows.push(row))
@@ -105,7 +113,11 @@ export function TableView({ svc, view, ctl }: ViewProps) {
   const frozenIdx = frozenId ? cols.findIndex((c) => c.id === frozenId) : -1
   const offsets = useMemo(() => {
     let x = HANDLE_W
-    return cols.map((d) => { const o = x; x += wOf(d); return o })
+    return cols.map((d) => {
+      const o = x
+      x += wOf(d)
+      return o
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cols, widths, resizing])
   const gridCols = `${HANDLE_W}px ${cols.map((d) => wOf(d) + 'px').join(' ')} 44px`
@@ -115,9 +127,23 @@ export function TableView({ svc, view, ctl }: ViewProps) {
   const totals = (cfg.totals as Record<Id, RollupAggregation> | undefined) ?? {}
   const subItemsOn = (svc.state.get('source', view.sourceId!)?.settings as { subItems?: boolean } | undefined)?.subItems !== false && svc.state.snapshot().childrenOf.size > 0
   const nested = subItemsOn && cfg.subItems === 'nested'
-  const qopts = useMemo(() => ({
-    search: ctl.search, personal: ctl.personal, want, group: group as never, totals, subItems: nested ? ({ mode: 'nested', include: 'all' } as const) : cfg.subItems === 'parents' ? ({ mode: 'flat', include: 'parents' } as const) : cfg.subItems === 'children' ? ({ mode: 'flat', include: 'children' } as const) : undefined,
-  }), [ctl.search, ctl.personal, want, group?.propertyId, group?.mode, JSON.stringify(totals), nested, cfg.subItems]) // eslint-disable-line react-hooks/exhaustive-deps
+  const qopts = useMemo(
+    () => ({
+      search: ctl.search,
+      personal: ctl.personal,
+      want,
+      group: group as never,
+      totals,
+      subItems: nested
+        ? ({ mode: 'nested', include: 'all' } as const)
+        : cfg.subItems === 'parents'
+          ? ({ mode: 'flat', include: 'parents' } as const)
+          : cfg.subItems === 'children'
+            ? ({ mode: 'flat', include: 'children' } as const)
+            : undefined,
+    }),
+    [ctl.search, ctl.personal, want, group?.propertyId, group?.mode, JSON.stringify(totals), nested, cfg.subItems],
+  ) // eslint-disable-line react-hooks/exhaustive-deps
   const q = useViewQuery(svc, view, qopts)
   const rs = ctl.rs
   const hasSorts = q.sorts.length > 0
@@ -200,7 +226,9 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     } else cellEl(r, c)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
     // Virtual rows may not be mounted yet; reveal the selected column without waiting for their DOM.
     if (c > frozenIdx) {
-      const x = offsets[c], w = wOf(cols[c]), left = Math.abs(el.scrollLeft)
+      const x = offsets[c],
+        w = wOf(cols[c]),
+        left = Math.abs(el.scrollLeft)
       const frozenWidth = frozenIdx >= 0 ? offsets[frozenIdx] + wOf(cols[frozenIdx]) : 0
       const next = x < left + frozenWidth ? x - frozenWidth : x + w > left + el.clientWidth ? x + w - el.clientWidth : left
       el.scrollLeft = (rtl() ? -1 : 1) * Math.max(0, next)
@@ -238,7 +266,9 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     const rect = el?.getBoundingClientRect()
     if (def.kind === 'checkbox') {
       const cur = row.ext.cells[def.id]?.value
-      void svc.tryExec([{ type: 'row.patch', payload: { pageId: row.page.id, cellChanges: { [def.id]: { kind: 'checkbox', value: !(cur?.kind === 'checkbox' && cur.value) } } } }]).then((r2) => !r2.ok && ctl.notice(errorText(r2.code, r2.message)))
+      void svc
+        .tryExec([{ type: 'row.patch', payload: { pageId: row.page.id, cellChanges: { [def.id]: { kind: 'checkbox', value: !(cur?.kind === 'checkbox' && cur.value) } } } }])
+        .then((r2) => !r2.ok && ctl.notice(errorText(r2.code, r2.message)))
       return
     }
     if (def.kind === 'button') return nav.runButton(row, def)
@@ -246,7 +276,14 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     setPinned(row.page.id)
     setEdit({ r, c, rect, initial })
   }
-  const readOnlyWhy = (d: Definition) => d.kind === 'formula' ? t('This is a formula result; change the formula instead.') : d.kind === 'rollup' ? t('This is a rollup; it follows the related items.') : d.kind === 'unique_id' ? t('IDs are assigned automatically and never change.') : t('This value is set by the system.')
+  const readOnlyWhy = (d: Definition) =>
+    d.kind === 'formula'
+      ? t('This is a formula result; change the formula instead.')
+      : d.kind === 'rollup'
+        ? t('This is a rollup; it follows the related items.')
+        : d.kind === 'unique_id'
+          ? t('IDs are assigned automatically and never change.')
+          : t('This value is set by the system.')
 
   const clearSelection = async () => {
     if (!selected) return
@@ -306,9 +343,17 @@ export function TableView({ svc, view, ctl }: ViewProps) {
         let txt = ''
         if (row) {
           if (d.kind === 'title') txt = row.page.title
-          else if (d.kind === 'relation') txt = rs.relationTargets(row, d).filter((x) => x.state === 'live').map((x) => rs.title(x.pageId) ?? '').join(', ')
+          else if (d.kind === 'relation')
+            txt = rs
+              .relationTargets(row, d)
+              .filter((x) => x.state === 'live')
+              .map((x) => rs.title(x.pageId) ?? '')
+              .join(', ')
           else if (DESCRIPTORS[d.kind].cellKind) txt = cellToText(d, row.ext.cells[d.id]?.value ?? defaultCell(d), { personName: (id) => rs.access.principal(id)?.displayName ?? id })
-          else { const v = rs.value(row, d); txt = v.c === 'text' ? v.text : v.c === 'number' ? String(v.n) : v.c === 'bool' ? String(v.b) : v.c === 'date' ? v.v.start : '' }
+          else {
+            const v = rs.value(row, d)
+            txt = v.c === 'text' ? v.text : v.c === 'number' ? String(v.n) : v.c === 'bool' ? String(v.b) : v.c === 'date' ? v.v.start : ''
+          }
         }
         cells.push(tsvEscape(txt))
         tcells.push(row && DESCRIPTORS[d.kind].cellKind ? (row.ext.cells[d.id]?.value ?? defaultCell(d) ?? null) : null)
@@ -331,7 +376,12 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     if (!text && !cd.getData('application/x-noviq-cells')) return
     e.preventDefault()
     let internal: { sourceId: Id; props: Id[]; cells: (Cell | null)[][] } | null = null
-    try { const raw = cd.getData('application/x-noviq-cells'); internal = raw ? JSON.parse(raw) : null } catch { internal = null }
+    try {
+      const raw = cd.getData('application/x-noviq-cells')
+      internal = raw ? JSON.parse(raw) : null
+    } catch {
+      internal = null
+    }
     const grid = text ? parseTsv(text.replace(/\n$/, '')) : internal!.cells.map((r) => r.map(() => ''))
     const rowsNeeded = active.r + grid.length - rowCount
     type Plan = { pageId: Id | null; newIdx: number | null; cell: Id; value: Cell | null; rel?: Id[] }
@@ -345,14 +395,23 @@ export function TableView({ svc, view, ctl }: ViewProps) {
         const cIdx = active.c + j
         const d = cols[cIdx]
         if (!d) return
-        if (d.kind === 'title') { plans.push({ pageId: row?.page.id ?? null, newIdx: row ? null : rowIdx - rowCount, cell: d.id, value: null, rel: undefined, ...{ title: txt } } as Plan); return }
-        if (!DESCRIPTORS[d.kind].writable && d.kind !== 'relation') { if (txt) problems.push(`${plainTitle(row?.page.title)} · ${d.name}: ${readOnlyWhy(d)}`); return }
+        if (d.kind === 'title') {
+          plans.push({ pageId: row?.page.id ?? null, newIdx: row ? null : rowIdx - rowCount, cell: d.id, value: null, rel: undefined, ...{ title: txt } } as Plan)
+          return
+        }
+        if (!DESCRIPTORS[d.kind].writable && d.kind !== 'relation') {
+          if (txt) problems.push(`${plainTitle(row?.page.title)} · ${d.name}: ${readOnlyWhy(d)}`)
+          return
+        }
         try {
           if (d.kind === 'relation') {
             const rel = svc.state.relationOf(d.id)
             const target = rel ? (rel.propertyId === d.id ? rel.targetSourceId : rel.sourceId) : null
             const ids: Id[] = []
-            for (const label of txt.split(',').map((s) => s.trim()).filter(Boolean)) {
+            for (const label of txt
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)) {
               const hits = target ? svc.state.rows(target).filter((r) => matchKey(r.page.title) === matchKey(label)) : []
               if (hits.length !== 1) throw new Error(hits.length ? t('“{n}” matches several items', { n: label }) : t('“{n}” was not found', { n: label }))
               ids.push(hits[0].page.id)
@@ -370,10 +429,22 @@ export function TableView({ svc, view, ctl }: ViewProps) {
       })
     })
     if (problems.length) {
-      const skip = await confirmDialog({ title: t('{n} cell(s) cannot take the pasted value', { n: problems.length }), message: problems.slice(0, 6).join('\n') + (problems.length > 6 ? '\n…' : '') + '\n\n' + t('Paste the rest and skip these?'), confirmLabel: t('Skip them and paste') })
+      const skip = await confirmDialog({
+        title: t('{n} cell(s) cannot take the pasted value', { n: problems.length }),
+        message: problems.slice(0, 6).join('\n') + (problems.length > 6 ? '\n…' : '') + '\n\n' + t('Paste the rest and skip these?'),
+        confirmLabel: t('Skip them and paste'),
+      })
       if (!skip) return // atomic by default: nothing is pasted
     }
-    if (rowsNeeded > 0 && !(await confirmDialog({ title: t('Create {n} new row(s)?', { n: rowsNeeded }), message: t('The pasted data is longer than the table. New rows are added at the end.'), confirmLabel: t('Create rows') }))) return
+    if (
+      rowsNeeded > 0 &&
+      !(await confirmDialog({
+        title: t('Create {n} new row(s)?', { n: rowsNeeded }),
+        message: t('The pasted data is longer than the table. New rows are added at the end.'),
+        confirmLabel: t('Create rows'),
+      }))
+    )
+      return
     const cmds: { type: string; payload: Json }[] = []
     newIds.forEach((id) => cmds.push({ type: 'row.create', payload: { id, sourceId: view.sourceId!, viewId: view.id } }))
     const patches = new Map<Id, { pageId: Id; cellChanges: Record<Id, Json>; title?: string }>()
@@ -397,38 +468,99 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     if (e.target !== e.currentTarget) return // keys typed inside an editor belong to the editor
     if (e.nativeEvent.isComposing) return
     const mod = e.ctrlKey || e.metaKey
-    if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); void svc.undo().then((r) => !r.ok && r.conflicts.length && ctl.notice(t('Some fields changed since; undo was not applied.'))); return }
-    if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); setSel({ r1: 0, c1: 0, r2: rowCount - 1, c2: cols.length - 1 }); return }
-    if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); void fillDown(); return }
+    if (mod && e.key.toLowerCase() === 'z') {
+      e.preventDefault()
+      void svc.undo().then((r) => !r.ok && r.conflicts.length && ctl.notice(t('Some fields changed since; undo was not applied.')))
+      return
+    }
+    if (mod && e.key.toLowerCase() === 'a') {
+      e.preventDefault()
+      setSel({ r1: 0, c1: 0, r2: rowCount - 1, c2: cols.length - 1 })
+      return
+    }
+    if (mod && e.key.toLowerCase() === 'd') {
+      e.preventDefault()
+      void fillDown()
+      return
+    }
     if (mod || e.altKey) return
-    if (!active) { if (['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].includes(e.key) && rowCount) { e.preventDefault(); moveTo(0, 0) } return }
+    if (!active) {
+      if (['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].includes(e.key) && rowCount) {
+        e.preventDefault()
+        moveTo(0, 0)
+      }
+      return
+    }
     const { r, c } = active
     const ext = e.shiftKey
     const dx = rtl() ? -1 : 1
     switch (e.key) {
-      case 'ArrowDown': e.preventDefault(); moveTo(r + 1, c, ext); break
-      case 'ArrowUp': e.preventDefault(); moveTo(r - 1, c, ext); break
-      case 'ArrowRight': e.preventDefault(); moveTo(r, c + dx, ext); break // physical direction: mirrored in RTL
-      case 'ArrowLeft': e.preventDefault(); moveTo(r, c - dx, ext); break
+      case 'ArrowDown':
+        e.preventDefault()
+        moveTo(r + 1, c, ext)
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        moveTo(r - 1, c, ext)
+        break
+      case 'ArrowRight':
+        e.preventDefault()
+        moveTo(r, c + dx, ext)
+        break // physical direction: mirrored in RTL
+      case 'ArrowLeft':
+        e.preventDefault()
+        moveTo(r, c - dx, ext)
+        break
       case 'Tab': {
         e.preventDefault()
         // logical order (not physical), wrapping to the next / previous row
-        let nr = r, nc = c + (e.shiftKey ? -1 : 1)
-        if (nc >= cols.length) (nc = 0, nr++)
-        if (nc < 0) (nc = cols.length - 1, nr--)
+        let nr = r,
+          nc = c + (e.shiftKey ? -1 : 1)
+        if (nc >= cols.length) ((nc = 0), nr++)
+        if (nc < 0) ((nc = cols.length - 1), nr--)
         moveTo(nr, nc)
         break
       }
-      case 'Enter': case 'F2': e.preventDefault(); begin(r, c); break
-      case ' ': if (cols[c]?.kind === 'checkbox') { e.preventDefault(); begin(r, c) } break
-      case 'Delete': case 'Backspace': e.preventDefault(); void clearSelection(); break
-      case 'Escape': setSel(active ? { r1: active.r, c1: active.c, r2: active.r, c2: active.c } : null); break
-      case 'Home': e.preventDefault(); moveTo(r, 0, ext); break
-      case 'End': e.preventDefault(); moveTo(r, cols.length - 1, ext); break
-      case 'PageDown': e.preventDefault(); moveTo(r + 10, c, ext); break
-      case 'PageUp': e.preventDefault(); moveTo(r - 10, c, ext); break
+      case 'Enter':
+      case 'F2':
+        e.preventDefault()
+        begin(r, c)
+        break
+      case ' ':
+        if (cols[c]?.kind === 'checkbox') {
+          e.preventDefault()
+          begin(r, c)
+        }
+        break
+      case 'Delete':
+      case 'Backspace':
+        e.preventDefault()
+        void clearSelection()
+        break
+      case 'Escape':
+        setSel(active ? { r1: active.r, c1: active.c, r2: active.r, c2: active.c } : null)
+        break
+      case 'Home':
+        e.preventDefault()
+        moveTo(r, 0, ext)
+        break
+      case 'End':
+        e.preventDefault()
+        moveTo(r, cols.length - 1, ext)
+        break
+      case 'PageDown':
+        e.preventDefault()
+        moveTo(r + 10, c, ext)
+        break
+      case 'PageUp':
+        e.preventDefault()
+        moveTo(r - 10, c, ext)
+        break
       default:
-        if (e.key.length === 1 && isInlineKind(cols[c]?.kind) && DESCRIPTORS[cols[c].kind].writable) { e.preventDefault(); begin(r, c, e.key) }
+        if (e.key.length === 1 && isInlineKind(cols[c]?.kind) && DESCRIPTORS[cols[c].kind].writable) {
+          e.preventDefault()
+          begin(r, c, e.key)
+        }
     }
   }
 
@@ -451,13 +583,17 @@ export function TableView({ svc, view, ctl }: ViewProps) {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       const w = Math.max(80, Math.min(1200, w0 + (ev.clientX - x0) * sign))
-      setResizing((r) => { const n = { ...r }; delete n[d.id]; return n })
+      setResizing((r) => {
+        const n = { ...r }
+        delete n[d.id]
+        return n
+      })
       if (ctl.canSchema && w !== w0) void ctl.patch({ widths: { ...widths, [d.id]: Math.round(w) } })
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
   }
-  const endColDrag = () => (dragColRef.current = null, setDragCol(null), setDropAt(null))
+  const endColDrag = () => ((dragColRef.current = null), setDragCol(null), setDropAt(null))
   /** Dragging forward drops after the target, backward before it, so a column can move one place in either direction. */
   const dropsAfter = (target: Definition) => {
     const from = cols.findIndex((c) => c.id === dragColRef.current)
@@ -484,7 +620,10 @@ export function TableView({ svc, view, ctl }: ViewProps) {
   const [justCreated, setJustCreated] = useState<Id | null>(null)
   const addRow = async (context?: { propertyId: Id; cell: Cell }[]) => {
     const res = await ctl.createRow({ context, edit: true })
-    if (res) { setPinned(res.pageId); setJustCreated(res.pageId) }
+    if (res) {
+      setPinned(res.pageId)
+      setJustCreated(res.pageId)
+    }
   }
   useEffect(() => {
     if (!justCreated) return
@@ -510,7 +649,16 @@ export function TableView({ svc, view, ctl }: ViewProps) {
   }
 
   // render ----------------------------------------------------------------------------------------------------------------
-  if (q.error) return <div className="db-error-box" role="alert"><b>{t('This view cannot be shown')}</b><p>{errorText(q.error.code, q.error.message)}</p><button type="button" className="primary" onClick={() => ctl.setPersonal({ filter: null, sorts: null })}>{t('Reset filters and sorts')}</button></div>
+  if (q.error)
+    return (
+      <div className="db-error-box" role="alert">
+        <b>{t('This view cannot be shown')}</b>
+        <p>{errorText(q.error.code, q.error.message)}</p>
+        <button type="button" className="primary" onClick={() => ctl.setPersonal({ filter: null, sorts: null })}>
+          {t('Reset filters and sorts')}
+        </button>
+      </div>
+    )
   const version = svc.getVersion()
   const firstVisible = items.slice(start, end)
   const totalW = HANDLE_W + cols.reduce((n, d) => n + wOf(d), 0) + 44
@@ -522,9 +670,15 @@ export function TableView({ svc, view, ctl }: ViewProps) {
       {checked.size > 0 && (
         <div className="db-bulk" role="toolbar" aria-label={t('Selected items')}>
           <b>{t('{n} selected', { n: checked.size })}</b>
-          <button type="button" onClick={() => void bulkDuplicate()}><Ic.Copy size={13} /> {t('Duplicate')}</button>
-          <button type="button" className="danger" onClick={() => void bulkTrash()}><Ic.Trash size={13} /> {t('Delete')}</button>
-          <button type="button" onClick={() => setChecked(new Set())}>{t('Clear selection')}</button>
+          <button type="button" onClick={() => void bulkDuplicate()}>
+            <Ic.Copy size={13} /> {t('Duplicate')}
+          </button>
+          <button type="button" className="danger" onClick={() => void bulkTrash()}>
+            <Ic.Trash size={13} /> {t('Delete')}
+          </button>
+          <button type="button" onClick={() => setChecked(new Set())}>
+            {t('Clear selection')}
+          </button>
         </div>
       )}
       <HorizontalScroll
@@ -572,13 +726,19 @@ export function TableView({ svc, view, ctl }: ViewProps) {
               onClick={(e) => setMenu({ def: d, rect: e.currentTarget.getBoundingClientRect() })}
             >
               <KindIcon kind={d.kind} />
-              <span className="db-th-name" dir="auto">{d.name}</span>
+              <span className="db-th-name" dir="auto">
+                {d.name}
+              </span>
               {q.sorts.some((s) => s.propertyId === d.id) && <span className="db-th-sort">{q.sorts.find((s) => s.propertyId === d.id)!.direction === 'asc' ? '↑' : '↓'}</span>}
               <span className="db-resize" onPointerDown={(e) => startResize(e, d)} onClick={(e) => e.stopPropagation()} />
             </div>
           ))}
           <div className="db-th add">
-            {ctl.canSchema && <button type="button" className="icon-btn" aria-label={t('Add a property')} onClick={(e) => setNewProp(e.currentTarget.getBoundingClientRect())}><Ic.Plus size={14} /></button>}
+            {ctl.canSchema && (
+              <button type="button" className="icon-btn" aria-label={t('Add a property')} onClick={(e) => setNewProp(e.currentTarget.getBoundingClientRect())}>
+                <Ic.Plus size={14} />
+              </button>
+            )}
           </div>
         </div>
         <div className="db-tbody" role="rowgroup" style={{ minWidth: totalW }}>
@@ -587,11 +747,27 @@ export function TableView({ svc, view, ctl }: ViewProps) {
             if (it.t === 'group') {
               return (
                 <div key={'g' + it.key} className="db-group-row" role="row" style={{ minWidth: totalW }}>
-                  <button type="button" className="db-group-t" aria-expanded={!it.collapsed} onClick={() => setCollapsedG((s) => { const n = new Set(s); n.has(it.key) ? n.delete(it.key) : n.add(it.key); return n })}>
-                    <span className={'db-caret' + (it.collapsed ? '' : ' open')}><Ic.Chevron size={12} /></span> <b dir="auto">{it.label}</b> <span className="db-count">{it.count}</span>
+                  <button
+                    type="button"
+                    className="db-group-t"
+                    aria-expanded={!it.collapsed}
+                    onClick={() =>
+                      setCollapsedG((s) => {
+                        const n = new Set(s)
+                        n.has(it.key) ? n.delete(it.key) : n.add(it.key)
+                        return n
+                      })
+                    }
+                  >
+                    <span className={'db-caret' + (it.collapsed ? '' : ' open')}>
+                      <Ic.Chevron size={12} />
+                    </span>{' '}
+                    <b dir="auto">{it.label}</b> <span className="db-count">{it.count}</span>
                   </button>
                   {ctl.canEditRows && group && (
-                    <button type="button" className="icon-btn" aria-label={t('New item in this group')} onClick={() => void addRow(groupContext(svc, group, it.key, it.memberId))}><Ic.Plus size={13} /></button>
+                    <button type="button" className="icon-btn" aria-label={t('New item in this group')} onClick={() => void addRow(groupContext(svc, group, it.key, it.memberId))}>
+                      <Ic.Plus size={13} />
+                    </button>
                   )}
                 </div>
               )
@@ -611,16 +787,32 @@ export function TableView({ svc, view, ctl }: ViewProps) {
                 onDrop={() => dropRow(it.id)}
               >
                 <div className="db-td handle" role="rowheader">
-                  <input type="checkbox" aria-label={t('Select item')} checked={checked.has(it.id)} onChange={(e) => setChecked((s) => { const n = new Set(s); e.target.checked ? n.add(it.id) : n.delete(it.id); return n })} />
+                  <input
+                    type="checkbox"
+                    aria-label={t('Select item')}
+                    checked={checked.has(it.id)}
+                    onChange={(e) =>
+                      setChecked((s) => {
+                        const n = new Set(s)
+                        e.target.checked ? n.add(it.id) : n.delete(it.id)
+                        return n
+                      })
+                    }
+                  />
                   <span
                     className={'db-grip' + (hasSorts || q.groups.length ? ' off' : '')}
                     draggable={!hasSorts && !q.groups.length && ctl.canEditRows}
                     title={hasSorts ? t('Remove the sort to reorder rows by hand') : t('Drag to reorder')}
                     onDragStart={() => !hasSorts && setDragRow(it.id)}
                     onDragEnd={() => setDragRow(null)}
-                    onContextMenu={(e) => { e.preventDefault(); setRowMenu({ id: it.id, rect: e.currentTarget.getBoundingClientRect() }) }}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      setRowMenu({ id: it.id, rect: e.currentTarget.getBoundingClientRect() })
+                    }}
                     onClick={(e) => setRowMenu({ id: it.id, rect: e.currentTarget.getBoundingClientRect() })}
-                  >⋮⋮</span>
+                  >
+                    ⋮⋮
+                  </span>
                 </div>
                 {cols.map((d, ci) => {
                   const isActive = isActiveRow && active?.c === ci
@@ -634,7 +826,15 @@ export function TableView({ svc, view, ctl }: ViewProps) {
                       aria-selected={!!inSel}
                       data-r={it.r}
                       data-c={ci}
-                      className={'db-td' + (ci <= frozenIdx ? ' frozen' : '') + (isActive ? ' active' : '') + (inSel && !isActive ? ' sel' : '') + (d.kind === 'title' ? ' title' : '') + (wrap ? ' wrap' : '') + (!DESCRIPTORS[d.kind].writable && d.kind !== 'title' ? ' ro' : '')}
+                      className={
+                        'db-td' +
+                        (ci <= frozenIdx ? ' frozen' : '') +
+                        (isActive ? ' active' : '') +
+                        (inSel && !isActive ? ' sel' : '') +
+                        (d.kind === 'title' ? ' title' : '') +
+                        (wrap ? ' wrap' : '') +
+                        (!DESCRIPTORS[d.kind].writable && d.kind !== 'title' ? ' ro' : '')
+                      }
                       style={ci <= frozenIdx ? { insetInlineStart: offsets[ci] } : undefined}
                       onMouseDown={(e) => {
                         if ((e.target as HTMLElement).closest('button, a, input, .db-chip.db-rel')) return
@@ -649,18 +849,54 @@ export function TableView({ svc, view, ctl }: ViewProps) {
                       {d.kind === 'title' && (
                         <span className="db-title-pre" style={{ paddingInlineStart: it.depth * 18 }}>
                           {nested && (svc.state.snapshot().childrenOf.get(it.id)?.length ?? 0) > 0 ? (
-                            <button type="button" className={'db-caret' + (collapsedR.has(it.id) ? '' : ' open')} aria-label={t('Show / hide sub-items')} onClick={(e) => { e.stopPropagation(); setCollapsedR((s) => { const n = new Set(s); n.has(it.id) ? n.delete(it.id) : n.add(it.id); return n }) }}><Ic.Chevron size={12} /></button>
-                          ) : nested ? <span className="db-caret sp" /> : null}
+                            <button
+                              type="button"
+                              className={'db-caret' + (collapsedR.has(it.id) ? '' : ' open')}
+                              aria-label={t('Show / hide sub-items')}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setCollapsedR((s) => {
+                                  const n = new Set(s)
+                                  n.has(it.id) ? n.delete(it.id) : n.add(it.id)
+                                  return n
+                                })
+                              }}
+                            >
+                              <Ic.Chevron size={12} />
+                            </button>
+                          ) : nested ? (
+                            <span className="db-caret sp" />
+                          ) : null}
                           <PageIcon page={repo.getRaw(it.id) ?? { id: it.id, icon: undefined, kind: undefined }} />
                         </span>
                       )}
                       {editing && isInlineKind(d.kind) ? (
-                        <InlineCellEditor svc={svc} row={row} def={d} initial={edit!.initial} onClose={closeEdit} onNavigate={(dir) => (dir === 'down' ? moveTo(it.r + 1, ci) : dir === 'next' ? moveTo(it.r, ci + 1) : moveTo(it.r, ci - 1))} />
+                        <InlineCellEditor
+                          svc={svc}
+                          row={row}
+                          def={d}
+                          initial={edit!.initial}
+                          onClose={closeEdit}
+                          onNavigate={(dir) => (dir === 'down' ? moveTo(it.r + 1, ci) : dir === 'next' ? moveTo(it.r, ci + 1) : moveTo(it.r, ci - 1))}
+                        />
                       ) : (
-                        <div className="db-cell-in"><CellBox svc={svc} rs={rs} row={row} def={d} version={version} /></div>
+                        <div className="db-cell-in">
+                          <CellBox svc={svc} rs={rs} row={row} def={d} version={version} />
+                        </div>
                       )}
                       {d.kind === 'title' && !editing && (
-                        <button type="button" className="db-open" aria-label={t('Open')} title={t('Open')} onClick={(e) => { e.stopPropagation(); nav.openRow(it.id, cfg.openMode === 'full_page' ? 'full' : cfg.openMode === 'center_peek' ? 'center' : 'side') }}><Ic.Open size={13} /> {t('Open')}</button>
+                        <button
+                          type="button"
+                          className="db-open"
+                          aria-label={t('Open')}
+                          title={t('Open')}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            nav.openRow(it.id, cfg.openMode === 'full_page' ? 'full' : cfg.openMode === 'center_peek' ? 'center' : 'side')
+                          }}
+                        >
+                          <Ic.Open size={13} /> {t('Open')}
+                        </button>
                       )}
                       {editing && isPopoverKind(d.kind) && edit?.rect && <PopoverEditor svc={svc} row={row} def={d} anchor={edit.rect} onClose={closeEdit} />}
                     </div>
@@ -677,22 +913,40 @@ export function TableView({ svc, view, ctl }: ViewProps) {
                 <>
                   <b>{t('No items match')}</b>
                   <p>{t('The database is not empty: your filters or search hide everything.')}</p>
-                  <button type="button" onClick={() => { ctl.setPersonal({ filter: null, sorts: q.sorts }); void ctl.patch({}) }}>{t('Clear filters')}</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      ctl.setPersonal({ filter: null, sorts: q.sorts })
+                      void ctl.patch({})
+                    }}
+                  >
+                    {t('Clear filters')}
+                  </button>
                 </>
               ) : (
                 <>
                   <b>{t('Nothing here yet')}</b>
                   <p>{t('Add the first item, import a CSV file, or link another database.')}</p>
-                  {ctl.canEditRows && <button type="button" className="primary" onClick={() => void addRow()}><Ic.Plus size={13} /> {t('New item')}</button>}
+                  {ctl.canEditRows && (
+                    <button type="button" className="primary" onClick={() => void addRow()}>
+                      <Ic.Plus size={13} /> {t('New item')}
+                    </button>
+                  )}
                 </>
               )}
             </div>
           )}
-          {q.hasMore && <button type="button" className="db-more" onClick={() => setWant((w) => w + 500)}>{t('Load more ({n} of {m})', { n: rowCount, m: q.total })}</button>}
+          {q.hasMore && (
+            <button type="button" className="db-more" onClick={() => setWant((w) => w + 500)}>
+              {t('Load more ({n} of {m})', { n: rowCount, m: q.total })}
+            </button>
+          )}
         </div>
         {ctl.canEditRows && rowCount > 0 && (
           <div className="db-newrow" style={{ minWidth: totalW }}>
-            <button type="button" onClick={() => void addRow()}><Ic.Plus size={13} /> {t('New item')}</button>
+            <button type="button" onClick={() => void addRow()}>
+              <Ic.Plus size={13} /> {t('New item')}
+            </button>
           </div>
         )}
         <div className="db-tfoot" role="row" style={{ gridTemplateColumns: gridCols, minWidth: totalW }}>
@@ -701,10 +955,22 @@ export function TableView({ svc, view, ctl }: ViewProps) {
             const op = totals[d.id]
             const res = (q.totals as Record<string, unknown> | null)?.[d.id] as { value: { c: string; n?: number; v?: { start: string; end: string | null } } } | undefined
             return (
-              <button type="button" key={d.id} className={'db-tf' + (ci <= frozenIdx ? ' frozen' : '')} style={ci <= frozenIdx ? { insetInlineStart: offsets[ci] } : undefined} onClick={(e) => setTotalMenu({ def: d, rect: e.currentTarget.getBoundingClientRect() })}>
+              <button
+                type="button"
+                key={d.id}
+                className={'db-tf' + (ci <= frozenIdx ? ' frozen' : '')}
+                style={ci <= frozenIdx ? { insetInlineStart: offsets[ci] } : undefined}
+                onClick={(e) => setTotalMenu({ def: d, rect: e.currentTarget.getBoundingClientRect() })}
+              >
                 {op ? (
-                  <><small>{aggLabel(op)}</small> <b dir="ltr">{res?.value.c === 'number' ? Number((res.value.n ?? 0).toFixed(4)) : res?.value.c === 'date' ? res.value.v?.start : ''}</b></>
-                ) : ci === 0 ? <small>{t('{n} items', { n: q.total })}</small> : <small className="calc">{t('Calculate')}</small>}
+                  <>
+                    <small>{aggLabel(op)}</small> <b dir="ltr">{res?.value.c === 'number' ? Number((res.value.n ?? 0).toFixed(4)) : res?.value.c === 'date' ? res.value.v?.start : ''}</b>
+                  </>
+                ) : ci === 0 ? (
+                  <small>{t('{n} items', { n: q.total })}</small>
+                ) : (
+                  <small className="calc">{t('Calculate')}</small>
+                )}
               </button>
             )
           })}
@@ -725,24 +991,65 @@ export function TableView({ svc, view, ctl }: ViewProps) {
           onEditActions={(d) => window.dispatchEvent(new CustomEvent('db-edit-actions', { detail: d.id }))}
         />
       )}
-      {newProp && <NewPropertyPopover svc={svc} sourceId={view.sourceId!} anchor={newProp} onClose={() => setNewProp(null)} onCreated={(id) => void ctl.patch({ visibleProperties: [...cols.map((c) => c.id), id] })} />}
+      {newProp && (
+        <NewPropertyPopover
+          svc={svc}
+          sourceId={view.sourceId!}
+          anchor={newProp}
+          onClose={() => setNewProp(null)}
+          onCreated={(id) => void ctl.patch({ visibleProperties: [...cols.map((c) => c.id), id] })}
+        />
+      )}
       {rowMenu && (
         <Popover anchor={rowMenu.rect} onClose={() => setRowMenu(null)}>
           <div className="ds-menu">
             <MenuItem icon={<Ic.Open size={14} />} label={t('Open')} onClick={() => (nav.openRow(rowMenu.id, 'full'), setRowMenu(null))} />
             <MenuItem icon={<Ic.Panel size={14} />} label={t('Open in side peek')} onClick={() => (nav.openRow(rowMenu.id, 'side'), setRowMenu(null))} />
-            <MenuItem icon={<Ic.Copy size={14} />} label={t('Duplicate')} onClick={async () => { setRowMenu(null); const r = await svc.tryExec([{ type: 'row.duplicate', payload: { rootPageIds: [rowMenu.id] } }]); if (!r.ok) ctl.notice(errorText(r.code, r.message)) }} />
+            <MenuItem
+              icon={<Ic.Copy size={14} />}
+              label={t('Duplicate')}
+              onClick={async () => {
+                setRowMenu(null)
+                const r = await svc.tryExec([{ type: 'row.duplicate', payload: { rootPageIds: [rowMenu.id] } }])
+                if (!r.ok) ctl.notice(errorText(r.code, r.message))
+              }}
+            />
             <MenuSep />
-            <MenuItem icon={<Ic.Trash size={14} />} label={t('Delete')} danger onClick={async () => { setRowMenu(null); const r = await svc.tryExec([{ type: 'row.trash', payload: { pageIds: [rowMenu.id] } }]); if (r.ok) ctl.notice(t('Moved to trash'), { label: t('Undo'), run: () => void svc.undo() }); else ctl.notice(errorText(r.code, r.message)) }} />
+            <MenuItem
+              icon={<Ic.Trash size={14} />}
+              label={t('Delete')}
+              danger
+              onClick={async () => {
+                setRowMenu(null)
+                const r = await svc.tryExec([{ type: 'row.trash', payload: { pageIds: [rowMenu.id] } }])
+                if (r.ok) ctl.notice(t('Moved to trash'), { label: t('Undo'), run: () => void svc.undo() })
+                else ctl.notice(errorText(r.code, r.message))
+              }}
+            />
           </div>
         </Popover>
       )}
       {totalMenu && (
         <Popover anchor={totalMenu.rect} onClose={() => setTotalMenu(null)}>
           <div className="ds-menu">
-            <MenuItem label={t('None')} onClick={() => { const n = { ...totals }; delete n[totalMenu.def.id]; void ctl.patch({ totals: n as never }); setTotalMenu(null) }} />
+            <MenuItem
+              label={t('None')}
+              onClick={() => {
+                const n = { ...totals }
+                delete n[totalMenu.def.id]
+                void ctl.patch({ totals: n as never })
+                setTotalMenu(null)
+              }}
+            />
             {totalOps(totalMenu.def).map((op) => (
-              <MenuItem key={op} label={aggLabel(op)} onClick={() => { void ctl.patch({ totals: { ...totals, [totalMenu.def.id]: op } as never }); setTotalMenu(null) }} />
+              <MenuItem
+                key={op}
+                label={aggLabel(op)}
+                onClick={() => {
+                  void ctl.patch({ totals: { ...totals, [totalMenu.def.id]: op } as never })
+                  setTotalMenu(null)
+                }}
+              />
             ))}
           </div>
         </Popover>
@@ -763,11 +1070,18 @@ function groupContext(svc: ViewProps['svc'], group: { propertyId: Id; mode?: str
   const def = svc.state.prop(group.propertyId)
   if (!def || key === NONE_GROUP) return []
   switch (def.kind) {
-    case 'select': return [{ propertyId: def.id, cell: { kind: 'select', optionId: key } }]
-    case 'status': return group.mode === 'status_group' ? [] : [{ propertyId: def.id, cell: { kind: 'status', optionId: key } }]
-    case 'multi_select': return [{ propertyId: def.id, cell: { kind: 'multi_select', optionIds: [key] } }]
-    case 'people': return [{ propertyId: def.id, cell: { kind: 'people', principalIds: [key] } }]
-    case 'checkbox': return [{ propertyId: def.id, cell: { kind: 'checkbox', value: key === 'true' } }]
-    default: void memberId; return []
+    case 'select':
+      return [{ propertyId: def.id, cell: { kind: 'select', optionId: key } }]
+    case 'status':
+      return group.mode === 'status_group' ? [] : [{ propertyId: def.id, cell: { kind: 'status', optionId: key } }]
+    case 'multi_select':
+      return [{ propertyId: def.id, cell: { kind: 'multi_select', optionIds: [key] } }]
+    case 'people':
+      return [{ propertyId: def.id, cell: { kind: 'people', principalIds: [key] } }]
+    case 'checkbox':
+      return [{ propertyId: def.id, cell: { kind: 'checkbox', value: key === 'true' } }]
+    default:
+      void memberId
+      return []
   }
 }

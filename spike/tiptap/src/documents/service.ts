@@ -1,3 +1,4 @@
+import type { DocNode } from '../docNode'
 import type { DocumentAsset } from './assets.ts'
 import type { DocumentAdmission } from './admission.ts'
 import { canonicalDocumentValue, documentRevision } from './revision.ts'
@@ -25,18 +26,18 @@ const EMPTY_BOARD = { type: 'doc', content: [{ type: 'drawing', attrs: { scene: 
 const EMPTY_TODO = { type: 'doc', content: [{ type: 'taskList', content: [{ type: 'taskItem', attrs: { checked: false }, content: [{ type: 'paragraph' }] }] }] }
 const SNAPSHOT_EVERY = 10 * 60 * 1000 // at most one history entry per page per 10 minutes of editing
 
-function textOf(node: any): string {
+function textOf(node: DocNode | null | undefined): string {
   if (!node) return ''
   if (node.text) return node.text
   return (node.content ?? []).map(textOf).join(' ')
 }
 
-const isBlankDoc = (doc: any) => !textOf(doc).trim() && (doc?.content ?? []).every((n: any) => n.type === 'paragraph')
+const isBlankDoc = (doc: DocNode | null | undefined) => !textOf(doc).trim() && (doc?.content ?? []).every((n) => n.type === 'paragraph')
 
 /** ids of every page referenced by a pageLink node in a ProseMirror doc (derived, cf. page_links in ADR-0002). */
-function linkedIds(node: any, out = new Set<string>()): Set<string> {
+function linkedIds(node: DocNode | string | null | undefined, out = new Set<string>()): Set<string> {
   if (!node || typeof node === 'string') return out
-  if (node.type === 'pageLink' && node.attrs?.id) out.add(node.attrs.id)
+  if (node.type === 'pageLink' && typeof node.attrs?.id === 'string') out.add(node.attrs.id)
   for (const c of node.content ?? []) linkedIds(c, out)
   return out
 }
@@ -58,12 +59,23 @@ export class DocumentService implements PageRepo {
   private commitLocked = false
   private editGeneration = 0
   private commitState() {
-    try { this.host.emit('commit-state') } catch (error) { try { this.host.report('watch', error) } catch { /* observer only */ } }
+    try {
+      this.host.emit('commit-state')
+    } catch (error) {
+      try {
+        this.host.report('watch', error)
+      } catch {
+        /* observer only */
+      }
+    }
   }
   isWriteLocked = () => this.commitLocked
   setEditorDirty(id: string, dirty: boolean) {
-    if (dirty) { this.assertWritable(); this.drafts.add(id); this.editGeneration++ }
-    else this.drafts.delete(id)
+    if (dirty) {
+      this.assertWritable()
+      this.drafts.add(id)
+      this.editGeneration++
+    } else this.drafts.delete(id)
   }
   private assertWritable() {
     if (this.commitLocked) throw new Error('Document commit in progress')
@@ -78,13 +90,17 @@ export class DocumentService implements PageRepo {
     if (this.drafts.size || generation !== this.editGeneration || !this.idle()) throw new Error('Document editor changed')
     this.commitLocked = true
     this.commitState()
-    return () => { this.commitLocked = false; this.commitState() }
+    return () => {
+      this.commitLocked = false
+      this.commitState()
+    }
   }
   /** Internal commit boundary for the later validated edit planner. No transport or access grant is exposed here. */
   async commitDocument(expected: Page, next: Page, expectedRevision: string, digest: (value: string) => Promise<string>) {
-    const before = cloneDocumentValue(expected), after = cloneDocumentValue(next)
+    const before = cloneDocumentValue(expected),
+      after = cloneDocumentValue(next)
     if (before.id !== after.id) throw new Error('Document identity changed')
-    if (await documentRevision(before, digest) !== expectedRevision) throw new Error('Document revision conflict')
+    if ((await documentRevision(before, digest)) !== expectedRevision) throw new Error('Document revision conflict')
     const revision = await documentRevision(after, digest)
     const release = await this.reserveCommit()
     try {
@@ -93,7 +109,9 @@ export class DocumentService implements PageRepo {
       this.adoptDatabase([after], [])
       this.host.emit('external-change', [after.id])
       return { documentId: after.id, revision }
-    } finally { release() }
+    } finally {
+      release()
+    }
   }
 
   /** Internal only: the future authorized planner supplies the complete canonical request. */
@@ -107,7 +125,8 @@ export class DocumentService implements PageRepo {
 
   async commitRetriableDocument(request: DocumentOperationRequest, expected: Page | null, next: Page, digest: (value: string) => Promise<string>) {
     request = cloneDocumentValue(request)
-    const before = cloneDocumentValue(expected), after = cloneDocumentValue(next)
+    const before = cloneDocumentValue(expected),
+      after = cloneDocumentValue(next)
     const fingerprint = await operationFingerprint(request, digest)
     if (!this.storage.commitOperation || !this.storage.findOperation) throw new Error('Document operation storage is unavailable')
     // Look up before revision/editor checks: a lost-response retry is a read of the original result.
@@ -120,67 +139,115 @@ export class DocumentService implements PageRepo {
     const release = await this.reserveCommit()
     try {
       if (canonicalDocumentValue(this.getRaw(after.id) ?? null) !== canonicalDocumentValue(before)) throw new Error('Document revision conflict')
-      const receipt = await this.storage.commitOperation({ format: 1, scopeId: request.scopeId, operationId: request.operationId,
-        fingerprint, before, after, receipt: { operationId: request.operationId, documentId: after.id, beforeRevision, revision, committedAt: this.host.now() } })
+      const receipt = await this.storage.commitOperation({
+        format: 1,
+        scopeId: request.scopeId,
+        operationId: request.operationId,
+        fingerprint,
+        before,
+        after,
+        receipt: { operationId: request.operationId, documentId: after.id, beforeRevision, revision, committedAt: this.host.now() },
+      })
       // Another instance may have won the same operation ID (including a different generated create ID).
       // Publish what is durable now, never a speculative/replayed post-image.
-      const current = (await this.storage.load()).find(page => page.id === receipt.documentId)
+      const current = (await this.storage.load()).find((page) => page.id === receipt.documentId)
       this.adoptDatabase(current ? [current] : [], current ? [] : [receipt.documentId])
       this.host.emit('external-change', [receipt.documentId])
       return receipt
-    } finally { release() }
+    } finally {
+      release()
+    }
   }
 
   editor(grant: DocumentEditGrant, runtime: Pick<DocumentReadRuntime, 'digest' | 'digestBytes'>) {
     const digest = (value: string) => runtime.digest(value)
-    return new DocumentEditor({ vaultHandle: this.vaultHandle, load: async () => { await this.queue; return this.storage.load() },
-      lookup: async request => {
-        const receipt = await this.operationReceipt(request, digest)
-        if (receipt) {
-          // Recover a lost publication from current storage, never from the historical post-image.
-          // refreshFromStore refuses dirty drafts and rechecks generation/commit state after I/O.
-          try { await this.refreshFromStore() } catch (error) { try { this.host.report('watch', error) } catch { /* receipt still durable */ } }
-        }
-        return receipt
+    return new DocumentEditor(
+      {
+        vaultHandle: this.vaultHandle,
+        load: async () => {
+          await this.queue
+          return this.storage.load()
+        },
+        lookup: async (request) => {
+          const receipt = await this.operationReceipt(request, digest)
+          if (receipt) {
+            // Recover a lost publication from current storage, never from the historical post-image.
+            // refreshFromStore refuses dirty drafts and rechecks generation/commit state after I/O.
+            try {
+              await this.refreshFromStore()
+            } catch (error) {
+              try {
+                this.host.report('watch', error)
+              } catch {
+                /* receipt still durable */
+              }
+            }
+          }
+          return receipt
+        },
+        commit: (request, before, after, check, evidence, creation, requireNoChildren, assets) =>
+          this.commitPlannedEdit(request, before, after, digest, check, evidence, creation, requireNoChildren, grant.admission?.(), assets),
+        now: () => this.host.now(),
+        listOperations: (scopeId, documentId) => {
+          if (!this.storage.listOperations) throw new Error('Document operation storage is unavailable')
+          return this.storage.listOperations(scopeId, documentId)
+        },
+        operationRecord: (scopeId, operationId) => {
+          if (!this.storage.findOperation) throw new Error('Document operation storage is unavailable')
+          return this.storage.findOperation(scopeId, operationId)
+        },
+        createId: () => this.host.createId(),
+        search: (receipt) => this.savedSearch(receipt, digest),
       },
-      commit: (request, before, after, check, evidence, creation, requireNoChildren, assets) => this.commitPlannedEdit(request, before, after, digest, check, evidence, creation, requireNoChildren, grant.admission?.(), assets),
-      now: () => this.host.now(),
-      listOperations: (scopeId, documentId) => {
-        if (!this.storage.listOperations) throw new Error('Document operation storage is unavailable')
-        return this.storage.listOperations(scopeId, documentId)
-      },
-      operationRecord: (scopeId, operationId) => {
-        if (!this.storage.findOperation) throw new Error('Document operation storage is unavailable')
-        return this.storage.findOperation(scopeId, operationId)
-      },
-      createId: () => this.host.createId(),
-      search: receipt => this.savedSearch(receipt, digest),
-    }, grant, digest, runtime.digestBytes)
+      grant,
+      digest,
+      runtime.digestBytes,
+    )
   }
   private async savedSearch(receipt: DocumentOperationReceipt, digest: (value: string) => Promise<string>): Promise<SavedSearch> {
     const prepared = await this.refreshSearchIndex()
     if (prepared.state !== 'fresh' || !prepared.index) return { state: prepared.state, indexedRevision: null }
-    const page = prepared.pages.find(page => page.id === receipt.documentId)
-    if (!page || await documentRevision(page, digest) !== receipt.revision || prepared.generation !== this.searchGeneration
-      || !this.searchIndex.isCurrent(prepared.index)) return { state: 'pending', indexedRevision: null }
+    const page = prepared.pages.find((page) => page.id === receipt.documentId)
+    if (!page || (await documentRevision(page, digest)) !== receipt.revision || prepared.generation !== this.searchGeneration || !this.searchIndex.isCurrent(prepared.index))
+      return { state: 'pending', indexedRevision: null }
     return { state: 'fresh', indexedRevision: receipt.revision }
   }
-  private async commitPlannedEdit(request: DocumentOperationRequest, expected: Page | null, next: Page, digest: (value: string) => Promise<string>,
-    check: () => void, evidence: (page: Page, receipt: DocumentOperationReceipt) => SavedEditEvidence, creation?: CreationPosition, requireNoChildren = false, admission?: DocumentAdmission, assets?: DocumentAsset[]) {
+  private async commitPlannedEdit(
+    request: DocumentOperationRequest,
+    expected: Page | null,
+    next: Page,
+    digest: (value: string) => Promise<string>,
+    check: () => void,
+    evidence: (page: Page, receipt: DocumentOperationReceipt) => SavedEditEvidence,
+    creation?: CreationPosition,
+    requireNoChildren = false,
+    admission?: DocumentAdmission,
+    assets?: DocumentAsset[],
+  ) {
     if (!this.storage.commitOperationResult) throw new Error('Document operation storage is unavailable')
     request = cloneDocumentValue(request)
-    const before = cloneDocumentValue(expected), after = cloneDocumentValue(next), committedAt = this.host.now()
-    if (!Number.isSafeInteger(committedAt) || committedAt < 0 || (before && (!Number.isSafeInteger(before.updatedAt) || before.updatedAt >= Number.MAX_SAFE_INTEGER))) throw new Error('Invalid document clock')
+    const before = cloneDocumentValue(expected),
+      after = cloneDocumentValue(next),
+      committedAt = this.host.now()
+    if (!Number.isSafeInteger(committedAt) || committedAt < 0 || (before && (!Number.isSafeInteger(before.updatedAt) || before.updatedAt >= Number.MAX_SAFE_INTEGER)))
+      throw new Error('Invalid document clock')
     after.updatedAt = Math.max(committedAt, before ? before.updatedAt + 1 : 0)
-    if (after.database) after.recordMeta = { ...(after.recordMeta ?? { format: 1, revision: 0, createdAt: before?.updatedAt ?? committedAt,
-      createdBy: '', updatedBy: '', lastOperationId: '', inferred: true }), revision: (before?.recordMeta?.revision ?? after.recordMeta?.revision ?? 0) + 1, lastOperationId: request.operationId }
-    const fingerprint = await operationFingerprint(request, digest), beforeRevision = before ? await documentRevision(before, digest) : null
-    if (beforeRevision !== request.expectedRevision || (before ? before.id !== after.id || request.documentId !== before.id || request.kind !== 'edit'
-      : request.documentId !== null || request.kind !== 'create' || !creation)) throw new Error('Document revision conflict')
+    if (after.database)
+      after.recordMeta = {
+        ...(after.recordMeta ?? { format: 1, revision: 0, createdAt: before?.updatedAt ?? committedAt, createdBy: '', updatedBy: '', lastOperationId: '', inferred: true }),
+        revision: (before?.recordMeta?.revision ?? after.recordMeta?.revision ?? 0) + 1,
+        lastOperationId: request.operationId,
+      }
+    const fingerprint = await operationFingerprint(request, digest),
+      beforeRevision = before ? await documentRevision(before, digest) : null
+    if (
+      beforeRevision !== request.expectedRevision ||
+      (before ? before.id !== after.id || request.documentId !== before.id || request.kind !== 'edit' : request.documentId !== null || request.kind !== 'create' || !creation)
+    )
+      throw new Error('Document revision conflict')
     const payload = request.payload as { tool?: string; undoOperationId?: string } | null
     const undoOf = payload?.tool === 'undo_document_edit' ? payload.undoOperationId : undefined
-    const receipt: DocumentOperationReceipt = { operationId: request.operationId, documentId: after.id, beforeRevision,
-      revision: await documentRevision(after, digest), committedAt }
+    const receipt: DocumentOperationReceipt = { operationId: request.operationId, documentId: after.id, beforeRevision, revision: await documentRevision(after, digest), committedAt }
     receipt.evidence = evidence(after, receipt) // a bounded response must be representable before any write
     check()
     const release = await this.reserveCommit()
@@ -194,20 +261,43 @@ export class DocumentService implements PageRepo {
         return { receipt: cloneDocumentValue(prior.receipt), replayed: true }
       }
       if (canonicalDocumentValue(this.getRaw(after.id) ?? null) !== canonicalDocumentValue(before)) throw new Error('Document revision conflict')
-      const result = await this.storage.commitOperationResult({ format: 1, scopeId: request.scopeId, operationId: request.operationId,
-        fingerprint, before, after, receipt, ...(assets?.length ? { assets: cloneDocumentValue(assets) } : {}), ...(before ? { history: { pageId: before.id, ts: after.updatedAt, title: before.title, content: cloneDocumentValue(before.content) } } : {}),
-        ...(creation ? { creation: cloneDocumentValue(creation) } : {}), ...(requireNoChildren ? { requireNoChildren: true as const } : {}), ...(undoOf ? { undoOf } : {}) }, admission)
+      const result = await this.storage.commitOperationResult(
+        {
+          format: 1,
+          scopeId: request.scopeId,
+          operationId: request.operationId,
+          fingerprint,
+          before,
+          after,
+          receipt,
+          ...(assets?.length ? { assets: cloneDocumentValue(assets) } : {}),
+          ...(before ? { history: { pageId: before.id, ts: after.updatedAt, title: before.title, content: cloneDocumentValue(before.content) } } : {}),
+          ...(creation ? { creation: cloneDocumentValue(creation) } : {}),
+          ...(requireNoChildren ? { requireNoChildren: true as const } : {}),
+          ...(undoOf ? { undoOf } : {}),
+        },
+        admission,
+      )
       await this.publishCommittedDocument(result.receipt.documentId)
       return result
-    } finally { release() }
+    } finally {
+      release()
+    }
   }
   private async publishCommittedDocument(documentId: string) {
     // Publish the current winner, including concurrent duplicate creates with another generated ID.
     try {
-      const current = (await this.storage.load()).find(page => page.id === documentId)
+      const current = (await this.storage.load()).find((page) => page.id === documentId)
       this.adoptDatabase(current ? [current] : [], current ? [] : [documentId])
       this.host.emit('external-change', [documentId])
-    } catch (error) { this.invalidateSearch(); try { this.host.report('watch', error) } catch { /* saved receipt remains authoritative */ } }
+    } catch (error) {
+      this.invalidateSearch()
+      try {
+        this.host.report('watch', error)
+      } catch {
+        /* saved receipt remains authoritative */
+      }
+    }
   }
 
   private seed: () => Page[]
@@ -216,18 +306,37 @@ export class DocumentService implements PageRepo {
   private readonly searchIndex: ManagedLexicalIndex
   private readonly searchRuntime: SearchIndexRuntime
   private searchGeneration = 0
-  private invalidateSearch() { this.searchGeneration++; this.searchIndex.invalidate() }
-  get vaultHandle() { return this.storage.vaultHandle }
+  private invalidateSearch() {
+    this.searchGeneration++
+    this.searchIndex.invalidate()
+  }
+  get vaultHandle() {
+    return this.storage.vaultHandle
+  }
   /** Read persisted state after already-queued writes; never flush a dirty editor. */
-  async persistedPages() { await this.queue; return this.storage.load() }
+  async persistedPages() {
+    await this.queue
+    return this.storage.load()
+  }
   reader(grant: DocumentReadGrant, runtime: DocumentReadRuntime) {
-    return new DocumentReader({ vaultHandle: this.vaultHandle, searchRuntime: this.searchRuntime, load: async () => { await this.queue; return this.storage.load() } }, grant, runtime)
+    return new DocumentReader(
+      {
+        vaultHandle: this.vaultHandle,
+        searchRuntime: this.searchRuntime,
+        load: async () => {
+          await this.queue
+          return this.storage.load()
+        },
+      },
+      grant,
+      runtime,
+    )
   }
   constructor(environment: DocumentEnvironment, seed: () => Page[] = () => []) {
     this.storage = environment.storage
     this.host = environment.host
     this.searchRuntime = environment.search ?? {}
-    this.searchIndex = new ManagedLexicalIndex(this.searchRuntime, state => this.host.emit('search-state', state))
+    this.searchIndex = new ManagedLexicalIndex(this.searchRuntime, (state) => this.host.emit('search-state', state))
     this.seed = seed
   }
 
@@ -270,7 +379,7 @@ export class DocumentService implements PageRepo {
 
   private noteDisk(rows: Page[]) {
     this.diskAt = new Map(rows.map((r) => [r.id, storedVersion(r)]))
-    this.diskPages = new Map(rows.map(r => [r.id, cloneDocumentValue(r)]))
+    this.diskPages = new Map(rows.map((r) => [r.id, cloneDocumentValue(r)]))
   }
 
   /** Re-run on imported rows too. Identical legacy JSON converges to the
@@ -278,7 +387,12 @@ export class DocumentService implements PageRepo {
   private migrateIdentities() {
     for (const page of this.pages) {
       if (typeof page.content === 'string' && this.host.legacyHtmlToDoc) {
-        try { page.content = this.host.legacyHtmlToDoc(page.content) as typeof page.content; this.touch(page.id) } catch { continue }
+        try {
+          page.content = this.host.legacyHtmlToDoc(page.content) as typeof page.content
+          this.touch(page.id)
+        } catch {
+          continue
+        }
       }
       if (identityVersion(page.content) > BLOCK_IDENTITY_VERSION) continue
       const migration = identifyBlocks(page.content)
@@ -329,16 +443,31 @@ export class DocumentService implements PageRepo {
     if (!full && !upserts.length && !removed.length) return this.queue
     this.queue = this.queue
       // Compare detached durable pre-images, including same-timestamp metadata changes.
-      .then(() => this.storage.save({ upserts, removed, replaceAll: full,
-        baseVersions: Object.fromEntries(upserts.map(p => [p.id, this.diskAt.get(p.id) ?? null])),
-        ...(full ? { expectedAll: [...this.diskPages.values()].map(cloneDocumentValue) }
-          : { expectedPages: Object.fromEntries([...upserts.map(p => p.id), ...removed].map(id => [id, cloneDocumentValue(this.diskPages.get(id) ?? null)])) }),
-      }))
+      .then(() =>
+        this.storage.save({
+          upserts,
+          removed,
+          replaceAll: full,
+          baseVersions: Object.fromEntries(upserts.map((p) => [p.id, this.diskAt.get(p.id) ?? null])),
+          ...(full
+            ? { expectedAll: [...this.diskPages.values()].map(cloneDocumentValue) }
+            : { expectedPages: Object.fromEntries([...upserts.map((p) => p.id), ...removed].map((id) => [id, cloneDocumentValue(this.diskPages.get(id) ?? null)])) }),
+        }),
+      )
       .then(async () => {
         if (this.idle()) this.persistenceError = null
-        if (full) { this.diskAt.clear(); this.diskPages.clear() }
-        for (const p of upserts) { this.diskAt.set(p.id, storedVersion(p)); this.diskPages.set(p.id, cloneDocumentValue(p)) }
-        for (const id of removed) { this.diskAt.delete(id); this.diskPages.delete(id) }
+        if (full) {
+          this.diskAt.clear()
+          this.diskPages.clear()
+        }
+        for (const p of upserts) {
+          this.diskAt.set(p.id, storedVersion(p))
+          this.diskPages.set(p.id, cloneDocumentValue(p))
+        }
+        for (const id of removed) {
+          this.diskAt.delete(id)
+          this.diskPages.delete(id)
+        }
         this.invalidateSearch() // committed content first; indexing is a separate, fallible concern
         if (this.storage.stamp) this.stamp = await this.storage.stamp() // our own writes are not "external" changes
       })
@@ -367,13 +496,18 @@ export class DocumentService implements PageRepo {
     if (!this.host.watchExternal) return Promise.resolve()
     if (this.watching) return this.watching
     const generation = ++this.watchGeneration
-    return this.watching = (async () => {
+    return (this.watching = (async () => {
       this.stamp = this.storage.stamp ? await this.storage.stamp() : ''
       if (generation !== this.watchGeneration) return
-      const stop = await this.host.watchExternal!(() => { if (generation === this.watchGeneration) void this.poll() })
+      const stop = await this.host.watchExternal!(() => {
+        if (generation === this.watchGeneration) void this.poll()
+      })
       if (generation !== this.watchGeneration) stop()
       else this.stopWatching = stop
-    })().catch(error => { if (generation === this.watchGeneration) this.watching = null; throw error })
+    })().catch((error) => {
+      if (generation === this.watchGeneration) this.watching = null
+      throw error
+    }))
   }
 
   stopWatch() {
@@ -411,13 +545,13 @@ export class DocumentService implements PageRepo {
       this.pages = this.keepUnchanged(rows, old)
       this.noteDisk(rows)
       this.migrateIdentities()
-      const changed = rows.filter(r => canonicalSnapshot(old.get(r.id)) !== canonicalSnapshot(r))
+      const changed = rows.filter((r) => canonicalSnapshot(old.get(r.id)) !== canonicalSnapshot(r))
       const removed = old.size + changed.filter((c) => !old.has(c.id)).length - rows.length
       this.rebuildLinks()
       this.stamp = this.storage.stamp ? await this.storage.stamp() : ''
       if (changed.length || removed) {
         this.invalidateSearch()
-        this.host.emit('external-change', [...changed.map(c => c.id), ...[...old.keys()].filter(id => !rows.some(row => row.id === id))])
+        this.host.emit('external-change', [...changed.map((c) => c.id), ...[...old.keys()].filter((id) => !rows.some((row) => row.id === id))])
       }
     } catch (e) {
       this.host.report('watch', e)
@@ -474,28 +608,41 @@ export class DocumentService implements PageRepo {
 
   search(query: string): Page[] {
     if (!query.trim()) return []
-    try { return rankedSearchPages(new PortableLexicalIndex(this.pagesOnly()), this.pagesOnly(), query) }
-    catch (error) { if (error instanceof LexicalSearchError && error.code === 'INVALID_ARGUMENT') return []; throw error }
+    try {
+      return rankedSearchPages(new PortableLexicalIndex(this.pagesOnly()), this.pagesOnly(), query)
+    } catch (error) {
+      if (error instanceof LexicalSearchError && error.code === 'INVALID_ARGUMENT') return []
+      throw error
+    }
   }
 
-  searchStatus() { return this.searchIndex.status() }
+  searchStatus() {
+    return this.searchIndex.status()
+  }
   async refreshSearchIndex() {
     try {
       await this.queue
       const generation = this.searchGeneration
-      const pages = (await this.storage.load()).filter(page => page.deletedAt === null && page.kind !== 'folder')
+      const pages = (await this.storage.load()).filter((page) => page.deletedAt === null && page.kind !== 'folder')
       if (generation !== this.searchGeneration) return { state: 'pending' as const, index: null, pages: [] as Page[], generation }
-      const snapshot = canonicalSnapshot([...pages].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-      return { ...await this.searchIndex.prepare(pages, snapshot), pages, generation }
-    } catch { return { ...this.searchIndex.failed(), pages: [] as Page[], generation: this.searchGeneration } }
+      const snapshot = canonicalSnapshot([...pages].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)))
+      return { ...(await this.searchIndex.prepare(pages, snapshot)), pages, generation }
+    } catch {
+      return { ...this.searchIndex.failed(), pages: [] as Page[], generation: this.searchGeneration }
+    }
   }
   async searchPersisted(query: string): Promise<(Page & { searchPassage: string })[]> {
     if (!query.trim()) return []
     const prepared = await this.refreshSearchIndex()
-    if (prepared.generation !== this.searchGeneration || (prepared.index && !this.searchIndex.isCurrent(prepared.index))) throw new SearchIndexUnavailable(this.searchIndex.status() === 'failed' ? 'failed' : 'pending')
+    if (prepared.generation !== this.searchGeneration || (prepared.index && !this.searchIndex.isCurrent(prepared.index)))
+      throw new SearchIndexUnavailable(this.searchIndex.status() === 'failed' ? 'failed' : 'pending')
     if (prepared.state !== 'fresh' || !prepared.index) throw new SearchIndexUnavailable(prepared.state === 'pending' ? 'pending' : 'failed')
-    try { return rankedSearchPages(prepared.index, prepared.pages, query) }
-    catch (error) { if (error instanceof LexicalSearchError && error.code === 'INVALID_ARGUMENT') return []; throw error }
+    try {
+      return rankedSearchPages(prepared.index, prepared.pages, query)
+    } catch (error) {
+      if (error instanceof LexicalSearchError && error.code === 'INVALID_ARGUMENT') return []
+      throw error
+    }
   }
 
   // ───── mutations ─────
@@ -527,7 +674,11 @@ export class DocumentService implements PageRepo {
     if (patch.content !== undefined) patch = { ...patch, content: identifyBlocks(patch.content, opts?.copyContent ? () => this.host.createId() : undefined).content }
     if (patch.content !== undefined && opts?.history !== false) this.snapshot(p)
     Object.assign(p, patch, { updatedAt: this.host.now() })
-    if (p.database) p.recordMeta = { ...(p.recordMeta ?? { format: 1, revision: 0, createdAt: p.updatedAt, createdBy: '', updatedBy: '', lastOperationId: '', inferred: true }), revision: (p.recordMeta?.revision ?? 0) + 1 } // row edits through the editor are revisions too
+    if (p.database)
+      p.recordMeta = {
+        ...(p.recordMeta ?? { format: 1, revision: 0, createdAt: p.updatedAt, createdBy: '', updatedBy: '', lastOperationId: '', inferred: true }),
+        revision: (p.recordMeta?.revision ?? 0) + 1,
+      } // row edits through the editor are revisions too
     if (patch.content !== undefined) this.indexLinks(p)
     this.touch(id)
   }
@@ -541,7 +692,8 @@ export class DocumentService implements PageRepo {
     this.lastSnap.set(p.id, now)
     const json = JSON.stringify(old)
     const copy = cloneDocumentValue(old)
-    void this.storage.listVersions(p.id)
+    void this.storage
+      .listVersions(p.id)
       .then((vs) => (vs[0] && JSON.stringify(vs[0].content) === json ? undefined : this.storage.addVersion({ pageId: p.id, ts: now, title: p.title, content: copy })))
       .catch((e) => this.host.report('history', e))
   }
@@ -565,8 +717,7 @@ export class DocumentService implements PageRepo {
     const page = this.pages.find((p) => p.id === id)
     if (!page || id === beforeId) return false
     // refuse to move a page into itself or one of its descendants
-    for (let p = parentId ? this.pages.find((x) => x.id === parentId) : undefined; p; p = p.parentId ? this.pages.find((x) => x.id === p!.parentId) : undefined)
-      if (p.id === id) return false
+    for (let p = parentId ? this.pages.find((x) => x.id === parentId) : undefined; p; p = p.parentId ? this.pages.find((x) => x.id === p!.parentId) : undefined) if (p.id === id) return false
     const sibs = this.pages.filter((p) => p.parentId === parentId && p.id !== id && !p.deletedAt).sort((a, b) => a.sort - b.sort)
     const at = beforeId ? sibs.findIndex((s) => s.id === beforeId) : sibs.length
     sibs.splice(at < 0 ? sibs.length : at, 0, page)
@@ -730,10 +881,10 @@ export class DocumentService implements PageRepo {
     this.pages = this.keepUnchanged(rows, old)
     this.noteDisk(rows)
     this.migrateIdentities()
-    const changed = rows.filter(r => canonicalSnapshot(old.get(r.id)) !== canonicalSnapshot(r))
+    const changed = rows.filter((r) => canonicalSnapshot(old.get(r.id)) !== canonicalSnapshot(r))
     this.rebuildLinks()
-    if (changed.length || [...old.keys()].some(id => !rows.some(row => row.id === id))) this.invalidateSearch()
-    this.host.emit('external-change', [...changed.map(c => c.id), ...[...old.keys()].filter(id => !rows.some(row => row.id === id))])
+    if (changed.length || [...old.keys()].some((id) => !rows.some((row) => row.id === id))) this.invalidateSearch()
+    this.host.emit('external-change', [...changed.map((c) => c.id), ...[...old.keys()].filter((id) => !rows.some((row) => row.id === id))])
     return true
   }
 }

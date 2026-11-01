@@ -29,12 +29,25 @@ export interface Dependencies {
   usesToday: boolean
 }
 
-export type Compiled =
-  | { ok: true; ast: Node; source: string; resolvedRefs: Record<string, Id>; resultType: string; deps: Dependencies }
-  | { ok: false; diagnostics: FormulaDiagnostic[] }
+export type Compiled = { ok: true; ast: Node; source: string; resolvedRefs: Record<string, Id>; resultType: string; deps: Dependencies } | { ok: false; diagnostics: FormulaDiagnostic[] }
 
 const LAMBDA_FNS = new Set(['map', 'filter', 'find', 'findIndex', 'some', 'every', 'sort'])
-const OP_FN: Record<string, string> = { '+': 'add', '-': 'subtract', '*': 'multiply', '/': 'divide', '%': 'mod', '^': 'pow', '==': 'equal', '!=': 'unequal', '<': 'lt', '<=': 'lte', '>': 'gt', '>=': 'gte', '&&': 'and', '||': 'or' }
+const OP_FN: Record<string, string> = {
+  '+': 'add',
+  '-': 'subtract',
+  '*': 'multiply',
+  '/': 'divide',
+  '%': 'mod',
+  '^': 'pow',
+  '==': 'equal',
+  '!=': 'unequal',
+  '<': 'lt',
+  '<=': 'lte',
+  '>': 'gt',
+  '>=': 'gte',
+  '&&': 'and',
+  '||': 'or',
+}
 export const operatorFunction = (op: string) => OP_FN[op]
 
 const known = (t: string) => t !== 'any' && t !== ''
@@ -65,16 +78,22 @@ export function compileFormula(source: string, schema: Schema, vars: Record<stri
 
   function infer(n: Node, scope: Map<string, string>): string {
     switch (n.t) {
-      case 'num': return 'number'
-      case 'str': return 'text'
-      case 'bool': return 'boolean'
+      case 'num':
+        return 'number'
+      case 'str':
+        return 'text'
+      case 'bool':
+        return 'boolean'
       case 'list': {
         const ts = n.items.map((i) => infer(i, scope))
         return `list<${ts.length ? ts.reduce((a, b) => unify(a, b)) : 'any'}>`
       }
       case 'ident': {
         const t = scope.get(n.name)
-        if (t === undefined) { d('FORMULA_NAME', `unknown name "${n.name}"`, n); return 'any' }
+        if (t === undefined) {
+          d('FORMULA_NAME', `unknown name "${n.name}"`, n)
+          return 'any'
+        }
         return t
       }
       case 'prop': {
@@ -88,8 +107,14 @@ export function compileFormula(source: string, schema: Schema, vars: Record<stri
         }
         if (!list) return 'any' // resolved by name at runtime
         const hits = list.filter((p) => matchKey(p.name).trim() === matchKey(n.name).trim())
-        if (hits.length === 0) { d('FORMULA_NAME', `unknown property "${n.name}"`, n); return 'any' }
-        if (hits.length > 1) { d('FORMULA_NAME', `property name "${n.name}" is ambiguous`, n); return 'any' }
+        if (hits.length === 0) {
+          d('FORMULA_NAME', `unknown property "${n.name}"`, n)
+          return 'any'
+        }
+        if (hits.length > 1) {
+          d('FORMULA_NAME', `property name "${n.name}" is ambiguous`, n)
+          return 'any'
+        }
         n.id = hits[0].id
         if (n.recv === null) resolvedRefs[hits[0].name] = hits[0].id
         return hits[0].type
@@ -113,11 +138,19 @@ export function compileFormula(source: string, schema: Schema, vars: Record<stri
           return known(a) ? baseOf(a) : known(b) ? baseOf(b) : 'any'
         }
         if (['-', '*', '/', '%', '^'].includes(n.op)) {
-          for (const [t, x] of [[a, n.l], [b, n.r]] as [string, Node][]) if (!fits(t, 'number')) d('FORMULA_TYPE', `"${n.op}" needs Numbers, got ${t}`, x)
+          for (const [t, x] of [
+            [a, n.l],
+            [b, n.r],
+          ] as [string, Node][])
+            if (!fits(t, 'number')) d('FORMULA_TYPE', `"${n.op}" needs Numbers, got ${t}`, x)
           return 'number'
         }
         if (n.op === '&&' || n.op === '||') {
-          for (const [t, x] of [[a, n.l], [b, n.r]] as [string, Node][]) if (!fits(t, 'boolean')) d('FORMULA_TYPE', `"${n.op}" needs Booleans, got ${t}`, x)
+          for (const [t, x] of [
+            [a, n.l],
+            [b, n.r],
+          ] as [string, Node][])
+            if (!fits(t, 'boolean')) d('FORMULA_TYPE', `"${n.op}" needs Booleans, got ${t}`, x)
           return 'boolean'
         }
         if (['<', '<=', '>', '>='].includes(n.op) && known(a) && known(b) && baseOf(a) !== baseOf(b)) d('FORMULA_TYPE', `cannot compare ${a} with ${b}`, n)
@@ -131,7 +164,11 @@ export function compileFormula(source: string, schema: Schema, vars: Record<stri
       }
       case 'call': {
         const spec = FUNCTIONS[n.fn]
-        if (!spec || spec.hidden) { d('FORMULA_NAME', `unknown function "${n.fn}"`, n); n.args.forEach((x) => infer(x, scope)); return 'any' }
+        if (!spec || spec.hidden) {
+          d('FORMULA_NAME', `unknown function "${n.fn}"`, n)
+          n.args.forEach((x) => infer(x, scope))
+          return 'any'
+        }
         if (n.args.length < spec.min || n.args.length > spec.max) {
           d('FORMULA_ARITY', `${n.fn} takes ${spec.min === spec.max ? spec.min : spec.max === Infinity ? `at least ${spec.min}` : `${spec.min}-${spec.max}`} argument(s), got ${n.args.length}`, n)
         }
@@ -142,7 +179,10 @@ export function compileFormula(source: string, schema: Schema, vars: Record<stri
           const out: string[] = []
           for (let i = 0; i + 1 < n.args.length; i += 2) {
             const nm = n.args[i]
-            if (nm.t !== 'ident') { d('FORMULA_SYNTAX', 'binding name expected', nm); continue }
+            if (nm.t !== 'ident') {
+              d('FORMULA_SYNTAX', 'binding name expected', nm)
+              continue
+            }
             if (RESERVED.has(nm.name) || FUNCTIONS[nm.name]) d('FORMULA_NAME', `"${nm.name}" is reserved`, nm)
             const vt = infer(n.args[i + 1], sc)
             sc = new Map(sc)
@@ -192,7 +232,11 @@ export function compileFormula(source: string, schema: Schema, vars: Record<stri
     if (n.t === 'call' && n.fn === 'today') usesToday = true
   })
   return {
-    ok: true, ast, source, resolvedRefs, resultType,
+    ok: true,
+    ast,
+    source,
+    resolvedRefs,
+    resultType,
     deps: { ownPropertyIds: [...own], relatedPropertyIds: [...related], dynamicRelated, usesNow, usesToday },
   }
 }
@@ -219,8 +263,12 @@ export function renameInFormula(source: string, ast: Node, propertyId: Id, newNa
   // spans of later nodes moved: re-parse the rewritten text and re-attach ids so offsets stay truthful
   const reparsed = parse(out)
   const ids: Id[] = []
-  walk(ast, (n) => { if (n.t === 'prop') ids.push(n.id as Id) })
+  walk(ast, (n) => {
+    if (n.t === 'prop') ids.push(n.id as Id)
+  })
   let k = 0
-  walk(reparsed, (n) => { if (n.t === 'prop') n.id = ids[k++] ?? null })
+  walk(reparsed, (n) => {
+    if (n.t === 'prop') n.id = ids[k++] ?? null
+  })
   return { source: out, ast: reparsed }
 }

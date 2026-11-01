@@ -21,7 +21,10 @@ export interface DataApi {
 }
 
 /** Where a desktop backup goes: a new workspace with this name, or into the open one. */
-interface Where { target: 'new' | 'here'; name: string }
+interface Where {
+  target: 'new' | 'here'
+  name: string
+}
 
 type Phase =
   | { step: 'review'; review: ImportReview }
@@ -83,22 +86,32 @@ export function DataTab({ api }: { api: DataApi }) {
     <>
       <Card title={t('Import or restore')} hint={t('Bring in Markdown files, an Obsidian folder, a zip you exported, or a full backup.')}>
         <div className="sx-drop" data-over={over} onDragOver={(e) => (e.preventDefault(), setOver(true))} onDragLeave={() => setOver(false)} onDrop={drop}>
-          <span className="sx-drop-ic"><Ic.Upload size={22} /></span>
+          <span className="sx-drop-ic">
+            <Ic.Upload size={22} />
+          </span>
           <b>{t('Drop files here')}</b>
           <small>{t('Markdown, zip or a backup file. Nothing is changed until you confirm.')}</small>
           <span className="sx-drop-btns">
-            <Button size="sm" disabled={reading} onClick={chooseFiles}>{t('Choose files…')}</Button>
-            <Button size="sm" disabled={reading} onClick={chooseFolder}>{t('Choose a folder…')}</Button>
+            <Button size="sm" disabled={reading} onClick={chooseFiles}>
+              {t('Choose files…')}
+            </Button>
+            <Button size="sm" disabled={reading} onClick={chooseFolder}>
+              {t('Choose a folder…')}
+            </Button>
           </span>
         </div>
       </Card>
 
       <Card title={t('Export and backup')}>
         <Row label={t('Export to read or move')} hint={t('A zip of Markdown files and images. You can import it back above.')}>
-          <Button size="sm" icon={<Ic.Download size={15} />} onClick={api.exportAll}>{t('Export')}</Button>
+          <Button size="sm" icon={<Ic.Download size={15} />} onClick={api.exportAll}>
+            {t('Export')}
+          </Button>
         </Row>
         <Row label={t('Full backup')} hint={t('Everything in one file: pages, databases, settings and history. Restore it above.')}>
-          <Button size="sm" icon={<Ic.Download size={15} />} onClick={api.backup}>{t('Back up')}</Button>
+          <Button size="sm" icon={<Ic.Download size={15} />} onClick={api.backup}>
+            {t('Back up')}
+          </Button>
         </Row>
       </Card>
 
@@ -106,7 +119,9 @@ export function DataTab({ api }: { api: DataApi }) {
 
       <Card title={t('Workspaces')}>
         <Row label={t('Workspaces')} hint={t('Switch or create a workspace')}>
-          <Button size="sm" onClick={api.workspaces}>{t('Open')}</Button>
+          <Button size="sm" onClick={api.workspaces}>
+            {t('Open')}
+          </Button>
         </Row>
       </Card>
 
@@ -121,8 +136,19 @@ function ImportDialog({ phase, api, go, close, where, setWhere }: { phase: Phase
 
   if (phase.step === 'error') {
     return (
-      <Dialog open title={t('Nothing was imported')} onClose={close} actions={<Button variant="primary" onClick={close}>{t('Close')}</Button>}>
-        <Notice tone="bad" icon={warn}>{phase.message}</Notice>
+      <Dialog
+        open
+        title={t('Nothing was imported')}
+        onClose={close}
+        actions={
+          <Button variant="primary" onClick={close}>
+            {t('Close')}
+          </Button>
+        }
+      >
+        <Notice tone="bad" icon={warn}>
+          {phase.message}
+        </Notice>
       </Dialog>
     )
   }
@@ -149,20 +175,34 @@ function ImportDialog({ phase, api, go, close, where, setWhere }: { phase: Phase
         open
         title={outcome.errors.length ? t('Imported, with problems') : t('Imported')}
         onClose={close}
-        actions={<>
-          <Button onClick={close}>{t('Close')}</Button>
-          {outcome.first && <Button variant="primary" onClick={() => (close(), api.open(outcome.first!))}>{t('Open')}</Button>}
-        </>}
+        actions={
+          <>
+            <Button onClick={close}>{t('Close')}</Button>
+            {outcome.first && (
+              <Button variant="primary" onClick={() => (close(), api.open(outcome.first!))}>
+                {t('Open')}
+              </Button>
+            )}
+          </>
+        }
       >
-        <Facts items={[
-          [t('Pages'), num(outcome.pages)],
-          ...(outcome.folders ? [[t('Folders'), num(outcome.folders)] as [string, string]] : []),
-          ...(outcome.images ? [[t('Images'), num(outcome.images)] as [string, string]] : []),
-        ]} />
+        <Facts
+          items={[
+            [t('Pages'), num(outcome.pages)],
+            ...(outcome.folders ? [[t('Folders'), num(outcome.folders)] as [string, string]] : []),
+            ...(outcome.images ? [[t('Images'), num(outcome.images)] as [string, string]] : []),
+          ]}
+        />
         {outcome.errors.length > 0 && (
           <Notice tone="warn" icon={warn}>
             {t('{n} files could not be imported:', { n: num(outcome.errors.length) })}
-            <ul>{outcome.errors.map((e) => <li key={e.name} dir="auto">{e.name}: {e.reason}</li>)}</ul>
+            <ul>
+              {outcome.errors.map((e) => (
+                <li key={e.name} dir="auto">
+                  {e.name}: {e.reason}
+                </li>
+              ))}
+            </ul>
           </Notice>
         )}
       </Dialog>
@@ -179,27 +219,41 @@ function ImportDialog({ phase, api, go, close, where, setWhere }: { phase: Phase
       open
       title={isBackup ? t('Restore from backup') : t('Import')}
       onClose={close}
-      actions={<>
-        <Button onClick={close}>{t('Cancel')}</Button>
-        <Button variant={replaces ? 'danger' : 'primary'} disabled={blocked} onClick={go}>{isBackup ? t('Restore') : t('Import')}</Button>
-      </>}
+      actions={
+        <>
+          <Button onClick={close}>{t('Cancel')}</Button>
+          <Button variant={replaces ? 'danger' : 'primary'} disabled={blocked} onClick={go}>
+            {isBackup ? t('Restore') : t('Import')}
+          </Button>
+        </>
+      }
     >
-      <Facts items={b ? [
-        [t('File'), review.name],
-        ...(b.name ? [[t('Workspace'), b.name] as [string, string]] : []),
-        ...(b.createdAt ? [[t('Created'), when(b.createdAt)] as [string, string]] : []),
-        [t('Pages'), num(b.pages)],
-        ...(b.folders ? [[t('Folders'), num(b.folders)] as [string, string]] : []),
-        ...(b.trashed ? [[t('In trash'), num(b.trashed)] as [string, string]] : []),
-        [t('Images and files'), num(b.files)],
-        [t('Size'), size(b.bytes)],
-      ] : [
-        [t('From'), review.name],
-        [t('Pages'), num(review.pages)],
-        ...(review.folders ? [[t('Folders'), num(review.folders)] as [string, string]] : []),
-        ...(review.images ? [[t('Images'), num(review.images)] as [string, string]] : []),
-      ]} />
-      {replaces && <Notice tone="warn" icon={warn}>{t('All {n} pages you have now will be replaced. A copy of them is saved to your downloads first.', { n: num(current) })}</Notice>}
+      <Facts
+        items={
+          b
+            ? [
+                [t('File'), review.name],
+                ...(b.name ? [[t('Workspace'), b.name] as [string, string]] : []),
+                ...(b.createdAt ? [[t('Created'), when(b.createdAt)] as [string, string]] : []),
+                [t('Pages'), num(b.pages)],
+                ...(b.folders ? [[t('Folders'), num(b.folders)] as [string, string]] : []),
+                ...(b.trashed ? [[t('In trash'), num(b.trashed)] as [string, string]] : []),
+                [t('Images and files'), num(b.files)],
+                [t('Size'), size(b.bytes)],
+              ]
+            : [
+                [t('From'), review.name],
+                [t('Pages'), num(review.pages)],
+                ...(review.folders ? [[t('Folders'), num(review.folders)] as [string, string]] : []),
+                ...(review.images ? [[t('Images'), num(review.images)] as [string, string]] : []),
+              ]
+        }
+      />
+      {replaces && (
+        <Notice tone="warn" icon={warn}>
+          {t('All {n} pages you have now will be replaced. A copy of them is saved to your downloads first.', { n: num(current) })}
+        </Notice>
+      )}
       {isBackup && isTauri && (
         <Section title={t('Restore into')}>
           <div className="ds-stack">
@@ -216,15 +270,39 @@ function ImportDialog({ phase, api, go, close, where, setWhere }: { phase: Phase
                 <Notice icon={<Icon name="info" size={16} />}>{t('Opens next to your current one. Nothing you have is changed.')}</Notice>
               </>
             ) : (
-              <Notice tone="warn" icon={warn}>{t("Pages, files, databases and history from the backup are written into this workspace. A page in both is replaced by the backup's version; nothing is deleted. A copy of this workspace is saved next to it first.")}</Notice>
+              <Notice tone="warn" icon={warn}>
+                {t(
+                  "Pages, files, databases and history from the backup are written into this workspace. A page in both is replaced by the backup's version; nothing is deleted. A copy of this workspace is saved next to it first.",
+                )}
+              </Notice>
             )}
           </div>
         </Section>
       )}
       {!isBackup && <Notice icon={<Icon name="info" size={16} />}>{t('These are added as new pages. Nothing you have is replaced.')}</Notice>}
       {skipped.length > 0 && <Notice icon={<Icon name="info" size={16} />}>{t('Left out: {list}.', { list: skipped.map(([ext, n]) => `${num(n)} ${ext}`).join('، ') })}</Notice>}
-      {review.notes.length > 0 && <Notice tone="warn" icon={warn}><ul>{review.notes.slice(0, 5).map((n) => <li key={n} dir="auto">{n}</li>)}</ul></Notice>}
-      {blocked && <Notice tone="bad" icon={warn}><ul>{review.problems.map((p) => <li key={p.name} dir="auto">{p.name}: {p.reason}</li>)}</ul></Notice>}
+      {review.notes.length > 0 && (
+        <Notice tone="warn" icon={warn}>
+          <ul>
+            {review.notes.slice(0, 5).map((n) => (
+              <li key={n} dir="auto">
+                {n}
+              </li>
+            ))}
+          </ul>
+        </Notice>
+      )}
+      {blocked && (
+        <Notice tone="bad" icon={warn}>
+          <ul>
+            {review.problems.map((p) => (
+              <li key={p.name} dir="auto">
+                {p.name}: {p.reason}
+              </li>
+            ))}
+          </ul>
+        </Notice>
+      )}
     </Dialog>
   )
 }
@@ -250,42 +328,76 @@ function AutoBackup() {
   if (!st.supported) {
     return (
       <Card title={t('Automatic backup')}>
-        <Notice tone="warn" icon={<Icon name="warning" size={16} />}>{t('This browser does not support folder selection. Use Edge or Chrome; until then, manual “Full backup” still works.')}</Notice>
+        <Notice tone="warn" icon={<Icon name="warning" size={16} />}>
+          {t('This browser does not support folder selection. Use Edge or Chrome; until then, manual “Full backup” still works.')}
+        </Notice>
       </Card>
     )
   }
   const needs = st.error === 'NEEDS_PERMISSION'
-  const status = !st.enabled
-    ? <Chip dot>{t('Off')}</Chip>
-    : needs ? <Chip dot color="var(--ds-warn)">{t('Needs access permission')}</Chip>
-    : st.error ? <Chip dot color="var(--ds-bad)">{t('Error')}</Chip>
-    : <Chip dot color="var(--ds-ok)">{t('On')}</Chip>
+  const status = !st.enabled ? (
+    <Chip dot>{t('Off')}</Chip>
+  ) : needs ? (
+    <Chip dot color="var(--ds-warn)">
+      {t('Needs access permission')}
+    </Chip>
+  ) : st.error ? (
+    <Chip dot color="var(--ds-bad)">
+      {t('Error')}
+    </Chip>
+  ) : (
+    <Chip dot color="var(--ds-ok)">
+      {t('On')}
+    </Chip>
+  )
 
   return (
     <Card title={t('Automatic backup')} hint={t('A full copy of all pages and images in a folder you choose.')}>
       <Row label={t('Status')} hint={st.enabled ? t('Updated as you work, and once a day. The last {days} days are kept.', { days: 14 }) : undefined}>
         {status}
-        {!st.enabled || !st.folder
-          ? <Button size="sm" variant="primary" disabled={busy} onClick={() => run(chooseBackupFolder)}>{t('Choose folder and turn on')}</Button>
-          : needs && <Button size="sm" variant="primary" disabled={busy} onClick={() => run(grantAccess)}>{t('Grant access')}</Button>}
+        {!st.enabled || !st.folder ? (
+          <Button size="sm" variant="primary" disabled={busy} onClick={() => run(chooseBackupFolder)}>
+            {t('Choose folder and turn on')}
+          </Button>
+        ) : (
+          needs && (
+            <Button size="sm" variant="primary" disabled={busy} onClick={() => run(grantAccess)}>
+              {t('Grant access')}
+            </Button>
+          )
+        )}
       </Row>
       {st.enabled && st.folder && (
         <>
           <Row label={t('Folder')}>
             <span dir="auto">{st.folder}</span>
-            <Button size="sm" disabled={busy} onClick={() => run(chooseBackupFolder)}>{t('Change folder')}</Button>
+            <Button size="sm" disabled={busy} onClick={() => run(chooseBackupFolder)}>
+              {t('Change folder')}
+            </Button>
           </Row>
           <Row label={t('Last backup')}>
             <span>{when(st.lastAt)}</span>
-            <Button size="sm" disabled={busy} onClick={() => run(backupNow)}>{t('Back up now')}</Button>
+            <Button size="sm" disabled={busy} onClick={() => run(backupNow)}>
+              {t('Back up now')}
+            </Button>
           </Row>
           <Row label={t('Turn off')} hint={t('Stops saving copies. The files already in the folder stay.')}>
-            <Button size="sm" variant="danger" disabled={busy} onClick={() => run(disableBackup)}>{t('Turn off')}</Button>
+            <Button size="sm" variant="danger" disabled={busy} onClick={() => run(disableBackup)}>
+              {t('Turn off')}
+            </Button>
           </Row>
         </>
       )}
-      {st.error && !needs && <Notice tone="bad" icon={<Icon name="warning" size={16} />}>{st.error}</Notice>}
-      {needs && <Notice tone="warn" icon={<Icon name="warning" size={16} />}>{t('After closing the browser, folder access must be granted again.')}</Notice>}
+      {st.error && !needs && (
+        <Notice tone="bad" icon={<Icon name="warning" size={16} />}>
+          {st.error}
+        </Notice>
+      )}
+      {needs && (
+        <Notice tone="warn" icon={<Icon name="warning" size={16} />}>
+          {t('After closing the browser, folder access must be granted again.')}
+        </Notice>
+      )}
     </Card>
   )
 }

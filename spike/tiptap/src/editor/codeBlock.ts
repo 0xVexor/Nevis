@@ -1,3 +1,4 @@
+import type { Editor } from '@tiptap/core'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { TextSelection } from '@tiptap/pm/state'
 import { common, createLowlight } from 'lowlight'
@@ -46,7 +47,7 @@ const nameOf = (id: string) => LANGS.find((l) => l.id === id)?.name ?? id
  */
 const hljsAuto = lowlight.highlightAuto.bind(lowlight)
 const SUBSET = LANGS.map((l) => l.id).filter((id) => id !== 'plaintext')
-lowlight.highlightAuto = ((value: string, options?: any) => {
+lowlight.highlightAuto = ((value: string, options?: Parameters<typeof lowlight.highlightAuto>[1]) => {
   const lang = detectLanguage(value)
   if (lang && lowlight.registered(lang)) return lowlight.highlight(lang, value)
   const r = hljsAuto(value, { ...options, subset: SUBSET })
@@ -73,7 +74,7 @@ const lineStart = (text: string, off: number) => text.lastIndexOf('\n', off - 1)
 /** Offsets (within the block text) of the first character of every line touched by [a, b]. */
 function touchedLineStarts(text: string, a: number, b: number): number[] {
   const starts: number[] = []
-  for (let p = lineStart(text, a); p <= b; ) {
+  for (let p = lineStart(text, a); p <= b;) {
     starts.push(p)
     const nl = text.indexOf('\n', p)
     if (nl < 0) break
@@ -83,12 +84,12 @@ function touchedLineStarts(text: string, a: number, b: number): number[] {
   return starts
 }
 
-function inCode(editor: any) {
+function inCode(editor: Editor) {
   const { $from, $to } = editor.state.selection
   return $from.parent.type.name === 'codeBlock' && $from.sameParent($to)
 }
 
-function indent(editor: any) {
+function indent(editor: Editor) {
   const { state, view } = editor
   const { $from, $to } = state.selection
   const text: string = $from.parent.textContent
@@ -106,7 +107,7 @@ function indent(editor: any) {
   return true
 }
 
-function outdent(editor: any) {
+function outdent(editor: Editor) {
   const { state, view } = editor
   const { $from, $to } = state.selection
   const text: string = $from.parent.textContent
@@ -122,7 +123,7 @@ function outdent(editor: any) {
   return true
 }
 
-function smartEnter(editor: any) {
+function smartEnter(editor: Editor) {
   const { state, view } = editor
   const { $from, $to } = state.selection
   if (!inCode(editor)) return false
@@ -147,7 +148,7 @@ function smartEnter(editor: any) {
   return true
 }
 
-function smartBackspace(editor: any) {
+function smartBackspace(editor: Editor) {
   const { state, view } = editor
   const { $from, empty } = state.selection
   if (!empty || !inCode(editor)) return false
@@ -168,12 +169,12 @@ export const CodeBlock = CodeBlockLowlight.extend({
       textAlign: {
         default: null,
         parseHTML: (el: HTMLElement) => (el.querySelector('pre') ?? el).style.textAlign || el.getAttribute('data-align') || null,
-        renderHTML: (a: any) => (a.textAlign ? { 'data-align': a.textAlign } : {}),
+        renderHTML: (a: Record<string, unknown>) => (a.textAlign ? { 'data-align': a.textAlign } : {}),
       },
     }
   },
   addKeyboardShortcuts() {
-    const parent = (this.parent?.() ?? {}) as Record<string, (ctx: any) => boolean>
+    const parent = (this.parent?.() ?? {}) as Record<string, (ctx: { editor: Editor }) => boolean>
     return {
       ...parent,
       Tab: ({ editor }) => inCode(editor) && indent(editor),
@@ -208,17 +209,23 @@ export const CodeBlock = CodeBlockLowlight.extend({
       trigger.onmousedown = (e) => e.preventDefault()
       trigger.onclick = () => {
         if (!editor.isEditable) return
-        openLangMenu(trigger, [...select.options].map((o) => ({ value: o.value, label: o.text })), select.value, (v) => {
-          select.value = v
-          select.onchange?.(new Event('change'))
-        })
+        openLangMenu(
+          trigger,
+          [...select.options].map((o) => ({ value: o.value, label: o.text })),
+          select.value,
+          (v) => {
+            select.value = v
+            select.onchange?.(new Event('change'))
+          },
+        )
       }
 
       const copy = document.createElement('button')
       copy.className = 'code-copy'
       copy.type = 'button'
       copy.textContent = t('Copy')
-      let destroyed = false, copyTimer = 0
+      let destroyed = false,
+        copyTimer = 0
       copy.onclick = async () => {
         clearTimeout(copyTimer)
         try {
@@ -228,7 +235,10 @@ export const CodeBlock = CodeBlockLowlight.extend({
         } catch {
           if (!destroyed) copy.textContent = t('Copy failed')
         }
-        if (!destroyed) copyTimer = window.setTimeout(() => { copy.textContent = t('Copy') }, 1200)
+        if (!destroyed)
+          copyTimer = window.setTimeout(() => {
+            copy.textContent = t('Copy')
+          }, 1200)
       }
       // code that is really a diagram (language "mermaid", or Mermaid source in a block with no language): offer to draw it
       const diag = document.createElement('button')
@@ -243,7 +253,11 @@ export const CodeBlock = CodeBlockLowlight.extend({
         editor.view.dispatch(editor.state.tr.replaceWith(pos, pos + current.nodeSize, mer.create({ code: current.textContent })))
       }
       // alignment of the code text: left / center / right
-      const aligns: [string, string, string][] = [['left', svgIcon.left, t('Align left')], ['center', svgIcon.center, t('Center')], ['right', svgIcon.right, t('Align right')]]
+      const aligns: [string, string, string][] = [
+        ['left', svgIcon.left, t('Align left')],
+        ['center', svgIcon.center, t('Center')],
+        ['right', svgIcon.right, t('Align right')],
+      ]
       const alignBtns = aligns.map(([a, icon, title]) => {
         const b = document.createElement('button')
         b.type = 'button'
@@ -273,7 +287,8 @@ export const CodeBlock = CodeBlockLowlight.extend({
         const seen = id ? null : detectLanguage(n.textContent)
         auto.text = seen ? `${t('Auto-detect')} · ${t(nameOf(seen))}` : t('Auto-detect')
         diag.hidden = !(n.attrs.language === 'mermaid' || looksLikeMermaid(n.textContent))
-        trigger.innerHTML = '<span class="cl-t"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
+        trigger.innerHTML =
+          '<span class="cl-t"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
         ;(trigger.querySelector('.cl-t') as HTMLElement).textContent = select.selectedOptions[0]?.text ?? ''
         pre.style.textAlign = n.attrs.textAlign ?? ''
         alignBtns.forEach((b, i) => b.classList.toggle('on', n.attrs.textAlign === aligns[i][0]))
@@ -296,9 +311,12 @@ export const CodeBlock = CodeBlockLowlight.extend({
           sync(n)
           return true
         },
-        stopEvent: (e) => bar.contains(e.target as any) || surface.contains(e.target as any),
+        stopEvent: (e) => bar.contains(e.target as HTMLElement) || surface.contains(e.target as HTMLElement),
         ignoreMutation: (m) => bar.contains(m.target) || surface.contains(m.target),
-        destroy: () => { destroyed = true; clearTimeout(copyTimer) },
+        destroy: () => {
+          destroyed = true
+          clearTimeout(copyTimer)
+        },
       }
     }
   },

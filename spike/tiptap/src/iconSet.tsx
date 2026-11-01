@@ -46,7 +46,10 @@ export const GLYPHS: Record<string, [string, string]> = {
   bulb: ['idea bulb light', '<path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V17h5v-1.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3zM10 20.5h4"/>'],
   pencil: ['pencil write edit', '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'],
   brush: ['brush paint art design', '<path d="M18 3 9 12l3 3 9-9a2 2 0 0 0-3-3zM9 12c-3 0-4 2-4 4s-1 4-2 5c4 1 8 0 9-3a3 3 0 0 0-3-6z"/>'],
-  palette: ['palette color art', '<path d="M12 3a9 9 0 1 0 0 18c1.2 0 1.8-.8 1.8-1.6 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4-4-7.2-9-7.2z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/>'],
+  palette: [
+    'palette color art',
+    '<path d="M12 3a9 9 0 1 0 0 18c1.2 0 1.8-.8 1.8-1.6 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4-4-7.2-9-7.2z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/>',
+  ],
   camera: ['camera photo', '<path d="M4 8h3l2-3h6l2 3h3v12H4z"/><circle cx="12" cy="13" r="3.5"/>'],
   image: ['image picture photo', '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-9 9"/>'],
   music: ['music audio song', '<path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>'],
@@ -86,7 +89,19 @@ export function Glyph({ name, size = 18, color }: { name: string; size?: number;
   const g = GLYPHS[name]
   if (!g) return null
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={color ? { color } : undefined} dangerouslySetInnerHTML={{ __html: g[1] }} />
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      style={color ? { color } : undefined}
+      dangerouslySetInnerHTML={{ __html: g[1] }}
+    />
   )
 }
 

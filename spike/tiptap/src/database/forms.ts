@@ -46,7 +46,10 @@ export function validateFormConfig(cfg: FormConfig, prop: (id: Id) => Definition
     if (seen.has(q.id)) p.push({ questionId: q.id, code: 'DUPLICATE', message: 'duplicate question id' })
     seen.add(q.id)
     const d = prop(q.propertyId)
-    if (!d) { p.push({ questionId: q.id, code: 'BROKEN', message: 'the linked property was deleted' }); continue }
+    if (!d) {
+      p.push({ questionId: q.id, code: 'BROKEN', message: 'the linked property was deleted' })
+      continue
+    }
     if (NOT_ALLOWED.includes(d.kind)) p.push({ questionId: q.id, code: 'KIND', message: `${d.kind} cannot be a form question` })
     if (usedProps.has(q.propertyId)) p.push({ questionId: q.id, code: 'DUPLICATE_PROPERTY', message: 'a property can be asked once' })
     usedProps.add(q.propertyId)
@@ -65,11 +68,16 @@ function condHolds(c: Condition, answers: Record<Id, Json>): boolean {
   const a = answers[c.questionId]
   const empty = a === undefined || a === null || a === '' || (Array.isArray(a) && a.length === 0)
   switch (c.op) {
-    case 'is_empty': return empty
-    case 'is_not_empty': return !empty
-    case 'equals': return JSON.stringify(a ?? null) === JSON.stringify(c.value ?? null)
-    case 'not_equals': return JSON.stringify(a ?? null) !== JSON.stringify(c.value ?? null)
-    case 'contains': return Array.isArray(a) ? a.some((x) => JSON.stringify(x) === JSON.stringify(c.value)) : typeof a === 'string' && typeof c.value === 'string' && a.includes(c.value)
+    case 'is_empty':
+      return empty
+    case 'is_not_empty':
+      return !empty
+    case 'equals':
+      return JSON.stringify(a ?? null) === JSON.stringify(c.value ?? null)
+    case 'not_equals':
+      return JSON.stringify(a ?? null) !== JSON.stringify(c.value ?? null)
+    case 'contains':
+      return Array.isArray(a) ? a.some((x) => JSON.stringify(x) === JSON.stringify(c.value)) : typeof a === 'string' && typeof c.value === 'string' && a.includes(c.value)
   }
 }
 
@@ -93,27 +101,39 @@ export function answerToCell(d: Definition, q: Question, a: Json): Cell | null {
   const bad = (m: string): never => fail('INVALID_VALUE', m, { questionId: q.id })
   if (a === undefined || a === null || a === '') return null
   switch (kind) {
-    case 'text': return validateCell(d, { kind: 'text', runs: textToRuns(String(a)) })
-    case 'number': return typeof a === 'number' ? validateCell(d, { kind: 'number', value: a }) : bad('a number is required')
-    case 'select': return typeof a === 'string' ? validateCell(d, { kind: 'select', optionId: a }) : bad('choose one option')
-    case 'status': return typeof a === 'string' ? validateCell(d, { kind: 'status', optionId: a }) : bad('choose one option')
+    case 'text':
+      return validateCell(d, { kind: 'text', runs: textToRuns(String(a)) })
+    case 'number':
+      return typeof a === 'number' ? validateCell(d, { kind: 'number', value: a }) : bad('a number is required')
+    case 'select':
+      return typeof a === 'string' ? validateCell(d, { kind: 'select', optionId: a }) : bad('choose one option')
+    case 'status':
+      return typeof a === 'string' ? validateCell(d, { kind: 'status', optionId: a }) : bad('choose one option')
     case 'multi_select': {
       if (!Array.isArray(a)) return bad('choose options')
       if (q.maxSelections && a.length > q.maxSelections) bad(`choose at most ${q.maxSelections}`)
       return validateCell(d, { kind: 'multi_select', optionIds: a as string[] })
     }
-    case 'date': return validateCell(d, { kind: 'date', value: a as never })
-    case 'checkbox': return typeof a === 'boolean' ? { kind: 'checkbox', value: a } : bad('true or false is required')
+    case 'date':
+      return validateCell(d, { kind: 'date', value: a as never })
+    case 'checkbox':
+      return typeof a === 'boolean' ? { kind: 'checkbox', value: a } : bad('true or false is required')
     case 'people': {
       const ids = Array.isArray(a) ? (a as string[]) : [String(a)]
       if (q.optionProjection && ids.some((i) => !q.optionProjection!.includes(i))) bad('that choice is not offered by this form')
       if (q.maxSelections && ids.length > q.maxSelections) bad(`choose at most ${q.maxSelections}`)
       return validateCell(d, { kind: 'people', principalIds: ids })
     }
-    case 'files': return validateCell(d, { kind: 'files', attachmentIds: Array.isArray(a) ? (a as string[]) : [String(a)] })
-    case 'url': case 'email': case 'phone': return validateCell(d, { kind, value: String(a) } as Cell)
-    case 'place': return validateCell(d, { kind: 'place', value: a as never })
-    default: return bad('unsupported question')
+    case 'files':
+      return validateCell(d, { kind: 'files', attachmentIds: Array.isArray(a) ? (a as string[]) : [String(a)] })
+    case 'url':
+    case 'email':
+    case 'phone':
+      return validateCell(d, { kind, value: String(a) } as Cell)
+    case 'place':
+      return validateCell(d, { kind: 'place', value: a as never })
+    default:
+      return bad('unsupported question')
   }
 }
 
@@ -124,7 +144,10 @@ export function evaluateSubmission(cfg: FormConfig, prop: (id: Id) => Definition
   const out: FormResult = { title: null, cells: {}, relations: {}, errors: [] }
   for (const q of visibleQuestions(cfg, answers)) {
     const d = prop(q.propertyId)
-    if (!d) { out.errors.push({ questionId: q.id, message: 'this question is broken' }); continue }
+    if (!d) {
+      out.errors.push({ questionId: q.id, message: 'this question is broken' })
+      continue
+    }
     const a = answers[q.id]
     try {
       if (d.kind === 'title') {
@@ -142,7 +165,8 @@ export function evaluateSubmission(cfg: FormConfig, prop: (id: Id) => Definition
       }
       const cell = answerToCell(d, q, a as Json)
       if (q.required) {
-        if (d.kind === 'checkbox' ? !(cell && cell.kind === 'checkbox' && cell.value) : !cell || isEmptyCell(cell)) throw new DbError('INVALID_VALUE', d.kind === 'checkbox' ? 'this must be checked' : 'this question is required')
+        if (d.kind === 'checkbox' ? !(cell && cell.kind === 'checkbox' && cell.value) : !cell || isEmptyCell(cell))
+          throw new DbError('INVALID_VALUE', d.kind === 'checkbox' ? 'this must be checked' : 'this question is required')
       }
       if (cell && !(d.kind === 'checkbox' && !(cell as { value: boolean }).value && !q.required)) out.cells[d.id] = cell
       else if (cell) out.cells[d.id] = cell

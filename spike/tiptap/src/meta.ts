@@ -1,3 +1,4 @@
+import type { DocNode } from './docNode'
 import type { Page, PageStatus } from './repo'
 import { normalizeFa } from './normalize'
 
@@ -23,9 +24,9 @@ export function allTags(pages: Page[]): string[] {
   return [...seen.values()].sort((a, b) => a.localeCompare(b, 'fa'))
 }
 
-const textOf = (n: any): string => (!n || typeof n === 'string' ? '' : n.text ?? (n.content ?? []).map(textOf).join(' '))
+const textOf = (n: DocNode | string | null | undefined): string => (!n || typeof n === 'string' ? '' : (n.text ?? (n.content ?? []).map(textOf).join(' ')))
 
-export function wordCount(content: any): number {
+export function wordCount(content: DocNode | null | undefined): number {
   const t = textOf(content).trim()
   return t ? t.split(/\s+/).length : 0
 }

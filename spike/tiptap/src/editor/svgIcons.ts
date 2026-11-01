@@ -1,5 +1,6 @@
 // Tiny stroke icons as markup, for the DOM-built toolbars (image bar, zoom viewer) that cannot use the React icon set.
-const wrap = (d: string, size = 15) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`
+const wrap = (d: string, size = 15) =>
+  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`
 
 export const svgIcon = {
   close: wrap('M6 6l12 12M18 6 6 18'),

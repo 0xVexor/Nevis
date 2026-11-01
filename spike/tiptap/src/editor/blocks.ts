@@ -5,9 +5,10 @@ import { GLYPHS } from '../iconSet'
 // Callout icons are the system's own stroke icons (same drawing and weight as the page icons), in the text colour.
 // Older callouts stored an emoji; those are shown as the matching icon.
 const CALLOUT_ICONS = ['bulb', 'warning', 'info', 'check', 'flame', 'pin', 'bell']
-const LEGACY_EMOJI: Record<string, string> = { '💡': 'bulb', '⚠️': 'warning', '❗': 'warning', '✅': 'check', 'ℹ️': 'info', '🔥': 'flame', '📌': 'pin' }
+const LEGACY_EMOJI: Record<string, string> = { '💡': 'bulb', '⚠️': 'warning', '❗': 'warning', '✅': 'check', ℹ️: 'info', '🔥': 'flame', '📌': 'pin' }
 const iconName = (v: string) => (GLYPHS[v] ? v : (LEGACY_EMOJI[v] ?? 'bulb'))
-const iconSvg = (v: string) => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLYPHS[iconName(v)][1]}</svg>`
+const iconSvg = (v: string) =>
+  `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLYPHS[iconName(v)][1]}</svg>`
 
 /** Highlighted box with a clickable emoji (cycles through CALLOUT_EMOJIS). Holds any blocks. */
 export const Callout = Node.create({
@@ -112,7 +113,7 @@ export const Toggle = Node.create({
           dom.classList.toggle('open', !!n.attrs.open)
           return true
         },
-        stopEvent: (e) => btn.contains(e.target as any), // `Node` here is TipTap's, hence the cast
+        stopEvent: (e) => btn.contains(e.target as HTMLElement), // `Node` here is TipTap's, hence the cast
         ignoreMutation: (m) => btn.contains(m.target) || (m.type === 'attributes' && m.target === dom),
       }
     }

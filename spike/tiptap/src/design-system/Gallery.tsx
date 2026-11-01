@@ -26,8 +26,14 @@ function Pane({ dir }: { dir: 'ltr' | 'rtl' }) {
           <Button>{fa ? 'انصراف' : 'Cancel'}</Button>
           <Button variant="ghost">Ghost</Button>
           <Button variant="danger">{fa ? 'حذف' : 'Delete'}</Button>
-          <Button size="sm" icon={<Icon name="plus" size={14} />}>{fa ? 'جدید' : 'New'}</Button>
-          <Tooltip label={fa ? 'افزودن' : 'Add'}><IconButton label={fa ? 'افزودن' : 'Add'}><Icon name="plus" /></IconButton></Tooltip>
+          <Button size="sm" icon={<Icon name="plus" size={14} />}>
+            {fa ? 'جدید' : 'New'}
+          </Button>
+          <Tooltip label={fa ? 'افزودن' : 'Add'}>
+            <IconButton label={fa ? 'افزودن' : 'Add'}>
+              <Icon name="plus" />
+            </IconButton>
+          </Tooltip>
         </div>
       </Section>
       <Section title="Row: the icon follows the text">
@@ -41,19 +47,39 @@ function Pane({ dir }: { dir: 'ltr' | 'rtl' }) {
         <div className="gallery-line">
           <Switch checked={on} onChange={setOn} label="Switch" />
           <Field placeholder={fa ? 'جستجو…' : 'Search…'} />
-          <Chip color="#0f8f83" dot>{fa ? 'در حال انجام' : 'Doing'}</Chip>
+          <Chip color="#0f8f83" dot>
+            {fa ? 'در حال انجام' : 'Doing'}
+          </Chip>
         </div>
-        <Tabs items={[{ id: 'one', label: fa ? 'یک' : 'One' }, { id: 'two', label: fa ? 'دو' : 'Two' }]} value={tab} onChange={setTab} />
+        <Tabs
+          items={[
+            { id: 'one', label: fa ? 'یک' : 'One' },
+            { id: 'two', label: fa ? 'دو' : 'Two' },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
       </Section>
       <Section title="Facts and notice">
-        <Facts items={[[fa ? 'صفحه‌ها' : 'Pages', fa ? '۱۲۸' : '128'], [fa ? 'تصویرها' : 'Images', fa ? '۴۲' : '42']]} />
-        <Notice tone="warn" icon={<Icon name="warning" size={16} />}>{fa ? 'همهٔ صفحه‌های فعلی جایگزین می‌شوند.' : 'All current pages will be replaced.'}</Notice>
+        <Facts
+          items={[
+            [fa ? 'صفحه‌ها' : 'Pages', fa ? '۱۲۸' : '128'],
+            [fa ? 'تصویرها' : 'Images', fa ? '۴۲' : '42'],
+          ]}
+        />
+        <Notice tone="warn" icon={<Icon name="warning" size={16} />}>
+          {fa ? 'همهٔ صفحه‌های فعلی جایگزین می‌شوند.' : 'All current pages will be replaced.'}
+        </Notice>
       </Section>
       <Section title="Stack">
         <div className="ds-stack">
           <div className="ds-seg" role="radiogroup" aria-label="Choice">
-            <button type="button" role="radio" aria-checked aria-pressed>{fa ? 'جدید' : 'New'}</button>
-            <button type="button" role="radio" aria-checked={false} aria-pressed={false}>{fa ? 'همین' : 'Here'}</button>
+            <button type="button" role="radio" aria-checked aria-pressed>
+              {fa ? 'جدید' : 'New'}
+            </button>
+            <button type="button" role="radio" aria-checked={false} aria-pressed={false}>
+              {fa ? 'همین' : 'Here'}
+            </button>
           </div>
           <Field placeholder={fa ? 'نام' : 'Name'} />
           <Notice icon={<Icon name="info" size={16} />}>{fa ? 'یک جمله که باید دیده شود.' : 'One sentence that must be seen.'}</Notice>
@@ -61,8 +87,19 @@ function Pane({ dir }: { dir: 'ltr' | 'rtl' }) {
       </Section>
       <Section title="Dialog">
         <Button onClick={() => setOpen(true)}>{fa ? 'باز کردن' : 'Open dialog'}</Button>
-        <Dialog open={open} title={fa ? 'تغییر نام' : 'Rename page'} onClose={() => setOpen(false)}
-          actions={<><Button onClick={() => setOpen(false)}>{fa ? 'انصراف' : 'Cancel'}</Button><Button variant="primary" onClick={() => setOpen(false)}>{fa ? 'ذخیره' : 'Save'}</Button></>}>
+        <Dialog
+          open={open}
+          title={fa ? 'تغییر نام' : 'Rename page'}
+          onClose={() => setOpen(false)}
+          actions={
+            <>
+              <Button onClick={() => setOpen(false)}>{fa ? 'انصراف' : 'Cancel'}</Button>
+              <Button variant="primary" onClick={() => setOpen(false)}>
+                {fa ? 'ذخیره' : 'Save'}
+              </Button>
+            </>
+          }
+        >
           <Field defaultValue={title} />
         </Dialog>
       </Section>
@@ -72,22 +109,40 @@ function Pane({ dir }: { dir: 'ltr' | 'rtl' }) {
 
 export function Gallery() {
   const [dark, setDark] = useState(false)
-  const toggle = () => { const next = !dark; setDark(next); document.documentElement.dataset.theme = next ? 'dark' : 'light' }
+  const toggle = () => {
+    const next = !dark
+    setDark(next)
+    document.documentElement.dataset.theme = next ? 'dark' : 'light'
+  }
   return (
     <div className="gallery">
       <header>
         <h1>Nevis design system</h1>
         <Button onClick={toggle}>{dark ? 'Light' : 'Dark'}</Button>
       </header>
-      <div className="gallery-panes"><Pane dir="ltr" /><Pane dir="rtl" /></div>
+      <div className="gallery-panes">
+        <Pane dir="ltr" />
+        <Pane dir="rtl" />
+      </div>
       <Section title="Scenery: the Home banner by time of day">
         <div className="gallery-scenes">
-          {[6, 10, 14, 18, 23].map((hour) => { const l = landscapeFor(hour); return <div key={hour} className="gallery-scene" style={{ backgroundImage: l.css }}><span>{l.phase}</span></div> })}
+          {[6, 10, 14, 18, 23].map((hour) => {
+            const l = landscapeFor(hour)
+            return (
+              <div key={hour} className="gallery-scene" style={{ backgroundImage: l.css }}>
+                <span>{l.phase}</span>
+              </div>
+            )
+          })}
         </div>
       </Section>
       <Section title="Scenery: landscape covers">
         <div className="gallery-scenes">
-          {COVER_SCENES.map((s) => <div key={s.id} className="gallery-scene" style={{ backgroundImage: s.css }}><span>{s.label}</span></div>)}
+          {COVER_SCENES.map((s) => (
+            <div key={s.id} className="gallery-scene" style={{ backgroundImage: s.css }}>
+              <span>{s.label}</span>
+            </div>
+          ))}
         </div>
       </Section>
     </div>

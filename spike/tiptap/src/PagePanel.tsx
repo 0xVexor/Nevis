@@ -22,7 +22,9 @@ interface Props {
 const Row = ({ icon, label, on, onClick }: { icon: ReactNode; label: string; on?: boolean; onClick: (e: React.MouseEvent<HTMLButtonElement>) => void }) => (
   <button className={'pd-row' + (on ? ' on' : '')} onClick={onClick}>
     <span className="pd-ic">{icon}</span>
-    <span className="pd-tx" dir="auto">{label}</span>
+    <span className="pd-tx" dir="auto">
+      {label}
+    </span>
   </button>
 )
 
@@ -49,7 +51,9 @@ export function PagePanel({ open, page, pages, onClose, onOpen, onNewSub, onFav,
     <aside className={'page-drawer' + (open ? ' open' : '')} aria-hidden={!open} inert={!open}>
       <div className="pd-head">
         <span>{t('Page')}</span>
-        <button className="icon-btn" onClick={onClose} title={t('Close  Esc')}><Ic.Close size={16} /></button>
+        <button className="icon-btn" onClick={onClose} title={t('Close  Esc')}>
+          <Ic.Close size={16} />
+        </button>
       </div>
       <div className="pd-scroll">
         <section>

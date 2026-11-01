@@ -37,7 +37,11 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
   const listGroups = [...groups].filter(([id]) => isList(id))
   const pageGroups = [...groups].filter(([id]) => !isList(id))
   const lists = useMemo(
-    () => repo.pagesOnly().filter((p) => p.kind === 'todo').map((p) => ({ page: p, all: tasks.filter((x) => x.pageId === p.id && x.text) })),
+    () =>
+      repo
+        .pagesOnly()
+        .filter((p) => p.kind === 'todo')
+        .map((p) => ({ page: p, all: tasks.filter((x) => x.pageId === p.id && x.text) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [tasks],
   )
@@ -55,12 +59,19 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
       <header className="tk-head">
         <h1>{t('Tasks')}</h1>
         <p>{total ? t('{open} open · {done} done', { open, done: total - open }) : t('Checklist items from all your pages appear here.')}</p>
-        {total > 0 && <div className="tk-bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><i style={{ width: pct + '%' }} /></div>}
+        {total > 0 && (
+          <div className="tk-bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+            <i style={{ width: pct + '%' }} />
+          </div>
+        )}
       </header>
 
       <form className="tk-add" onSubmit={(e) => (e.preventDefault(), add())}>
         <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t('Add a task…')} dir="auto" />
-        <Button variant="primary" type="submit" disabled={!draft.trim()}><Ic.Plus size={16} />{t('Add')}</Button>
+        <Button variant="primary" type="submit" disabled={!draft.trim()}>
+          <Ic.Plus size={16} />
+          {t('Add')}
+        </Button>
       </form>
 
       <div className="dw-tools">
@@ -72,17 +83,34 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
           ))}
         </div>
         <span className="spacer" />
-        <Button variant="primary" onClick={onNewList}><Ic.Plus size={15} />{t('New list')}</Button>
+        <Button variant="primary" onClick={onNewList}>
+          <Ic.Plus size={15} />
+          {t('New list')}
+        </Button>
       </div>
 
       {inboxShown.length > 0 && (
         <section className="tk-group">
-          <div className="tk-page static"><span className="hm-row-ic"><Ic.Checklist size={16} /></span><b>{t('Inbox')}</b><small>{inboxShown.length}</small></div>
+          <div className="tk-page static">
+            <span className="hm-row-ic">
+              <Ic.Checklist size={16} />
+            </span>
+            <b>{t('Inbox')}</b>
+            <small>{inboxShown.length}</small>
+          </div>
           {inboxShown.map((x) => (
             <div key={x.id} className={'tk-item' + (x.checked ? ' done' : '')}>
               <input type="checkbox" checked={x.checked} onChange={(e) => editInbox(inbox.map((y) => (y.id === x.id ? { ...y, checked: e.target.checked } : y)))} />
-              <input className="tk-text" dir="auto" value={x.text} onChange={(e) => editInbox(inbox.map((y) => (y.id === x.id ? { ...y, text: e.target.value } : y)))} onBlur={() => !x.text.trim() && editInbox(inbox.filter((y) => y.id !== x.id))} />
-              <button className="tk-del" title={t('Delete')} onClick={() => editInbox(inbox.filter((y) => y.id !== x.id))}><Ic.Close size={14} /></button>
+              <input
+                className="tk-text"
+                dir="auto"
+                value={x.text}
+                onChange={(e) => editInbox(inbox.map((y) => (y.id === x.id ? { ...y, text: e.target.value } : y)))}
+                onBlur={() => !x.text.trim() && editInbox(inbox.filter((y) => y.id !== x.id))}
+              />
+              <button className="tk-del" title={t('Delete')} onClick={() => editInbox(inbox.filter((y) => y.id !== x.id))}>
+                <Ic.Close size={14} />
+              </button>
             </div>
           ))}
         </section>
@@ -92,9 +120,13 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
           <div className="tk-label">{t('To-do lists')}</div>
           {lists.map(({ page, all }) => (
             <button key={page.id} dir={dirOf(page.title)} className="tk-page" onClick={() => onOpen(page.id)}>
-              <span className="hm-row-ic"><PageIcon page={page} /></span>
+              <span className="hm-row-ic">
+                <PageIcon page={page} />
+              </span>
               <b dir="auto">{page.title || t('Untitled')}</b>
-              <small>{all.filter((x) => x.checked).length}/{all.length}</small>
+              <small>
+                {all.filter((x) => x.checked).length}/{all.length}
+              </small>
             </button>
           ))}
         </section>
@@ -103,7 +135,9 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
       {inboxShown.length > 0 && groups.size > 0 && <hr className="tk-sep" />}
 
       {groups.size === 0 && inboxShown.length === 0 ? (
-        <div className="ds-empty ds-card"><b>{filter === 'open' && tasks.length ? t('All caught up') : t('No tasks here')}</b></div>
+        <div className="ds-empty ds-card">
+          <b>{filter === 'open' && tasks.length ? t('All caught up') : t('No tasks here')}</b>
+        </div>
       ) : (
         [...listGroups, ...pageGroups].map(([pageId, items], i) => {
           const page = repo.get(pageId)!
@@ -112,7 +146,9 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
             <section key={pageId} className="tk-group">
               {head && <div className="tk-label">{head}</div>}
               <button dir={dirOf(page.title)} className="tk-page" onClick={() => onOpen(pageId)}>
-                <span className="hm-row-ic"><PageIcon page={page} /></span>
+                <span className="hm-row-ic">
+                  <PageIcon page={page} />
+                </span>
                 <b dir="auto">{page.title || t('Untitled')}</b>
                 <small>{items.length}</small>
               </button>

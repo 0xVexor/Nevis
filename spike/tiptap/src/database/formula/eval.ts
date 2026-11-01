@@ -37,7 +37,8 @@ export function evaluate(ast: Node, env: FormulaEnv, opts: EvalOptions = {}): Fo
   function callSpec(name: string, argNodes: Node[], node: Node, scope: Scope): FormulaValue {
     const spec = FUNCTIONS[name]
     if (!spec) return fail(node, 'FORMULA_NAME', `unknown function "${name}"`)
-    if (argNodes.length < spec.min || argNodes.length > spec.max) return fail(node, 'FORMULA_ARITY', `${name} takes ${spec.min}-${spec.max === Infinity ? '…' : spec.max} arguments, got ${argNodes.length}`)
+    if (argNodes.length < spec.min || argNodes.length > spec.max)
+      return fail(node, 'FORMULA_ARITY', `${name} takes ${spec.min}-${spec.max === Infinity ? '…' : spec.max} arguments, got ${argNodes.length}`)
     const cx = cxFor(scope)
     const args: Arg[] = []
     let sawEmpty = false
@@ -59,9 +60,12 @@ export function evaluate(ast: Node, env: FormulaEnv, opts: EvalOptions = {}): Fo
   function ev(node: Node, scope: Scope): FormulaValue {
     tick(node)
     switch (node.t) {
-      case 'num': return numV(node.v)
-      case 'str': return textV(node.v)
-      case 'bool': return boolV(node.v)
+      case 'num':
+        return numV(node.v)
+      case 'str':
+        return textV(node.v)
+      case 'bool':
+        return boolV(node.v)
       case 'list': {
         const items = node.items.map((i) => ev(i, scope))
         if (items.length > budget.maxListItems) fail(node, 'FORMULA_BUDGET', 'list is too long')
@@ -90,10 +94,14 @@ export function evaluate(ast: Node, env: FormulaEnv, opts: EvalOptions = {}): Fo
           throw err
         }
       }
-      case 'un': return callSpec(node.op === '-' ? 'subtract' : 'not', node.op === '-' ? [{ t: 'num', v: 0, from: node.from, to: node.from }, node.arg] : [node.arg], node, scope)
-      case 'bin': return callSpec(operatorFunction(node.op), [node.l, node.r], node, scope)
-      case 'cond': return callSpec('if', [node.test, node.a, node.b], node, scope)
-      case 'call': return callSpec(node.fn, node.args, node, scope)
+      case 'un':
+        return callSpec(node.op === '-' ? 'subtract' : 'not', node.op === '-' ? [{ t: 'num', v: 0, from: node.from, to: node.from }, node.arg] : [node.arg], node, scope)
+      case 'bin':
+        return callSpec(operatorFunction(node.op), [node.l, node.r], node, scope)
+      case 'cond':
+        return callSpec('if', [node.test, node.a, node.b], node, scope)
+      case 'call':
+        return callSpec(node.fn, node.args, node, scope)
     }
   }
 

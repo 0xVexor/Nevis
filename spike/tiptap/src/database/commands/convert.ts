@@ -71,10 +71,30 @@ export function isConvertible(from: Kind, to: Kind): boolean {
   if (to === 'text') return true // rule 2
   if (TEXTLIKE.includes(to)) return from === 'text' || TEXTLIKE.includes(from) // text <-> url/email/phone by validation
   const pairs: [Kind, Kind][] = [
-    ['text', 'number'], ['text', 'checkbox'], ['number', 'checkbox'], ['checkbox', 'number'], ['text', 'date'], ['date', 'number'], ['number', 'date'],
-    ['text', 'select'], ['text', 'multi_select'], ['text', 'status'], ['select', 'multi_select'], ['multi_select', 'select'],
-    ['select', 'status'], ['status', 'select'], ['multi_select', 'status'], ['status', 'multi_select'], ['status', 'checkbox'], ['checkbox', 'status'],
-    ['text', 'people'], ['text', 'relation'], ['text', 'place'], ['place', 'text'], ['url', 'text'], ['date', 'date'],
+    ['text', 'number'],
+    ['text', 'checkbox'],
+    ['number', 'checkbox'],
+    ['checkbox', 'number'],
+    ['text', 'date'],
+    ['date', 'number'],
+    ['number', 'date'],
+    ['text', 'select'],
+    ['text', 'multi_select'],
+    ['text', 'status'],
+    ['select', 'multi_select'],
+    ['multi_select', 'select'],
+    ['select', 'status'],
+    ['status', 'select'],
+    ['multi_select', 'status'],
+    ['status', 'multi_select'],
+    ['status', 'checkbox'],
+    ['checkbox', 'status'],
+    ['text', 'people'],
+    ['text', 'relation'],
+    ['text', 'place'],
+    ['place', 'text'],
+    ['url', 'text'],
+    ['date', 'date'],
   ]
   return pairs.some(([a, b]) => a === from && b === to)
 }
@@ -89,11 +109,20 @@ function parseDateByFormat(text: string, m: ConvertMapping, zone: string): DateV
     if (parts.length !== 3 || parts.some((x) => !Number.isInteger(x))) return 'invalid'
     let c: string
     switch (m.dateFormat) {
-      case 'YYYY-MM-DD': return parseIsoDateText(t, zone)
-      case 'YYYY/MM/DD': c = civilString(parts[0], parts[1], parts[2]); break
-      case 'DD/MM/YYYY': c = civilString(parts[2], parts[1], parts[0]); break
-      case 'MM/DD/YYYY': c = civilString(parts[2], parts[0], parts[1]); break
-      case 'jalali': c = jalaliToCivil(parts[0], parts[1], parts[2]); break
+      case 'YYYY-MM-DD':
+        return parseIsoDateText(t, zone)
+      case 'YYYY/MM/DD':
+        c = civilString(parts[0], parts[1], parts[2])
+        break
+      case 'DD/MM/YYYY':
+        c = civilString(parts[2], parts[1], parts[0])
+        break
+      case 'MM/DD/YYYY':
+        c = civilString(parts[2], parts[0], parts[1])
+        break
+      case 'jalali':
+        c = jalaliToCivil(parts[0], parts[1], parts[2])
+        break
     }
     return isCivil(c) ? { kind: 'date', start: c, end: null } : 'invalid'
   } catch {
@@ -103,7 +132,11 @@ function parseDateByFormat(text: string, m: ConvertMapping, zone: string): DateV
 
 type Conv = { out: Cell | null; loss: 'lossless' | 'lossy' | 'invalid'; reason?: string }
 
-export function planConversion(base: DbState | Draft, plan: ConvertPlan, ctxInfo: { zone: string; principalName?: (id: Id) => string; pageTitle?: (id: Id) => string; labelIsAmbiguous?: boolean }): Planned {
+export function planConversion(
+  base: DbState | Draft,
+  plan: ConvertPlan,
+  ctxInfo: { zone: string; principalName?: (id: Id) => string; pageTitle?: (id: Id) => string; labelIsAmbiguous?: boolean },
+): Planned {
   const def = base.get('property', plan.propertyId)
   if (!def || def.deletedAt !== null) return fail('NOT_FOUND', 'property not found', { propertyId: plan.propertyId })
   const from = def.kind
@@ -112,7 +145,9 @@ export function planConversion(base: DbState | Draft, plan: ConvertPlan, ctxInfo
   const zone = m.zone ?? ctxInfo.zone
   const empty = (reason: string): Planned => ({
     report: { supported: false, unsupportedReason: reason, counts: { total: 0, lossless: 0, lossy: 0, invalid: 0 }, samples: [], invalid: [], newConfig: def.config, createdOptions: [] },
-    apply: new Map(), archived: new Map(), hash: '',
+    apply: new Map(),
+    archived: new Map(),
+    hash: '',
   })
   if (!isConvertible(from, to)) return empty(`${from} cannot be converted to ${to}`)
   if (from === 'rollup' || from === 'formula') return empty('use materialize to turn a computed property into values')
@@ -206,7 +241,12 @@ export function planConversion(base: DbState | Draft, plan: ConvertPlan, ctxInfo
   else newConfig = destCfg
   if (to === 'formula' || to === 'rollup' || to === 'button' || to === 'relation') newConfig = destCfg
   const report: ConversionReport = {
-    supported: true, counts, samples: entries.slice(0, 20), invalid: entries.filter((x) => x.loss === 'invalid'), newConfig, createdOptions: created,
+    supported: true,
+    counts,
+    samples: entries.slice(0, 20),
+    invalid: entries.filter((x) => x.loss === 'invalid'),
+    newConfig,
+    createdOptions: created,
   }
   const h = hash([plan, def.revision, rows.map((r) => [r.page.id, r.page.recordMeta?.revision ?? 0])])
   return { report, apply, archived, hash: h, edgesFor: edgeSpecs }
@@ -284,7 +324,8 @@ function convertCell(def: Definition, from: Kind, to: Kind, cur: Cell | undefine
       if (!cur || cur.kind !== 'number' || cur.value === null) return ok(null)
       return cur.value === 0 || cur.value === 1 ? ok({ kind: 'checkbox', value: cur.value === 1 }) : bad('only 0 and 1 convert to a checkbox')
     }
-    case 'checkbox>number': return ok({ kind: 'number', value: cur?.kind === 'checkbox' && cur.value ? 1 : 0 })
+    case 'checkbox>number':
+      return ok({ kind: 'number', value: cur?.kind === 'checkbox' && cur.value ? 1 : 0 })
     case 'text>date': {
       if (empty) return ok(null)
       const d = parseDateByFormat(text, m, zone)
@@ -311,7 +352,12 @@ function convertCell(def: Definition, from: Kind, to: Kind, cur: Cell | undefine
     }
     case 'text>multi_select': {
       if (empty) return ok(null)
-      const parts = m.delimiter ? text.split(m.delimiter).map((s) => s.trim()).filter(Boolean) : [text]
+      const parts = m.delimiter
+        ? text
+            .split(m.delimiter)
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [text]
       const ids: Id[] = []
       for (const p of parts) {
         const r = cc.labelToOption(p)
@@ -320,7 +366,8 @@ function convertCell(def: Definition, from: Kind, to: Kind, cur: Cell | undefine
       }
       return ok({ kind: 'multi_select', optionIds: ids })
     }
-    case 'select>multi_select': return !cur || cur.kind !== 'select' || !cur.optionId ? ok(null) : ok({ kind: 'multi_select', optionIds: [cur.optionId] })
+    case 'select>multi_select':
+      return !cur || cur.kind !== 'select' || !cur.optionId ? ok(null) : ok({ kind: 'multi_select', optionIds: [cur.optionId] })
     case 'multi_select>select': {
       if (!cur || cur.kind !== 'multi_select' || !cur.optionIds.length) return ok(null)
       if (cur.optionIds.length === 1) return ok({ kind: 'select', optionId: cur.optionIds[0] })
@@ -357,7 +404,12 @@ function convertCell(def: Definition, from: Kind, to: Kind, cur: Cell | undefine
     }
     case 'text>people': {
       if (empty) return ok(null)
-      const names = m.delimiter ? text.split(m.delimiter).map((s) => s.trim()).filter(Boolean) : [text.trim()]
+      const names = m.delimiter
+        ? text
+            .split(m.delimiter)
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [text.trim()]
       const ids: Id[] = []
       for (const n of names) {
         const id = cc.principalIdFor(n)
@@ -366,11 +418,18 @@ function convertCell(def: Definition, from: Kind, to: Kind, cur: Cell | undefine
       }
       return ok({ kind: 'people', principalIds: ids })
     }
-    case 'text>place': return empty ? ok(null) : ok({ kind: 'place', value: { lat: null, lon: null, name: '', address: text.trim(), unresolved: true } })
-    case 'place>text': return ok(cur?.kind === 'place' && cur.value ? { kind: 'text', runs: textToRuns(cur.value.name || cur.value.address) } : null, 'lossy', 'coordinates dropped')
+    case 'text>place':
+      return empty ? ok(null) : ok({ kind: 'place', value: { lat: null, lon: null, name: '', address: text.trim(), unresolved: true } })
+    case 'place>text':
+      return ok(cur?.kind === 'place' && cur.value ? { kind: 'text', runs: textToRuns(cur.value.name || cur.value.address) } : null, 'lossy', 'coordinates dropped')
     case 'text>relation': {
       if (empty) return ok(null)
-      const labels = m.delimiter ? text.split(m.delimiter).map((s) => s.trim()).filter(Boolean) : [text.trim()]
+      const labels = m.delimiter
+        ? text
+            .split(m.delimiter)
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [text.trim()]
       const ids: Id[] = []
       for (const l of labels) {
         const id = m.pages?.[l]
@@ -406,15 +465,20 @@ function commitPlanned(cx: Ctx, plan: ConvertPlan, expectHash?: string) {
   const rep = planned.report
   if (!rep.supported) fail('UNSUPPORTED_CONVERSION', rep.unsupportedReason ?? 'unsupported conversion')
   const policy = plan.invalidPolicy ?? 'rejectInvalid'
-  if (rep.counts.invalid && policy === 'rejectInvalid') fail('INVALID_VALUE', `${rep.counts.invalid} value(s) cannot be converted; nothing was changed`, { invalid: rep.invalid.slice(0, 20) as unknown as Json, counts: rep.counts })
+  if (rep.counts.invalid && policy === 'rejectInvalid')
+    fail('INVALID_VALUE', `${rep.counts.invalid} value(s) cannot be converted; nothing was changed`, { invalid: rep.invalid.slice(0, 20) as unknown as Json, counts: rep.counts })
   const to = plan.destinationKind
   const m = cx.d.mut('property', def.id)
-  const dest = to === 'select' || to === 'multi_select' || to === 'status' ? { ...(rep.newConfig as object), archivedOptions: (def.config as { archivedOptions?: Json })?.archivedOptions ?? [] } : rep.newConfig
+  const dest =
+    to === 'select' || to === 'multi_select' || to === 'status' ? { ...(rep.newConfig as object), archivedOptions: (def.config as { archivedOptions?: Json })?.archivedOptions ?? [] } : rep.newConfig
   // created options get real ids
   let cfgJson = JSON.stringify(dest)
   const idMap = new Map<string, Id>()
   for (const mm of cfgJson.matchAll(/"id":"(new-[^"]+)"/g)) if (!idMap.has(mm[1])) idMap.set(mm[1], cx.ids())
-  const remap = (s: string) => { for (const [a, b] of idMap) s = s.split(a).join(b); return s }
+  const remap = (s: string) => {
+    for (const [a, b] of idMap) s = s.split(a).join(b)
+    return s
+  }
   cfgJson = remap(cfgJson)
   let cfg = JSON.parse(cfgJson) as Json
   if (to === 'status') {
@@ -437,7 +501,17 @@ function commitPlanned(cx: Ctx, plan: ConvertPlan, expectHash?: string) {
   if (to === 'relation') {
     const dc = (plan.destinationConfig ?? {}) as { targetSourceId?: Id; cardinality?: 'one' | 'many' }
     if (!dc.targetSourceId || !cx.d.get('source', dc.targetSourceId)) fail('INVALID_VALUE', 'a relation needs a target source')
-    relDef = cx.d.add('relation', { ...cx.meta(), propertyId: def.id, sourceId: def.sourceId, targetSourceId: dc.targetSourceId!, mode: 'one_way', inversePropertyId: null, cardinality: dc.cardinality ?? 'many', inverseCardinality: 'many', displayedPropertyIds: [] })
+    relDef = cx.d.add('relation', {
+      ...cx.meta(),
+      propertyId: def.id,
+      sourceId: def.sourceId,
+      targetSourceId: dc.targetSourceId!,
+      mode: 'one_way',
+      inversePropertyId: null,
+      cardinality: dc.cardinality ?? 'many',
+      inverseCardinality: 'many',
+      displayedPropertyIds: [],
+    })
     m.config = { definitionId: relDef.id, side: 'forward' }
   } else m.config = validateConfig(to, cfg, cx.ids)
   const edges: { pageId: Id; ids: Id[] }[] = []
@@ -448,11 +522,19 @@ function commitPlanned(cx: Ctx, plan: ConvertPlan, expectHash?: string) {
     if (arch) (ext.archivedCells as Record<string, Json>)[`${def.id}@${cx.env.operationId}`] = arch as unknown as Json
     let out = cell
     if (to === 'status' && !out) out = null
-    if (out && to === 'relation') { edges.push({ pageId, ids: runsToText((out as Extract<Cell, { kind: 'text' }>).runs).split('\n').filter(Boolean) }); out = null }
+    if (out && to === 'relation') {
+      edges.push({
+        pageId,
+        ids: runsToText((out as Extract<Cell, { kind: 'text' }>).runs)
+          .split('\n')
+          .filter(Boolean),
+      })
+      out = null
+    }
     if (out && to !== 'relation') {
       let c = out
       if (idMap.size) c = JSON.parse(remap(JSON.stringify(c))) as Cell
-      const v = (to === 'formula' || to === 'rollup' || to === 'button') ? null : validateCell(m, c)
+      const v = to === 'formula' || to === 'rollup' || to === 'button' ? null : validateCell(m, c)
       if (v && !same(v, defaultCell(m) ?? null)) ext.cells[def.id] = { value: v, stamp: cx.stamp() }
       else delete ext.cells[def.id] // a value equal to the new type's default is implicit
     } else if (to === 'formula' || to === 'rollup' || to === 'button' || !out) delete ext.cells[def.id]
@@ -472,11 +554,16 @@ register('property.materialize', (cx, p: { propertyId: Id; destinationKind?: Kin
   const zone = p.zone ?? 'UTC'
   const rs = new Resolver(cx.state, { principalId: cx.env.actorId, nowMs: p.now ? Date.parse(p.now) : cx.now, zone, weekStart: 6 })
   const rows = cx.d.rowsOf(def.sourceId)
-  const results: { page: PageLike; q: ReturnType<Resolver['value']> }[] = rows.map((r) => ({ page: r.page, q: rs.value({ page: cx.state.pages.get(r.page.id) ?? r.page, ext: (cx.state.pages.get(r.page.id) ?? r.page).database!, sourceId: r.sourceId }, def) }))
+  const results: { page: PageLike; q: ReturnType<Resolver['value']> }[] = rows.map((r) => ({
+    page: r.page,
+    q: rs.value({ page: cx.state.pages.get(r.page.id) ?? r.page, ext: (cx.state.pages.get(r.page.id) ?? r.page).database!, sourceId: r.sourceId }, def),
+  }))
   const kinds = new Set(results.map((x) => x.q.c).filter((c) => c !== 'empty'))
   const bad = results.filter((x) => x.q.c === 'blocked')
   if (bad.length && (p.policy ?? 'rejectInvalid') === 'rejectInvalid') fail('INVALID_VALUE', `${bad.length} value(s) are errors, pending or restricted; nothing was changed`)
-  let kind: Kind = p.destinationKind ?? (kinds.size === 1 ? ({ number: 'number', text: 'text', bool: 'checkbox', date: 'date', members: 'text', list: 'text', blocked: 'text', empty: 'text' }[[...kinds][0]] as Kind) : 'text')
+  let kind: Kind =
+    p.destinationKind ??
+    (kinds.size === 1 ? ({ number: 'number', text: 'text', bool: 'checkbox', date: 'date', members: 'text', list: 'text', blocked: 'text', empty: 'text' }[[...kinds][0]] as Kind) : 'text')
   if (kinds.size > 1 && !p.destinationKind) kind = 'text'
   const m = cx.d.mut('property', def.id)
   const old = { kind: def.kind, config: def.config }
@@ -509,7 +596,15 @@ register('property.duplicate_as', (cx, p: { propertyId: Id; name: string; destin
   if (!compat[def.kind].includes(p.destinationKind)) fail('UNSUPPORTED_CONVERSION', `${def.kind} cannot become ${p.destinationKind}`)
   const rs = new Resolver(cx.state, { principalId: cx.env.actorId, nowMs: cx.now, zone: p.zone ?? 'UTC', weekStart: 6 })
   const id = cx.ids()
-  cx.d.add('property', { ...cx.meta(id), sourceId: def.sourceId, name: p.name, description: '', kind: p.destinationKind, sortKey: keyBetween(cx.d.props(def.sourceId).slice(-1)[0]?.sortKey ?? null, null), config: validateConfig(p.destinationKind, {}, cx.ids) })
+  cx.d.add('property', {
+    ...cx.meta(id),
+    sourceId: def.sourceId,
+    name: p.name,
+    description: '',
+    kind: p.destinationKind,
+    sortKey: keyBetween(cx.d.props(def.sourceId).slice(-1)[0]?.sortKey ?? null, null),
+    config: validateConfig(p.destinationKind, {}, cx.ids),
+  })
   const nd = cx.d.get('property', id)!
   for (const r of cx.d.rowsOf(def.sourceId)) {
     const q = rs.value({ page: cx.state.pages.get(r.page.id) ?? r.page, ext: r.ext, sourceId: r.sourceId }, def)
@@ -524,4 +619,3 @@ register('property.duplicate_as', (cx, p: { propertyId: Id; name: string; destin
   bumpSchema(cx, def.sourceId)
   return { propertyId: id }
 })
-

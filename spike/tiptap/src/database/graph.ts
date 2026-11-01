@@ -127,7 +127,12 @@ export function selectGraph(state: DbState, pages: PageSummary[], mentions: [Id,
     return { id, title: p.title, degree: deg.get(id) ?? 0, sourceId: state.row(id)?.sourceId ?? null, ...(p.icon ? { icon: p.icon } : {}) }
   })
   return {
-    nodes, edges: outEdges, truncated: { nodes: totalNodes > nodes.length, edges: totalEdges > outEdges.length }, totalNodes, totalEdges,
-    rootRetained: !q.rootPageId || nodes.some((n) => n.id === q.rootPageId), cutIds: cut,
+    nodes,
+    edges: outEdges,
+    truncated: { nodes: totalNodes > nodes.length, edges: totalEdges > outEdges.length },
+    totalNodes,
+    totalEdges,
+    rootRetained: !q.rootPageId || nodes.some((n) => n.id === q.rootPageId),
+    cutIds: cut,
   }
 }
