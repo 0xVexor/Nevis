@@ -3,8 +3,15 @@
    remain with each section; synchronized viewports never render a second bar. */
 :root {
   --scrollbar-horizontal-size: 6px;
-  --scrollbar-thumb: var(--border-strong);
-  --scrollbar-thumb-hover: var(--faint);
+  --scrollbar-thumb: var(--ds-line-strong);
+  --scrollbar-thumb-hover: var(--ds-text-3);
+  --font: 'Instrument Sans', 'Vazirmatn', 'Segoe UI', Tahoma, system-ui, sans-serif;
+  --bg: var(--ds-bg);
+  --dot: transparent;
+  --panel-shadow: none;
+  --glow: none;
+  --mesh-light: none;
+  --mesh-dark: none;
 }
 
 /* Firefox fallback for horizontal surfaces; WebKit uses the precise axis rules below. */

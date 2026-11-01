@@ -42,7 +42,7 @@ import { isTauri, kvGet, kvSet } from './db'
 import { watchDueCards } from './cardsDue'
 import { normalizeFa } from './normalize'
 import { Brand } from './Brand'
-import { Icon } from './design-system'
+import { Icon, dirOf, Button } from './design-system'
 import { MenuItem, MenuLabel, MenuSep, NameDialog, Popover, SearchModal, Toast, TrashModal, type PaletteCommand } from './ui'
 import { Home } from './Home'
 import { iconNode } from './iconSet'
@@ -94,7 +94,7 @@ function CompactList(props: Omit<RowProps, 'page' | 'depth'> & { roots: Page[] }
   const { index, roots, currentId, collapsed } = props
   const label = (p: Page) => p.title || (p.kind === 'folder' ? t('Untitled folder') : t('Untitled'))
   const file = (p: Page) => (
-    <div key={p.id} className={'row tree cmp-file' + (p.id === currentId ? ' cur' : '')} onClick={() => props.onOpen(p.id)} onContextMenu={(e) => (e.preventDefault(), e.stopPropagation(), props.onMenu(p.id, new DOMRect(e.clientX, e.clientY, 0, 0)))}>
+    <div key={p.id} dir={dirOf(label(p))} className={'row tree cmp-file' + (p.id === currentId ? ' cur' : '')} onClick={() => props.onOpen(p.id)} onContextMenu={(e) => (e.preventDefault(), e.stopPropagation(), props.onMenu(p.id, new DOMRect(e.clientX, e.clientY, 0, 0)))}>
       <span className="ic"><PageIcon page={p} /></span>
       <span className="ntitle" dir="auto">{label(p)}</span>
       <span className="acts">
@@ -109,7 +109,7 @@ function CompactList(props: Omit<RowProps, 'page' | 'depth'> & { roots: Page[] }
     const open = !collapsed.has(p.id)
     const folder = p.kind === 'folder'
     out.push(
-      <div key={p.id} className={'row tree cmp-head' + (folder ? ' folder' : '') + (p.id === currentId ? ' cur' : '')} onClick={() => (folder ? props.onToggle(p.id) : props.onOpen(p.id))} onContextMenu={(e) => (e.preventDefault(), e.stopPropagation(), props.onMenu(p.id, new DOMRect(e.clientX, e.clientY, 0, 0)))}>
+      <div key={p.id} dir={dirOf(label(p))} className={'row tree cmp-head' + (folder ? ' folder' : '') + (p.id === currentId ? ' cur' : '')} onClick={() => (folder ? props.onToggle(p.id) : props.onOpen(p.id))} onContextMenu={(e) => (e.preventDefault(), e.stopPropagation(), props.onMenu(p.id, new DOMRect(e.clientX, e.clientY, 0, 0)))}>
         <button className={'twisty' + (open ? ' open' : '')} style={{ visibility: files.length ? 'visible' : 'hidden' }} onClick={(e) => (e.stopPropagation(), props.onToggle(p.id))} aria-label={t('Expand or collapse')}>
           <Ic.Chevron size={14} />
         </button>
@@ -144,6 +144,7 @@ function TreeRow(props: RowProps) {
     <>
       <div
         className={'row tree' + (folder ? ' folder' : '') + (leaf ? ' leaf' : '') + (page.id === currentId ? ' cur' : '') + (zone ? ' drop-' + zone : '')}
+        dir={dirOf(page.title)}
         draggable
         onClick={() => (folder ? props.onToggle(page.id) : props.onOpen(page.id))}
         onContextMenu={(e) => (e.preventDefault(), e.stopPropagation(), props.onMenu(page.id, new DOMRect(e.clientX, e.clientY, 0, 0)))}
@@ -711,7 +712,7 @@ export default function App() {
             >
               <button className={"section" + (shut.favs ? " shut" : "")} onClick={() => setShut((s) => ({ ...s, favs: !s.favs }))}>{t('Favorites')}<Ic.Chevron size={13} /></button>
               {!shut.favs && favs.map((p) => (
-                <div key={p.id} className={'row' + (p.id === current?.id ? ' cur' : '')} style={{ paddingInlineStart: 24 }} onClick={() => setCurrentId(p.id)}>
+                <div key={p.id} dir={dirOf(p.title)} className={'row' + (p.id === current?.id ? ' cur' : '')} style={{ paddingInlineStart: 24 }} onClick={() => setCurrentId(p.id)}>
                   <span className="ic"><PageIcon page={p} /></span>
                   <span className="ntitle" dir="auto">{p.title || t('Untitled')}</span>
                 </div>
@@ -759,8 +760,8 @@ export default function App() {
             {repo.trash().length > 0 && <span className="badge">{repo.trash().length}</span>}
           </button>
           <div className="ds-split side-new">
-            <button className="ds-btn ds-btn--primary" onClick={() => add(null)}><Ic.Plus size={16} /><span className="ntitle">{t('New page')}</span></button>
-            <button className="ds-btn ds-btn--primary" aria-label={t('More')} aria-expanded={!!newMenu} onClick={(e) => setNewMenu(newMenu ? null : e.currentTarget.parentElement!.getBoundingClientRect())}><Ic.Chevron size={14} /></button>
+            <Button variant="primary" onClick={() => add(null)}><Ic.Plus size={16} /><span className="ntitle">{t('New page')}</span></Button>
+            <Button variant="primary" aria-label={t('More')} aria-expanded={!!newMenu} onClick={(e) => setNewMenu(newMenu ? null : e.currentTarget.parentElement!.getBoundingClientRect())}><Ic.Chevron size={14} /></Button>
           </div>
           {newMenu && <Popover anchor={newMenu} onClose={() => setNewMenu(null)}><div className="ds-menu">
             <MenuItem icon={<Ic.Page />} label={t('New page')} onClick={() => (setNewMenu(null), add(null))} />

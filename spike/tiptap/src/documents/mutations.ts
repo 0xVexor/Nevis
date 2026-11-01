@@ -17,7 +17,7 @@ export interface CreateDocumentInput {
 export interface UpdateDocumentMetadataInput {
   operationId: string; documentId: string; expectedRevision: string; patch: Partial<DocumentMetadata>
 }
-function fail(code: 'INVALID_ARGUMENT' | 'UNSUPPORTED_CONTENT' | 'CAPABILITY_UNAVAILABLE' | 'ACCESS_DENIED'): never { throw new DocumentPlanError(code) }
+function fail(code: 'INVALID_ARGUMENT' | 'UNSUPPORTED_CONTENT' | 'CAPABILITY_UNAVAILABLE' | 'ACCESS_DENIED', field?: string): never { throw new DocumentPlanError(code, field) }
 function fields(value: unknown, allowed: string[], required = allowed): asserts value is Record<string, any> {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !allowed.includes(key)) || required.some(key => !Object.hasOwn(value, key))) fail('INVALID_ARGUMENT')
 }
@@ -38,7 +38,7 @@ export function validateMetadata(value: Partial<DocumentMetadata>, full: boolean
       : key === 'favorite' ? typeof item !== 'boolean'
       : key === 'icon' ? item !== null && !string(item, 128)
       : key === 'titleDir' ? item !== null && !['rtl', 'ltr'].includes(item as string)
-      : item !== null && !['todo', 'doing', 'done'].includes(item as string)) fail('INVALID_ARGUMENT')
+      : item !== null && !['todo', 'doing', 'done'].includes(item as string)) fail('INVALID_ARGUMENT', key)
   }
 }
 export function applyMetadata(page: Page, metadata: Partial<DocumentMetadata>) {
@@ -57,7 +57,9 @@ export function metadataEvidence(page: Page): DocumentMetadata {
 }
 export function validateCreate(input: CreateDocumentInput) {
   validateDocumentJson(input); fields(input, ['operationId', 'parentId', 'kind', 'metadata', 'content', 'assets'], ['operationId', 'parentId', 'kind', 'metadata', 'content'])
-  if (!isBlockId(input.operationId) || (input.parentId !== null && !string(input.parentId, 256)) || !['page', 'folder', 'board', 'todo'].includes(input.kind)) fail('INVALID_ARGUMENT')
+  if (!isBlockId(input.operationId)) fail('INVALID_ARGUMENT', 'operationId')
+  if (input.parentId !== null && !string(input.parentId, 256)) fail('INVALID_ARGUMENT', 'parentId')
+  if (!['page', 'folder', 'board', 'todo'].includes(input.kind)) fail('INVALID_ARGUMENT', 'kind')
   validateMetadata(input.metadata, true)
   fields(input.content, ['type', 'content'])
   if (input.content.type !== 'doc' || !Array.isArray(input.content.content)) fail('INVALID_ARGUMENT')
@@ -72,8 +74,8 @@ export async function prepareCreatedPage(input: CreateDocumentInput, id: string,
   if (input.kind === 'board' && (input.content.content.length !== 1 || input.content.content[0]?.type !== 'drawing')) fail('UNSUPPORTED_CONTENT')
   if (input.metadata.cover?.kind === 'image' && !runtime.canUseResource?.('attachment', input.metadata.cover.file)) fail('ACCESS_DENIED')
   if (input.kind === 'folder' && (input.content.content.length !== 1 || input.content.content[0]?.type !== 'paragraph'
-    || (input.content.content[0].content?.length ?? 0) !== 0)) fail('UNSUPPORTED_CONTENT')
-  if (input.kind === 'todo' && input.content.content[0]?.type !== 'taskList') fail('UNSUPPORTED_CONTENT')
+    || (input.content.content[0].content?.length ?? 0) !== 0)) fail('UNSUPPORTED_CONTENT', 'content')
+  if (input.kind === 'todo' && input.content.content[0]?.type !== 'taskList') fail('UNSUPPORTED_CONTENT', 'content')
   const scaffold: Page = { id, parentId: input.parentId, ...(input.kind !== 'page' ? { kind: input.kind } : {}), title: '', tags: [], favorite: false, sort,
     updatedAt: 0, deletedAt: null, content: { type: 'doc', attrs: { blockIdentityVersion: 1 }, content: [{ type: 'paragraph', attrs: { blockId: 'create_scaffold' } }] } }
   const operations: EditOperation[] = [{ kind: 'delete_blocks', target: { from: { blockId: 'create_scaffold' }, through: { blockId: 'create_scaffold' } } }]

@@ -71,8 +71,9 @@ export function markdownToHtml(md: string): string {
     c.append(...Array.from(q.childNodes))
     q.replaceWith(c)
   })
-  doc.querySelectorAll('li > input[type="checkbox"]').forEach((box) => {
-    const li = box.parentElement!
+  // a task item is `li > input`, or `li > p > input` when the list is loose (blank lines between items)
+  doc.querySelectorAll('li input[type="checkbox"]').forEach((box) => {
+    const li = box.closest('li')!
     li.setAttribute('data-type', 'taskItem')
     li.setAttribute('data-checked', (box as HTMLInputElement).checked ? 'true' : 'false')
     li.parentElement?.setAttribute('data-type', 'taskList')

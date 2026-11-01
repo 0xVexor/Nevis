@@ -40,7 +40,9 @@ type Code = 'INVALID_ARGUMENT' | 'LIMIT_EXCEEDED' | 'INVALID_TARGET' | 'UNSUPPOR
 export class DocumentPlanError extends Error {
   readonly retryable: boolean
   readonly code: Code
-  constructor(code: Code) { super(code.replaceAll('_', ' ').toLowerCase()); this.code = code; this.retryable = code === 'APP_UNAVAILABLE' }
+  /** The offending request field (a bounded name such as `title` or `kind`), when one is known. */
+  readonly field?: string
+  constructor(code: Code, field?: string) { super(code.replaceAll('_', ' ').toLowerCase()); this.code = code; this.retryable = code === 'APP_UNAVAILABLE'; if (field) this.field = field }
 }
 function fail(code: Code): never { throw new DocumentPlanError(code) }
 const writable = EDITOR_BLOCKS

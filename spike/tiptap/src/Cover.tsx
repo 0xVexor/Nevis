@@ -5,6 +5,7 @@ import { putFile, urlFor } from './attachments'
 import * as Ic from './icons'
 import { t } from './i18n'
 import { BACKGROUNDS } from './design-system/backgrounds'
+import { COVER_SCENES } from './design-system/scenery'
 
 /** Built-in covers: ten abstract designs, pure CSS, so they cost no storage and survive backup/restore untouched. */
 const mesh = (...stops: [string, number, number][]) => stops.map(([c, x, y]) => `radial-gradient(at ${x}% ${y}%, ${c} 0, transparent 55%)`).join(', ')
@@ -29,7 +30,7 @@ const terracotta = `<rect x='-3.5' y='-20' width='7' height='21' rx='3.5' fill='
 const concrete = `<path d='M0 0l-6-14 3 7-1-10 4 9 4-9-1 10 3-7z' fill='#3e5f52'/><path d='M0 0l-9-8 6 3-8-1 9 1-2-4zM0 0l9-8-6 3 8-1-9 1 2-4z' fill='#4d6f5f'/><rect x='-9' y='0' width='18' height='15' rx='2.5' fill='#d9d9d4'/><path d='M-9 4h18' stroke='#c4c4be' stroke-width='.8'/>`
 const fabric = `<ellipse cx='0' cy='-6' rx='7' ry='9' fill='#668b72'/><path d='M-3-10v8M3-10v8M0-14v10' stroke='#86ab90' stroke-width='.8'/><circle cx='0' cy='-16' r='3.4' fill='#e6bca5'/><circle cx='0' cy='-16' r='1.2' fill='#f3dccd'/><path d='M-9 0h18v12a4 4 0 0 1-4 4h-10a4 4 0 0 1-4-4z' fill='#b9c9b5'/><circle cx='0' cy='8' r='3' fill='#f4f7f1' opacity='.9'/><circle cx='0' cy='8' r='1' fill='#e6bca5'/>`
 
-/** The ten covers the picker offers: soft two-colour washes from the design system. */
+/** The covers the picker offers: ten soft two-colour washes, then the abstract landscapes (design-system/scenery.ts). */
 const soft = (a: string, b: string, c?: string) => `linear-gradient(120deg, ${a}${c ? `, ${b} 55%, ${c}` : `, ${b}`})`
 const PICKER: { id: string; label: string; css: string }[] = [
   { id: 'ds-lilac', label: 'Lilac', css: soft('#e7d6f7', '#bcd7f7', '#c8f0e4') },
@@ -42,6 +43,7 @@ const PICKER: { id: string; label: string; css: string }[] = [
   { id: 'ds-slate', label: 'Slate', css: soft('#d9e4ea', '#b9c7d6') },
   { id: 'ds-dusk', label: 'Dusk', css: soft('#3b3f6e', '#6d7fa8') },
   { id: 'ds-ink', label: 'Ink', css: soft('#2a2d4a', '#0d0e14') },
+  ...COVER_SCENES,
 ]
 
 const GRADIENTS: { id: string; label: string; css: string }[] = [

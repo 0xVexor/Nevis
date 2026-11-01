@@ -98,7 +98,7 @@ const error = obj({ ok: literal(false), error: union(...ERROR_CODES.map(code => 
   // Denied/missing resources cannot carry revision or other metadata.
   details: code === 'REVISION_CONFLICT' ? obj({ currentRevision: revision })
     : code === 'EDITOR_BUSY' || code === 'APP_UNAVAILABLE' ? obj({ retryAfterMs: integer(0, 60000) })
-    : code === 'INVALID_ARGUMENT' || code === 'LIMIT_EXCEEDED' ? obj({ field: str(128) }) : empty,
+    : code === 'INVALID_ARGUMENT' || code === 'LIMIT_EXCEEDED' || code === 'UNSUPPORTED_CONTENT' ? obj({ field: str(128) }) : empty,
 }, ['code', 'message', 'retryable']))) })
 
 function schema(value: Schema): Schema {
@@ -132,6 +132,13 @@ export const documentToolContracts = Object.freeze({
     format: choice('markdown', 'structured', 'both'), budget, cursor,
   }, ['documentId', 'target', 'format']), readResult),
   list_databases: tool(empty, obj({ databases: array(obj({ sourceId: id, name: str(1024, 0), documentId: id, presentation: choice('inline', 'full'), rowCount: integer(0, 1000000000) }), 100) })),
+  update_database_rows: tool(obj({ operationId: id, sourceId: id, rows: array(obj({ pageId: id, title: str(1024, 0), values: { type: 'object' } }, ['pageId']), 100, 1) }), obj({ sourceId: id, count: integer(0, 100) })),
+  trash_database_rows: tool(obj({ operationId: id, sourceId: id, pageIds: array(id, 100, 1) }), obj({ sourceId: id, count: integer(0, 100000) })),
+  restore_database_rows: tool(obj({ operationId: id, sourceId: id, pageIds: array(id, 100, 1) }), obj({ sourceId: id, count: integer(0, 100000) })),
+  add_database_property: tool(obj({ operationId: id, sourceId: id, name: str(128), kind: choice('text', 'number', 'checkbox', 'select', 'multi_select', 'url', 'email', 'phone', 'date'), options: array(str(128), 50) }, ['operationId', 'sourceId', 'name', 'kind']), obj({ sourceId: id, properties: array(dbProperty, 200) })),
+  list_tags: tool(obj({ limit: integer(1, 200) }, []), obj({ tags: array(obj({ name: str(128), count: integer(1, 1000000) }), 200), total: integer(0, 1000000), truncated: bool })),
+  get_document_links: tool(obj({ documentId: id }), obj({ documentId: id, outgoing: array(obj({ documentId: id, title: str(512, 0) }), 100), backlinks: array(obj({ documentId: id, title: str(512, 0) }), 100), truncated: bool })),
+  list_icons: tool(obj({ query: str(128, 0), limit: integer(1, 100) }, []), obj({ icons: array(obj({ name: str(96), icon: str(128), keywords: str(512, 0) }), 100), total: integer(0, 100000), truncated: bool })),
   describe_database: tool(obj({ sourceId: id }), obj({ sourceId: id, name: str(1024, 0), documentId: id, properties: array(dbProperty, 200) })),
   query_database_rows: tool(obj({ sourceId: id, limit: integer(1, 100), cursor: str(2048) }, ['sourceId']),
     obj({ sourceId: id, properties: array(dbProperty, 200), rows: array(obj({ pageId: id, title: str(1024, 0), values: { type: 'object' } }), 100), total: integer(0, 1000000000), nextCursor: nullable(str(2048)), truncated: bool })),

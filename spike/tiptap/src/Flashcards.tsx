@@ -7,7 +7,7 @@ import { bump, countOn, dayKey, lastDays, streak, total, type ReviewLog } from '
 import { deviceId, loadLog } from './reviewlogStore'
 import { t, locale } from './i18n'
 import { PageIcon } from './PageIcon'
-import { Icon } from './design-system'
+import { Icon, dirOf, Button } from './design-system'
 
 type Store = Record<string, Rec>
 type Card = RawCard & { title: string }
@@ -145,7 +145,7 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
                 const page = d.id === ALL ? null : repo.get(d.id)
                 return (
                   <button type="button" key={d.id} className="fcv-deck" onClick={() => setDeck(d.id)}>
-                    <span className="fcv-deck-top">
+                    <span className="fcv-deck-top" dir={dirOf(d.title)}>
                       <span className="ds-tile ds-tile--md">{page ? <PageIcon page={page} /> : <Icon name="cards" />}</span>
                       <span><b dir="auto">{d.title}</b><small>{num(d.total)} {t('cards')}</small></span>
                     </span>
@@ -194,7 +194,7 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
   return (
     <div className="fcv fcv-review">
       <div className="fcv-bar">
-        <button type="button" className="ds-btn ds-btn--ghost ds-btn--sm" onClick={() => setDeck(null)}><Icon name="arrow-left" size={15} className="ds-flip" />{t('Back')}</button>
+        <Button variant="ghost" size="sm" type="button" onClick={() => setDeck(null)}><Icon name="arrow-left" size={15} className="ds-flip" />{t('Back')}</Button>
         <span className="ds-muted fcv-title" dir="auto">{deckTitle}</span>
         {card && <span className="ds-muted fcv-count">{t('Card')} {num(done + 1)} {t('of')} {num(total0)}</span>}
         <span className="ds-progress fcv-prog"><i style={{ width: pct + '%' }} /></span>
@@ -208,7 +208,7 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
             {done ? t('You reviewed {n} cards.', { n: done }) + ' ' : ''}
             {Number.isFinite(nextDue) ? t('Next card is due {when}.', { when: new Date(nextDue).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) }) : ''}
           </p>
-          <button type="button" className="ds-btn ds-btn--primary" onClick={() => setDeck(null)}>{t('Back to decks')}</button>
+          <Button variant="primary" type="button" onClick={() => setDeck(null)}>{t('Back to decks')}</Button>
         </div>
       ) : (
         <div className="fcv-stage">
@@ -218,7 +218,7 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
             {shown && <div className="fcv-a tiptap" ref={answerRef} dangerouslySetInnerHTML={{ __html: html }} />}
           </div>
           {!shown ? (
-            <button type="button" className="ds-btn ds-btn--primary fcv-show" onClick={() => setShown(true)}>{t('Show answer')}</button>
+            <Button variant="primary" className="fcv-show" type="button" onClick={() => setShown(true)}>{t('Show answer')}</Button>
           ) : (
             <div className="fcv-grades">
               {grades.map(([g, name]) => (

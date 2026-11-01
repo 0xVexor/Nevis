@@ -3,7 +3,7 @@
 import type { DatabaseService } from './service.ts'
 import type { Definition, Id } from './model/types.ts'
 import type { QValue } from './query/values.ts'
-import type { DatabaseRowSpec, DatabaseToolHost } from '../documents/databaseHost.ts'
+import type { DatabaseAccess, DatabaseRowSpec, DatabaseToolHost } from '../documents/databaseHost.ts'
 
 const fail = (code: 'NOT_FOUND' | 'INVALID_ARGUMENT' | 'STALE_CURSOR' | 'ACCESS_DENIED' | 'LIMIT_EXCEEDED', field?: string): never => { throw { code, ...(field ? { field } : {}) } }
 
@@ -134,6 +134,62 @@ export function createDatabaseTools(open: () => Promise<DatabaseService>): Datab
       if (!access.canWrite(found.container.hostPageId)) return fail('ACCESS_DENIED')
       try { return { sourceId: input.sourceId, rowIds: await insertRows(svc, input.sourceId, input.rows, input.operationId) } } catch (error) { return rethrow(error) }
     },
+    async updateRows(input, access) {
+      const svc = await open()
+      checkWrite(svc, input.sourceId, input.operationId, access)
+      if (input.rows.length > MAX_ROWS) fail('LIMIT_EXCEEDED', 'rows')
+      try {
+        const defs = svc.state.props(input.sourceId)
+        const find = (key: string) => defs.find(def => def.id === key) ?? defs.find(def => def.name.toLowerCase() === key.toLowerCase())
+        // one atomic command: the first bad row or value rejects the whole batch before anything is written
+        const patches = input.rows.map(row => {
+          if (typeof row.pageId !== 'string' || svc.state.row(row.pageId)?.sourceId !== input.sourceId) fail('NOT_FOUND', 'pageId')
+          const cellChanges: Record<string, unknown> = {}
+          for (const [key, value] of Object.entries(row.values ?? {})) {
+            const def = find(key)
+            if (!def || def.kind === 'title' || !WRITABLE_KINDS.has(def.kind)) fail('INVALID_ARGUMENT', 'values')
+            cellChanges[def!.id] = value === null ? null : cellFor(def!, value) // null clears the value
+          }
+          return { pageId: row.pageId, ...(row.title !== undefined ? { title: String(row.title).slice(0, 1024) } : {}), cellChanges }
+        })
+        await svc.one('row.patch_bulk', { patches }, { operationId: input.operationId })
+        return { sourceId: input.sourceId, count: patches.length }
+      } catch (error) { return rethrow(error) }
+    },
+    async trashRows(input, access) { return moveRows('row.trash', input, access) },
+    async restoreRows(input, access) { return moveRows('row.restore', input, access) },
+    async addProperty(input, access) {
+      const svc = await open()
+      checkWrite(svc, input.sourceId, input.operationId, access)
+      const spec = { name: String(input.name ?? '').trim(), kind: input.kind, options: input.options }
+      if (!spec.name || spec.name.length > 128 || !WRITABLE_KINDS.has(spec.kind) || spec.kind === 'title') fail('INVALID_ARGUMENT', 'kind')
+      if (svc.state.props(input.sourceId).some(def => def.name.toLowerCase() === spec.name.toLowerCase())) fail('INVALID_ARGUMENT', 'name')
+      try {
+        await svc.one('property.create', { sourceId: input.sourceId, name: spec.name, kind: spec.kind, ...(spec.options ? { config: { options: spec.options.map(name => ({ name })) } } : {}) }, { operationId: input.operationId })
+        return { sourceId: input.sourceId, properties: svc.state.props(input.sourceId).slice(0, 200).map(property) }
+      } catch (error) { return rethrow(error) }
+    },
+  }
+
+  /** The request names a database this connection may read and write: bounded ids, then the host page's scope. */
+  function checkWrite(svc: DatabaseService, sourceId: string, operationId: string, access: DatabaseAccess) {
+    if (!ID.test(sourceId)) fail('INVALID_ARGUMENT', 'sourceId')
+    if (!ID.test(operationId) || operationId.length > 100) fail('INVALID_ARGUMENT', 'operationId')
+    const found = hostOf(svc, sourceId)
+    if (!found || !access.canRead(found.container.hostPageId)) fail('NOT_FOUND')
+    if (!access.canWrite(found!.container.hostPageId)) fail('ACCESS_DENIED')
+  }
+
+  /** Trash or restore rows of one database (a trashed row can always be restored). Rows of any other database are NOT_FOUND. */
+  async function moveRows(type: 'row.trash' | 'row.restore', input: { operationId: string; sourceId: string; pageIds: string[] }, access: DatabaseAccess) {
+    const svc = await open()
+    checkWrite(svc, input.sourceId, input.operationId, access)
+    if (input.pageIds.length > MAX_ROWS) fail('LIMIT_EXCEEDED', 'pageIds')
+    for (const pageId of input.pageIds) if (typeof pageId !== 'string' || svc.state.row(pageId)?.sourceId !== input.sourceId) fail('NOT_FOUND', 'pageIds')
+    try {
+      const done = await svc.one<{ count: number }>(type, { pageIds: input.pageIds }, { operationId: input.operationId })
+      return { sourceId: input.sourceId, count: done.count }
+    } catch (error) { return rethrow(error) }
   }
 
   /** Rows keyed by property name or id; one commit, so a bad value rejects the whole batch. */

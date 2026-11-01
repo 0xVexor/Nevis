@@ -6,12 +6,15 @@ export type EditCode = typeof ERROR_CODES[number]
 export class DocumentEditError extends Error {
   readonly code: EditCode
   readonly retryable: boolean
-  constructor(code: EditCode) { super(code.replaceAll('_', ' ').toLowerCase()); this.code = code; this.retryable = ['EDITOR_BUSY', 'APP_UNAVAILABLE'].includes(code) }
+  /** The offending request field, when the planner knew it. */
+  readonly field?: string
+  constructor(code: EditCode, field?: string) { super(code.replaceAll('_', ' ').toLowerCase()); this.code = code; this.retryable = ['EDITOR_BUSY', 'APP_UNAVAILABLE'].includes(code); if (field) this.field = field }
 }
-export function failEdit(code: EditCode): never { throw new DocumentEditError(code) }
+export function failEdit(code: EditCode, field?: string): never { throw new DocumentEditError(code, field) }
 export function translateEdit(error: unknown, fallback: EditCode): never {
   if (error instanceof DocumentEditError) throw error
-  if (error instanceof DocumentPlanError || error instanceof DocumentAssetError) return failEdit(error.code)
+  if (error instanceof DocumentPlanError) return failEdit(error.code, error.field)
+  if (error instanceof DocumentAssetError) return failEdit(error.code)
   if (error && typeof error === 'object' && 'code' in error && ['ACCESS_DENIED', 'APP_UNAVAILABLE'].includes(String(error.code))) failEdit(error.code as EditCode)
   const message = error instanceof Error ? error.message : String(error)
   if (/ID reused/.test(message)) failEdit('OPERATION_ID_MISMATCH')
