@@ -1,8 +1,9 @@
 import { useEffect, useState, type DragEvent } from 'react'
-import { backupNow, backupStatus, chooseBackupFolder, disableBackup, grantAccess } from './autobackup'
-import { BackupError, restoreBackup } from './backup'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
+import { backupNow, backupStatus, chooseBackupFolder, grantAccess, setAutomatic } from './autobackup'
+import { BackupError, readFolder, restoreBackup } from './backup'
 import { isTauri } from './db'
-import { Button, Chip, Dialog, Facts, Field, Icon, Notice, Section } from './design-system'
+import { Button, Dialog, Facts, Field, Icon, Notice, Section, Switch } from './design-system'
 import { locale, t } from './i18n'
 import * as Ic from './icons'
 import { pickDirectory, pickFiles } from './io'
@@ -21,7 +22,7 @@ export interface DataApi {
 }
 
 /** Where a desktop backup goes: a new workspace with this name, or into the open one. */
-interface Where { target: 'new' | 'here'; name: string }
+interface Where { target: 'new' | 'merge' | 'here'; name: string }
 
 type Phase =
   | { step: 'review'; review: ImportReview }
@@ -37,7 +38,7 @@ export function DataTab({ api }: { api: DataApi }) {
   const [phase, setPhase] = useState<Phase | null>(null)
   const [reading, setReading] = useState(false)
   const [over, setOver] = useState(false)
-  const [where, setWhere] = useState<Where>({ target: 'new', name: '' })
+  const [where, setWhere] = useState<Where>({ target: 'merge', name: '' })
 
   const look = async (files: File[]) => {
     if (!files.length) return
@@ -45,8 +46,23 @@ export function DataTab({ api }: { api: DataApi }) {
     try {
       const review = await reviewImport(files)
       // a backup is called what its workspace was called
-      if (review.kind === 'backup') setWhere({ target: 'new', name: review.backup?.summary.name ?? review.name.replace(/\.json$/i, '') })
+      if (review.kind === 'backup') setWhere({ target: 'merge', name: review.backup?.summary.name ?? review.name.replace(/\.json$/i, '') })
       setPhase({ step: 'review', review })
+    } catch (e) {
+      setPhase({ step: 'error', message: e instanceof BackupError ? e.message : t('The file could not be read.') })
+    } finally {
+      setReading(false)
+    }
+  }
+  /** A backup folder (the workspace's own folder inside the backup folder): checked here, restored only after the review. */
+  const chooseBackupToRestore = async () => {
+    const dir = await openDialog({ directory: true })
+    if (typeof dir !== 'string') return
+    setReading(true)
+    try {
+      const backup = await readFolder(dir)
+      setWhere({ target: 'merge', name: backup.summary.name ?? '' })
+      setPhase({ step: 'review', review: { kind: 'backup', name: dir.split(/[\\/]/).pop() || dir, pages: backup.summary.pages, folders: backup.summary.folders, images: backup.summary.files, skipped: {}, notes: [], problems: [], files: [], backup } })
     } catch (e) {
       setPhase({ step: 'error', message: e instanceof BackupError ? e.message : t('The file could not be read.') })
     } finally {
@@ -89,20 +105,18 @@ export function DataTab({ api }: { api: DataApi }) {
           <span className="sx-drop-btns">
             <Button size="sm" disabled={reading} onClick={chooseFiles}>{t('Choose files…')}</Button>
             <Button size="sm" disabled={reading} onClick={chooseFolder}>{t('Choose a folder…')}</Button>
+            {isTauri && <Button size="sm" disabled={reading} onClick={chooseBackupToRestore}>{t('Restore from a backup folder…')}</Button>}
           </span>
         </div>
       </Card>
 
-      <Card title={t('Export and backup')}>
-        <Row label={t('Export to read or move')} hint={t('A zip of Markdown files and images. You can import it back above.')}>
+      <BackupCard api={api} />
+
+      <Card title={t('Export to read or move')} hint={t('A zip of Markdown files and images, for reading or for other apps. It is not a backup: databases, history and settings are not in it.')}>
+        <Row label={t('Markdown zip')} hint={t('You can import it back above.')}>
           <Button size="sm" icon={<Ic.Download size={15} />} onClick={api.exportAll}>{t('Export')}</Button>
         </Row>
-        <Row label={t('Full backup')} hint={t('Everything in one file: pages, databases, settings and history. Restore it above.')}>
-          <Button size="sm" icon={<Ic.Download size={15} />} onClick={api.backup}>{t('Back up')}</Button>
-        </Row>
       </Card>
-
-      <AutoBackup />
 
       <Card title={t('Workspaces')}>
         <Row label={t('Workspaces')} hint={t('Switch or create a workspace')}>
@@ -204,13 +218,15 @@ function ImportDialog({ phase, api, go, close, where, setWhere }: { phase: Phase
         <Section title={t('Restore into')}>
           <div className="ds-stack">
             <div className="ds-seg" role="radiogroup" aria-label={t('Restore into')}>
-              {(['new', 'here'] as const).map((target) => (
+              {(['merge', 'new', 'here'] as const).map((target) => (
                 <button key={target} type="button" role="radio" aria-checked={where.target === target} aria-pressed={where.target === target} onClick={() => setWhere({ ...where, target })}>
-                  {target === 'new' ? t('A new workspace') : t('This workspace')}
+                  {target === 'merge' ? t('Merge into this workspace') : target === 'new' ? t('A new workspace') : t('Replace in this workspace')}
                 </button>
               ))}
             </div>
-            {where.target === 'new' ? (
+            {where.target === 'merge' ? (
+              <Notice icon={<Icon name="info" size={16} />}>{t('Pages that are not here are added. A page in both keeps its newer version, and the older one goes to the page history. Nothing is deleted, and pages in your trash stay there. A copy of this workspace is saved next to it first.')}</Notice>
+            ) : where.target === 'new' ? (
               <>
                 <Field aria-label={t('Workspace name')} value={where.name} onChange={(e) => setWhere({ ...where, name: e.target.value })} />
                 <Notice icon={<Icon name="info" size={16} />}>{t('Opens next to your current one. Nothing you have is changed.')}</Notice>
@@ -229,7 +245,8 @@ function ImportDialog({ phase, api, go, close, where, setWhere }: { phase: Phase
   )
 }
 
-function AutoBackup() {
+/** One backup, one place: where it goes, when it was last taken, take one now, and whether it happens by itself. */
+function BackupCard({ api }: { api: DataApi }) {
   const [st, setSt] = useState(backupStatus())
   const [busy, setBusy] = useState(false)
   useEffect(() => {
@@ -246,46 +263,45 @@ function AutoBackup() {
       setSt(backupStatus())
     }
   }
-
-  if (!st.supported) {
-    return (
-      <Card title={t('Automatic backup')}>
-        <Notice tone="warn" icon={<Icon name="warning" size={16} />}>{t('This browser does not support folder selection. Use Edge or Chrome; until then, manual “Full backup” still works.')}</Notice>
-      </Card>
-    )
-  }
+  const warn = <Icon name="warning" size={16} />
   const needs = st.error === 'NEEDS_PERMISSION'
-  const status = !st.enabled
-    ? <Chip dot>{t('Off')}</Chip>
-    : needs ? <Chip dot color="var(--ds-warn)">{t('Needs access permission')}</Chip>
-    : st.error ? <Chip dot color="var(--ds-bad)">{t('Error')}</Chip>
-    : <Chip dot color="var(--ds-ok)">{t('On')}</Chip>
+  const c = st.counts
 
   return (
-    <Card title={t('Automatic backup')} hint={t('A full copy of all pages and images in a folder you choose.')}>
-      <Row label={t('Status')} hint={st.enabled ? t('Updated as you work, and once a day. The last {days} days are kept.', { days: 14 }) : undefined}>
-        {status}
-        {!st.enabled || !st.folder
-          ? <Button size="sm" variant="primary" disabled={busy} onClick={() => run(chooseBackupFolder)}>{t('Choose folder and turn on')}</Button>
-          : needs && <Button size="sm" variant="primary" disabled={busy} onClick={() => run(grantAccess)}>{t('Grant access')}</Button>}
-      </Row>
-      {st.enabled && st.folder && (
+    <Card title={t('Backup')} hint={t('A copy of everything: pages, folders, images, databases, settings and history. Restore it above.')}>
+      {!st.supported ? (
+        <Notice tone="warn" icon={warn}>{t('This browser does not support folder selection. Use Edge or Chrome; until then, manual “Full backup” still works.')}</Notice>
+      ) : (
         <>
-          <Row label={t('Folder')}>
-            <span dir="auto">{st.folder}</span>
-            <Button size="sm" disabled={busy} onClick={() => run(chooseBackupFolder)}>{t('Change folder')}</Button>
+          <Row label={t('Backup folder')} hint={st.ready ? undefined : t('Choose where backups are kept.')}>
+            {st.folder && <span dir="auto">{st.folder}</span>}
+            <Button size="sm" variant={st.ready ? undefined : 'primary'} disabled={busy} onClick={() => run(chooseBackupFolder)}>{st.ready ? t('Change folder') : t('Choose folder')}</Button>
+            {needs && <Button size="sm" variant="primary" disabled={busy} onClick={() => run(grantAccess)}>{t('Grant access')}</Button>}
           </Row>
-          <Row label={t('Last backup')}>
-            <span>{when(st.lastAt)}</span>
-            <Button size="sm" disabled={busy} onClick={() => run(backupNow)}>{t('Back up now')}</Button>
-          </Row>
-          <Row label={t('Turn off')} hint={t('Stops saving copies. The files already in the folder stay.')}>
-            <Button size="sm" variant="danger" disabled={busy} onClick={() => run(disableBackup)}>{t('Turn off')}</Button>
-          </Row>
+          {st.ready && (
+            <>
+              <Row label={t('Last backup')} hint={c ? t('{pages} pages, {folders} folders, {files} images and files', { pages: num(c.pages - c.trashed), folders: num(c.folders), files: num(c.files) }) : undefined}>
+                <span>{when(st.lastAt)}</span>
+                <Button size="sm" variant="primary" disabled={busy} onClick={() => run(() => backupNow())}>{t('Back up now')}</Button>
+              </Row>
+              <Row label={t('Automatic')} hint={t('Backs up as you work and when you leave.')}>
+                <Switch label={t('Automatic')} checked={st.enabled} disabled={busy} onChange={(on) => run(() => setAutomatic(on))} />
+              </Row>
+            </>
+          )}
+          {st.blocked && (
+            <Notice tone="warn" icon={warn}>
+              {st.error}
+              <Button size="sm" disabled={busy} onClick={() => run(() => backupNow(true))}>{t('Back up anyway')}</Button>
+            </Notice>
+          )}
+          {st.error && !needs && !st.blocked && <Notice tone="bad" icon={warn}>{st.error}</Notice>}
+          {needs && <Notice tone="warn" icon={warn}>{t('After closing the browser, folder access must be granted again.')}</Notice>}
         </>
       )}
-      {st.error && !needs && <Notice tone="bad" icon={<Icon name="warning" size={16} />}>{st.error}</Notice>}
-      {needs && <Notice tone="warn" icon={<Icon name="warning" size={16} />}>{t('After closing the browser, folder access must be granted again.')}</Notice>}
+      <Row label={t('Backup as one file')} hint={t('The same backup in a single file, to keep or move.')}>
+        <Button size="sm" icon={<Ic.Download size={15} />} onClick={api.backup}>{t('Back up')}</Button>
+      </Row>
     </Card>
   )
 }
