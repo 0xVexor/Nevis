@@ -54,4 +54,3 @@ export function parseStrictNumber(input: string, decimalSeparator = '.'): number
 
 /** Stable CSV-safe check: a spreadsheet would execute a cell that starts with one of these. */
 export const startsLikeFormula = (s: string): boolean => /^[=+\-@\t\r]/.test(s)
-

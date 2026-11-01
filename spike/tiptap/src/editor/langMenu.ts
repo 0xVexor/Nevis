@@ -13,7 +13,10 @@ export function openLangMenu(anchor: HTMLElement, items: { value: string; label:
   input.placeholder = t('Search languages…')
   const list = pop.querySelector('.lang-list') as HTMLElement
   let shown = items
-  let sel = Math.max(0, items.findIndex((i) => i.value === current))
+  let sel = Math.max(
+    0,
+    items.findIndex((i) => i.value === current),
+  )
 
   const draw = () => {
     list.innerHTML = ''

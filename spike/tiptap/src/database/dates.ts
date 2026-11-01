@@ -179,7 +179,14 @@ function dtf(zone: string): Intl.DateTimeFormat {
   if (!f) {
     try {
       f = new Intl.DateTimeFormat('en-US', {
-        timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+        timeZone: zone,
+        hourCycle: 'h23',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
       })
     } catch {
       fail('INVALID_VALUE', `unknown time zone: ${zone}`)
@@ -318,14 +325,41 @@ export function dateInterval(v: DateValue, zone: string): { s: number; e: number
   return { s, e: e === s ? s + 1 : e } // an instant is a 1ms interval so it can intersect and compare
 }
 
-
 export type RelativeKind =
-  | 'today' | 'yesterday' | 'tomorrow' | 'this_week' | 'last_week' | 'next_calendar_week' | 'past_week' | 'next_week'
-  | 'this_month' | 'last_month' | 'next_month' | 'past_month' | 'next_30_days' | 'this_year' | 'past_n_days' | 'next_n_days'
+  | 'today'
+  | 'yesterday'
+  | 'tomorrow'
+  | 'this_week'
+  | 'last_week'
+  | 'next_calendar_week'
+  | 'past_week'
+  | 'next_week'
+  | 'this_month'
+  | 'last_month'
+  | 'next_month'
+  | 'past_month'
+  | 'next_30_days'
+  | 'this_year'
+  | 'past_n_days'
+  | 'next_n_days'
 
 export const RELATIVE_KINDS: RelativeKind[] = [
-  'today', 'yesterday', 'tomorrow', 'this_week', 'last_week', 'next_calendar_week', 'past_week', 'next_week', 'this_month', 'last_month',
-  'next_month', 'past_month', 'next_30_days', 'this_year', 'past_n_days', 'next_n_days',
+  'today',
+  'yesterday',
+  'tomorrow',
+  'this_week',
+  'last_week',
+  'next_calendar_week',
+  'past_week',
+  'next_week',
+  'this_month',
+  'last_month',
+  'next_month',
+  'past_month',
+  'next_30_days',
+  'this_year',
+  'past_n_days',
+  'next_n_days',
 ]
 
 /**
@@ -336,22 +370,52 @@ export function relativeInterval(kind: RelativeKind, nowMs: number, zone: string
   const today = civilOf(nowMs, zone)
   const range = (a: string, bExclusive: string) => ({ s: startOfDayMs(a, zone), e: startOfDayMs(bExclusive, zone) })
   switch (kind) {
-    case 'today': return range(today, addDays(today, 1))
-    case 'yesterday': return range(addDays(today, -1), today)
-    case 'tomorrow': return range(addDays(today, 1), addDays(today, 2))
-    case 'this_week': { const s = startOfWeek(today, weekStart); return range(s, addDays(s, 7)) }
-    case 'last_week': { const s = addDays(startOfWeek(today, weekStart), -7); return range(s, addDays(s, 7)) }
-    case 'next_calendar_week': { const s = addDays(startOfWeek(today, weekStart), 7); return range(s, addDays(s, 7)) }
-    case 'past_week': return range(addDays(today, -7), today)
-    case 'next_week': return range(addDays(today, 1), addDays(today, 8))
-    case 'this_month': { const s = startOfMonth(today); return range(s, addMonths(s, 1)) }
-    case 'last_month': { const s = addMonths(startOfMonth(today), -1); return range(s, addMonths(s, 1)) }
-    case 'next_month': { const s = addMonths(startOfMonth(today), 1); return range(s, addMonths(s, 1)) }
-    case 'past_month': return range(addMonths(today, -1), today)
-    case 'next_30_days': return range(addDays(today, 1), addDays(today, 31))
-    case 'this_year': { const y = parseCivil(today).y; return range(civilString(y, 1, 1), civilString(y + 1, 1, 1)) }
-    case 'past_n_days': return range(addDays(today, -n), today)
-    case 'next_n_days': return range(addDays(today, 1), addDays(today, n + 1))
+    case 'today':
+      return range(today, addDays(today, 1))
+    case 'yesterday':
+      return range(addDays(today, -1), today)
+    case 'tomorrow':
+      return range(addDays(today, 1), addDays(today, 2))
+    case 'this_week': {
+      const s = startOfWeek(today, weekStart)
+      return range(s, addDays(s, 7))
+    }
+    case 'last_week': {
+      const s = addDays(startOfWeek(today, weekStart), -7)
+      return range(s, addDays(s, 7))
+    }
+    case 'next_calendar_week': {
+      const s = addDays(startOfWeek(today, weekStart), 7)
+      return range(s, addDays(s, 7))
+    }
+    case 'past_week':
+      return range(addDays(today, -7), today)
+    case 'next_week':
+      return range(addDays(today, 1), addDays(today, 8))
+    case 'this_month': {
+      const s = startOfMonth(today)
+      return range(s, addMonths(s, 1))
+    }
+    case 'last_month': {
+      const s = addMonths(startOfMonth(today), -1)
+      return range(s, addMonths(s, 1))
+    }
+    case 'next_month': {
+      const s = addMonths(startOfMonth(today), 1)
+      return range(s, addMonths(s, 1))
+    }
+    case 'past_month':
+      return range(addMonths(today, -1), today)
+    case 'next_30_days':
+      return range(addDays(today, 1), addDays(today, 31))
+    case 'this_year': {
+      const y = parseCivil(today).y
+      return range(civilString(y, 1, 1), civilString(y + 1, 1, 1))
+    }
+    case 'past_n_days':
+      return range(addDays(today, -n), today)
+    case 'next_n_days':
+      return range(addDays(today, 1), addDays(today, n + 1))
   }
 }
 
@@ -404,7 +468,6 @@ export function timedToCivil(v: InstantDate, zone: string): CivilDate {
   const e = v.end === null ? null : civilOf(parseIsoInstant(v.end, z)!, z)
   return { kind: 'date', start: s, end: e === s ? null : e }
 }
-
 
 // ───── display ─────
 

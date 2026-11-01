@@ -9,7 +9,9 @@ const isStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0
 const obj = (v: unknown): v is Record<string, Json> => !!v && typeof v === 'object' && !Array.isArray(v)
 
 function validate(cx: Ctx, kind: RecordKind, b: Record<string, Json>, existing: boolean) {
-  const req = (cond: boolean, msg: string) => { if (!cond) fail('INVALID_VALUE', `${kind}: ${msg}`) }
+  const req = (cond: boolean, msg: string) => {
+    if (!cond) fail('INVALID_VALUE', `${kind}: ${msg}`)
+  }
   switch (kind) {
     case 'template':
       req(isStr(b.sourceId) && !!cx.d.get('source', b.sourceId as Id), 'sourceId must name an existing source')
@@ -47,7 +49,12 @@ function validate(cx: Ctx, kind: RecordKind, b: Record<string, Json>, existing: 
       if (b.propertyId) {
         const def = cx.d.prop(b.propertyId as Id)
         req(!!def && !['title', 'unique_id', 'created_time', 'created_by', 'last_edited_time', 'last_edited_by'].includes(def.kind), 'this property cannot be restricted')
-        const restricted = new Set(cx.d.live('grant').filter((g) => g.propertyId && g.id !== (b.id as string)).map((g) => g.propertyId))
+        const restricted = new Set(
+          cx.d
+            .live('grant')
+            .filter((g) => g.propertyId && g.id !== (b.id as string))
+            .map((g) => g.propertyId),
+        )
         req(restricted.has(def!.id) || restricted.size < 20, 'at most 20 restricted properties per source')
       }
       break
@@ -93,11 +100,22 @@ register('workflow.record_run', (cx, p: { id: Id; data: Json; create?: boolean }
 register('workflow.save', (cx, p: { id?: Id; body: Record<string, Json> }) => {
   const id = p.id ?? cx.ids()
   const have = cx.d.get('workflow', id)
-  validate(cx, 'workflow', have ? ({ ...(have as unknown as Record<string, Json>), ...p.body }) : p.body, !!have)
+  validate(cx, 'workflow', have ? { ...(have as unknown as Record<string, Json>), ...p.body } : p.body, !!have)
   if (have) {
     const m = cx.d.mut('workflow', id) as unknown as Record<string, unknown>
     for (const [k, v] of Object.entries(p.body)) if (!['id', 'vaultId', 'revision', 'createdAt', 'createdBy', 'format', 'definitionRevision'].includes(k)) m[k] = structuredClone(v)
     ;(m as { definitionRevision: number }).definitionRevision = have.definitionRevision + 1
-  } else cx.d.add('workflow', { ...structuredClone(p.body), ...cx.meta(id), definitionRevision: 1, enabled: p.body.enabled ?? true, paused: false, triggers: p.body.triggers ?? [], triggerMode: p.body.triggerMode ?? 'any', viewScopeId: p.body.viewScopeId ?? null, propertyId: p.body.propertyId ?? null } as never)
+  } else
+    cx.d.add('workflow', {
+      ...structuredClone(p.body),
+      ...cx.meta(id),
+      definitionRevision: 1,
+      enabled: p.body.enabled ?? true,
+      paused: false,
+      triggers: p.body.triggers ?? [],
+      triggerMode: p.body.triggerMode ?? 'any',
+      viewScopeId: p.body.viewScopeId ?? null,
+      propertyId: p.body.propertyId ?? null,
+    } as never)
   return { id }
 })

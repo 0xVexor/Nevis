@@ -18,7 +18,7 @@ import type { PropInfo, Schema } from './formula/compile.ts'
 
 export type ResolverOptions = { principalId: Id; nowMs: number; zone: string; weekStart: number; clock?: () => number }
 
- // Saturday: Persian UI default (week start and weekend are workspace settings, independent of time zone)
+// Saturday: Persian UI default (week start and weekend are workspace settings, independent of time zone)
 
 /** Static type of a property for the formula compiler. */
 export interface SchemaView {
@@ -28,23 +28,30 @@ export interface SchemaView {
 
 export function staticType(state: SchemaView, def: Definition): string {
   switch (def.kind) {
-    case 'number': return 'number'
-    case 'checkbox': return 'boolean'
+    case 'number':
+      return 'number'
+    case 'checkbox':
+      return 'boolean'
     case 'date':
     case 'created_time':
-    case 'last_edited_time': return 'date'
+    case 'last_edited_time':
+      return 'date'
     case 'multi_select':
-    case 'files': return 'list<text>'
-    case 'people': return 'list<person>'
+    case 'files':
+      return 'list<text>'
+    case 'people':
+      return 'list<person>'
     case 'created_by':
-    case 'last_edited_by': return 'person'
+    case 'last_edited_by':
+      return 'person'
     case 'relation': {
       const rel = state.relationOf(def.id)
       if (!rel) return 'list<page>'
       const target = rel.propertyId === def.id ? rel.targetSourceId : rel.sourceId
       return `list<page@${target}>`
     }
-    case 'rollup': return rollupResultType(def)
+    case 'rollup':
+      return rollupResultType(def)
     case 'formula': {
       try {
         return cfgOf.formula(def).resultType
@@ -53,8 +60,10 @@ export function staticType(state: SchemaView, def: Definition): string {
       }
     }
     case 'button':
-    case 'connected': return 'any'
-    default: return 'text'
+    case 'connected':
+      return 'any'
+    default:
+      return 'text'
   }
 }
 
@@ -66,18 +75,33 @@ export function rollupResultType(def: Definition): string {
     return 'any'
   }
   switch (cfg.aggregation) {
-    case 'earliest_date': case 'latest_date': case 'date_range': return 'date'
-    case 'show_original': case 'show_unique': return 'list<any>'
-    case 'min': case 'max': return 'number'
-    default: return 'number'
+    case 'earliest_date':
+    case 'latest_date':
+    case 'date_range':
+      return 'date'
+    case 'show_original':
+    case 'show_unique':
+      return 'list<any>'
+    case 'min':
+    case 'max':
+      return 'number'
+    default:
+      return 'number'
   }
 }
 
 export function schemaFor(state: SchemaView, sourceId: Id, excludeId?: Id): Schema {
   const info = (d: Definition): PropInfo => ({ id: d.id, name: d.name, type: staticType(state, d) })
   return {
-    props: state.props(sourceId).filter((d) => d.id !== excludeId && d.kind !== 'button').map(info),
-    sourceProps: (sid) => state.props(sid).filter((d) => d.kind !== 'button').map(info),
+    props: state
+      .props(sourceId)
+      .filter((d) => d.id !== excludeId && d.kind !== 'button')
+      .map(info),
+    sourceProps: (sid) =>
+      state
+        .props(sid)
+        .filter((d) => d.kind !== 'button')
+        .map(info),
   }
 }
 
@@ -88,18 +112,32 @@ export const cellToQ = (_def: Definition, cell: Cell | undefined): QValue => {
       const t = runsToText(cell.runs)
       return t.length ? { c: 'text', text: t } : EMPTY
     }
-    case 'number': return cell.value === null ? EMPTY : { c: 'number', n: cell.value }
-    case 'select': return cell.optionId ? { c: 'members', ids: [cell.optionId], shape: 'select' } : EMPTY
-    case 'multi_select': return cell.optionIds.length ? { c: 'members', ids: cell.optionIds, shape: 'multi_select' } : EMPTY
-    case 'status': return cell.optionId ? { c: 'members', ids: [cell.optionId], shape: 'status' } : EMPTY
-    case 'date': return cell.value ? { c: 'date', v: cell.value } : EMPTY
-    case 'people': return cell.principalIds.length ? { c: 'members', ids: cell.principalIds, shape: 'people' } : EMPTY
-    case 'files': return cell.attachmentIds.length ? { c: 'members', ids: cell.attachmentIds, shape: 'files' } : EMPTY
-    case 'checkbox': return { c: 'bool', b: cell.value }
-    case 'url': case 'email': case 'phone': return cell.value ? { c: 'text', text: cell.value } : EMPTY
-    case 'place': return cell.value ? { c: 'text', text: [cell.value.name, cell.value.address].filter(Boolean).join(' ') } : EMPTY
-    case 'verification': return { c: 'text', text: cell.value.state }
-    case 'connected': return EMPTY // connected values are display-only: not filterable, sortable or readable by formulas
+    case 'number':
+      return cell.value === null ? EMPTY : { c: 'number', n: cell.value }
+    case 'select':
+      return cell.optionId ? { c: 'members', ids: [cell.optionId], shape: 'select' } : EMPTY
+    case 'multi_select':
+      return cell.optionIds.length ? { c: 'members', ids: cell.optionIds, shape: 'multi_select' } : EMPTY
+    case 'status':
+      return cell.optionId ? { c: 'members', ids: [cell.optionId], shape: 'status' } : EMPTY
+    case 'date':
+      return cell.value ? { c: 'date', v: cell.value } : EMPTY
+    case 'people':
+      return cell.principalIds.length ? { c: 'members', ids: cell.principalIds, shape: 'people' } : EMPTY
+    case 'files':
+      return cell.attachmentIds.length ? { c: 'members', ids: cell.attachmentIds, shape: 'files' } : EMPTY
+    case 'checkbox':
+      return { c: 'bool', b: cell.value }
+    case 'url':
+    case 'email':
+    case 'phone':
+      return cell.value ? { c: 'text', text: cell.value } : EMPTY
+    case 'place':
+      return cell.value ? { c: 'text', text: [cell.value.name, cell.value.address].filter(Boolean).join(' ') } : EMPTY
+    case 'verification':
+      return { c: 'text', text: cell.value.state }
+    case 'connected':
+      return EMPTY // connected values are display-only: not filterable, sortable or readable by formulas
   }
 }
 
@@ -159,21 +197,30 @@ export class Resolver {
     this.fresh()
     if (!this.access.canReadProperty(this.opts.principalId, def, row)) return { c: 'blocked', state: 'restricted' }
     switch (def.kind) {
-      case 'title': return row.page.title.length ? { c: 'text', text: row.page.title } : EMPTY
-      case 'created_time': return this.metaTime(row.page, 'created')
-      case 'last_edited_time': return this.metaTime(row.page, 'updated')
-      case 'created_by': return row.page.recordMeta?.createdBy ? { c: 'members', ids: [row.page.recordMeta.createdBy], shape: 'created_by' } : EMPTY
-      case 'last_edited_by': return row.page.recordMeta?.updatedBy ? { c: 'members', ids: [row.page.recordMeta.updatedBy], shape: 'last_edited_by' } : EMPTY
+      case 'title':
+        return row.page.title.length ? { c: 'text', text: row.page.title } : EMPTY
+      case 'created_time':
+        return this.metaTime(row.page, 'created')
+      case 'last_edited_time':
+        return this.metaTime(row.page, 'updated')
+      case 'created_by':
+        return row.page.recordMeta?.createdBy ? { c: 'members', ids: [row.page.recordMeta.createdBy], shape: 'created_by' } : EMPTY
+      case 'last_edited_by':
+        return row.page.recordMeta?.updatedBy ? { c: 'members', ids: [row.page.recordMeta.updatedBy], shape: 'last_edited_by' } : EMPTY
       case 'unique_id': {
         const t = formatUniqueId(def, row.ext.allocatedIds[def.id])
         return t ? { c: 'text', text: t } : EMPTY
       }
-      case 'relation': return this.relationValue(row, def)
+      case 'relation':
+        return this.relationValue(row, def)
       case 'formula':
-      case 'rollup': return this.computedQ(row, def)
+      case 'rollup':
+        return this.computedQ(row, def)
       case 'button':
-      case 'connected': return EMPTY
-      default: return cellToQ(def, row.ext.cells[def.id]?.value ?? defaultCell(def))
+      case 'connected':
+        return EMPTY
+      default:
+        return cellToQ(def, row.ext.cells[def.id]?.value ?? defaultCell(def))
     }
   }
 
@@ -313,7 +360,8 @@ export class Resolver {
     this.fresh()
     if (!this.access.canReadProperty(this.opts.principalId, def, row)) throw new Blocked('restricted')
     switch (def.kind) {
-      case 'title': return textV(row.page.title)
+      case 'title':
+        return textV(row.page.title)
       case 'formula':
       case 'rollup': {
         const c = this.computed(row, def)
@@ -327,17 +375,23 @@ export class Resolver {
         if (targets.some((t) => t.state === 'pending')) throw new Blocked('pending')
         return listV(targets.filter((t) => t.state === 'live').map((t) => pageV(t.pageId, this.state.vaultId)))
       }
-      case 'created_time': case 'last_edited_time': {
+      case 'created_time':
+      case 'last_edited_time': {
         const q = this.value(row, def)
         return q.c === 'date' ? dateV(q.v) : EMPTY_V
       }
-      case 'created_by': case 'last_edited_by': {
+      case 'created_by':
+      case 'last_edited_by': {
         const q = this.value(row, def)
         return q.c === 'members' && q.ids[0] ? personV(q.ids[0]) : EMPTY_V
       }
-      case 'unique_id': return textV(formatUniqueId(def, row.ext.allocatedIds[def.id]))
-      case 'button': case 'connected': return EMPTY_V
-      default: return cellToFormula(def, row.ext.cells[def.id]?.value ?? defaultCell(def))
+      case 'unique_id':
+        return textV(formatUniqueId(def, row.ext.allocatedIds[def.id]))
+      case 'button':
+      case 'connected':
+        return EMPTY_V
+      default:
+        return cellToFormula(def, row.ext.cells[def.id]?.value ?? defaultCell(def))
     }
   }
 
@@ -347,7 +401,10 @@ export class Resolver {
     for (const def of defs) {
       if (!this.access.canReadProperty(this.opts.principalId, def, row)) continue
       if (def.kind === 'button' || def.kind === 'files' || def.kind === 'connected') continue
-      if (def.kind === 'title') { out.push(matchKey(row.page.title)); continue }
+      if (def.kind === 'title') {
+        out.push(matchKey(row.page.title))
+        continue
+      }
       if (def.kind === 'relation') {
         for (const t of this.relationTargets(row, def)) if (t.state === 'live') out.push(matchKey(this.title(t.pageId) ?? ''))
         continue
@@ -364,7 +421,10 @@ export class Resolver {
         continue
       }
       if (def.kind === 'created_time' || def.kind === 'last_edited_time' || def.kind === 'created_by' || def.kind === 'last_edited_by' || def.kind === 'date') continue
-      if (def.kind === 'unique_id') { out.push(matchKey(formatUniqueId(def, row.ext.allocatedIds[def.id]))); continue }
+      if (def.kind === 'unique_id') {
+        out.push(matchKey(formatUniqueId(def, row.ext.allocatedIds[def.id])))
+        continue
+      }
       const cell = row.ext.cells[def.id]?.value ?? defaultCell(def)
       if (cell && !isEmptyCell(cell)) out.push(matchKey(cellToText(def, cell)))
     }
@@ -383,21 +443,35 @@ export class FormulaPropagated extends FormulaError {
 export function cellToFormula(def: Definition, cell: Cell | undefined): FormulaValue {
   if (!cell) return def.kind === 'checkbox' ? boolV(false) : def.kind === 'multi_select' || def.kind === 'people' || def.kind === 'files' ? listV([]) : EMPTY_V
   switch (cell.kind) {
-    case 'text': return cell.runs.length ? runsV(cell.runs) : textV('')
-    case 'number': return cell.value === null ? EMPTY_V : numV(cell.value)
-    case 'select': return cell.optionId ? textV(optionName(def, cell.optionId)) : EMPTY_V
-    case 'status': return textV(optionName(def, cell.optionId))
-    case 'multi_select': return listV(cell.optionIds.map((i) => textV(optionName(def, i))))
-    case 'date': return cell.value ? dateV(cell.value) : EMPTY_V
-    case 'people': return listV(cell.principalIds.map(personV))
-    case 'files': return listV(cell.attachmentIds.map(textV))
-    case 'checkbox': return boolV(cell.value)
-    case 'url': case 'email': case 'phone': return cell.value ? textV(cell.value) : EMPTY_V
-    case 'place': return cell.value ? textV(cell.value.name || cell.value.address) : EMPTY_V
-    case 'verification': return textV(cell.value.state)
-    case 'connected': return EMPTY_V
+    case 'text':
+      return cell.runs.length ? runsV(cell.runs) : textV('')
+    case 'number':
+      return cell.value === null ? EMPTY_V : numV(cell.value)
+    case 'select':
+      return cell.optionId ? textV(optionName(def, cell.optionId)) : EMPTY_V
+    case 'status':
+      return textV(optionName(def, cell.optionId))
+    case 'multi_select':
+      return listV(cell.optionIds.map((i) => textV(optionName(def, i))))
+    case 'date':
+      return cell.value ? dateV(cell.value) : EMPTY_V
+    case 'people':
+      return listV(cell.principalIds.map(personV))
+    case 'files':
+      return listV(cell.attachmentIds.map(textV))
+    case 'checkbox':
+      return boolV(cell.value)
+    case 'url':
+    case 'email':
+    case 'phone':
+      return cell.value ? textV(cell.value) : EMPTY_V
+    case 'place':
+      return cell.value ? textV(cell.value.name || cell.value.address) : EMPTY_V
+    case 'verification':
+      return textV(cell.value.state)
+    case 'connected':
+      return EMPTY_V
   }
 }
-
 
 export const asJson = (v: unknown): Json => v as Json

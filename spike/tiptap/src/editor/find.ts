@@ -30,9 +30,9 @@ function search(doc: any, query: string): { from: number; to: number }[] {
       if (child.isText) {
         const s: string = child.text
         for (let i = 0; i < s.length; i++) {
-          for (const ch of normalizeFa(s[i])) (norm += ch, at.push(start + i)) // '' for diacritics: skipped
+          for (const ch of normalizeFa(s[i])) ((norm += ch), at.push(start + i)) // '' for diacritics: skipped
         }
-      } else (norm += '￼', at.push(start)) // inline atom (math, page link, image): can never match
+      } else ((norm += '￼'), at.push(start)) // inline atom (math, page link, image): can never match
     })
     for (let i = norm.indexOf(q); i >= 0; i = norm.indexOf(q, i + q.length)) out.push({ from: at[i], to: at[i + q.length - 1] + 1 })
     return false
@@ -87,18 +87,22 @@ export const FindInPage = Extension.create({
     ]
   },
   addCommands() {
-    const meta = (m: object) => ({ tr, dispatch }: any) => (dispatch?.(tr.setMeta(findKey, m)), true)
+    const meta =
+      (m: object) =>
+      ({ tr, dispatch }: any) => (dispatch?.(tr.setMeta(findKey, m)), true)
     return {
       setFind: (query: string) => meta({ query }),
       clearFind: () => meta({ clear: true }),
-      stepFind: (dir: 1 | -1) => ({ tr, state, dispatch, view }: any) => {
-        const s = findKey.getState(state)
-        if (!s?.matches.length) return false
-        const index = (s.index + dir + s.matches.length) % s.matches.length
-        dispatch?.(tr.setMeta(findKey, { index }))
-        scrollTo(view, s.matches[index].from)
-        return true
-      },
+      stepFind:
+        (dir: 1 | -1) =>
+        ({ tr, state, dispatch, view }: any) => {
+          const s = findKey.getState(state)
+          if (!s?.matches.length) return false
+          const index = (s.index + dir + s.matches.length) % s.matches.length
+          dispatch?.(tr.setMeta(findKey, { index }))
+          scrollTo(view, s.matches[index].from)
+          return true
+        },
     } as any
   },
 })

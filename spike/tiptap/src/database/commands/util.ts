@@ -21,7 +21,6 @@ export const LIMITS = {
   relationPickerEdges: 10_000,
 }
 
-
 export function source(cx: Ctx, id: Id): Source {
   const s = cx.d.get('source', id)
   if (!s || s.deletedAt !== null) fail('NOT_FOUND', 'source not found', { sourceId: id })
@@ -85,10 +84,19 @@ export function buildOptions(cx: Ctx, raw: OptionInput[] | undefined, prior: Sel
 
 export function buildStatusConfig(cx: Ctx, raw: { options?: OptionInput[]; default?: string } | undefined): StatusConfig {
   const keys = keysBetween(null, null, 3)
-  const groups = (['todo', 'active', 'complete'] as const).map((semantic, i) => ({ id: cx.ids(), semantic, label: semantic === 'todo' ? 'To-do' : semantic === 'active' ? 'In progress' : 'Complete', sortKey: keys[i] }))
+  const groups = (['todo', 'active', 'complete'] as const).map((semantic, i) => ({
+    id: cx.ids(),
+    semantic,
+    label: semantic === 'todo' ? 'To-do' : semantic === 'active' ? 'In progress' : 'Complete',
+    sortKey: keys[i],
+  }))
   const input: OptionInput[] = raw?.options?.length
     ? raw.options
-    : [{ name: 'Not started', group: 'todo' }, { name: 'In progress', color: 'blue', group: 'active' }, { name: 'Done', color: 'green', group: 'complete' }]
+    : [
+        { name: 'Not started', group: 'todo' },
+        { name: 'In progress', color: 'blue', group: 'active' },
+        { name: 'Done', color: 'green', group: 'complete' },
+      ]
   const options = input.map((o) => {
     const grp = groups.find((g) => g.semantic === o.group) ?? groups.find((g) => g.id === o.group) ?? groups[0]
     return { id: o.id ?? cx.ids(), name: o.name, color: (OPTION_COLORS as string[]).includes(o.color ?? '') ? (o.color as OptionColor) : 'default', sortKey: '', statusGroupId: grp.id }

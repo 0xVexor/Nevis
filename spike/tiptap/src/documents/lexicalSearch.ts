@@ -11,7 +11,10 @@ type Unit = { documentId: string; blockId: string | null; source: 'title' | 'tag
 export type LexicalMatch = Unit & { score: number; from: number; to: number }
 export class LexicalSearchError extends Error {
   readonly code: 'INVALID_ARGUMENT' | 'LIMIT_EXCEEDED'
-  constructor(code: 'INVALID_ARGUMENT' | 'LIMIT_EXCEEDED') { super(code); this.code = code }
+  constructor(code: 'INVALID_ARGUMENT' | 'LIMIT_EXCEEDED') {
+    super(code)
+    this.code = code
+  }
 }
 const blockTypes = new Set<string>(BLOCK_TYPES)
 
@@ -19,7 +22,7 @@ const blockTypes = new Set<string>(BLOCK_TYPES)
  * ZWNJ and directional controls are separators, as in normalizeFa. Normalize
  * complete words so Unicode case conversion does not change source offsets. */
 function tokenize(text: string): Token[] {
-  return [...text.matchAll(/[\p{L}\p{N}\p{M}_]+/gu)].flatMap(match => {
+  return [...text.matchAll(/[\p{L}\p{N}\p{M}_]+/gu)].flatMap((match) => {
     const term = normalizeFa(match[0])
     return term ? [{ term, from: match.index, to: match.index + match[0].length }] : []
   })
@@ -31,7 +34,7 @@ const inlineText = (node: IdentityNode, unsupported: () => void): string => {
   if (node.type === 'pageLink') return typeof node.attrs?.label === 'string' ? node.attrs.label : ''
   if (node.type === 'inlineIcon') return ''
   if (!['paragraph', 'heading', 'codeBlock'].includes(node.type)) unsupported()
-  return (node.content ?? []).map(child => inlineText(child, unsupported)).join('')
+  return (node.content ?? []).map((child) => inlineText(child, unsupported)).join('')
 }
 
 /** One portable positional engine. No DOM, FTS, storage or hidden-note lookup.
@@ -54,14 +57,17 @@ export class PortableLexicalIndex {
           terms.add(token.term)
           const byUnit = this.postings.get(token.term) ?? new Map<number, number[]>()
           const positions = byUnit.get(unitId) ?? []
-          positions.push(position); byUnit.set(unitId, positions); this.postings.set(token.term, byUnit)
+          positions.push(position)
+          byUnit.set(unitId, positions)
+          this.postings.set(token.term, byUnit)
         })
         this.documentTerms.set(page.id, terms)
       }
       add(page.title, 'title', null)
       for (const tag of page.tags ?? []) add(tag, 'tag', null)
       if (identityVersion(page.content) !== BLOCK_IDENTITY_VERSION || page.content?.type !== 'doc') {
-        this.unsupportedDocumentIds.add(page.id); continue
+        this.unsupportedDocumentIds.add(page.id)
+        continue
       }
       const seen = new Set<string>()
       let valid = true
@@ -72,13 +78,21 @@ export class PortableLexicalIndex {
           if (!isBlockId(id) || seen.has(id)) valid = false
           else seen.add(id)
         }
-        node.content?.forEach(child => check(child, depth + 1))
+        node.content?.forEach((child) => check(child, depth + 1))
       }
       check(page.content, 0)
-      if (!valid) { this.unsupportedDocumentIds.add(page.id); continue }
+      if (!valid) {
+        this.unsupportedDocumentIds.add(page.id)
+        continue
+      }
       const walk = (node: IdentityNode) => {
         const id = isBlockId(node.attrs?.blockId) ? node.attrs.blockId : null
-        if (['paragraph', 'heading', 'codeBlock'].includes(node.type)) add(inlineText(node, () => this.unsupportedDocumentIds.add(page.id)), 'body', id)
+        if (['paragraph', 'heading', 'codeBlock'].includes(node.type))
+          add(
+            inlineText(node, () => this.unsupportedDocumentIds.add(page.id)),
+            'body',
+            id,
+          )
         else if (node.type === 'mathBlock' || node.type === 'mermaid') {
           const text = node.attrs?.[node.type === 'mathBlock' ? 'latex' : 'code']
           if (typeof text === 'string') add(text, 'body', id)
@@ -92,11 +106,13 @@ export class PortableLexicalIndex {
       walk(page.content)
     }
   }
-  statistics() { return { passages: this.units.length, terms: this.postings.size, documents: this.documentTerms.size } }
+  statistics() {
+    return { passages: this.units.length, terms: this.postings.size, documents: this.documentTerms.size }
+  }
 
   search(query: string, mode: SearchMode): LexicalMatch[] {
     if (!query.trim() || !['keywords', 'phrase', 'literal'].includes(mode)) throw new LexicalSearchError('INVALID_ARGUMENT')
-    const terms = tokenize(query).map(token => token.term)
+    const terms = tokenize(query).map((token) => token.term)
     if (mode !== 'literal' && !terms.length) throw new LexicalSearchError('INVALID_ARGUMENT')
     const unique = [...new Set(terms)]
     const candidates = new Set<number>()
@@ -105,22 +121,37 @@ export class PortableLexicalIndex {
     const result: LexicalMatch[] = []
     for (const id of candidates) {
       const unit = this.units[id]
-      let from = -1, to = -1, matched = 0, frequency = 0
+      let from = -1,
+        to = -1,
+        matched = 0,
+        frequency = 0
       if (mode === 'literal') {
-        from = unit.text.indexOf(query); to = from + query.length; matched = 1; frequency = 1
+        from = unit.text.indexOf(query)
+        to = from + query.length
+        matched = 1
+        frequency = 1
       } else if (mode === 'phrase') {
-        const position = (this.postings.get(terms[0])?.get(id) ?? []).find(start => terms.every((term, offset) => unit.tokens[start + offset]?.term === term))
-        if (position !== undefined) { from = unit.tokens[position].from; to = unit.tokens[position + terms.length - 1].to; matched = terms.length; frequency = 1 }
+        const position = (this.postings.get(terms[0])?.get(id) ?? []).find((start) => terms.every((term, offset) => unit.tokens[start + offset]?.term === term))
+        if (position !== undefined) {
+          from = unit.tokens[position].from
+          to = unit.tokens[position + terms.length - 1].to
+          matched = terms.length
+          frequency = 1
+        }
       } else {
         // AND applies to the document across body/title/tags; passages identify
         // exact contributing blocks rather than inventing cross-column ranges.
-        if (!unique.every(term => this.documentTerms.get(unit.documentId)?.has(term))) continue
+        if (!unique.every((term) => this.documentTerms.get(unit.documentId)?.has(term))) continue
         for (const term of unique) {
           const positions = this.postings.get(term)?.get(id) ?? []
           if (!positions.length) continue
-          matched++; frequency += positions.length
+          matched++
+          frequency += positions.length
           const first = unit.tokens[positions[0]]
-          if (from < 0 || first.from < from) { from = first.from; to = first.to }
+          if (from < 0 || first.from < from) {
+            from = first.from
+            to = first.to
+          }
         }
       }
       if (from < 0) continue

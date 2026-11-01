@@ -112,11 +112,17 @@ export class Coordinator {
     return run
   }
 
-  async flushed(): Promise<void> { await this.chain }
+  async flushed(): Promise<void> {
+    await this.chain
+  }
 
   private async run(env: CommandEnvelope): Promise<Commit> {
     const release = await this.host.reserveCommit?.()
-    try { return await this.runReserved(env) } finally { release?.() }
+    try {
+      return await this.runReserved(env)
+    } finally {
+      release?.()
+    }
   }
 
   private async runReserved(env: CommandEnvelope): Promise<Commit> {
@@ -135,8 +141,26 @@ export class Coordinator {
     const now = this.now()
     const ids = this.ids
     const cx: Ctx = {
-      d, env, now, ids, access, state: this.state, warnings: [], last: null,
-      meta: (id) => ({ format: 1, id: id ?? ids(), vaultId: env.vaultId, revision: 0, createdAt: now, updatedAt: now, createdBy: env.actorId, updatedBy: env.actorId, deletedAt: null, lastOperationId: env.operationId }),
+      d,
+      env,
+      now,
+      ids,
+      access,
+      state: this.state,
+      warnings: [],
+      last: null,
+      meta: (id) => ({
+        format: 1,
+        id: id ?? ids(),
+        vaultId: env.vaultId,
+        revision: 0,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: env.actorId,
+        updatedBy: env.actorId,
+        deletedAt: null,
+        lastOperationId: env.operationId,
+      }),
       stamp: () => ({ counter: 0, deviceId: env.deviceId, opId: env.operationId }),
     }
     if (stale.length) this.checkRebase(env, stale)
@@ -200,7 +224,10 @@ export class Coordinator {
         const page = this.state.pages.get(s.id)!
         for (const c of env.commands) {
           const p = c.payload as { pageId?: Id; cellChanges?: Record<Id, unknown>; title?: string; parentItemId?: unknown } | null
-          if (c.type !== 'row.patch' || p?.pageId !== s.id || p.title !== undefined || p.parentItemId !== undefined) { ok = false; break }
+          if (c.type !== 'row.patch' || p?.pageId !== s.id || p.title !== undefined || p.parentItemId !== undefined) {
+            ok = false
+            break
+          }
           for (const pid of Object.keys(p.cellChanges ?? {})) if ((page.database?.cells[pid]?.stamp.counter ?? 0) > s.expected) ok = false
         }
         if (!ok || !env.commands.some((c) => (c.payload as { pageId?: Id } | null)?.pageId === s.id)) ok = false
@@ -259,7 +286,15 @@ export class Coordinator {
       if (base && same(stripPage(base), stripPage(p))) continue
       const baseRev = base?.recordMeta?.revision ?? 0
       const rev = baseRev + 1
-      const meta = p.recordMeta ?? { format: 1 as const, revision: 0, createdAt: base?.updatedAt ?? now, createdBy: env.actorId, updatedBy: env.actorId, lastOperationId: env.operationId, inferred: !!base }
+      const meta = p.recordMeta ?? {
+        format: 1 as const,
+        revision: 0,
+        createdAt: base?.updatedAt ?? now,
+        createdBy: env.actorId,
+        updatedBy: env.actorId,
+        lastOperationId: env.operationId,
+        inferred: !!base,
+      }
       p.recordMeta = { ...meta, format: 1, revision: rev, updatedBy: env.actorId, lastOperationId: env.operationId }
       p.updatedAt = now
       if (p.database) {
@@ -291,7 +326,7 @@ export class Coordinator {
   private publish(batch: BatchWrite, _events: ChangeEvent['records']) {
     const ups: PageLike[] = []
     const rem: Id[] = []
-    for (const w of batch.pages) (w.after ? ups.push(w.after) : rem.push(w.id))
+    for (const w of batch.pages) w.after ? ups.push(w.after) : rem.push(w.id)
     for (const w of batch.records) {
       if (w.after) (this.state.maps[w.kind] as Map<Id, AnyRecord>).set(w.id, w.after)
       else this.state.maps[w.kind].delete(w.id)
@@ -307,7 +342,13 @@ export class Coordinator {
     this.state.maps = (await import('../state.ts')).emptyMaps()
     for (const [kind, list] of Object.entries(loaded.records)) for (const r of list ?? []) (this.state.maps as Record<string, Map<Id, unknown>>)[kind].set(r.id, r)
     this.state.invalidate()
-    const ev: ChangeEvent = { commit: { operationId: 'external', generation: this.state.generation, changed: [], warnings: [] }, envelope: { operationId: 'external', vaultId: this.state.vaultId, actorId: '', deviceId: '', expected: [], origin: 'external', commands: [] }, pages: (ids?.pages ?? []).map((pageId) => ({ pageId, sourceId: null, created: false, trashed: false, restored: false, titleChanged: false, cells: {}, membershipChanged: false })), records: [], external: true }
+    const ev: ChangeEvent = {
+      commit: { operationId: 'external', generation: this.state.generation, changed: [], warnings: [] },
+      envelope: { operationId: 'external', vaultId: this.state.vaultId, actorId: '', deviceId: '', expected: [], origin: 'external', commands: [] },
+      pages: (ids?.pages ?? []).map((pageId) => ({ pageId, sourceId: null, created: false, trashed: false, restored: false, titleChanged: false, cells: {}, membershipChanged: false })),
+      records: [],
+      external: true,
+    }
     for (const s of this.subs) s(ev)
   }
 
@@ -328,7 +369,10 @@ export class Coordinator {
         if (!cur || cur.revision !== it.afterRevision) out.push({ id: it.id, path: it.kind })
       } else {
         const p = this.state.pages.get(it.id)
-        if (!p) { out.push({ id: it.id, path: 'page' }); continue }
+        if (!p) {
+          out.push({ id: it.id, path: 'page' })
+          continue
+        }
         for (const path of it.paths) if (!same(readPath(p, path.path), path.after)) out.push({ id: it.id, path: path.path })
       }
     }
@@ -342,7 +386,12 @@ export class Coordinator {
     const conflicts = this.undoConflicts(group)
     if (conflicts.length && !opts.partial) return { ok: false, conflicts }
     const commit = await this.execute({
-      operationId: this.ids(), vaultId: this.state.vaultId, actorId, deviceId: this.deviceId, expected: [], origin: 'user',
+      operationId: this.ids(),
+      vaultId: this.state.vaultId,
+      actorId,
+      deviceId: this.deviceId,
+      expected: [],
+      origin: 'user',
       commands: [{ type: 'undo.apply', payload: { group: group as unknown as Json, skip: conflicts as unknown as Json } }],
     })
     this.undoStack = this.undoStack.filter((g) => g !== group && g.operationId !== group.operationId)
@@ -385,10 +434,10 @@ export function readPath(p: PageLike, path: string): Json | null {
 
 export function writePath(p: PageLike, path: string, v: Json | null, stamp?: { counter: number; deviceId: Id; opId: Id }) {
   if (path === 'title') p.title = v as string
-  else if (path === 'icon') (v === null ? delete p.icon : (p.icon = v as string))
+  else if (path === 'icon') v === null ? delete p.icon : (p.icon = v as string)
   else if (path === 'deletedAt') p.deletedAt = v as number | null
   else if (path === 'parentId') p.parentId = v as Id | null
-  else if (path === 'ext') (v === null ? delete p.database : (p.database = structuredClone(v) as never))
+  else if (path === 'ext') v === null ? delete p.database : (p.database = structuredClone(v) as never)
   else if (p.database) {
     const e = p.database
     if (path === 'ext.sortKey') e.sortKey = v as string
@@ -409,7 +458,14 @@ export function writePath(p: PageLike, path: string, v: Json | null, stamp?: { c
 function diffPage(base: PageLike | undefined, post: PageLike): { change: PageChange; paths: UndoPath[] } {
   const paths: UndoPath[] = []
   const change: PageChange = {
-    pageId: post.id, sourceId: post.database?.sourceId ?? base?.database?.sourceId ?? null, created: !base, trashed: false, restored: false, titleChanged: false, cells: {}, membershipChanged: false,
+    pageId: post.id,
+    sourceId: post.database?.sourceId ?? base?.database?.sourceId ?? null,
+    created: !base,
+    trashed: false,
+    restored: false,
+    titleChanged: false,
+    cells: {},
+    membershipChanged: false,
   }
   const add = (path: string, before: Json | null, after: Json | null) => {
     if (!same(before, after)) paths.push({ path, before, after })

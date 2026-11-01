@@ -73,7 +73,7 @@ const lineStart = (text: string, off: number) => text.lastIndexOf('\n', off - 1)
 /** Offsets (within the block text) of the first character of every line touched by [a, b]. */
 function touchedLineStarts(text: string, a: number, b: number): number[] {
   const starts: number[] = []
-  for (let p = lineStart(text, a); p <= b; ) {
+  for (let p = lineStart(text, a); p <= b;) {
     starts.push(p)
     const nl = text.indexOf('\n', p)
     if (nl < 0) break
@@ -208,17 +208,23 @@ export const CodeBlock = CodeBlockLowlight.extend({
       trigger.onmousedown = (e) => e.preventDefault()
       trigger.onclick = () => {
         if (!editor.isEditable) return
-        openLangMenu(trigger, [...select.options].map((o) => ({ value: o.value, label: o.text })), select.value, (v) => {
-          select.value = v
-          select.onchange?.(new Event('change'))
-        })
+        openLangMenu(
+          trigger,
+          [...select.options].map((o) => ({ value: o.value, label: o.text })),
+          select.value,
+          (v) => {
+            select.value = v
+            select.onchange?.(new Event('change'))
+          },
+        )
       }
 
       const copy = document.createElement('button')
       copy.className = 'code-copy'
       copy.type = 'button'
       copy.textContent = t('Copy')
-      let destroyed = false, copyTimer = 0
+      let destroyed = false,
+        copyTimer = 0
       copy.onclick = async () => {
         clearTimeout(copyTimer)
         try {
@@ -228,7 +234,10 @@ export const CodeBlock = CodeBlockLowlight.extend({
         } catch {
           if (!destroyed) copy.textContent = t('Copy failed')
         }
-        if (!destroyed) copyTimer = window.setTimeout(() => { copy.textContent = t('Copy') }, 1200)
+        if (!destroyed)
+          copyTimer = window.setTimeout(() => {
+            copy.textContent = t('Copy')
+          }, 1200)
       }
       // code that is really a diagram (language "mermaid", or Mermaid source in a block with no language): offer to draw it
       const diag = document.createElement('button')
@@ -243,7 +252,11 @@ export const CodeBlock = CodeBlockLowlight.extend({
         editor.view.dispatch(editor.state.tr.replaceWith(pos, pos + current.nodeSize, mer.create({ code: current.textContent })))
       }
       // alignment of the code text: left / center / right
-      const aligns: [string, string, string][] = [['left', svgIcon.left, t('Align left')], ['center', svgIcon.center, t('Center')], ['right', svgIcon.right, t('Align right')]]
+      const aligns: [string, string, string][] = [
+        ['left', svgIcon.left, t('Align left')],
+        ['center', svgIcon.center, t('Center')],
+        ['right', svgIcon.right, t('Align right')],
+      ]
       const alignBtns = aligns.map(([a, icon, title]) => {
         const b = document.createElement('button')
         b.type = 'button'
@@ -273,7 +286,8 @@ export const CodeBlock = CodeBlockLowlight.extend({
         const seen = id ? null : detectLanguage(n.textContent)
         auto.text = seen ? `${t('Auto-detect')} · ${t(nameOf(seen))}` : t('Auto-detect')
         diag.hidden = !(n.attrs.language === 'mermaid' || looksLikeMermaid(n.textContent))
-        trigger.innerHTML = '<span class="cl-t"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
+        trigger.innerHTML =
+          '<span class="cl-t"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
         ;(trigger.querySelector('.cl-t') as HTMLElement).textContent = select.selectedOptions[0]?.text ?? ''
         pre.style.textAlign = n.attrs.textAlign ?? ''
         alignBtns.forEach((b, i) => b.classList.toggle('on', n.attrs.textAlign === aligns[i][0]))
@@ -298,7 +312,10 @@ export const CodeBlock = CodeBlockLowlight.extend({
         },
         stopEvent: (e) => bar.contains(e.target as any) || surface.contains(e.target as any),
         ignoreMutation: (m) => bar.contains(m.target) || surface.contains(m.target),
-        destroy: () => { destroyed = true; clearTimeout(copyTimer) },
+        destroy: () => {
+          destroyed = true
+          clearTimeout(copyTimer)
+        },
       }
     }
   },

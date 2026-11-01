@@ -4,8 +4,29 @@
  * Pure data and one function, so scripts and tests can read it. <FileIcon> in fileIcons.tsx draws it.
  */
 export type FileKind =
-  | 'image' | 'audio' | 'video' | 'pdf' | 'doc' | 'sheet' | 'slides' | 'text' | 'code' | 'data'
-  | 'archive' | 'font' | 'design' | 'book' | 'model' | 'key' | 'app' | 'folder' | 'page' | 'board' | 'todo' | 'database' | 'file'
+  | 'image'
+  | 'audio'
+  | 'video'
+  | 'pdf'
+  | 'doc'
+  | 'sheet'
+  | 'slides'
+  | 'text'
+  | 'code'
+  | 'data'
+  | 'archive'
+  | 'font'
+  | 'design'
+  | 'book'
+  | 'model'
+  | 'key'
+  | 'app'
+  | 'folder'
+  | 'page'
+  | 'board'
+  | 'todo'
+  | 'database'
+  | 'file'
 
 export interface FileKindInfo {
   label: string
@@ -57,7 +78,12 @@ const EXT: Record<FileKind, string> = {
   model: 'obj stl fbx glb gltf blend 3ds step',
   key: 'pem crt cer p12 pfx asc gpg pub',
   app: 'exe msi apk app deb rpm appimage bat cmd',
-  folder: '', page: '', board: '', todo: '', database: '', file: '',
+  folder: '',
+  page: '',
+  board: '',
+  todo: '',
+  database: '',
+  file: '',
 }
 
 const BY_EXT = new Map<string, FileKind>()
@@ -82,4 +108,7 @@ export function fileKind(name = '', mime = ''): FileKind {
 }
 
 /** Extensions listed for the live reference, grouped by kind. */
-export const FILE_EXTENSIONS: Record<FileKind, string[]> = Object.fromEntries((Object.entries(EXT) as [FileKind, string][]).map(([k, v]) => [k, v.split(' ').filter(Boolean)])) as Record<FileKind, string[]>
+export const FILE_EXTENSIONS: Record<FileKind, string[]> = Object.fromEntries((Object.entries(EXT) as [FileKind, string][]).map(([k, v]) => [k, v.split(' ').filter(Boolean)])) as Record<
+  FileKind,
+  string[]
+>

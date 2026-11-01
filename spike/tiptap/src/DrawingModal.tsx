@@ -15,7 +15,13 @@ export interface DrawingResult {
 function DrawingEditor({ initial, onClose }: { initial: SceneData | null; onClose: (r: DrawingResult | null) => void }) {
   const api = useRef<any>(null)
   const [saving, setSaving] = useState(false)
-  useEffect(() => registerUpdateSave(() => { throw new Error('Finish the open drawing before restarting') }), [])
+  useEffect(
+    () =>
+      registerUpdateSave(() => {
+        throw new Error('Finish the open drawing before restarting')
+      }),
+    [],
+  )
 
   const done = async () => {
     if (!api.current || saving) return

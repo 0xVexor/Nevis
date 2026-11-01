@@ -9,7 +9,12 @@ export interface NativeDocumentBridge {
   currentVaultId(): Promise<string>
   active(): boolean
   load(): Promise<Page[]>
-  save(upserts: (Page & { _base?: number | null })[], removed: string[], replaceAll: boolean, preconditions?: { expectedVaultId: string; expectedPages?: DocumentWrite['expectedPages']; expectedAll?: Page[] }): Promise<void>
+  save(
+    upserts: (Page & { _base?: number | null })[],
+    removed: string[],
+    replaceAll: boolean,
+    preconditions?: { expectedVaultId: string; expectedPages?: DocumentWrite['expectedPages']; expectedAll?: Page[] },
+  ): Promise<void>
   stamp(): Promise<string>
   listVersions(pageId: string): Promise<DocumentVersion[]>
   addVersion(version: DocumentVersion): Promise<void>
@@ -42,19 +47,41 @@ export class NativeDocumentStorage implements DocumentStorage {
     await this.assertBinding()
     return value
   }
-  load() { return this.run(() => this.bridge.load()) }
+  load() {
+    return this.run(() => this.bridge.load())
+  }
   save(input: DocumentWrite) {
     const write = cloneDocumentValue(input)
-    return this.run(() => this.bridge.save(write.replaceAll ? write.upserts : write.upserts.map(page => ({
-      ...page, _base: write.baseVersions[page.id]?.updatedAt ?? null,
-    })), write.removed, write.replaceAll, {
-      expectedVaultId: this.binding!, expectedPages: write.expectedPages, expectedAll: write.expectedAll,
-    }))
+    return this.run(() =>
+      this.bridge.save(
+        write.replaceAll
+          ? write.upserts
+          : write.upserts.map((page) => ({
+              ...page,
+              _base: write.baseVersions[page.id]?.updatedAt ?? null,
+            })),
+        write.removed,
+        write.replaceAll,
+        {
+          expectedVaultId: this.binding!,
+          expectedPages: write.expectedPages,
+          expectedAll: write.expectedAll,
+        },
+      ),
+    )
   }
-  stamp() { return this.run(() => this.bridge.stamp()) }
-  listVersions(pageId: string) { return this.run(() => this.bridge.listVersions(pageId)) }
-  addVersion(version: DocumentVersion) { return this.run(() => this.bridge.addVersion(version)) }
-  deleteVersions(pageId: string) { return this.run(() => this.bridge.deleteVersions(pageId)) }
+  stamp() {
+    return this.run(() => this.bridge.stamp())
+  }
+  listVersions(pageId: string) {
+    return this.run(() => this.bridge.listVersions(pageId))
+  }
+  addVersion(version: DocumentVersion) {
+    return this.run(() => this.bridge.addVersion(version))
+  }
+  deleteVersions(pageId: string) {
+    return this.run(() => this.bridge.deleteVersions(pageId))
+  }
   listOperations(scopeId: string, documentId: string) {
     return this.run(() => {
       if (!this.bridge.listOperations) throw new Error('Document operation storage is unavailable')

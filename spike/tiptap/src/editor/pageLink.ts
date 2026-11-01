@@ -25,7 +25,11 @@ export const PageLink = Node.create({
   // `label`: text the link shows instead of the page title (set when selected text is turned into a link)
   addAttributes: () => ({ id: { default: '' }, label: { default: null } }),
   parseHTML: () => [{ tag: 'a[data-type="page-link"]', getAttrs: (el) => ({ id: (el as HTMLElement).getAttribute('data-id') ?? '', label: (el as HTMLElement).getAttribute('data-label') }) }],
-  renderHTML: ({ node }) => ['a', mergeAttributes({ 'data-type': 'page-link', 'data-id': node.attrs.id }, node.attrs.label ? { 'data-label': node.attrs.label } : {}), node.attrs.label || repo.get(node.attrs.id)?.title || tr('Page')],
+  renderHTML: ({ node }) => [
+    'a',
+    mergeAttributes({ 'data-type': 'page-link', 'data-id': node.attrs.id }, node.attrs.label ? { 'data-label': node.attrs.label } : {}),
+    node.attrs.label || repo.get(node.attrs.id)?.title || tr('Page'),
+  ],
 
   /**
    * Typing a complete `[[Title]]` (or `[[Title|alias]]`) by hand turns it into a link when the closing `]]` is typed:
@@ -80,7 +84,14 @@ export const PageLink = Node.create({
         e.preventDefault()
         if (repo.get(id)) window.dispatchEvent(new CustomEvent(OPEN_PAGE, { detail: id }))
       }
-      return { dom: a, ignoreMutation: () => true, destroy: () => { window.removeEventListener(PAGES_CHANGED, paint); window.removeEventListener('external-change', paint) } }
+      return {
+        dom: a,
+        ignoreMutation: () => true,
+        destroy: () => {
+          window.removeEventListener(PAGES_CHANGED, paint)
+          window.removeEventListener('external-change', paint)
+        },
+      }
     }
   },
 })
@@ -153,7 +164,10 @@ export const PageLinkSuggest = Extension.create({
           // replace «[[…» up to and including the closing «]]» when it is there, so nothing of the name stays behind as text
           const rest = char === '[[' ? restOfBrackets(ed) : null
           const to = range.to + (rest?.length ?? 0)
-          ed.chain().focus().insertContentAt({ from: range.from, to }, [{ type: 'pageLink', attrs: { id } }, ...gap(ed.state.doc, to)]).run()
+          ed.chain()
+            .focus()
+            .insertContentAt({ from: range.from, to }, [{ type: 'pageLink', attrs: { id } }, ...gap(ed.state.doc, to)])
+            .run()
         },
         render: menuRender<Item>({ label: tr('Link to a page'), view: (i) => i, empty: tr('No page found') }),
         ...extra,

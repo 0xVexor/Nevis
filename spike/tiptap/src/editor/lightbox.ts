@@ -132,7 +132,7 @@ export function openLightbox(source: LightboxSource): () => void {
     if (!drag) return
     const dx = e.clientX - drag.x
     const dy = e.clientY - drag.y
-    if (Math.abs(dx) + Math.abs(dy) > 3) (drag.moved = true), (touched = true)
+    if (Math.abs(dx) + Math.abs(dy) > 3) ((drag.moved = true), (touched = true))
     tx = drag.tx + dx
     ty = drag.ty + dy
     apply()

@@ -6,7 +6,11 @@
 //  - the Persian face follows and supplies everything the English face does not have.
 // No DOM in here: settings.ts applies the result.
 
-export interface FaceDef { id: string; group: string; stack: string }
+export interface FaceDef {
+  id: string
+  group: string
+  stack: string
+}
 
 /** Latin letters, Latin extended, general punctuation and currency. Not ZWNJ/ZWJ (U+200C-200D) and no Arabic-script block. */
 export const LATIN_RANGE = 'U+0000-00FF,U+0100-024F,U+0259,U+1E00-1EFF,U+2010-2027,U+2030-205E,U+20A0-20CF,U+2122,U+2190-2193,U+2212,U+2215,U+FEFF'
@@ -16,9 +20,18 @@ export const LATIN_DEFAULT = "'Instrument Sans'"
 
 /** Installed faces to try, in order, for each system choice: [regular, bold]. */
 const LOCAL: Record<string, [string[], string[]]> = {
-  system: [['Segoe UI', 'SF Pro Text', 'Helvetica Neue', 'Roboto', 'Ubuntu', 'Arial'], ['Segoe UI Bold', 'SF Pro Text Bold', 'Helvetica Neue Bold', 'Roboto Bold', 'Ubuntu Bold', 'Arial Bold']],
-  serif: [['Georgia', 'Times New Roman'], ['Georgia Bold', 'Times New Roman Bold']],
-  mono: [['Cascadia Mono', 'Consolas', 'Menlo', 'Monaco', 'Courier New'], ['Cascadia Mono Bold', 'Consolas Bold', 'Menlo Bold', 'Monaco', 'Courier New Bold']],
+  system: [
+    ['Segoe UI', 'SF Pro Text', 'Helvetica Neue', 'Roboto', 'Ubuntu', 'Arial'],
+    ['Segoe UI Bold', 'SF Pro Text Bold', 'Helvetica Neue Bold', 'Roboto Bold', 'Ubuntu Bold', 'Arial Bold'],
+  ],
+  serif: [
+    ['Georgia', 'Times New Roman'],
+    ['Georgia Bold', 'Times New Roman Bold'],
+  ],
+  mono: [
+    ['Cascadia Mono', 'Consolas', 'Menlo', 'Monaco', 'Courier New'],
+    ['Cascadia Mono Bold', 'Consolas Bold', 'Menlo Bold', 'Monaco', 'Courier New Bold'],
+  ],
 }
 
 const firstFamily = (stack: string) => stack.split(',')[0].trim()

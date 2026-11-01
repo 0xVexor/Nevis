@@ -3,7 +3,12 @@ import { EditorState, Selection, TextSelection, type Transaction } from '@tiptap
 import { canSplit } from '@tiptap/pm/transform'
 import { GROUP, crossesColumns, flattenLayouts, layoutStructureValid, structural } from './layoutModel'
 
-interface FlowEdit { from: number; to: number; content: Fragment; column: boolean }
+interface FlowEdit {
+  from: number
+  to: number
+  content: Fragment
+  column: boolean
+}
 
 /** Delete each selected flow independently. Column wrappers and unselected text never join. */
 export function editAcrossColumns(state: EditorState, replacement?: string | Slice, split = false): Transaction | null {
@@ -19,22 +24,27 @@ export function editAcrossColumns(state: EditorState, replacement?: string | Sli
     if (node.type.name === GROUP) {
       flush()
       node.forEach((col, offset) => {
-        const start = pos + 2 + offset, end = start + col.content.size
+        const start = pos + 2 + offset,
+          end = start + col.content.size
         if (from < end && to > start) flows.push({ from: start, to: end, content: col.content, column: true })
       })
     } else if (from < pos + node.nodeSize && to > pos) {
       if (!run) run = { from: pos, to: pos, nodes: [] }
-      run.nodes.push(node); run.to = pos + node.nodeSize
+      run.nodes.push(node)
+      run.to = pos + node.nodeSize
     } else flush()
   })
   flush()
   if (!flows.length) return null
   const tr = structural(state.tr)
-  let focusFlow = flows[0].from, focusOffset = 0
+  let focusFlow = flows[0].from,
+    focusOffset = 0
   try {
     for (const flow of [...flows].reverse()) {
-      const a = Math.max(from, flow.from) - flow.from, b = Math.min(to, flow.to) - flow.from
-      let content: Fragment, offset = 0
+      const a = Math.max(from, flow.from) - flow.from,
+        b = Math.min(to, flow.to) - flow.from
+      let content: Fragment,
+        offset = 0
       if (a === 0 && b === flow.content.size) {
         content = flow.column ? Fragment.from(state.schema.nodes.paragraph.create()) : Fragment.empty
         offset = flow.column ? 1 : 0
@@ -47,7 +57,10 @@ export function editAcrossColumns(state: EditorState, replacement?: string | Sli
         offset = local.mapping.map(a, -1)
       }
       tr.replaceWith(flow.from, flow.to, content)
-      if (flow === flows[0]) { focusFlow = flow.from; focusOffset = offset }
+      if (flow === flows[0]) {
+        focusFlow = flow.from
+        focusOffset = offset
+      }
     }
     let at = tr.mapping.map(focusFlow, -1) + focusOffset
     at = Math.max(0, Math.min(at, tr.doc.content.size))
@@ -69,7 +82,9 @@ export function editAcrossColumns(state: EditorState, replacement?: string | Sli
     tr.doc.check()
     if (!layoutStructureValid(tr.doc)) return null
     return tr.scrollIntoView()
-  } catch { return null }
+  } catch {
+    return null
+  }
 }
 
 /** Preserve partial text at both ends rather than copying whole touched paragraphs. */

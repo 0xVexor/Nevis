@@ -20,11 +20,31 @@ export type RecordMeta = {
 }
 
 export type Kind =
-  | 'title' | 'text' | 'number' | 'select' | 'multi_select' | 'status' | 'date'
-  | 'people' | 'files' | 'checkbox' | 'url' | 'email' | 'phone' | 'relation' | 'rollup'
-  | 'formula' | 'created_time' | 'created_by' | 'last_edited_time' | 'last_edited_by'
-  | 'button' | 'unique_id' | 'place' | 'verification' | 'connected'
-
+  | 'title'
+  | 'text'
+  | 'number'
+  | 'select'
+  | 'multi_select'
+  | 'status'
+  | 'date'
+  | 'people'
+  | 'files'
+  | 'checkbox'
+  | 'url'
+  | 'email'
+  | 'phone'
+  | 'relation'
+  | 'rollup'
+  | 'formula'
+  | 'created_time'
+  | 'created_by'
+  | 'last_edited_time'
+  | 'last_edited_by'
+  | 'button'
+  | 'unique_id'
+  | 'place'
+  | 'verification'
+  | 'connected'
 
 export type RichRun = {
   text: string
@@ -78,7 +98,6 @@ export type ConnectedValue = {
 }
 
 export type VerificationValue = { state: 'verified' | 'unverified'; verifierId: Id | null; verifiedAt: number | null; expiresAt: number | null }
-
 
 export type Definition = RecordMeta & {
   sourceId: Id
@@ -177,15 +196,9 @@ export type FormulaValue =
 
 export type FormulaDiagnostic = { code: string; message: string; from: number; to: number }
 
-export type Computed =
-  | { state: 'ready'; value: FormulaValue }
-  | { state: 'pending' | 'restricted' }
-  | { state: 'error'; code: string; detail: string }
+export type Computed = { state: 'ready'; value: FormulaValue } | { state: 'pending' | 'restricted' } | { state: 'error'; code: string; detail: string }
 
-export type FormulaResult =
-  | { state: 'ready'; value: FormulaValue }
-  | { state: 'error'; diagnostics: FormulaDiagnostic[] }
-  | { state: 'pending' | 'restricted' }
+export type FormulaResult = { state: 'ready'; value: FormulaValue } | { state: 'error'; diagnostics: FormulaDiagnostic[] } | { state: 'pending' | 'restricted' }
 
 // ───── query ─────
 
@@ -205,8 +218,15 @@ export type Query = {
   expectedGeneration?: number
 }
 
-export type GroupSpec =
-  | { propertyId: Id; mode?: 'option' | 'status_group' | 'exact' | 'prefix' | 'day' | 'week' | 'month' | 'year' | 'relative' | 'bucket'; prefixLength?: number; bucketStart?: number; bucketSize?: number; hidden?: Id[]; order?: Id[] }
+export type GroupSpec = {
+  propertyId: Id
+  mode?: 'option' | 'status_group' | 'exact' | 'prefix' | 'day' | 'week' | 'month' | 'year' | 'relative' | 'bucket'
+  prefixLength?: number
+  bucketStart?: number
+  bucketSize?: number
+  hidden?: Id[]
+  order?: Id[]
+}
 
 export type QueryGroup = { key: string; label: string; memberId: Id | null; pageIds: Id[]; count: number; aggregates?: Record<Id, Json> }
 
@@ -245,14 +265,9 @@ export type Commit = {
 
 // ───── record kinds stored in the Vault `databases/` folders ─────
 
-export type RecordKind =
-  | 'container' | 'source' | 'property' | 'view' | 'relation' | 'edge' | 'template' | 'workflow'
-  | 'comment' | 'principal' | 'grant' | 'event' | 'allocator'
+export type RecordKind = 'container' | 'source' | 'property' | 'view' | 'relation' | 'edge' | 'template' | 'workflow' | 'comment' | 'principal' | 'grant' | 'event' | 'allocator'
 
-export const RECORD_KINDS: RecordKind[] = [
-  'container', 'source', 'property', 'view', 'relation', 'edge', 'template', 'workflow', 'comment', 'principal', 'grant', 'event', 'allocator',
-]
-
+export const RECORD_KINDS: RecordKind[] = ['container', 'source', 'property', 'view', 'relation', 'edge', 'template', 'workflow', 'comment', 'principal', 'grant', 'event', 'allocator']
 
 export type Principal = RecordMeta & {
   type: 'user' | 'group'
@@ -334,10 +349,7 @@ export type EventRecord = RecordMeta & {
   data: Json
 }
 
-export type Trigger =
-  | { type: 'page_added' }
-  | { type: 'property_changed'; propertyId: Id; predicate?: Filter }
-  | { type: 'schedule'; recurrence: Json }
+export type Trigger = { type: 'page_added' } | { type: 'property_changed'; propertyId: Id; predicate?: Filter } | { type: 'schedule'; recurrence: Json }
 
 export type Action =
   | { type: 'set_values'; target: Json; changes: Json }

@@ -56,7 +56,16 @@ const Toggle = ({ label, hint, on, onChange }: { label: string; hint?: string; o
 
 const Range = ({ label, value, min, max, step = 1, unit = '', onChange }: { label: string; value: number; min: number; max: number; step?: number; unit?: string; onChange: (v: number) => void }) => (
   <div className="sx-range">
-    <input type="range" aria-label={label} min={min} max={max} step={step} value={value} style={{ ['--p' as string]: ((value - min) / (max - min)) * 100 + '%' } as CSSProperties} onChange={(e) => onChange(+e.target.value)} />
+    <input
+      type="range"
+      aria-label={label}
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      style={{ ['--p' as string]: ((value - min) / (max - min)) * 100 + '%' } as CSSProperties}
+      onChange={(e) => onChange(+e.target.value)}
+    />
     <output>
       {value}
       {unit}
@@ -190,7 +199,14 @@ function Appearance() {
           <Segmented value={s.sidebar} options={SIDEBAR_STYLES.map((o) => ({ ...o, label: t(o.label) }))} onChange={(sidebar) => updateSettings({ sidebar })} />
         </Row>
         <Row label={t('Page list')} hint={t('Tree nests subpages. Compact lists each folder as one row with its pages right under it.')}>
-          <Segmented value={s.pagesView} options={[{ id: 'tree', label: t('Tree') }, { id: 'compact', label: t('Compact') }]} onChange={(pagesView) => updateSettings({ pagesView })} />
+          <Segmented
+            value={s.pagesView}
+            options={[
+              { id: 'tree', label: t('Tree') },
+              { id: 'compact', label: t('Compact') },
+            ]}
+            onChange={(pagesView) => updateSettings({ pagesView })}
+          />
         </Row>
         <Row label={t('Sidebar glass')} hint={t('Transparency and blur of the sidebar.')}>
           <Range label={t('Sidebar glass')} value={s.sideGlass} min={0} max={100} step={5} unit="%" onChange={(sideGlass) => updateSettings({ sideGlass })} />
@@ -253,7 +269,9 @@ function FontPicker({ value, groups, none, onPick }: { value: FontId | null; gro
                 {none.label}
                 {value === null && <Ic.Check size={14} />}
               </span>
-              <span className="fp-sample" dir="auto" style={{ fontFamily: none.stack }}>The quick brown fox 123</span>
+              <span className="fp-sample" dir="auto" style={{ fontFamily: none.stack }}>
+                The quick brown fox 123
+              </span>
             </button>
           </div>
         </div>
@@ -335,8 +353,18 @@ function General() {
   const s = useSettings()
   return (
     <Card icon={<Ic.Settings />} title={t('Reminders & files')}>
-      <Toggle label={t('Flashcard reminders')} hint={t('Notifies you when cards are due and the app is in the background.')} on={s.cardReminders} onChange={(cardReminders) => updateSettings({ cardReminders })} />
-      <Toggle label={t('Compress large images')} hint={t('Shrinks big pictures when you add them, so the vault stays light.')} on={s.compressImages} onChange={(compressImages) => updateSettings({ compressImages })} />
+      <Toggle
+        label={t('Flashcard reminders')}
+        hint={t('Notifies you when cards are due and the app is in the background.')}
+        on={s.cardReminders}
+        onChange={(cardReminders) => updateSettings({ cardReminders })}
+      />
+      <Toggle
+        label={t('Compress large images')}
+        hint={t('Shrinks big pictures when you add them, so the vault stays light.')}
+        on={s.compressImages}
+        onChange={(compressImages) => updateSettings({ compressImages })}
+      />
     </Card>
   )
 }
@@ -352,7 +380,9 @@ function Shortcuts() {
   const needle = q.trim().toLowerCase()
   const groups = SHORTCUTS.map((g) => ({
     ...g,
-    items: g.items.filter((i) => !needle || i.label.toLowerCase().includes(needle) || t(i.label).toLowerCase().includes(needle) || keysOf(i).some((k) => k.map(keyLabel).join('+').toLowerCase().includes(needle))),
+    items: g.items.filter(
+      (i) => !needle || i.label.toLowerCase().includes(needle) || t(i.label).toLowerCase().includes(needle) || keysOf(i).some((k) => k.map(keyLabel).join('+').toLowerCase().includes(needle)),
+    ),
   })).filter((g) => g.items.length)
   const setBinding = (id: BindingId, chord: string[] | null) => {
     const { [id]: _old, ...rest } = s.shortcuts
@@ -391,23 +421,37 @@ function Shortcuts() {
               <li key={i.label}>
                 <span>
                   {t(i.label)}
-                  {i.binding && problem?.id === i.binding && <small className="sc-problem" role="alert">{problem.text}</small>}
+                  {i.binding && problem?.id === i.binding && (
+                    <small className="sc-problem" role="alert">
+                      {problem.text}
+                    </small>
+                  )}
                 </span>
                 <span className="sc-keys">
-                  {i.binding && recording === i.binding
-                    ? <kbd className="sc-recording" dir="auto">{t('Press the new keys…')}</kbd>
-                    : keysOf(i).map((chord, n) => (
-                        <span key={n} className="sc-chord" dir="ltr">
-                          {n > 0 && <em>{t('or')}</em>}
-                          {chord.map((k, j) => (
-                            <kbd key={j}>{keyLabel(k)}</kbd>
-                          ))}
-                        </span>
-                      ))}
+                  {i.binding && recording === i.binding ? (
+                    <kbd className="sc-recording" dir="auto">
+                      {t('Press the new keys…')}
+                    </kbd>
+                  ) : (
+                    keysOf(i).map((chord, n) => (
+                      <span key={n} className="sc-chord" dir="ltr">
+                        {n > 0 && <em>{t('or')}</em>}
+                        {chord.map((k, j) => (
+                          <kbd key={j}>{keyLabel(k)}</kbd>
+                        ))}
+                      </span>
+                    ))
+                  )}
                   {i.binding && (
                     <span className="sc-edit">
-                      <Button size="sm" variant="ghost" onClick={() => (setProblem(null), setRecording(recording === i.binding ? null : i.binding!))}>{recording === i.binding ? t('Cancel') : t('Change')}</Button>
-                      {s.shortcuts[i.binding] && recording !== i.binding && <Button size="sm" variant="ghost" onClick={() => (setProblem(null), setBinding(i.binding!, null))}>{t('Reset')}</Button>}
+                      <Button size="sm" variant="ghost" onClick={() => (setProblem(null), setRecording(recording === i.binding ? null : i.binding!))}>
+                        {recording === i.binding ? t('Cancel') : t('Change')}
+                      </Button>
+                      {s.shortcuts[i.binding] && recording !== i.binding && (
+                        <Button size="sm" variant="ghost" onClick={() => (setProblem(null), setBinding(i.binding!, null))}>
+                          {t('Reset')}
+                        </Button>
+                      )}
                     </span>
                   )}
                 </span>
@@ -434,7 +478,9 @@ function About() {
           <small>{t('Created by')} Vexor</small>
         </div>
       </Card>
-      <Card icon={<Ic.Download />} title={t('Updates')}><UpdateSettings /></Card>
+      <Card icon={<Ic.Download />} title={t('Updates')}>
+        <UpdateSettings />
+      </Card>
     </>
   )
 }
@@ -444,7 +490,8 @@ export function SettingsView({ data, initialTab }: { data: DataApi; initialTab?:
   const s = useSettings()
   const cur = SETTINGS_TABS.find((x) => x.id === tab)!
   const reset = async () => {
-    if (await confirmDialog({ title: t('Reset all settings'), message: t('Reset all settings to their defaults? Language and direction stay as they are.'), confirmLabel: t('Reset'), danger: true })) updateSettings({ ...DEFAULTS, lang: s.lang, dir: s.dir })
+    if (await confirmDialog({ title: t('Reset all settings'), message: t('Reset all settings to their defaults? Language and direction stay as they are.'), confirmLabel: t('Reset'), danger: true }))
+      updateSettings({ ...DEFAULTS, lang: s.lang, dir: s.dir })
   }
   return (
     <div className="settings">
@@ -471,7 +518,27 @@ export function SettingsView({ data, initialTab }: { data: DataApi; initialTab?:
             <h3>{t(cur.title)}</h3>
             <p>{t(cur.hint)}</p>
           </header>
-          {tab === 'connections' ? <McpConnectionSettings /> : tab === 'appearance' ? <Appearance /> : tab === 'editor' ? <Editor /> : tab === 'language' ? <LanguageTab /> : tab === 'general' ? <General /> : tab === 'data' ? <DataTab api={data} /> : tab === 'database' ? <Suspense fallback={null}><DatabaseSettings /></Suspense> : tab === 'shortcuts' ? <Shortcuts /> : <About />}
+          {tab === 'connections' ? (
+            <McpConnectionSettings />
+          ) : tab === 'appearance' ? (
+            <Appearance />
+          ) : tab === 'editor' ? (
+            <Editor />
+          ) : tab === 'language' ? (
+            <LanguageTab />
+          ) : tab === 'general' ? (
+            <General />
+          ) : tab === 'data' ? (
+            <DataTab api={data} />
+          ) : tab === 'database' ? (
+            <Suspense fallback={null}>
+              <DatabaseSettings />
+            </Suspense>
+          ) : tab === 'shortcuts' ? (
+            <Shortcuts />
+          ) : (
+            <About />
+          )}
         </div>
       </div>
     </div>

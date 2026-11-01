@@ -133,4 +133,3 @@ export class MemoryStorage implements DbStorage {
     return structuredClone(this.hist.get(this.key(kind, id)) ?? [])
   }
 }
-

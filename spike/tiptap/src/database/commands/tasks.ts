@@ -40,8 +40,10 @@ register('source.configure_tasks', (cx, p: { sourceId: Id; subItems?: boolean; t
     }
   }
   if (p.dependency !== undefined) {
-    if (p.dependency === null) { delete st.dependency; delete st.dependencyRelationId }
-    else {
+    if (p.dependency === null) {
+      delete st.dependency
+      delete st.dependencyRelationId
+    } else {
       const rp = property(cx, p.dependency.relationPropertyId)
       const rel = rp.kind === 'relation' ? cx.d.relationOf(rp.id) : undefined
       if (!rel || rel.sourceId !== s.id || rel.targetSourceId !== s.id) fail('SCHEMA_MISMATCH', 'dependencies need a self-relation')
@@ -177,7 +179,7 @@ register('date.shift', (cx, p: { pageId: Id; datePropertyId: Id; value: DateValu
   const def = property(cx, p.datePropertyId)
   if (def.kind !== 'date') fail('INVALID_VALUE', 'date.shift needs a Date property (a computed date cannot shift dependencies)')
   const shifts = planDependencyShift(cx.d, row!.sourceId, p.pageId, p.value, p.zone ?? 'UTC')
-  const dep = (settingsOf(cx.d, row!.sourceId).dependency as { datePropertyId?: Id } | undefined)
+  const dep = settingsOf(cx.d, row!.sourceId).dependency as { datePropertyId?: Id } | undefined
   const applies = dep?.datePropertyId === def.id
   if (applies && shifts.length > 20 && !p.approve) fail('INVALID_VALUE', `this move shifts ${shifts.length} items; preview and approve it first`, { count: shifts.length })
   const set = (pageId: Id, v: DateValue) => {
@@ -205,14 +207,33 @@ register('sprint.enable', (cx, p: { tasksSourceId: Id; durationWeeks?: number; s
   const container = cx.d.get('container', tasks.ownerContainerId)!
   const sid = cx.ids()
   const tid = cx.ids()
-  cx.d.add('source', { ...cx.meta(sid), ownerContainerId: container.id, name: `${tasks.name} sprints`, schemaRevision: 1, titlePropertyId: tid, defaultTemplateId: null, layout: {}, settings: { sprintOf: tasks.id } })
+  cx.d.add('source', {
+    ...cx.meta(sid),
+    ownerContainerId: container.id,
+    name: `${tasks.name} sprints`,
+    schemaRevision: 1,
+    titlePropertyId: tid,
+    defaultTemplateId: null,
+    layout: {},
+    settings: { sprintOf: tasks.id },
+  })
   cx.d.add('property', { ...cx.meta(tid), sourceId: sid, name: 'Name', description: '', kind: 'title', sortKey: 'V', config: {} })
   const mc = cx.d.mut('container', container.id)
   mc.sourceLinks.push({ sourceId: sid, sortKey: 'z' + mc.sourceLinks.length })
   const dates = createProperty(cx, { sourceId: sid, name: 'Dates', kind: 'date' })
   const life = createProperty(cx, { sourceId: sid, name: 'Lifecycle', kind: 'select', config: { options: LIFECYCLE.map((n) => ({ name: n })) } })
   const seq = createProperty(cx, { sourceId: sid, name: 'Sequence', kind: 'number' })
-  const created = cx.d.add('relation', { ...cx.meta(), propertyId: '', sourceId: tasks.id, targetSourceId: sid, mode: 'paired', inversePropertyId: null, cardinality: 'one', inverseCardinality: 'many', displayedPropertyIds: [] })
+  const created = cx.d.add('relation', {
+    ...cx.meta(),
+    propertyId: '',
+    sourceId: tasks.id,
+    targetSourceId: sid,
+    mode: 'paired',
+    inversePropertyId: null,
+    cardinality: 'one',
+    inverseCardinality: 'many',
+    displayedPropertyIds: [],
+  })
   const fwd = createProperty(cx, { sourceId: tasks.id, name: 'Sprint', kind: 'text' })
   const inv = createProperty(cx, { sourceId: sid, name: 'Tasks', kind: 'text' })
   const mf = cx.d.mut('property', fwd.id)
@@ -225,7 +246,19 @@ register('sprint.enable', (cx, p: { tasksSourceId: Id; durationWeeks?: number; s
   cr.propertyId = fwd.id
   cr.inversePropertyId = inv.id
   const mt = cx.d.mut('source', tasks.id)
-  mt.settings = { ...(mt.settings as Record<string, Json>), sprint: { sprintSourceId: sid, relationPropertyId: fwd.id, durationWeeks: weeks, startDay, unfinished: p.unfinished ?? 'next', datesPropertyId: dates.id, lifecyclePropertyId: life.id, sequencePropertyId: seq.id } as Json }
+  mt.settings = {
+    ...(mt.settings as Record<string, Json>),
+    sprint: {
+      sprintSourceId: sid,
+      relationPropertyId: fwd.id,
+      durationWeeks: weeks,
+      startDay,
+      unfinished: p.unfinished ?? 'next',
+      datesPropertyId: dates.id,
+      lifecyclePropertyId: life.id,
+      sequencePropertyId: seq.id,
+    } as Json,
+  }
   return { sprintSourceId: sid, relationPropertyId: fwd.id }
 })
 
@@ -246,11 +279,16 @@ register('sprint.rotate', (cx, p: { tasksSourceId: Id; today: string }) => {
     const v = (r.ext.cells[datesId]?.value as Extract<Cell, { kind: 'date' }> | undefined)?.value
     return v && v.kind === 'date' ? { start: v.start, end: v.end ?? v.start } : null
   }
-  let sprints = cx.d.rowsOf(sid).map((r) => ({ r, rg: range(r), seq: (r.ext.cells[seqId]?.value as { value: number } | undefined)?.value ?? 0 })).filter((x) => x.rg).sort((a, b) => a.rg!.start.localeCompare(b.rg!.start))
+  let sprints = cx.d
+    .rowsOf(sid)
+    .map((r) => ({ r, rg: range(r), seq: (r.ext.cells[seqId]?.value as { value: number } | undefined)?.value ?? 0 }))
+    .filter((x) => x.rg)
+    .sort((a, b) => a.rg!.start.localeCompare(b.rg!.start))
   const makeSprint = (start: string, n: number) => {
     const end = addDays(start, days - 1)
     createRow(cx, {
-      sourceId: sid, title: `Sprint ${n}`,
+      sourceId: sid,
+      title: `Sprint ${n}`,
       explicitValues: { [datesId]: { kind: 'date', value: { kind: 'date', start, end } }, [seqId]: { kind: 'number', value: n } },
     })
   }
@@ -260,14 +298,20 @@ register('sprint.rotate', (cx, p: { tasksSourceId: Id; today: string }) => {
     const wd = weekdayOf(p.today)
     const back = (wd - (cfg!.startDay as number) + 7) % 7
     makeSprint(addDays(p.today, -back), 1)
-    sprints = cx.d.rowsOf(sid).map((r) => ({ r, rg: range(r), seq: (r.ext.cells[seqId]?.value as { value: number } | undefined)?.value ?? 0 })).sort((a, b) => a.rg!.start.localeCompare(b.rg!.start))
+    sprints = cx.d
+      .rowsOf(sid)
+      .map((r) => ({ r, rg: range(r), seq: (r.ext.cells[seqId]?.value as { value: number } | undefined)?.value ?? 0 }))
+      .sort((a, b) => a.rg!.start.localeCompare(b.rg!.start))
   }
   for (let guard = 0; guard < 500; guard++) {
     const last = latest()
     if (last.rg!.end >= p.today && sprints.some((x) => x.rg!.start > p.today)) break
     const start = addDays(last.rg!.end, 1)
     makeSprint(start, last.seq + 1)
-    sprints = cx.d.rowsOf(sid).map((r) => ({ r, rg: range(r), seq: (r.ext.cells[seqId]?.value as { value: number } | undefined)?.value ?? 0 })).sort((a, b) => a.rg!.start.localeCompare(b.rg!.start))
+    sprints = cx.d
+      .rowsOf(sid)
+      .map((r) => ({ r, rg: range(r), seq: (r.ext.cells[seqId]?.value as { value: number } | undefined)?.value ?? 0 }))
+      .sort((a, b) => a.rg!.start.localeCompare(b.rg!.start))
   }
   // lifecycle is derived from dates, so rotating twice is a no-op
   const current = sprints.find((x) => x.rg!.start <= p.today && p.today <= x.rg!.end)
@@ -335,4 +379,3 @@ register('sprint.disable', (cx, p: { tasksSourceId: Id; mode: 'keep' | 'remove' 
     if (rp) cx.d.mut('property', rp.id).deletedAt = cx.now
   }
 })
-

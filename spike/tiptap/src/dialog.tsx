@@ -41,14 +41,18 @@ function Dialog({ opts, done }: { opts: Opts; done: (r: Result) => void }) {
           <div className="dlg-tx">
             <b dir="auto">{opts.title}</b>
             {opts.message && <p dir="auto">{opts.message}</p>}
-            {opts.input && (
-              <input ref={field} dir={opts.input.ltr ? 'ltr' : 'auto'} value={value} placeholder={opts.input.placeholder} onChange={(e) => setValue(e.target.value)} />
-            )}
+            {opts.input && <input ref={field} dir={opts.input.ltr ? 'ltr' : 'auto'} value={value} placeholder={opts.input.placeholder} onChange={(e) => setValue(e.target.value)} />}
           </div>
         </div>
         <div className="dlg-acts">
-          {!opts.alert && <button type="button" className="dlg-cancel" onClick={() => done(opts.input ? null : false)}>{t('Cancel')}</button>}
-          <button type="submit" autoFocus={!opts.input} className={'primary' + (opts.danger ? ' danger' : '')}>{opts.confirmLabel ?? (opts.alert ? t('OK') : opts.input ? t('Save') : t('Continue'))}</button>
+          {!opts.alert && (
+            <button type="button" className="dlg-cancel" onClick={() => done(opts.input ? null : false)}>
+              {t('Cancel')}
+            </button>
+          )}
+          <button type="submit" autoFocus={!opts.input} className={'primary' + (opts.danger ? ' danger' : '')}>
+            {opts.confirmLabel ?? (opts.alert ? t('OK') : opts.input ? t('Save') : t('Continue'))}
+          </button>
         </div>
       </form>
     </div>

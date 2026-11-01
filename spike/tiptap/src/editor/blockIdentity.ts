@@ -16,7 +16,7 @@ export function blockIdentityPending(state: EditorState): boolean {
   if (!key.get(state)) return false
   const seen = new Set<string>()
   let pending = state.doc.attrs.blockIdentityVersion !== BLOCK_IDENTITY_VERSION
-  state.doc.descendants(node => {
+  state.doc.descendants((node) => {
     if (!types.has(node.type.name)) return
     const id = node.attrs.blockId
     if (!isBlockId(id) || seen.has(id)) pending = true
@@ -28,10 +28,7 @@ export function blockIdentityPending(state: EditorState): boolean {
 /** Clipboard copies get fresh IDs, including all nested table/list blocks. */
 function copyFragment(fragment: Fragment): Fragment {
   const nodes: PMNode[] = []
-  fragment.forEach(node => nodes.push(node.isText ? node : node.type.create(
-    types.has(node.type.name) ? { ...node.attrs, blockId: null } : node.attrs,
-    copyFragment(node.content), node.marks,
-  )))
+  fragment.forEach((node) => nodes.push(node.isText ? node : node.type.create(types.has(node.type.name) ? { ...node.attrs, blockId: null } : node.attrs, copyFragment(node.content), node.marks)))
   return Fragment.fromArray(nodes)
 }
 
@@ -47,9 +44,9 @@ export function blockIdentityPlugin(createId: () => string = () => crypto.random
       },
     },
     appendTransaction(transactions, oldState, state) {
-      if (!transactions.some(tr => tr.docChanged || tr.getMeta('blockIdentity:init')) || state.doc.attrs.blockIdentityVersion > BLOCK_IDENTITY_VERSION) return null
+      if (!transactions.some((tr) => tr.docChanged || tr.getMeta('blockIdentity:init')) || state.doc.attrs.blockIdentityVersion > BLOCK_IDENTITY_VERSION) return null
       const mapping = new Mapping()
-      transactions.forEach(tr => mapping.appendMapping(tr.mapping))
+      transactions.forEach((tr) => mapping.appendMapping(tr.mapping))
       const owners = new Map<string, number>()
       oldState.doc.descendants((node, pos) => {
         if (!types.has(node.type.name) || !isBlockId(node.attrs.blockId)) return
@@ -57,17 +54,25 @@ export function blockIdentityPlugin(createId: () => string = () => crypto.random
         if (!mapped.deleted && !owners.has(node.attrs.blockId) && state.doc.nodeAt(mapped.pos)?.attrs.blockId === node.attrs.blockId) owners.set(node.attrs.blockId, mapped.pos)
       })
       const reserved = new Set<string>()
-      state.doc.descendants(node => { if (types.has(node.type.name) && isBlockId(node.attrs.blockId)) reserved.add(node.attrs.blockId) })
+      state.doc.descendants((node) => {
+        if (types.has(node.type.name) && isBlockId(node.attrs.blockId)) reserved.add(node.attrs.blockId)
+      })
       const seen = new Set<string>()
       const tr = state.tr
       state.doc.descendants((node, pos) => {
         if (!types.has(node.type.name)) return
         const id = node.attrs.blockId
-        if (isBlockId(id) && !seen.has(id) && (!owners.has(id) || owners.get(id) === pos)) { seen.add(id); return }
+        if (isBlockId(id) && !seen.has(id) && (!owners.has(id) || owners.get(id) === pos)) {
+          seen.add(id)
+          return
+        }
         let fresh = ''
         for (let tries = 0; tries < 100; tries++) {
           const candidate = createId()
-          if (isBlockId(candidate) && !reserved.has(candidate) && !seen.has(candidate)) { fresh = candidate; break }
+          if (isBlockId(candidate) && !reserved.has(candidate) && !seen.has(candidate)) {
+            fresh = candidate
+            break
+          }
         }
         if (!fresh) throw new Error('Block identity allocator did not produce a fresh ID')
         seen.add(fresh)
@@ -81,17 +86,26 @@ export function blockIdentityPlugin(createId: () => string = () => crypto.random
 
 export const BlockIdentity = Extension.create({
   name: 'blockIdentity',
-  onCreate() { this.editor.view.dispatch(this.editor.state.tr.setMeta('blockIdentity:init', true).setMeta('addToHistory', false)) },
+  onCreate() {
+    this.editor.view.dispatch(this.editor.state.tr.setMeta('blockIdentity:init', true).setMeta('addToHistory', false))
+  },
   addGlobalAttributes() {
     return [
-      { types: [...BLOCK_TYPES], attributes: { blockId: {
-        default: null,
-        // HTML/Markdown imports cannot import identity or take over an old target.
-        parseHTML: () => null,
-        renderHTML: () => ({}),
-      } } },
+      {
+        types: [...BLOCK_TYPES],
+        attributes: {
+          blockId: {
+            default: null,
+            // HTML/Markdown imports cannot import identity or take over an old target.
+            parseHTML: () => null,
+            renderHTML: () => ({}),
+          },
+        },
+      },
       { types: ['doc'], attributes: { blockIdentityVersion: { default: 0, rendered: false } } },
     ]
   },
-  addProseMirrorPlugins() { return [blockIdentityPlugin()] },
+  addProseMirrorPlugins() {
+    return [blockIdentityPlugin()]
+  },
 })

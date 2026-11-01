@@ -10,8 +10,23 @@ import { validateConfig, cfgOf, selectConfig, statusConfig, rollupConfig, type S
 import { DESCRIPTORS } from '../props/registry.ts'
 import { register, type Ctx } from './coordinator.ts'
 import {
-  EMPTY_DOC, LIMITS, allocate, assertName, buildOptions, buildStatusConfig, bumpSchema, checkDerivedGraph, container, derivedDeps, ensureOwner, lastKey,
-  prepareFormulaConfig, property, source, view, type OptionInput,
+  EMPTY_DOC,
+  LIMITS,
+  allocate,
+  assertName,
+  buildOptions,
+  buildStatusConfig,
+  bumpSchema,
+  checkDerivedGraph,
+  container,
+  derivedDeps,
+  ensureOwner,
+  lastKey,
+  prepareFormulaConfig,
+  property,
+  source,
+  view,
+  type OptionInput,
 } from './util.ts'
 import { validateViewConfiguration } from './viewConfig.ts'
 
@@ -28,12 +43,19 @@ register('database.create', (cx, p: { hostPageId?: Id; parentPageId?: Id | null;
     host = cx.d.page(p.hostPageId)
     if (!host || host.deletedAt !== null) fail('NOT_FOUND', 'host page not found', { pageId: p.hostPageId })
     if (host!.kind === 'folder') fail('INVALID_VALUE', 'a folder cannot host a database')
-    if (cx.d.live('container').some((c) => c.hostPageId === p.hostPageId && (p.presentation ?? 'full') === 'full' && c.presentation === 'full')) fail('INVALID_VALUE', 'this page already is a database')
+    if (cx.d.live('container').some((c) => c.hostPageId === p.hostPageId && (p.presentation ?? 'full') === 'full' && c.presentation === 'full'))
+      fail('INVALID_VALUE', 'this page already is a database')
   } else {
     const sibs = cx.d.allPages().filter((x) => x.parentId === (p.parentPageId ?? null))
     host = cx.d.addPage({
-      id: cx.ids(), parentId: p.parentPageId ?? null, title, favorite: false, sort: sibs.length ? Math.max(...sibs.map((s) => Number(s.sort) || 0)) + 1 : 0,
-      content: EMPTY_DOC, updatedAt: cx.now, deletedAt: null,
+      id: cx.ids(),
+      parentId: p.parentPageId ?? null,
+      title,
+      favorite: false,
+      sort: sibs.length ? Math.max(...sibs.map((s) => Number(s.sort) || 0)) + 1 : 0,
+      content: EMPTY_DOC,
+      updatedAt: cx.now,
+      deletedAt: null,
     } as PageLike)
   }
   const c: Container = { ...cx.meta(), hostPageId: host!.id, presentation: p.presentation ?? 'full', title: title || host!.title, sourceLinks: [] }
@@ -65,8 +87,17 @@ function makeView(cx: Ctx, containerId: Id, sourceId: Id | null, type: ViewType,
   const siblings = cx.d.live('view').filter((v) => v.containerId === containerId && v.parentDashboardId === parentDashboardId)
   const src = sourceId ? cx.d.get('source', sourceId) : null
   const v: View = {
-    ...cx.meta(), containerId, sourceId, parentDashboardId, type, name, sortKey: lastKey(siblings), filter: null, sorts: [],
-    configuration: config ?? defaultConfiguration(type, src?.titlePropertyId ?? null), defaultTemplateId: null,
+    ...cx.meta(),
+    containerId,
+    sourceId,
+    parentDashboardId,
+    type,
+    name,
+    sortKey: lastKey(siblings),
+    filter: null,
+    sorts: [],
+    configuration: config ?? defaultConfiguration(type, src?.titlePropertyId ?? null),
+    defaultTemplateId: null,
   }
   return cx.d.add('view', v)
 }
@@ -141,7 +172,10 @@ register('source.set_layout', (cx, p: { sourceId: Id; layout: SourceLayout | nul
   const src = source(cx, p.sourceId)
   cx.access.assertSource(cx.env.actorId, src.id, 'edit_schema')
   const m = cx.d.mut('source', src.id)
-  if (p.layout === null) { m.layout = {}; return } // reset: the layout goes away, every definition and value stays
+  if (p.layout === null) {
+    m.layout = {}
+    return
+  } // reset: the layout goes away, every definition and value stays
   const L = p.layout
   const known = new Set(cx.d.props(src.id).map((x) => x.id))
   const check = (ids: Id[] | undefined, what: string) => {
@@ -187,11 +221,21 @@ export function createProperty(cx: Ctx, p: PropertyCreate): Definition {
   const raw = p.config ?? {}
   switch (p.kind) {
     case 'select':
-    case 'multi_select': config = { options: buildOptions(cx, raw.options as OptionInput[] | undefined) } as unknown as Json; break
-    case 'status': config = buildStatusConfig(cx, raw) as unknown as Json; break
-    case 'formula': config = prepareFormulaConfig(cx, src.id, id, String(raw.source ?? '')); break
-    case 'relation': fail('INVALID_COMMAND', 'create relations with relation.configure'); config = {}; break
-    default: config = validateConfig(p.kind, raw, cx.ids)
+    case 'multi_select':
+      config = { options: buildOptions(cx, raw.options as OptionInput[] | undefined) } as unknown as Json
+      break
+    case 'status':
+      config = buildStatusConfig(cx, raw) as unknown as Json
+      break
+    case 'formula':
+      config = prepareFormulaConfig(cx, src.id, id, String(raw.source ?? ''))
+      break
+    case 'relation':
+      fail('INVALID_COMMAND', 'create relations with relation.configure')
+      config = {}
+      break
+    default:
+      config = validateConfig(p.kind, raw, cx.ids)
   }
   const def: Definition = { ...cx.meta(id), sourceId: src.id, name: p.name.normalize('NFC').trim(), description: p.description ?? '', kind: p.kind, sortKey, config }
   cx.d.add('property', def)
@@ -268,7 +312,9 @@ function renameInFormulas(cx: Ctx, propertyId: Id, name: string) {
     const cfg = cfgOf.formula(f)
     if (!cfg.ast) continue
     let uses = false
-    walk(astFromJson(cfg.ast), (n) => { if (n.t === 'prop' && n.id === propertyId) uses = true })
+    walk(astFromJson(cfg.ast), (n) => {
+      if (n.t === 'prop' && n.id === propertyId) uses = true
+    })
     if (!uses) continue
     const r = renameInFormula(cfg.source, astFromJson(cfg.ast), propertyId, name)
     const mf = cx.d.mut('property', f.id)
@@ -282,7 +328,8 @@ register('property.reorder', (cx, p: { sourceId: Id; orderedPropertyIds: Id[] })
   cx.access.assertSource(cx.env.actorId, p.sourceId, 'edit_schema')
   const props = cx.d.props(p.sourceId)
   const want = [...p.orderedPropertyIds]
-  if (want.length !== props.length || new Set(want).size !== want.length || props.some((x) => !want.includes(x.id))) fail('INVALID_VALUE', 'orderedPropertyIds must be a permutation of the active properties')
+  if (want.length !== props.length || new Set(want).size !== want.length || props.some((x) => !want.includes(x.id)))
+    fail('INVALID_VALUE', 'orderedPropertyIds must be a permutation of the active properties')
   let prev: string | null = null
   for (const id of want) {
     prev = keyBetween(prev, null)
@@ -311,7 +358,9 @@ register('property.delete', (cx, p: { propertyId: Id; relationPolicy?: 'presenta
   }
   // dependents are kept with broken references; report them
   for (const dep of cx.d.live('property')) if (derivedDeps(cx.d, dep).includes(def.id)) cx.warnings.push({ code: 'BROKEN_REFERENCE', detail: `${dep.name} depends on ${def.name}` })
-  for (const v of cx.d.live('view')) if (v.sourceId === def.sourceId && JSON.stringify([v.filter, v.sorts, v.configuration]).includes(def.id)) cx.warnings.push({ code: 'VIEW_REFERENCE', detail: `view ${v.name} references ${def.name}` })
+  for (const v of cx.d.live('view'))
+    if (v.sourceId === def.sourceId && JSON.stringify([v.filter, v.sorts, v.configuration]).includes(def.id))
+      cx.warnings.push({ code: 'VIEW_REFERENCE', detail: `view ${v.name} references ${def.name}` })
   bumpSchema(cx, def.sourceId)
 })
 
@@ -328,7 +377,11 @@ register('property.restore', (cx, p: { propertyId: Id; name?: string }) => {
     const rel = cx.d.all('relation').find((r) => r.propertyId === def!.id || r.inversePropertyId === def!.id)
     if (rel && rel.deletedAt !== null) {
       cx.d.mut('relation', rel.id).deletedAt = null
-      for (const pid of [rel.propertyId, rel.inversePropertyId]) if (pid && pid !== def!.id) { const o = cx.d.get('property', pid); if (o && o.deletedAt !== null) cx.d.mut('property', pid).deletedAt = null }
+      for (const pid of [rel.propertyId, rel.inversePropertyId])
+        if (pid && pid !== def!.id) {
+          const o = cx.d.get('property', pid)
+          if (o && o.deletedAt !== null) cx.d.mut('property', pid).deletedAt = null
+        }
     }
   }
   if (def!.kind === 'formula' || def!.kind === 'rollup') checkDerivedGraph(cx.d, m)
@@ -387,7 +440,10 @@ register('option.delete', (cx, p: { propertyId: Id; optionId: Id; replacementOpt
   if (!opt) fail('NOT_FOUND', 'option not found')
   if (cfg.options.length === 1 && def.kind === 'status') fail('INVALID_VALUE', 'status needs at least one option')
   const rows = cx.d.rowsOf(def.sourceId)
-  const used = rows.filter((r) => { const c = r.ext.cells[def.id]?.value; return c && ((c.kind === 'status' || c.kind === 'select') ? (c.kind === 'select' ? c.optionId : c.optionId) === p.optionId : c.kind === 'multi_select' && c.optionIds.includes(p.optionId)) })
+  const used = rows.filter((r) => {
+    const c = r.ext.cells[def.id]?.value
+    return c && (c.kind === 'status' || c.kind === 'select' ? (c.kind === 'select' ? c.optionId : c.optionId) === p.optionId : c.kind === 'multi_select' && c.optionIds.includes(p.optionId))
+  })
   if (def.kind === 'status' && (cfg.defaultOptionId === p.optionId || used.length) && !p.replacementOptionId) fail('INVALID_VALUE', 'choose a replacement status option first')
   if (p.replacementOptionId && (p.replacementOptionId === p.optionId || !cfg.options.some((o) => o.id === p.replacementOptionId))) fail('INVALID_VALUE', 'invalid replacement option')
   const m = cx.d.mut('property', def.id)
@@ -453,7 +509,14 @@ function autoConfigure(cx: Ctx, v: View) {
   }
   // Creating a required property replaces this view's configuration to add it to visibleProperties.
   // Commit the chosen layout keys onto that current configuration, rather than the stale object above.
-  v.configuration = { ...(v.configuration as Record<string, Json>), ...cfg, visibleProperties: cx.d.props(src).filter((p) => p.kind !== 'button').map((p) => p.id) }
+  v.configuration = {
+    ...(v.configuration as Record<string, Json>),
+    ...cfg,
+    visibleProperties: cx.d
+      .props(src)
+      .filter((p) => p.kind !== 'button')
+      .map((p) => p.id),
+  }
 }
 
 register('view.patch', (cx, p: { viewId: Id; name?: string; filter?: any; sorts?: any; configurationPatch?: Record<string, Json>; defaultTemplateId?: Id | null }) => {
@@ -538,4 +601,3 @@ register('view.override', (cx, p: { viewId: Id; principalId: Id; personalFilter?
   if (have) cx.d.mut('event', id).data = data as unknown as Json
   else cx.d.add('event', { ...cx.meta(id), type: 'audit', pageId: null, principalId: p.principalId, data: { kind: 'view_override', viewId: p.viewId, ...data } as unknown as Json })
 })
-

@@ -18,17 +18,28 @@ export function Field({ ltr, className, ...rest }: Omit<InputHTMLAttributes<HTML
 
 /** Tag, status or label. Set `color` for the dot and tint, `dot` for a status dot. */
 export function Chip({ children, color, dot, className }: { children: ReactNode; color?: string; dot?: boolean; className?: string }) {
-  return <span className={cx('ds-chip', dot && 'ds-chip--dot', className)} style={color ? ({ '--c': color } as CSSProperties) : undefined}>{children}</span>
+  return (
+    <span className={cx('ds-chip', dot && 'ds-chip--dot', className)} style={color ? ({ '--c': color } as CSSProperties) : undefined}>
+      {children}
+    </span>
+  )
 }
 
-export interface TabItem { id: string; label: string; icon?: ReactNode }
+export interface TabItem {
+  id: string
+  label: string
+  icon?: ReactNode
+}
 
 /** A row of tabs. Labels are already translated by the caller. */
 export function Tabs({ items, value, onChange, className }: { items: TabItem[]; value: string; onChange: (id: string) => void; className?: string }) {
   return (
     <div role="tablist" className={cx('ds-tabs', className)}>
       {items.map((item) => (
-        <button key={item.id} type="button" role="tab" aria-selected={item.id === value} onClick={() => onChange(item.id)}>{item.icon}{item.label}</button>
+        <button key={item.id} type="button" role="tab" aria-selected={item.id === value} onClick={() => onChange(item.id)}>
+          {item.icon}
+          {item.label}
+        </button>
       ))}
     </div>
   )
@@ -38,7 +49,10 @@ export function Tabs({ items, value, onChange, className }: { items: TabItem[]; 
 export function Section({ title, action, children, className }: { title: string; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
     <section className={cx('ds-section', className)}>
-      <header><h2>{title}</h2>{action}</header>
+      <header>
+        <h2>{title}</h2>
+        {action}
+      </header>
       {children}
     </section>
   )
@@ -49,7 +63,10 @@ export function Facts({ items, className }: { items: [string, ReactNode][]; clas
   return (
     <dl className={cx('ds-facts', className)}>
       {items.map(([label, value]) => (
-        <Fragment key={label}><dt>{label}</dt><dd dir="auto">{value}</dd></Fragment>
+        <Fragment key={label}>
+          <dt>{label}</dt>
+          <dd dir="auto">{value}</dd>
+        </Fragment>
       ))}
     </dl>
   )

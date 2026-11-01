@@ -7,9 +7,7 @@ let lib: Promise<Lib> | null = null
 
 /** Loaded on first use only (the library is large). The Persian font is ready by the time this resolves, so the canvas draws with it from the start. */
 export function excalidraw(): Promise<Lib> {
-  return (lib ??= import('./excalidrawAssets')
-    .then(() => Promise.all([import('@excalidraw/excalidraw'), loadPersianFont()]))
-    .then(([m]) => m))
+  return (lib ??= import('./excalidrawAssets').then(() => Promise.all([import('@excalidraw/excalidraw'), loadPersianFont()])).then(([m]) => m))
 }
 
 export interface SceneData {

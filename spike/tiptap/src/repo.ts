@@ -5,7 +5,9 @@ export type { Page, PageKind, PageStatus, PageRepo, Cover } from './documents/mo
 import type { Page } from './documents/model'
 
 export class Repo extends DocumentService {
-  constructor(seed: () => Page[]) { super(createAppDocumentEnvironment(), seed) }
+  constructor(seed: () => Page[]) {
+    super(createAppDocumentEnvironment(), seed)
+  }
 }
 
 export const WELCOME_DOC = `

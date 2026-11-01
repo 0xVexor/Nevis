@@ -48,7 +48,15 @@ export function useViewQuery(svc: DatabaseService, view: View, o: ViewQueryOpts 
     const eff = effectiveFilter(base, o.extraFilter ?? null, (o.global as never) ?? null, view.sourceId)
     const want = Math.max(1, o.want ?? MAX_LIMIT)
     const req: Partial<QueryRequest> = {
-      filter: eff.filter, sorts, search: o.search ?? '', group: o.group ?? null, subgroup: o.subgroup ?? null, totals: o.totals, subItems: o.subItems, manualOrder: o.manualOrder, viewId: view.id,
+      filter: eff.filter,
+      sorts,
+      search: o.search ?? '',
+      group: o.group ?? null,
+      subgroup: o.subgroup ?? null,
+      totals: o.totals,
+      subItems: o.subItems,
+      manualOrder: o.manualOrder,
+      viewId: view.id,
     }
     try {
       const rows: QueryRow[] = []
@@ -60,7 +68,18 @@ export function useViewQuery(svc: DatabaseService, view: View, o: ViewQueryOpts 
         rows.push(...page.rows)
         cursor = page.nextCursor ?? undefined
       } while (cursor && rows.length < want)
-      return { rows, total: first.total, groups: first.groups, totals: first.totals, hasMore: !!cursor, error: null, matchIds: first.matchIds, filter: eff.filter, sorts, affected: eff.affected } satisfies ViewQueryResult
+      return {
+        rows,
+        total: first.total,
+        groups: first.groups,
+        totals: first.totals,
+        hasMore: !!cursor,
+        error: null,
+        matchIds: first.matchIds,
+        filter: eff.filter,
+        sorts,
+        affected: eff.affected,
+      } satisfies ViewQueryResult
     } catch (e) {
       if (isDbError(e)) return { ...EMPTY_RESULT, error: { code: e.code, message: e.message } }
       throw e
