@@ -94,10 +94,6 @@ function useCoverStyle(cover: Cover | undefined) {
   return url ? { backgroundImage: `url("${url}")` } : undefined
 }
 
-/** Small cover preview (Home cards); empty tinted area when the page has no cover. */
-export function CoverThumb({ cover, className }: { cover: Cover | undefined; className?: string }) {
-  return <div className={className} style={useCoverStyle(cover)} />
-}
 
 export function CoverBanner({ cover, onChange, onRemove }: { cover: Cover; onChange: (anchor: DOMRect) => void; onRemove: () => void }) {
   const style = useCoverStyle(cover)

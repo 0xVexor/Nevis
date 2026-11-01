@@ -7,7 +7,6 @@ import type { AnyRecord } from '../state.ts'
 import type { BatchWrite, DbStorage, LoadedDatabase, UndoGroup } from './types.ts'
 import { canonicalDocumentValue } from '../../documents/revision.ts'
 
-export const DB_STORES = ['db_records', 'db_history', 'db_ops', 'db_meta', 'db_runtime'] as const
 export const DB_SCHEMA_VERSION = 2 // not.db v1 = pages/versions/kv, v2 adds the database stores
 
 /** Called from the app's `onupgradeneeded`. Creating missing stores only: existing page data is never touched. */

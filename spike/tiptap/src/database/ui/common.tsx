@@ -1,6 +1,6 @@
 // Shared UI pieces of the database feature: hooks, kind icons / labels, colored chips, small helpers.
 import { useEffect, useSyncExternalStore, useState, type ReactNode } from 'react'
-import type { Definition, Id, Kind } from '../model/types.ts'
+import type { Kind } from '../model/types.ts'
 import type { OptionColor } from '../props/config.ts'
 import { getDatabase, peekDatabase } from '../runtime'
 import type { DatabaseService } from '../service.ts'
@@ -112,7 +112,6 @@ export function errorText(code: string, message: string): string {
   }
 }
 
-export const defOf = (svc: DatabaseService, id: Id): Definition | undefined => svc.state.prop(id)
 
 /** Safe link opener: only http(s), mailto, tel. */
 export function openSafe(url: string) {

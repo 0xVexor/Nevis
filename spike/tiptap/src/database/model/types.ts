@@ -25,11 +25,6 @@ export type Kind =
   | 'formula' | 'created_time' | 'created_by' | 'last_edited_time' | 'last_edited_by'
   | 'button' | 'unique_id' | 'place' | 'verification' | 'connected'
 
-export const ALL_KINDS: Kind[] = [
-  'title', 'text', 'number', 'select', 'multi_select', 'status', 'date', 'people', 'files', 'checkbox', 'url', 'email',
-  'phone', 'relation', 'rollup', 'formula', 'created_time', 'created_by', 'last_edited_time', 'last_edited_by', 'button',
-  'unique_id', 'place', 'verification', 'connected',
-]
 
 export type RichRun = {
   text: string
@@ -84,7 +79,6 @@ export type ConnectedValue = {
 
 export type VerificationValue = { state: 'verified' | 'unverified'; verifierId: Id | null; verifiedAt: number | null; expiresAt: number | null }
 
-export type CellKind = Cell['kind']
 
 export type Definition = RecordMeta & {
   sourceId: Id
@@ -259,10 +253,6 @@ export const RECORD_KINDS: RecordKind[] = [
   'container', 'source', 'property', 'view', 'relation', 'edge', 'template', 'workflow', 'comment', 'principal', 'grant', 'event', 'allocator',
 ]
 
-export const RECORD_DIR: Record<RecordKind, string> = {
-  container: 'containers', source: 'sources', property: 'properties', view: 'views', relation: 'relations', edge: 'edges',
-  template: 'templates', workflow: 'workflows', comment: 'comments', principal: 'principals', grant: 'grants', event: 'events', allocator: 'allocators',
-}
 
 export type Principal = RecordMeta & {
   type: 'user' | 'group'

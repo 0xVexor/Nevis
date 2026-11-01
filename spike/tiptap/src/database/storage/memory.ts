@@ -1,6 +1,6 @@
 // In-memory DbStorage with a real redo journal, used by tests and as the reference behaviour for the IndexedDB / Vault adapters.
 // Failure injection (`crashAt`) lets tests stop the process between journal commit, record writes and index update (F33/F34).
-import type { Commit, Id, Json, PageLike, RecordKind } from '../model/types.ts'
+import type { Commit, Id, Json, RecordKind } from '../model/types.ts'
 import { fail } from '../model/errors.ts'
 import type { AnyRecord } from '../state.ts'
 import type { BatchWrite, DbStorage, LoadedDatabase, UndoGroup } from './types.ts'
@@ -134,4 +134,3 @@ export class MemoryStorage implements DbStorage {
   }
 }
 
-export type PageSnapshotter = (id: Id) => PageLike | undefined

@@ -21,7 +21,6 @@ export const LIMITS = {
   relationPickerEdges: 10_000,
 }
 
-export const DEFAULT_COL_WIDTH = 200
 
 export function source(cx: Ctx, id: Id): Source {
   const s = cx.d.get('source', id)
