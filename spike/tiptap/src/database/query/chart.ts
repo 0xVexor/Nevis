@@ -14,7 +14,8 @@ export const CHART_MAX_CATEGORIES = 200
 export const CHART_MAX_SERIES = 50
 
 export type ChartType = 'bar_vertical' | 'bar_horizontal' | 'line' | 'donut' | 'number'
-export type Measure = { kind: 'count' } | { kind: 'agg'; propertyId: Id; op: 'sum' | 'average' | 'median' | 'min' | 'max' | 'range' | 'count_values' | 'count_unique' | 'count_empty' | 'count_not_empty' }
+export type Measure =
+  { kind: 'count' } | { kind: 'agg'; propertyId: Id; op: 'sum' | 'average' | 'median' | 'min' | 'max' | 'range' | 'count_values' | 'count_unique' | 'count_empty' | 'count_not_empty' }
 
 export type ChartRequest = {
   sourceId: Id
@@ -66,13 +67,17 @@ export function chartData(state: DbState, req: ChartRequest): ChartData {
   const warnings: ChartData['warnings'] = []
   if (req.measure.kind === 'agg') {
     const md = checkAxis(state, req.measure.propertyId, 'measure')
-    if (!['number', 'formula', 'checkbox'].includes(md.kind) && !['count_values', 'count_unique', 'count_empty', 'count_not_empty'].includes(req.measure.op)) fail('INVALID_VALUE', 'measure: choose a Number property or a count')
+    if (!['number', 'formula', 'checkbox'].includes(md.kind) && !['count_values', 'count_unique', 'count_empty', 'count_not_empty'].includes(req.measure.op))
+      fail('INVALID_VALUE', 'measure: choose a Number property or a count')
   }
   const cat = req.categoryPropertyId ? checkAxis(state, req.categoryPropertyId, 'category') : null
   const ser = req.seriesPropertyId ? checkAxis(state, req.seriesPropertyId, 'series') : null
   if (req.type !== 'number' && !cat) fail('INVALID_VALUE', 'category: choose a property for the axis')
   const base: Partial<QueryRequest> = {
-    filter: req.filter ?? null, search: req.search ?? '', limit: 500, weekStart: req.weekStart,
+    filter: req.filter ?? null,
+    search: req.search ?? '',
+    limit: 500,
+    weekStart: req.weekStart,
     group: cat ? { propertyId: cat.id, mode: cat.kind === 'date' || cat.kind === 'created_time' || cat.kind === 'last_edited_time' ? (req.dateBucket ?? 'month') : undefined } : null,
     subgroup: ser ? { propertyId: ser.id } : null,
   }
@@ -89,7 +94,16 @@ export function chartData(state: DbState, req: ChartRequest): ChartData {
         return { start: civilOf(iv.s, req.zone), end: civilOf(iv.e - 1, req.zone) }
       }
       const val = (k: RelativeKind) => {
-        const r = runQuery(state, makeQuery(state, req.sourceId, req.principalId, req.now, req.zone, { ...base, group: null, subgroup: null, filter: { kind: 'and', children: [...(req.filter ? [req.filter] : []), { kind: 'predicate', propertyId: c.datePropertyId, op: 'between', operand: range(k) as unknown as Json }] } }), rs)
+        const r = runQuery(
+          state,
+          makeQuery(state, req.sourceId, req.principalId, req.now, req.zone, {
+            ...base,
+            group: null,
+            subgroup: null,
+            filter: { kind: 'and', children: [...(req.filter ? [req.filter] : []), { kind: 'predicate', propertyId: c.datePropertyId, op: 'between', operand: range(k) as unknown as Json }] },
+          }),
+          rs,
+        )
         return measureOf(rs, state, req.measure, r.matchIds, req.zone)
       }
       const cur = val(c.current)
@@ -104,15 +118,25 @@ export function chartData(state: DbState, req: ChartRequest): ChartData {
   const seriesMap = new Map<string, string>()
   const categories = groups.map((g) => {
     const seriesValues: Record<string, number | null> = {}
-    if (g.sub) for (const s of g.sub) { seriesMap.set(s.key, s.key === NONE_GROUP ? '' : s.label); seriesValues[s.key] = measureOf(rs, state, req.measure, s.pageIds, req.zone) }
+    if (g.sub)
+      for (const s of g.sub) {
+        seriesMap.set(s.key, s.key === NONE_GROUP ? '' : s.label)
+        seriesValues[s.key] = measureOf(rs, state, req.measure, s.pageIds, req.zone)
+      }
     return { key: g.key, label: g.label, total: measureOf(rs, state, req.measure, g.pageIds, req.zone), series: seriesValues }
   })
   if (req.order === 'value_desc') categories.sort((a, b) => (b.total ?? -Infinity) - (a.total ?? -Infinity))
   if (req.order === 'value_asc') categories.sort((a, b) => (a.total ?? Infinity) - (b.total ?? Infinity))
   let series = [...seriesMap].map(([key, label]) => ({ key, label }))
   let cats = categories
-  if (cats.length > CHART_MAX_CATEGORIES) { warnings.push({ code: 'CATEGORIES_TRUNCATED', detail: `${cats.length - CHART_MAX_CATEGORIES} more categories are not shown` }); cats = cats.slice(0, CHART_MAX_CATEGORIES) }
-  if (series.length > CHART_MAX_SERIES) { warnings.push({ code: 'SERIES_TRUNCATED', detail: `${series.length - CHART_MAX_SERIES} more series are not shown` }); series = series.slice(0, CHART_MAX_SERIES) }
+  if (cats.length > CHART_MAX_CATEGORIES) {
+    warnings.push({ code: 'CATEGORIES_TRUNCATED', detail: `${cats.length - CHART_MAX_CATEGORIES} more categories are not shown` })
+    cats = cats.slice(0, CHART_MAX_CATEGORIES)
+  }
+  if (series.length > CHART_MAX_SERIES) {
+    warnings.push({ code: 'SERIES_TRUNCATED', detail: `${series.length - CHART_MAX_SERIES} more series are not shown` })
+    series = series.slice(0, CHART_MAX_SERIES)
+  }
   return { type: req.type, categories: cats, series, total, warnings, empty: res.matchIds.length === 0 }
 }
 
@@ -126,16 +150,26 @@ export function drilldownFilter(state: DbState, req: ChartRequest, categoryKey: 
     if (!d) return
     if (key === NONE_GROUP) return void parts.push({ kind: 'predicate', propertyId, op: 'is_empty' })
     switch (d.kind) {
-      case 'select': case 'status': return void parts.push({ kind: 'predicate', propertyId, op: 'equals', operand: key })
-      case 'multi_select': case 'people': case 'relation': return void parts.push({ kind: 'predicate', propertyId, op: 'contains', operand: key })
-      case 'checkbox': return void parts.push({ kind: 'predicate', propertyId, op: 'equals', operand: key === 'true' })
-      case 'date': case 'created_time': case 'last_edited_time': {
+      case 'select':
+      case 'status':
+        return void parts.push({ kind: 'predicate', propertyId, op: 'equals', operand: key })
+      case 'multi_select':
+      case 'people':
+      case 'relation':
+        return void parts.push({ kind: 'predicate', propertyId, op: 'contains', operand: key })
+      case 'checkbox':
+        return void parts.push({ kind: 'predicate', propertyId, op: 'equals', operand: key === 'true' })
+      case 'date':
+      case 'created_time':
+      case 'last_edited_time': {
         const start = bucket === 'year' ? `${key}-01-01` : bucket === 'month' ? `${key}-01` : key
         const end = bucket === 'year' ? `${key}-12-31` : bucket === 'month' ? `${key}-31` : bucket === 'week' ? addWeek(key) : key
         return void parts.push({ kind: 'predicate', propertyId, op: 'between', operand: { start, end: bucket === 'month' ? lastOfMonth(key) : end } })
       }
-      case 'number': return void parts.push({ kind: 'predicate', propertyId, op: 'equals', operand: Number(key.replace(/^n:/, '')) })
-      default: return void parts.push({ kind: 'predicate', propertyId, op: 'equals', operand: key.replace(/^t:/, '') })
+      case 'number':
+        return void parts.push({ kind: 'predicate', propertyId, op: 'equals', operand: Number(key.replace(/^n:/, '')) })
+      default:
+        return void parts.push({ kind: 'predicate', propertyId, op: 'equals', operand: key.replace(/^t:/, '') })
     }
   }
   add(req.categoryPropertyId, categoryKey, req.dateBucket)
@@ -176,7 +210,10 @@ export function chartToSvg(d: ChartData, o: { title: string; width?: number; hei
       const a1 = a0 + frac * Math.PI * 2
       const large = frac > 0.5 ? 1 : 0
       const p = (a: number, rr: number) => `${(cx + Math.cos(a) * rr).toFixed(2)} ${(cy + Math.sin(a) * rr).toFixed(2)}`
-      const path = frac >= 0.9999 ? `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.01} ${cy - r} L ${cx - 0.01} ${cy - r * 0.6} A ${r * 0.6} ${r * 0.6} 0 1 0 ${cx} ${cy - r * 0.6} Z` : `M ${p(a0, r)} A ${r} ${r} 0 ${large} 1 ${p(a1, r)} L ${p(a1, r * 0.6)} A ${r * 0.6} ${r * 0.6} 0 ${large} 0 ${p(a0, r * 0.6)} Z`
+      const path =
+        frac >= 0.9999
+          ? `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.01} ${cy - r} L ${cx - 0.01} ${cy - r * 0.6} A ${r * 0.6} ${r * 0.6} 0 1 0 ${cx} ${cy - r * 0.6} Z`
+          : `M ${p(a0, r)} A ${r} ${r} 0 ${large} 1 ${p(a1, r)} L ${p(a1, r * 0.6)} A ${r * 0.6} ${r * 0.6} 0 ${large} 0 ${p(a0, r * 0.6)} Z`
       a0 = a1
       return `<path data-cat="${esc(c.key)}" d="${path}" fill="${PALETTE[i % PALETTE.length]}"><title>${esc(label(c))}: ${c.total ?? 0}</title></path>`
     })
@@ -205,22 +242,38 @@ export function chartToSvg(d: ChartData, o: { title: string; width?: number; hei
         const barSize = (bandSize * 0.8) / keys.length
         const offset = ci * bandSize + bandSize * 0.1 + ki * barSize
         const color = PALETTE[(d.series.length ? ki : ci) % PALETTE.length]
-        if (horizontal) out.push(`<rect data-cat="${esc(c.key)}" data-series="${esc(k)}" x="${left + Math.min(frac, zero) * plotW}" y="${top + offset}" width="${Math.abs(frac - zero) * plotW}" height="${barSize}" fill="${color}"><title>${esc(label(c))}: ${v}</title></rect>`)
-        else out.push(`<rect data-cat="${esc(c.key)}" data-series="${esc(k)}" x="${left + offset}" y="${top + plotH - Math.max(frac, zero) * plotH}" width="${barSize}" height="${Math.abs(frac - zero) * plotH}" fill="${color}"><title>${esc(label(c))}: ${v}</title></rect>`)
+        if (horizontal)
+          out.push(
+            `<rect data-cat="${esc(c.key)}" data-series="${esc(k)}" x="${left + Math.min(frac, zero) * plotW}" y="${top + offset}" width="${Math.abs(frac - zero) * plotW}" height="${barSize}" fill="${color}"><title>${esc(label(c))}: ${v}</title></rect>`,
+          )
+        else
+          out.push(
+            `<rect data-cat="${esc(c.key)}" data-series="${esc(k)}" x="${left + offset}" y="${top + plotH - Math.max(frac, zero) * plotH}" width="${barSize}" height="${Math.abs(frac - zero) * plotH}" fill="${color}"><title>${esc(label(c))}: ${v}</title></rect>`,
+          )
       })
-      const mid = (horizontal ? plotH : plotW) / n * (ci + 0.5)
-      out.push(horizontal ? `<text x="${left - 6}" y="${top + mid + 4}" text-anchor="end" ${font} fill="#374151">${esc(label(c))}</text>` : `<text x="${left + mid}" y="${top + plotH + 18}" text-anchor="middle" ${font} fill="#374151">${esc(label(c))}</text>`)
+      const mid = ((horizontal ? plotH : plotW) / n) * (ci + 0.5)
+      out.push(
+        horizontal
+          ? `<text x="${left - 6}" y="${top + mid + 4}" text-anchor="end" ${font} fill="#374151">${esc(label(c))}</text>`
+          : `<text x="${left + mid}" y="${top + plotH + 18}" text-anchor="middle" ${font} fill="#374151">${esc(label(c))}</text>`,
+      )
     })
   } else {
     const n = Math.max(1, d.categories.length - 1)
     keys.forEach((k, ki) => {
       const pts = d.categories.map((c, ci) => `${(left + (ci / n) * plotW).toFixed(1)},${(top + plotH - ((val(c, k) - min) / span) * plotH).toFixed(1)}`)
       out.push(`<polyline fill="none" stroke="${PALETTE[ki % PALETTE.length]}" stroke-width="2" points="${pts.join(' ')}"/>`)
-      d.categories.forEach((c, ci) => out.push(`<circle data-cat="${esc(c.key)}" data-series="${esc(k)}" cx="${(left + (ci / n) * plotW).toFixed(1)}" cy="${(top + plotH - ((val(c, k) - min) / span) * plotH).toFixed(1)}" r="5" fill="${PALETTE[ki % PALETTE.length]}"><title>${esc(label(c))}: ${val(c, k)}</title></circle>`))
+      d.categories.forEach((c, ci) =>
+        out.push(
+          `<circle data-cat="${esc(c.key)}" data-series="${esc(k)}" cx="${(left + (ci / n) * plotW).toFixed(1)}" cy="${(top + plotH - ((val(c, k) - min) / span) * plotH).toFixed(1)}" r="5" fill="${PALETTE[ki % PALETTE.length]}"><title>${esc(label(c))}: ${val(c, k)}</title></circle>`,
+        ),
+      )
     })
     d.categories.forEach((c, ci) => out.push(`<text x="${left + (ci / n) * plotW}" y="${top + plotH + 18}" text-anchor="middle" ${font} fill="#374151">${esc(label(c))}</text>`))
   }
   const axes = `<line x1="${left}" y1="${top}" x2="${left}" y2="${top + plotH}" stroke="#9ca3af"/><line x1="${left}" y1="${top + plotH}" x2="${left + plotW}" y2="${top + plotH}" stroke="#9ca3af"/>`
-  const titles = (o.xTitle ? `<text x="${left + plotW / 2}" y="${H - 6}" text-anchor="middle" ${font} fill="#6b7280">${esc(o.xTitle)}</text>` : '') + (o.yTitle ? `<text x="12" y="${top + plotH / 2}" transform="rotate(-90 12 ${top + plotH / 2})" text-anchor="middle" ${font} fill="#6b7280">${esc(o.yTitle)}</text>` : '')
+  const titles =
+    (o.xTitle ? `<text x="${left + plotW / 2}" y="${H - 6}" text-anchor="middle" ${font} fill="#6b7280">${esc(o.xTitle)}</text>` : '') +
+    (o.yTitle ? `<text x="12" y="${top + plotH / 2}" transform="rotate(-90 12 ${top + plotH / 2})" text-anchor="middle" ${font} fill="#6b7280">${esc(o.yTitle)}</text>` : '')
   return `${head}${axes}${out.join('')}${titles}</svg>`
 }

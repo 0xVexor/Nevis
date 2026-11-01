@@ -40,18 +40,27 @@ export const DatabaseEmbed = Node.create({
       if (!id) {
         content.textContent = t('This database is not available.')
       } else {
-        void Promise.all([import('react-dom/client'), import('react'), import('../database/ui/DatabaseContainer')]).then(([{ createRoot }, React, { DatabaseContainer }]) => {
-          if (destroyed) return
-          const root = createRoot(content)
-          root.render(React.createElement(DatabaseContainer, { containerId: id, inline: true, onOpenPage: (pageId: string) => window.dispatchEvent(new CustomEvent(OPEN_PAGE, { detail: pageId })) }))
-          unmount = () => root.unmount()
-        }).catch(() => { if (!destroyed) content.textContent = t('This database is not available.') })
+        void Promise.all([import('react-dom/client'), import('react'), import('../database/ui/DatabaseContainer')])
+          .then(([{ createRoot }, React, { DatabaseContainer }]) => {
+            if (destroyed) return
+            const root = createRoot(content)
+            root.render(React.createElement(DatabaseContainer, { containerId: id, inline: true, onOpenPage: (pageId: string) => window.dispatchEvent(new CustomEvent(OPEN_PAGE, { detail: pageId })) }))
+            unmount = () => root.unmount()
+          })
+          .catch(() => {
+            if (!destroyed) content.textContent = t('This database is not available.')
+          })
       }
       return {
         dom,
         stopEvent: () => true,
         ignoreMutation: () => true,
-        destroy: () => { destroyed = true; const u = unmount; unmount = null; if (u) queueMicrotask(u) },
+        destroy: () => {
+          destroyed = true
+          const u = unmount
+          unmount = null
+          if (u) queueMicrotask(u)
+        },
       }
     }
   },
@@ -72,5 +81,7 @@ export async function insertDatabase(editor: Editor) {
     }
   } catch {
     window.dispatchEvent(new CustomEvent('layout-message', { detail: t('The database could not be inserted. Please try again.') }))
-  } finally { anchor.release() }
+  } finally {
+    anchor.release()
+  }
 }

@@ -18,7 +18,11 @@ register('database.duplicate', (cx, p: { containerId: Id; withRows: boolean; ind
   const copySources = [...owned, ...(p.independentLinked ? linkedOnly.map((id) => cx.d.get('source', id)!).filter(Boolean) : [])]
   for (const s of copySources) cx.access.assertSource(cx.env.actorId, s.id, 'read')
   const map = new Map<Id, Id>()
-  const fresh = (id: Id) => { const n = cx.ids(); map.set(id, n); return n }
+  const fresh = (id: Id) => {
+    const n = cx.ids()
+    map.set(id, n)
+    return n
+  }
   const newContainerId = fresh(src.id)
   for (const s of copySources) fresh(s.id)
   const props = cx.d.live('property').filter((d) => copySources.some((s) => s.id === d.sourceId))
@@ -33,7 +37,15 @@ register('database.duplicate', (cx, p: { containerId: Id; withRows: boolean; ind
   for (const r of relations) fresh(r.id)
 
   // host page: a new page next to the original
-  const hostCopy: PageLike = { ...host!, id: cx.ids(), title: p.title ?? `${host!.title} (copy)`, favorite: false, content: identifyBlocks(host!.content ?? EMPTY_DOC, cx.ids).content, updatedAt: cx.now, deletedAt: null }
+  const hostCopy: PageLike = {
+    ...host!,
+    id: cx.ids(),
+    title: p.title ?? `${host!.title} (copy)`,
+    favorite: false,
+    content: identifyBlocks(host!.content ?? EMPTY_DOC, cx.ids).content,
+    updatedAt: cx.now,
+    deletedAt: null,
+  }
   delete (hostCopy as { database?: unknown }).database
   delete (hostCopy as { recordMeta?: unknown }).recordMeta
   cx.d.addPage(hostCopy)
@@ -45,7 +57,13 @@ register('database.duplicate', (cx, p: { containerId: Id; withRows: boolean; ind
   const all = new Map<Id, Id>([...map, ...rowIds])
 
   const clone = <T extends Record<string, unknown>>(rec: T): T => remapIds(structuredClone(rec), all)
-  cx.d.add('container', { ...(clone(src as never) as typeof src), ...cx.meta(newContainerId), hostPageId: hostCopy.id, title: hostCopy.title, sourceLinks: src.sourceLinks.map((l) => ({ sourceId: all.get(l.sourceId) ?? l.sourceId, sortKey: l.sortKey })) })
+  cx.d.add('container', {
+    ...(clone(src as never) as typeof src),
+    ...cx.meta(newContainerId),
+    hostPageId: hostCopy.id,
+    title: hostCopy.title,
+    sourceLinks: src.sourceLinks.map((l) => ({ sourceId: all.get(l.sourceId) ?? l.sourceId, sortKey: l.sortKey })),
+  })
   for (const s of copySources) {
     const n = clone(s as never) as typeof s
     cx.d.add('source', { ...n, ...cx.meta(all.get(s.id)!), ownerContainerId: newContainerId, schemaRevision: 1, name: s.ownerContainerId === src.id ? s.name : s.name })
@@ -60,7 +78,13 @@ register('database.duplicate', (cx, p: { containerId: Id; withRows: boolean; ind
     const n = clone(r as never) as RelationDefinition
     const targetCopied = copied.has(r.targetSourceId)
     const invDefId = r.inversePropertyId
-    const rec: RelationDefinition = { ...n, ...cx.meta(all.get(r.id)!), sourceId: all.get(r.sourceId)!, propertyId: all.get(r.propertyId)!, targetSourceId: targetCopied ? all.get(r.targetSourceId)! : r.targetSourceId }
+    const rec: RelationDefinition = {
+      ...n,
+      ...cx.meta(all.get(r.id)!),
+      sourceId: all.get(r.sourceId)!,
+      propertyId: all.get(r.propertyId)!,
+      targetSourceId: targetCopied ? all.get(r.targetSourceId)! : r.targetSourceId,
+    }
     if (!targetCopied) {
       // a paired relation to a source that is not copied becomes one-way: the other source never learns about the copy
       rec.mode = r.mode === 'self_symmetric' ? 'one_way' : r.mode === 'paired' ? 'one_way' : r.mode
@@ -72,7 +96,13 @@ register('database.duplicate', (cx, p: { containerId: Id; withRows: boolean; ind
   // inverse properties of relations whose forward side is in a source we copied but whose own source is not copied are skipped (not in `props`)
   for (const v of views) {
     const n = clone(v as never) as typeof v
-    cx.d.add('view', { ...n, ...cx.meta(all.get(v.id)!), containerId: newContainerId, sourceId: v.sourceId ? (all.get(v.sourceId) ?? v.sourceId) : null, parentDashboardId: v.parentDashboardId ? (all.get(v.parentDashboardId) ?? null) : null })
+    cx.d.add('view', {
+      ...n,
+      ...cx.meta(all.get(v.id)!),
+      containerId: newContainerId,
+      sourceId: v.sourceId ? (all.get(v.sourceId) ?? v.sourceId) : null,
+      parentDashboardId: v.parentDashboardId ? (all.get(v.parentDashboardId) ?? null) : null,
+    })
   }
   for (const tp of templates) cx.d.add('template', { ...(clone(tp as never) as typeof tp), ...cx.meta(all.get(tp.id)!), sourceId: all.get(tp.sourceId)! })
   for (const w of workflows) cx.d.add('workflow', { ...(clone(w as never) as typeof w), ...cx.meta(all.get(w.id)!), sourceId: all.get(w.sourceId)!, definitionRevision: 1 })

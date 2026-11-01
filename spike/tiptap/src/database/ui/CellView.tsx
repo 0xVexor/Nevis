@@ -44,9 +44,23 @@ export function useFileNames(ids: Id[]): Map<string, string> {
 const dir = () => (locale().startsWith('fa') ? 'rtl' : 'ltr')
 
 function Blocked({ q }: { q: Extract<QValue, { c: 'blocked' }> }) {
-  if (q.state === 'restricted') return <span className="db-blocked" title={t('You do not have access to this value')}><Ic.Eye size={12} /> {t('Restricted')}</span>
-  if (q.state === 'pending') return <span className="db-blocked" title={t('Waiting for data that has not arrived yet')}>…</span>
-  return <span className="db-blocked err" title={q.detail || q.code}>⚠ {q.code ?? t('Error')}</span>
+  if (q.state === 'restricted')
+    return (
+      <span className="db-blocked" title={t('You do not have access to this value')}>
+        <Ic.Eye size={12} /> {t('Restricted')}
+      </span>
+    )
+  if (q.state === 'pending')
+    return (
+      <span className="db-blocked" title={t('Waiting for data that has not arrived yet')}>
+        …
+      </span>
+    )
+  return (
+    <span className="db-blocked err" title={q.detail || q.code}>
+      ⚠ {q.code ?? t('Error')}
+    </span>
+  )
 }
 
 function PersonChip({ rs, id }: { rs: Resolver; id: Id }) {
@@ -59,7 +73,8 @@ function ValueView({ rs, def, q, row }: { rs: Resolver; def: Definition; q: QVal
   if (q.c === 'empty') return null
   switch (q.c) {
     case 'number': {
-      const kind = def.kind === 'number' ? cfgOf.number(def) : def.kind === 'rollup' ? (cfgOf.rollup(def).numberFormat ?? { format: 'plain' as const, precision: 0 }) : { format: 'plain' as const, precision: 0 }
+      const kind =
+        def.kind === 'number' ? cfgOf.number(def) : def.kind === 'rollup' ? (cfgOf.rollup(def).numberFormat ?? { format: 'plain' as const, precision: 0 }) : { format: 'plain' as const, precision: 0 }
       const frac = kind.format === 'plain' && !Number.isInteger(q.n) ? { ...kind, precision: Math.min(8, String(q.n).split('.')[1]?.length ?? 0) } : kind
       const text = formatNumber(q.n, frac, locale())
       const pr = def.kind === 'number' ? progressOf(q.n, cfgOf.number(def)) : null
@@ -70,11 +85,16 @@ function ValueView({ rs, def, q, row }: { rs: Resolver; def: Definition; q: QVal
         </span>
       )
     }
-    case 'bool': return def.kind === 'checkbox' ? <span className={'db-check' + (q.b ? ' on' : '')}>{q.b && <Ic.Check size={12} />}</span> : <span>{q.b ? t('Yes') : t('No')}</span>
+    case 'bool':
+      return def.kind === 'checkbox' ? <span className={'db-check' + (q.b ? ' on' : '')}>{q.b && <Ic.Check size={12} />}</span> : <span>{q.b ? t('Yes') : t('No')}</span>
     case 'date': {
       const dc = def.kind === 'date' || def.kind === 'created_time' || def.kind === 'last_edited_time' ? cfgOf.date(def) : null
       const zone = (dc?.defaultZone ?? rs.opts.zone) || 'UTC'
-      return <span className="db-date" dir="auto">{formatDateValue(q.v, { calendar: dc?.displayCalendar ?? 'gregorian', zone, locale: locale() })}</span>
+      return (
+        <span className="db-date" dir="auto">
+          {formatDateValue(q.v, { calendar: dc?.displayCalendar ?? 'gregorian', zone, locale: locale() })}
+        </span>
+      )
     }
     case 'text': {
       if (def.kind === 'url' || def.kind === 'email' || def.kind === 'phone') {
@@ -85,8 +105,18 @@ function ValueView({ rs, def, q, row }: { rs: Resolver; def: Definition; q: QVal
           </a>
         )
       }
-      if (def.kind === 'unique_id') return <span className="db-id" dir="ltr">{q.text}</span>
-      if (def.kind === 'verification') return <span className={'db-verify ' + q.text}><Ic.Check size={12} /> {q.text === 'verified' ? t('Verified') : t('Unverified')}</span>
+      if (def.kind === 'unique_id')
+        return (
+          <span className="db-id" dir="ltr">
+            {q.text}
+          </span>
+        )
+      if (def.kind === 'verification')
+        return (
+          <span className={'db-verify ' + q.text}>
+            <Ic.Check size={12} /> {q.text === 'verified' ? t('Verified') : t('Unverified')}
+          </span>
+        )
       if (def.kind === 'text') {
         const cell = row.ext.cells[def.id]?.value
         if (cell?.kind === 'text') return <RichRuns runs={cell.runs} />
@@ -100,16 +130,45 @@ function ValueView({ rs, def, q, row }: { rs: Resolver; def: Definition; q: QVal
           <>
             {q.ids.map((id) => {
               const o = opts.find((x) => x.id === id)
-              return o ? <Chip key={id} color={o.color}>{o.name}</Chip> : <Chip key={id} muted title={t('This option was deleted')}>{t('Deleted option')}</Chip>
+              return o ? (
+                <Chip key={id} color={o.color}>
+                  {o.name}
+                </Chip>
+              ) : (
+                <Chip key={id} muted title={t('This option was deleted')}>
+                  {t('Deleted option')}
+                </Chip>
+              )
             })}
           </>
         )
       }
-      if (def.kind === 'people' || q.shape === 'people' || q.shape === 'created_by' || q.shape === 'last_edited_by') return <>{q.ids.map((id) => <PersonChip key={id} rs={rs} id={id} />)}</>
+      if (def.kind === 'people' || q.shape === 'people' || q.shape === 'created_by' || q.shape === 'last_edited_by')
+        return (
+          <>
+            {q.ids.map((id) => (
+              <PersonChip key={id} rs={rs} id={id} />
+            ))}
+          </>
+        )
       if (def.kind === 'files') return <FilesView ids={q.ids} />
-      return <>{q.ids.map((id) => <Chip key={id}>{rs.title(id) ?? '…'}</Chip>)}</>
+      return (
+        <>
+          {q.ids.map((id) => (
+            <Chip key={id}>{rs.title(id) ?? '…'}</Chip>
+          ))}
+        </>
+      )
     }
-    case 'list': return <span dir="auto">{q.items.map((i) => (i.c === 'text' ? i.text : i.c === 'number' ? String(i.n) : '')).filter(Boolean).join(', ')}</span>
+    case 'list':
+      return (
+        <span dir="auto">
+          {q.items
+            .map((i) => (i.c === 'text' ? i.text : i.c === 'number' ? String(i.n) : ''))
+            .filter(Boolean)
+            .join(', ')}
+        </span>
+      )
   }
 }
 
@@ -119,8 +178,18 @@ function RichRuns({ runs }: { runs: Extract<Cell, { kind: 'text' }>['runs'] }) {
     <span dir="auto" className="db-rich">
       {runs.map((r, i) => {
         let el: ReactNode = r.text
-        if (r.mention?.kind === 'page') el = <button type="button" className="db-mention" onClick={(e) => (e.stopPropagation(), nav.openRow(r.mention!.id))}>@{r.text}</button>
-        else if (r.href) el = <a className="db-link" href={r.href} onClick={(e) => (e.preventDefault(), e.stopPropagation(), openSafe(r.href!))}>{r.text}</a>
+        if (r.mention?.kind === 'page')
+          el = (
+            <button type="button" className="db-mention" onClick={(e) => (e.stopPropagation(), nav.openRow(r.mention!.id))}>
+              @{r.text}
+            </button>
+          )
+        else if (r.href)
+          el = (
+            <a className="db-link" href={r.href} onClick={(e) => (e.preventDefault(), e.stopPropagation(), openSafe(r.href!))}>
+              {r.text}
+            </a>
+          )
         if (r.bold) el = <b>{el}</b>
         if (r.italic) el = <i>{el}</i>
         if (r.code) el = <code>{el}</code>
@@ -134,14 +203,27 @@ function RichRuns({ runs }: { runs: Extract<Cell, { kind: 'text' }>['runs'] }) {
 
 function FilesView({ ids }: { ids: Id[] }) {
   const names = useFileNames(ids)
-  return <>{ids.map((id) => <Chip key={id} title={names.get(id) || id}><Ic.Page size={11} /> {names.get(id) || t('File')}</Chip>)}</>
+  return (
+    <>
+      {ids.map((id) => (
+        <Chip key={id} title={names.get(id) || id}>
+          <Ic.Page size={11} /> {names.get(id) || t('File')}
+        </Chip>
+      ))}
+    </>
+  )
 }
 
 /** Value of one cell for display. `rs` is one Resolver per render pass (it caches formula / rollup results). */
 export function CellView({ svc, rs, row, def, compact }: { svc: DatabaseService; rs: Resolver; row: Row; def: Definition; compact?: boolean }) {
   const nav = useNav()
   switch (def.kind) {
-    case 'title': return <span dir="auto" className="db-title-text">{plainTitle(row.page.title)}</span>
+    case 'title':
+      return (
+        <span dir="auto" className="db-title-text">
+          {plainTitle(row.page.title)}
+        </span>
+      )
     case 'button': {
       const c = cfgOf.button(def)
       return (
@@ -169,7 +251,12 @@ export function CellView({ svc, rs, row, def, compact }: { svc: DatabaseService;
         </>
       )
     }
-    case 'unique_id': return <span className="db-id" dir="ltr">{formatUniqueId(def, row.ext.allocatedIds[def.id])}</span>
+    case 'unique_id':
+      return (
+        <span className="db-id" dir="ltr">
+          {formatUniqueId(def, row.ext.allocatedIds[def.id])}
+        </span>
+      )
     case 'connected': {
       const c = row.ext.cells[def.id]?.value
       if (c?.kind !== 'connected' || !c.value) return null
@@ -177,15 +264,27 @@ export function CellView({ svc, rs, row, def, compact }: { svc: DatabaseService;
       const shown = connectedText(c)
       const stale = v.status && v.status !== 'ok'
       return (
-        <a className={'db-link db-connected' + (stale ? ' stale' : '')} dir="auto" href={v.canonicalUrl} title={v.cache ? `${t('Fetched')} ${new Date(v.cache.fetchedAt).toLocaleString()}` : t('Not fetched yet')} onClick={(e) => (e.preventDefault(), e.stopPropagation(), openSafe(v.canonicalUrl))}>
-          {shown}{stale && <span className="db-stale"> · {t(CONNECTED_STATUS[v.status!])}</span>}
+        <a
+          className={'db-link db-connected' + (stale ? ' stale' : '')}
+          dir="auto"
+          href={v.canonicalUrl}
+          title={v.cache ? `${t('Fetched')} ${new Date(v.cache.fetchedAt).toLocaleString()}` : t('Not fetched yet')}
+          onClick={(e) => (e.preventDefault(), e.stopPropagation(), openSafe(v.canonicalUrl))}
+        >
+          {shown}
+          {stale && <span className="db-stale"> · {t(CONNECTED_STATUS[v.status!])}</span>}
         </a>
       )
     }
     case 'place': {
       const c = row.ext.cells[def.id]?.value
       if (c?.kind !== 'place' || !c.value) return null
-      return <span dir="auto" title={c.value.lat === null ? t('Not placed on the map yet') : `${c.value.lat}, ${c.value.lon}`}><Ic.Globe size={12} /> {c.value.name || c.value.address}{c.value.lat === null && ' ◌'}</span>
+      return (
+        <span dir="auto" title={c.value.lat === null ? t('Not placed on the map yet') : `${c.value.lat}, ${c.value.lon}`}>
+          <Ic.Globe size={12} /> {c.value.name || c.value.address}
+          {c.value.lat === null && ' ◌'}
+        </span>
+      )
     }
     default: {
       const q = rs.value(row, def)

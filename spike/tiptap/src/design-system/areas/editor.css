@@ -93,7 +93,6 @@
 .tiptap .hljs-selector-class, .tiptap .hljs-selector-id, .tiptap .hljs-selector-pseudo, .tiptap .hljs-section { color: var(--hl-fn); }
 .tiptap .hljs-meta, .tiptap .hljs-doctag, .tiptap .hljs-meta .hljs-keyword { color: var(--hl-meta); }
 .tiptap .hljs-symbol, .tiptap .hljs-bullet, .tiptap .hljs-char, .tiptap .hljs-template-variable, .tiptap .hljs-link { color: var(--hl-num); }
-.tiptap .hljs-title.class_, .tiptap .hljs-title.class_.inherited__, .tiptap .hljs-title.function_ { color: var(--hl-fn); }
 .tiptap .hljs-variable, .tiptap .hljs-subst, .tiptap .hljs-operator { color: inherit; }
 .tiptap .hljs-punctuation { color: var(--hl-punc); }
 .tiptap .hljs-addition { background: var(--hl-add); }
@@ -106,14 +105,8 @@
 
 /* drag handle */
 /* 32×32 hit area; the ::before bridges the gap to the text so the pointer never loses the handle on its way */
-.block-handle { --block-handle-gap: 16px; position: absolute; width: 32px; height: 32px; align-items: center; justify-content: center; color: var(--ds-text-2); cursor: var(--cursor-grab, grab); border-radius: 8px; user-select: none; z-index: 3; transition: background 0.15s, color 0.15s; }
 /* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
-.block-handle::before { content: ''; position: absolute; top: 0; bottom: 0; right: calc(-1 * var(--block-handle-gap) + 2px); width: calc(var(--block-handle-gap) - 2px); }
 /* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
-.block-handle.rtl::before { right: auto; left: calc(-1 * var(--block-handle-gap) + 2px); }
-.block-handle svg { pointer-events: none; }
-.block-handle:hover { background: var(--ds-accent-soft); color: var(--ds-accent); }
-.block-handle:active { cursor: var(--cursor-grabbing, grabbing); background: var(--ds-accent-soft); color: var(--ds-accent); }
 
 /* code blocks with a language bar */
 .code-wrap { position: relative; margin: 10px 0; }
@@ -289,22 +282,9 @@
 .dw-meta small { color: var(--ds-text-3); font-size: 12px; }
 
 /* Excalidraw menus (right-click and the main menu) drawn like the app's own menus (see .ds-pop / .ds-menu-item in overlays.css, v2.css) */
-.excalidraw.excalidraw .context-menu, .excalidraw.excalidraw .dropdown-menu-container { min-width: 230px; max-height: min(70vh, 640px); overflow-y: auto; margin: 0; padding: 6px; list-style: none; background: var(--ds-raised) !important; color: var(--ds-text); border: 1px solid var(--ds-line); border-radius: 18px; box-shadow: var(--ds-shadow-pop); font-family: var(--font); animation: pop-in 0.2s var(--ease); }
-.excalidraw.excalidraw .context-menu li { margin: 0; }
-.excalidraw.excalidraw .context-menu-item, .excalidraw.excalidraw .dropdown-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px 12px; border: 0; border-radius: 12px; background: transparent; color: var(--ds-text); font: inherit; font-size: 13.5px; line-height: 1.2; text-align: start; cursor: var(--cursor-hand, pointer); transition: background 0.12s; }
-.excalidraw.excalidraw .context-menu-item:hover, .excalidraw.excalidraw .context-menu-item:focus-visible, .excalidraw.excalidraw .context-menu-item.active,
-.excalidraw.excalidraw .dropdown-menu-item:hover, .excalidraw.excalidraw .dropdown-menu-item:focus-visible { background: var(--ds-hover); outline: none; }
-.excalidraw.excalidraw .context-menu-item__label { flex: 1; min-width: 0; text-align: start; }
-.excalidraw.excalidraw .context-menu-item__shortcut, .excalidraw.excalidraw .dropdown-menu-item__shortcut { margin-inline-start: auto; padding-inline-start: 24px; font: inherit; font-size: 11.5px; color: var(--ds-text-3); direction: ltr; }
-.excalidraw.excalidraw .context-menu-item.dangerous, .excalidraw.excalidraw .context-menu-item.dangerous .context-menu-item__label { color: var(--ds-bad); }
-.excalidraw.excalidraw .context-menu-item.dangerous:hover { background: color-mix(in srgb, var(--ds-bad) 10%, transparent); }
-.excalidraw.excalidraw .context-menu-item:disabled { opacity: 0.4; cursor: var(--cursor-arrow, default); background: transparent; }
-.excalidraw.excalidraw .context-menu-item-separator, .excalidraw.excalidraw .dropdown-menu-item-divider { height: 1px; margin: 6px 4px; border: 0; background: var(--ds-line); }
 /* the app's global .ds-pop styles must not leak onto Excalidraw's own .ds-pop wrapper (the menu above draws the box itself) */
 .excalidraw.excalidraw .popover { min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; animation: none; overflow: visible; }
-.excalidraw.excalidraw .context-menu-item__shortcut { background: transparent; border: 0; box-shadow: none; padding-block: 0; }
 /* Excalidraw's own loader says "Loading scene…" in English; the spinner alone is enough */
-.excalidraw.excalidraw .LoadingMessage .LoadingMessage-text { display: none; }
 :root[data-board-full] :is(.side, .topbar) { display: none; }
 
 

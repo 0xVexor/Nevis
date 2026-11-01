@@ -13,12 +13,16 @@ export function WorkspaceCard({ onOpen }: { onOpen: () => void }) {
   }, [])
   return (
     <button className="wscard" title={t('Workspaces')} onClick={onOpen}>
-      <span className="wscard-ic"><Icon name="vault" /></span>
+      <span className="wscard-ic">
+        <Icon name="vault" />
+      </span>
       <span className="wscard-tx">
         <b dir="auto">{name || t('Personal space')}</b>
         <small>{t('Local workspace')}</small>
       </span>
-      <span className="wscard-chev"><Ic.UpDown size={14} /></span>
+      <span className="wscard-chev">
+        <Ic.UpDown size={14} />
+      </span>
     </button>
   )
 }

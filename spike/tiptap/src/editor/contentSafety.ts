@@ -1,3 +1,4 @@
+import type { DocNode } from '../docNode'
 import type { Schema } from '@tiptap/pm/model'
 import { layoutStructureValid } from './layoutModel'
 import { identityVersion, BLOCK_IDENTITY_VERSION } from '../documents/blockIdentity'
@@ -7,12 +8,12 @@ export function contentProblem(content: unknown, schema: Schema): string | null 
   if (typeof content === 'string') return null // legacy HTML follows the existing import path
   try {
     if (identityVersion(content) > BLOCK_IDENTITY_VERSION) throw new Error('Unsupported block identity version')
-    const check = (n: any) => {
+    const check = (n: DocNode | null | undefined) => {
       if (!n || !schema.nodes[n.type]) throw new Error('Unknown node')
-      if (n.marks?.some((m: any) => !schema.marks[m.type])) throw new Error('Unknown mark')
+      if (n.marks?.some((m) => !schema.marks[m.type])) throw new Error('Unknown mark')
       for (const child of n.content ?? []) check(child)
     }
-    check(content)
+    check(content as DocNode)
     const doc = schema.nodeFromJSON(content)
     if (doc.type !== schema.topNodeType) throw new Error('Expected document')
     doc.check()

@@ -9,7 +9,7 @@ export { firstTextDirection } from '../textDirection.ts'
 const LISTS = new Set(['bulletList', 'orderedList', 'taskList'])
 // Containers that draw something on their start side (a quote bar, a callout icon, a toggle arrow) carry the direction of their text too.
 const BLOCKS = new Set(['paragraph', 'heading', 'listItem', 'taskItem', 'blockquote', 'callout', 'toggle', ...LISTS])
-const explicit = (dir: unknown): 'rtl' | 'ltr' | null => dir === 'rtl' || dir === 'ltr' ? dir : null
+const explicit = (dir: unknown): 'rtl' | 'ltr' | null => (dir === 'rtl' || dir === 'ltr' ? dir : null)
 
 /** Render-only direction: it never rewrites notes or adds automatic changes to undo history.
  * A task's hidden checkbox label and nested lists must not decide its text direction. */
@@ -25,10 +25,13 @@ export function blockDirections(doc: ProseMirrorNode): DecorationSet {
         const text = firstItem ? firstItem.firstChild?.textContent || '' : item ? node.firstChild?.textContent || '' : node.textContent
         const childManual = firstItem ? explicit(firstItem.attrs.dir) || explicit(firstItem.firstChild?.attrs.dir) : item ? explicit(node.firstChild?.attrs.dir) : null
         const dir = manual || childManual || firstTextDirection(text)
-        if (dir) out.push(Decoration.node(pos, pos + node.nodeSize, {
-          'data-dir': dir,
-          style: `direction: ${dir}; unicode-bidi: isolate;`,
-        }))
+        if (dir)
+          out.push(
+            Decoration.node(pos, pos + node.nodeSize, {
+              'data-dir': dir,
+              style: `direction: ${dir}; unicode-bidi: isolate;`,
+            }),
+          )
       }
       if (!node.isLeaf && !node.type.spec.code) walk(node, pos + 1, manual)
     })
@@ -40,9 +43,11 @@ export function blockDirections(doc: ProseMirrorNode): DecorationSet {
 export const HeadingDir = Extension.create({
   name: 'headingDir',
   addProseMirrorPlugins() {
-    return [new Plugin({
-      key: new PluginKey('headingDir'),
-      props: { decorations: state => blockDirections(state.doc) },
-    })]
+    return [
+      new Plugin({
+        key: new PluginKey('headingDir'),
+        props: { decorations: (state) => blockDirections(state.doc) },
+      }),
+    ]
   },
 })

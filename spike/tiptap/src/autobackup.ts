@@ -55,18 +55,35 @@ let manual = false // a backup by hand runs even when automatic backup is off
 const emit = () => void window.dispatchEvent(new Event('backup-status'))
 const persistCfg = async () => {
   if (!isTauri) return kvSet('backupCfg', cfg)
-  try { localStorage.setItem(DEVICE_KEY, JSON.stringify(cfg)) } catch { /* the folder is asked for again */ }
+  try {
+    localStorage.setItem(DEVICE_KEY, JSON.stringify(cfg))
+  } catch {
+    /* the folder is asked for again */
+  }
 }
 const loadCfg = async (): Promise<Cfg> => {
   if (!isTauri) return (await kvGet<Cfg>('backupCfg')) ?? { enabled: false }
-  try { return JSON.parse(localStorage.getItem(DEVICE_KEY) ?? 'null') ?? { enabled: false } } catch { return { enabled: false } }
+  try {
+    return JSON.parse(localStorage.getItem(DEVICE_KEY) ?? 'null') ?? { enabled: false }
+  } catch {
+    return { enabled: false }
+  }
 }
 
 export const backupSupported = () => isTauri || 'showDirectoryPicker' in window
 const ready = () => (isTauri ? !!cfg.dir : !!handle)
 
 export function backupStatus(): BackupStatus {
-  return { supported: backupSupported(), ready: ready(), enabled: cfg.enabled && ready(), folder: isTauri ? cfg.dir : handle?.name, lastAt: cfg.lastAt, counts: cfg.counts, error: cfg.error, blocked: !!cfg.blocked }
+  return {
+    supported: backupSupported(),
+    ready: ready(),
+    enabled: cfg.enabled && ready(),
+    folder: isTauri ? cfg.dir : handle?.name,
+    lastAt: cfg.lastAt,
+    counts: cfg.counts,
+    error: cfg.error,
+    blocked: !!cfg.blocked,
+  }
 }
 
 export async function initBackup() {
@@ -98,7 +115,7 @@ async function write(dir: FileSystemDirectoryHandle, name: string, blob: Blob) {
 
 async function prune(dir: FileSystemDirectoryHandle) {
   const names: string[] = []
-  for await (const [name] of (dir as any).entries() as AsyncIterable<[string, unknown]>) if (DAILY.test(name)) names.push(name)
+  for await (const [name] of dir.entries()) if (DAILY.test(name)) names.push(name)
   names.sort()
   for (const old of names.slice(0, Math.max(0, names.length - KEEP_DAILY))) await dir.removeEntry(old).catch(() => {})
 }
@@ -157,7 +174,7 @@ export async function chooseBackupFolder() {
     if (typeof dir === 'string') await configureBackupFolder({ dir })
     return
   }
-  const picked = await (window as any).showDirectoryPicker({ id: 'notes-backup', mode: 'readwrite' }).catch(() => null)
+  const picked = await window.showDirectoryPicker({ id: 'notes-backup', mode: 'readwrite' }).catch(() => null)
   if (picked) await configureBackupFolder({ handle: picked })
 }
 
@@ -191,5 +208,9 @@ export async function setAutomatic(on: boolean) {
 /** Back up now, whether or not automatic backup is on. */
 export async function backupNow(force = false) {
   manual = true
-  try { await runBackup(force) } finally { manual = false }
+  try {
+    await runBackup(force)
+  } finally {
+    manual = false
+  }
 }

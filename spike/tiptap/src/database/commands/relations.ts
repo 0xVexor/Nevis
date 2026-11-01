@@ -43,8 +43,15 @@ function createRelation(cx: Ctx, p: { sourceId: Id; name: string; kind: Definiti
     mi.config = { definitionId: relId, side: 'inverse' }
   }
   const rel: RelationDefinition = {
-    ...cx.meta(relId), propertyId: fwdId, sourceId: src.id, targetSourceId: target.id, mode, inversePropertyId: invId,
-    cardinality: mode === 'self_symmetric' ? 'many' : (c.cardinality ?? 'many'), inverseCardinality: c.inverseCardinality ?? 'many', displayedPropertyIds: c.displayedPropertyIds ?? [],
+    ...cx.meta(relId),
+    propertyId: fwdId,
+    sourceId: src.id,
+    targetSourceId: target.id,
+    mode,
+    inversePropertyId: invId,
+    cardinality: mode === 'self_symmetric' ? 'many' : (c.cardinality ?? 'many'),
+    inverseCardinality: c.inverseCardinality ?? 'many',
+    displayedPropertyIds: c.displayedPropertyIds ?? [],
   }
   cx.d.add('relation', rel)
   bumpSchema(cx, src.id)
@@ -157,7 +164,8 @@ export function addEdge(cx: Ctx, rel: RelationDefinition, from0: Id, to0: Id, re
   if (rel.mode !== 'self_symmetric' && rel.cardinality === 'one' && outgoing.length) conflicts.push(...outgoing)
   if (rel.inverseCardinality === 'one' && rel.mode !== 'self_symmetric' && incoming.length) conflicts.push(...incoming)
   if (conflicts.length) {
-    if (!replace) fail('RELATION_LIMIT', 'this relation allows one link; pass replace to swap it', { existingTargets: conflicts.map((e) => e.toPageId), existingSources: conflicts.map((e) => e.fromPageId) })
+    if (!replace)
+      fail('RELATION_LIMIT', 'this relation allows one link; pass replace to swap it', { existingTargets: conflicts.map((e) => e.toPageId), existingSources: conflicts.map((e) => e.fromPageId) })
     for (const c of new Set(conflicts)) cx.d.mut('edge', c.id).deletedAt = cx.now // old target listed by the caller, remove + add in one batch
   }
   if (all.filter((e) => e.deletedAt === null).length >= LIMITS.edgesSoftWarn) cx.warnings.push({ code: 'EDGE_SOFT_LIMIT', detail: `${LIMITS.edgesSoftWarn}` })

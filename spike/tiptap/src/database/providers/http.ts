@@ -42,7 +42,10 @@ export async function request(deps: ProviderDeps, url: string, init: { method?: 
       if (!refreshed && deps.credentials.refresh) {
         refreshed = true
         const next = await deps.credentials.refresh()
-        if (next) { token = next; continue }
+        if (next) {
+          token = next
+          continue
+        }
       }
       throw new ProviderError('unauthorized', 'the connection was refused or its access was revoked; reconnect it', 401)
     }

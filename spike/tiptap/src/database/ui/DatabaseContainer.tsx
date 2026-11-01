@@ -39,10 +39,19 @@ const VIEWS: Partial<Record<ViewType, ComponentType<ViewProps>>> = {
 
 const personalKey = (id: Id) => 'db.personal.' + id
 function loadPersonal(id: Id): Personal | null {
-  try { const v = localStorage.getItem(personalKey(id)); return v ? JSON.parse(v) : null } catch { return null }
+  try {
+    const v = localStorage.getItem(personalKey(id))
+    return v ? JSON.parse(v) : null
+  } catch {
+    return null
+  }
 }
 function savePersonal(id: Id, p: Personal | null) {
-  try { p ? setPreference(personalKey(id), JSON.stringify(p)) : removePreference(personalKey(id)) } catch { /* private window: the override just lives in memory */ }
+  try {
+    p ? setPreference(personalKey(id), JSON.stringify(p)) : removePreference(personalKey(id))
+  } catch {
+    /* private window: the override just lives in memory */
+  }
 }
 
 export type OpenPage = (pageId: Id) => void
@@ -50,7 +59,12 @@ export type OpenPage = (pageId: Id) => void
 export function DatabaseContainer({ containerId, viewId, onOpenPage, inline }: { containerId: Id; viewId?: Id | null; onOpenPage: OpenPage; inline?: boolean }) {
   const svc = useDb()
   useRepoTick()
-  if (!svc) return <div className="db-loading" role="status">{t('Opening the database…')}</div>
+  if (!svc)
+    return (
+      <div className="db-loading" role="status">
+        {t('Opening the database…')}
+      </div>
+    )
   const c = svc.state.get('container', containerId)
   if (!c || c.deletedAt !== null) return <div className="db-error-box">{t('This database no longer exists.')}</div>
   return <Inner svc={svc} container={c} fixedViewId={viewId ?? null} onOpenPage={onOpenPage} inline={!!inline} />
@@ -63,7 +77,11 @@ function Inner({ svc, container, fixedViewId, onOpenPage, inline }: { svc: Datab
   const [personal, setPersonalState] = useState<Personal | null>(() => (view ? loadPersonal(view.id) : null))
   const [search, setSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
-  const [panel, setPanel] = useState<null | { kind: 'filter' | 'sort' | 'group' | 'props' | 'settings' | 'new' | 'newview' | 'more' | 'viewmenu' | 'workflows' | 'source'; rect: DOMRect; arg?: string }>(null)
+  const [panel, setPanel] = useState<null | {
+    kind: 'filter' | 'sort' | 'group' | 'props' | 'settings' | 'new' | 'newview' | 'more' | 'viewmenu' | 'workflows' | 'source'
+    rect: DOMRect
+    arg?: string
+  }>(null)
   const [notice, setNotice] = useState<{ msg: string; action?: { label: string; run: () => void } } | null>(null)
   const [peek, setPeek] = useState<{ id: Id; mode: 'side' | 'center' } | null>(null)
   const [editWf, setEditWf] = useState<{ propertyId: Id } | null>(null)
@@ -71,7 +89,9 @@ function Inner({ svc, container, fixedViewId, onOpenPage, inline }: { svc: Datab
   const rsRef = useRef(svc.resolver())
   rsRef.current = svc.resolver() // fresh per render pass: formula and rollup results are cached for one generation only
 
-  useEffect(() => { setPersonalState(view ? loadPersonal(view.id) : null) }, [view?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setPersonalState(view ? loadPersonal(view.id) : null)
+  }, [view?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const h = (e: Event) => setEditWf({ propertyId: (e as CustomEvent<string>).detail })
     window.addEventListener('db-edit-actions', h)
@@ -86,7 +106,9 @@ function Inner({ svc, container, fixedViewId, onOpenPage, inline }: { svc: Datab
 
   const src = view?.sourceId ? svc.state.get('source', view.sourceId) : null
   const caps = src ? svc.access().sourceCaps(svc.principalId, src.id) : new Set<string>()
-  const canSchema = src ? caps.has('edit_schema') : svc.access().isOwner(svc.principalId) || container.sourceLinks.some((link) => svc.access().sourceCaps(svc.principalId, link.sourceId).has('edit_schema'))
+  const canSchema = src
+    ? caps.has('edit_schema')
+    : svc.access().isOwner(svc.principalId) || container.sourceLinks.some((link) => svc.access().sourceCaps(svc.principalId, link.sourceId).has('edit_schema'))
   const canEditRows = caps.has('edit_rows')
 
   const setPersonal = (p: Personal | null) => {
@@ -102,23 +124,48 @@ function Inner({ svc, container, fixedViewId, onOpenPage, inline }: { svc: Datab
       if (!r.ok) notify(errorText(r.code, r.message))
       return r.ok
     },
-    personal, setPersonal,
+    personal,
+    setPersonal,
     openFilterFor: (propertyId) => {
       const p = view ? { ...(personal ?? {}), filter: addRule(personal?.filter !== undefined ? personal.filter : view.filter, svc, propertyId) } : personal
       setPersonal(p)
       setPanel({ kind: 'filter', rect: document.querySelector<HTMLElement>('[data-db-filter-btn]')?.getBoundingClientRect() ?? new DOMRect(200, 120, 10, 10) })
     },
-    search, rs: rsRef.current, notice: notify, canSchema, canEditRows,
+    search,
+    rs: rsRef.current,
+    notice: notify,
+    canSchema,
+    canEditRows,
     openProperties: () => setPanel({ kind: 'props', rect: new DOMRect(300, 140, 10, 10) }),
     createRow: async (o?: CreateRowOpts) => {
       if (!view?.sourceId) return null
-      const r = await svc.tryExec([{ type: 'row.create', payload: { sourceId: view.sourceId, viewId: view.id, title: o?.title, explicitValues: o?.explicitValues, context: o?.context, parentItemId: o?.parentItemId ?? null, beforePageId: o?.beforePageId ?? null } as unknown as Json }])
-      if (!r.ok) { notify(errorText(r.code, r.message)); return null }
+      const r = await svc.tryExec([
+        {
+          type: 'row.create',
+          payload: {
+            sourceId: view.sourceId,
+            viewId: view.id,
+            title: o?.title,
+            explicitValues: o?.explicitValues,
+            context: o?.context,
+            parentItemId: o?.parentItemId ?? null,
+            beforePageId: o?.beforePageId ?? null,
+          } as unknown as Json,
+        },
+      ])
+      if (!r.ok) {
+        notify(errorText(r.code, r.message))
+        return null
+      }
       const pageId = (r.result as { pageId: Id }).pageId
       const row = svc.state.row(pageId)
       const filter = personal?.filter !== undefined ? personal.filter : view.filter
       let inView = true
-      try { inView = !row || matchesFilter(svc.state, svc.resolver(), filter, row, svc.now(), svc.zone) } catch { inView = true }
+      try {
+        inView = !row || matchesFilter(svc.state, svc.resolver(), filter, row, svc.now(), svc.zone)
+      } catch {
+        inView = true
+      }
       if (!inView) notify(t('Saved; this item is outside the current view.'), { label: t('Show it'), run: () => nav.openRow(pageId, 'side') })
       return { pageId, inView }
     },
@@ -148,40 +195,93 @@ function Inner({ svc, container, fixedViewId, onOpenPage, inline }: { svc: Datab
         <header className="db-head">
           <div className="db-tabs" role="tablist" aria-label={t('Views')}>
             {views.map((v) => (
-              <button key={v.id} type="button" role="tab" aria-selected={v.id === view.id} className={'db-tab' + (v.id === view.id ? ' on' : '')} onClick={(e) => (v.id === view.id ? canSchema && openPanel('viewmenu', e, v.id) : setActiveId(v.id))} onContextMenu={(e) => { e.preventDefault(); openPanel('viewmenu', e, v.id) }}>
+              <button
+                key={v.id}
+                type="button"
+                role="tab"
+                aria-selected={v.id === view.id}
+                className={'db-tab' + (v.id === view.id ? ' on' : '')}
+                onClick={(e) => (v.id === view.id ? canSchema && openPanel('viewmenu', e, v.id) : setActiveId(v.id))}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  openPanel('viewmenu', e, v.id)
+                }}
+              >
                 {VIEW_ICON[v.type]()} <span dir="auto">{v.name}</span>
               </button>
             ))}
-            {canSchema && <button type="button" className="db-tab add" aria-label={t('Add a view')} onClick={(e) => openPanel('newview', e)}><Ic.Plus size={13} /></button>}
+            {canSchema && (
+              <button type="button" className="db-tab add" aria-label={t('Add a view')} onClick={(e) => openPanel('newview', e)}>
+                <Ic.Plus size={13} />
+              </button>
+            )}
           </div>
           {sources.length > 1 && (
-            <button type="button" className="db-src" onClick={(e) => openPanel('source', e)} title={t('Data source')}><Ic.Layers size={13} /> <span dir="auto">{src?.name}</span> <Ic.Chevron size={11} /></button>
+            <button type="button" className="db-src" onClick={(e) => openPanel('source', e)} title={t('Data source')}>
+              <Ic.Layers size={13} /> <span dir="auto">{src?.name}</span> <Ic.Chevron size={11} />
+            </button>
           )}
         </header>
         {view.type !== 'dashboard' && (
           <div className="db-toolbar" role="toolbar" aria-label={t('Database tools')}>
             <div className="db-tools">
               {searchOpen || search ? (
-                <span className="db-search"><Ic.Search size={13} /><input autoFocus dir="auto" value={search} placeholder={t('Search…')} aria-label={t('Search this database')} onChange={(e) => setSearch(e.target.value)} onBlur={() => !search && setSearchOpen(false)} onKeyDown={(e) => e.key === 'Escape' && (setSearch(''), setSearchOpen(false))} /></span>
+                <span className="db-search">
+                  <Ic.Search size={13} />
+                  <input
+                    autoFocus
+                    dir="auto"
+                    value={search}
+                    placeholder={t('Search…')}
+                    aria-label={t('Search this database')}
+                    onChange={(e) => setSearch(e.target.value)}
+                    onBlur={() => !search && setSearchOpen(false)}
+                    onKeyDown={(e) => e.key === 'Escape' && (setSearch(''), setSearchOpen(false))}
+                  />
+                </span>
               ) : (
-                <button type="button" className="db-tool" aria-label={t('Search')} onClick={() => setSearchOpen(true)}><Ic.Search size={14} /></button>
+                <button type="button" className="db-tool" aria-label={t('Search')} onClick={() => setSearchOpen(true)}>
+                  <Ic.Search size={14} />
+                </button>
               )}
               {['table', 'board', 'list', 'gallery', 'calendar', 'timeline', 'feed'].includes(view.type) && (
                 <>
-                  <button type="button" data-db-filter-btn className={'db-tool' + (filterActive ? ' on' : '')} onClick={(e) => openPanel('filter', e)}><Ic.Search size={13} /> {t('Filter')}{filterActive && <span className="db-dot" />}</button>
-                  <button type="button" className={'db-tool' + (sortActive ? ' on' : '')} onClick={(e) => openPanel('sort', e)}><Ic.UpDown size={13} /> {t('Sort')}{sortActive && <span className="db-dot" />}</button>
-                  {['table', 'list', 'gallery'].includes(view.type) && <button type="button" className={'db-tool' + (group ? ' on' : '')} onClick={(e) => openPanel('group', e)}><Ic.Layers size={13} /> {t('Group')}</button>}
-                  <button type="button" className="db-tool" onClick={(e) => openPanel('props', e)}><Ic.Eye size={13} /> {t('Properties')}</button>
+                  <button type="button" data-db-filter-btn className={'db-tool' + (filterActive ? ' on' : '')} onClick={(e) => openPanel('filter', e)}>
+                    <Ic.Search size={13} /> {t('Filter')}
+                    {filterActive && <span className="db-dot" />}
+                  </button>
+                  <button type="button" className={'db-tool' + (sortActive ? ' on' : '')} onClick={(e) => openPanel('sort', e)}>
+                    <Ic.UpDown size={13} /> {t('Sort')}
+                    {sortActive && <span className="db-dot" />}
+                  </button>
+                  {['table', 'list', 'gallery'].includes(view.type) && (
+                    <button type="button" className={'db-tool' + (group ? ' on' : '')} onClick={(e) => openPanel('group', e)}>
+                      <Ic.Layers size={13} /> {t('Group')}
+                    </button>
+                  )}
+                  <button type="button" className="db-tool" onClick={(e) => openPanel('props', e)}>
+                    <Ic.Eye size={13} /> {t('Properties')}
+                  </button>
                 </>
               )}
-              <button type="button" className="db-tool" aria-label={t('View settings')} onClick={(e) => openPanel('settings', e)}><Ic.Settings size={14} /></button>
-              <button type="button" className="db-tool" aria-label={t('Automations')} title={t('Buttons and automations')} onClick={(e) => openPanel('workflows', e)}><Ic.Flag size={14} /></button>
-              <button type="button" className="db-tool" aria-label={t('More')} onClick={(e) => openPanel('more', e)}><Ic.Dots size={14} /></button>
+              <button type="button" className="db-tool" aria-label={t('View settings')} onClick={(e) => openPanel('settings', e)}>
+                <Ic.Settings size={14} />
+              </button>
+              <button type="button" className="db-tool" aria-label={t('Automations')} title={t('Buttons and automations')} onClick={(e) => openPanel('workflows', e)}>
+                <Ic.Flag size={14} />
+              </button>
+              <button type="button" className="db-tool" aria-label={t('More')} onClick={(e) => openPanel('more', e)}>
+                <Ic.Dots size={14} />
+              </button>
             </div>
             {canEditRows && view.type !== 'form' && view.type !== 'chart' && (
               <div className="db-newbtn">
-                <button type="button" className="primary" onClick={() => void ctl.createRow({ edit: true }).then((r) => r && nav.openRow(r.pageId, 'side'))}><Ic.Plus size={13} /> {t('New')}</button>
-                <button type="button" className="primary caret" aria-label={t('Choose a template')} onClick={(e) => openPanel('new', e)}><Ic.Chevron size={11} /></button>
+                <button type="button" className="primary" onClick={() => void ctl.createRow({ edit: true }).then((r) => r && nav.openRow(r.pageId, 'side'))}>
+                  <Ic.Plus size={13} /> {t('New')}
+                </button>
+                <button type="button" className="primary caret" aria-label={t('Choose a template')} onClick={(e) => openPanel('new', e)}>
+                  <Ic.Chevron size={11} />
+                </button>
               </div>
             )}
           </div>
@@ -189,39 +289,66 @@ function Inner({ svc, container, fixedViewId, onOpenPage, inline }: { svc: Datab
         {saveFilterFor && (
           <div className="db-personal" role="status">
             <span>{t('You changed the filter or sort. Only you see this until you save it.')}</span>
-            {canSchema && <button type="button" onClick={async () => {
-              const r = await svc.tryExec([{ type: 'view.patch', payload: { viewId: view.id, filter: (effFilter as never) ?? null, sorts: effSorts as never } }])
-              if (r.ok) setPersonal(null)
-              else notify(errorText(r.code, r.message))
-            }}>{t('Save for everyone')}</button>}
-            <button type="button" onClick={() => setPersonal(null)}>{t('Reset')}</button>
+            {canSchema && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const r = await svc.tryExec([{ type: 'view.patch', payload: { viewId: view.id, filter: (effFilter as never) ?? null, sorts: effSorts as never } }])
+                  if (r.ok) setPersonal(null)
+                  else notify(errorText(r.code, r.message))
+                }}
+              >
+                {t('Save for everyone')}
+              </button>
+            )}
+            <button type="button" onClick={() => setPersonal(null)}>
+              {t('Reset')}
+            </button>
           </div>
         )}
         <div className="db-body">
-          <Suspense fallback={<div className="db-loading" role="status">{t('Loading view…')}</div>}>
+          <Suspense
+            fallback={
+              <div className="db-loading" role="status">
+                {t('Loading view…')}
+              </div>
+            }
+          >
             <View svc={svc} view={view} container={container} ctl={ctl} />
           </Suspense>
         </div>
         {notice && (
           <div className="db-notice" role="status">
             <span>{notice.msg}</span>
-            {notice.action && <button type="button" onClick={() => (notice.action!.run(), setNotice(null))}>{notice.action.label}</button>}
-            <button type="button" className="icon-btn" aria-label={t('Close')} onClick={() => setNotice(null)}><Ic.Close size={12} /></button>
+            {notice.action && (
+              <button type="button" onClick={() => (notice.action!.run(), setNotice(null))}>
+                {notice.action.label}
+              </button>
+            )}
+            <button type="button" className="icon-btn" aria-label={t('Close')} onClick={() => setNotice(null)}>
+              <Ic.Close size={12} />
+            </button>
           </div>
         )}
         {panel?.kind === 'filter' && src && (
           <Popover anchor={panel.rect} onClose={() => setPanel(null)}>
-            <div className="db-pop xwide" onClick={(e) => e.stopPropagation()}><FilterEditor svc={svc} sourceId={src.id} filter={effFilter} onChange={(f) => setPersonal({ ...(personal ?? {}), filter: f })} /></div>
+            <div className="db-pop xwide" onClick={(e) => e.stopPropagation()}>
+              <FilterEditor svc={svc} sourceId={src.id} filter={effFilter} onChange={(f) => setPersonal({ ...(personal ?? {}), filter: f })} />
+            </div>
           </Popover>
         )}
         {panel?.kind === 'sort' && src && (
           <Popover anchor={panel.rect} onClose={() => setPanel(null)}>
-            <div className="db-pop db-sort-pop" onClick={(e) => e.stopPropagation()}><SortEditor svc={svc} sourceId={src.id} sorts={effSorts} onChange={(s) => setPersonal({ ...(personal ?? {}), sorts: s })} /></div>
+            <div className="db-pop db-sort-pop" onClick={(e) => e.stopPropagation()}>
+              <SortEditor svc={svc} sourceId={src.id} sorts={effSorts} onChange={(s) => setPersonal({ ...(personal ?? {}), sorts: s })} />
+            </div>
           </Popover>
         )}
         {panel?.kind === 'group' && src && (
           <Popover anchor={panel.rect} onClose={() => setPanel(null)}>
-            <div className="db-pop wide" onClick={(e) => e.stopPropagation()}><GroupEditor svc={svc} sourceId={src.id} group={group} onChange={(g) => void ctl.patch({ group: g as Json })} /></div>
+            <div className="db-pop wide" onClick={(e) => e.stopPropagation()}>
+              <GroupEditor svc={svc} sourceId={src.id} group={group} onChange={(g) => void ctl.patch({ group: g as Json })} />
+            </div>
           </Popover>
         )}
         {panel?.kind === 'props' && src && <PropertiesPopover svc={svc} view={view} anchor={panel.rect} onClose={() => setPanel(null)} ctl={ctl} />}
@@ -231,26 +358,58 @@ function Inner({ svc, container, fixedViewId, onOpenPage, inline }: { svc: Datab
             <div className="ds-menu">
               <MenuLabel>{t('New with template')}</MenuLabel>
               <MenuItem label={t('Blank')} onClick={() => (setPanel(null), void ctl.createRow({ edit: true }).then((r) => r && nav.openRow(r.pageId, 'side')))} />
-              {svc.state.live('template').filter((tp) => tp.sourceId === src.id).map((tp) => (
-                <MenuItem key={tp.id} label={tp.name || t('Untitled template')} hint={view.defaultTemplateId === tp.id ? t('view default') : src.defaultTemplateId === tp.id ? t('default') : undefined} onClick={async () => {
-                  setPanel(null)
-                  const r = await svc.tryExec([{ type: 'row.create', payload: { sourceId: src.id, templateId: tp.id, viewId: view.id } }])
-                  if (r.ok) nav.openRow((r.result as { pageId: Id }).pageId, 'side')
-                  else notify(errorText(r.code, r.message))
-                }} />
-              ))}
+              {svc.state
+                .live('template')
+                .filter((tp) => tp.sourceId === src.id)
+                .map((tp) => (
+                  <MenuItem
+                    key={tp.id}
+                    label={tp.name || t('Untitled template')}
+                    hint={view.defaultTemplateId === tp.id ? t('view default') : src.defaultTemplateId === tp.id ? t('default') : undefined}
+                    onClick={async () => {
+                      setPanel(null)
+                      const r = await svc.tryExec([{ type: 'row.create', payload: { sourceId: src.id, templateId: tp.id, viewId: view.id } }])
+                      if (r.ok) nav.openRow((r.result as { pageId: Id }).pageId, 'side')
+                      else notify(errorText(r.code, r.message))
+                    }}
+                  />
+                ))}
               {canSchema && <MenuSep />}
-              {canSchema && <MenuItem icon={<Ic.Plus size={13} />} label={t('New template…')} onClick={async () => {
-                setPanel(null)
-                const name = await promptDialog({ title: t('New template'), message: t('Name'), initial: '' })
-                if (name === null || name === undefined) return
-                const r = await svc.tryExec([{ type: 'record.put', payload: { kind: 'template', body: { sourceId: src.id, name: name || t('Untitled template'), icon: null, cover: null, defaults: {}, body: null, nested: [], repeat: null, scheduleVersion: 1 } } }])
-                if (r.ok) notify(t('Template created. Open an item and use “Save as template” to fill it.'))
-              }} />}
+              {canSchema && (
+                <MenuItem
+                  icon={<Ic.Plus size={13} />}
+                  label={t('New template…')}
+                  onClick={async () => {
+                    setPanel(null)
+                    const name = await promptDialog({ title: t('New template'), message: t('Name'), initial: '' })
+                    if (name === null || name === undefined) return
+                    const r = await svc.tryExec([
+                      {
+                        type: 'record.put',
+                        payload: {
+                          kind: 'template',
+                          body: { sourceId: src.id, name: name || t('Untitled template'), icon: null, cover: null, defaults: {}, body: null, nested: [], repeat: null, scheduleVersion: 1 },
+                        },
+                      },
+                    ])
+                    if (r.ok) notify(t('Template created. Open an item and use “Save as template” to fill it.'))
+                  }}
+                />
+              )}
             </div>
           </Popover>
         )}
-        {panel?.kind === 'newview' && <NewViewMenu svc={svc} container={container} anchor={panel.rect} onClose={() => setPanel(null)} onCreated={setActiveId} source={src?.id ?? sources[0]?.id ?? null} sources={sources.map((s) => ({ id: s.id, name: s.name }))} />}
+        {panel?.kind === 'newview' && (
+          <NewViewMenu
+            svc={svc}
+            container={container}
+            anchor={panel.rect}
+            onClose={() => setPanel(null)}
+            onCreated={setActiveId}
+            source={src?.id ?? sources[0]?.id ?? null}
+            sources={sources.map((s) => ({ id: s.id, name: s.name }))}
+          />
+        )}
         {panel?.kind === 'viewmenu' && (
           <Popover anchor={panel.rect} onClose={() => setPanel(null)}>
             <ViewMenu svc={svc} view={svc.state.get('view', panel.arg!)!} views={views} onClose={() => setPanel(null)} notify={notify} onSelect={setActiveId} canSchema={canSchema} />
@@ -260,28 +419,52 @@ function Inner({ svc, container, fixedViewId, onOpenPage, inline }: { svc: Datab
           <Popover anchor={panel.rect} onClose={() => setPanel(null)}>
             <div className="ds-menu">
               {sources.map((s) => (
-                <MenuItem key={s.id} label={s.name} onClick={() => {
-                  setPanel(null)
-                  const target = views.find((v) => v.sourceId === s.id)
-                  if (target) setActiveId(target.id)
-                }} hint={s.id === src?.id ? '✓' : undefined} />
+                <MenuItem
+                  key={s.id}
+                  label={s.name}
+                  onClick={() => {
+                    setPanel(null)
+                    const target = views.find((v) => v.sourceId === s.id)
+                    if (target) setActiveId(target.id)
+                  }}
+                  hint={s.id === src?.id ? '✓' : undefined}
+                />
               ))}
               {canSchema && <MenuSep />}
-              {canSchema && <MenuItem icon={<Ic.Plus size={13} />} label={t('Add a source…')} onClick={async () => {
-                setPanel(null)
-                const name = await promptDialog({ title: t('New data source'), message: t('Name'), initial: '' })
-                if (!name) return
-                const r = await svc.tryExec([{ type: 'source.create', payload: { ownerContainerId: container.id, name } }])
-                if (r.ok) setActiveId((r.result as { viewId: Id }).viewId)
-                else notify(errorText(r.code, r.message))
-              }} />}
+              {canSchema && (
+                <MenuItem
+                  icon={<Ic.Plus size={13} />}
+                  label={t('Add a source…')}
+                  onClick={async () => {
+                    setPanel(null)
+                    const name = await promptDialog({ title: t('New data source'), message: t('Name'), initial: '' })
+                    if (!name) return
+                    const r = await svc.tryExec([{ type: 'source.create', payload: { ownerContainerId: container.id, name } }])
+                    if (r.ok) setActiveId((r.result as { viewId: Id }).viewId)
+                    else notify(errorText(r.code, r.message))
+                  }}
+                />
+              )}
             </div>
           </Popover>
         )}
-        {panel?.kind === 'more' && src && <ImportExportMenu svc={svc} container={container} source={src.id} view={view} anchor={panel.rect} onClose={() => setPanel(null)} notify={notify} canSchema={canSchema} />}
+        {panel?.kind === 'more' && src && (
+          <ImportExportMenu svc={svc} container={container} source={src.id} view={view} anchor={panel.rect} onClose={() => setPanel(null)} notify={notify} canSchema={canSchema} />
+        )}
         {panel?.kind === 'workflows' && src && <WorkflowPanel svc={svc} sourceId={src.id} anchor={panel.rect} onClose={() => setPanel(null)} notify={notify} focusProperty={null} />}
         {editWf && src && <WorkflowPanel svc={svc} sourceId={src.id} anchor={new DOMRect(280, 160, 10, 10)} onClose={() => setEditWf(null)} notify={notify} focusProperty={editWf.propertyId} />}
-        {peek && <RowPeek svc={svc} pageId={peek.id} mode={peek.mode} onClose={() => setPeek(null)} onOpenFull={(id) => (setPeek(null), onOpenPage(id))} onSwitch={(m) => setPeek({ id: peek.id, mode: m })} onNavigate={(id) => setPeek({ id, mode: peek.mode })} notify={notify} />}
+        {peek && (
+          <RowPeek
+            svc={svc}
+            pageId={peek.id}
+            mode={peek.mode}
+            onClose={() => setPeek(null)}
+            onOpenFull={(id) => (setPeek(null), onOpenPage(id))}
+            onSwitch={(m) => setPeek({ id: peek.id, mode: m })}
+            onNavigate={(id) => setPeek({ id, mode: peek.mode })}
+            notify={notify}
+          />
+        )}
       </section>
     </NavContext.Provider>
   )
@@ -336,17 +519,55 @@ function PropertiesPopover({ svc, view, anchor, onClose, ctl }: { svc: DatabaseS
             const on = visible.includes(id)
             return (
               <div className="db-prop-row" key={id}>
-                <button type="button" className="icon-btn" aria-label={on ? t('Hide') : t('Show')} aria-pressed={on} disabled={d.kind === 'title'} onClick={() => set(on ? visible.filter((x) => x !== id) : [...visible, id])}>{on ? <Ic.Eye size={14} /> : <span className="db-eye-off"><Ic.Eye size={14} /></span>}</button>
-                <KindIcon kind={d.kind} /> <span className="db-prop-name" dir="auto">{d.name}</span>
-                <button type="button" className="icon-btn" aria-label={t('Move up')} disabled={i === 0} onClick={() => { const n = [...order]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; set(n.filter((x) => visible.includes(x) || x === id)) }}><Ic.Up size={12} /></button>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label={on ? t('Hide') : t('Show')}
+                  aria-pressed={on}
+                  disabled={d.kind === 'title'}
+                  onClick={() => set(on ? visible.filter((x) => x !== id) : [...visible, id])}
+                >
+                  {on ? (
+                    <Ic.Eye size={14} />
+                  ) : (
+                    <span className="db-eye-off">
+                      <Ic.Eye size={14} />
+                    </span>
+                  )}
+                </button>
+                <KindIcon kind={d.kind} />{' '}
+                <span className="db-prop-name" dir="auto">
+                  {d.name}
+                </span>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label={t('Move up')}
+                  disabled={i === 0}
+                  onClick={() => {
+                    const n = [...order]
+                    ;[n[i - 1], n[i]] = [n[i], n[i - 1]]
+                    set(n.filter((x) => visible.includes(x) || x === id))
+                  }}
+                >
+                  <Ic.Up size={12} />
+                </button>
               </div>
             )
           })}
         </div>
         <div className="db-date-foot">
-          <button type="button" onClick={() => set(all.map((p) => p.id))}>{t('Show all')}</button>
-          <button type="button" onClick={() => set(all.filter((p) => p.kind === 'title').map((p) => p.id))}>{t('Hide all')}</button>
-          {ctl.canSchema && <button type="button" className="primary" onClick={(e) => setNewRect(e.currentTarget.getBoundingClientRect())}><Ic.Plus size={12} /> {t('New property')}</button>}
+          <button type="button" onClick={() => set(all.map((p) => p.id))}>
+            {t('Show all')}
+          </button>
+          <button type="button" onClick={() => set(all.filter((p) => p.kind === 'title').map((p) => p.id))}>
+            {t('Hide all')}
+          </button>
+          {ctl.canSchema && (
+            <button type="button" className="primary" onClick={(e) => setNewRect(e.currentTarget.getBoundingClientRect())}>
+              <Ic.Plus size={12} /> {t('New property')}
+            </button>
+          )}
         </div>
         {newRect && <NewPropertyPopover svc={svc} sourceId={view.sourceId!} anchor={newRect} onClose={() => setNewRect(null)} onCreated={(id) => set([...visible, id])} />}
       </div>
@@ -354,27 +575,72 @@ function PropertiesPopover({ svc, view, anchor, onClose, ctl }: { svc: DatabaseS
   )
 }
 
-function NewViewMenu({ svc, container, anchor, onClose, onCreated, source, sources }: { svc: DatabaseService; container: Container; anchor: DOMRect; onClose: () => void; onCreated: (id: Id) => void; source: Id | null; sources: { id: Id; name: string }[] }) {
+function NewViewMenu({
+  svc,
+  container,
+  anchor,
+  onClose,
+  onCreated,
+  source,
+  sources,
+}: {
+  svc: DatabaseService
+  container: Container
+  anchor: DOMRect
+  onClose: () => void
+  onCreated: (id: Id) => void
+  source: Id | null
+  sources: { id: Id; name: string }[]
+}) {
   const [src, setSrc] = useState(source)
   const [err, setErr] = useState<string | null>(null)
   const types = Object.keys(VIEW_LABEL) as ViewType[]
   const create = async (type: ViewType) => {
     const r = await svc.tryExec([{ type: 'view.create', payload: { containerId: container.id, sourceId: type === 'dashboard' ? null : src, type, name: t(VIEW_LABEL[type]) } }])
-    if (r.ok) { onCreated((r.result as { viewId: Id }).viewId); onClose() } else setErr(errorText(r.code, r.message))
+    if (r.ok) {
+      onCreated((r.result as { viewId: Id }).viewId)
+      onClose()
+    } else setErr(errorText(r.code, r.message))
   }
   return (
     <Popover anchor={anchor} onClose={onClose}>
       <div className="ds-menu">
         <MenuLabel>{t('Add a view')}</MenuLabel>
-        {sources.length > 1 && <div className="db-form"><Select value={src ?? ''} onChange={setSrc} title={t('Data source')} options={sources.map((source) => ({ value: source.id, label: source.name }))} /></div>}
-        {types.map((ty) => <MenuItem key={ty} icon={VIEW_ICON[ty]()} label={t(VIEW_LABEL[ty])} onClick={() => void create(ty)} />)}
-        {err && <div className="db-err" role="alert">{err}</div>}
+        {sources.length > 1 && (
+          <div className="db-form">
+            <Select value={src ?? ''} onChange={setSrc} title={t('Data source')} options={sources.map((source) => ({ value: source.id, label: source.name }))} />
+          </div>
+        )}
+        {types.map((ty) => (
+          <MenuItem key={ty} icon={VIEW_ICON[ty]()} label={t(VIEW_LABEL[ty])} onClick={() => void create(ty)} />
+        ))}
+        {err && (
+          <div className="db-err" role="alert">
+            {err}
+          </div>
+        )}
       </div>
     </Popover>
   )
 }
 
-function ViewMenu({ svc, view, views, onClose, notify, onSelect, canSchema }: { svc: DatabaseService; view: View; views: View[]; onClose: () => void; notify: DbNav['toast']; onSelect: (id: Id) => void; canSchema: boolean }) {
+function ViewMenu({
+  svc,
+  view,
+  views,
+  onClose,
+  notify,
+  onSelect,
+  canSchema,
+}: {
+  svc: DatabaseService
+  view: View
+  views: View[]
+  onClose: () => void
+  notify: DbNav['toast']
+  onSelect: (id: Id) => void
+  canSchema: boolean
+}) {
   const run = async (cmds: { type: string; payload: Json }[]) => {
     const r = await svc.tryExec(cmds)
     if (!r.ok) notify(errorText(r.code, r.message))
@@ -382,17 +648,48 @@ function ViewMenu({ svc, view, views, onClose, notify, onSelect, canSchema }: { 
   }
   return (
     <div className="ds-menu">
-      <MenuItem icon={<Ic.Pencil size={14} />} label={t('Rename')} disabled={!canSchema} onClick={async () => { onClose(); const n = await promptDialog({ title: t('Rename view'), message: t('Name'), initial: view.name }); if (n) await run([{ type: 'view.patch', payload: { viewId: view.id, name: n } }]) }} />
-      <MenuItem icon={<Ic.Copy size={14} />} label={t('Duplicate')} disabled={!canSchema} onClick={async () => { onClose(); const r = await run([{ type: 'view.duplicate', payload: { viewId: view.id } }]); if (r.ok) onSelect((r.result as { viewId: Id }).viewId) }} />
-      <MenuItem icon={<Ic.Link size={14} />} label={t('Copy link to view')} onClick={() => { onClose(); void navigator.clipboard?.writeText(`noviq://view/${view.id}`); notify(t('Link copied')) }} />
+      <MenuItem
+        icon={<Ic.Pencil size={14} />}
+        label={t('Rename')}
+        disabled={!canSchema}
+        onClick={async () => {
+          onClose()
+          const n = await promptDialog({ title: t('Rename view'), message: t('Name'), initial: view.name })
+          if (n) await run([{ type: 'view.patch', payload: { viewId: view.id, name: n } }])
+        }}
+      />
+      <MenuItem
+        icon={<Ic.Copy size={14} />}
+        label={t('Duplicate')}
+        disabled={!canSchema}
+        onClick={async () => {
+          onClose()
+          const r = await run([{ type: 'view.duplicate', payload: { viewId: view.id } }])
+          if (r.ok) onSelect((r.result as { viewId: Id }).viewId)
+        }}
+      />
+      <MenuItem
+        icon={<Ic.Link size={14} />}
+        label={t('Copy link to view')}
+        onClick={() => {
+          onClose()
+          void navigator.clipboard?.writeText(`noviq://view/${view.id}`)
+          notify(t('Link copied'))
+        }}
+      />
       <MenuSep />
-      <MenuItem icon={<Ic.Trash size={14} />} label={t('Delete view')} danger disabled={!canSchema || views.length < 2} onClick={async () => {
-        onClose()
-        if (!(await confirmDialog({ title: t('Delete the view “{n}”?', { n: view.name }), message: t('Only the view is removed; the data stays.'), danger: true, confirmLabel: t('Delete') }))) return
-        const r = await run([{ type: 'view.delete', payload: { viewId: view.id } }])
-        if (r.ok) onSelect(views.find((v) => v.id !== view.id)!.id)
-      }} />
+      <MenuItem
+        icon={<Ic.Trash size={14} />}
+        label={t('Delete view')}
+        danger
+        disabled={!canSchema || views.length < 2}
+        onClick={async () => {
+          onClose()
+          if (!(await confirmDialog({ title: t('Delete the view “{n}”?', { n: view.name }), message: t('Only the view is removed; the data stays.'), danger: true, confirmLabel: t('Delete') }))) return
+          const r = await run([{ type: 'view.delete', payload: { viewId: view.id } }])
+          if (r.ok) onSelect(views.find((v) => v.id !== view.id)!.id)
+        }}
+      />
     </div>
   )
 }
-

@@ -4,7 +4,10 @@ export interface AvailableUpdate {
   publishedAt: string | null
   prerelease: boolean
 }
-export interface UpdateProgress { downloaded: number; total: number | null }
+export interface UpdateProgress {
+  downloaded: number
+  total: number | null
+}
 export type UpdatePhase = 'idle' | 'checking' | 'current' | 'available' | 'downloading' | 'ready' | 'saving' | 'installing' | 'error'
 export interface UpdateState {
   phase: UpdatePhase
@@ -28,12 +31,18 @@ export function createUpdateController(deps: UpdateDeps) {
   let state: UpdateState = { phase: 'idle', update: null, progress: { downloaded: 0, total: null }, error: '', notice: false, dialog: false }
   const listeners = new Set<() => void>()
   const dismissed = new Set<string>() // remind again next app session, not on every background check
-  const set = (patch: Partial<UpdateState>) => { state = { ...state, ...patch }; listeners.forEach((f) => f()) }
+  const set = (patch: Partial<UpdateState>) => {
+    state = { ...state, ...patch }
+    listeners.forEach((f) => f())
+  }
   let checking = false
   let manualRequested = false
   const controller = {
     getSnapshot: () => state,
-    subscribe: (fn: () => void) => { listeners.add(fn); return () => void listeners.delete(fn) },
+    subscribe: (fn: () => void) => {
+      listeners.add(fn)
+      return () => void listeners.delete(fn)
+    },
     async check(manual = false) {
       manualRequested ||= manual
       if (checking || updateBusy(state.phase) || state.phase === 'ready' || state.dialog) return
@@ -61,8 +70,12 @@ export function createUpdateController(deps: UpdateDeps) {
       set({ phase: 'idle', update: null, notice: false, dialog: false })
       void controller.check()
     },
-    open() { if (state.update) set({ dialog: true, notice: false }) },
-    close() { if (!updateBusy(state.phase)) set({ dialog: false }) },
+    open() {
+      if (state.update) set({ dialog: true, notice: false })
+    },
+    close() {
+      if (!updateBusy(state.phase)) set({ dialog: false })
+    },
     dismiss() {
       if (state.update) dismissed.add(state.update.version)
       set({ notice: false, dialog: false })
@@ -75,7 +88,9 @@ export function createUpdateController(deps: UpdateDeps) {
       try {
         await deps.download(update.version, (progress) => set({ progress }))
         set({ phase: 'ready' })
-      } catch (e) { set({ phase: 'error', error: String(e) }) }
+      } catch (e) {
+        set({ phase: 'error', error: String(e) })
+      }
     },
     async install() {
       const update = state.update
@@ -88,8 +103,11 @@ export function createUpdateController(deps: UpdateDeps) {
         return
       }
       set({ phase: 'installing' })
-      try { await deps.install(update.version) }
-      catch (e) { set({ phase: 'error', error: String(e) }) }
+      try {
+        await deps.install(update.version)
+      } catch (e) {
+        set({ phase: 'error', error: String(e) })
+      }
     },
   }
   return controller

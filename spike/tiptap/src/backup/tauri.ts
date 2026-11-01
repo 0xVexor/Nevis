@@ -11,7 +11,9 @@ export const buildTauri = async () => new Blob([JSON.stringify(await invoke('vau
 async function vaultPayload(plan: BackupPlan) {
   {
     const entries: Record<string, { data: string; sha256: string }> = {}
-    const add = async (path: string, bytes: Uint8Array) => { entries[path] = { data: await toBase64(new Blob([bytes as BlobPart])), sha256: await digest(bytes as BufferSource) } }
+    const add = async (path: string, bytes: Uint8Array) => {
+      entries[path] = { data: await toBase64(new Blob([bytes as BlobPart])), sha256: await digest(bytes as BufferSource) }
+    }
     const enc = (v: unknown) => new TextEncoder().encode(JSON.stringify(v))
     for (const p of plan.data.pages) {
       if (!/^[a-zA-Z0-9_-]{1,80}$/.test(p.id)) throw new BackupError(t('The page structure is corrupted.'))
@@ -28,10 +30,18 @@ async function vaultPayload(plan: BackupPlan) {
 }
 
 /** `new`: a new workspace next to this one, called `name` (or as the backup itself). `here`: into the open workspace, after a copy of it is saved next to it. `merge`: the same, but a page that is newer here stays and nothing is replaced by an older version. */
-export interface RestoreTo { target?: 'new' | 'merge' | 'here'; name?: string }
+export interface RestoreTo {
+  target?: 'new' | 'merge' | 'here'
+  name?: string
+}
 
 /** What a merge did: pages added, pages replaced by a newer version, pages left alone, images added. */
-export interface MergeResult { added: number; updated: number; kept: number; files: number }
+export interface MergeResult {
+  added: number
+  updated: number
+  kept: number
+  files: number
+}
 
 export async function applyTauri(plan: BackupPlan, to: RestoreTo = {}) {
   const data = plan.summary.kind === 'vault' ? plan.data : await vaultPayload(plan)

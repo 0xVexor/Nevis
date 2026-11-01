@@ -24,7 +24,8 @@ export const BACKGROUND_GROUPS: { id: BackgroundGroup; label: string }[] = [
 
 const mesh = (base: string, ...stops: [string, number, number][]) => [...stops.map(([c, x, y]) => `radial-gradient(at ${x}% ${y}%, ${c} 0, transparent 55%)`), base].join(', ')
 const linear = (deg: number, ...stops: string[]) => `linear-gradient(${deg}deg, ${stops.join(', ')})`
-const svg = (body: string, w = 1200, h = 400) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${w} ${h}' preserveAspectRatio='none'>${body}</svg>`)}")`
+const svg = (body: string, w = 1200, h = 400) =>
+  `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${w} ${h}' preserveAspectRatio='none'>${body}</svg>`)}")`
 const hills = (fill: string, d: string) => svg(`<path fill='${fill}' d='${d}'/>`)
 const H1 = 'M0 400V270c150-90 300-90 450-10s300 80 450-10 200-50 300-20V400z'
 const H2 = 'M0 400V320c180-70 330-60 480 0s330 60 480-10 180-30 240-10V400z'
@@ -69,7 +70,12 @@ export const BACKGROUNDS: Background[] = [
   dark('deep-forest', 'Deep forest', mesh('#0b1a14', ['#165a40', 14, 20], ['#0f3d33', 88, 24], ['#1f6b4a', 50, 110])),
   dark('abyss', 'Abyss', mesh('#06121f', ['#0b3a66', 14, 20], ['#0a5a7a', 88, 24], ['#142a66', 50, 110])),
   dark('eclipse', 'Eclipse', mesh('#0d0a14', ['#4a2a7a', 70, 20], ['#2a1a4a', 14, 90], ['#1a0f2a', 50, 50])),
-  dark('stars', 'Stars', 'radial-gradient(1.5px 1.5px at 12% 22%, #fff 50%, transparent), radial-gradient(1px 1px at 30% 60%, #fff 50%, transparent), radial-gradient(1.5px 1.5px at 55% 30%, #fff 50%, transparent), radial-gradient(1px 1px at 72% 70%, #fff 50%, transparent), radial-gradient(1.5px 1.5px at 88% 25%, #fff 50%, transparent), ' + mesh('#0b0b24', ['#3a2fd6', 20, 110], ['#7a2fff', 90, 110])),
+  dark(
+    'stars',
+    'Stars',
+    'radial-gradient(1.5px 1.5px at 12% 22%, #fff 50%, transparent), radial-gradient(1px 1px at 30% 60%, #fff 50%, transparent), radial-gradient(1.5px 1.5px at 55% 30%, #fff 50%, transparent), radial-gradient(1px 1px at 72% 70%, #fff 50%, transparent), radial-gradient(1.5px 1.5px at 88% 25%, #fff 50%, transparent), ' +
+      mesh('#0b0b24', ['#3a2fd6', 20, 110], ['#7a2fff', 90, 110]),
+  ),
   /* patterns: quiet texture, readable text on top */
   pattern('dots', 'Dots', 'radial-gradient(circle at 1px 1px, rgba(20,23,28,0.18) 1px, transparent 0) 0 0 / 18px 18px, #f6f7f8'),
   pattern('grid', 'Grid', 'linear-gradient(rgba(20,23,28,0.07) 1px, transparent 1px) 0 0 / 28px 28px, linear-gradient(90deg, rgba(20,23,28,0.07) 1px, transparent 1px) 0 0 / 28px 28px, #fafbfb'),
@@ -77,13 +83,34 @@ export const BACKGROUNDS: Background[] = [
   pattern('diagonal', 'Diagonal', 'repeating-linear-gradient(45deg, rgba(20,23,28,0.06) 0 1px, transparent 1px 14px), #f6f7f8'),
   pattern('checker', 'Checker', 'conic-gradient(rgba(20,23,28,0.06) 25%, transparent 0 50%, rgba(20,23,28,0.06) 0 75%, transparent 0) 0 0 / 32px 32px, #fafbfb'),
   pattern('plus', 'Plus grid', plus + ' 0 0 / 40px 40px, #f8f9fa'),
-  pattern('contour', 'Contour', 'repeating-radial-gradient(circle at 25% 130%, transparent 0 16px, rgba(20,23,28,0.1) 17px 18px), repeating-radial-gradient(circle at 80% -20%, transparent 0 22px, rgba(20,23,28,0.08) 23px 24px), #f6f8f7'),
+  pattern(
+    'contour',
+    'Contour',
+    'repeating-radial-gradient(circle at 25% 130%, transparent 0 16px, rgba(20,23,28,0.1) 17px 18px), repeating-radial-gradient(circle at 80% -20%, transparent 0 22px, rgba(20,23,28,0.08) 23px 24px), #f6f8f7',
+  ),
   pattern('stripes', 'Stripes', 'repeating-linear-gradient(90deg, rgba(15,143,131,0.1) 0 18px, transparent 18px 36px), #f6fbfa'),
   pattern('dots-dark', 'Dots dark', 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.16) 1px, transparent 0) 0 0 / 18px 18px, #1b1e24', true),
-  pattern('grid-dark', 'Grid dark', 'linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px) 0 0 / 28px 28px, linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px) 0 0 / 28px 28px, #171a1f', true),
+  pattern(
+    'grid-dark',
+    'Grid dark',
+    'linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px) 0 0 / 28px 28px, linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px) 0 0 / 28px 28px, #171a1f',
+    true,
+  ),
   /* scenes: layered silhouettes, no image files */
-  { id: 'dawn-hills', label: 'Dawn hills', group: 'scene', dark: false, css: [hills('#c79bb8', H3), hills('#a97fae', H2), hills('#8a68a0', H1), linear(180, '#ffd9a8 0%', '#ffb38a 45%', '#b987b5 100%')].join(', ') },
-  { id: 'dusk-hills', label: 'Dusk hills', group: 'scene', dark: true, css: [hills('#1c2342', H3), hills('#2a3260', H2), hills('#3b4580', H1), linear(180, '#7a5fb0 0%', '#d98aa8 60%', '#ffb38a 100%')].join(', ') },
+  {
+    id: 'dawn-hills',
+    label: 'Dawn hills',
+    group: 'scene',
+    dark: false,
+    css: [hills('#c79bb8', H3), hills('#a97fae', H2), hills('#8a68a0', H1), linear(180, '#ffd9a8 0%', '#ffb38a 45%', '#b987b5 100%')].join(', '),
+  },
+  {
+    id: 'dusk-hills',
+    label: 'Dusk hills',
+    group: 'scene',
+    dark: true,
+    css: [hills('#1c2342', H3), hills('#2a3260', H2), hills('#3b4580', H1), linear(180, '#7a5fb0 0%', '#d98aa8 60%', '#ffb38a 100%')].join(', '),
+  },
   { id: 'sea', label: 'Sunrise sea', group: 'scene', dark: false, css: [hills('#4f9bd0', H3), hills('#79b9e0', H2), linear(180, '#ffe3b0 0%', '#ffc29a 50%', '#9ccbe8 100%')].join(', ') },
   { id: 'peaks', label: 'Peaks', group: 'scene', dark: false, css: [hills('#41507a', PEAKS), hills('#6d7fa8', H2), linear(180, '#8fb6e8 0%', '#cfe0f2 55%', '#f6ead9 100%')].join(', ') },
 ]

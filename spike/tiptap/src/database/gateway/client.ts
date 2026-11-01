@@ -24,9 +24,28 @@ export class GatewayError extends Error {
   }
 }
 
-export interface PublishedProperty { id: Id; kind: string; name: string; config: Json; choices?: { id: Id; label: string }[] }
-export interface PublicationPayload { title: string; form: FormConfig; properties: PublishedProperty[] }
-export interface InboxItem { id: string; publicationId: string; formVersion: number; submissionId: string; answers: Record<string, Json>; ackToken: string; createdAt: number; seq: number }
+export interface PublishedProperty {
+  id: Id
+  kind: string
+  name: string
+  config: Json
+  choices?: { id: Id; label: string }[]
+}
+export interface PublicationPayload {
+  title: string
+  form: FormConfig
+  properties: PublishedProperty[]
+}
+export interface InboxItem {
+  id: string
+  publicationId: string
+  formVersion: number
+  submissionId: string
+  answers: Record<string, Json>
+  ackToken: string
+  createdAt: number
+  seq: number
+}
 export type AckResult = { ok: true; operationId: string; pageId?: string } | { ok: false; reason: string }
 
 export class GatewayClient {
@@ -115,7 +134,11 @@ export function gatewayConfig(): GatewayConfig | null {
 
 export type PublicationLink = { id: string; publicId: string; version: number; url: string; viewId: Id }
 export const loadLinks = (): Record<Id, PublicationLink> => {
-  try { return JSON.parse(localStorage.getItem(PUBLICATIONS_KEY) ?? '{}') as Record<Id, PublicationLink> } catch { return {} }
+  try {
+    return JSON.parse(localStorage.getItem(PUBLICATIONS_KEY) ?? '{}') as Record<Id, PublicationLink>
+  } catch {
+    return {}
+  }
 }
 export const saveLink = (l: PublicationLink | null, viewId: Id) => {
   try {
@@ -123,7 +146,9 @@ export const saveLink = (l: PublicationLink | null, viewId: Id) => {
     if (l) all[viewId] = l
     else delete all[viewId]
     localStorage.setItem(PUBLICATIONS_KEY, JSON.stringify(all))
-  } catch { /* the link is a convenience; the gateway still has the publication */ }
+  } catch {
+    /* the link is a convenience; the gateway still has the publication */
+  }
 }
 
 // ───── building what gets published ─────
@@ -172,8 +197,14 @@ export async function pullInbox(svc: DatabaseService, client: GatewayClient, lin
       else {
         const view = svc.state.get('view', link.viewId)
         const cfg = view?.configuration as unknown as FormConfig | undefined
-        const r = view && cfg ? await svc.tryExec([{ type: 'form.submit', payload: { formViewId: link.viewId, version: cfg.version, submissionId: item.submissionId, answers: item.answers } }], { operationId: `inbox:${item.id}`, origin: 'import' }) : null
-        if (r && r.ok) result = { ok: true, operationId: r.commit.operationId, pageId: ((r.result as { pageId?: string } | null)?.pageId) ?? undefined }
+        const r =
+          view && cfg
+            ? await svc.tryExec([{ type: 'form.submit', payload: { formViewId: link.viewId, version: cfg.version, submissionId: item.submissionId, answers: item.answers } }], {
+                operationId: `inbox:${item.id}`,
+                origin: 'import',
+              })
+            : null
+        if (r && r.ok) result = { ok: true, operationId: r.commit.operationId, pageId: (r.result as { pageId?: string } | null)?.pageId ?? undefined }
         else result = { ok: false, reason: r ? `${r.code}: ${r.message}` : 'the form no longer exists' }
       }
       try {

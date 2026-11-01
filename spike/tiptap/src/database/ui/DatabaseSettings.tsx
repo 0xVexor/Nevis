@@ -10,11 +10,30 @@ import { MAP_KEY, loadTileConfig } from './MapView'
 
 export const WEEK_KEY = 'not.db.weekStart'
 export const GATEWAY_KEY = GATEWAY_URL_KEY
-const CHECK_TEXT: Record<GatewayStatus, string> = { ready: 'Connected', needs_setup: 'Needs setup', offline: 'The gateway cannot be reached', unauthorized: 'The gateway refused the token', unsupported: 'Not supported by this gateway', error: 'The gateway answered with an error' }
+const CHECK_TEXT: Record<GatewayStatus, string> = {
+  ready: 'Connected',
+  needs_setup: 'Needs setup',
+  offline: 'The gateway cannot be reached',
+  unauthorized: 'The gateway refused the token',
+  unsupported: 'Not supported by this gateway',
+  error: 'The gateway answered with an error',
+}
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
-const read = (k: string) => { try { return localStorage.getItem(k) ?? '' } catch { return '' } }
-const write = (k: string, v: string) => { try { v ? setPreference(k, v) : removePreference(k) } catch { /* settings are a convenience */ } }
+const read = (k: string) => {
+  try {
+    return localStorage.getItem(k) ?? ''
+  } catch {
+    return ''
+  }
+}
+const write = (k: string, v: string) => {
+  try {
+    v ? setPreference(k, v) : removePreference(k)
+  } catch {
+    /* settings are a convenience */
+  }
+}
 
 export function DatabaseSettings() {
   const tiles = loadTileConfig()
@@ -58,16 +77,45 @@ export function DatabaseSettings() {
         </Row>
       </Card>
       <div className="sx-actions">
-        <button type="button" className="primary" disabled={tplBad || gwBad} onClick={save}>{t('Save')}</button>
-        <button type="button" className="ghost-btn" disabled={!gw || !token || gwBad} onClick={() => { setCheck('checking'); void new GatewayClient({ url: gw, token }).status().then(setCheck) }}>{t('Check connection')}</button>
-        {saved && <span role="status" className="sx-note ok">{t('Saved')}</span>}
-        {check && <span role="status" className="sx-note">{check === 'checking' ? t('Checking…') : t(CHECK_TEXT[check])}</span>}
+        <button type="button" className="primary" disabled={tplBad || gwBad} onClick={save}>
+          {t('Save')}
+        </button>
+        <button
+          type="button"
+          className="ghost-btn"
+          disabled={!gw || !token || gwBad}
+          onClick={() => {
+            setCheck('checking')
+            void new GatewayClient({ url: gw, token }).status().then(setCheck)
+          }}
+        >
+          {t('Check connection')}
+        </button>
+        {saved && (
+          <span role="status" className="sx-note ok">
+            {t('Saved')}
+          </span>
+        )}
+        {check && (
+          <span role="status" className="sx-note">
+            {check === 'checking' ? t('Checking…') : t(CHECK_TEXT[check])}
+          </span>
+        )}
       </div>
       <Card icon={<Ic.Check />} title={t('Status')}>
         <ul className="db-status">
-          <li><b>{t('On this device')}</b><span>{t('Working')}</span></li>
-          <li><b>{t('Gateway (public forms, outbound messages)')}</b><span>{gw && !gwBad ? t('Address saved; not verified from here') : t('Not set up')}</span></li>
-          <li><b>{t('Connected providers')}</b><span>{t('Not connected')}</span></li>
+          <li>
+            <b>{t('On this device')}</b>
+            <span>{t('Working')}</span>
+          </li>
+          <li>
+            <b>{t('Gateway (public forms, outbound messages)')}</b>
+            <span>{gw && !gwBad ? t('Address saved; not verified from here') : t('Not set up')}</span>
+          </li>
+          <li>
+            <b>{t('Connected providers')}</b>
+            <span>{t('Not connected')}</span>
+          </li>
         </ul>
       </Card>
     </div>
@@ -76,14 +124,22 @@ export function DatabaseSettings() {
 
 const Card = ({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) => (
   <section className="sx-card">
-    <header className="sx-card-head"><span className="sx-ic">{icon}</span><div><h3>{title}</h3></div></header>
+    <header className="sx-card-head">
+      <span className="sx-ic">{icon}</span>
+      <div>
+        <h3>{title}</h3>
+      </div>
+    </header>
     <div className="sx-card-body">{children}</div>
   </section>
 )
 
 const Row = ({ label, hint, children, wide }: { label: string; hint?: string; children: ReactNode; wide?: boolean }) => (
   <div className={'sx-row' + (wide ? ' wide' : '')}>
-    <div className="sx-tx"><b>{label}</b>{hint && <small>{hint}</small>}</div>
+    <div className="sx-tx">
+      <b>{label}</b>
+      {hint && <small>{hint}</small>}
+    </div>
     <div className="sx-ctl">{children}</div>
   </div>
 )

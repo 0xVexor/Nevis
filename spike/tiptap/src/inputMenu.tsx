@@ -19,19 +19,35 @@ function FieldMenu({ el, at }: { el: Field; at: DOMRect }) {
     <Popover anchor={at} onClose={close}>
       <div className="ds-menu ctx-menu">
         <div className="menu-quick">
-          <button title={t('Cut') + '  ' + shortcutLabel(['Mod', 'X'])} disabled={!hasSel || !editable} onClick={run(() => document.execCommand('cut'))}><Ic.Cut size={16} /></button>
-          <button title={t('Copy') + '  ' + shortcutLabel(['Mod', 'C'])} disabled={!hasSel} onClick={run(() => document.execCommand('copy'))}><Ic.Copy size={16} /></button>
+          <button title={t('Cut') + '  ' + shortcutLabel(['Mod', 'X'])} disabled={!hasSel || !editable} onClick={run(() => document.execCommand('cut'))}>
+            <Ic.Cut size={16} />
+          </button>
+          <button title={t('Copy') + '  ' + shortcutLabel(['Mod', 'C'])} disabled={!hasSel} onClick={run(() => document.execCommand('copy'))}>
+            <Ic.Copy size={16} />
+          </button>
           <button
             title={t('Paste') + '  ' + shortcutLabel(['Mod', 'V'])}
             disabled={!editable}
-            onClick={run(() => void navigator.clipboard?.readText().then((s) => s && document.execCommand('insertText', false, s)).catch(() => {}))}
+            onClick={run(
+              () =>
+                void navigator.clipboard
+                  ?.readText()
+                  .then((s) => s && document.execCommand('insertText', false, s))
+                  .catch(() => {}),
+            )}
           >
             <Ic.Paste size={16} />
           </button>
         </div>
         <MenuItem icon={<Ic.SelectAll />} label={t('Select all')} hint="Ctrl+A" onClick={run(() => el.select())} />
         {hasSel && <MenuSep />}
-        {hasSel && <MenuItem icon={<Ic.Search />} label={t('Search for “{text}”', { text: el.value.slice(el.selectionStart ?? 0, el.selectionEnd ?? 0).slice(0, 20) })} onClick={run(() => window.dispatchEvent(new CustomEvent('open-search', { detail: el.value.slice(el.selectionStart ?? 0, el.selectionEnd ?? 0) })))} />}
+        {hasSel && (
+          <MenuItem
+            icon={<Ic.Search />}
+            label={t('Search for “{text}”', { text: el.value.slice(el.selectionStart ?? 0, el.selectionEnd ?? 0).slice(0, 20) })}
+            onClick={run(() => window.dispatchEvent(new CustomEvent('open-search', { detail: el.value.slice(el.selectionStart ?? 0, el.selectionEnd ?? 0) })))}
+          />
+        )}
       </div>
     </Popover>
   )

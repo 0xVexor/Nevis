@@ -1,5 +1,7 @@
 // The Excalidraw canvas used by both the page "Drawing" block (in a modal) and Board pages (inline).
 // Loaded on demand only: it pulls in the whole library.
+import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types'
+import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import './editor/excalidrawAssets' // sets the font path; must come before the library
 import { Excalidraw, MainMenu } from '@excalidraw/excalidraw'
 import '@excalidraw/excalidraw/index.css'
@@ -9,8 +11,8 @@ import { getLang } from './i18n'
 
 interface Props {
   initial: SceneData | null
-  onApi: (api: any) => void
-  onChange?: (elements: readonly any[], appState: any, files: any) => void
+  onApi: (api: ExcalidrawImperativeAPI) => void
+  onChange?: (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => void
   viewMode?: boolean
 }
 
@@ -20,10 +22,10 @@ export default function DrawingCanvas({ initial, onApi, onChange, viewMode }: Pr
     <Excalidraw
       excalidrawAPI={onApi}
       initialData={{
-        elements: (initial?.elements ?? []) as any,
+        elements: initial?.elements ?? [],
         // Persian reads from the right, so new text starts right-aligned (it can still be changed per text)
-        appState: { ...(initial?.appState ?? {}), ...(getLang() === 'fa' ? { currentItemTextAlign: 'right' } : {}), collaborators: new Map() } as any,
-        files: (initial?.files ?? {}) as any,
+        appState: { ...(initial?.appState ?? {}), ...(getLang() === 'fa' ? { currentItemTextAlign: 'right' as const } : {}), collaborators: new Map() },
+        files: initial?.files ?? {},
         libraryItems: loadLibrary(),
         scrollToContent: !!initial,
       }}

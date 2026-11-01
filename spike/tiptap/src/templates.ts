@@ -63,11 +63,7 @@ const TEMPLATES: Template[] = [
     desc: 'دستور جلسه، تصمیم‌ها و اقدام‌ها',
     icon: '🗓️',
     pageTitle: 'جلسه — ',
-    html: [
-      '<h2>دستور جلسه</h2><ul><li></li></ul>',
-      '<h2>تصمیم‌ها</h2>' + callout('✅', ''),
-      '<h2>اقدام‌ها</h2><ul data-type="taskList">' + task('') + '</ul>',
-    ].join(''),
+    html: ['<h2>دستور جلسه</h2><ul><li></li></ul>', '<h2>تصمیم‌ها</h2>' + callout('✅', ''), '<h2>اقدام‌ها</h2><ul data-type="taskList">' + task('') + '</ul>'].join(''),
   },
   {
     id: 'todo',
@@ -127,11 +123,7 @@ const EN: Record<string, Pick<Template, 'title' | 'desc' | 'pageTitle' | 'html'>
     title: 'Meeting notes',
     desc: 'Agenda, decisions and action items',
     pageTitle: 'Meeting — ',
-    html: [
-      '<h2>Agenda</h2><ul><li></li></ul>',
-      '<h2>Decisions</h2>' + callout('✅', ''),
-      '<h2>Action items</h2><ul data-type="taskList">' + task('') + '</ul>',
-    ].join(''),
+    html: ['<h2>Agenda</h2><ul><li></li></ul>', '<h2>Decisions</h2>' + callout('✅', ''), '<h2>Action items</h2><ul data-type="taskList">' + task('') + '</ul>'].join(''),
   },
   todo: {
     title: 'To-do list',

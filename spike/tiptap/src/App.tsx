@@ -1,8 +1,9 @@
+import { cssVars } from './cssVars'
 import { setPreference } from './preferenceEvents'
 import { UpdateCenter } from './UpdateUI'
 import { shortcutLabel } from './shortcuts'
 import { bindingHint, matches } from './shortcutBindings'
-import { Suspense, lazy, useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { repo, gcFiles, TRASH_DAYS } from './store'
 import type { Cover, Page, PageStatus } from './repo'
 import { SETTINGS_TABS, SettingsView, type SettingsTab } from './SettingsPage'
@@ -29,7 +30,7 @@ import { Explorer } from './Explorer'
 import { Templates, TEMPLATE_GLYPH, BOARD_TEMPLATE, DATABASE_TEMPLATE } from './TemplateGallery'
 import { getTemplates } from './templates'
 import { PageView, type SaveState } from './PageView'
-import { buildIndex, type PageIndex } from './pageIndex'
+import { buildIndex } from './pageIndex'
 import { ReaderBar, loadReaderCfg, type ReaderCfg } from './ReaderBar'
 import { Vaults } from './Vaults'
 import { WorkspaceCard } from './VaultSwitcher'
@@ -52,6 +53,7 @@ import { printPage } from './print'
 import { confirmDialog } from './dialog'
 import { OPEN_PAGE, PAGES_CHANGED } from './editor/pageLink'
 import { t } from './i18n'
+import { CompactList, TreeRow } from './PageTree'
 
 const PAGE_W = { min: 640, max: 1800, def: 1400, step: 80 }
 
@@ -71,128 +73,9 @@ const put = (k: string, v: unknown) => {
   }
 }
 
-interface RowProps {
-  page: Page
-  depth: number
-  index: PageIndex
-  currentId: string
-  collapsed: Set<string>
-  onToggle: (id: string) => void
-  onOpen: (id: string) => void
-  onAdd: (parentId: string) => void
-  onMenu: (id: string, rect: DOMRect) => void
-  onMove: (id: string, parentId: string | null, beforeId: string | null) => void
-}
-
-const NO_KIDS: Page[] = []
-const isBox = (index: PageIndex, p: Page) => p.kind === 'folder' || (index.kids.get(p.id) ?? NO_KIDS).length > 0 // holds other pages
 const SIDE_MIN = 160
 const SIDE_MAX = 600
 const BIG_TREE = 150 // pages from which the sidebar tree starts collapsed
-
-/** The compact page list (like IntelliJ's flattened packages): no nesting. Each folder / page with subpages is one row showing its whole path, with its plain pages listed under it. */
-function CompactList(props: Omit<RowProps, 'page' | 'depth'> & { roots: Page[] }) {
-  const { index, roots, currentId, collapsed } = props
-  const label = (p: Page) => p.title || (p.kind === 'folder' ? t('Untitled folder') : t('Untitled'))
-  const file = (p: Page) => (
-    <div key={p.id} dir={dirOf(label(p))} className={'row tree cmp-file' + (p.id === currentId ? ' cur' : '')} onClick={() => props.onOpen(p.id)} onContextMenu={(e) => (e.preventDefault(), e.stopPropagation(), props.onMenu(p.id, new DOMRect(e.clientX, e.clientY, 0, 0)))}>
-      <span className="ic"><PageIcon page={p} /></span>
-      <span className="ntitle" dir="auto">{label(p)}</span>
-      <span className="acts">
-        <button title={t('Options')} onClick={(e) => (e.stopPropagation(), props.onMenu(p.id, e.currentTarget.getBoundingClientRect()))}><Ic.Dots size={16} /></button>
-      </span>
-    </div>
-  )
-  const out: ReactNode[] = roots.filter((p) => !isBox(index, p)).map(file)
-  const walk = (p: Page, path: string[]) => {
-    const kids = index.kids.get(p.id) ?? NO_KIDS
-    const files = kids.filter((k) => !isBox(index, k))
-    const open = !collapsed.has(p.id)
-    const folder = p.kind === 'folder'
-    out.push(
-      <div key={p.id} dir={dirOf(label(p))} className={'row tree cmp-head' + (folder ? ' folder' : '') + (p.id === currentId ? ' cur' : '')} onClick={() => (folder ? props.onToggle(p.id) : props.onOpen(p.id))} onContextMenu={(e) => (e.preventDefault(), e.stopPropagation(), props.onMenu(p.id, new DOMRect(e.clientX, e.clientY, 0, 0)))}>
-        <button className={'twisty' + (open ? ' open' : '')} style={{ visibility: files.length ? 'visible' : 'hidden' }} onClick={(e) => (e.stopPropagation(), props.onToggle(p.id))} aria-label={t('Expand or collapse')}>
-          <Ic.Chevron size={14} />
-        </button>
-        <span className="ic"><PageIcon page={p} /></span>
-        <span className="ntitle" dir="auto" title={[...path, label(p)].join(' / ')}>
-          {path.length > 0 && <i className="cmp-path">{(path.length > 2 ? '… / ' : '') + path.slice(-2).join(' / ')} / </i>}
-          {label(p)}
-        </span>
-        {files.length > 0 && <span className="tree-count">{String(files.length).padStart(2, '0')}</span>}
-        <span className="acts">
-          <button title={t('Options')} onClick={(e) => (e.stopPropagation(), props.onMenu(p.id, e.currentTarget.getBoundingClientRect()))}><Ic.Dots size={16} /></button>
-          <button title={folder ? t('New page in folder') : t('New subpage')} onClick={(e) => (e.stopPropagation(), props.onAdd(p.id))}><Ic.Plus size={16} /></button>
-        </span>
-      </div>,
-    )
-    if (open) files.forEach((f) => out.push(file(f)))
-    kids.filter((k) => isBox(index, k)).forEach((k) => walk(k, [...path, label(p)]))
-  }
-  roots.filter((p) => isBox(index, p)).forEach((p) => walk(p, []))
-  return <>{out}</>
-}
-
-function TreeRow(props: RowProps) {
-  const { page, depth, index, currentId, collapsed } = props
-  const [zone, setZone] = useState<'before' | 'inside' | 'after' | null>(null)
-  const kids = index.kids.get(page.id) ?? NO_KIDS
-  const open = !collapsed.has(page.id)
-  const folder = page.kind === 'folder'
-  const leaf = depth > 0 && !folder && !kids.length // nested plain pages: just a title, hung on the guide line
-  const count = kids.length ? (index.count.get(page.id) ?? 0) : 0
-  return (
-    <>
-      <div
-        className={'row tree' + (folder ? ' folder' : '') + (leaf ? ' leaf' : '') + (page.id === currentId ? ' cur' : '') + (zone ? ' drop-' + zone : '')}
-        dir={dirOf(page.title)}
-        draggable
-        onClick={() => (folder ? props.onToggle(page.id) : props.onOpen(page.id))}
-        onContextMenu={(e) => (e.preventDefault(), e.stopPropagation(), props.onMenu(page.id, new DOMRect(e.clientX, e.clientY, 0, 0)))}
-        onDragStart={(e) => {
-          e.dataTransfer.setData('application/x-page', page.id)
-          e.dataTransfer.effectAllowed = 'move'
-        }}
-        onDragOver={(e) => {
-          if (!e.dataTransfer.types.includes('application/x-page')) return
-          e.preventDefault()
-          const r = e.currentTarget.getBoundingClientRect()
-          const y = (e.clientY - r.top) / r.height
-          setZone(y < 0.28 ? 'before' : y > 0.72 ? 'after' : 'inside')
-        }}
-        onDragLeave={() => setZone(null)}
-        onDrop={(e) => {
-          e.preventDefault()
-          const dragged = e.dataTransfer.getData('application/x-page')
-          const z = zone
-          setZone(null)
-          if (!dragged || !z || dragged === page.id) return
-          if (z === 'inside') return props.onMove(dragged, page.id, null)
-          const sibs = (index.kids.get(page.parentId ?? null) ?? NO_KIDS).filter((p) => p.id !== dragged)
-          const i = sibs.findIndex((s) => s.id === page.id)
-          props.onMove(dragged, page.parentId, z === 'before' ? page.id : (sibs[i + 1]?.id ?? null))
-        }}
-      >
-        <button
-          className={'twisty' + (open ? ' open' : '')}
-          style={{ visibility: kids.length || folder ? 'visible' : 'hidden' }}
-          onClick={(e) => (e.stopPropagation(), props.onToggle(page.id))}
-          aria-label={t('Expand or collapse')}
-        >
-          <Ic.Chevron size={14} />
-        </button>
-        <span className="ic"><PageIcon page={page} /></span>
-        <span className="ntitle" dir="auto">{page.title || (folder ? t('Untitled folder') : t('Untitled'))}</span>
-        {count > 0 && <span className="tree-count">{String(count).padStart(2, '0')}</span>}
-        <span className="acts">
-          <button title={t('Options')} onClick={(e) => (e.stopPropagation(), props.onMenu(page.id, e.currentTarget.getBoundingClientRect()))}><Ic.Dots size={16} /></button>
-          <button title={folder ? t('New page in folder') : t('New subpage')} onClick={(e) => (e.stopPropagation(), props.onAdd(page.id))}><Ic.Plus size={16} /></button>
-        </span>
-      </div>
-      {open && kids.length > 0 && <div className="tree-kids">{kids.map((k) => <TreeRow key={k.id} {...props} page={k} depth={depth + 1} />)}</div>}
-    </>
-  )
-}
 
 export default function App() {
   const [pages, setPages] = useState<Page[]>(() => repo.list())
@@ -204,7 +87,11 @@ export default function App() {
   const goingTo = useRef<{ view: string; id: string } | null>(null)
   const [, bumpHist] = useState(0)
   const scrollerEl = () => document.querySelector<HTMLElement>('.scroller')
-  const saveScroll = () => { const e = hist.current[hpos.current]; const sc = scrollerEl(); if (e && sc) e.scroll = sc.scrollTop }
+  const saveScroll = () => {
+    const e = hist.current[hpos.current]
+    const sc = scrollerEl()
+    if (e && sc) e.scroll = sc.scrollTop
+  }
   const setView = useCallback((v: Parameters<typeof setViewRaw>[0]) => (saveScroll(), setViewRaw(v)), []) // eslint-disable-line react-hooks/exhaustive-deps
   const [panelOpen, setPanelOpen] = useState<boolean>(() => store('not.panel.v2', false))
   const [coverMenu, setCoverMenu] = useState<DOMRect | null>(null)
@@ -231,11 +118,25 @@ export default function App() {
     setCurrentIdRaw(to.id)
     bumpHist((k) => k + 1)
     // the page body mounts a moment after the switch: put the scroll back once it has its height
-    for (const ms of [0, 60, 160, 320, 600]) window.setTimeout(() => { const sc = scrollerEl(); if (sc && hist.current[hpos.current] === to) sc.scrollTop = to.scroll }, ms)
+    for (const ms of [0, 60, 160, 320, 600])
+      window.setTimeout(() => {
+        const sc = scrollerEl()
+        if (sc && hist.current[hpos.current] === to) sc.scrollTop = to.scroll
+      }, ms)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    const mouse = (e: MouseEvent) => { if (e.button === 3 || e.button === 4) { e.preventDefault(); if (e.type === 'mouseup') goHist(e.button === 3 ? -1 : 1) } }
-    const key = (e: KeyboardEvent) => { if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !(e.target as HTMLElement | null)?.closest?.('input, textarea, [contenteditable="true"]')) { e.preventDefault(); goHist((e.key === 'ArrowLeft') === (document.documentElement.dir !== 'rtl') ? -1 : 1) } }
+    const mouse = (e: MouseEvent) => {
+      if (e.button === 3 || e.button === 4) {
+        e.preventDefault()
+        if (e.type === 'mouseup') goHist(e.button === 3 ? -1 : 1)
+      }
+    }
+    const key = (e: KeyboardEvent) => {
+      if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !(e.target as HTMLElement | null)?.closest?.('input, textarea, [contenteditable="true"]')) {
+        e.preventDefault()
+        goHist((e.key === 'ArrowLeft') === (document.documentElement.dir !== 'rtl') ? -1 : 1)
+      }
+    }
     window.addEventListener('mouseup', mouse)
     window.addEventListener('auxclick', mouse)
     window.addEventListener('keydown', key)
@@ -270,7 +171,10 @@ export default function App() {
   const [favOver, setFavOver] = useState(false)
   useEffect(() => {
     // deferred: changing the DOM inside dragstart makes the browser cancel the drag
-    const start = (e: DragEvent) => { const on = !!(e.target as HTMLElement | null)?.closest?.('.row.tree'); window.setTimeout(() => setDragPage(on), 0) }
+    const start = (e: DragEvent) => {
+      const on = !!(e.target as HTMLElement | null)?.closest?.('.row.tree')
+      window.setTimeout(() => setDragPage(on), 0)
+    }
     const end = () => (setDragPage(false), setFavOver(false))
     window.addEventListener('dragstart', start)
     window.addEventListener('dragend', end)
@@ -279,7 +183,9 @@ export default function App() {
   }, [])
   const [naming, setNaming] = useState<{ title: string; label: string; initial: string; action: string; onSubmit: (name: string) => void } | null>(null)
   const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>() // the tab a command asked for; only while the settings are open
-  useEffect(() => { if (view !== 'settings') setSettingsTab(undefined) }, [view])
+  useEffect(() => {
+    if (view !== 'settings') setSettingsTab(undefined)
+  }, [view])
   const [folderOpen, setFolderOpen] = useState(false)
   const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null)
   const [tableOpen, setTableOpen] = useState(false)
@@ -383,8 +289,18 @@ export default function App() {
       if (wider || matches(e, 'narrowerColumn')) {
         e.preventDefault()
         const d = wider ? PAGE_W.step : -PAGE_W.step
-        if (readerRef.current) setReaderCfg((c) => { const n = { ...c, width: Math.min(1400, Math.max(480, c.width + d)) }; setPreference('not.reader.cfg', JSON.stringify(n)); return n })
-        else setPageW((w) => { const n = Math.min(PAGE_W.max, Math.max(PAGE_W.min, w + d)); setPreference('not.page.width', String(n)); return n })
+        if (readerRef.current)
+          setReaderCfg((c) => {
+            const n = { ...c, width: Math.min(1400, Math.max(480, c.width + d)) }
+            setPreference('not.reader.cfg', JSON.stringify(n))
+            return n
+          })
+        else
+          setPageW((w) => {
+            const n = Math.min(PAGE_W.max, Math.max(PAGE_W.min, w + d))
+            setPreference('not.page.width', String(n))
+            return n
+          })
       }
       if (matches(e, 'reader')) (e.preventDefault(), setReader((r) => !r)) // physical key: works with the Persian layout
       if (e.key === 'Escape' && !document.querySelector('.lightbox, .palette-overlay')) setReader(false)
@@ -407,11 +323,15 @@ export default function App() {
   }, [])
 
   const addDatabase = (parentId: string | null) => {
-    void import('./database/runtime').then((m) => m.getDatabase()).then((svc) => svc.one<{ hostPageId: string }>('database.create', { parentPageId: parentId, title: t('Untitled database') })).then((r) => {
-      if (parentId) expand(parentId)
-      refresh()
-      setCurrentId(r.hostPageId)
-    }).catch((e) => setToast({ msg: String(e?.message ?? e) }))
+    void import('./database/runtime')
+      .then((m) => m.getDatabase())
+      .then((svc) => svc.one<{ hostPageId: string }>('database.create', { parentPageId: parentId, title: t('Untitled database') }))
+      .then((r) => {
+        if (parentId) expand(parentId)
+        refresh()
+        setCurrentId(r.hostPageId)
+      })
+      .catch((e) => setToast({ msg: String(e?.message ?? e) }))
   }
   const add = (parentId: string | null, kind?: 'board' | 'todo') => {
     const p = repo.create(parentId, kind)
@@ -436,7 +356,7 @@ export default function App() {
     const tp = getTemplates().find((x) => x.id === id)
     if (tp) {
       repo.update(p.id, { title: tp.pageTitle, icon: 'i:' + (TEMPLATE_GLYPH[tp.id] ?? 'page') })
-      ;(window as any).__pendingTpl = { pageId: p.id, id }
+      window.__pendingTpl = { pageId: p.id, id }
     }
     refresh()
     setView('page')
@@ -444,7 +364,10 @@ export default function App() {
   }
   const addFolder = (parentId: string | null) =>
     setNaming({
-      title: t('New folder'), label: t('Folder name:'), initial: t('New folder'), action: t('Create'),
+      title: t('New folder'),
+      label: t('Folder name:'),
+      initial: t('New folder'),
+      action: t('Create'),
       onSubmit: (name) => {
         const f = repo.create(parentId, 'folder')
         repo.update(f.id, { title: name })
@@ -476,12 +399,32 @@ export default function App() {
     const p = repo.get(id)
     if (!p) return
     const c = repo.create(p.parentId, p.kind)
-    repo.update(c.id, { title: p.title ? p.title + ' ' + t('(copy)') : '', icon: p.icon, cover: p.cover, titleDir: p.titleDir, tags: p.tags ? [...p.tags] : undefined, status: p.status, content: structuredClone(p.content) }, { copyContent: true })
+    repo.update(
+      c.id,
+      {
+        title: p.title ? p.title + ' ' + t('(copy)') : '',
+        icon: p.icon,
+        cover: p.cover,
+        titleDir: p.titleDir,
+        tags: p.tags ? [...p.tags] : undefined,
+        status: p.status,
+        content: structuredClone(p.content),
+      },
+      { copyContent: true },
+    )
     refresh()
     if (p.kind !== 'folder') setCurrentId(c.id)
   }
   const purge = async (p: Page) => {
-    if (!(await confirmDialog({ title: t('Delete permanently'), message: t('“{title}” will be deleted permanently. This cannot be undone.', { title: p.title || t('Untitled') }), confirmLabel: t('Delete permanently'), danger: true }))) return
+    if (
+      !(await confirmDialog({
+        title: t('Delete permanently'),
+        message: t('“{title}” will be deleted permanently. This cannot be undone.', { title: p.title || t('Untitled') }),
+        confirmLabel: t('Delete permanently'),
+        danger: true,
+      }))
+    )
+      return
     repo.purge(p.id)
     await gcFiles()
     refresh()
@@ -506,8 +449,18 @@ export default function App() {
     refresh()
   }
   // state updaters must be pure (React StrictMode runs them twice): copy the set instead of mutating it
-  const toggle = (id: string) => setCollapsed((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const expand = (id: string) => setCollapsed((s) => { const n = new Set(s); n.delete(id); return n })
+  const toggle = (id: string) =>
+    setCollapsed((s) => {
+      const n = new Set(s)
+      n.has(id) ? n.delete(id) : n.add(id)
+      return n
+    })
+  const expand = (id: string) =>
+    setCollapsed((s) => {
+      const n = new Set(s)
+      n.delete(id)
+      return n
+    })
   const move = (id: string, parentId: string | null, beforeId: string | null) => {
     if (repo.move(id, parentId, beforeId)) {
       if (parentId) expand(parentId)
@@ -519,17 +472,37 @@ export default function App() {
     const name = `notes-backup-${stamp()}.json`
     try {
       if (!isTauri) return download(name, await buildBackup(repo))
-      await saveBeforeUpdate(); await repo.flushBeforeUpdate(); await flushPreferences()
+      await saveBeforeUpdate()
+      await repo.flushBeforeUpdate()
+      await flushPreferences()
       const path = await saveDialog({ defaultPath: name, filters: [{ name: 'JSON', extensions: ['json'] }] })
       if (path) await invoke('vault_backup_save', { path })
-    } catch (error) { setToast({ msg: t('Backup failed') + ': ' + String(error) }) }
+    } catch (error) {
+      setToast({ msg: t('Backup failed') + ': ' + String(error) })
+    }
   }
   useEffect(() => {
     const r = takeRestored()
-    if (r?.merged) setToast({ msg: t('Merged: {added} new pages, {updated} updated, {kept} kept as they were. Your notes before were saved as {copy}.', { added: r.merged.added, updated: r.merged.updated, kept: r.merged.kept, copy: r.copy ?? '' }) })
-    else if (r) setToast({ msg: r.copy ? t('{pages} pages and {files} files restored. Your previous notes were saved as {copy}.', { pages: r.pages, files: r.files, copy: r.copy }) : t('{pages} pages and {files} files restored', { pages: r.pages, files: r.files }) })
+    if (r?.merged)
+      setToast({
+        msg: t('Merged: {added} new pages, {updated} updated, {kept} kept as they were. Your notes before were saved as {copy}.', {
+          added: r.merged.added,
+          updated: r.merged.updated,
+          kept: r.merged.kept,
+          copy: r.copy ?? '',
+        }),
+      })
+    else if (r)
+      setToast({
+        msg: r.copy
+          ? t('{pages} pages and {files} files restored. Your previous notes were saved as {copy}.', { pages: r.pages, files: r.files, copy: r.copy })
+          : t('{pages} pages and {files} files restored', { pages: r.pages, files: r.files }),
+      })
   }, [])
-  const openSettings = (tab?: SettingsTab) => { setSettingsTab(tab); setView('settings') }
+  const openSettings = (tab?: SettingsTab) => {
+    setSettingsTab(tab)
+    setView('settings')
+  }
   const openData = () => openSettings('data')
   const doExportAll = async () => {
     try {
@@ -562,7 +535,13 @@ export default function App() {
   // tags with their page counts (letters compared after Persian normalization, so ي/ی count as one tag)
   const tagList = useMemo(() => {
     const m = new Map<string, { key: string; label: string; count: number }>()
-    for (const p of pages) if (p.kind !== 'folder') for (const tg of p.tags ?? []) { const key = normalizeFa(tg); const g = m.get(key); g ? g.count++ : m.set(key, { key, label: tg, count: 1 }) }
+    for (const p of pages)
+      if (p.kind !== 'folder')
+        for (const tg of p.tags ?? []) {
+          const key = normalizeFa(tg)
+          const g = m.get(key)
+          g ? g.count++ : m.set(key, { key, label: tg, count: 1 })
+        }
     return [...m.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'fa'))
   }, [pages])
   const taggedPages = useMemo(() => (tagFilter ? pages.filter((p) => p.kind !== 'folder' && p.tags?.some((tg) => normalizeFa(tg) === tagFilter)) : []), [pages, tagFilter])
@@ -575,19 +554,46 @@ export default function App() {
     { id: 'new-page', label: t('New page'), icon: <Ic.Page />, keywords: 'create add صفحه جدید', run: () => add(null) },
     { id: 'templates', label: t('Templates'), icon: <Ic.Blocks />, keywords: 'template قالب تمپلیت', run: () => setTplOpen(true) },
     { id: 'new-folder', label: t('New folder'), icon: <Ic.Folder />, keywords: 'create add پوشه', run: () => addFolder(null) },
-    { id: 'compact-pages', label: settings.pagesView === 'compact' ? t('Show pages as a tree') : t('Show pages as a compact list'), icon: <Ic.Layers />, keywords: 'compact flat list tree pages sidebar intellij فشرده لیست درخت صفحه', run: () => updateSettings({ pagesView: settings.pagesView === 'compact' ? 'tree' : 'compact' }) },
+    {
+      id: 'compact-pages',
+      label: settings.pagesView === 'compact' ? t('Show pages as a tree') : t('Show pages as a compact list'),
+      icon: <Ic.Layers />,
+      keywords: 'compact flat list tree pages sidebar intellij فشرده لیست درخت صفحه',
+      run: () => updateSettings({ pagesView: settings.pagesView === 'compact' ? 'tree' : 'compact' }),
+    },
     { id: 'new-todo', label: t('New to-do list'), icon: <Ic.Checklist />, keywords: 'create add todo task list checklist لیست کار تسک چک‌لیست جدید', run: () => add(null, 'todo') },
     { id: 'new-database', label: t('New database'), icon: <Ic.Table />, keywords: 'create add table database board calendar پایگاه داده جدول جدید', run: () => addDatabase(null) },
     { id: 'new-board', label: t('New board'), icon: <Ic.Pencil />, keywords: 'create add whiteboard drawing canvas sketch بوم نقاشی طراحی جدید', run: () => add(null, 'board') },
-    ...(current && view === 'page' ? [
-      { id: 'subpage', label: t('Add subpage'), icon: <Ic.Plus />, keywords: 'زیرصفحه', run: () => add(current.id) },
-      { id: 'fav', label: current.favorite ? t('Remove from favorites') : t('Add to favorites'), icon: <Ic.Star filled={current.favorite} />, keywords: 'star pin علاقه‌مندی', run: () => fav(current.id) },
-      { id: 'reader', label: t('Reader mode'), icon: <Ic.Reader />, keywords: 'read مطالعه', hint: bindingHint('reader'), run: () => setReader(true) },
-      { id: 'find', label: t('Find in page'), icon: <Ic.Search />, keywords: 'search ctrl+f جست‌وجو پیدا', hint: bindingHint('find'), run: () => window.setTimeout(() => window.dispatchEvent(new Event('open-find')), 0) },
-      { id: 'history', label: t('Version history'), icon: <Ic.History />, keywords: 'versions restore earlier تاریخچه نسخه', run: () => window.setTimeout(() => window.dispatchEvent(new Event('open-history')), 0) },
-      { id: 'export-md', label: t('Export Markdown'), icon: <Ic.Markdown />, keywords: 'download خروجی', run: () => exportMd(current.id) },
-      { id: 'print', label: t('Print / PDF'), icon: <Ic.Pdf />, keywords: 'pdf print چاپ', run: () => printPage(current.title) },
-    ] : []),
+    ...(current && view === 'page'
+      ? [
+          { id: 'subpage', label: t('Add subpage'), icon: <Ic.Plus />, keywords: 'زیرصفحه', run: () => add(current.id) },
+          {
+            id: 'fav',
+            label: current.favorite ? t('Remove from favorites') : t('Add to favorites'),
+            icon: <Ic.Star filled={current.favorite} />,
+            keywords: 'star pin علاقه‌مندی',
+            run: () => fav(current.id),
+          },
+          { id: 'reader', label: t('Reader mode'), icon: <Ic.Reader />, keywords: 'read مطالعه', hint: bindingHint('reader'), run: () => setReader(true) },
+          {
+            id: 'find',
+            label: t('Find in page'),
+            icon: <Ic.Search />,
+            keywords: 'search ctrl+f جست‌وجو پیدا',
+            hint: bindingHint('find'),
+            run: () => window.setTimeout(() => window.dispatchEvent(new Event('open-find')), 0),
+          },
+          {
+            id: 'history',
+            label: t('Version history'),
+            icon: <Ic.History />,
+            keywords: 'versions restore earlier تاریخچه نسخه',
+            run: () => window.setTimeout(() => window.dispatchEvent(new Event('open-history')), 0),
+          },
+          { id: 'export-md', label: t('Export Markdown'), icon: <Ic.Markdown />, keywords: 'download خروجی', run: () => exportMd(current.id) },
+          { id: 'print', label: t('Print / PDF'), icon: <Ic.Pdf />, keywords: 'pdf print چاپ', run: () => printPage(current.title) },
+        ]
+      : []),
     { id: 'home', label: t('Home'), icon: <Ic.Home />, keywords: 'dashboard خانه', run: () => setView('home') },
     { id: 'table', label: t('Pages table'), icon: <Ic.Table />, keywords: 'database جدول', run: () => setTableOpen(true) },
     { id: 'graph', label: t('Graph view'), icon: <Ic.Link />, keywords: 'graph links map backlinks گراف نقشه ارتباط پیوند', run: () => setGraphOpen(true) },
@@ -597,8 +603,21 @@ export default function App() {
     { id: 'drawings', label: t('Drawings'), icon: <Ic.Pencil />, keywords: 'drawings boards whiteboard sketch canvas excalidraw نقاشی بوم طراحی ترسیم', run: () => setView('drawings') },
     { id: 'cards', label: t('Flashcards'), icon: <Ic.Cards />, keywords: 'review srs فلش‌کارت', run: () => setCardsOpen(true) },
     { id: 'trash', label: t('Trash'), icon: <Ic.Trash />, keywords: 'deleted سطل', run: () => setTrashOpen(true) },
-    { id: 'theme', label: dark ? t('Light mode') : t('Dark mode'), icon: dark ? <Ic.Sun /> : <Ic.Moon />, keywords: 'theme dark light تم', run: () => updateSettings({ theme: dark ? 'light' : 'dark' }) },
-    { id: 'sidebar', label: sideOpen ? t('Close sidebar') : t('Open sidebar'), icon: <Ic.Sidebar />, keywords: 'side panel نوار کناری', hint: bindingHint('sidebar'), run: () => setSideOpen((o) => !o) },
+    {
+      id: 'theme',
+      label: dark ? t('Light mode') : t('Dark mode'),
+      icon: dark ? <Ic.Sun /> : <Ic.Moon />,
+      keywords: 'theme dark light تم',
+      run: () => updateSettings({ theme: dark ? 'light' : 'dark' }),
+    },
+    {
+      id: 'sidebar',
+      label: sideOpen ? t('Close sidebar') : t('Open sidebar'),
+      icon: <Ic.Sidebar />,
+      keywords: 'side panel نوار کناری',
+      hint: bindingHint('sidebar'),
+      run: () => setSideOpen((o) => !o),
+    },
     { id: 'import', label: t('Import or restore…'), icon: <Ic.Upload />, keywords: 'وارد کردن بازیابی markdown obsidian restore zip', run: openData },
     { id: 'restore', label: t('Restore from backup'), icon: <Ic.Upload />, keywords: 'backup restore desktop workspace بازیابی پشتیبان بکاپ', run: openData },
     { id: 'export-all', label: t('Export all pages (zip with Markdown & images)'), icon: <Ic.Download />, keywords: 'zip', run: doExportAll },
@@ -615,8 +634,12 @@ export default function App() {
   const rowProps = { index, currentId: current?.id ?? '', collapsed, onToggle: toggle, onOpen: setCurrentId, onAdd: add, onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }), onMove: move }
 
   return (
-    <div className={'app' + (reader && view === 'page' && current ? ' reading' : '')} style={{ ['--page-w' as any]: pageW + 'px', ['--r-scale' as any]: readerCfg.scale, ['--r-width' as any]: readerCfg.width + 'px' }}>
-      <aside className={'side' + (sideOpen ? '' : ' closed') + (sideDrag ? ' resizing' : '')} style={sideW ? { ['--side-w' as any]: sideW + 'px' } : undefined} onContextMenu={(e) => (e.preventDefault(), setBlankMenu(new DOMRect(e.clientX, e.clientY, 0, 0)))}>
+    <div className={'app' + (reader && view === 'page' && current ? ' reading' : '')} style={cssVars({ '--page-w': pageW + 'px', '--r-scale': readerCfg.scale, '--r-width': readerCfg.width + 'px' })}>
+      <aside
+        className={'side' + (sideOpen ? '' : ' closed') + (sideDrag ? ' resizing' : '')}
+        style={sideW ? cssVars({ '--side-w': sideW + 'px' }) : undefined}
+        onContextMenu={(e) => (e.preventDefault(), setBlankMenu(new DOMRect(e.clientX, e.clientY, 0, 0)))}
+      >
         <div
           className="side-grip"
           role="separator"
@@ -637,167 +660,385 @@ export default function App() {
           }}
         />
         <div className="ws">
-          <span className="ws-logo"><Ic.Logo size={28} /></span>
+          <span className="ws-logo">
+            <Ic.Logo size={28} />
+          </span>
           <Brand className="ws-name" />
-          <button className="icon-btn" title={t('Close sidebar  Ctrl+\\')} onClick={() => setSideOpen(false)}><Icon name="panel-left" /></button>
+          <button className="icon-btn" title={t('Close sidebar  Ctrl+\\')} onClick={() => setSideOpen(false)}>
+            <Icon name="panel-left" />
+          </button>
         </div>
 
         <div className="side-scroll">
           <button className="row plain search-row" onClick={() => setSearching(true)}>
-            <span className="ic"><Icon name="search" /></span><span className="ntitle">{t('Search')}...</span><kbd dir="ltr">{shortcutLabel(['Mod', 'K'])}</kbd>
+            <span className="ic">
+              <Icon name="search" />
+            </span>
+            <span className="ntitle">{t('Search')}...</span>
+            <kbd dir="ltr">{shortcutLabel(['Mod', 'K'])}</kbd>
           </button>
 
           <button className={'row plain' + (view === 'home' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('home'))}>
-            <span className="ic"><Icon name="home" /></span><span className="ntitle">{t('Home')}</span>
+            <span className="ic">
+              <Icon name="home" />
+            </span>
+            <span className="ntitle">{t('Home')}</span>
           </button>
 
           <button className={'row plain' + (view === 'tasks' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('tasks'))}>
-            <span className="ic"><Icon name="tasks" /></span><span className="ntitle">{t('Tasks')}</span>
+            <span className="ic">
+              <Icon name="tasks" />
+            </span>
+            <span className="ntitle">{t('Tasks')}</span>
           </button>
 
-          <button className="row plain" onClick={() => (setTplOpen(false), setGraphOpen(false), setTableOpen(false), setCardsOpen(true))}><span className="ic"><Icon name="cards" /></span><span className="ntitle">{t('Flashcards')}</span>{dueCards > 0 && <span className="badge">{dueCards}</span>}</button>
-
-          <button className="row plain" onClick={() => (setCardsOpen(false), setGraphOpen(false), setTableOpen(false), setTplOpen(true))}><span className="ic"><Icon name="templates" /></span><span className="ntitle">{t('Templates')}</span></button>
-
-          <button className={'row plain' + (view === 'databases' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('databases'))}>
-            <span className="ic"><Icon name="database" /></span><span className="ntitle">{t('Databases')}</span>
+          <button className="row plain" onClick={() => (setTplOpen(false), setGraphOpen(false), setTableOpen(false), setCardsOpen(true))}>
+            <span className="ic">
+              <Icon name="cards" />
+            </span>
+            <span className="ntitle">{t('Flashcards')}</span>
+            {dueCards > 0 && <span className="badge">{dueCards}</span>}
           </button>
 
-          <button className={'row plain' + (view === 'drawings' ? ' cur' : '')} onPointerEnter={warmDrawing} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('drawings'))}>
-            <span className="ic"><Icon name="pencil" /></span><span className="ntitle">{t('Drawings')}</span>
+          <button className="row plain" onClick={() => (setCardsOpen(false), setGraphOpen(false), setTableOpen(false), setTplOpen(true))}>
+            <span className="ic">
+              <Icon name="templates" />
+            </span>
+            <span className="ntitle">{t('Templates')}</span>
+          </button>
+
+          <button
+            className={'row plain' + (view === 'databases' ? ' cur' : '')}
+            onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('databases'))}
+          >
+            <span className="ic">
+              <Icon name="database" />
+            </span>
+            <span className="ntitle">{t('Databases')}</span>
+          </button>
+
+          <button
+            className={'row plain' + (view === 'drawings' ? ' cur' : '')}
+            onPointerEnter={warmDrawing}
+            onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('drawings'))}
+          >
+            <span className="ic">
+              <Icon name="pencil" />
+            </span>
+            <span className="ntitle">{t('Drawings')}</span>
           </button>
 
           <button className="row plain" onClick={() => (setCardsOpen(false), setTplOpen(false), setTableOpen(false), setGraphOpen(true))}>
-            <span className="ic"><Icon name="graph" /></span><span className="ntitle">{t('Graph view')}</span>
+            <span className="ic">
+              <Icon name="graph" />
+            </span>
+            <span className="ntitle">{t('Graph view')}</span>
           </button>
 
           <button className="row plain" onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(true))}>
-            <span className="ic"><Icon name="table" /></span><span className="ntitle">{t('Pages table')}</span>
+            <span className="ic">
+              <Icon name="table" />
+            </span>
+            <span className="ntitle">{t('Pages table')}</span>
           </button>
 
           {(favs.length > 0 || dragPage) && (
             <div className={favs.length === 0 ? 'fav-float' : undefined}>
-            <div
-              className={'fav-zone' + (favOver ? ' over' : '')}
-              onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-page')) (e.preventDefault(), setFavOver(true)) }}
-              onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setFavOver(false) }}
-              onDrop={(e) => {
-                const id = e.dataTransfer.getData('application/x-page')
-                setFavOver(false)
-                if (id && !repo.get(id)?.favorite) (e.preventDefault(), fav(id))
-              }}
-            >
-              <button className={"section" + (shut.favs ? " shut" : "")} onClick={() => setShut((s) => ({ ...s, favs: !s.favs }))}>{t('Favorites')}<Ic.Chevron size={13} /></button>
-              {!shut.favs && favs.map((p) => (
-                <div key={p.id} dir={dirOf(p.title)} className={'row' + (p.id === current?.id ? ' cur' : '')} style={{ paddingInlineStart: 24 }} onClick={() => setCurrentId(p.id)}>
-                  <span className="ic"><PageIcon page={p} /></span>
-                  <span className="ntitle" dir="auto">{p.title || t('Untitled')}</span>
-                </div>
-              ))}
-              {favs.length === 0 && <div className="empty-note">{t('Drop a page here to pin it')}</div>}
-            </div>
+              <div
+                className={'fav-zone' + (favOver ? ' over' : '')}
+                onDragOver={(e) => {
+                  if (e.dataTransfer.types.includes('application/x-page')) (e.preventDefault(), setFavOver(true))
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setFavOver(false)
+                }}
+                onDrop={(e) => {
+                  const id = e.dataTransfer.getData('application/x-page')
+                  setFavOver(false)
+                  if (id && !repo.get(id)?.favorite) (e.preventDefault(), fav(id))
+                }}
+              >
+                <button className={'section' + (shut.favs ? ' shut' : '')} onClick={() => setShut((s) => ({ ...s, favs: !s.favs }))}>
+                  {t('Favorites')}
+                  <Ic.Chevron size={13} />
+                </button>
+                {!shut.favs &&
+                  favs.map((p) => (
+                    <div key={p.id} dir={dirOf(p.title)} className={'row' + (p.id === current?.id ? ' cur' : '')} style={{ paddingInlineStart: 24 }} onClick={() => setCurrentId(p.id)}>
+                      <span className="ic">
+                        <PageIcon page={p} />
+                      </span>
+                      <span className="ntitle" dir="auto">
+                        {p.title || t('Untitled')}
+                      </span>
+                    </div>
+                  ))}
+                {favs.length === 0 && <div className="empty-note">{t('Drop a page here to pin it')}</div>}
+              </div>
             </div>
           )}
 
           {saved.length > 0 && (
             <>
-              <button className={"section" + (shut.saved ? " shut" : "")} onClick={() => setShut((s) => ({ ...s, saved: !s.saved }))}>{t('Saved searches')}<Ic.Chevron size={13} /></button>
-              {!shut.saved && saved.map((s) => (
-                <div key={s.id} className="row saved-row" style={{ paddingInlineStart: 24 }} title={s.query} onClick={() => (setSearchInit(s.query), setSearching(true))}>
-                  <span className="ic"><Ic.Search size={15} /></span>
-                  <span className="ntitle" dir="auto">{s.name}</span>
-                  <span className="acts"><button title={t('Delete')} onClick={(e) => (e.stopPropagation(), saveSaved(saved.filter((x) => x.id !== s.id)))}><Ic.Close size={14} /></button></span>
-                </div>
-              ))}
+              <button className={'section' + (shut.saved ? ' shut' : '')} onClick={() => setShut((s) => ({ ...s, saved: !s.saved }))}>
+                {t('Saved searches')}
+                <Ic.Chevron size={13} />
+              </button>
+              {!shut.saved &&
+                saved.map((s) => (
+                  <div key={s.id} className="row saved-row" style={{ paddingInlineStart: 24 }} title={s.query} onClick={() => (setSearchInit(s.query), setSearching(true))}>
+                    <span className="ic">
+                      <Ic.Search size={15} />
+                    </span>
+                    <span className="ntitle" dir="auto">
+                      {s.name}
+                    </span>
+                    <span className="acts">
+                      <button title={t('Delete')} onClick={(e) => (e.stopPropagation(), saveSaved(saved.filter((x) => x.id !== s.id)))}>
+                        <Ic.Close size={14} />
+                      </button>
+                    </span>
+                  </div>
+                ))}
             </>
           )}
 
-          {<button className={"section" + (shut.pages ? " shut" : "")} onClick={() => setShut((s) => ({ ...s, pages: !s.pages }))}>{t('Pages')}<Ic.Chevron size={13} /></button>}
-          {!shut.pages && settings.pagesView === 'compact' && <HorizontalScroll className="tree-scroll" label={t('Pages')} followVisibleBottom><div className="tree-in cmp-list"><CompactList {...rowProps} roots={roots} /></div></HorizontalScroll>}
-          {!shut.pages && settings.pagesView !== 'compact' && <HorizontalScroll className="tree-scroll" label={t('Pages')} followVisibleBottom><div className="tree-in">{roots.map((p) => <TreeRow key={p.id} {...rowProps} page={p} depth={0} />)}</div></HorizontalScroll>}
+          {
+            <button className={'section' + (shut.pages ? ' shut' : '')} onClick={() => setShut((s) => ({ ...s, pages: !s.pages }))}>
+              {t('Pages')}
+              <Ic.Chevron size={13} />
+            </button>
+          }
+          {!shut.pages && settings.pagesView === 'compact' && (
+            <HorizontalScroll className="tree-scroll" label={t('Pages')} followVisibleBottom>
+              <div className="tree-in cmp-list">
+                <CompactList {...rowProps} roots={roots} />
+              </div>
+            </HorizontalScroll>
+          )}
+          {!shut.pages && settings.pagesView !== 'compact' && (
+            <HorizontalScroll className="tree-scroll" label={t('Pages')} followVisibleBottom>
+              <div className="tree-in">
+                {roots.map((p) => (
+                  <TreeRow key={p.id} {...rowProps} page={p} depth={0} />
+                ))}
+              </div>
+            </HorizontalScroll>
+          )}
           {!shut.pages && roots.length === 0 && <div className="empty-note">{t('No pages yet')}</div>}
 
           {tagList.length > 0 && (
-            <SidebarTags tags={tagList} active={tagFilter} onPick={setTagFilter} shut={!!shut.tags} onToggle={() => setShut((x) => ({ ...x, tags: !x.tags }))} pages={taggedPages} currentId={current?.id} onOpen={setCurrentId} />
+            <SidebarTags
+              tags={tagList}
+              active={tagFilter}
+              onPick={setTagFilter}
+              shut={!!shut.tags}
+              onToggle={() => setShut((x) => ({ ...x, tags: !x.tags }))}
+              pages={taggedPages}
+              currentId={current?.id}
+              onOpen={setCurrentId}
+            />
           )}
-
         </div>
 
         <SideTip />
         <div className="side-foot">
           <WorkspaceCard onOpen={() => setFolderOpen(true)} />
           <button className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('settings'))}>
-            <span className="ic"><Icon name="settings" /></span><span className="ntitle">{t('Settings')}</span>
+            <span className="ic">
+              <Icon name="settings" />
+            </span>
+            <span className="ntitle">{t('Settings')}</span>
           </button>
           <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('files'))}>
-            <span className="ic"><Icon name="paperclip" /></span><span className="ntitle">{t('Files')}</span>
+            <span className="ic">
+              <Icon name="paperclip" />
+            </span>
+            <span className="ntitle">{t('Files')}</span>
           </button>
           <button className="row plain" onClick={() => setTrashOpen(true)}>
-            <span className="ic"><Icon name="trash" /></span><span className="ntitle">{t('Trash')}</span>
+            <span className="ic">
+              <Icon name="trash" />
+            </span>
+            <span className="ntitle">{t('Trash')}</span>
             {repo.trash().length > 0 && <span className="badge">{repo.trash().length}</span>}
           </button>
           <div className="ds-split side-new">
-            <Button variant="primary" onClick={() => add(null)}><Ic.Plus size={16} /><span className="ntitle">{t('New page')}</span></Button>
-            <Button variant="primary" aria-label={t('More')} aria-expanded={!!newMenu} onClick={(e) => setNewMenu(newMenu ? null : e.currentTarget.parentElement!.getBoundingClientRect())}><Ic.Chevron size={14} /></Button>
+            <Button variant="primary" onClick={() => add(null)}>
+              <Ic.Plus size={16} />
+              <span className="ntitle">{t('New page')}</span>
+            </Button>
+            <Button variant="primary" aria-label={t('More')} aria-expanded={!!newMenu} onClick={(e) => setNewMenu(newMenu ? null : e.currentTarget.parentElement!.getBoundingClientRect())}>
+              <Ic.Chevron size={14} />
+            </Button>
           </div>
-          {newMenu && <Popover anchor={newMenu} onClose={() => setNewMenu(null)}><div className="ds-menu">
-            <MenuItem icon={<Ic.Page />} label={t('New page')} onClick={() => (setNewMenu(null), add(null))} />
-            <MenuItem icon={<Ic.Folder />} label={t('New folder')} onClick={() => (setNewMenu(null), addFolder(null))} />
-            <MenuItem icon={<Ic.Pencil />} label={t('New board')} onClick={() => (setNewMenu(null), add(null, 'board'))} />
-            <MenuItem icon={<Ic.Table />} label={t('New database')} onClick={() => (setNewMenu(null), addDatabase(null))} />
-            <MenuItem icon={<Ic.Checklist />} label={t('New to-do list')} onClick={() => (setNewMenu(null), add(null, 'todo'))} />
-          </div></Popover>}
+          {newMenu && (
+            <Popover anchor={newMenu} onClose={() => setNewMenu(null)}>
+              <div className="ds-menu">
+                <MenuItem icon={<Ic.Page />} label={t('New page')} onClick={() => (setNewMenu(null), add(null))} />
+                <MenuItem icon={<Ic.Folder />} label={t('New folder')} onClick={() => (setNewMenu(null), addFolder(null))} />
+                <MenuItem icon={<Ic.Pencil />} label={t('New board')} onClick={() => (setNewMenu(null), add(null, 'board'))} />
+                <MenuItem icon={<Ic.Table />} label={t('New database')} onClick={() => (setNewMenu(null), addDatabase(null))} />
+                <MenuItem icon={<Ic.Checklist />} label={t('New to-do list')} onClick={() => (setNewMenu(null), add(null, 'todo'))} />
+              </div>
+            </Popover>
+          )}
           <div className="side-credit">{t('Created by')} Vexor</div>
         </div>
       </aside>
 
       <main ref={mainRef} className={'main' + (panelOpen && !reader && view === 'page' && current ? ' drawer-open' : '')}>
         <header className="topbar">
-          {!sideOpen && <button className="icon-btn" title={t('Open sidebar  Ctrl+\\')} onClick={() => setSideOpen(true)}><Ic.Sidebar /></button>}
+          {!sideOpen && (
+            <button className="icon-btn" title={t('Open sidebar  Ctrl+\\')} onClick={() => setSideOpen(true)}>
+              <Ic.Sidebar />
+            </button>
+          )}
           <div className="nav-hist">
-            <button className="icon-btn" title={t('Back  Alt+←')} aria-label={t('Back')} disabled={hpos.current <= 0} onClick={() => goHist(-1)}><Icon name="arrow-left" size={17} className="ds-flip" /></button>
-            <button className="icon-btn" title={t('Forward  Alt+→')} aria-label={t('Forward')} disabled={hpos.current >= hist.current.length - 1} onClick={() => goHist(1)}><Icon name="arrow-right" size={17} className="ds-flip" /></button>
+            <button className="icon-btn" title={t('Back  Alt+←')} aria-label={t('Back')} disabled={hpos.current <= 0} onClick={() => goHist(-1)}>
+              <Icon name="arrow-left" size={17} className="ds-flip" />
+            </button>
+            <button className="icon-btn" title={t('Forward  Alt+→')} aria-label={t('Forward')} disabled={hpos.current >= hist.current.length - 1} onClick={() => goHist(1)}>
+              <Icon name="arrow-right" size={17} className="ds-flip" />
+            </button>
           </div>
           <nav className="crumbs">
-            <button className="crumb-home" title={t('Home')} onClick={() => setView('home')}><Ic.Home size={15} /></button>
-            {graphOpen && <span className="crumb"><span className="crumb-cur"><Icon name="graph" size={14} />{t('Graph view')}</span></span>}
-            {tableOpen && !graphOpen && <span className="crumb"><span className="crumb-cur"><Icon name="table" size={14} />{t('Pages table')}</span></span>}
-            {tplOpen && !graphOpen && !tableOpen && <span className="crumb"><span className="crumb-cur"><Icon name="templates" size={14} />{t('Templates')}</span></span>}
-            {cardsOpen && !tplOpen && !graphOpen && !tableOpen && <span className="crumb"><span className="crumb-cur"><Ic.Cards size={14} />{t('Flashcards')}</span></span>}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'home' && <span className="crumb"><span className="crumb-cur"><Ic.Sidebar size={14} />{t('Home')}</span></span>}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'files' && <span className="crumb"><span className="crumb-cur"><Ic.Folders size={14} />{t('Files')}</span></span>}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'tasks' && <span className="crumb"><span className="crumb-cur"><Ic.Checklist size={14} />{t('Tasks')}</span></span>}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'databases' && <span className="crumb"><span className="crumb-cur"><Ic.Table size={14} />{t('Databases')}</span></span>}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'drawings' && <span className="crumb"><span className="crumb-cur"><Ic.Pencil size={14} />{t('Drawings')}</span></span>}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'settings' && <span className="crumb"><span className="crumb-cur"><Ic.Settings size={14} />{t('Settings')}</span></span>}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'page' && crumbs.map((c, i) => (
-              <span key={c.id} className={'crumb' + (i === crumbs.length - 1 ? ' last' : '')}>
-                <span className="crumb-sep"><Ic.Chevron size={13} /></span>
-                {c.kind === 'folder' ? (
-                  <span className="crumb-folder" dir="auto"><Ic.Folder size={14} /><span>{c.title || t('Folder')}</span></span>
-                ) : (
-                  <button onClick={() => setCurrentId(c.id)} dir="auto">
-                    <span className="ic">{iconNode(c.icon, 14)}</span><span className="crumb-t">{c.title || t('Untitled')}</span>
-                  </button>
-                )}
+            <button className="crumb-home" title={t('Home')} onClick={() => setView('home')}>
+              <Ic.Home size={15} />
+            </button>
+            {graphOpen && (
+              <span className="crumb">
+                <span className="crumb-cur">
+                  <Icon name="graph" size={14} />
+                  {t('Graph view')}
+                </span>
               </span>
-            ))}
+            )}
+            {tableOpen && !graphOpen && (
+              <span className="crumb">
+                <span className="crumb-cur">
+                  <Icon name="table" size={14} />
+                  {t('Pages table')}
+                </span>
+              </span>
+            )}
+            {tplOpen && !graphOpen && !tableOpen && (
+              <span className="crumb">
+                <span className="crumb-cur">
+                  <Icon name="templates" size={14} />
+                  {t('Templates')}
+                </span>
+              </span>
+            )}
+            {cardsOpen && !tplOpen && !graphOpen && !tableOpen && (
+              <span className="crumb">
+                <span className="crumb-cur">
+                  <Ic.Cards size={14} />
+                  {t('Flashcards')}
+                </span>
+              </span>
+            )}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'home' && (
+              <span className="crumb">
+                <span className="crumb-cur">
+                  <Ic.Sidebar size={14} />
+                  {t('Home')}
+                </span>
+              </span>
+            )}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'files' && (
+              <span className="crumb">
+                <span className="crumb-cur">
+                  <Ic.Folders size={14} />
+                  {t('Files')}
+                </span>
+              </span>
+            )}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'tasks' && (
+              <span className="crumb">
+                <span className="crumb-cur">
+                  <Ic.Checklist size={14} />
+                  {t('Tasks')}
+                </span>
+              </span>
+            )}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'databases' && (
+              <span className="crumb">
+                <span className="crumb-cur">
+                  <Ic.Table size={14} />
+                  {t('Databases')}
+                </span>
+              </span>
+            )}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'drawings' && (
+              <span className="crumb">
+                <span className="crumb-cur">
+                  <Ic.Pencil size={14} />
+                  {t('Drawings')}
+                </span>
+              </span>
+            )}
+            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'settings' && (
+              <span className="crumb">
+                <span className="crumb-cur">
+                  <Ic.Settings size={14} />
+                  {t('Settings')}
+                </span>
+              </span>
+            )}
+            {!cardsOpen &&
+              !tplOpen &&
+              !graphOpen &&
+              !tableOpen &&
+              view === 'page' &&
+              crumbs.map((c, i) => (
+                <span key={c.id} className={'crumb' + (i === crumbs.length - 1 ? ' last' : '')}>
+                  <span className="crumb-sep">
+                    <Ic.Chevron size={13} />
+                  </span>
+                  {c.kind === 'folder' ? (
+                    <span className="crumb-folder" dir="auto">
+                      <Ic.Folder size={14} />
+                      <span>{c.title || t('Folder')}</span>
+                    </span>
+                  ) : (
+                    <button onClick={() => setCurrentId(c.id)} dir="auto">
+                      <span className="ic">{iconNode(c.icon, 14)}</span>
+                      <span className="crumb-t">{c.title || t('Untitled')}</span>
+                    </button>
+                  )}
+                </span>
+              ))}
           </nav>
           <span className="spacer" />
-          <span className={'status' + (save === 'saving' ? ' busy' : '')}><i className="dot" />{save === 'saving' ? t('Saving…') : t('Saved')}</span>
+          <span className={'status' + (save === 'saving' ? ' busy' : '')}>
+            <i className="dot" />
+            {save === 'saving' ? t('Saving…') : t('Saved')}
+          </span>
           <div className="tb-group">
             {current && view === 'page' && (
               <>
-                <button className="icon-btn" title={t('Reader mode  Ctrl+.')} onClick={() => setReader(true)}><Ic.Reader /></button>
-                <button className={'icon-btn' + (current.favorite ? ' fav-on' : '')} title={t('Favorite')} onClick={() => fav(current.id)}><Ic.Star filled={current.favorite} /></button>
-                <button className={'icon-btn panel-toggle' + (panelOpen ? ' active' : '')} title={t('Page side panel (quick actions & navigation)')} onClick={() => setPanelOpen((o) => !o)}><Ic.Panel /></button>
+                <button className="icon-btn" title={t('Reader mode  Ctrl+.')} onClick={() => setReader(true)}>
+                  <Ic.Reader />
+                </button>
+                <button className={'icon-btn' + (current.favorite ? ' fav-on' : '')} title={t('Favorite')} onClick={() => fav(current.id)}>
+                  <Ic.Star filled={current.favorite} />
+                </button>
+                <button className={'icon-btn panel-toggle' + (panelOpen ? ' active' : '')} title={t('Page side panel (quick actions & navigation)')} onClick={() => setPanelOpen((o) => !o)}>
+                  <Ic.Panel />
+                </button>
               </>
             )}
             <button className="icon-btn" title={dark ? t('Light mode') : t('Dark mode')} onClick={() => updateSettings({ theme: dark ? 'light' : 'dark' })}>
               {dark ? <Ic.Sun /> : <Ic.Moon />}
             </button>
           </div>
-          {current && view === 'page' && <button className="share-btn" title={t('Share & export')} onClick={(e) => setDataMenu(e.currentTarget.getBoundingClientRect())}><Ic.Share size={15} />{t('Share')}</button>}
+          {current && view === 'page' && (
+            <button className="share-btn" title={t('Share & export')} onClick={(e) => setDataMenu(e.currentTarget.getBoundingClientRect())}>
+              <Ic.Share size={15} />
+              {t('Share')}
+            </button>
+          )}
         </header>
 
         {reader && view === 'page' && current && <ReaderBar cfg={readerCfg} onCfg={(c) => (setReaderCfg(c), setPreference('not.reader.cfg', JSON.stringify(c)))} onExit={() => setReader(false)} />}
@@ -809,10 +1050,22 @@ export default function App() {
           ) : tplOpen ? (
             <Templates onPick={addFromTemplate} onClose={() => setTplOpen(false)} />
           ) : cardsOpen ? (
-            <Flashcards pageId={view === 'page' ? current?.id : undefined} onOpenPage={(id) => (setCardsOpen(false), setCurrentId(id))} onClose={() => (setCardsOpen(false), window.dispatchEvent(new Event('cards-reviewed')))} />
+            <Flashcards
+              pageId={view === 'page' ? current?.id : undefined}
+              onOpenPage={(id) => (setCardsOpen(false), setCurrentId(id))}
+              onClose={() => (setCardsOpen(false), window.dispatchEvent(new Event('cards-reviewed')))}
+            />
           ) : view === 'home' ? (
-            <Home pages={pages} onOpen={setCurrentId} onNew={() => add(null)} onTable={() => setTableOpen(true)} onCards={() => setCardsOpen(true)}
-              onTemplates={() => setTplOpen(true)} onFiles={() => setView('files')} onTasks={() => setView('tasks')} />
+            <Home
+              pages={pages}
+              onOpen={setCurrentId}
+              onNew={() => add(null)}
+              onTable={() => setTableOpen(true)}
+              onCards={() => setCardsOpen(true)}
+              onTemplates={() => setTplOpen(true)}
+              onFiles={() => setView('files')}
+              onTasks={() => setView('tasks')}
+            />
           ) : view === 'files' ? (
             <Explorer pages={pages} onOpen={setCurrentId} onChange={refresh} onToast={(msg, undo) => setToast({ msg, undo })} />
           ) : view === 'tasks' ? (
@@ -822,9 +1075,15 @@ export default function App() {
           ) : view === 'drawings' ? (
             <Drawings onOpen={setCurrentId} onNew={() => add(null, 'board')} onDelete={delDrawing} />
           ) : view === 'settings' ? (
-            <SettingsView key={settingsTab ?? 'settings'} initialTab={settingsTab} data={{ repo, refresh, toast: (msg) => setToast({ msg }), open: setCurrentId, exportAll: doExportAll, backup: doBackup, workspaces: () => setFolderOpen(true) }} />
+            <SettingsView
+              key={settingsTab ?? 'settings'}
+              initialTab={settingsTab}
+              data={{ repo, refresh, toast: (msg) => setToast({ msg }), open: setCurrentId, exportAll: doExportAll, backup: doBackup, workspaces: () => setFolderOpen(true) }}
+            />
           ) : current?.dbHost ? (
-            <Suspense fallback={<div className="page-skeleton" aria-busy="true" />}><DatabasePage key={current.id} page={current} onOpenPage={setCurrentId} onMeta={refresh} readOnly={reader} /></Suspense>
+            <Suspense fallback={<div className="page-skeleton" aria-busy="true" />}>
+              <DatabasePage key={current.id} page={current} onOpenPage={setCurrentId} onMeta={refresh} readOnly={reader} />
+            </Suspense>
           ) : current?.kind === 'board' ? (
             <BoardView key={current.id} page={current} onSave={setSave} onMeta={refresh} readOnly={reader} />
           ) : current ? (
@@ -836,10 +1095,14 @@ export default function App() {
             </>
           ) : (
             <div className="blank">
-              <div className="blank-ic"><Ic.Page size={40} /></div>
+              <div className="blank-ic">
+                <Ic.Page size={40} />
+              </div>
               <h2>{t('No page open')}</h2>
               <p>{t('Create a page or search with {keys}.', { keys: bindingHint('search').replace(/ /g, '+') })}</p>
-              <button className="primary" onClick={() => add(null)}>{t('New page')}</button>
+              <button className="primary" onClick={() => add(null)}>
+                {t('New page')}
+              </button>
             </div>
           )}
         </div>
@@ -864,7 +1127,9 @@ export default function App() {
         <Popover anchor={menu.rect} onClose={() => setMenu(null)} align="end">
           <div className="ds-menu">
             {menuPage.kind !== 'folder' && <MenuItem icon={<Ic.Open />} label={t('Open')} onClick={() => (setCurrentId(menu.id), setView('page'), setMenu(null))} />}
-            {menuPage.kind !== 'folder' && <MenuItem icon={<Ic.Star filled={menuPage.favorite} />} label={menuPage.favorite ? t('Remove from favorites') : t('Add to favorites')} onClick={() => (fav(menu.id), setMenu(null))} />}
+            {menuPage.kind !== 'folder' && (
+              <MenuItem icon={<Ic.Star filled={menuPage.favorite} />} label={menuPage.favorite ? t('Remove from favorites') : t('Add to favorites')} onClick={() => (fav(menu.id), setMenu(null))} />
+            )}
             <MenuSep />
             <MenuLabel>{t('Create')}</MenuLabel>
             <MenuItem icon={<Ic.Plus />} label={menuPage.kind === 'folder' ? t('Add page in this folder') : t('Add subpage')} onClick={() => (add(menu.id), setMenu(null))} />
@@ -915,7 +1180,6 @@ export default function App() {
         </Popover>
       )}
 
-
       {dataMenu && (
         <Popover anchor={dataMenu} onClose={() => setDataMenu(null)} align="end">
           <div className="ds-menu share-menu">
@@ -924,28 +1188,107 @@ export default function App() {
                 <MenuLabel>{t('Share this page')}</MenuLabel>
                 <MenuItem icon={<Ic.Markdown />} label={t('Export Markdown')} desc={t('Download as a .md file')} onClick={() => (setDataMenu(null), exportMd(current.id))} />
                 <MenuItem icon={<Ic.Pdf />} label={t('Print / PDF')} desc={t('Save as PDF or print')} onClick={() => (setDataMenu(null), printPage(current.title))} />
-                <MenuItem icon={<Ic.Copy />} label={t('Copy as Markdown')} desc={t('Put it on the clipboard')} onClick={async () => { setDataMenu(null); await navigator.clipboard?.writeText(await pageToMarkdown(current)); setToast({ msg: t('Copied') }) }} />
+                <MenuItem
+                  icon={<Ic.Copy />}
+                  label={t('Copy as Markdown')}
+                  desc={t('Put it on the clipboard')}
+                  onClick={async () => {
+                    setDataMenu(null)
+                    await navigator.clipboard?.writeText(await pageToMarkdown(current))
+                    setToast({ msg: t('Copied') })
+                  }}
+                />
               </>
             )}
           </div>
         </Popover>
       )}
 
-      {folderOpen && <Vaults onClose={() => setFolderOpen(false)} onNew={(create) => setNaming({ title: t('New workspace'), label: t('Workspace name:'), initial: t('My notes'), action: t('Next'), onSubmit: (n) => void create(n.trim() || t('My notes')) })} />}
-      {movingId && <div className="overlay" onMouseDown={() => setMovingId(null)}><div className="modal move-dialog" role="dialog" aria-modal="true" aria-label={t('Move to folder')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && setMovingId(null)}><div className="modal-head"><b>{t('Move to folder')}</b><button className="icon-btn" title={t('Close')} onClick={() => setMovingId(null)}><Ic.Close /></button></div><div className="modal-list"><button className="result" onClick={() => { move(movingId,null,null); setMovingId(null) }}><Ic.Book /><span>{t('Move to top level')}</span></button>{pages.filter((p) => { if(p.kind !== 'folder' || p.id === movingId) return false; let parent: Page | undefined = p; const seen = new Set<string>(); while(parent) { if(parent.id === movingId || seen.has(parent.id)) return false; seen.add(parent.id); parent = pages.find((x) => x.id === parent!.parentId) } return true }).map((p) => <button className="result" key={p.id} onClick={() => { move(movingId,p.id,null); setMovingId(null) }}><Ic.Folder /><span dir="auto">{p.title || t('Untitled folder')}</span></button>)}</div></div></div>}
+      {folderOpen && (
+        <Vaults
+          onClose={() => setFolderOpen(false)}
+          onNew={(create) => setNaming({ title: t('New workspace'), label: t('Workspace name:'), initial: t('My notes'), action: t('Next'), onSubmit: (n) => void create(n.trim() || t('My notes')) })}
+        />
+      )}
+      {movingId && (
+        <div className="overlay" onMouseDown={() => setMovingId(null)}>
+          <div
+            className="modal move-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('Move to folder')}
+            onMouseDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.key === 'Escape' && setMovingId(null)}
+          >
+            <div className="modal-head">
+              <b>{t('Move to folder')}</b>
+              <button className="icon-btn" title={t('Close')} onClick={() => setMovingId(null)}>
+                <Ic.Close />
+              </button>
+            </div>
+            <div className="modal-list">
+              <button
+                className="result"
+                onClick={() => {
+                  move(movingId, null, null)
+                  setMovingId(null)
+                }}
+              >
+                <Ic.Book />
+                <span>{t('Move to top level')}</span>
+              </button>
+              {pages
+                .filter((p) => {
+                  if (p.kind !== 'folder' || p.id === movingId) return false
+                  let parent: Page | undefined = p
+                  const seen = new Set<string>()
+                  while (parent) {
+                    if (parent.id === movingId || seen.has(parent.id)) return false
+                    seen.add(parent.id)
+                    parent = pages.find((x) => x.id === parent!.parentId)
+                  }
+                  return true
+                })
+                .map((p) => (
+                  <button
+                    className="result"
+                    key={p.id}
+                    onClick={() => {
+                      move(movingId, p.id, null)
+                      setMovingId(null)
+                    }}
+                  >
+                    <Ic.Folder />
+                    <span dir="auto">{p.title || t('Untitled folder')}</span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {naming && <NameDialog {...naming} onClose={() => setNaming(null)} />}
-      {trashOpen && (
-        <TrashModal key={trashTick} items={repo.trash()} days={TRASH_DAYS} onRestore={restore} onPurge={purge} onEmpty={emptyTrash} onClose={() => setTrashOpen(false)} />
-      )}
+      {trashOpen && <TrashModal key={trashTick} items={repo.trash()} days={TRASH_DAYS} onRestore={restore} onPurge={purge} onEmpty={emptyTrash} onClose={() => setTrashOpen(false)} />}
       <UpdateCenter />
       {toast && <Toast msg={toast.msg} action={toast.undo ? t('Undo') : undefined} onAction={toast.undo} onClose={() => setToast(null)} />}
 
       {searching && (
         <SearchModal
-          pages={pages.filter((p) => p.kind !== 'folder')} search={searchPages} commands={commands} onOpen={setCurrentId} initialQuery={searchInit}
+          pages={pages.filter((p) => p.kind !== 'folder')}
+          search={searchPages}
+          commands={commands}
+          onOpen={setCurrentId}
+          initialQuery={searchInit}
           onClose={() => (setSearching(false), setSearchInit(''))}
-          onSaveSearch={(query) => setNaming({ title: t('Save this search'), label: t('Name:'), initial: query, action: t('Save'), onSubmit: (name) => saveSaved([...saved, { id: crypto.randomUUID(), name: name.trim() || query, query }]) })}
+          onSaveSearch={(query) =>
+            setNaming({
+              title: t('Save this search'),
+              label: t('Name:'),
+              initial: query,
+              action: t('Save'),
+              onSubmit: (name) => saveSaved([...saved, { id: crypto.randomUUID(), name: name.trim() || query, query }]),
+            })
+          }
         />
       )}
     </div>

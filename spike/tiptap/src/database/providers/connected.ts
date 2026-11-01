@@ -12,7 +12,14 @@ function parse(input: string): URL {
     throw bad('this is not a link')
   }
 }
-const rec = (provider: ProviderRecord['provider'], externalId: string, canonicalUrl: string, fields: ProviderRecord['fields'], providerRevision: string, deps: ProviderDeps): ProviderRecord => ({ provider, externalId, canonicalUrl, fields, providerRevision, fetchedAt: at(deps) })
+const rec = (provider: ProviderRecord['provider'], externalId: string, canonicalUrl: string, fields: ProviderRecord['fields'], providerRevision: string, deps: ProviderDeps): ProviderRecord => ({
+  provider,
+  externalId,
+  canonicalUrl,
+  fields,
+  providerRevision,
+  fetchedAt: at(deps),
+})
 
 /** Google Drive. Minimum scope: https://www.googleapis.com/auth/drive.metadata.readonly (or drive.file for files the app opened). */
 export function googleDrive(deps: ProviderDeps): ConnectedProvider {
@@ -31,7 +38,11 @@ export function googleDrive(deps: ProviderDeps): ConnectedProvider {
     },
     async search({ query, cursor, signal }) {
       const q = `name contains '${query.replace(/['\\]/g, ' ')}' and trashed = false`
-      const r = await request(deps, `${base}/files?q=${encodeURIComponent(q)}&pageSize=25&fields=${encodeURIComponent('nextPageToken,files(id,name,webViewLink)')}&supportsAllDrives=true&includeItemsFromAllDrives=true${cursor ? `&pageToken=${encodeURIComponent(cursor)}` : ''}`, { signal })
+      const r = await request(
+        deps,
+        `${base}/files?q=${encodeURIComponent(q)}&pageSize=25&fields=${encodeURIComponent('nextPageToken,files(id,name,webViewLink)')}&supportsAllDrives=true&includeItemsFromAllDrives=true${cursor ? `&pageToken=${encodeURIComponent(cursor)}` : ''}`,
+        { signal },
+      )
       const j = obj(r.json)
       return { results: arr(j.files).map((f) => ({ externalId: str(obj(f).id), title: str(obj(f).name), url: str(obj(f).webViewLink) })), nextCursor: str(j.nextPageToken) || null }
     },
@@ -39,7 +50,14 @@ export function googleDrive(deps: ProviderDeps): ConnectedProvider {
       const r = await request(deps, `${base}/files/${encodeURIComponent(externalId)}?fields=${encodeURIComponent(FIELDS)}&supportsAllDrives=true`, { signal })
       const j = obj(r.json)
       if (!j.id) throw new ProviderError('bad_response', 'no file in the answer')
-      return rec('gdrive', externalId, str(j.webViewLink) || `https://drive.google.com/file/d/${externalId}/view`, { name: str(j.name), mimeType: str(j.mimeType), modifiedTime: str(j.modifiedTime), trashed: j.trashed === true }, str(j.version) || str(j.modifiedTime), deps)
+      return rec(
+        'gdrive',
+        externalId,
+        str(j.webViewLink) || `https://drive.google.com/file/d/${externalId}/view`,
+        { name: str(j.name), mimeType: str(j.mimeType), modifiedTime: str(j.modifiedTime), trashed: j.trashed === true },
+        str(j.version) || str(j.modifiedTime),
+        deps,
+      )
     },
   }
 }
@@ -64,7 +82,14 @@ export function figma(deps: ProviderDeps): ConnectedProvider {
       const r = await request(deps, `${base}/files/${encodeURIComponent(externalId)}?depth=1`, { signal })
       const j = obj(r.json)
       if (!j.name) throw new ProviderError('bad_response', 'no file in the answer')
-      return rec('figma', externalId, `https://www.figma.com/file/${externalId}`, { name: str(j.name), lastModified: str(j.lastModified), editorType: str(j.editorType), thumbnailUrl: str(j.thumbnailUrl) }, str(j.version) || str(j.lastModified), deps)
+      return rec(
+        'figma',
+        externalId,
+        `https://www.figma.com/file/${externalId}`,
+        { name: str(j.name), lastModified: str(j.lastModified), editorType: str(j.editorType), thumbnailUrl: str(j.thumbnailUrl) },
+        str(j.version) || str(j.lastModified),
+        deps,
+      )
     },
   }
 }
@@ -92,7 +117,14 @@ export function zendesk(deps: ProviderDeps): ConnectedProvider {
       const r = await request(deps, `${origin(sub)}/api/v2/tickets/${id}.json`, { signal })
       const t = obj(obj(r.json).ticket)
       if (!t.id) throw new ProviderError('bad_response', 'no ticket in the answer')
-      return rec('zendesk', externalId, `https://${sub}.zendesk.com/agent/tickets/${id}`, { subject: str(t.subject), status: str(t.status), priority: str(t.priority), updatedAt: str(t.updated_at) }, str(t.updated_at), deps)
+      return rec(
+        'zendesk',
+        externalId,
+        `https://${sub}.zendesk.com/agent/tickets/${id}`,
+        { subject: str(t.subject), status: str(t.status), priority: str(t.priority), updatedAt: str(t.updated_at) },
+        str(t.updated_at),
+        deps,
+      )
     },
   }
 }
@@ -116,7 +148,10 @@ export function githubPullRequest(deps: ProviderDeps): ConnectedProvider {
       const r = await request(deps, `${base}/search/issues?q=${encodeURIComponent(`${query} is:pr`)}&per_page=25&page=${page}`, { signal, headers: H })
       const j = obj(r.json)
       const items = arr(j.items)
-      return { results: items.map((i) => ({ externalId: str(obj(i).repository_url).replace(/^.*\/repos\//, '') + '#' + String(obj(i).number), title: str(obj(i).title), url: str(obj(i).html_url) })), nextCursor: items.length === 25 ? String(page + 1) : null }
+      return {
+        results: items.map((i) => ({ externalId: str(obj(i).repository_url).replace(/^.*\/repos\//, '') + '#' + String(obj(i).number), title: str(obj(i).title), url: str(obj(i).html_url) })),
+        nextCursor: items.length === 25 ? String(page + 1) : null,
+      }
     },
     async retrieve({ externalId, signal }) {
       const m = /^([^/]+)\/([^#]+)#(\d+)$/.exec(externalId)
@@ -124,7 +159,14 @@ export function githubPullRequest(deps: ProviderDeps): ConnectedProvider {
       const r = await request(deps, `${base}/repos/${m[1]}/${m[2]}/pulls/${m[3]}`, { signal, headers: H })
       const j = obj(r.json)
       if (!j.number) throw new ProviderError('bad_response', 'no pull request in the answer')
-      return rec('github_pr', externalId, str(j.html_url), { title: str(j.title), state: j.merged === true ? 'merged' : str(j.state), draft: j.draft === true, author: str(obj(j.user).login), updatedAt: str(j.updated_at) }, str(obj(j.head).sha) || str(j.updated_at), deps)
+      return rec(
+        'github_pr',
+        externalId,
+        str(j.html_url),
+        { title: str(j.title), state: j.merged === true ? 'merged' : str(j.state), draft: j.draft === true, author: str(obj(j.user).login), updatedAt: str(j.updated_at) },
+        str(obj(j.head).sha) || str(j.updated_at),
+        deps,
+      )
     },
   }
 }
@@ -135,7 +177,12 @@ export const CONNECTED: Record<string, (d: ProviderDeps) => ConnectedProvider> =
 export function detectProvider(input: string, deps: ProviderDeps): ConnectedProvider | null {
   for (const make of Object.values(CONNECTED)) {
     const p = make(deps)
-    try { p.validateReference(input); return p } catch { /* try the next */ }
+    try {
+      p.validateReference(input)
+      return p
+    } catch {
+      /* try the next */
+    }
   }
   return null
 }

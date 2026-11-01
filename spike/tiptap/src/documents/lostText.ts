@@ -15,10 +15,11 @@ export function isLostText(s: string): boolean {
 
 /** The first top-level key of `value` whose text looks lost, or null. */
 export function lostTextField(value: unknown): string | null {
-  const walk = (v: unknown): boolean => typeof v === 'string' ? isLostText(v) : Array.isArray(v) ? v.some(walk) : v && typeof v === 'object' ? Object.values(v).some(walk) : false
+  const walk = (v: unknown): boolean => (typeof v === 'string' ? isLostText(v) : Array.isArray(v) ? v.some(walk) : v && typeof v === 'object' ? Object.values(v).some(walk) : false)
   if (!value || typeof value !== 'object') return null
   for (const [key, v] of Object.entries(value)) if (walk(v)) return key.slice(0, 128)
   return null
 }
 
-export const LOST_TEXT_MESSAGE = 'The text arrived with many "?" where letters should be, so a non-ASCII encoding step lost them. Nothing was saved. Send the request again as UTF-8 JSON with the real characters.'
+export const LOST_TEXT_MESSAGE =
+  'The text arrived with many "?" where letters should be, so a non-ASCII encoding step lost them. Nothing was saved. Send the request again as UTF-8 JSON with the real characters.'

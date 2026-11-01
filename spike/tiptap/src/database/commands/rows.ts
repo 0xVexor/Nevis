@@ -85,7 +85,7 @@ function assertNoParentCycle(d: Draft, pageId: Id, parentId: Id | null, sourceId
   if (parentId === null) return
   if (parentId === pageId) fail('CYCLE', 'a sub-item cannot be its own parent')
   const seen = new Set<Id>()
-  for (let p: Id | null = parentId; p; ) {
+  for (let p: Id | null = parentId; p;) {
     if (p === pageId || seen.has(p)) fail('CYCLE', 'a sub-item cannot be nested under its own descendant')
     seen.add(p)
     const r = d.row(p)
@@ -131,8 +131,14 @@ export function createRow(cx: Ctx, p: RowCreate): { pageId: Id; warnings: Json }
   if (p.parentItemId) assertNoParentCycle(cx.d, id, p.parentItemId, src.id)
 
   const page: PageLike = {
-    id, parentId: owner?.hostPageId ?? null, title: p.title ?? (tpl ? '' : ''), favorite: false, sort: stats.count,
-    content: identifyBlocks(tpl?.body ?? EMPTY_DOC, cx.ids).content, updatedAt: cx.now, deletedAt: null,
+    id,
+    parentId: owner?.hostPageId ?? null,
+    title: p.title ?? (tpl ? '' : ''),
+    favorite: false,
+    sort: stats.count,
+    content: identifyBlocks(tpl?.body ?? EMPTY_DOC, cx.ids).content,
+    updatedAt: cx.now,
+    deletedAt: null,
   } as PageLike
   if (tpl?.icon) page.icon = tpl.icon
   if (tpl?.cover && typeof tpl.cover === 'object') page.cover = tpl.cover
@@ -147,7 +153,8 @@ export function createRow(cx: Ctx, p: RowCreate): { pageId: Id; warnings: Json }
   for (const [pid, c] of Object.entries(inferred.cells)) apply(pid, c) // 4. safe inference
   if (tpl) for (const [pid, c] of Object.entries(tpl.defaults)) apply(pid, c as unknown as Cell) // 3. template (view default over source default)
   for (const c of p.context ?? []) apply(c.propertyId, c.cell) // 2. explicit creation location
-  for (const [pid, c] of Object.entries(p.explicitValues ?? {})) { // 1. explicit values
+  for (const [pid, c] of Object.entries(p.explicitValues ?? {})) {
+    // 1. explicit values
     const def = property(cx, pid)
     setCell(cx, page, def, c)
   }
@@ -275,7 +282,7 @@ function withDescendants(d: Draft, ids: Id[], include: boolean): Id[] {
   const out = new Set(ids)
   if (include) {
     const all = d.allPages().filter((p) => p.database?.parentItemId)
-    for (let grew = true; grew; ) {
+    for (let grew = true; grew;) {
       grew = false
       for (const p of all) if (!out.has(p.id) && out.has(p.database!.parentItemId!)) (out.add(p.id), (grew = true))
     }
@@ -356,8 +363,18 @@ register('row.duplicate', (cx, p: { rootPageIds: Id[]; includeDescendants?: bool
       const fromIn = idMap.has(e.fromPageId)
       const toIn = idMap.has(e.toPageId)
       if (!fromIn && !toIn) continue
-      if (!fromIn && rel.inverseCardinality === 'one') { cx.warnings.push({ code: 'EDGE_SKIPPED', detail: e.id }); continue }
-      const ne = { ...cx.meta(), definitionId: e.definitionId, fromPageId: idMap.get(e.fromPageId) ?? e.fromPageId, toPageId: idMap.get(e.toPageId) ?? e.toPageId, sortKey: e.sortKey, stamp: cx.stamp() }
+      if (!fromIn && rel.inverseCardinality === 'one') {
+        cx.warnings.push({ code: 'EDGE_SKIPPED', detail: e.id })
+        continue
+      }
+      const ne = {
+        ...cx.meta(),
+        definitionId: e.definitionId,
+        fromPageId: idMap.get(e.fromPageId) ?? e.fromPageId,
+        toPageId: idMap.get(e.toPageId) ?? e.toPageId,
+        sortKey: e.sortKey,
+        stamp: cx.stamp(),
+      }
       cx.d.add('edge', ne)
     }
   }
@@ -374,7 +391,8 @@ register('undo.apply', (cx, p: { group: { items: UndoItem[] }; skip?: { id: Id; 
       const cur = cx.d.get(it.kind, it.id)
       if (!cur) continue
       const m = cx.d.mut(it.kind, it.id) as unknown as Record<string, unknown>
-      if (it.before === null) m.deletedAt = cx.now // creation undone = tombstone (history keeps it)
+      if (it.before === null)
+        m.deletedAt = cx.now // creation undone = tombstone (history keeps it)
       else {
         const keep = ['revision', 'updatedAt', 'updatedBy', 'lastOperationId', 'createdAt', 'createdBy']
         for (const [k, v] of Object.entries(it.before)) if (!keep.includes(k)) m[k] = structuredClone(v)
@@ -383,7 +401,10 @@ register('undo.apply', (cx, p: { group: { items: UndoItem[] }; skip?: { id: Id; 
       const pg = cx.d.page(it.id)
       if (!pg) continue
       const m = cx.d.mutPage(it.id)
-      if (it.created) { m.deletedAt = cx.now; continue }
+      if (it.created) {
+        m.deletedAt = cx.now
+        continue
+      }
       for (const path of it.paths) {
         if (skip.has(`${it.id}|${path.path}`)) continue
         if (!same(readPath(m, path.path), path.after)) continue

@@ -2,6 +2,5 @@ const RTL_LETTER = /[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Syriac}\p{Scrip
 
 export function firstTextDirection(text: string): 'rtl' | 'ltr' | null {
   const first = text.match(/\p{L}/u)?.[0]
-  return first ? RTL_LETTER.test(first) ? 'rtl' : 'ltr' : null
+  return first ? (RTL_LETTER.test(first) ? 'rtl' : 'ltr') : null
 }
-
