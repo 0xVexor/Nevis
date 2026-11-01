@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { registerUpdateSave } from './updateSave'
 import { createPortal } from 'react-dom'
 import { useEditor, EditorContent } from '@tiptap/react'
-import { getSchema } from '@tiptap/core'
+import { getSchema, type Editor } from '@tiptap/core'
 import { documentCommitGuard } from './editor/documentCommitGuard'
 import { EditorState, Selection, TextSelection } from '@tiptap/pm/state'
 import { LayoutControls } from './LayoutControls'
@@ -79,7 +79,7 @@ export function PageView({
   const readOnly = readerOnly || !!contentIssue || commitLocked
   const guardedExtensions = useMemo(() => [...extensions, documentCommitGuard(repo.isWriteLocked)], [])
   const timer = useRef<number>(0)
-  const editorRef = useRef<any>(null)
+  const editorRef = useRef<Editor | null>(null)
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const [picker, setPicker] = useState<DOMRect | null>(null)
   const [icon, setIcon] = useState(page.icon)
@@ -126,7 +126,7 @@ export function PageView({
   // Writes one editor's pending edit into the page. The editor is passed in (not read from the ref) so a page switch
   // saves the page it is leaving, even when the ref already points at the next page's editor.
   const flushOf = useCallback(
-    (ed: any) => {
+    (ed: Editor | null) => {
       window.clearTimeout(timer.current)
       if (ed && !ed.isDestroyed && dirty.current && !protectedContent.current) {
         const content = ed.getJSON()
@@ -172,7 +172,7 @@ export function PageView({
   }, [editor, readOnly])
   // the page picker (`[[`, `@`) must not offer the page you are on
   useEffect(() => {
-    if (editor) (editor.storage as any).currentPageId = page.id
+    if (editor) editor.storage.currentPageId = page.id
   }, [editor, page.id])
 
   // right-click inside the text: clipboard and undo actions (the browser's own menu is switched off in the desktop app)
@@ -404,9 +404,9 @@ export function PageView({
 
   // a page created from the Templates gallery: fill it once its editor exists
   useEffect(() => {
-    const p = (window as any).__pendingTpl
+    const p = window.__pendingTpl
     if (!editor || !p || p.pageId !== page.id) return
-    delete (window as any).__pendingTpl
+    delete window.__pendingTpl
     const tp = getTemplates().find((x) => x.id === p.id)
     if (!tp) return
     editor.commands.setContent(tp.html)

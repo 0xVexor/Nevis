@@ -1,3 +1,4 @@
+import type { ChainedCommands } from '@tiptap/core'
 import type { Editor } from '@tiptap/core'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { alertDialog, promptDialog } from './dialog'
@@ -7,7 +8,7 @@ import * as Ic from './icons'
 import { insertImageFromUrl, insertImages, pickImages } from './editor/image'
 import { t } from './i18n'
 
-type Chain = any
+type Chain = ChainedCommands
 
 /** Fixed formatting bar above the page (as in the mockups): one floating pill. The same commands as the floating text menu. */
 export function Toolbar({ editor, diagram }: { editor: Editor; diagram?: { from: number; to: number; code: string } | null }) {

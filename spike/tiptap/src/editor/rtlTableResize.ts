@@ -1,3 +1,4 @@
+import type { EditorView } from '@tiptap/pm/view'
 import { Extension } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
 import { TableMap } from '@tiptap/pm/tables'
@@ -49,7 +50,7 @@ export const RtlTableResize = Extension.create({
       const w = wrap.getBoundingClientRect()
       bar.style.cssText = `position:absolute;top:0;bottom:0;width:3px;left:${x - w.left + wrap.scrollLeft - 1}px;right:auto;background:var(--ds-accent);pointer-events:none;z-index:3`
     }
-    const clear = (view: any) => {
+    const clear = (view: EditorView) => {
       active = null
       showBar(document.body, null)
       view.dom.classList.remove('resize-cursor')

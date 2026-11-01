@@ -1,3 +1,4 @@
+import type { ChainedCommands } from '@tiptap/core'
 import type { Editor } from '@tiptap/core'
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -53,7 +54,7 @@ const Group = ({ label, children }: { label: string; children: ReactNode }) => (
 export function TableBubble({ editor }: { editor: Editor }) {
   const s = useEditorState({
     editor,
-    selector: ({ editor: e }: any) => {
+    selector: ({ editor: e }) => {
       if (!e || !e.isEditable || !e.isActive('table')) return null
       const a = e.getAttributes('table')
       return { hr: hasHeaderRow(e), hc: hasHeaderColumn(e), w: a.tableWidth ?? 100, align: a.tableAlign ?? null, dir: a.dir ?? null, merge: e.can().mergeCells(), split: e.can().splitCell() }
@@ -77,7 +78,7 @@ export function TableBubble({ editor }: { editor: Editor }) {
   const box = useAnchor(editor, open, () => tableDom(editor), [s?.w, s?.align])
 
   if (!open) return null
-  const run = (fn: (c: any) => any) => fn(editor.chain().focus()).run()
+  const run = (fn: (c: ChainedCommands) => ChainedCommands) => fn(editor.chain().focus()).run()
   return createPortal(
     <div ref={box} className="bubble tbl" role="toolbar" aria-label={t('Table')} dir="ltr" style={{ position: 'fixed', zIndex: 60 }} onMouseDown={(e) => e.preventDefault()}>
       <Group label={t('Row')}>

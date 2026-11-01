@@ -1,3 +1,4 @@
+import { cssVars } from './cssVars'
 import { useEffect, useMemo, useState } from 'react'
 import type { Page, PageStatus } from './repo'
 import { normalizeFa } from './normalize'
@@ -72,7 +73,7 @@ export function PagesTable({ pages, onOpen, onStatus, onClose }: { pages: Page[]
         </div>
         <Select
           value={status}
-          onChange={(v) => setStatus(v as any)}
+          onChange={(v) => setStatus(v as typeof status)}
           options={[
             { value: '', label: t('All statuses') },
             { value: 'none', label: t('No status') },
@@ -131,7 +132,7 @@ export function PagesTable({ pages, onOpen, onStatus, onClose }: { pages: Page[]
                 <td onClick={(e) => e.stopPropagation()}>
                   <Select
                     className={'status-sel' + (p.status ? ' has' : '')}
-                    style={p.status ? { ['--st' as any]: STATUS[p.status].color } : undefined}
+                    style={p.status ? cssVars({ '--st': STATUS[p.status].color }) : undefined}
                     value={p.status ?? ''}
                     onChange={(v) => onStatus(p.id, (v || undefined) as PageStatus | undefined)}
                     options={[{ value: '', label: '—' }, ...(Object.keys(STATUS) as PageStatus[]).map((s) => ({ value: s, label: t(STATUS[s].label), color: STATUS[s].color }))]}

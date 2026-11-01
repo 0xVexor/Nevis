@@ -1,3 +1,4 @@
+import type { Page } from './repo'
 // Dev only: `?bench=870` fills the (browser) database with a synthetic vault so performance can be measured without importing files.
 // Pages sit in nested folders, link each other (a few hubs get many links) and some contain Mermaid diagrams. Reload without the parameter to keep it.
 import { allPages, isTauri, savePages } from './db'
@@ -11,7 +12,7 @@ export async function seedBench(n: number, links = 5) {
   let seed = 42
   const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32
   const now = Date.now()
-  const rows: any[] = []
+  const rows: Page[] = []
   const folder = new Map<string, string>()
   const folderFor = (path: string[]): string | null => {
     if (!path.length) return null
@@ -20,7 +21,7 @@ export async function seedBench(n: number, links = 5) {
     if (!id) {
       id = crypto.randomUUID()
       folder.set(key, id)
-      rows.push({ id, parentId: folderFor(path.slice(0, -1)), kind: 'folder', title: path.at(-1), favorite: false, sort: folder.size, content: null, updatedAt: now, deletedAt: null })
+      rows.push({ id, parentId: folderFor(path.slice(0, -1)), kind: 'folder', title: path.at(-1) ?? '', favorite: false, sort: folder.size, content: null, updatedAt: now, deletedAt: null })
     }
     return id
   }

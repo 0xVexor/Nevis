@@ -1,3 +1,4 @@
+import type { DocNode } from './docNode'
 import { htmlToDoc } from './editor/htmlToDoc'
 import { markdownToHtml } from './editor/markdownPaste'
 import { toMarkdown } from './markdown'
@@ -10,7 +11,7 @@ import type { Page, PageStatus } from './repo'
 import { t } from './i18n'
 
 /** Markdown -> top-level editor block nodes, for tools that write documents from plain text. */
-export const markdownToNodes = (md: string): any[] => htmlToDoc(markdownToHtml(md)).content ?? []
+export const markdownToNodes = (md: string): DocNode[] => htmlToDoc(markdownToHtml(md)).content ?? []
 
 /** Opens a native file picker and resolves with the chosen files ([] if cancelled). */
 export function pickFiles(accept: string, multiple = false): Promise<File[]> {
@@ -137,15 +138,15 @@ async function fromObsidian(md: string, embed: (name: string) => Promise<string 
 }
 
 /** `[[Title]]` text -> pageLink nodes when a page with that title exists. */
-function linkify(node: any, titles: Map<string, string>): any {
+function linkify(node: DocNode, titles: Map<string, string>): DocNode {
   if (!node.content) return node
-  const out: any[] = []
+  const out: DocNode[] = []
   for (const c of node.content) {
-    if (c.type !== 'text' || !c.text.includes('[[')) {
+    if (c.type !== 'text' || !c.text?.includes('[[')) {
       out.push(linkify(c, titles))
       continue
     }
-    let rest: string = c.text
+    let rest = c.text ?? ''
     for (let m = rest.match(/\[\[([^\]]+)\]\]/); m; m = rest.match(/\[\[([^\]]+)\]\]/)) {
       const id = titles.get(normalizeFa(m[1]).trim())
       const before = rest.slice(0, m.index!)
@@ -160,10 +161,10 @@ function linkify(node: any, titles: Map<string, string>): any {
     if (rest) out.push({ ...c, text: rest })
   }
   // adjacent plain text from unresolved links may be split: merge for tidiness
-  const merged: any[] = []
+  const merged: DocNode[] = []
   for (const n of out) {
     const last = merged[merged.length - 1]
-    if (last?.type === 'text' && n.type === 'text' && JSON.stringify(last.marks) === JSON.stringify(n.marks)) last.text += n.text
+    if (last?.type === 'text' && n.type === 'text' && JSON.stringify(last.marks) === JSON.stringify(n.marks)) last.text = (last.text ?? '') + (n.text ?? '')
     else merged.push(n)
   }
   return { ...node, content: merged }
@@ -177,7 +178,7 @@ const titleMap = (extra: [string, string][] = []) => {
 }
 
 /** Markdown (already in our dialect) -> ProseMirror doc; `img` may rewrite image sources (stored files, data: URIs). */
-async function markdownToDoc(md: string, img: (src: string) => Promise<string | null>): Promise<any> {
+async function markdownToDoc(md: string, img: (src: string) => Promise<string | null>): Promise<DocNode> {
   const dom = new DOMParser().parseFromString(markdownToHtml(md), 'text/html')
   for (const el of Array.from(dom.querySelectorAll('img'))) {
     const src = el.getAttribute('src') ?? ''

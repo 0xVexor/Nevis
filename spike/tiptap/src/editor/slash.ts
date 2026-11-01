@@ -1,4 +1,6 @@
-import type { Editor } from '@tiptap/core'
+import type { ChainedCommands } from '@tiptap/core'
+import type { EditorState } from '@tiptap/pm/state'
+import type { Editor, Range } from '@tiptap/core'
 import { Extension } from '@tiptap/core'
 import Suggestion from '@tiptap/suggestion'
 import { PluginKey } from '@tiptap/pm/state'
@@ -18,11 +20,11 @@ interface Item {
   keywords: string
   disabled?: boolean
   vars?: Record<string, string> // fills {placeholders} in title/desc; values are translated too
-  run: (chain: any, editor: Editor) => any
+  run: (chain: ChainedCommands, editor: Editor) => ChainedCommands
 }
 
 /** "Link to page": with text selected it becomes a link to the page you pick; otherwise it opens the `[[` picker. */
-export function linkSelection(c: any, editor: Editor) {
+export function linkSelection(c: ChainedCommands, editor: Editor) {
   const { from, to, empty } = editor.state.selection
   if (!empty && editor.state.doc.textBetween(from, to, ' ').trim()) {
     window.dispatchEvent(new CustomEvent('pick-page-link', { detail: { from, to } }))
@@ -103,7 +105,7 @@ const ITEMS: Item[] = [
     vars: { name: l.name },
     icon: 'i:code',
     keywords: `code کد ${l.id} ${l.alias} ${l.name}`,
-    run: (c: any) => c.setCodeBlock({ language: l.id }),
+    run: (c: ChainedCommands) => c.setCodeBlock({ language: l.id }),
   })),
   {
     title: 'Icon',
@@ -187,15 +189,15 @@ export const SlashCommand = Extension.create({
         editor: this.editor,
         pluginKey: new PluginKey('slashSuggest'),
         // a "/" typed in code (`a / b`, paths, comments) is just a slash
-        allow: ({ state }: any) => {
+        allow: ({ state }: { state: EditorState }) => {
           const $from = state.selection.$from
-          return $from.parent.type.name !== 'codeBlock' && !$from.marks().some((m: any) => m.type.name === 'code')
+          return $from.parent.type.name !== 'codeBlock' && !$from.marks().some((m) => m.type.name === 'code')
         },
         char: '/',
         startOfLine: false,
         allowSpaces: false,
-        items: ({ query }: any) => filter(query),
-        command: ({ editor, range, props }: any) => {
+        items: ({ query }: { query: string }) => filter(query),
+        command: ({ editor, range, props }: { editor: Editor; range: Range; props: Item }) => {
           if (props.disabled) return
           props.run(editor.chain().focus().deleteRange(range), editor).run()
         },

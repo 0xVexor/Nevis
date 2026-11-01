@@ -1,5 +1,5 @@
 // Container / source / property / option / view commands (handoff §12.1).
-import type { Container, Definition, Id, Json, PageLike, Source, View, ViewType } from '../model/types.ts'
+import type { Container, Definition, Filter, Id, Json, PageLike, Sort, Source, View, ViewType } from '../model/types.ts'
 import { VIEW_TYPES } from '../model/types.ts'
 import { fail } from '../model/errors.ts'
 import { keyBetween } from '../model/ids.ts'
@@ -200,7 +200,8 @@ register('source.set_layout', (cx, p: { sourceId: Id; layout: SourceLayout | nul
 
 // ───── properties ─────
 
-type PropertyCreate = { sourceId: Id; name: string; kind: Definition['kind']; config?: any; beforePropertyId?: Id; description?: string; id?: Id }
+type PropertyConfigInput = { options?: OptionInput[]; default?: string; source?: string }
+type PropertyCreate = { sourceId: Id; name: string; kind: Definition['kind']; config?: PropertyConfigInput; beforePropertyId?: Id; description?: string; id?: Id }
 
 export function createProperty(cx: Ctx, p: PropertyCreate): Definition {
   const src = source(cx, p.sourceId)
@@ -222,7 +223,7 @@ export function createProperty(cx: Ctx, p: PropertyCreate): Definition {
   switch (p.kind) {
     case 'select':
     case 'multi_select':
-      config = { options: buildOptions(cx, raw.options as OptionInput[] | undefined) } as unknown as Json
+      config = { options: buildOptions(cx, raw.options) } as unknown as Json
       break
     case 'status':
       config = buildStatusConfig(cx, raw) as unknown as Json
@@ -519,7 +520,7 @@ function autoConfigure(cx: Ctx, v: View) {
   }
 }
 
-register('view.patch', (cx, p: { viewId: Id; name?: string; filter?: any; sorts?: any; configurationPatch?: Record<string, Json>; defaultTemplateId?: Id | null }) => {
+register('view.patch', (cx, p: { viewId: Id; name?: string; filter?: Filter | null; sorts?: Sort[]; configurationPatch?: Record<string, Json>; defaultTemplateId?: Id | null }) => {
   const v = view(cx, p.viewId)
   if (v.sourceId) cx.access.assertSource(cx.env.actorId, v.sourceId, 'edit_schema')
   const m = cx.d.mut('view', v.id)
@@ -591,7 +592,7 @@ register('view.reorder', (cx, p: { containerId: Id; orderedViewIds: Id[] }) => {
   }
 })
 
-register('view.override', (cx, p: { viewId: Id; principalId: Id; personalFilter?: any; personalSorts?: any; displayState?: Json }) => {
+register('view.override', (cx, p: { viewId: Id; principalId: Id; personalFilter?: Filter | null; personalSorts?: Sort[]; displayState?: Json }) => {
   // personal overrides live in a per-principal record so the shared saved configuration is untouched
   const v = view(cx, p.viewId)
   if (p.principalId !== cx.env.actorId) cx.access.assertSource(cx.env.actorId, v.sourceId ?? '', 'manage')

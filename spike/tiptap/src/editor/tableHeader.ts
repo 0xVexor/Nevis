@@ -16,7 +16,7 @@ export function hasHeaderColumn(editor: Editor): boolean {
     const node = $from.node(d)
     if (node.type.name === 'table') {
       let all = node.childCount > 0
-      node.forEach((row: any) => (all = all && row.firstChild?.type.name === 'tableHeader'))
+      node.forEach((row) => (all = all && row.firstChild?.type.name === 'tableHeader'))
       return all
     }
   }

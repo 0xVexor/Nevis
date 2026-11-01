@@ -1,3 +1,4 @@
+import type { CommandProps } from '@tiptap/core'
 import type { Editor } from '@tiptap/core'
 import type { DocNode } from './docNode'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -48,7 +49,7 @@ export function History({ page, editor, onClose }: { page: Page; editor: Editor;
     await addVersion({ pageId: page.id, ts: Date.now(), title: page.title, content: editor.getJSON() })
     editor
       .chain()
-      .command(({ tr }: any) => {
+      .command(({ tr }: CommandProps) => {
         structural(tr)
         return true
       })

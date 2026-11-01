@@ -110,7 +110,7 @@ export async function startMcpBridge() {
         try {
           result = await session.dispatch(message, { id: requestId, expiresAt, active: () => !cancelled.has(requestId) })
         } catch {
-          result = { jsonrpc: '2.0', id: (message as any)?.id ?? null, error: { code: -32000, message: 'App unavailable' } }
+          result = { jsonrpc: '2.0', id: (message as { id?: unknown } | null)?.id ?? null, error: { code: -32000, message: 'App unavailable' } }
         }
         cancelled.delete(requestId)
         try {

@@ -74,7 +74,7 @@ const Direction = Extension.create({
           dir: {
             default: 'auto',
             parseHTML,
-            renderHTML: (a: any) => (a.dir && a.dir !== 'auto' ? { dir: a.dir } : {}),
+            renderHTML: (a: Record<string, unknown>) => (a.dir && a.dir !== 'auto' ? { dir: a.dir } : {}),
           },
         },
       },
@@ -85,7 +85,7 @@ const Direction = Extension.create({
           textAlign: {
             default: null,
             parseHTML: (el: HTMLElement) => el.style.textAlign || null,
-            renderHTML: (a: any) => (a.textAlign ? { style: `text-align: ${a.textAlign}` } : {}),
+            renderHTML: (a: Record<string, unknown>) => (a.textAlign ? { style: `text-align: ${a.textAlign}` } : {}),
           },
         },
       },
@@ -93,7 +93,7 @@ const Direction = Extension.create({
       {
         types: CONTAINER,
         attributes: {
-          dir: { default: 'auto', parseHTML, renderHTML: (a: any) => ({ dir: a.dir || 'auto' }) },
+          dir: { default: 'auto', parseHTML, renderHTML: (a: Record<string, unknown>) => ({ dir: a.dir || 'auto' }) },
         },
       },
       // Tables can be narrower than the column and placed left / center / right (physical sides, like Word).
@@ -103,12 +103,12 @@ const Direction = Extension.create({
           tableAlign: {
             default: null,
             parseHTML: (el: HTMLElement) => el.getAttribute('data-table-align'),
-            renderHTML: (a: any) => (a.tableAlign ? { 'data-table-align': a.tableAlign } : {}),
+            renderHTML: (a: Record<string, unknown>) => (a.tableAlign ? { 'data-table-align': a.tableAlign } : {}),
           },
           tableWidth: {
             default: null,
             parseHTML: (el: HTMLElement) => Number(el.getAttribute('data-table-width')) || null,
-            renderHTML: (a: any) => (a.tableWidth ? { 'data-table-width': a.tableWidth } : {}),
+            renderHTML: (a: Record<string, unknown>) => (a.tableWidth ? { 'data-table-width': a.tableWidth } : {}),
           },
         },
       },
@@ -266,6 +266,7 @@ declare module '@tiptap/core' {
       setTableDirection: (dir: string) => ReturnType
       setTableWidth: (width: number | null) => ReturnType
       setTableAlign: (align: 'left' | 'center' | 'right' | null) => ReturnType
+      setTextAlign: (align: 'left' | 'center' | 'right' | 'justify') => ReturnType
     }
   }
 }
