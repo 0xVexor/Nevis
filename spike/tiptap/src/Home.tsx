@@ -1,3 +1,4 @@
+import type { DocNode } from './docNode'
 import { useEffect, useMemo, useState } from 'react'
 import type { Page } from './repo'
 import { PageIcon } from './PageIcon'
@@ -23,7 +24,7 @@ const greeting = (h: number) => (h < 5 || h >= 22 ? t('Good night') : h < 12 ? t
 /** The first words of a page, for its card: plain text of the first paragraphs. */
 function excerpt(content: unknown, max = 120): string {
   let out = ''
-  const walk = (n: any) => {
+  const walk = (n: DocNode | null | undefined) => {
     if (!n || out.length >= max) return
     if (typeof n.text === 'string') out += n.text
     if (Array.isArray(n.content)) {
@@ -34,7 +35,7 @@ function excerpt(content: unknown, max = 120): string {
       if (n.type === 'paragraph' || n.type === 'heading') out += ' '
     }
   }
-  if (content && typeof content === 'object') walk(content)
+  if (content && typeof content === 'object') walk(content as DocNode)
   return out.replace(/\s+/g, ' ').trim().slice(0, max)
 }
 

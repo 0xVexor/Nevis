@@ -1,3 +1,4 @@
+import type { Editor } from '@tiptap/core'
 import { Extension } from '@tiptap/core'
 import Suggestion from '@tiptap/suggestion'
 import { PluginKey } from '@tiptap/pm/state'
@@ -17,11 +18,11 @@ interface Item {
   keywords: string
   disabled?: boolean
   vars?: Record<string, string> // fills {placeholders} in title/desc; values are translated too
-  run: (chain: any, editor: any) => any
+  run: (chain: any, editor: Editor) => any
 }
 
 /** "Link to page": with text selected it becomes a link to the page you pick; otherwise it opens the `[[` picker. */
-export function linkSelection(c: any, editor: any) {
+export function linkSelection(c: any, editor: Editor) {
   const { from, to, empty } = editor.state.selection
   if (!empty && editor.state.doc.textBetween(from, to, ' ').trim()) {
     window.dispatchEvent(new CustomEvent('pick-page-link', { detail: { from, to } }))
@@ -152,7 +153,7 @@ export const INSERTS = new Set(['Icon', 'Table', 'Divider', 'Image', 'Image from
  * What the Ctrl+/ palette offers: everything of the slash menu, and with text selected also actions on it
  * (wrap in a callout / toggle, turn Mermaid text into a diagram) listed first.
  */
-export function paletteItems(query: string, editor: any): Item[] {
+export function paletteItems(query: string, editor: Editor): Item[] {
   const sel = editor.state.selection
   let list = ITEMS
   if (!sel.empty) {

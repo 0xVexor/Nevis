@@ -1,3 +1,4 @@
+import type { Editor } from '@tiptap/core'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useEditorState } from '@tiptap/react'
@@ -32,7 +33,7 @@ const Group = ({ label, children }: { label: string; children: ReactNode }) => (
 )
 
 /** Floating toolbar over the selected image: size, position, enlarge, remove (same look as the table toolbar). */
-export function ImageBubble({ editor }: { editor: any }) {
+export function ImageBubble({ editor }: { editor: Editor }) {
   const s = useEditorState({
     editor,
     selector: ({ editor: e }: any) => {

@@ -1,3 +1,4 @@
+import type { DocNode } from '../docNode'
 import type { DocumentAsset } from './assets.ts'
 import type { DocumentAdmission } from './admission.ts'
 import { canonicalDocumentValue, documentRevision } from './revision.ts'
@@ -25,18 +26,18 @@ const EMPTY_BOARD = { type: 'doc', content: [{ type: 'drawing', attrs: { scene: 
 const EMPTY_TODO = { type: 'doc', content: [{ type: 'taskList', content: [{ type: 'taskItem', attrs: { checked: false }, content: [{ type: 'paragraph' }] }] }] }
 const SNAPSHOT_EVERY = 10 * 60 * 1000 // at most one history entry per page per 10 minutes of editing
 
-function textOf(node: any): string {
+function textOf(node: DocNode | null | undefined): string {
   if (!node) return ''
   if (node.text) return node.text
   return (node.content ?? []).map(textOf).join(' ')
 }
 
-const isBlankDoc = (doc: any) => !textOf(doc).trim() && (doc?.content ?? []).every((n: any) => n.type === 'paragraph')
+const isBlankDoc = (doc: DocNode | null | undefined) => !textOf(doc).trim() && (doc?.content ?? []).every((n) => n.type === 'paragraph')
 
 /** ids of every page referenced by a pageLink node in a ProseMirror doc (derived, cf. page_links in ADR-0002). */
-function linkedIds(node: any, out = new Set<string>()): Set<string> {
+function linkedIds(node: DocNode | string | null | undefined, out = new Set<string>()): Set<string> {
   if (!node || typeof node === 'string') return out
-  if (node.type === 'pageLink' && node.attrs?.id) out.add(node.attrs.id)
+  if (node.type === 'pageLink' && typeof node.attrs?.id === 'string') out.add(node.attrs.id)
   for (const c of node.content ?? []) linkedIds(c, out)
   return out
 }

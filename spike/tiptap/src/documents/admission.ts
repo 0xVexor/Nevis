@@ -1,3 +1,4 @@
+import type { DocNode } from '../docNode'
 import type { Page } from './model.ts'
 import { validateOperationRecord } from './operations.ts'
 import type { DocumentOperationRecord } from './operations.ts'
@@ -8,10 +9,10 @@ export interface DocumentAdmission {
   check(pages: Page[], record: DocumentOperationRecord, undoOrigin?: DocumentOperationRecord | null): void
   native?: { requestId: string; revision: string }
 }
-export function documentLinks(content: any, result = new Set<string>()): Set<string> {
+export function documentLinks(content: DocNode | null | undefined, result = new Set<string>()): Set<string> {
   if (!content || typeof content !== 'object') return result
   if (content.type === 'pageLink' && typeof content.attrs?.id === 'string') result.add(content.attrs.id)
-  if (Array.isArray(content.content)) content.content.forEach((child: unknown) => documentLinks(child, result))
+  if (Array.isArray(content.content)) content.content.forEach((child) => documentLinks(child, result))
   return result
 }
 
@@ -21,7 +22,7 @@ export function documentResources(page: Partial<Page> | null, result = new Set<s
   if (!page) return result
   if (page.cover?.kind === 'image') result.add(`attachment:${page.cover.file}`)
   if (typeof page.dbHost === 'string') result.add(`database:${page.dbHost}`)
-  const walk = (node: any) => {
+  const walk = (node: DocNode | null | undefined) => {
     if (!node || typeof node !== 'object') return
     const attrs = node.attrs ?? {}
     if (node.type === 'image' && typeof attrs.src === 'string' && attrs.src.startsWith('att:')) result.add(`attachment:${attrs.src.slice(4)}`)

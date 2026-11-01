@@ -1,3 +1,4 @@
+import type { DocNode } from './docNode'
 import katex from 'katex'
 import { Editor, getSchema } from '@tiptap/core'
 import { contentProblem } from './editor/contentSafety'
@@ -6,7 +7,7 @@ import { renderDiagram } from './editor/mermaid'
 import { urlFor } from './attachments'
 
 /** ProseMirror doc (or array of blocks) -> HTML via the real schema, without mounting an editor. */
-export function docToHtml(doc: any): string {
+export function docToHtml(doc: DocNode | DocNode[]): string {
   const content = Array.isArray(doc) ? { type: 'doc', content: doc } : doc
   if (contentProblem(content, getSchema(extensions))) {
     const el = document.createElement('pre')

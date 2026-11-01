@@ -1,3 +1,4 @@
+import type { Editor } from '@tiptap/core'
 import { Extension, InputRule, Node, mergeAttributes } from '@tiptap/core'
 import { plainIcon } from '../iconSet'
 import Suggestion from '@tiptap/suggestion'
@@ -102,7 +103,7 @@ type Item = { id: string | null; title: string; icon: string; desc: string }
  * What follows the caret inside the same brackets: with the caret in «[[abc|def]]» this is "def" (+ the `]]`).
  * The picker must treat the WHOLE bracket content as the page name, not only the part before the caret.
  */
-const restOfBrackets = (editor: any): { text: string; length: number } | null => {
+const restOfBrackets = (editor: Editor): { text: string; length: number } | null => {
   const { $from } = editor.state.selection
   const after: string = $from.parent.textBetween($from.parentOffset, $from.parent.content.size, undefined, '￼')
   const m = after.match(/^([^[\]\n]*)\]\]/)

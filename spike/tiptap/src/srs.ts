@@ -1,3 +1,4 @@
+import type { DocNode } from './docNode'
 import { normalizeFa } from './normalize.ts' // explicit extension: this module is also run directly by Node in db/test-srs.mjs
 
 /** Spaced repetition (SM-2 flavoured). Pure, so it can be tested in Node (db/test-srs.mjs). */
@@ -47,13 +48,13 @@ export interface RawCard {
   key: string
   pageId: string
   question: string
-  answer: any[]
+  answer: DocNode[]
 }
 
-const textOf = (n: any): string => (!n || typeof n === 'string' ? '' : (n.text ?? (n.content ?? []).map(textOf).join(' ')))
+const textOf = (n: DocNode | string | null | undefined): string => (!n || typeof n === 'string' ? '' : (n.text ?? (n.content ?? []).map(textOf).join(' ')))
 // text is not the only content: a formula, a diagram, an image, a page link or a code block is an answer too
 const ATOMS = new Set(['image', 'mathBlock', 'mathInline', 'mermaid', 'pageLink', 'codeBlock'])
-const hasContent = (n: any): boolean => !!textOf(n).trim() || ATOMS.has(n?.type) || (n?.content ?? []).some(hasContent)
+const hasContent = (n: DocNode | null | undefined): boolean => !!textOf(n).trim() || ATOMS.has(n?.type ?? '') || (n?.content ?? []).some(hasContent)
 
 /** Stable id of a question: survives edits elsewhere in the page and Persian letter variants. */
 export function hashText(s: string): string {
@@ -63,9 +64,9 @@ export function hashText(s: string): string {
 }
 
 /** Every toggle with a non-empty title and non-empty body is a card: title = question, body = answer. */
-export function extractCards(pageId: string, doc: any): RawCard[] {
+export function extractCards(pageId: string, doc: DocNode | null | undefined): RawCard[] {
   const out: RawCard[] = []
-  const walk = (n: any) => {
+  const walk = (n: DocNode | string | null | undefined) => {
     if (!n || typeof n === 'string') return
     if (n.type === 'toggle') {
       const [head, ...rest] = n.content ?? []

@@ -1,3 +1,4 @@
+import type { Editor } from '@tiptap/core'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { alertDialog, promptDialog } from './dialog'
 import { hasHeaderColumn, hasHeaderRow } from './editor/tableHeader'
@@ -9,7 +10,7 @@ import { t } from './i18n'
 type Chain = any
 
 /** Fixed formatting bar above the page (as in the mockups): one floating pill. The same commands as the floating text menu. */
-export function Toolbar({ editor, diagram }: { editor: any; diagram?: { from: number; to: number; code: string } | null }) {
+export function Toolbar({ editor, diagram }: { editor: Editor; diagram?: { from: number; to: number; code: string } | null }) {
   const B = ({ label, title, on, run, cls }: { label: ReactNode; title: string; on?: boolean; run: (c: Chain) => Chain; cls?: string }) => (
     <button className={(on ? 'on ' : '') + (cls ?? '')} title={title} aria-label={title} onMouseDown={(e) => e.preventDefault()} onClick={() => run(editor.chain().focus()).run()}>
       {label}
@@ -99,7 +100,7 @@ export function Toolbar({ editor, diagram }: { editor: any; diagram?: { from: nu
 }
 
 /** "More" dropdown: the commands that did not fit in the bar. */
-function MoreMenu({ editor, items }: { editor: any; items: { key: string; icon: ReactNode; title: string; on?: boolean; run: (c: Chain) => Chain }[] }) {
+function MoreMenu({ editor, items }: { editor: Editor; items: { key: string; icon: ReactNode; title: string; on?: boolean; run: (c: Chain) => Chain }[] }) {
   const { open, setOpen, ref } = useDropdown()
   return (
     <div className="tb-dd" ref={ref}>
@@ -142,7 +143,7 @@ function useDropdown() {
 }
 
 /** Direction picker: one button that opens a small menu with LTR / RTL (replaces the two separate buttons). */
-function DirMenu({ editor }: { editor: any }) {
+function DirMenu({ editor }: { editor: Editor }) {
   const { open, setOpen, ref } = useDropdown()
   const cur = editor.getAttributes('paragraph').dir ?? editor.getAttributes('heading').dir
   const pick = (d: 'ltr' | 'rtl') => (editor.chain().focus().setDirection(d).run(), setOpen(false))
@@ -185,7 +186,7 @@ const GRID_ROWS = 5
 const GRID_COLS = 9
 
 /** Table menu: size grid to insert a table, plus row/column/delete actions for the table the cursor is in. */
-function TableMenu({ editor }: { editor: any }) {
+function TableMenu({ editor }: { editor: Editor }) {
   const { open, setOpen, ref } = useDropdown()
   const [hover, setHover] = useState({ r: 3, c: 3 })
   const inTable = editor.isActive('table')
@@ -238,7 +239,7 @@ function TableMenu({ editor }: { editor: any }) {
 }
 
 /** Image menu: upload from the device, paste from the clipboard, add by URL, or remove the selected image. */
-function ImageMenu({ editor }: { editor: any }) {
+function ImageMenu({ editor }: { editor: Editor }) {
   const { open, setOpen, ref } = useDropdown()
   const isImg = editor.isActive('image')
   const done = (fn: () => unknown) => (setOpen(false), void fn())

@@ -1,3 +1,4 @@
+import type { Editor } from '@tiptap/core'
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useEditorState } from '@tiptap/react'
@@ -8,7 +9,7 @@ import { hasHeaderColumn, hasHeaderRow } from './editor/tableHeader'
 import { t } from './i18n'
 
 /** The DOM table the cursor is in. */
-function tableDom(editor: any): HTMLElement | null {
+function tableDom(editor: Editor): HTMLElement | null {
   const selection = editor.state.selection
   if (selection instanceof NodeSelection && selection.node.type.name === 'table') return editor.view.nodeDOM(selection.from) as HTMLElement | null
   const { $from } = editor.state.selection
@@ -49,7 +50,7 @@ const Group = ({ label, children }: { label: string; children: ReactNode }) => (
  * Toolbar for the table the cursor is in: rows, columns, cells, header, direction, size, position.
  * Anchored to the complete frame; useAnchor keeps the drag surface clear while scrolling.
  */
-export function TableBubble({ editor }: { editor: any }) {
+export function TableBubble({ editor }: { editor: Editor }) {
   const s = useEditorState({
     editor,
     selector: ({ editor: e }: any) => {
