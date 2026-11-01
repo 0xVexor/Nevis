@@ -5,7 +5,7 @@
 | Area | Path |
 |---|---|
 | Domain engine (pure TypeScript, runs in Node and the browser) | `spike/tiptap/src/database/` |
-| UI (React) | `spike/tiptap/src/database/ui/` + `spike/tiptap/src/styles/database.css` |
+| UI (React) | `spike/tiptap/src/database/ui/` + `spike/tiptap/src/design-system/areas/database.css` |
 | Storage adapters | `spike/tiptap/src/database/storage/` (memory, IndexedDB, Tauri) |
 | Rust: journal, recovery, index, merge | `spike/tiptap/src-tauri/src/database/` |
 | Optional gateway service | `services/database-gateway/` (own README) |

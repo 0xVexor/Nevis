@@ -8,7 +8,7 @@ import { directionalSnapTarget, fitsSnapColumns, outsideSnapTarget, planSnap, sn
 import { chooseSnapDestination, containsSnapPoint, hitsSnapDestination, snapContext, snapDestinations, type SnapDestination } from './snapTargets'
 import { t } from '../i18n'
 import { hoveredSnapBlock, snapBlockAtElement } from './snapHover'
-import { isOverSectionText, isSectionDragSurface } from './snapSurface'
+import { isSectionDragSurface } from './snapSurface'
 import { setLayoutInteraction } from './layoutInteraction'
 
 const MIME = 'application/x-nevis-block-move'
@@ -102,9 +102,21 @@ export const DragHandle = Extension.create({
         picker.append(hint, choice, cancelButton)
         overlay.hidden = true; preview.hidden = true; picker.hidden = true
         document.body.append(overlay, sourceOverlay, hoverOutline, columnHighlight, tray, preview, announcement, picker)
+        // The one place a text block is picked up. Text and the blank space around it always select text.
+        const grip = document.createElement('button')
+        grip.type = 'button'
+        grip.className = 'ds-grip'
+        grip.tabIndex = -1
+        grip.dataset.show = 'false'
+        grip.setAttribute('aria-label', t('Move block'))
+        grip.title = t('Move block')
+        grip.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">'
+          + [[9, 6], [15, 6], [9, 12], [15, 12], [9, 18], [15, 18]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.9"/>`).join('') + '</svg>'
+        document.body.append(grip)
         let pos = -1, frame = 0, menuClickTimer = 0, announcementTimer = 0
         let destroyed = false, suppressSurfaceClick = false
         let hoverFrame = 0
+        let gripPos = -1, gripTimer = 0, overGrip = false
         let hoverPoint: { x: number; y: number } | null = null
         let hoverModality: 'pointer' | 'keyboard' = 'keyboard'
         let cursor: { x: number; y: number } | null = null
@@ -144,10 +156,14 @@ export const DragHandle = Extension.create({
           const right = Math.min(innerWidth, scroller?.right ?? innerWidth, editorRect.right)
           element.style.clipPath = `inset(${Math.max(0, top - r.top)}px ${Math.max(0, r.left + r.width - right)}px ${Math.max(0, r.top + r.height - bottom)}px ${Math.max(0, left - r.left)}px)`
         }
+        const hideGrip = () => { clearTimeout(gripTimer); grip.dataset.show = 'false'; gripPos = -1 }
+        // Leave the grip up for a moment: the pointer has to cross the gutter to reach it.
+        const scheduleGripHide = () => { clearTimeout(gripTimer); if (!overGrip) gripTimer = window.setTimeout(hideGrip, 220) }
         const hide = () => {
           cancelAnimationFrame(hoverFrame); hoverFrame = 0
           hoverOutline.hidden = true; pos = -1; hoverPoint = null
           view.dom.classList.remove('layout-surface-hover')
+          scheduleGripHide()
           if (!session && !pointer && !view.dom.querySelector('.layout-resizing')) setLayoutInteraction(view.dom, 'idle')
         }
         const release = () => {
@@ -487,6 +503,7 @@ export const DragHandle = Extension.create({
           paint(null); setChoice(t('There are no available destinations.'))
         }
         const start = (range: BlockRange, mode: 'drag' | 'pick', selectionBefore?: Selection) => {
+          hideGrip()
           cancelAnimationFrame(hoverFrame); hoverFrame = 0; hoverOutline.hidden = true
           session = { range, doc: view.state.doc, mode, direction: getComputedStyle(view.dom).direction, selectionBefore, context: snapContext(view) }
           cache = new Map(); keyboardChoice = null; geometry = null
@@ -516,6 +533,17 @@ export const DragHandle = Extension.create({
           clipToEditor(hoverOutline, r)
           hoverOutline.hidden = false
         }
+        const showGrip = (start: number) => {
+          const dom = view.nodeDOM(start)
+          if (!(dom instanceof HTMLElement)) return
+          clearTimeout(gripTimer)
+          const r = dom.getBoundingClientRect()
+          const rtl = getComputedStyle(dom).direction === 'rtl'
+          const width = 24, gap = 12 // clear of the block, so the grip never sits on its text or bullet
+          const x = Math.min(Math.max(rtl ? r.right + gap : r.left - width - gap, 2), innerWidth - width - 2)
+          grip.style.left = `${x}px`; grip.style.top = `${Math.max(r.top, 0) + 2}px`
+          grip.dataset.show = 'true'; gripPos = start
+        }
         const resolveHover = () => {
           hoverFrame = 0
           if (!hoverPoint || !view.editable || view.composing || session || pointer || destroyed || view.dom.querySelector('.layout-resizing')) return
@@ -525,9 +553,10 @@ export const DragHandle = Extension.create({
             return
           }
           positionHover(next)
+          showGrip(next)
           const hit = document.elementFromPoint(hoverPoint.x, hoverPoint.y)
-          const draggable = isSectionDragSurface(hit)
-            && (!!hit.closest('[data-layout-drag-surface]') || !isOverSectionText(view.dom.ownerDocument, hoverPoint.x, hoverPoint.y))
+          // Only a block's own drag surface (table, code, drawing...) is draggable here; text and blank space select.
+          const draggable = !!hit?.closest('[data-layout-drag-surface]')
           view.dom.classList.toggle('layout-surface-hover', draggable)
           setLayoutInteraction(view.dom, draggable ? 'hover' : 'idle')
         }
@@ -573,8 +602,8 @@ export const DragHandle = Extension.create({
           if (!(dom instanceof HTMLElement)) return
           const bounds = dom.getBoundingClientRect()
           if (e.clientX < bounds.left || e.clientX > bounds.right || e.clientY < bounds.top - 4 || e.clientY > bounds.bottom + 4) return
-          // Editable glyphs always retain native selection, including slow/multi-column selections.
-          if (!e.target.closest('[data-layout-drag-surface]') && isOverSectionText(view.dom.ownerDocument, e.clientX, e.clientY)) return
+          // Text and the blank space around it always select. Only a drag surface (or the grip) picks a block up.
+          if (!e.target.closest('[data-layout-drag-surface]')) return
           const range = sourceRange(source)
           if (!range) return
           e.preventDefault()
@@ -597,6 +626,25 @@ export const DragHandle = Extension.create({
           cancel()
           openMoveMenu(source, event.target.getBoundingClientRect())
         }
+        const gripDown = (e: PointerEvent) => {
+          if (!view.editable || view.composing || session || pointer || e.button !== 0 || !e.isPrimary || gripPos < 0) return
+          const source = gripPos
+          const range = sourceRange(source)
+          if (!range) return
+          e.preventDefault(); e.stopPropagation()
+          pointer = { id: e.pointerId, x: e.clientX, y: e.clientY, pos: source, started: false, doc: view.state.doc, capture: grip, chrome: true, range }
+          setLayoutInteraction(view.dom, 'armed')
+          hoverModality = 'pointer'; suppressSurfaceClick = false
+          cancelAnimationFrame(hoverFrame); hoverFrame = 0
+          positionHover(source)
+          view.dom.classList.add('layout-surface-armed')
+          try { grip.setPointerCapture(e.pointerId) } catch { /* mouseup and window listeners retain cancellation */ }
+        }
+        const gripEnter = () => { overGrip = true; clearTimeout(gripTimer) }
+        const gripLeave = () => { overGrip = false; if (!pointer && !session) scheduleGripHide() }
+        grip.addEventListener('pointerdown', gripDown)
+        grip.addEventListener('pointerenter', gripEnter)
+        grip.addEventListener('pointerleave', gripLeave)
         const move = (e: PointerEvent) => {
           if (!session && !pointer && e.target instanceof Node && !host.contains(e.target)) hide()
           if (session?.mode === 'pick' && e.isPrimary) {
@@ -852,6 +900,7 @@ export const DragHandle = Extension.create({
             view.dom.removeEventListener('compositionstart', composition)
             view.dom.removeEventListener(LAYOUT_CANCEL, externalCancel)
             view.dom.removeEventListener(SNAP_PICK, pick)
+            clearTimeout(gripTimer); grip.remove()
             overlay.remove(); sourceOverlay.remove(); hoverOutline.remove(); columnHighlight.remove(); tray.remove(); preview.remove(); announcement.remove(); picker.remove()
           },
         }

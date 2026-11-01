@@ -107,10 +107,10 @@ Write-Host "        server: $($ini.result.serverInfo.name) $($ini.result.serverI
 $null = Send '{"jsonrpc":"2.0","method":"notifications/initialized"}' (Headers)
 
 $tools = (Rpc 'tools/list' $null).result.tools
-$expected = 'get_editor_capabilities', 'list_documents', 'search_documents', 'read_document', 'get_document_history', 'create_document', 'edit_document', 'update_document_metadata', 'undo_document_edit', 'list_databases', 'describe_database', 'query_database_rows'
+$expected = 'get_editor_capabilities', 'list_documents', 'search_documents', 'read_document', 'get_document_history', 'create_document', 'edit_document', 'update_document_metadata', 'undo_document_edit', 'list_databases', 'describe_database', 'query_database_rows', 'create_database', 'add_database_rows', 'list_icons', 'update_database_rows', 'trash_database_rows', 'restore_database_rows', 'add_database_property', 'list_tags', 'get_document_links'
 $names = @($tools | ForEach-Object { $_.name })
 $missing = @($expected | Where-Object { $names -notcontains $_ })
-Check "twelve tools listed ($($names.Count))" ($missing.Count -eq 0) "missing: $($missing -join ', ')"
+Check "twenty-one tools listed ($($names.Count))" ($missing.Count -eq 0) "missing: $($missing -join ', ')"
 Check 'every tool has a title and description' (@($tools | Where-Object { -not $_.title -or -not $_.description }).Count -eq 0) ''
 
 Write-Host "`n[Read tools]"

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { repo } from './store'
 import type { Page } from './repo'
 import { PageIcon } from './PageIcon'
+import { dirOf } from './design-system'
 import { t } from './i18n'
 import * as Ic from './icons'
 
@@ -43,7 +44,7 @@ export function Databases({ onOpen, onNew, onDelete }: { onOpen: (id: string) =>
         <div className="dw-grid">
           {shown.map((p) => (
             <div key={p.id} className="dw-item">
-              <button className="dw-card" onClick={() => onOpen(p.id)}>
+              <button dir={dirOf(p.title)} className="dw-card" onClick={() => onOpen(p.id)}>
                 <span className="dw-thumb dbs-thumb"><span className="dbs-ic"><PageIcon page={p} /></span><Ic.Table size={30} /></span>
                 <span className="dw-meta">
                   <b dir="auto">{p.title || t('Untitled database')}</b>

@@ -56,7 +56,7 @@ and 4 sync), plus the existing `db/test-*.mjs` and `node db/check-i18n.mjs`.
 | DB-LIMITS | §27 limits | `commands/util.ts` (LIMITS) | persistence.test | done | n/a | |
 | DB-PERF | §29 workload | `db/bench/database-bench.mjs` | measured, see `docs/database-performance.md` | measured on the memory adapter only | n/a | no IDB/Tauri/UI timings, no frame-drop numbers |
 | DB-I18N | §31 Persian | `ui/fa-db.ts`, `src/i18n.ts`, `db/check-i18n.mjs` | `node db/check-i18n.mjs` (0 database strings missing) | done | n/a | |
-| DB-A11Y-RTL | §29 RTL/accessibility | logical CSS in `src/styles/database.css` | none | partial | none | no zoom-200% pass, no screen-reader pass, no Persian IME test |
+| DB-A11Y-RTL | §29 RTL/accessibility | logical CSS in `src/design-system/areas/database.css` | none | partial | none | no zoom-200% pass, no screen-reader pass, no Persian IME test |
 | DB-EMBED | §18 inline database in a page | `src/editor/databaseEmbed.ts` | browser smoke | done | n/a | |
 | DB-APP-INTEGRATION | §31 app wiring | `src/App.tsx`, `src/PageView.tsx`, `src/pageIndex.ts`, `src/SettingsPage.tsx` | browser smoke | done | n/a | |
 | DB-VECTORS | §28 F01–F40 | see tests | F01–F39 appear by id in query / convert / formula / persistence / tasks tests | covered by suites above | n/a | F40 and the legacy 122-case inventory (§33) were not mapped one by one |

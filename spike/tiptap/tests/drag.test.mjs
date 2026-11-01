@@ -107,17 +107,20 @@ function harness(direction = 'ltr', doc = initial()) {
   const view = { dom: root, editable: true, composing: false, get state() { return state }, posAtDOM: (el) => positions.get(el), posAtCoords: () => hit && positions.has(hit) ? { pos: positions.get(hit) } : null, nodeDOM: (pos) => elements.get(pos), focus() {}, hasFocus: () => false, dispatch(tr) { const previous = state; state = state.apply(tr); pluginView?.update?.(view, previous) } }
   const [plugin] = DragHandle.config.addProseMirrorPlugins.call({})
   pluginView = plugin.spec.view(view)
-  const grip = root // The editor owns pointer capture; there is no floating grip anymore.
+  // The floating grip is the one place a text block is picked up; the editor itself only drags from its own surfaces.
+  const gripEl = () => body.children.find((el) => el.className === 'ds-grip')
   const source = (groupIndex = 0, colIndex = 0) => root.children[groupIndex].children[0].children[colIndex].children[0]
   const hover = (el, y = el.rect.top + 10, x = el.rect.left + 20) => { hit = el; host.emit('mousemove', event(el, x, y)); flushFrame() }
   const begin = (el, groupGrip = false) => {
     hover(el, el.rect.top + (groupGrip ? 2 : 10))
-    root.emit('pointerdown', event(el, el.rect.left + 20, el.rect.top + (groupGrip ? 2 : 10)))
+    const grip = gripEl()
+    if (!grip || grip.dataset.show !== 'true') return
+    grip.emit('pointerdown', event(grip, el.rect.left + 20, el.rect.top + (groupGrip ? 2 : 10)))
   }
   const move = (el, x = 500, y = 275) => { hit = el; win.emit('pointermove', event(el, x, y)); flushFrame() }
   const end = (el, x = 500, y = 275) => { hit = el; win.emit('pointerup', event(el, x, y)) }
   const cleanup = () => { pluginView.destroy(); names.forEach((key, i) => { globalThis[key] = originals[i] }) }
-  return { view, plugin, grip, root, host, body, win, source, hover, begin, move, end, cleanup, get doc() { return state.doc } }
+  return { view, plugin, get grip() { return gripEl() }, root, host, body, win, source, hover, begin, move, end, cleanup, get doc() { return state.doc } }
 }
 
 // These tests exercise the registered pointer handlers, without opening or writing any vault.
@@ -261,4 +264,39 @@ test('vertical extraction from two and three columns previews without editing an
       assert.equal(json(h.doc), before)
     } finally { h.cleanup() }
   }
+})
+
+test('pressing on text or blank space inside a block never picks the block up', () => {
+  const h = harness()
+  try {
+    const before = json(h.doc), el = h.source()
+    h.hover(el)
+    h.root.emit('pointerdown', event(el, el.rect.left + 20, el.rect.top + 10))
+    h.move(el, 500, 275); h.end(el, 500, 275)
+    assert.equal(json(h.doc), before)
+    assert.equal(undoDepth(h.view.state), 0)
+    assert.equal(h.root.hasPointerCapture(1), false)
+  } finally { h.cleanup() }
+})
+
+test('the grip appears next to the hovered block on the side its text starts from', () => {
+  for (const [direction, expected] of [['ltr', (r) => r.left - 24 - 12], ['rtl', (r) => r.right + 12]]) {
+    const h = harness(direction)
+    try {
+      const el = h.source()
+      assert.equal(h.grip?.dataset.show, 'false')
+      h.hover(el)
+      assert.equal(h.grip.dataset.show, 'true', direction)
+      assert.equal(h.grip.style.left, `${Math.min(Math.max(expected(el.rect), 2), 1200 - 24 - 2)}px`, direction)
+    } finally { h.cleanup() }
+  }
+})
+
+test('the grip is hidden while a block is being moved', () => {
+  const h = harness()
+  try {
+    h.begin(h.source()); h.move(h.source(1, 1))
+    assert.equal(h.grip.dataset.show, 'false')
+    h.end(h.source(1, 1))
+  } finally { h.cleanup() }
 })

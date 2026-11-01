@@ -113,6 +113,7 @@ export function editorCapabilities() {
       'Upload entries contain temporaryId, mimeType, name and standard base64 data. Use upload:<temporaryId> in image.src or drawing.scene/preview; the host replaces it with a SHA-256 reference. Every upload must be used.',
       'Uploads allow PNG/JPEG/GIF/WebP and application/vnd.excalidraw+json scenes, at most 20 assets and 196608 decoded bytes per request within the existing request byte limit.',
       'Drawing scene/preview values reference stored attachments; an empty drawing can be edited in the Nevis canvas.',
+      'Page icons (metadata.icon) must be one of the app icons: i:name, or i:name@#rrggbb for a colour, or null to clear. Search the names with list_icons; emoji and any other value are rejected.',
     ],
   }
 }

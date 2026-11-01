@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event'
 import { isTauri, storageFrozen, vaultInfo } from '../db'
 import { repo } from '../store'
 import { markdownToNodes } from '../io'
+import { createIconCatalog } from './iconCatalog'
 import { createDatabaseTools } from '../database/mcpTools'
 import { getDatabase } from '../database/runtime'
 import { createDocumentReadRuntime } from '../platform/documentEnvironment'
@@ -75,7 +76,7 @@ export async function startMcpBridge() {
       let session = sessions.get(connection.revision)
       if (!session) {
         close()
-        session = new McpDocumentSession(repo, connection, runtime, () => alive && !storageFrozen(), connection.writesAvailable === true, markdownToNodes, databaseTools)
+        session = new McpDocumentSession(repo, connection, runtime, () => alive && !storageFrozen(), connection.writesAvailable === true, markdownToNodes, databaseTools, createIconCatalog())
         sessions.set(connection.revision, session)
       }
       let result

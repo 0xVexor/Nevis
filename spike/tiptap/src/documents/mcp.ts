@@ -3,6 +3,7 @@ import { documentLinks, documentResources, undoResources } from './admission.ts'
 import { documentToolContracts, ERROR_CODES, LIMITS } from './contracts.ts'
 import type { DocumentToolName, Schema } from './contracts.ts'
 import type { DatabaseToolHost } from './databaseHost.ts'
+import type { IconCatalog } from './iconHost.ts'
 import { canonicalDocumentValue } from './revision.ts'
 import type { DocumentService } from './service.ts'
 import type { DocumentReadRuntime } from './reader.ts'
@@ -14,13 +15,20 @@ export interface McpConnection {
   writesAvailable?: boolean
   grantId: string; revision: string; vaultId: string; policy: McpPolicy
 }
-const reads = new Set<DocumentToolName>(['get_editor_capabilities', 'list_documents', 'search_documents', 'read_document', 'get_document_history', 'list_databases', 'describe_database', 'query_database_rows'])
+const reads = new Set<DocumentToolName>(['get_editor_capabilities', 'list_documents', 'search_documents', 'read_document', 'get_document_history', 'list_icons', 'list_tags', 'get_document_links', 'list_databases', 'describe_database', 'query_database_rows'])
 const descriptions: Record<DocumentToolName, string> = {
   get_editor_capabilities: 'Call this first before writing. Returns every node and mark the Nevis editor supports, with attribute schemas, nesting rules and a ready-to-use JSON example for each (tables, callouts, toggles, formulas, Mermaid, columns, images, drawings, page links). Use those examples as the exact shape of block content in create_document and edit_document.',
   list_documents: 'List the saved documents this connection may access, with title, kind, tags, parentId and the current revision. Use parentId and recursive to walk the page tree; follow nextCursor while truncated. Start here to find a documentId.',
   search_documents: 'Full-text search over permitted documents. Works with Persian and English (Arabic/Persian letter and digit variants match). Required arguments: query and mode, one of keywords (all words, any order), phrase (words in order) or literal (exact text). Returns passages with documentId, revision and block range; read_document gives the full context.',
   read_document: 'Read one document. Required arguments: documentId, format (markdown, structured or both) and target, an object whose kind is outline (headings only, cheapest), section (also headingBlockId), blocks (also blockIds) or full, for example {"kind":"outline"}. Every block has a stable blockId; use those ids and the returned revision for edits. Pass expectedRevision to fail instead of reading a newer version. Reads show saved content only, never unsaved text in the open editor.',
   get_document_history: 'List the retained edit versions this connection made to a document, or read one with versionId. History is bounded and local to this device and grant, so an empty list does not mean the document never changed.',
+  update_database_rows: 'Change existing rows of a database (sourceId from list_databases, pageId of each row from query_database_rows). rows: [{pageId, title, values}] where values is keyed by property name or propertyId in the formats of create_database; a value of null clears it. All rows change together or none. Choose a fresh operationId.',
+  trash_database_rows: 'Move rows of a database to the trash (they can be restored with restore_database_rows; nothing is deleted for good). pageIds are the rows to remove; their sub-items go with them. Choose a fresh operationId.',
+  restore_database_rows: 'Bring trashed rows of a database back. pageIds are the rows to restore (their sub-items come back with them). Choose a fresh operationId.',
+  add_database_property: 'Add a property (column) to an existing database. kind is text, number, checkbox, select, multi_select, url, email, phone or date; options lists the allowed names for select kinds. The name must be new. Returns every property of the database. Choose a fresh operationId.',
+  list_tags: 'List the tags used by the documents this connection may access, most used first (limit up to 200). Use them to match the existing tags instead of inventing near-duplicates.',
+  get_document_links: 'Show the documents one document links to (outgoing) and the documents that link to it (backlinks), limited to what this connection may access.',
+  list_icons: 'Search the page icons the app ships (query matches names and keywords, limit up to 100). Page icons set through create_document or update_document_metadata must be one of these: use the returned icon value such as i:rocket, optionally with a colour as i:rocket@#0f8f83. Emoji and other values are rejected.',
   list_databases: 'List the databases (tables, boards, calendars) inside the documents this connection may access: sourceId, name, the page that hosts it and the row count. Use the sourceId with describe_database and query_database_rows. Databases on hidden pages are not listed.',
   describe_database: 'Show the properties of one database: propertyId, name, kind (text, number, select, status, date, checkbox, relation, formula ...) and, for select and status, the option names. Call this before query_database_rows so you know what each propertyId means.',
   query_database_rows: 'Read the rows of one database, up to limit (default 50, max 100) per call; follow nextCursor while truncated is true. Each row has its pageId (the row is also a page), title and values keyed by propertyId. Values are plain text, numbers, booleans, dates or arrays; select and multi-select values are lists of option names. Read-only.',
@@ -33,7 +41,7 @@ const descriptions: Record<DocumentToolName, string> = {
 }
 const titles: Record<DocumentToolName, string> = {
   get_editor_capabilities: 'Editor capabilities', list_documents: 'List documents', search_documents: 'Search documents', read_document: 'Read document',
-  get_document_history: 'Document history', create_database: 'Create database', add_database_rows: 'Add database rows', list_databases: 'List databases', describe_database: 'Describe database', query_database_rows: 'Read database rows', create_document: 'Create document', edit_document: 'Edit document',
+  get_document_history: 'Document history', list_icons: 'List page icons', list_tags: 'List tags', get_document_links: 'Document links', update_database_rows: 'Update database rows', trash_database_rows: 'Trash database rows', restore_database_rows: 'Restore database rows', add_database_property: 'Add database property', create_database: 'Create database', add_database_rows: 'Add database rows', list_databases: 'List databases', describe_database: 'Describe database', query_database_rows: 'Read database rows', create_document: 'Create document', edit_document: 'Edit document',
   update_document_metadata: 'Update document metadata', undo_document_edit: 'Undo edit',
 }
 const bytes = (value: unknown) => [...JSON.stringify(value)].reduce((n, c) => n + (c.codePointAt(0)! < 128 ? 1 : c.codePointAt(0)! < 2048 ? 2 : c.codePointAt(0)! < 65536 ? 3 : 4), 0)
@@ -93,7 +101,7 @@ export class McpDocumentScope {
   canWrite = (id: string) => this.policy.allowWrites && this.canRead(id)
   canCreate = (parentId: string | null) => this.policy.allowWrites && (parentId === null ? this.policy.wholeVault : this.canRead(parentId))
 }
-const toolError = (code: typeof ERROR_CODES[number], field?: string) => ({ ok: false as const, error: { code, message: code.replaceAll('_', ' ').toLowerCase(), retryable: ['APP_UNAVAILABLE', 'EDITOR_BUSY'].includes(code), ...(field && ['INVALID_ARGUMENT', 'LIMIT_EXCEEDED'].includes(code) ? { details: { field } } : {}) } })
+const toolError = (code: typeof ERROR_CODES[number], field?: string) => ({ ok: false as const, error: { code, message: code.replaceAll('_', ' ').toLowerCase(), retryable: ['APP_UNAVAILABLE', 'EDITOR_BUSY'].includes(code), ...(field && ['INVALID_ARGUMENT', 'LIMIT_EXCEEDED', 'UNSUPPORTED_CONTENT'].includes(code) ? { details: { field } } : {}) } })
 const rpcError = (id: unknown, code: number, message: string) => ({ jsonrpc: '2.0', id, error: { code, message } })
 type Invocation = { id: string; expiresAt: number; active(): boolean }
 
@@ -102,15 +110,38 @@ type Invocation = { id: string; expiresAt: number; active(): boolean }
 export type { DatabaseToolHost }
 export type MarkdownConverter = (markdown: string) => unknown[]
 
+/**
+ * The editor writes empty attributes (blockId: null, dir: 'auto', textAlign: null, link target: null). The edit contracts
+ * accept only meaningful ones, so converter output is cleaned before it is validated.
+ */
+const meaningful = (attrs: unknown) => {
+  if (!attrs || typeof attrs !== 'object' || Array.isArray(attrs)) return undefined
+  const kept = Object.fromEntries(Object.entries(attrs).filter(([key, value]) => value !== null && !(key === 'dir' && value === 'auto')))
+  return Object.keys(kept).length ? kept : undefined
+}
+export function cleanNode(node: any): any {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) return node
+  const { attrs, content, marks, ...rest } = node
+  const keptAttrs = meaningful(attrs)
+  return {
+    ...rest,
+    ...(keptAttrs ? { attrs: keptAttrs } : {}),
+    ...(Array.isArray(marks) ? { marks: marks.map((mark: any) => { const { attrs: markAttrs, ...markRest } = mark ?? {}; const kept = meaningful(markAttrs); return { ...markRest, ...(kept ? { attrs: kept } : {}) } }) } : {}),
+    ...(Array.isArray(content) ? { content: content.map(cleanNode) } : {}),
+  }
+}
+
 export class McpDocumentSession {
   private databaseTools(): DatabaseToolHost { if (!this.databases) throw { code: 'CAPABILITY_UNAVAILABLE' }; return this.databases }
   /** `markdown` on create_document and `insert_markdown` operations become ordinary block content before validation and replay hashing. */
   private expandMarkdown(name: string, input: any): any {
+    // a folder has no body: create_document needs neither content nor markdown for it
+    if (name === 'create_document' && input.kind === 'folder' && !('markdown' in input) && !('content' in input)) return { ...input, content: { type: 'doc', content: [{ type: 'paragraph' }] } }
     const wantsMarkdown = (name === 'create_document' && 'markdown' in input) || (name === 'edit_document' && Array.isArray(input.operations) && input.operations.some((op: any) => op?.kind === 'insert_markdown'))
     if (name === 'create_document' && ('markdown' in input) === ('content' in input)) return 'invalid'
     if (!wantsMarkdown) return input
     if (!this.markdown) return 'unavailable'
-    const convert = this.markdown
+    const convert = (text: string) => this.markdown!(text).map(cleanNode)
     try {
       if (name === 'create_document') { const { markdown, ...rest } = input; return { ...rest, content: { type: 'doc', content: convert(markdown) } } }
       return { ...input, operations: input.operations.map((op: any) => op.kind !== 'insert_markdown' ? op : { kind: 'insert_blocks', at: op.at, blocks: convert(op.markdown).map((node, index) => ({ temporaryId: `md${index}`, node })), ...(op.assets ? { assets: op.assets } : {}) }) }
@@ -133,9 +164,11 @@ export class McpDocumentSession {
   private readonly writesAvailable: boolean
   private readonly markdown?: MarkdownConverter
   private readonly databases?: DatabaseToolHost
+  private readonly icons?: IconCatalog
+  private iconCatalog(): IconCatalog { if (!this.icons) throw { code: 'CAPABILITY_UNAVAILABLE' }; return this.icons }
   // A host must explicitly advertise write support in addition to the user grant.
-  constructor(service: DocumentService, connection: McpConnection, runtime: DocumentReadRuntime, active: () => boolean, writesAvailable = false, markdown?: MarkdownConverter, databases?: DatabaseToolHost) {
-    this.markdown = markdown; this.databases = databases
+  constructor(service: DocumentService, connection: McpConnection, runtime: DocumentReadRuntime, active: () => boolean, writesAvailable = false, markdown?: MarkdownConverter, databases?: DatabaseToolHost, icons?: IconCatalog) {
+    this.markdown = markdown; this.databases = databases; this.icons = icons
     this.service = service; this.connection = JSON.parse(JSON.stringify(connection)); this.runtime = runtime; this.active = active; this.writesAvailable = writesAvailable
     this.scope = new McpDocumentScope(connection.policy)
     const grant = { context: { vaultHandle: service.vaultHandle, grantId: connection.grantId, grantRevision: connection.revision },
@@ -195,7 +228,7 @@ export class McpDocumentSession {
     if (!this.initialized || !this.ready) return rpcError(id, -32002, 'Initialize connection first')
     if (message.method === 'tools/list' && message.params !== undefined && (!object(message.params) || Object.keys(message.params).some(key => key !== '_meta'))) return rpcError(id, -32602, 'Invalid list parameters')
     if (message.method === 'tools/list') return response({ tools: Object.entries(documentToolContracts).map(([name, contract]) => ({ name, title: titles[name as DocumentToolName], description: descriptions[name as DocumentToolName],
-      inputSchema: contract.inputSchema, outputSchema: { type: 'object', ...contract.outputSchema }, annotations: { readOnlyHint: reads.has(name as DocumentToolName), destructiveHint: !reads.has(name as DocumentToolName) && !['create_document', 'create_database', 'add_database_rows'].includes(name), idempotentHint: true, openWorldHint: false } })) })
+      inputSchema: contract.inputSchema, outputSchema: { type: 'object', ...contract.outputSchema }, annotations: { readOnlyHint: reads.has(name as DocumentToolName), destructiveHint: !reads.has(name as DocumentToolName) && !['create_document', 'create_database', 'add_database_rows', 'add_database_property', 'restore_database_rows'].includes(name), idempotentHint: true, openWorldHint: false } })) })
     if (message.method !== 'tools/call') return rpcError(id, -32601, 'Method not found')
     const params = message.params
     if (!object(params) || typeof params.name !== 'string' || !Object.hasOwn(documentToolContracts, params.name) || Object.keys(params).some(key => !['name', 'arguments', '_meta'].includes(key))) return rpcError(id, -32602, 'Unknown tool or invalid parameters')
@@ -207,6 +240,9 @@ export class McpDocumentSession {
     if (expanded === 'invalid') return resultEnvelope(toolError('INVALID_ARGUMENT'))
     if (expanded === 'unavailable') return resultEnvelope(toolError('CAPABILITY_UNAVAILABLE'))
     input = expanded
+    // page icons: only the app's own icons (see list_icons); null clears
+    const icon = name === 'create_document' ? input.metadata?.icon : name === 'update_document_metadata' ? input.patch?.icon : undefined
+    if (this.icons && typeof icon === 'string' && !this.icons.valid(icon)) return resultEnvelope(toolError('INVALID_ARGUMENT', 'icon'))
     let structured: unknown
     try {
       await this.refresh()
@@ -218,6 +254,29 @@ export class McpDocumentSession {
         get_document_history: () => this.editor.getDocumentHistory(input), create_document: () => this.editor.createDocument(input), edit_document: () => this.editor.editDocument(input),
         create_database: () => this.databaseTools().createDatabase(input, this.scope),
         add_database_rows: () => this.databaseTools().addRows(input, this.scope),
+        update_database_rows: () => this.databaseTools().updateRows(input, this.scope),
+        trash_database_rows: () => this.databaseTools().trashRows(input, this.scope),
+        restore_database_rows: () => this.databaseTools().restoreRows(input, this.scope),
+        add_database_property: () => this.databaseTools().addProperty(input, this.scope),
+        list_tags: async () => {
+          const counts = new Map<string, number>()
+          for (const page of await this.service.persistedPages()) if (page.deletedAt === null && this.scope.canRead(page.id)) for (const tag of page.tags ?? []) counts.set(tag, (counts.get(tag) ?? 0) + 1)
+          const sorted = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          const limit = input.limit ?? 100
+          return { tags: sorted.slice(0, limit).map(([name, count]) => ({ name, count })), total: sorted.length, truncated: sorted.length > limit }
+        },
+        get_document_links: async () => {
+          if (!this.scope.canRead(input.documentId)) throw { code: 'NOT_FOUND' }
+          const pages = (await this.service.persistedPages()).filter(page => page.deletedAt === null && this.scope.canRead(page.id))
+          const here = pages.find(page => page.id === input.documentId)
+          if (!here) throw { code: 'NOT_FOUND' }
+          const known = new Map(pages.map(page => [page.id, page]))
+          const item = (page: { id: string; title: string }) => ({ documentId: page.id, title: String(page.title ?? '').slice(0, 512) })
+          const outgoing = [...documentLinks(here.content)].map(id => known.get(id)).filter((page): page is NonNullable<typeof page> => !!page).map(item)
+          const backlinks = pages.filter(page => page.id !== input.documentId && documentLinks(page.content).has(input.documentId)).map(item)
+          return { documentId: input.documentId, outgoing: outgoing.slice(0, 100), backlinks: backlinks.slice(0, 100), truncated: outgoing.length > 100 || backlinks.length > 100 }
+        },
+        list_icons: () => { const found = this.iconCatalog().search(input.query, input.limit ?? 40); return { icons: found.icons, total: found.total, truncated: found.total > found.icons.length } },
         list_databases: () => this.databaseTools().list(this.scope.canRead),
         describe_database: () => this.databaseTools().describe(input.sourceId, this.scope.canRead),
         query_database_rows: () => this.databaseTools().rows(input, this.scope.canRead),

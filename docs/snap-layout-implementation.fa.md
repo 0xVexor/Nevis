@@ -53,7 +53,7 @@
 | `spike/tiptap/src/Toolbar.tsx` | برداشتن دکمهٔ ساخت دستی چیدمان |
 | `spike/tiptap/src/editor/slash.ts` | برداشتن ورودی‌های ساخت دستی دو/سه ستون |
 | `spike/tiptap/src/PageView.tsx` | ورودی منوی جابه‌جایی و راهنمای اصلاح عرض قدیمی |
-| `spike/tiptap/src/styles/layout.css` | استایل محدود به قابلیت و مبتنی بر توکن‌ها |
+| `spike/tiptap/src/design-system/areas/layout.css` | استایل محدود به قابلیت و مبتنی بر توکن‌ها |
 | `spike/tiptap/src/editor/snapSurface.ts` | تفکیک حروف و کنترل‌های تعاملی از سطح قابل درگ |
 | `spike/tiptap/src/editor/layoutEditing.ts` | حذف/جایگزینی انتخاب بین ستون‌ها بدون ادغام wrapperها |
 | `spike/tiptap/src/editor/layoutNavigation.ts` | حرکت با فلش بر اساس هندسه و ترتیب فیزیکی ستون‌ها |
@@ -183,7 +183,7 @@ usable = W - GAP * (n - 1)
 
 ## ۱۰. الزام دیزاین سیستم و حفظ داده
 
-مرجع ظاهر [زبان طراحی](design-language.md)، بخش جاری Aurora Paper و کد زندهٔ `styles/tokens.css` است. بخش‌های تاریخی v2/v3 مجوز بازطراحی تازه نیستند.
+مرجع ظاهر [زبان طراحی](design-language.md)، بخش جاری Aurora Paper و کد زندهٔ `design-system/tokens.css` است. بخش‌های تاریخی v2/v3 مجوز بازطراحی تازه نیستند.
 
 - سطح مقصد از `--accent-bg`/`--accent-soft` و مرز از `--accent`/`--accent-ring` می‌آید؛ رنگ آبی ثابت نداریم.
 - منو از `Popover`، `MenuItem` و `MenuSep` موجود استفاده می‌کند.

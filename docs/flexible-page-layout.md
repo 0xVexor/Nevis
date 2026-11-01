@@ -42,7 +42,7 @@ retain their actual execution status; a successful build or structural test is n
 - Focused settings and explicit start/end column destinations reuse `Popover`, `MenuItem` and existing buttons.
 - Group count, width presets, live resize preview, direction, flattening, deletion and block movement use the same document/history.
 - Drag grips handle root blocks, column blocks and groups. Internal moves use local pointer capture and document identity checks, a root/column drop indicator, autoscroll, and cancellation on Escape, blur, document replacement or editor destruction.
-- Layout styles are scoped in `styles/layout.css`; existing theme tokens, typography and menu primitives are reused.
+- Layout styles are scoped in `design-system/areas/layout.css`; existing theme tokens, typography and menu primitives are reused.
 - Before parsing persisted JSON, unknown nodes/marks and malformed layouts are protected. Original data is available in a read-only panel. Invalid widths use a temporary equal-width display.
 - Unedited pages no longer flush a normalized editor document merely because they were opened/closed. External changes cancel transient interactions, preserve pending local text in history, and clear stale editor history/positions.
 - Existing recursive Markdown serialization, text indexing and backlinks traverse column children. Image resize uses the enclosing column width.
