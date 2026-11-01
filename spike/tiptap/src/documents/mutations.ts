@@ -32,7 +32,7 @@ export interface UpdateDocumentMetadataInput {
 function fail(code: 'INVALID_ARGUMENT' | 'UNSUPPORTED_CONTENT' | 'CAPABILITY_UNAVAILABLE' | 'ACCESS_DENIED', field?: string): never {
   throw new DocumentPlanError(code, field)
 }
-function fields(value: unknown, allowed: string[], required = allowed): asserts value is Record<string, any> {
+function fields(value: unknown, allowed: string[], required = allowed): asserts value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some((key) => !allowed.includes(key)) || required.some((key) => !Object.hasOwn(value, key)))
     fail('INVALID_ARGUMENT')
 }

@@ -31,7 +31,7 @@ export interface UndoDocumentInput {
 type Cursor = { binding: string; snapshot: string; offset: number; expiresAt: number }
 const id = (value: unknown, max = 256): value is string => typeof value === 'string' && value.length > 0 && [...value].length <= max
 const token = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value)
-function fields(value: unknown, allowed: string[], required: string[]): asserts value is Record<string, any> {
+function fields(value: unknown, allowed: string[], required: string[]): asserts value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some((key) => !allowed.includes(key)) || required.some((key) => !Object.hasOwn(value, key)))
     fail('INVALID_ARGUMENT')
 }

@@ -1,3 +1,4 @@
+/* oxlint-disable typescript/no-explicit-any -- the MCP layer validates untrusted JSON-RPC input and JSON-Schema documents; every value is checked at runtime before use */
 import { editorCapabilities } from './editorProfile.ts'
 import { documentLinks, documentResources, undoResources } from './admission.ts'
 import { documentToolContracts, ERROR_CODES, LIMITS } from './contracts.ts'

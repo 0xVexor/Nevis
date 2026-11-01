@@ -92,8 +92,8 @@ export const EDIT_CAPABILITIES = Object.freeze({
   operations: ['insert_blocks', 'replace_blocks', 'move_blocks', 'delete_blocks', 'set_attributes', 'set_internal_link', 'set_table_cell', 'insert_table_row'],
   preservesUntouchedUnsupportedNodes: true,
 })
-const object = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v)
-function fields(value: unknown, allowed: string[], required = allowed): asserts value is Record<string, any> {
+const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
+function fields(value: unknown, allowed: string[], required = allowed): asserts value is Record<string, unknown> {
   if (!object(value) || Object.keys(value).some((key) => !allowed.includes(key)) || required.some((key) => !Object.hasOwn(value, key))) fail('INVALID_ARGUMENT')
 }
 const string = (v: unknown, max = 256, min = 1): v is string => typeof v === 'string' && [...v].length >= min && [...v].length <= max
@@ -220,7 +220,7 @@ export async function planDocumentEdit(source: Page, input: EditDocumentInput, r
     fail('APP_UNAVAILABLE')
   }
   if (!/^[a-f0-9]{64}$/.test(seed)) fail('APP_UNAVAILABLE')
-  const root = after.content as EditNode,
+  const root = after.content as unknown as EditNode,
     temporary = new Map<string, string>(),
     reserved = new Set<string>()
   const changes: Change[] = [],
@@ -313,7 +313,7 @@ export async function planDocumentEdit(source: Page, input: EditDocumentInput, r
           children.length >= 2 &&
           children.length <= 3 &&
           types.every((type) => type === 'layoutColumn') &&
-          [undefined, null, 'rtl', 'ltr'].includes(node.attrs?.direction as any)
+          ([undefined, null, 'rtl', 'ltr'] as unknown[]).includes(node.attrs?.direction)
         break
       default:
         protectedContent = true
