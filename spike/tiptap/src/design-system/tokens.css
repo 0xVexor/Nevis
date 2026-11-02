@@ -10,12 +10,13 @@
  */
 :root {
   /* accent: --user-accent is written by the appearance setting; null falls back to the system default */
-  --ds-accent-base: var(--user-accent, #0f8f83);
+  --ds-accent-base: var(--user-accent, #087f74);
   --ds-accent: light-dark(var(--ds-accent-base), color-mix(in oklab, var(--ds-accent-base) 78%, #fff));
-  --ds-accent-ink: #ffffff;
+  --ds-accent-ink: light-dark(#ffffff, #102c28);
   --ds-accent-soft: color-mix(in oklab, var(--ds-accent) 14%, var(--ds-bg));
   --ds-accent-line: color-mix(in oklab, var(--ds-accent) 34%, var(--ds-bg));
   --ds-white: #fff;
+  --ds-scene-ink: #192c38;
   /* hues for tiles, tags and chips */
   --ds-violet: light-dark(#6a5cff, #9a90ff);
   --ds-blue: light-dark(#2f7cf6, #6aa5ff);
@@ -26,18 +27,18 @@
   --ds-accent-faint: color-mix(in srgb, var(--ds-accent) 7%, transparent);
 
   /* surfaces */
-  --ds-bg: color-mix(in oklab, var(--ds-accent) 2%, light-dark(#ffffff, #1e2128));
-  --ds-side: color-mix(in oklab, var(--ds-accent) 5.5%, light-dark(#f7f8f9, #191c22));
-  --ds-raised: color-mix(in oklab, var(--ds-accent) 2%, light-dark(#ffffff, #252931));
-  --ds-sunk: color-mix(in oklab, var(--ds-accent) 5.5%, light-dark(#f1f3f4, #292e37));
+  --ds-bg: light-dark(#fcfcfb, #191c20);
+  --ds-side: light-dark(#f3f4f2, #15181b);
+  --ds-raised: light-dark(#ffffff, #202429);
+  --ds-sunk: light-dark(#eff1ee, #262b30);
 
   /* ink */
-  --ds-text: light-dark(#14171c, #e8eaee);
-  --ds-text-2: light-dark(#4b5360, #b8bfca);
-  --ds-text-3: light-dark(#7b8492, #8c95a3);
+  --ds-text: light-dark(#222923, #e9eee9);
+  --ds-text-2: light-dark(#58625b, #b1bbb5);
+  --ds-text-3: light-dark(#6d7870, #909c95);
 
   /* lines and states */
-  --ds-line: color-mix(in oklab, var(--ds-accent) 9%, light-dark(#e4e7ea, #343a45));
+  --ds-line: light-dark(#e4e7e2, #30363c);
   --ds-line-strong: color-mix(in oklab, var(--ds-accent) 13%, light-dark(#d6dae0, #434a57));
   --ds-hover: color-mix(in oklab, var(--ds-accent) 9%, transparent);
   --ds-press: color-mix(in oklab, var(--ds-accent) 15%, transparent);
@@ -73,11 +74,22 @@
   --ds-font-serif: 'Newsreader', 'Vazirmatn', Georgia, serif;
   --ds-font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
+  --ds-control: 36px;
+  --ds-control-sm: 28px;
+  --ds-text-caption: 12px;
+  --ds-text-small: 13px;
+  --ds-text-section: 20px;
+  --ds-icon-size: 18px;
+  --ds-text-ui: 14px;
+  --ds-text-heading: 32px;
+  --ds-teal: #087f74;
+  --ds-dot-grid: light-dark(#d6ddd7, #37403a);
+
   /* motion */
-  --ds-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
-  --ds-fast: 150ms;
-  --ds-base: 200ms;
-  --ds-slow: 350ms;
+  --ds-ease: cubic-bezier(.22, 1, .36, 1);
+  --ds-fast: 120ms;
+  --ds-base: 220ms;
+  --ds-slow: 300ms;
 
   /* layers */
   --ds-z-pop: 60;

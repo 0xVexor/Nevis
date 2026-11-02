@@ -12,3 +12,9 @@ export { Card, Switch, Field, Chip, Tabs, Section, Facts, Notice, type TabItem }
 export { cx, dirOf } from './dir'
 export { COVER_SCENES, landscapeFor, phaseOf, type Landscape, type DayPhase } from './scenery'
 export { Dialog, Tooltip } from './overlay'
+
+export { PreferenceRow, PreferenceGroup, SegmentedChoice, RangeControl } from './Preferences'
+
+export { WorkspaceHeader } from './WorkspaceHeader'
+
+export { CommandDialog, CommandResult } from './CommandDialog'

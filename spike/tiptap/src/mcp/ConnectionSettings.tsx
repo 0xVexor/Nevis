@@ -1,3 +1,4 @@
+import { Switch as SharedSwitch } from '../design-system/controls'
 import { useEffect, useRef, useState } from 'react'
 import { isTauri } from '../db'
 import { t } from '../i18n'
@@ -14,7 +15,7 @@ const clients: { id: AiClient; label: string }[] = [
 ]
 
 const Switch = ({ label, on, disabled, onChange }: { label: string; on: boolean; disabled?: boolean; onChange: (v: boolean) => void }) => (
-  <button role="switch" aria-checked={on} aria-label={label} disabled={disabled} className={'switch' + (on ? ' on' : '')} onClick={() => onChange(!on)} />
+  <SharedSwitch checked={on} label={label} disabled={disabled} onChange={onChange} />
 )
 
 /** One switch turns the connection on for the whole vault; hiding single documents lives under "Advanced". */

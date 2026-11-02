@@ -1,0 +1,22 @@
+/** Copy for the shared-foundation Home migration. */
+export const FA_HOME: Record<string, string> = {
+  'Your workspace': 'فضای کار شما',
+  'A little space to think, create, and keep going.': 'فضایی برای فکر کردن، ساختن و ادامه دادن.',
+  'A clear next step': 'قدم بعدی، روشن و ساده',
+  'Today, at your pace': 'امروز، با ریتم خودت',
+  'Open tasks across your workspace. Pick up whatever matters next.': 'کارهای باز از همهٔ صفحه‌ها؛ از چیزی شروع کن که الان برایت مهم‌تر است.',
+  'Open tasks': 'کارهای باز',
+  '{done} of {total} completed': '{done} از {total} انجام شده',
+  'Task progress': 'پیشرفت کارها',
+  'Open source page': 'باز کردن صفحهٔ مبدأ',
+  'Open {page}': 'باز کردن {page}',
+  'A little breathing room': 'کمی فرصت برای نفس کشیدن',
+  'No open checklist items. Your next idea can start with a blank page.': 'کار بازی در چک‌لیست‌ها نیست. ایدهٔ بعدی می‌تواند از یک صفحهٔ خالی شروع شود.',
+  'Keep it fresh': 'یادگرفته‌ها را تازه نگه دار',
+  'cards ready to review': 'کارت آمادهٔ مرور',
+  'A short review helps good ideas stay with you.': 'یک مرور کوتاه کمک می‌کند آموخته‌ها همراهت بمانند.',
+  'You are up to date. Come back when your next cards are ready.': 'مرورها به‌روزند. وقتی کارت‌های بعدی آماده شدند برگرد.',
+  'Start review': 'شروع مرور',
+  'Open flashcards': 'باز کردن فلش‌کارت‌ها',
+  'A blank page is a good place to begin.': 'یک صفحهٔ خالی، جای خوبی برای شروع است.',
+}

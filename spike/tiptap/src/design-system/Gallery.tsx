@@ -5,6 +5,9 @@ import { Row } from './Row'
 import { Dialog, Tooltip } from './overlay'
 import { Icon } from './icons'
 import { COVER_SCENES, landscapeFor } from './scenery'
+import { PreferenceGroup, PreferenceRow, SegmentedChoice, RangeControl } from './Preferences'
+import { WorkspaceHeader } from './WorkspaceHeader'
+import { CommandDialog, CommandResult } from './CommandDialog'
 import './gallery.css'
 
 /**
@@ -15,6 +18,8 @@ function Pane({ dir }: { dir: 'ltr' | 'rtl' }) {
   const [on, setOn] = useState(true)
   const [tab, setTab] = useState('one')
   const [open, setOpen] = useState(false)
+  const [size, setSize] = useState(16)
+  const [commandOpen, setCommandOpen] = useState(false)
   const fa = dir === 'rtl'
   const title = fa ? 'یادداشت درس جاوا' : 'Java lecture notes'
   return (
@@ -42,6 +47,23 @@ function Pane({ dir }: { dir: 'ltr' | 'rtl' }) {
           <Row icon={<Icon name="home" />} text="Java lecture notes" />
           <Row icon={<Icon name="home" />} text="فصل ۱۵ — Graph" trailing={<Chip>2</Chip>} />
         </Card>
+      </Section>
+      <Section title="Search and commands">
+        <Button onClick={() => setCommandOpen(true)}>Open command surface</Button>
+        {commandOpen && <CommandDialog dir={dir} label="Search" onClose={() => setCommandOpen(false)} header={<input aria-label="Search" placeholder="Search the workspace" />} filters={<span>All / Pages / Commands</span>} footer={<span>Esc: close</span>}>
+          <CommandResult icon={<Icon name="file" />} selected trailing={<kbd>Enter</kbd>} onClick={() => setCommandOpen(false)}><b>Reading notes</b><small>Search result with a content passage</small></CommandResult>
+          <CommandResult icon={<Icon name="plus" />} onClick={() => setCommandOpen(false)}><b>Create a page</b></CommandResult>
+        </CommandDialog>}
+      </Section>
+      <Section title="Workspace identity">
+        <WorkspaceHeader mark={<Icon name="book" />} name="Workspace" revealLabel="Open sidebar" expanded={on} onReveal={() => setOn(true)} action={<IconButton label="Close sidebar" onClick={() => setOn(false)}><Icon name="panel-left" /></IconButton>} />
+      </Section>
+      <Section title="Preferences patterns">
+        <PreferenceGroup title={fa ? 'ترجیحات' : 'Preferences'}>
+          <PreferenceRow label={fa ? 'حرکت' : 'Motion'}><Switch checked={on} onChange={setOn} label="Motion" /></PreferenceRow>
+          <PreferenceRow label={fa ? 'اندازهٔ متن' : 'Text size'}><RangeControl label="Text size" value={size} min={13} max={22} onChange={setSize} /></PreferenceRow>
+          <PreferenceRow label={fa ? 'انتخاب' : 'Choice'}><SegmentedChoice label="Choice" value={tab} onChange={setTab} items={[{value:'one',label:'One'},{value:'two',label:'Two'}]} /></PreferenceRow>
+        </PreferenceGroup>
       </Section>
       <Section title="Controls">
         <div className="gallery-line">

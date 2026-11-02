@@ -44,6 +44,8 @@ import { isTauri, kvGet, kvSet } from './db'
 import { watchDueCards } from './cardsDue'
 import { normalizeFa } from './normalize'
 import { Brand } from './Brand'
+import { WorkspaceMark } from './settings-ui/WorkspaceMark'
+import { WorkspaceHeader } from './design-system/WorkspaceHeader'
 import { Icon, dirOf, Button } from './design-system'
 import { MenuItem, MenuLabel, MenuSep, NameDialog, Popover, SearchModal, Toast, TrashModal, type PaletteCommand } from './ui'
 import { Home } from './Home'
@@ -154,6 +156,9 @@ export default function App() {
   })
   const [shut, setShut] = useState<{ favs: boolean; pages: boolean; tags: boolean; saved: boolean }>({ favs: false, pages: false, tags: false, saved: false })
   const [save, setSave] = useState<SaveState>('saved')
+  const [sidePeek, setSidePeek] = useState(false)
+  const [sidePinned, setSidePinned] = useState(false)
+  const sidebarRef = useRef<HTMLElement>(null)
   const [sideOpen, setSideOpen] = useState<boolean>(() => store('not.side', true))
   const [sideW, setSideW] = useState<number | null>(() => store<number | null>('not.sideW', null)) // null: the width of the chosen sidebar style
   const [sideDrag, setSideDrag] = useState(false)
@@ -204,6 +209,23 @@ export default function App() {
   const readerRef = useRef(reader)
   readerRef.current = reader
   const settings = useSettings()
+  useEffect(() => {
+    if (!sidePinned) return
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Node && !sidebarRef.current?.contains(event.target)) {
+        setSidePinned(false)
+        setSidePeek(false)
+      }
+    }
+    document.addEventListener('pointerdown', dismiss, true)
+    return () => document.removeEventListener('pointerdown', dismiss, true)
+  }, [sidePinned])
+  useEffect(() => {
+    if (settings.sidebar !== 'icons' || !sideOpen || view === 'settings') {
+      setSidePinned(false)
+      setSidePeek(false)
+    }
+  }, [settings.sidebar, sideOpen, view])
 
   const refresh = useCallback(() => setPages(repo.list()), [])
   useEffect(() => {
@@ -631,11 +653,16 @@ export default function App() {
   ]
   const menuPage = menu ? pages.find((p) => p.id === menu.id) : undefined
 
+  const sideExpanded = settings.sidebar === 'icons' && (sidePeek || sidePinned || newMenu !== null) && sideOpen
+  const preferencesOpen = view === 'settings' && !cardsOpen && !tplOpen && !graphOpen && !tableOpen
   const rowProps = { index, currentId: current?.id ?? '', collapsed, onToggle: toggle, onOpen: setCurrentId, onAdd: add, onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }), onMove: move }
 
   return (
-    <div className={'app' + (reader && view === 'page' && current ? ' reading' : '')} style={cssVars({ '--page-w': pageW + 'px', '--r-scale': readerCfg.scale, '--r-width': readerCfg.width + 'px' })}>
+    <div data-preferences={preferencesOpen ? '' : undefined} className={'app' + (reader && view === 'page' && current ? ' reading' : '')} style={cssVars({ '--page-w': pageW + 'px', '--r-scale': readerCfg.scale, '--r-width': readerCfg.width + 'px' })}>
       <aside
+        data-expanded={sideExpanded ? '' : undefined}
+        onPointerLeave={() => setSidePeek(false)}
+        onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setSidePeek(false) }}
         className={'side' + (sideOpen ? '' : ' closed') + (sideDrag ? ' resizing' : '')}
         style={sideW ? cssVars({ '--side-w': sideW + 'px' }) : undefined}
         onContextMenu={(e) => (e.preventDefault(), setBlankMenu(new DOMRect(e.clientX, e.clientY, 0, 0)))}
@@ -660,39 +687,38 @@ export default function App() {
           }}
         />
         <div className="ws">
-          <span className="ws-logo">
-            <Ic.Logo size={28} />
-          </span>
-          <Brand className="ws-name" />
-          <button className="icon-btn" title={t('Close sidebar  Ctrl+\\')} onClick={() => setSideOpen(false)}>
-            <Icon name="panel-left" />
-          </button>
+          <WorkspaceHeader mark={<WorkspaceMark />} name={<Brand />} revealLabel={t('Open sidebar')} expanded={settings.sidebar !== 'icons' || sideExpanded} onReveal={() => setSidePeek(true)} onActivate={() => { if (settings.sidebar === 'icons') setSidePinned(true); setSidePeek(true) }} action={
+            <button className="icon-btn" aria-label={t('Close sidebar')} title={bindingHint('sidebar')} onClick={() => { setSidePinned(false); setSidePeek(false); setSideOpen(false) }}>
+              <Icon name="panel-left" />
+            </button>
+          } />
         </div>
+        <div className="side-workspace"><WorkspaceCard onOpen={() => setFolderOpen(true)} /></div>
 
         <div className="side-scroll">
-          <button className="row plain search-row" onClick={() => setSearching(true)}>
+          <button aria-label={t('Search')} className="row plain search-row" onClick={() => setSearching(true)}>
             <span className="ic">
               <Icon name="search" />
             </span>
             <span className="ntitle">{t('Search')}...</span>
-            <kbd dir="ltr">{shortcutLabel(['Mod', 'K'])}</kbd>
+            <kbd dir="ltr">{bindingHint('search')}</kbd>
           </button>
 
-          <button className={'row plain' + (view === 'home' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('home'))}>
+          <button aria-label={t('Home')} className={'row plain' + (view === 'home' && !cardsOpen && !tplOpen && !graphOpen && !tableOpen ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('home'))}>
             <span className="ic">
               <Icon name="home" />
             </span>
             <span className="ntitle">{t('Home')}</span>
           </button>
 
-          <button className={'row plain' + (view === 'tasks' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('tasks'))}>
+          <button aria-label={t('Tasks')} className={'row plain' + (view === 'tasks' && !cardsOpen && !tplOpen && !graphOpen && !tableOpen ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('tasks'))}>
             <span className="ic">
               <Icon name="tasks" />
             </span>
             <span className="ntitle">{t('Tasks')}</span>
           </button>
 
-          <button className="row plain" onClick={() => (setTplOpen(false), setGraphOpen(false), setTableOpen(false), setCardsOpen(true))}>
+          <button aria-label={t('Flashcards')} className={"row plain" + (cardsOpen && !tplOpen && !graphOpen && !tableOpen ? " cur" : "")} onClick={() => (setTplOpen(false), setGraphOpen(false), setTableOpen(false), setCardsOpen(true))}>
             <span className="ic">
               <Icon name="cards" />
             </span>
@@ -700,15 +726,15 @@ export default function App() {
             {dueCards > 0 && <span className="badge">{dueCards}</span>}
           </button>
 
-          <button className="row plain" onClick={() => (setCardsOpen(false), setGraphOpen(false), setTableOpen(false), setTplOpen(true))}>
+          <button aria-label={t('Templates')} className={"row plain" + (tplOpen ? " cur" : "")} onClick={() => (setCardsOpen(false), setGraphOpen(false), setTableOpen(false), setTplOpen(true))}>
             <span className="ic">
               <Icon name="templates" />
             </span>
             <span className="ntitle">{t('Templates')}</span>
           </button>
 
-          <button
-            className={'row plain' + (view === 'databases' ? ' cur' : '')}
+          <button aria-label={t('Databases')}
+            className={'row plain' + (view === 'databases' && !cardsOpen && !tplOpen && !graphOpen && !tableOpen ? ' cur' : '')}
             onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('databases'))}
           >
             <span className="ic">
@@ -717,8 +743,8 @@ export default function App() {
             <span className="ntitle">{t('Databases')}</span>
           </button>
 
-          <button
-            className={'row plain' + (view === 'drawings' ? ' cur' : '')}
+          <button aria-label={t('Drawings')}
+            className={'row plain' + (view === 'drawings' && !cardsOpen && !tplOpen && !graphOpen && !tableOpen ? ' cur' : '')}
             onPointerEnter={warmDrawing}
             onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('drawings'))}
           >
@@ -728,20 +754,21 @@ export default function App() {
             <span className="ntitle">{t('Drawings')}</span>
           </button>
 
-          <button className="row plain" onClick={() => (setCardsOpen(false), setTplOpen(false), setTableOpen(false), setGraphOpen(true))}>
+          <button aria-label={t('Graph view')} className={"row plain" + (graphOpen ? " cur" : "")} onClick={() => (setCardsOpen(false), setTplOpen(false), setTableOpen(false), setGraphOpen(true))}>
             <span className="ic">
               <Icon name="graph" />
             </span>
             <span className="ntitle">{t('Graph view')}</span>
           </button>
 
-          <button className="row plain" onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(true))}>
+          <button aria-label={t('Pages table')} className={"row plain" + (tableOpen ? " cur" : "")} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(true))}>
             <span className="ic">
               <Icon name="table" />
             </span>
             <span className="ntitle">{t('Pages table')}</span>
           </button>
 
+          <div className="side-collections">
           {(favs.length > 0 || dragPage) && (
             <div className={favs.length === 0 ? 'fav-float' : undefined}>
               <div
@@ -839,24 +866,25 @@ export default function App() {
               onOpen={setCurrentId}
             />
           )}
+          </div>
         </div>
 
         <SideTip />
         <div className="side-foot">
-          <WorkspaceCard onOpen={() => setFolderOpen(true)} />
-          <button className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('settings'))}>
+
+          <button aria-label={t('Settings')} className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('settings'))}>
             <span className="ic">
               <Icon name="settings" />
             </span>
             <span className="ntitle">{t('Settings')}</span>
           </button>
-          <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('files'))}>
+          <button aria-label={t('Files')} className={'row plain' + (view === 'files' && !cardsOpen && !tplOpen && !graphOpen && !tableOpen ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('files'))}>
             <span className="ic">
               <Icon name="paperclip" />
             </span>
             <span className="ntitle">{t('Files')}</span>
           </button>
-          <button className="row plain" onClick={() => setTrashOpen(true)}>
+          <button aria-label={t('Trash')} className="row plain" onClick={() => setTrashOpen(true)}>
             <span className="ic">
               <Icon name="trash" />
             </span>
@@ -864,7 +892,7 @@ export default function App() {
             {repo.trash().length > 0 && <span className="badge">{repo.trash().length}</span>}
           </button>
           <div className="ds-split side-new">
-            <Button variant="primary" onClick={() => add(null)}>
+            <Button variant="primary" aria-label={t('New page')} onClick={() => add(null)}>
               <Ic.Plus size={16} />
               <span className="ntitle">{t('New page')}</span>
             </Button>
@@ -889,7 +917,7 @@ export default function App() {
 
       <main ref={mainRef} className={'main' + (panelOpen && !reader && view === 'page' && current ? ' drawer-open' : '')}>
         <header className="topbar">
-          {!sideOpen && (
+          {!sideOpen && !preferencesOpen && (
             <button className="icon-btn" title={t('Open sidebar  Ctrl+\\')} onClick={() => setSideOpen(true)}>
               <Ic.Sidebar />
             </button>
@@ -1078,6 +1106,7 @@ export default function App() {
             <SettingsView
               key={settingsTab ?? 'settings'}
               initialTab={settingsTab}
+              onLeave={() => setView('home')}
               data={{ repo, refresh, toast: (msg) => setToast({ msg }), open: setCurrentId, exportAll: doExportAll, backup: doBackup, workspaces: () => setFolderOpen(true) }}
             />
           ) : current?.dbHost ? (

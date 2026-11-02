@@ -1,3 +1,5 @@
+import { CommandDialog, CommandResult } from './design-system/CommandDialog'
+import { Button, IconButton } from './design-system/Button'
 import type { DocNode } from './docNode'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { normalizeFa } from './normalize'
@@ -314,6 +316,7 @@ export function SearchModal({
   initialQuery?: string
   onSaveSearch?: (query: string) => void
 }) {
+  const input = useRef<HTMLInputElement>(null)
   const [q, setQ] = useState(initialQuery)
   const [sel, setSel] = useState(0)
   const [scope, setScope] = useState<PaletteScope>('all')
@@ -418,116 +421,57 @@ export function SearchModal({
     ['cmds', t('Commands')],
   ]
 
-  return (
-    <div className="overlay palette-overlay" onMouseDown={onClose}>
-      <div className="modal palette" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && (e.stopPropagation(), onClose())}>
-        {' '}
-        {/* Esc closes the search only: reader mode, the page panel and the like stay as they are */}
-        <div className="pal-search">
-          <span className="pal-sic">
-            <Ic.Search size={18} />
-          </span>
-          <input
-            autoFocus
-            dir="auto"
-            placeholder={t('Search pages or type a command…')}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowDown') (e.preventDefault(), setSel((s) => Math.min(s + 1, items.length - 1)))
-              else if (e.key === 'ArrowUp') (e.preventDefault(), setSel((s) => Math.max(s - 1, 0)))
-              else if (e.key === 'Tab') (e.preventDefault(), setScope((s) => scopes[(scopes.findIndex(([k]) => k === s) + 1) % scopes.length][0]))
-              else if (e.key === 'Enter' && items[sel]) (e.preventDefault(), choose(items[sel]))
-            }}
-          />
-          {onSaveSearch && term.trim() && !cmdOnly && (
-            <button className="icon-btn" title={t('Save this search')} onClick={() => (onClose(), onSaveSearch(term.trim()))}>
-              <Ic.Star />
-            </button>
-          )}
-          {q && (
-            <button className="icon-btn" title={t('Clear')} onClick={() => setQ('')}>
-              <Ic.Close size={15} />
-            </button>
-          )}
-        </div>
-        <div className="pal-tabs">
-          {scopes.map(([k, label]) => (
-            <button key={k} className={scope === k ? 'on' : ''} onClick={() => setScope(k)}>
-              {label}
-            </button>
-          ))}
-          <span className="pal-count">{items.length}</span>
-        </div>
-        <div className="pal-list">
-          {!cmdOnly && term.trim() && searchState !== 'fresh' && (
-            <div className="pal-empty" role="status">
-              {t(searchState === 'failed' ? 'Search is unavailable. Try again.' : 'Searching…')}
-              {searchState === 'failed' && <button onClick={() => setSearchEpoch((value) => value + 1)}>{t('Try again')}</button>}
-            </div>
-          )}
-          {items.length === 0 && searchState === 'fresh' && (
-            <div className="pal-empty">
-              <span className="fc2-art">
-                <Ic.Search size={26} />
-              </span>
-              <b>{t('No results found')}</b>
-              <small>{t('Try a different word, or search the content of your pages.')}</small>
-            </div>
-          )}
-          {shownCmds.length > 0 && <div className="modal-label">{t('Commands')}</div>}
-          {shownCmds.map((c, i) => (
-            <button key={c.id} className={'result' + (i === sel ? ' sel' : '')} onMouseMove={() => setSel(i)} onClick={() => choose({ cmd: c })}>
-              <span className="result-ic">{c.icon}</span>
-              <span className="result-tx">
-                <b dir="auto">{hl(c.label)}</b>
-              </span>
-              {c.hint ? (
-                <kbd className="result-kbd" dir="ltr">
-                  {shortcutHint(c.hint)}
-                </kbd>
-              ) : (
-                <span className="result-go">
-                  <Ic.Arrow size={14} />
-                </span>
-              )}
-            </button>
-          ))}
-          {found.length > 0 && <div className="modal-label">{term.trim() ? t('Pages') : t('Recent')}</div>}
-          {found.map((p, j) => {
-            const i = shownCmds.length + j
-            const sn = snippet(p)
-            return (
-              <button key={p.id} dir={dirOf(p.title)} className={'result' + (i === sel ? ' sel' : '')} onMouseMove={() => setSel(i)} onClick={() => choose({ page: p })}>
-                <span className="result-ic">{iconNode(p.icon, 17, <Ic.Page size={17} />)}</span>
-                <span className="result-tx">
-                  <b dir="auto">{hl(p.title || t('Untitled'))}</b>
-                  {sn && <small dir="auto">{hl(sn)}</small>}
-                </span>
-                <span className="result-meta">{ago(p.updatedAt)}</span>
-              </button>
-            )
-          })}
-        </div>
-        <div className="palette-foot">
-          <span>
-            <kbd>↑</kbd>
-            <kbd>↓</kbd> {t('Navigate')}
-          </span>
-          <span>
-            <kbd>↵</kbd> {t('Select')}
-          </span>
-          <span>
-            <kbd>Tab</kbd> {t('Switch tab')}
-          </span>
-          <span>
-            <kbd>Esc</kbd> {t('Close')}
-          </span>
-          <span className="palette-tip">{t('Type > for commands only')}</span>
-        </div>
+  return <CommandDialog label={t('Search')} onClose={onClose}
+    header={<>
+      <span className="ds-command-search-icon"><Ic.Search size={20} /></span>
+      <div className="ds-command-input-wrap"><label htmlFor="workspace-search-query">{t('Search')}</label>
+        <input id="workspace-search-query" ref={input} dir="auto" autoComplete="off" spellCheck={false} placeholder={t('Search pages or type a command.')} value={q}
+          onChange={event => setQ(event.target.value)} onKeyDown={event => {
+            if (event.nativeEvent.isComposing) return
+            if (event.key === 'ArrowDown') { event.preventDefault(); setSel(value => Math.max(0, Math.min(value + 1, items.length - 1))) }
+            else if (event.key === 'ArrowUp') { event.preventDefault(); setSel(value => Math.max(value - 1, 0)) }
+            else if (event.key === 'Tab' && !event.shiftKey) { event.preventDefault(); setScope(value => scopes[(scopes.findIndex(([key]) => key === value) + 1) % scopes.length][0]) }
+            else if (event.key === 'Enter' && items[sel]) { event.preventDefault(); choose(items[sel]) }
+          }} />
       </div>
-    </div>
-  )
+      {onSaveSearch && term.trim() && !cmdOnly && <IconButton label={t('Save this search')} onClick={() => { onClose(); onSaveSearch(term.trim()) }}><Ic.Star size={18} /></IconButton>}
+      {q && <IconButton label={t('Clear')} onClick={() => { setQ(''); input.current?.focus() }}><Ic.Close size={16} /></IconButton>}
+      <IconButton label={t('Close')} className="ds-command-close" onClick={onClose}><Ic.Close size={18} /></IconButton>
+    </>}
+    filters={<>
+      <div className="ds-command-scopes" role="group" aria-label={t('Search')}>
+        {scopes.map(([key, label]) => <button type="button" key={key} aria-pressed={(cmdOnly ? 'cmds' : scope) === key} onClick={() => { setScope(key); if (key !== 'cmds' && q.startsWith('>')) setQ(q.slice(1).trimStart()); input.current?.focus() }}>{label}</button>)}
+      </div>
+      <span className="ds-command-count" aria-live="polite" aria-atomic="true"><span className="ds-badge">{items.length}</span><span>{t(term.trim() ? 'Search' : 'Recent')}</span></span>
+    </>}
+    footer={<>
+      <span><kbd>&#8593;</kbd><kbd>&#8595;</kbd>{t('Navigate')}</span>
+      <span><kbd>Enter</kbd>{t('Select')}</span>
+      <span><kbd>Tab</kbd>{t('Switch tab')}</span>
+      <span><kbd>Esc</kbd>{t('Close')}</span>
+      <span className="ds-command-tip">{t('Type > for commands only')}</span>
+    </>}>
+    {!cmdOnly && term.trim() && searchState !== 'fresh' && <div className="ds-command-empty" role="status">
+      <span className="ds-command-state-icon" data-pending={searchState === 'pending' || undefined}><Ic.Search size={24} /></span>
+      <b>{t(searchState === 'failed' ? 'Search is unavailable. Try again.' : 'Searching.')}</b>
+      {searchState === 'failed' && <Button size="sm" onClick={() => setSearchEpoch(value => value + 1)}>{t('Try again')}</Button>}
+    </div>}
+    {items.length === 0 && searchState === 'fresh' && <div className="ds-command-empty" role="status">
+      <span className="ds-command-state-icon"><Ic.Search size={24} /></span>
+      <b>{t('No results found')}</b><p>{t('Try a different word, or search the content of your pages.')}</p>
+      <Button size="sm" variant="ghost" onClick={() => { setQ(''); setScope('all'); input.current?.focus() }}>{t('Clear')}</Button>
+    </div>}
+    {shownCmds.length > 0 && <div className="ds-command-group-label">{t('Commands')}<span>{shownCmds.length}</span></div>}
+    {shownCmds.map((command, index) => <CommandResult key={command.id} selected={index === sel} icon={command.icon} onMouseMove={() => setSel(index)} onClick={() => choose({ cmd: command })}
+      trailing={command.hint ? <kbd dir="ltr">{shortcutHint(command.hint)}</kbd> : <Ic.Arrow size={14} />}><b dir="auto">{hl(command.label)}</b></CommandResult>)}
+    {found.length > 0 && <div className="ds-command-group-label">{t(term.trim() ? 'Pages' : 'Recent')}<span>{found.length}</span></div>}
+    {found.map((page, index) => {
+      const selectedIndex = shownCmds.length + index, passage = snippet(page)
+      return <CommandResult key={page.id} selected={selectedIndex === sel} icon={iconNode(page.icon, 18, <Ic.Page size={18} />)} onMouseMove={() => setSel(selectedIndex)} onClick={() => choose({ page })} trailing={<time>{ago(page.updatedAt)}</time>}>
+        <b dir="auto">{hl(page.title || t('Untitled'))}</b>{passage && <small dir="auto">{hl(passage)}</small>}
+      </CommandResult>
+    })}
+  </CommandDialog>
 }
 
 export function Toast({ msg, action, onAction, onClose }: { msg: string; action?: string; onAction?: () => void; onClose: () => void }) {

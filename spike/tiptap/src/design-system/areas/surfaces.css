@@ -40,8 +40,8 @@
 .side-new { margin-block-start: 8px; }
 .side-new .ds-btn { height: 36px; }
 .side-new .ds-btn:first-child { gap: 8px; }
-:root[data-side='icons'] .side-new > :last-child, :root[data-side='icons'] .side-credit { display: none; }
-:root[data-side='icons'] .side-new > :first-child { border-radius: var(--ds-r); padding: 0; }
+:root[data-side='icons'] .side:not([data-expanded]) .side-new > :last-child, :root[data-side='icons'] .side:not([data-expanded]) .side-credit { display: none; }
+:root[data-side='icons'] .side:not([data-expanded]) .side-new > :first-child { border-radius: var(--ds-r); padding: 0; }
 
 /* brand row: logo and name share one centre line */
 .ws .brand, .ws-name { display: inline-flex; align-items: center; line-height: 1; }

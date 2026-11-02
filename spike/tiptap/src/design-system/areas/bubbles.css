@@ -94,27 +94,6 @@ button + .backup-warn, .backup-acts + .backup-warn { margin-top: 14px; }
 .templates button { padding: 2px 16px 0; }
 .templates button .tpl-chip-ic { transform: translateY(-1px); }
 
-/* brand: larger mark, name tucked right against it */
-.ws { gap: 7px; padding-inline-start: 4px; }
-.ws-name { font-size: 19px; }
-.ws { gap: 8px;
-  height: 52px;
-  padding: 0 2px;
-  align-items: center; }
-.ws-logo { line-height: 0;
-  filter: none;
-  display: grid;
-  place-items: center;
-  flex: none; }
-.ws-logo svg { display: block; }
-.ws-name { line-height: 1; padding-top: 0;
-  background: none;
-  -webkit-text-fill-color: currentColor;
-  color: var(--ds-text);
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  font-size: 16px; }
-
 /* "link to page" picker */
 .plp { width: 300px; }
 .plp-search { display: flex; align-items: center; gap: 8px; margin: 8px 8px 4px; padding: 0 12px; height: 38px; border: 1px solid var(--ds-line); border-radius: 12px; background: var(--ds-bg); color: var(--ds-text-2); }

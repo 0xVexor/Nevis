@@ -1,3 +1,4 @@
+import { Switch } from './design-system/controls'
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { isTauri } from './db'
@@ -54,14 +55,7 @@ export function UpdateSettings() {
           <small>{t('Include early versions that may be less stable. Off by default.')}</small>
         </div>
         <div className="sx-ctl">
-          <button
-            role="switch"
-            aria-checked={s.prereleaseUpdates}
-            aria-label={t('Receive pre-release updates')}
-            className={'switch' + (s.prereleaseUpdates ? ' on' : '')}
-            disabled={updateBusy(st.phase) && st.phase !== 'checking'}
-            onClick={() => updateSettings({ prereleaseUpdates: !s.prereleaseUpdates })}
-          />
+          <Switch checked={s.prereleaseUpdates} label={t('Receive pre-release updates')} disabled={updateBusy(st.phase) && st.phase !== 'checking'} onChange={prereleaseUpdates => updateSettings({ prereleaseUpdates })} />
         </div>
       </div>
       <p className="update-status" role="status">

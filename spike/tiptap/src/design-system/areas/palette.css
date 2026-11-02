@@ -1,33 +1,4 @@
-/* ───────── command palette ───────── */
-.palette-overlay { padding-top: 10vh; }
-.modal.palette { width: min(720px, 94vw); max-height: min(640px, 78vh); border-radius: 28px; background: color-mix(in srgb, var(--ds-raised) 94%, transparent); backdrop-filter: blur(24px) saturate(1.5); box-shadow: var(--ds-shadow-pop), 0 40px 90px -30px var(--ds-accent-line); }
-.pal-search { display: flex; align-items: center; gap: 12px; padding: 16px 18px 12px; }
-.pal-sic { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 14px; background: var(--ds-accent); color: var(--ds-accent-ink); box-shadow: var(--glow); }
-.pal-search input { flex: 1; min-width: 0; height: 44px; border: 0; outline: 0; background: transparent; color: var(--ds-text); font-size: 19px; font-weight: 500; letter-spacing: -0.01em; }
-.pal-search input::placeholder { color: var(--ds-text-3); font-weight: 400; }
-.pal-tabs { display: flex; align-items: center; gap: 6px; padding: 0 18px 12px; border-bottom: 1px solid var(--ds-line); }
-.pal-tabs button { height: 30px; padding: 0 14px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--ds-text-2); font-size: 13px; cursor: var(--cursor-hand, pointer); transition: all 0.15s; }
-.pal-tabs button:hover { background: var(--ds-hover); color: var(--ds-text); }
-.pal-tabs button.on { background: var(--ds-accent-soft); border-color: var(--ds-accent-line); color: var(--ds-accent); font-weight: 700; }
-.pal-count { margin-inline-start: auto; padding: 0 9px; border-radius: 999px; background: var(--ds-hover); color: var(--ds-text-3); font-size: 11.5px; font-weight: 700; line-height: 22px; font-variant-numeric: tabular-nums; }
-.pal-list { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px 10px; }
-.pal-list .modal-label { padding: 12px 12px 6px; }
-.palette .result { position: relative; gap: 14px; min-height: 54px; padding: 9px 12px; border-radius: 16px; transition: background 0.12s; }
-.palette .result.sel { background: linear-gradient(var(--to-end), var(--ds-accent-soft), transparent 150%); }
-.palette .result.sel::before { content: ''; position: absolute; inset-inline-start: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 3px; background: linear-gradient(var(--ds-accent), var(--ds-accent)); box-shadow: 0 0 12px var(--ds-accent-line); }
-.palette .result-ic { width: 38px; height: 38px; border-radius: 13px; font-size: 17px; background: var(--ds-raised); transition: all 0.2s var(--ease); }
-.palette .result.sel .result-ic { background: var(--ds-accent); border-color: transparent; color: var(--ds-accent-ink); box-shadow: 0 4px 14px var(--ds-accent-line); transform: scale(1.04); }
-.palette .result-tx b { font-size: 14.5px; font-weight: 600; }
-.palette .result-tx small { margin-top: 2px; }
-.palette mark { background: color-mix(in srgb, var(--ds-accent) 22%, transparent); color: var(--ds-accent); border-radius: 4px; padding: 0 2px; font-weight: 700; }
-.result-go { display: grid; place-items: center; color: var(--ds-text-3); opacity: 0; transition: opacity 0.15s, transform 0.2s var(--ease); }
-:root[dir='rtl'] .result-go svg { transform: scaleX(-1); }
-.palette .result.sel .result-go { opacity: 1; color: var(--ds-accent); }
-.palette .result-meta { font-size: 12px; }
-.pal-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 40px 20px; text-align: center; color: var(--ds-text-2); }
-.pal-empty b { margin-top: 10px; color: var(--ds-text); font-size: 16px; }
-.pal-empty small { font-size: 12.5px; }
-.palette .palette-foot { gap: 14px; padding: 12px 20px; background: color-mix(in srgb, var(--ds-sunk) 70%, transparent); }
+/* Workspace search now lives in ../commands.css; slash and reader styles remain here. */
 
 /* ───────── slash menu ───────── */
 .slash-menu { display: flex; flex-direction: column; width: 350px; max-height: 400px; padding: 0; overflow: hidden; border-radius: 20px; background: color-mix(in srgb, var(--ds-raised) 95%, transparent); backdrop-filter: blur(20px) saturate(1.5); }
