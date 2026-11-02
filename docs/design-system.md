@@ -1,5 +1,7 @@
 # Nevis design system
 
+Current approved direction and migration handoff: [design language (Persian)](ui-design-language.fa.md), [continuation guide (Persian)](ui-handoff.fa.md). Architecture history: [ui-foundations-plan.md](ui-foundations-plan.md). Settings study and production now share their composition and foundations. Run `npm run dev:settings` from `spike/tiptap` and open `/settings-preview.html` on port 4182 for the review entry. Latest migration edits are untested at the user’s request.
+
 Every new screen, feature and component is built from this system. The old layered "Aurora Paper" styles and the `skin.css` that flattened them are gone: every stylesheet now lives in `src/design-system/` (the `ds-` components and tokens, plus `areas/` for the per-screen layouts).
 
 - **Live reference:** open [`docs/design-system/index.html`](design-system/index.html) in a browser. It shows every token and component, in light and dark, English and Persian, with working menus, right-click menus and column layouts. Settings → About → Design system, or `Ctrl K` → "Design system", opens the same page inside it (`#system`).
@@ -30,7 +32,7 @@ All tokens are `--ds-*`, defined once with `light-dark()`. Never write a raw col
 | Shape | `--ds-r-sm` 7 · `--ds-r` 10 · `--ds-r-lg` 14 · `--ds-r-full` | small controls · controls and cards · large cards and menus · pills |
 | Space | `--ds-s1` … `--ds-s10` | multiples of 4 |
 | Type | `--ds-font-ui` `--ds-font-serif` `--ds-font-mono` | Instrument Sans + Vazirmatn · Newsreader (greeting only) · code |
-| Motion | `--ds-ease` `--ds-fast` 150ms `--ds-base` 200ms `--ds-slow` 350ms | hover · menus · page change |
+| Motion | `--ds-ease` `--ds-fast` 120ms `--ds-base` 220ms `--ds-slow` 300ms | hover · menus · page change |
 
 Type scale: Display 46/1.08 serif · Page title 40/1.15 · Heading 1 30 · Heading 2 20 · Body 14/1.5 · Editor 17/1.8 · Caption 12.5. Sentence case everywhere. No ALL CAPS labels.
 
@@ -68,6 +70,10 @@ Import from `src/design-system`. Use these instead of writing the class names by
 | `Button`, `IconButton` | `variant="primary" \| "ghost" \| "danger"`, `size="sm"`, `icon`. `IconButton` requires `label` (its accessible name and tooltip). |
 | `Row` | An icon next to user text: sidebar items, list rows, card headers. Pass the text as `text`; the row takes that text's direction, so the icon and trailing content sit on the side the text starts from. |
 | `Card`, `Section` | `Card` has `interactive` and `selected`. `Section` is a titled group with an optional action. |
+| `CommandDialog`, `CommandResult` | Service-free search/command surface with header/filter/footer slots, focus containment and restoration, result icon/content/trailing slots. App owns search and commands; styles in `commands.css`. |
+| `WorkspaceHeader` | Service-free workspace identity: mark, name and optional action slots, with an accessible reveal button. Shared by production workspace and Settings. Styles in `navigation.css`; interactive LTR/RTL examples in Gallery. |
+| `PreferenceGroup`, `PreferenceRow` | Settings sections and label/hint/control rows. Labels are already translated. No store, platform or persistence dependencies. |
+| `SegmentedChoice`, `RangeControl` | Controlled choice and numeric slider with accessible labels; the caller supplies values, options and callbacks. Imported from the same design-system entry point. |
 | `Switch`, `Field`, `Chip`, `Tabs` | Switch is `role="switch"`. `Field` follows what is typed (`ltr` for codes and URLs). |
 | `dirOf(text)` | `'rtl' \| 'ltr' \| undefined` by the first letter, the same rule the editor uses. Use it for `dir=` on a row or card when `Row` does not fit. |
 | `Menu`, `Dropdown`, `useMenu`, `Icon` | Already here (below). |

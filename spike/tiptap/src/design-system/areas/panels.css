@@ -4,16 +4,7 @@
 * { scrollbar-width: none; }
 *::-webkit-scrollbar { display: none; }
 
-/* subtle counters (calm number, not a bubble) */
-.badge { background: none; color: var(--ds-text-2); box-shadow: none; font-weight: 600;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 4px;
-  border: 1.5px solid var(--ds-line-strong);
-  border-radius: 50%;
-  font-variant-numeric: tabular-nums; }
-
-/* ───────── top bar ───────── */
+/* Top-bar content; shell geometry and counters live in shell.css. */
 .topbar { gap: 10px; }
 .crumbs { display: flex; min-width: 0; overflow: hidden; align-items: center; height: 38px; padding: 0; gap: 0; border: 0; border-radius: 0; background: none; box-shadow: none;
   block-size: 32px; }

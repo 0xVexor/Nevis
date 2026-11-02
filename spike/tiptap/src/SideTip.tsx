@@ -20,7 +20,7 @@ export function SideTip() {
       if (document.documentElement.dataset.side !== 'icons') return
       const el = (e.target as Element | null)?.closest?.(TARGET)
       const side = el?.closest('.side')
-      if (!el || !side || el === target) return
+      if (!el || !side || side.hasAttribute('data-expanded') || el === target) return
       hide()
       const text = (el.querySelector('.ntitle') ?? (el.matches('.new-page') ? el : null))?.textContent?.trim() || (el as HTMLElement).title || ''
       if (!text) return

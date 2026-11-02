@@ -4,53 +4,6 @@
  */
 
 /* ───── Settings: heading, a nav on the side, plain cards of rows ───── */
-.settings { max-width: 1000px; padding: 8px 40px 96px; }
-.set-head h2 { font-size: 30px; font-weight: 600; letter-spacing: -0.025em; }
-.set-head p { margin-block-start: 6px; font-size: 15px; color: var(--ds-text-2); }
-.sx-layout { grid-template-columns: 200px minmax(0, 1fr); gap: 40px; }
-.set-tabs { gap: 1px; }
-.set-tabs button { gap: 10px; height: 34px; padding: 0 10px; border-radius: var(--ds-r-sm); font-size: 14px; font-weight: 450; color: var(--ds-text-2); }
-.set-tabs button:hover { background: var(--ds-hover); color: var(--ds-text); }
-.set-tabs button.on { background: var(--ds-hover); color: var(--ds-text); font-weight: 550; }
-.set-tabs button.on::before { display: none; }
-.sx-pane { gap: 20px; }
-.sx-pane-head h3 { font-size: 20px; font-weight: 600; letter-spacing: -0.015em; }
-.sx-pane-head p { margin-block-start: 4px; font-size: 14px; color: var(--ds-text-2); }
-.sx-card { border-radius: var(--ds-r-lg); background: var(--ds-raised); box-shadow: none; }
-.sx-card-head { padding: 14px 18px 0; }
-.sx-card-head h3 { font-size: 13px; font-weight: 600; color: var(--ds-text-3); }
-.sx-card-head p { color: var(--ds-text-3); }
-.sx-card > .sx-card-head > .sx-ic { display: none; }
-.sx-card-body { padding: 0 18px; }
-.sx-row { padding-block: 14px; }
-.sx-tx b { font-weight: 550; }
-.sx-tx small { color: var(--ds-text-3); }
-.sx-action .sx-ic { background: none; color: var(--ds-text-3); }
-.sx-action:hover .sx-ic { background: none; color: var(--ds-accent); }
-.sx-logo { border-radius: var(--ds-r-lg); background: var(--ds-accent-soft); border-color: var(--ds-accent-line); }
-
-/* settings controls: segmented, switch, range, swatches, option cards */
-.segmented { gap: 2px; padding: 2px; border: 0; border-radius: var(--ds-r); background: var(--ds-sunk); }
-.segmented button { block-size: 28px; padding: 0 12px; border-radius: 8px; font-size: 14px; font-weight: 500; color: var(--ds-text-2); }
-.segmented button.on { background: var(--ds-raised); color: var(--ds-text); font-weight: 500; box-shadow: 0 0 0 1px var(--ds-line), 0 1px 2px rgb(0 0 0 / 0.06); }
-.switch { inline-size: 36px; block-size: 20px; border-radius: 10px; background: var(--ds-line-strong); }
-.switch::after { inset-block-start: 2px; inset-inline-start: 2px; inline-size: 16px; block-size: 16px; box-shadow: 0 1px 2px rgb(0 0 0 / 0.25); }
-.switch.on { background: var(--ds-accent); box-shadow: none; }
-.switch.on::after { inset-inline-start: 18px; }
-.sx-range input::-webkit-slider-runnable-track { block-size: 4px; background: linear-gradient(var(--ds-accent), var(--ds-accent)) 0 / var(--p, 0%) 100% no-repeat, var(--ds-line-strong); }
-.sx-range input::-webkit-slider-thumb { inline-size: 16px; block-size: 16px; margin-block-start: -6px; border: 1px solid var(--ds-line-strong); background: var(--ds-white); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); }
-.swatches { gap: 10px; }
-.swatch { inline-size: 26px; block-size: 26px; border: 0; outline: 0; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08); }
-.swatch:hover { transform: scale(1.1); }
-.swatch.on { transform: none; outline: 2px solid var(--ds-text-2); outline-offset: 2px; border: 0; }
-.swatch svg { inline-size: 13px; block-size: 13px; }
-.swatch.default { background: var(--ds-accent); color: var(--ds-accent-ink); }
-.theme-card, .fp-card { padding: 8px; border: 1.5px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-bg); }
-.theme-card:hover, .fp-card:hover { transform: none; border-color: var(--ds-line-strong); }
-.theme-card.on, .fp-card.on { border-color: var(--ds-accent); box-shadow: 0 0 0 3px var(--ds-accent-soft); }
-.fp-label { font-size: 12px; font-weight: 550; letter-spacing: 0; text-transform: none; color: var(--ds-text-3); }
-
-/* ───── Files: the vault as a file manager ───── */
 .fx { padding: 4px 40px 18px; }
 .fx-nav, .fx-path, .fx-search, .fx-view { border-color: var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); }
 .fx-nav .icon-btn, .fx-view button { border-radius: var(--ds-r-sm); }

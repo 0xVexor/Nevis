@@ -3,7 +3,9 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Page } from './repo'
 import { PageIcon } from './PageIcon'
 import { ago } from './ui'
-import { Icon, Section, dirOf, landscapeFor } from './design-system'
+import { Button, Icon, Section, landscapeFor } from './design-system'
+import { useSettings } from './settings'
+import { PageCoverPreview } from './Cover'
 import { locale, t } from './i18n'
 import { allTasks, setChecked } from './taskData'
 import { countDue } from './cardsDue'
@@ -45,7 +47,7 @@ const dayKey = (ms: number) => {
 }
 
 const Quick = ({ icon, title, hint, onClick }: { icon: string; title: string; hint: string; onClick: () => void }) => (
-  <button type="button" className="home-quick-item" onClick={onClick}>
+  <button type="button" className="ds-card ds-card--interactive home-quick-item" onClick={onClick}>
     <span className="ds-tile ds-tile--lg home-quick-tile">
       <Icon name={icon} size={22} />
     </span>
@@ -56,28 +58,12 @@ const Quick = ({ icon, title, hint, onClick }: { icon: string; title: string; hi
   </button>
 )
 
-/** Progress ring: done / total of the checklist items across every page. */
-function Ring({ done, total }: { done: number; total: number }) {
-  const r = 34
-  const c = 2 * Math.PI * r
-  return (
-    <span className="home-ring" aria-hidden="true">
-      <svg viewBox="0 0 80 80">
-        <circle cx="40" cy="40" r={r} className="home-ring-bg" />
-        <circle cx="40" cy="40" r={r} className="home-ring-fg" strokeDasharray={c} strokeDashoffset={c * (1 - (total ? done / total : 0))} />
-      </svg>
-      <b>
-        {done.toLocaleString(locale())}/{total.toLocaleString(locale())}
-      </b>
-    </span>
-  )
-}
-
 /** Recent pages on Home: never more than this many cards. */
 const RECENT_MAX = 6
 
-/** Home: greeting, ways to start, where you left off, recent pages; today's checklist, writing streak and pinned pages beside them. */
+/** Home composition over real pages, task documents and review scheduling. */
 export function Home({ pages, onOpen, onNew, onTable, onCards, onTemplates, onFiles, onTasks }: Props) {
+  const settings = useSettings()
   const [now, setNow] = useState(() => Date.now())
   const [due, setDue] = useState(0)
   useEffect(() => {
@@ -102,7 +88,6 @@ export function Home({ pages, onOpen, onNew, onTable, onCards, onTemplates, onFi
   }, [pages])
 
   const hour = new Date(now).getHours()
-  // the banner paints the sky of the current time of day
   const scenery = useMemo(() => landscapeFor(hour), [hour])
   const { recent, months, streak } = useMemo(() => {
     const real = pages.filter((p) => p.kind !== 'folder' && !p.database).sort((a, b) => b.updatedAt - a.updatedAt)
@@ -114,7 +99,7 @@ export function Home({ pages, onOpen, onNew, onTable, onCards, onTemplates, onFi
     let n = days.has(back(0)) ? 0 : 1
     let streak = 0
     while (days.has(back(n))) (streak++, n++)
-    // a month, Sunday first: leading blanks, then one cell per day. The card shows the current month and, when it is tall enough, the one before it.
+    // Current month only: leading blanks followed by one cell per day.
     const monthOf = (back: number) => {
       const year = today.getFullYear(),
         month = today.getMonth() - back
@@ -135,7 +120,7 @@ export function Home({ pages, onOpen, onNew, onTable, onCards, onTemplates, onFi
       ]
       return { label: new Intl.DateTimeFormat(locale(), { month: 'long', year: 'numeric' }).format(first), cells, doneCount: cells.filter((c) => c?.done).length }
     }
-    return { recent: real.slice(0, RECENT_MAX), months: [monthOf(0), monthOf(1)], streak }
+    return { recent: real.slice(0, RECENT_MAX), months: [monthOf(0)], streak }
   }, [pages, now])
   // pages is a dependency on purpose: toggling a task rewrites its page, which hands Home a new pages array
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -144,15 +129,16 @@ export function Home({ pages, onOpen, onNew, onTable, onCards, onTemplates, onFi
   const date = new Intl.DateTimeFormat(locale(), { weekday: 'long', month: 'long', day: 'numeric' }).format(now)
   const num = (n: number) => n.toLocaleString(locale())
   const last = recent[0]
+  const completed = tasks.length - open.length
+  const progress = tasks.length ? Math.round(completed / tasks.length * 100) : 0
+  const favorites = pages.filter(page => page.favorite && page.kind !== 'folder').slice(0, 5)
+  const pageNames = new Map(pages.map(page => [page.id, page.title || t('Untitled')]))
 
   return (
     <div className="home">
       <header className="home-hello" data-tone={scenery.dark ? 'dark' : 'light'} data-phase={scenery.phase} style={{ backgroundImage: scenery.css }}>
-        <small>{date}</small>
-        <h1>{greeting(hour)}</h1>
-        <p>
-          {t('{n} tasks left', { n: num(open.length) })} · {t('{n} flashcards due', { n: num(due) })}
-        </p>
+        <div><span className="home-eyebrow">{t('Your workspace')}</span><h1>{greeting(hour)}</h1><p>{t('A little space to think, create, and keep going.')}</p></div>
+        <div className="home-date"><Icon name="home" size={16} /><time dateTime={new Date(now).toISOString()}>{date}</time></div>
       </header>
 
       <section className="home-quick" aria-label={t('Create something new')}>
@@ -162,128 +148,51 @@ export function Home({ pages, onOpen, onNew, onTable, onCards, onTemplates, onFi
         <Quick icon="cards" title={t('Flashcards')} hint={t('Review what you studied')} onClick={onCards} />
       </section>
 
-      <div className="home-grid">
-        <div className="home-main">
-          {last && (
-            <Section title={t('Continue where you left off')}>
-              <button type="button" dir={dirOf(last.title)} className="home-resume" onClick={() => onOpen(last.id)}>
-                <span className="home-resume-ic">
-                  <PageIcon page={last} />
-                </span>
-                <span className="home-resume-t">
-                  <b dir="auto">{last.title || t('Untitled')}</b>
-                  <small>{t('Updated {when}', { when: ago(last.updatedAt) })}</small>
-                </span>
-                <span className="ds-btn ds-btn--primary ds-btn--sm">{t('Open')}</span>
-              </button>
-            </Section>
-          )}
+      <section className="home-focus" aria-labelledby="home-focus-title">
+        <header className="home-focus-header"><div><span className="home-eyebrow">{t('A clear next step')}</span><h2 id="home-focus-title">{t('Today, at your pace')}</h2><p>{t('Open tasks across your workspace. Pick up whatever matters next.')}</p></div><Button size="sm" variant="ghost" onClick={onTasks}>{t('View all')}<Icon name="arrow-right" size={14} className="ds-flip" /></Button></header>
+        <div className="home-focus-grid">
+          <div className="home-focus-tasks">
+            <div className="home-focus-summary"><span><Icon name="tasks" size={16} />{t('Open tasks')}<span className="ds-badge">{num(open.length)}</span></span><small>{t('{done} of {total} completed', { done: num(completed), total: num(tasks.length) })}</small></div>
+            <div className="home-task-progress" role="progressbar" aria-label={t('Task progress')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><span style={{ inlineSize: progress + '%' }} /></div>
+            <div className="home-focus-list">{open.length ? open.slice(0, 3).map(task => <div key={task.pageId + ':' + task.index} className="home-task">
+              <label><input type="checkbox" className="sr-only" checked={task.checked} aria-label={task.text || t('Untitled')} onChange={() => setChecked(task, !task.checked)} /><span className="ds-check" aria-hidden="true"><svg className="ds-icon" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7" /></svg></span><span dir="auto">{task.text || t('Untitled')}</span></label>
+              <button type="button" className="home-task-source" title={t('Open source page')} aria-label={t('Open {page}', { page: pageNames.get(task.pageId) || t('Untitled') })} onClick={() => onOpen(task.pageId)}><Icon name="file" size={12} /><span dir="auto">{pageNames.get(task.pageId)}</span><Icon name="arrow-right" size={12} className="ds-flip" /></button>
+            </div>) : <div className="home-focus-empty"><span><Icon name="check" size={20} /></span><div><b>{t('A little breathing room')}</b><p>{t('No open checklist items. Your next idea can start with a blank page.')}</p></div><Button size="sm" onClick={onNew}>{t('New page')}</Button></div>}</div>
+          </div>
+          <div className="home-review"><div className="home-review-top"><span className="ds-tile"><Icon name="cards" size={20} /></span><span className="home-eyebrow">{t('Keep it fresh')}</span></div><div><strong>{num(due)}</strong><span>{t('cards ready to review')}</span></div><p>{due ? t('A short review helps good ideas stay with you.') : t('You are up to date. Come back when your next cards are ready.')}</p><Button variant={due ? 'primary' : 'default'} size="sm" onClick={onCards}>{t(due ? 'Start review' : 'Open flashcards')}<Icon name="arrow-right" size={14} className="ds-flip" /></Button></div>
+        </div>
+      </section>
 
-          <Section
-            title={t('Recent pages')}
-            action={
-              <button type="button" className="home-link" onClick={onTable}>
-                {t('View all')}
-                <Icon name="arrow-right" size={14} />
-              </button>
-            }
-          >
-            {recent.length === 0 ? (
-              <div className="ds-empty ds-card">
-                <b>{t('No pages yet')}</b>
-              </div>
-            ) : (
-              <div className="home-cards">
-                {recent.map((p) => {
-                  const text = excerpt(p.content)
-                  return (
-                    <button type="button" key={p.id} dir={dirOf(p.title)} className="ds-card ds-card--interactive home-card" onClick={() => onOpen(p.id)}>
-                      <span className="home-card-top">
-                        <PageIcon page={p} />
-                        <small className="ds-muted">{ago(p.updatedAt)}</small>
-                      </span>
-                      <b dir="auto">{p.title || t('Untitled')}</b>
-                      <span className="home-card-ex" dir="auto">
-                        {text}
-                      </span>
-                      <span className="home-card-tags">
-                        {p.tags?.slice(0, 2).map((g) => (
-                          <span key={g} className="ds-chip">
-                            {g}
-                          </span>
-                        ))}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
+      <div className="home-grid">
+        <div className="home-continue-row">
+          {last && <button type="button" className="home-resume" onClick={() => onOpen(last.id)}>
+            <span className="home-resume-ic">{settings.showIcons ? <PageIcon page={last} /> : <Icon name="file" size={22} />}</span>
+            <span className="home-resume-t"><small>{t('Continue where you left off')}</small><b dir="auto">{last.title || t('Untitled')}</b></span>
+            <span className="home-resume-updated">{ago(last.updatedAt)}</span><span className="home-resume-open"><Icon name="arrow-right" size={18} className="ds-flip" /></span>
+          </button>}
+          {favorites.length > 0 && <div className="home-pinned"><small>{t('Favorites')}</small><div>{favorites.map(page => <button type="button" key={page.id} title={page.title || t('Untitled')} onClick={() => onOpen(page.id)}><span dir="auto">{page.title || t('Untitled')}</span></button>)}</div></div>}
+        </div>
+        <div className="home-main">
+          <Section className="home-recent-section" title={t('Recent pages')} action={<button type="button" className="home-link" onClick={onTable}>{t('View all')}<Icon name="arrow-right" size={14} /></button>}>
+            {recent.length === 0 ? <div className="ds-empty ds-card home-empty"><Icon name="file" size={24} /><b>{t('No pages yet')}</b><p>{t('A blank page is a good place to begin.')}</p><Button variant="primary" size="sm" onClick={onNew}>{t('New page')}</Button></div> : <div className="home-cards">{recent.map(page => <button type="button" key={page.id} className="ds-card ds-card--interactive home-card" onClick={() => onOpen(page.id)}>
+              {settings.showCovers && page.cover && <PageCoverPreview cover={page.cover} className="home-card-cover" />}
+              <span className="home-card-top">{settings.showIcons && <PageIcon page={page} />}<small className="ds-muted">{ago(page.updatedAt)}</small></span>
+              <b dir="auto">{page.title || t('Untitled')}</b><span className="home-card-ex" dir="auto">{excerpt(page.content)}</span>
+              <span className="home-card-tags">{page.tags?.slice(0, 2).map(tag => <span key={tag} className="ds-chip" dir="auto">{tag}</span>)}</span>
+            </button>)}</div>}
           </Section>
         </div>
-
         <aside className="home-side">
-          <Section title={t('Today')}>
-            <div className="ds-card home-today">
-              <div className="home-today-head">
-                <Ring done={tasks.length - open.length} total={tasks.length} />
-                <span>
-                  <b>{open.length ? t('{n} tasks left', { n: num(open.length) }) : t('All caught up')}</b>
-                  <small className="ds-muted">{open.length ? t('Checklist items from all your pages') : t('Nothing left for today. Add a task to plan ahead.')}</small>
-                </span>
-              </div>
-              {open.slice(0, 4).map((x) => (
-                <label key={x.pageId + ':' + x.index} className="home-task">
-                  <input type="checkbox" className="sr-only" checked={x.checked} onChange={() => setChecked(x, !x.checked)} />
-                  <span className="ds-check" aria-hidden="true">
-                    <svg className="ds-icon" viewBox="0 0 24 24">
-                      <path d="m5 12.5 4.5 4.5L19 7" />
-                    </svg>
-                  </span>
-                  <span dir="auto">{x.text || t('Untitled')}</span>
-                </label>
-              ))}
-              {open.length > 4 && (
-                <button type="button" className="home-link home-more" onClick={onTasks}>
-                  {t('View all')}
-                  <Icon name="arrow-right" size={14} />
-                </button>
-              )}
-            </div>
-          </Section>
-
           <Section title={t('Writing streak')}>
             <div className="ds-card home-streak">
-              <div className="home-streak-head">
-                <span className="home-flame">
-                  <Icon name="flame" size={20} />
-                </span>
-                <b>{num(streak)}</b>
-                <span className="ds-muted">{t('days in a row')}</span>
-              </div>
-              {months.map((month) => (
-                <div key={month.label} className="home-month-block">
-                  <div className="home-month-head">
-                    <b>{month.label}</b>
-                    <span className="ds-muted">{t('{n} days written', { n: num(month.doneCount) })}</span>
-                  </div>
-                  <div className="home-month" role="grid" aria-label={month.label}>
-                    {Array.from({ length: 7 }, (_, i) => (
-                      <span key={i} className="wd">
-                        {new Intl.DateTimeFormat(locale(), { weekday: 'narrow' }).format(new Date(2023, 0, 1 + i))}
-                      </span>
-                    ))}
-                    {month.cells.map((c, i) =>
-                      c ? (
-                        <i key={c.key} className={(c.done ? 'done ' : '') + (c.now ? 'now ' : '') + (c.future ? 'future' : '')} title={String(c.n)}>
-                          {c.done ? <Icon name="check" size={12} /> : c.n}
-                        </i>
-                      ) : (
-                        <i key={'b' + i} className="pad" />
-                      ),
-                    )}
-                  </div>
+              <div className="home-streak-head"><span className="home-flame"><Icon name="flame" size={20} /></span><b>{num(streak)}</b><span className="ds-muted">{t('days in a row')}</span></div>
+              {months.map(month => <div key={month.label} className="home-month-block">
+                <div className="home-month-head"><b>{month.label}</b><span className="ds-muted">{t('{n} days written', { n: num(month.doneCount) })}</span></div>
+                <div className="home-month" aria-label={month.label}>
+                  {Array.from({ length: 7 }, (_, index) => <span key={index} className="wd">{new Intl.DateTimeFormat(locale(), { weekday: 'narrow' }).format(new Date(2023, 0, 1 + index))}</span>)}
+                  {month.cells.map((cell, index) => cell ? <i key={cell.key} className={(cell.done ? 'done ' : '') + (cell.now ? 'now ' : '') + (cell.future ? 'future' : '')} title={num(cell.n)}>{cell.done ? <Icon name="check" size={12} /> : num(cell.n)}</i> : <i key={'blank-' + index} className="pad" />)}
                 </div>
-              ))}
+              </div>)}
             </div>
           </Section>
         </aside>

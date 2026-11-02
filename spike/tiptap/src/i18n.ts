@@ -1,11 +1,13 @@
 // UI translations. Source strings in the code are English (`t('Search')`); fa.ts maps them to Persian.
 // A string without a Persian entry simply shows in English, so new UI text can ship before it is translated.
+import { FA_SETTINGS } from './fa-settings'
+import { FA_HOME } from './fa-home'
 import { getSettings, type Lang } from './settings'
 import { FA as FA_APP } from './fa'
 import { formatShortcutText } from './shortcuts'
 import { FA_DB } from './database/ui/fa-db'
 
-const FA: Record<string, string> = { ...FA_DB, ...FA_APP }
+const FA: Record<string, string> = { ...FA_DB, ...FA_APP, ...FA_SETTINGS, ...FA_HOME }
 
 export type { Lang }
 export type Dir = 'ltr' | 'rtl'
