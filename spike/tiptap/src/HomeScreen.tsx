@@ -1,10 +1,11 @@
+import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import type { DocNode } from './docNode'
 import type { Page } from './repo'
 import type { Task } from './taskData'
 import { PageIcon } from './PageIcon'
 import { ago } from './ui'
-import { Button, Icon, Row, Section, useMenu, landscapeFor } from './design-system'
+import { Button, Icon, Row, Section, useMenu, landscapeFor, useUIMotion } from './design-system'
 import { locale, t } from './i18n'
 
 export interface HomeActions {
@@ -44,6 +45,7 @@ const dayKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}-${date.
 
 /** Presentation only: preview empty/full Home without touching a vault. */
 export function HomeScreen({ pages, tasks, due, now, showIcons, onCheck, onOpen, onNew, onTable, onCards, onTemplates, onTemplate, onImport, onFiles, onTasks, note, draftId }: Props) {
+  const motionOf = useUIMotion()
   const { open: openMenu, menu } = useMenu()
   const documents = pages.filter(p => !p.deletedAt && p.kind !== 'folder' && !p.database && p.id !== draftId).sort((a, b) => b.updatedAt - a.updatedAt)
   // Keep the writing surface mounted when the first keystroke creates a page.
@@ -157,8 +159,8 @@ export function HomeScreen({ pages, tasks, due, now, showIcons, onCheck, onOpen,
                   ))}</div> : <p className="home-note">{t('Favorite a page to keep it here.')}</p>}
                 </Section>
                 <Section title={t('Open tasks')} action={<Button variant="ghost" size="sm" onClick={onTasks}>{t('View all')}</Button>}>
-                  {openTasks.length ? <div className="home-task-list">{openTasks.slice(0, 3).map(task => (
-                    <div className="home-task" key={`${task.pageId}:${task.index}`} onContextMenu={event => {
+                  {openTasks.length ? <div className="home-task-list"><AnimatePresence initial={false}>{openTasks.slice(0, 3).map(task => (
+                    <motion.div className="home-task" key={`${task.pageId}:${task.index}`} layout={motionOf.reduced ? false : 'position'} exit={{ opacity: 0, height: 0 }} transition={{ ...motionOf.transition, layout: motionOf.spring }} onContextMenu={event => {
                       event.preventDefault()
                       openMenu([
                         { label: 'Mark complete', icon: <Icon name="check" />, onSelect: () => onCheck(task, true) },
@@ -167,8 +169,8 @@ export function HomeScreen({ pages, tasks, due, now, showIcons, onCheck, onOpen,
                     }}>
                       <label><input type="checkbox" className="home-task-check" checked={task.checked} onChange={event => onCheck(task, event.target.checked)} /><span className="ds-check" aria-hidden="true"><Icon name="check" size={12} /></span><span dir="auto">{task.text || t('Untitled')}</span></label>
                       <button type="button" className="home-task-source" onClick={() => onOpen(task.pageId)} aria-label={t('Open {page}', { page: byId.get(task.pageId)?.title || t('Untitled') })}><span dir="auto">{byId.get(task.pageId)?.title || t('Untitled')}</span></button>
-                    </div>
-                  ))}</div> : <p className="home-note">{t('No open tasks. Checklist items from your pages appear here.')}</p>}
+                    </motion.div>
+                  ))}</AnimatePresence></div> : <p className="home-note">{t('No open tasks. Checklist items from your pages appear here.')}</p>}
                 </Section>
                 <button type="button" className="home-review-link" onClick={onCards}>
                   <Icon name="cards" size={18} /><span><b>{t('Flashcards')}</b><small>{due === null ? t('Open flashcards') : due > 0 ? t('{n} ready to review', { n: num(due) }) : t('No cards due')}</small></span><Icon name="arrow-right" size={16} className="ds-flip" />

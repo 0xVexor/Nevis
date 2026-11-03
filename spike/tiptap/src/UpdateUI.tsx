@@ -1,4 +1,5 @@
 import { Switch } from './design-system/controls'
+import { IconButton } from './design-system/Button'
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { isTauri } from './db'
@@ -6,7 +7,7 @@ import { updateSettings, useSettings } from './settings'
 import { locale, t } from './i18n'
 import * as Ic from './icons'
 import { updates, useUpdates } from './updates'
-import { updateBusy, type UpdateState } from './updateController'
+import { isPrereleaseBuild, updateBusy, wantsPrerelease, type UpdateState } from './updateController'
 import appPackage from '../package.json'
 
 const HOURS = 6 * 60 * 60 * 1000
@@ -52,10 +53,10 @@ export function UpdateSettings() {
       <div className="sx-row">
         <div className="sx-tx">
           <b>{t('Receive pre-release updates')}</b>
-          <small>{t('Include early versions that may be less stable. Off by default.')}</small>
+          <small>{isPrereleaseBuild(appPackage.version) ? t('This is a pre-release build, so it always receives newer pre-releases.') : t('Include early versions that may be less stable. Off by default.')}</small>
         </div>
         <div className="sx-ctl">
-          <Switch checked={s.prereleaseUpdates} label={t('Receive pre-release updates')} disabled={updateBusy(st.phase) && st.phase !== 'checking'} onChange={prereleaseUpdates => updateSettings({ prereleaseUpdates })} />
+          <Switch checked={wantsPrerelease(s.prereleaseUpdates, appPackage.version)} label={t('Receive pre-release updates')} disabled={isPrereleaseBuild(appPackage.version) || (updateBusy(st.phase) && st.phase !== 'checking')} onChange={prereleaseUpdates => updateSettings({ prereleaseUpdates })} />
         </div>
       </div>
       <p className="update-status" role="status">
@@ -80,9 +81,9 @@ export function UpdateNotice({ state: st }: { state: UpdateState }) {
           <Ic.Chevron size={13} />
         </button>
       </div>
-      <button className="icon-btn" title={t('Later')} aria-label={t('Later')} onClick={() => updates.dismiss()}>
+      <IconButton label={t('Later')} onClick={() => updates.dismiss()}>
         <Ic.Close size={15} />
-      </button>
+      </IconButton>
     </aside>
   )
 }
@@ -131,9 +132,9 @@ export function UpdateDialog({ state: st }: { state: UpdateState }) {
       <div ref={ref} className="modal update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-title" aria-describedby="update-description" tabIndex={-1}>
         <div className="modal-head">
           <b>{t('App update')}</b>
-          <button className="icon-btn" title={t('Close')} aria-label={t('Close')} disabled={busy} onClick={() => updates.close()}>
+          <IconButton label={t('Close')} disabled={busy} onClick={() => updates.close()}>
             <Ic.Close />
-          </button>
+          </IconButton>
         </div>
         <div className="update-body">
           <div className="acct-hero">

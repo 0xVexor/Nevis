@@ -1,7 +1,8 @@
 import { useState, type CSSProperties } from 'react'
 import { ICON_GROUPS } from './iconData'
 import { Icon } from './icons'
-import { t } from '../i18n'
+import { IconButton } from './Button'
+import { t } from './text'
 
 /** A few ready colours; anything else comes from the colour field. Automatic leaves the colour to the context. */
 const COLORS = ['#6a5cff', '#3b82f6', '#06b6d4', '#10b981', '#84cc16', '#f59e0b', '#f97316', '#ef4444', '#ec4899', '#64748b']
@@ -11,7 +12,19 @@ const COLORS = ['#6a5cff', '#3b82f6', '#06b6d4', '#10b981', '#84cc16', '#f59e0b'
  * Changing the colour of the chosen icon applies at once without closing (`close` is false).
  * Visual reference: docs/design-system/index.html → Icons. Styles: components.css (.ds-icon-picker*).
  */
-export function IconPicker({ name, color: initial, onPick, onClear, clearLabel }: { name?: string; color?: string; onPick: (name: string, color: string | undefined, close: boolean) => void; onClear: () => void; clearLabel?: string }) {
+export function IconPicker({
+  name,
+  color: initial,
+  onPick,
+  onClear,
+  clearLabel,
+}: {
+  name?: string
+  color?: string
+  onPick: (name: string, color: string | undefined, close: boolean) => void
+  onClear: () => void
+  clearLabel?: string
+}) {
   const [q, setQ] = useState('')
   const [color, setColor] = useState(initial)
   const query = q.trim().toLowerCase()
@@ -42,9 +55,9 @@ export function IconPicker({ name, color: initial, onPick, onClear, clearLabel }
             <h4 className="ds-icon-picker-head">{t(g.label)}</h4>
             <div className="ds-icon-picker-grid" style={color ? ({ color } as CSSProperties) : undefined}>
               {g.names.map((n) => (
-                <button key={n} type="button" className="ds-icon-btn" aria-pressed={name === n} title={n} aria-label={n} onClick={() => onPick(n, color, true)}>
+                <IconButton key={n} label={n} pressed={name === n} onClick={() => onPick(n, color, true)}>
                   <Icon name={n} size={20} />
-                </button>
+                </IconButton>
               ))}
             </div>
           </section>

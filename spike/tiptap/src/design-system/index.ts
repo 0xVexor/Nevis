@@ -1,5 +1,7 @@
 export { Menu, Dropdown, type MenuItem } from './Menu'
 export { useMenu } from './useMenu'
+export { Popover } from './Popover'
+export { setTranslator } from './text'
 export { Icon } from './icons'
 export { iconNames } from './iconList'
 export { ICON_GROUPS, DS_ICONS } from './iconData'
@@ -12,6 +14,7 @@ export { ActionGrid, ActionTile, Card, Switch, Field, Chip, ChipButton, Tag, tag
 export { cx, dirOf } from './dir'
 export { COVER_SCENES, landscapeFor, phaseOf, type Landscape, type DayPhase } from './scenery'
 export { Dialog, Tooltip } from './overlay'
+export { useUIMotion } from './motion'
 
 export { PreferenceRow, PreferenceGroup, SegmentedChoice, RangeControl } from './Preferences'
 

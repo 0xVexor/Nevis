@@ -1,6 +1,7 @@
 // Approved settings copy. Product-specific, outside the reusable UI core.
 export const FA_SETTINGS: Record<string,string> = {
-  "Shortcut changes are saved here. Common editor actions and app commands use the new bindings; the remaining contextual commands are being migrated.": "تغییر میان‌برها ذخیره می‌شود. فرمان‌های برنامه و کارهای رایج ادیتور از میان‌بر جدید استفاده می‌کنند؛ اتصال بقیهٔ فرمان‌های وابسته به موقعیت در حال مهاجرت است.",
+  "Editor actions and app commands can be changed here. Shortcuts marked Built in are fixed and always work with their own keys.": "عملیات ویرایشگر و فرمان‌های برنامه را می‌توان اینجا تغییر داد. میان‌برهای «داخلی» ثابت‌اند و همیشه با کلیدهای خودشان کار می‌کنند.",
+  "Built in": "داخلی",
   "Press Escape to cancel recording. Reset restores the default binding.": "برای لغو ضبط Escape بزن. بازنشانی، میان‌بر پیش‌فرض را برمی‌گرداند.",
   "Back to workspace": "بازگشت به فضای کاری",
   "Changes save automatically.": "تغییرات به‌صورت خودکار ذخیره می‌شوند.",

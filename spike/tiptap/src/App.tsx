@@ -39,23 +39,28 @@ import { save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { saveBeforeUpdate } from './updateSave'
 import { flushPreferences } from './sharedPreferences'
-import { isTauri, kvGet, kvSet } from './db'
+import { isTauri, kvGet, kvSet, pageFilePath, revealPageFile } from './db'
 import { watchDueCards } from './cardsDue'
 import { normalizeFa } from './normalize'
 import { Brand } from './Brand'
 import { BrandMark } from './BrandMark'
 import { SaveStatus } from './design-system/SaveStatus'
 import { WorkspaceHeader } from './design-system/WorkspaceHeader'
-import { Icon, IconButton, dirOf, Button, useMenu } from './design-system'
-import { MenuItem, MenuLabel, MenuSep, NameDialog, Popover, SearchModal, Toast, TrashModal, type PaletteCommand } from './ui'
+import { Icon, IconButton, dirOf, Button, useMenu, type MenuItem as MenuSpec } from './design-system'
+import { MenuItem, MenuLabel, MenuSep, NameDialog, SearchModal, Toast, type PaletteCommand } from './ui'
+import { Popover } from './design-system/Popover'
 import { Home } from './Home'
+import { Trash } from './Trash'
 import { iconNode } from './iconSet'
 import * as Ic from './icons'
 import { printPage } from './print'
 import { confirmDialog } from './dialog'
 import { OPEN_PAGE, PAGES_CHANGED } from './editor/pageLink'
 import { t } from './i18n'
+import { isMac } from './shortcuts'
 import { CompactList, TreeRow } from './PageTree'
+
+const revealKey = isMac() ? 'Reveal in Finder' : /Windows/i.test(navigator.userAgent) ? 'Show in Explorer' : 'Show in file manager'
 
 const PAGE_W = { min: 640, max: 1800, def: 1400, step: 80 }
 
@@ -82,7 +87,7 @@ const BIG_TREE = 150 // pages from which the sidebar tree starts collapsed
 export default function App() {
   const [pages, setPages] = useState<Page[]>(() => repo.list())
   const [currentId, setCurrentIdRaw] = useState<string>(() => localStorage.getItem('not.current') || repo.pagesOnly()[0]?.id || '')
-  const [view, setViewRaw] = useState<'home' | 'page' | 'settings' | 'tasks' | 'drawings' | 'databases' | 'files'>('home')
+  const [view, setViewRaw] = useState<'home' | 'page' | 'settings' | 'tasks' | 'drawings' | 'databases' | 'files' | 'trash'>('home')
   // back / forward through the places visited (pages and views), each remembering how far it was scrolled
   const hist = useRef<{ view: string; id: string; scroll: number }[]>([])
   const hpos = useRef(-1)
@@ -181,7 +186,6 @@ export default function App() {
   const [saved, setSaved] = useState<{ id: string; name: string; query: string }[]>([])
   useEffect(() => void kvGet<{ id: string; name: string; query: string }[]>('savedSearches').then((s) => setSaved(Array.isArray(s) ? s : [])), [])
   const saveSaved = (next: { id: string; name: string; query: string }[]) => (setSaved(next), void kvSet('savedSearches', next))
-  const [trashOpen, setTrashOpen] = useState(false)
   const [newMenu, setNewMenu] = useState<DOMRect | null>(null)
   // dragging a page from the tree shows a Favorites drop zone, so a page can be pinned by dropping it there
   const [dragPage, setDragPage] = useState(false)
@@ -210,9 +214,8 @@ export default function App() {
   const [dueCards, setDueCards] = useState(0)
   useEffect(() => watchDueCards(setDueCards, isTauri), [])
   const [cardsOpen, setCardsOpen] = useState(false)
-  const [dataMenu, setDataMenu] = useState<DOMRect | null>(null)
+  const { open: openShare, menu: shareMenu } = useMenu()
   const [blankMenu, setBlankMenu] = useState<DOMRect | null>(null) // right-click on empty sidebar space
-  const [trashTick, setTrashTick] = useState(0)
   const [menu, setMenu] = useState<{ id: string; rect: DOMRect } | null>(null)
   const [movingId, setMovingId] = useState<string | null>(null)
   const [reader, setReader] = useState(false)
@@ -412,6 +415,9 @@ export default function App() {
     return () => window.removeEventListener('open-search', open)
   }, [])
   const [tplOpen, setTplOpen] = useState(false)
+  const trashed = repo.trash()
+  const overlayOpen = cardsOpen || tplOpen || graphOpen || tableOpen
+  const closeOverlays = () => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false))
   // Flashcards and Templates are pages: going to another page or view (search, links, the sidebar) leaves them
   useEffect(() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false)), [view, currentId])
   const addFromTemplate = (id: string) => {
@@ -494,19 +500,16 @@ export default function App() {
     repo.purge(p.id)
     await gcFiles()
     refresh()
-    setTrashTick((t) => t + 1)
   }
   const emptyTrash = async () => {
     if (!(await confirmDialog({ title: t('Empty trash'), message: t('Permanently delete everything in the trash? This cannot be undone.'), confirmLabel: t('Empty trash'), danger: true }))) return
     repo.emptyTrash()
     await gcFiles()
     refresh()
-    setTrashTick((t) => t + 1)
   }
   const restore = (id: string) => {
     repo.restoreFromTrash(id)
     refresh()
-    setTrashTick((t) => t + 1)
     if (repo.get(id)?.kind !== 'folder') setCurrentId(id)
   }
   const fav = (id: string) => {
@@ -588,6 +591,29 @@ export default function App() {
     const p = repo.get(id)
     if (p) download((p.title || 'page') + '.md', new Blob([await pageToMarkdown(p)], { type: 'text/markdown' }))
   }
+  const copied = (text: string) => navigator.clipboard?.writeText(text).then(() => setToast({ msg: t('Copied') }))
+  const copyPath = (id: string) => void pageFilePath(id).then(copied).catch(() => setToast({ msg: t('Could not read the page path') }))
+  const revealFile = (id: string) => void revealPageFile(id).catch(() => setToast({ msg: t('Could not open the folder') }))
+  const shareItems = (page: Page): MenuSpec[] => [
+    { kind: 'head', label: 'Export' },
+    { label: 'Markdown file', hint: '.md', icon: <Icon name="download" />, onSelect: () => void exportMd(page.id) },
+    { label: 'PDF or print', icon: <Icon name="printer" />, onSelect: () => printPage(page.title) },
+    { kind: 'sep' },
+    { kind: 'head', label: 'Copy' },
+    {
+      label: 'Copy as Markdown',
+      icon: <Icon name="copy" />,
+      onSelect: () => void pageToMarkdown(page).then(copied),
+    },
+    ...(isTauri
+      ? ([
+          { label: 'Copy path', icon: <Icon name="link" />, onSelect: () => copyPath(page.id) },
+          { label: revealKey, icon: <Icon name="folder" />, onSelect: () => revealFile(page.id) },
+        ] satisfies MenuSpec[])
+      : []),
+    { kind: 'sep' },
+    { label: 'Export the whole workspace', hint: '.zip', icon: <Icon name="vault" />, onSelect: () => void doExportAll() },
+  ]
   const dark = isDark(settings)
   const setCover = (cover: Cover | undefined) => {
     if (!current) return
@@ -668,7 +694,7 @@ export default function App() {
     { id: 'databases', label: t('Databases'), icon: <Ic.Table />, keywords: 'databases tables projects all database پایگاه داده دیتابیس پروژه جدول', run: () => setView('databases') },
     { id: 'drawings', label: t('Drawings'), icon: <Ic.Pencil />, keywords: 'drawings boards whiteboard sketch canvas excalidraw نقاشی بوم طراحی ترسیم', run: () => setView('drawings') },
     { id: 'cards', label: t('Flashcards'), icon: <Ic.Cards />, keywords: 'review srs فلش‌کارت', run: () => setCardsOpen(true) },
-    { id: 'trash', label: t('Trash'), icon: <Ic.Trash />, keywords: 'deleted سطل', run: () => setTrashOpen(true) },
+    { id: 'trash', label: t('Trash'), icon: <Ic.Trash />, keywords: 'deleted سطل', run: () => setView('trash') },
     {
       id: 'theme',
       label: dark ? t('Light mode') : t('Dark mode'),
@@ -709,7 +735,7 @@ export default function App() {
     setSidePinned(pinned)
     setSidePeek(pinned)
   }
-  const preferencesOpen = view === 'settings' && !cardsOpen && !tplOpen && !graphOpen && !tableOpen
+  const preferencesOpen = view === 'settings' && !overlayOpen
   const rowProps = { index, currentId: current?.id ?? '', collapsed, onToggle: toggle, onOpen: setCurrentId, onAdd: add, onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }), onMove: move }
 
   return (
@@ -745,9 +771,9 @@ export default function App() {
         />
         <div className="ws">
           <WorkspaceHeader mark={<BrandMark />} name={<Brand />} revealLabel={t(sidePinned ? 'Unpin sidebar' : sideExpanded ? 'Pin sidebar' : 'Open sidebar')} expanded={settings.sidebar !== 'icons' || sideExpanded} pressed={settings.sidebar === 'icons' ? sidePinned : undefined} onReveal={revealSidebar} onActivate={toggleSidebarPin} action={
-            <button className="icon-btn" aria-label={t('Close sidebar')} title={t('Close sidebar') + '  ' + bindingHint('sidebar')} onClick={() => { setSidePinned(false); setSidePeek(false); setSideOpen(false) }}>
+            <IconButton label={t('Close sidebar') + '  ' + bindingHint('sidebar')} onClick={() => { setSidePinned(false); setSidePeek(false); setSideOpen(false) }}>
               <Icon name="panel-left" />
-            </button>
+            </IconButton>
           } />
         </div>
         <div className="side-workspace"><WorkspaceCard onOpen={() => setFolderOpen(true)} /></div>
@@ -761,14 +787,14 @@ export default function App() {
             <kbd dir="ltr">{bindingHint('search')}</kbd>
           </button>
 
-          <button aria-label={t('Home')} className={'row plain' + (view === 'home' && !cardsOpen && !tplOpen && !graphOpen && !tableOpen ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('home'))}>
+          <button aria-label={t('Home')} className={'row plain' + (view === 'home' && !overlayOpen ? ' cur' : '')} onClick={() => (closeOverlays(), setView('home'))}>
             <span className="ic">
               <Icon name="home" />
             </span>
             <span className="ntitle">{t('Home')}</span>
           </button>
 
-          <button aria-label={t('Tasks')} className={'row plain' + (view === 'tasks' && !cardsOpen && !tplOpen && !graphOpen && !tableOpen ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('tasks'))}>
+          <button aria-label={t('Tasks')} className={'row plain' + (view === 'tasks' && !overlayOpen ? ' cur' : '')} onClick={() => (closeOverlays(), setView('tasks'))}>
             <span className="ic">
               <Icon name="tasks" />
             </span>
@@ -791,8 +817,8 @@ export default function App() {
           </button>
 
           <button aria-label={t('Databases')}
-            className={'row plain' + (view === 'databases' && !cardsOpen && !tplOpen && !graphOpen && !tableOpen ? ' cur' : '')}
-            onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('databases'))}
+            className={'row plain' + (view === 'databases' && !overlayOpen ? ' cur' : '')}
+            onClick={() => (closeOverlays(), setView('databases'))}
           >
             <span className="ic">
               <Icon name="database" />
@@ -801,9 +827,9 @@ export default function App() {
           </button>
 
           <button aria-label={t('Drawings')}
-            className={'row plain' + (view === 'drawings' && !cardsOpen && !tplOpen && !graphOpen && !tableOpen ? ' cur' : '')}
+            className={'row plain' + (view === 'drawings' && !overlayOpen ? ' cur' : '')}
             onPointerEnter={warmDrawing}
-            onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('drawings'))}
+            onClick={() => (closeOverlays(), setView('drawings'))}
           >
             <span className="ic">
               <Icon name="pencil" />
@@ -929,24 +955,24 @@ export default function App() {
         <SideTip />
         <div className="side-foot">
 
-          <button aria-label={t('Settings')} className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('settings'))}>
+          <button aria-label={t('Settings')} className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => (closeOverlays(), setView('settings'))}>
             <span className="ic">
               <Icon name="settings" />
             </span>
             <span className="ntitle">{t('Settings')}</span>
           </button>
-          <button aria-label={t('Files')} className={'row plain' + (view === 'files' && !cardsOpen && !tplOpen && !graphOpen && !tableOpen ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('files'))}>
+          <button aria-label={t('Files')} className={'row plain' + (view === 'files' && !overlayOpen ? ' cur' : '')} onClick={() => (closeOverlays(), setView('files'))}>
             <span className="ic">
               <Icon name="paperclip" />
             </span>
             <span className="ntitle">{t('Files')}</span>
           </button>
-          <button aria-label={t('Trash')} className="row plain" onClick={() => setTrashOpen(true)}>
+          <button aria-label={t('Trash')} className={'row plain' + (view === 'trash' && !overlayOpen ? ' cur' : '')} onClick={() => (closeOverlays(), setView('trash'))}>
             <span className="ic">
               <Icon name="trash" />
             </span>
             <span className="ntitle">{t('Trash')}</span>
-            {repo.trash().length > 0 && <span className="badge">{repo.trash().length}</span>}
+            {trashed.length > 0 && <span className="badge">{trashed.length}</span>}
           </button>
           <div className="ds-split side-new">
             <Button variant="primary" aria-label={t('New page')} onClick={() => add(null)}>
@@ -1023,7 +1049,7 @@ export default function App() {
                 </span>
               </span>
             )}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'home' && (
+            {!overlayOpen && view === 'home' && (
               <span className="crumb">
                 <span className="crumb-cur">
                   <Icon name="panel-left" size={14} />
@@ -1031,7 +1057,7 @@ export default function App() {
                 </span>
               </span>
             )}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'files' && (
+            {!overlayOpen && view === 'files' && (
               <span className="crumb">
                 <span className="crumb-cur">
                   <Icon name="folder" size={14} />
@@ -1039,7 +1065,15 @@ export default function App() {
                 </span>
               </span>
             )}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'tasks' && (
+            {!overlayOpen && view === 'trash' && (
+              <span className="crumb">
+                <span className="crumb-cur">
+                  <Icon name="trash" size={14} />
+                  {t('Trash')}
+                </span>
+              </span>
+            )}
+            {!overlayOpen && view === 'tasks' && (
               <span className="crumb">
                 <span className="crumb-cur">
                   <Icon name="tasks" size={14} />
@@ -1047,7 +1081,7 @@ export default function App() {
                 </span>
               </span>
             )}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'databases' && (
+            {!overlayOpen && view === 'databases' && (
               <span className="crumb">
                 <span className="crumb-cur">
                   <Icon name="table" size={14} />
@@ -1055,7 +1089,7 @@ export default function App() {
                 </span>
               </span>
             )}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'drawings' && (
+            {!overlayOpen && view === 'drawings' && (
               <span className="crumb">
                 <span className="crumb-cur">
                   <Icon name="pencil" size={14} />
@@ -1063,7 +1097,7 @@ export default function App() {
                 </span>
               </span>
             )}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'settings' && (
+            {!overlayOpen && view === 'settings' && (
               <span className="crumb">
                 <span className="crumb-cur">
                   <Icon name="settings" size={14} />
@@ -1145,7 +1179,7 @@ export default function App() {
             </IconButton>
           )}
           {current && view === 'page' && (
-            <Button variant="primary" size="sm" className="share-btn" title={t('Share & export')} icon={<Icon name="share" size={15} />} onClick={(e) => setDataMenu(e.currentTarget.getBoundingClientRect())}>
+            <Button variant="primary" size="sm" className="share-btn" title={t('Share & export')} icon={<Icon name="share" size={16} />} aria-haspopup="menu" onClick={(e) => openShare(shareItems(current), e.currentTarget)}>
               {t('Share')}
             </Button>
           )}
@@ -1181,6 +1215,8 @@ export default function App() {
             />
           ) : view === 'files' ? (
             <Explorer pages={pages} onOpen={setCurrentId} onChange={refresh} onToast={(msg, undo) => setToast({ msg, undo })} />
+          ) : view === 'trash' ? (
+            <Trash items={trashed} days={TRASH_DAYS} onRestore={restore} onPurge={purge} onEmpty={emptyTrash} />
           ) : view === 'tasks' ? (
             <Tasks onOpen={setCurrentId} onNewList={() => add(null, 'todo')} />
           ) : view === 'databases' ? (
@@ -1260,6 +1296,8 @@ export default function App() {
             <MenuItem icon={<Ic.Folder />} label={t('Move to folder')} onClick={() => (setMovingId(menu.id), setMenu(null))} />
             {menuPage.parentId && <MenuItem icon={<Ic.Up />} label={t('Move to top level')} onClick={() => (move(menu.id, null, null), setMenu(null))} />}
             <MenuItem icon={<Ic.Clipboard />} label={t('Copy title')} onClick={() => (void navigator.clipboard?.writeText(menuPage.title || ''), setMenu(null))} />
+            {isTauri && <MenuItem icon={<Ic.Clipboard />} label={t('Copy path')} onClick={() => (copyPath(menu.id), setMenu(null))} />}
+            {isTauri && <MenuItem icon={<Ic.Folder />} label={t(revealKey)} onClick={() => (revealFile(menu.id), setMenu(null))} />}
             {menuPage.kind !== 'folder' && <MenuItem icon={<Ic.Markdown />} label={t('Export Markdown')} onClick={() => (exportMd(menu.id), setMenu(null))} />}
             <MenuSep />
             <MenuItem danger icon={<Ic.Trash />} label={t('Delete')} hint="Delete" onClick={() => (del(menu.id), setMenu(null))} />
@@ -1286,7 +1324,7 @@ export default function App() {
             <MenuItem icon={<Ic.Link />} label={t('Graph view')} onClick={() => (setGraphOpen(true), setBlankMenu(null))} />
             <MenuSep />
             <MenuItem icon={<Ic.Upload />} label={t('Import or restore…')} onClick={() => (setBlankMenu(null), openData())} />
-            <MenuItem icon={<Ic.Trash />} label={t('Trash')} onClick={() => (setTrashOpen(true), setBlankMenu(null))} />
+            <MenuItem icon={<Ic.Trash />} label={t('Trash')} onClick={() => (setView('trash'), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Settings />} label={t('Settings')} onClick={() => (setView('settings'), setBlankMenu(null))} />
           </div>
         </Popover>
@@ -1298,29 +1336,7 @@ export default function App() {
         </Popover>
       )}
 
-      {dataMenu && (
-        <Popover anchor={dataMenu} onClose={() => setDataMenu(null)} align="end">
-          <div className="ds-menu share-menu">
-            {current && view === 'page' && (
-              <>
-                <MenuLabel>{t('Share this page')}</MenuLabel>
-                <MenuItem icon={<Ic.Markdown />} label={t('Export Markdown')} desc={t('Download as a .md file')} onClick={() => (setDataMenu(null), exportMd(current.id))} />
-                <MenuItem icon={<Ic.Pdf />} label={t('Print / PDF')} desc={t('Save as PDF or print')} onClick={() => (setDataMenu(null), printPage(current.title))} />
-                <MenuItem
-                  icon={<Ic.Copy />}
-                  label={t('Copy as Markdown')}
-                  desc={t('Put it on the clipboard')}
-                  onClick={async () => {
-                    setDataMenu(null)
-                    await navigator.clipboard?.writeText(await pageToMarkdown(current))
-                    setToast({ msg: t('Copied') })
-                  }}
-                />
-              </>
-            )}
-          </div>
-        </Popover>
-      )}
+      {shareMenu}
 
       {folderOpen && (
         <Vaults
@@ -1340,9 +1356,9 @@ export default function App() {
           >
             <div className="modal-head">
               <b>{t('Move to folder')}</b>
-              <button className="icon-btn" title={t('Close')} onClick={() => setMovingId(null)}>
+              <IconButton label={t('Close')} onClick={() => setMovingId(null)}>
                 <Ic.Close />
-              </button>
+              </IconButton>
             </div>
             <div className="modal-list">
               <button
@@ -1386,7 +1402,6 @@ export default function App() {
       )}
 
       {naming && <NameDialog {...naming} onClose={() => setNaming(null)} />}
-      {trashOpen && <TrashModal key={trashTick} items={repo.trash()} days={TRASH_DAYS} onRestore={restore} onPurge={purge} onEmpty={emptyTrash} onClose={() => setTrashOpen(false)} />}
       <UpdateCenter />
       {toast && <Toast msg={toast.msg} action={toast.undo ? t('Undo') : undefined} onAction={toast.undo} onClose={() => setToast(null)} />}
 

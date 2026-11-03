@@ -112,3 +112,7 @@ export function createUpdateController(deps: UpdateDeps) {
   }
   return controller
 }
+
+/** A pre-release build only ever sees newer pre-releases by default: the stable channel would offer an older version. */
+export const isPrereleaseBuild = (version: string) => version.split('+')[0].includes('-')
+export const wantsPrerelease = (setting: boolean, version: string) => setting || isPrereleaseBuild(version)

@@ -1,6 +1,6 @@
 import { Extension } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
-import { commandBinding, commandMatches } from '../shortcutCommands'
+import { commandBinding, commandMatches, type EditorCommand } from '../shortcutCommands'
 import { pickImages } from './image'
 import { editLink } from './linkPrompt'
 import { linkSelection } from './slash'
@@ -11,7 +11,7 @@ export const PhysicalShortcuts = Extension.create({
   priority: 10000,
   addProseMirrorPlugins() {
     const editor = this.editor
-    const commands: Record<string, () => boolean> = {
+    const commands: Record<EditorCommand, () => boolean> = {
       Bold: () => editor.commands.toggleBold(),
       Italic: () => editor.commands.toggleItalic(),
       Underline: () => editor.commands.toggleUnderline(),

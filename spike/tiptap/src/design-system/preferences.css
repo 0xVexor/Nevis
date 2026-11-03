@@ -4,8 +4,8 @@
 .prefs-row b { font-weight: 500; }
 .prefs-row p { margin: var(--ds-s1) 0 0; font-size: var(--ds-text-caption); line-height: 1.5; color: var(--ds-text-3); max-inline-size: 240px; }
 .prefs-control { flex: none; max-inline-size: 100%; }
-.prefs-choice { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-side); }
-.prefs-choice .ds-btn { block-size: var(--ds-control-sm); padding-inline: 9px; gap: 6px; border: 0; font-size: var(--ds-text-caption); color: var(--ds-text-2); border-radius: var(--ds-r-sm); }
+.prefs-choice { display: inline-flex; gap: 2px; padding: var(--ds-s1); border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-side); }
+.prefs-choice .ds-btn { block-size: var(--ds-control-sm); padding-inline: var(--ds-s2); gap: var(--ds-s2); border: 0; font-size: var(--ds-text-caption); color: var(--ds-text-2); border-radius: var(--ds-r-sm); }
 .prefs-choice [aria-pressed='true'] { background: var(--ds-raised); color: var(--ds-text); box-shadow: 0 1px 3px var(--ds-line); }
 .prefs-choice .ds-icon { inline-size: 14px; block-size: 14px; }
 .prefs-range { display: flex; gap: var(--ds-s3); align-items: center; }

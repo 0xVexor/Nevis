@@ -1,5 +1,7 @@
-import { Fragment, type ButtonHTMLAttributes, type CSSProperties, type ElementType, type HTMLAttributes, type InputHTMLAttributes, type MouseEvent, type ReactNode } from 'react'
+import { Fragment, useId, type ButtonHTMLAttributes, type CSSProperties, type ElementType, type HTMLAttributes, type InputHTMLAttributes, type MouseEvent, type ReactNode } from 'react'
+import { motion } from 'motion/react'
 import { cx } from './dir'
+import { useUIMotion } from './motion'
 import { Icon } from './icons'
 
 /** A container: `interactive` for clickable cards, `selected` for the chosen one. */
@@ -34,12 +36,15 @@ export interface TabItem {
 
 /** A row of tabs. Labels are already translated by the caller. */
 export function Tabs({ items, value, onChange, className }: { items: TabItem[]; value: string; onChange: (id: string) => void; className?: string }) {
+  const bar = useId()
+  const motionOf = useUIMotion()
   return (
     <div role="tablist" className={cx('ds-tabs', className)}>
       {items.map((item) => (
         <button key={item.id} type="button" role="tab" aria-selected={item.id === value} onClick={() => onChange(item.id)}>
           {item.icon}
           {item.label}
+          {item.id === value && <motion.span layoutId={bar} className="ds-tab-bar" transition={motionOf.spring} />}
         </button>
       ))}
     </div>

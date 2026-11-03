@@ -179,3 +179,16 @@ After changing `iconData.ts`, `backgrounds.ts` or `fileKinds.ts`, regenerate the
 Every color, radius and shadow in those files is a `--ds-*` token. Settings writes `--user-accent`, `--user-radius`, `--user-radius-sm`, `--user-radius-lg` and `--font`; the design system reads them. The five hue tokens (`--ds-violet`, `--ds-blue`, `--ds-green`, `--ds-orange`, `--ds-pink`) and `--ds-white` replace the literals that used to be repeated.
 
 Screens that still style their own controls (tabs, row actions, toolbar items) do it with an area class in `areas/`; moving one of them onto `Button` / `IconButton` / `Row` is welcome but not required. Open follow-ups: `areas/surfaces.css` and `screens.css` still override some area rules and could be folded into them.
+
+## Foundations updated 2026-11
+
+- **Scope:** these changes cover what the UI migration touched (Settings, shell and sidebar, Home, page frame, onboarding, search, shared controls). The database, flashcard and graph screens keep their own styles until they are migrated.
+- **Spacing:** padding, margin and gap in interface CSS sit on the 4px scale and use `--ds-s1…s10`. Document content (`editor.css`, `content.css`, `print.css`) is excluded so the reader's own settings keep working. Controls use `--ds-control` (36px) or `--ds-control-sm` (28px); icon buttons are 32px.
+- **One icon button:** `.icon-btn` shares the `.ds-icon-btn` rules; migrated screens use `IconButton`.
+- **Independence:** `Popover` lives in `design-system/Popover.tsx`. The design system takes its text from `design-system/text.ts`; the app registers its translator once in `i18n.ts`. `npm run check:ui` fails if a design-system file imports app code (`iconSet` and `textDirection` are pure data helpers).
+- **Motion:** `design-system/motion.ts` holds the durations, easing and spring (`MOTION`, `useUIMotion`), which honour system and app Reduce motion. `Dialog` fades and rises in and out and keeps Tab inside; `Popover` plays a short exit when closed by Escape or an outside click; `Tabs` glide the underline; the sidebar tree opens and closes its children; Settings panels ease in on a category change; Home tasks leave and re-flow when ticked off. Hover and press states stay in CSS.
+- **Shortcuts:** Settings lists which shortcuts can be changed (app bindings and editor commands) and marks the rest *Built in*; a fixed shortcut shows no Change button.
+- **Share, Trash, Files:** the Share button opens the shared Menu (Export: Markdown, PDF; Copy: as Markdown, file path; Show in Explorer or Finder; Export the whole workspace). Trash is a full page (not a popup) built from `ds-list` rows and the shared `ds-empty` state. Files uses `Button`, `IconButton`, the `ds-seg` view switch and the shared Menu for its context menu; its rows, selection and counts follow the same tokens.
+- **Updates:** a pre-release build always follows the pre-release channel (`wantsPrerelease`); the stable channel would only offer an older version.
+- **Icons:** one glyph set. The legacy `Ic.*` components that have a design-system twin (44 of them) now draw the design-system icon, so stroke and shape match everywhere; callers keep their size.
+- **Motion helpers:** `prefersReducedMotion()` is the one check for event handlers; `useUIMotion()` returns shared constants for components.
