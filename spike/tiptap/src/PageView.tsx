@@ -11,7 +11,7 @@ import { contentProblem } from './editor/contentSafety'
 import { LAYOUT_CANCEL } from './editor/layout'
 import { activeGroup, validWidths } from './editor/layoutModel'
 import { getFind, scrollToMatch } from './editor/find'
-import { Icon, IconButton } from './design-system'
+import { Button, ChipButton, dirOf, Icon, IconButton, PropertyList, PropertyRow, Row, Tag, useMenu, type MenuItem } from './design-system'
 import { looksLikeMermaid } from './editor/mermaid'
 import { TableBubble } from './TableBubble'
 import { PageLinkPicker } from './PageLinkPicker'
@@ -24,7 +24,7 @@ import { History } from './History'
 import { normalizeFa } from './normalize'
 import { getTemplates, type Template } from './templates'
 import { OPEN_PAGE, PAGES_CHANGED } from './editor/pageLink'
-import { ago, EmojiPicker, MenuItem, MenuLabel, MenuSep, Popover, Select } from './ui'
+import { ago, EmojiPicker, Popover } from './ui'
 import { printPage } from './print'
 import { toneOf } from './PageIcon'
 import { Glyph, isGlyph, parseIcon } from './iconSet'
@@ -38,6 +38,9 @@ import { lazy, Suspense } from 'react'
 const RowProperties = lazy(() => import('./database/ui/RowProperties').then((m) => ({ default: m.RowProperties })))
 
 export type SaveState = 'saved' | 'saving'
+/** Asks the app to show the pages with a tag; detail is the tag as written. */
+export const PICK_TAG = 'pick-tag'
+
 
 const TITLE_CMDS = [
   { id: 'rtl', title: 'Right-to-left (RTL)', desc: 'Make the title right-to-left', kw: 'rtl direction right to left جهت راست چین' },
@@ -50,12 +53,15 @@ export function PageView({
   onSave,
   onMeta,
   onCover,
+  cover,
   readOnly: readerOnly = false,
 }: {
   page: Page
   onSave: (s: SaveState) => void
   onMeta: () => void
   onCover: (anchor: DOMRect) => void
+  /** The cover banner, drawn inside the page column so it lines up with the text. */
+  cover?: React.ReactNode
   readOnly?: boolean
 }) {
   const schema = useMemo(() => getSchema(extensions), [])
@@ -87,6 +93,8 @@ export function PageView({
   // in an effect so the page we just left has already flushed its last edit
   useEffect(() => setBacks(repo.backlinks(page.id)), [page.id])
   const [titleDir, setTitleDir] = useState(page.titleDir)
+  // the title line (icon and text) follows the title's own direction; an empty title follows the interface
+  const [titleText, setTitleText] = useState(page.title)
   // tags + status shown under the title
   const [tags, setTags] = useState<string[]>(page.tags ?? [])
   const [status, setStatus] = useState<PageStatus | undefined>(page.status)
@@ -110,6 +118,7 @@ export function PageView({
     const before = el.value.slice(0, tmenu.start)
     const v = (after ? before : before.trimEnd()) + after // no dangling space when the command was at the end
     el.value = v
+    setTitleText(v)
     const dir = c.id === 'auto' ? undefined : (c.id as 'rtl' | 'ltr')
     setTitleDir(dir)
     repo.update(page.id, { title: v, titleDir: dir })
@@ -175,8 +184,11 @@ export function PageView({
     if (editor) editor.storage.currentPageId = page.id
   }, [editor, page.id])
 
-  // right-click inside the text: clipboard and undo actions (the browser's own menu is switched off in the desktop app)
-  const [ctx, setCtx] = useState<DOMRect | null>(null)
+  // right-click inside the text: clipboard, formatting and page actions (the browser's own menu is switched off in the desktop app)
+  const { open: openMenu, menu } = useMenu()
+  const menuAt = useRef<DOMRect | null>(null)
+  // built on each render, so the menu sees the current selection and read-only state
+  const textMenu = useRef<() => MenuItem[]>(() => [])
   // plain $…$ text becomes a formula once the editor loses focus (it already does when the cursor leaves the paragraph)
   useEffect(() => {
     if (!editor) return
@@ -216,11 +228,12 @@ export function PageView({
     const open = (e: MouseEvent) => {
       if ((e.target as HTMLElement).closest('input, textarea')) return
       e.preventDefault()
-      setCtx(new DOMRect(e.clientX, e.clientY, 0, 0))
+      menuAt.current = new DOMRect(e.clientX, e.clientY, 0, 0)
+      openMenu(textMenu.current(), menuAt.current)
     }
     dom.addEventListener('contextmenu', open)
     return () => dom.removeEventListener('contextmenu', open)
-  }, [editor])
+  }, [editor, openMenu])
   const paste = async (plain: boolean) => {
     if (!editor) return
     editor.commands.focus()
@@ -234,7 +247,6 @@ export function PageView({
       /* clipboard access denied */
     }
   }
-  const hasSel = !!editor && !editor.state.selection.empty
 
   // outline: which heading is the reader at (last one that has scrolled past the top of the page area)
   const [activeHead, setActiveHead] = useState(-1)
@@ -272,6 +284,7 @@ export function PageView({
       const current = repo.get(page.id)
       if (current) {
         if (titleRef.current) titleRef.current.value = current.title
+        setTitleText(current.title)
         setTitleDir(current.titleDir)
         setIcon(current.icon)
         setTags(current.tags ?? [])
@@ -430,15 +443,16 @@ export function PageView({
 
   if (!editor) return null
 
-  const applyTemplate = (t: Template) => {
-    editor.commands.setContent(t.html)
+  const applyTemplate = (tp: Template) => {
+    editor.commands.setContent(tp.html)
     if (!titleRef.current?.value.trim()) {
-      titleRef.current!.value = t.pageTitle
-      repo.update(page.id, { title: t.pageTitle })
+      titleRef.current!.value = tp.pageTitle
+      setTitleText(tp.pageTitle)
+      repo.update(page.id, { title: tp.pageTitle })
       fit()
     }
     if (!icon) {
-      const g = 'i:' + (TEMPLATE_GLYPH[t.id] ?? 'page')
+      const g = 'i:' + (TEMPLATE_GLYPH[tp.id] ?? 'page')
       repo.update(page.id, { icon: g })
       setIcon(g)
     }
@@ -472,12 +486,84 @@ export function PageView({
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
+  const setPageStatus = (v: PageStatus | undefined) => {
+    setStatus(v)
+    repo.update(page.id, { status: v })
+    onMeta()
+  }
+  const statusItems: MenuItem[] = [
+    { label: 'No status', checked: !status, onSelect: () => setPageStatus(undefined) },
+    ...(Object.keys(STATUS) as PageStatus[]).map((s) => ({ label: STATUS[s].label, swatch: STATUS[s].color, checked: status === s, onSelect: () => setPageStatus(s) })),
+  ]
+  const setPageIcon = (next: string | undefined) => {
+    repo.update(page.id, { icon: next })
+    setIcon(next)
+    onMeta()
+  }
+
+  textMenu.current = () => {
+    const picked = !editor.state.selection.empty
+    const chain = () => editor.chain().focus()
+    const copy: MenuItem[] = picked ? [{ label: 'Copy', icon: <Icon name="copy" />, hint: shortcutLabel(['Mod', 'C']), onSelect: () => document.execCommand('copy') }] : []
+    const edit: MenuItem[] = readOnly
+      ? copy
+      : [
+          { label: 'Undo', icon: <Icon name="undo" />, hint: shortcutLabel(['Mod', 'Z']), onSelect: () => chain().undo().run() },
+          { label: 'Redo', icon: <Icon name="redo" />, hint: 'Ctrl+Y', onSelect: () => chain().redo().run() },
+          { kind: 'sep' },
+          ...(picked ? [{ label: 'Cut', icon: <Icon name="scissors" />, hint: shortcutLabel(['Mod', 'X']), onSelect: () => document.execCommand('cut') }] : []),
+          ...copy,
+          { label: 'Paste', icon: <Icon name="clipboard" />, hint: shortcutLabel(['Mod', 'V']), onSelect: () => void paste(false) },
+          { label: 'Paste as plain text', icon: <span className="ds-menu-gap" />, hint: 'Ctrl+Shift+V', onSelect: () => void paste(true) },
+          { kind: 'sep' },
+          ...(picked
+            ? [
+                {
+                  label: 'Format',
+                  icon: <Icon name="bold" />,
+                  items: [
+                    { label: 'Bold', icon: <Icon name="bold" />, hint: 'Ctrl+B', onSelect: () => chain().toggleBold().run() },
+                    { label: 'Italic', icon: <Icon name="italic" />, hint: 'Ctrl+I', onSelect: () => chain().toggleItalic().run() },
+                    { label: 'Strikethrough', icon: <Icon name="strikethrough" />, onSelect: () => chain().toggleStrike().run() },
+                    { label: 'Code', icon: <Icon name="code" />, onSelect: () => chain().toggleCode().run() },
+                    { label: 'Quote', icon: <Icon name="quote" />, onSelect: () => chain().toggleBlockquote().run() },
+                  ] as MenuItem[],
+                },
+              ]
+            : []),
+          { label: 'Move to…', icon: <Icon name="move" />, hint: 'Ctrl+Alt+M', onSelect: () => editor.view.dom.dispatchEvent(new CustomEvent('layout-move-menu', { detail: menuAt.current })) },
+          { label: 'Convert $…$ to formulas', icon: <Icon name="sigma" />, onSelect: () => editor.commands.convertFormulas() },
+        ]
+    return [
+      ...edit,
+      { label: 'Select all', icon: <span className="ds-menu-gap" />, hint: 'Ctrl+A', onSelect: () => chain().selectAll().run() },
+      { kind: 'sep' },
+      { label: 'Find in page', icon: <Icon name="search" />, hint: bindingHint('find'), onSelect: () => window.dispatchEvent(new Event('open-find')) },
+      { label: 'History', icon: <Icon name="history" />, onSelect: () => window.dispatchEvent(new Event('open-history')) },
+      { label: 'Reader mode', icon: <Icon name="book" />, hint: 'Ctrl .', onSelect: () => window.dispatchEvent(new Event('toggle-reader')) },
+      { label: 'Print / PDF', icon: <Icon name="printer" />, onSelect: () => printPage(page.title) },
+    ]
+  }
+
+  // a tag leads to the other pages that carry it (the sidebar's tag filter)
+  const showTag = (tag: string) => window.dispatchEvent(new CustomEvent(PICK_TAG, { detail: tag }))
+  const tagItems = (tag: string): MenuItem[] => [
+    { label: 'Show pages with this tag', icon: <Icon name="tag" />, onSelect: () => showTag(tag) },
+    ...(readOnly ? [] : [{ kind: 'sep' } as MenuItem, { label: 'Remove tag', icon: <Icon name="x" />, danger: true, onSelect: () => saveTags(tags.filter((x) => x !== tag)) }]),
+  ]
+  const tagSuggestions = (() => {
+    const q = normalizeFa(tagDraft.trim())
+    return allTags(repo.pagesOnly())
+      .filter((x) => !tags.some((y) => normalizeFa(y) === normalizeFa(x)) && (!q || normalizeFa(x).includes(q)))
+      .slice(0, 6)
+  })()
+
   return (
     <div className={'page' + (findOpen ? ' finding' : '')}>
       {findOpen && (
-        <div className="findbar-slot">
-          <div className="findbar" role="search">
-            <Ic.Search size={18} />
+        <div className="pg-find-slot">
+          <div className="pg-find" role="search">
+            <Icon name="search" size={16} />
             <input
               ref={findInput}
               dir="auto"
@@ -492,7 +578,7 @@ export function PageView({
                 else if (e.key === 'Escape') (e.preventDefault(), e.stopPropagation(), closeFind()) // only the find bar closes
               }}
             />
-            <span className="find-count" aria-live="polite">
+            <span className="pg-find-count" aria-live="polite">
               {find.matches.length ? t('{i} of {n}', { i: find.index + 1, n: find.matches.length }) : find.query ? t('Not found') : ''}
             </span>
             <IconButton label={t('Previous  Shift+Enter')} disabled={!find.matches.length} onClick={() => stepFind(-1)}>
@@ -509,86 +595,99 @@ export function PageView({
       )}
       {slot &&
         createPortal(
-          <section>
+          <>
             <h4>{t('Outline')}</h4>
-            {heads.length === 0 && <div className="pd-note">{t('Add headings (H1–H3) and the outline will appear here.')}</div>}
+            {heads.length === 0 && <p className="pp-note">{t('Add headings (H1–H3) and the outline will appear here.')}</p>}
             {heads.length > 0 && (
-              <nav className="ol-tl">
+              <nav className="pp-outline" aria-label={t('Outline')}>
                 {heads.map((h) => (
-                  <button key={h.pos} className={'ol-item' + (h.pos === activeHead ? ' on' : '')} style={{ ['--lv' as string]: h.level - 1 } as React.CSSProperties} onClick={() => gotoHeading(h.pos)}>
-                    <i className="ol-dot" />
-                    <span className="ol-tx" dir="auto">
-                      {h.text || t('Untitled')}
-                    </span>
+                  <button key={h.pos} type="button" className="pp-outline-item" aria-current={h.pos === activeHead ? 'location' : undefined} style={{ ['--lv' as string]: h.level - 1 } as React.CSSProperties} onClick={() => gotoHeading(h.pos)}>
+                    <span dir="auto">{h.text || t('Untitled')}</span>
                   </button>
                 ))}
               </nav>
             )}
-          </section>,
+          </>,
           slot,
         )}
-      <div className="page-head">
-        <div className="page-top">
-          <button className={'page-icon' + (icon ? '' : ' empty')} onClick={(e) => setPicker(e.currentTarget.getBoundingClientRect())} title={t('Change icon')}>
-            {icon ? (
-              <span className="page-icon-g" style={isGlyph(icon) ? { color: parseIcon(icon).color ?? toneOf(page.id) } : undefined}>
-                {iconNode(icon, 40)}
-              </span>
-            ) : (
-              <Ic.Page size={44} />
-            )}
-          </button>
-          <div className="page-tools">
+      {cover}
+      <header className="pg-head">
+        {!readOnly && (!icon || !page.cover) && (
+          <div className="pg-add">
             {!icon && (
-              <button onClick={(e) => setPicker(e.currentTarget.getBoundingClientRect())}>
-                <Ic.Star size={14} />
+              <Button size="sm" variant="ghost" icon={<Icon name="sparkles" size={14} />} onClick={(e) => setPicker(e.currentTarget.getBoundingClientRect())}>
                 {t('Add icon')}
-              </button>
+              </Button>
             )}
             {!page.cover && (
-              <button onClick={(e) => onCover(e.currentTarget.getBoundingClientRect())}>
-                <Ic.Image size={14} />
+              <Button size="sm" variant="ghost" icon={<Icon name="image" size={14} />} onClick={(e) => onCover(e.currentTarget.getBoundingClientRect())}>
                 {t('Add cover')}
-              </button>
+              </Button>
             )}
           </div>
-        </div>
+        )}
         {picker && (
           <Popover anchor={picker} onClose={() => setPicker(null)}>
-            <EmojiPicker
-              current={icon}
-              onPick={(e, close = true) => (repo.update(page.id, { icon: e }), setIcon(e), close && setPicker(null), onMeta())}
-              onClear={() => (repo.update(page.id, { icon: undefined }), setIcon(undefined), setPicker(null), onMeta())}
-            />
+            <EmojiPicker current={icon} onPick={(e, close = true) => (setPageIcon(e), close && setPicker(null))} onClear={() => (setPageIcon(undefined), setPicker(null))} />
           </Popover>
         )}
-        <textarea
-          ref={titleRef}
-          readOnly={readOnly}
-          className="title"
-          dir={titleDir ?? 'auto'}
-          rows={1}
-          placeholder={t('Untitled')}
-          defaultValue={page.title}
-          onInput={fit}
-          onChange={(e) => {
-            repo.update(page.id, { title: e.target.value.replace(/\n/g, ' ') })
-            onMeta()
-            checkSlash(e.target)
-          }}
-          onClick={(e) => checkSlash(e.currentTarget)}
-          onBlur={() => setTmenu(null)}
-          onKeyDown={(e) => {
-            if (tmenu && tItems.length) {
-              const move = (d: number) => (e.preventDefault(), setTmenu({ ...tmenu, sel: (tmenu.sel + d + tItems.length) % tItems.length }))
-              if (e.key === 'ArrowDown') return move(1)
-              if (e.key === 'ArrowUp') return move(-1)
-              if (e.key === 'Enter' || e.key === 'Tab') return (e.preventDefault(), applyTitleCmd(tItems[tmenu.sel]))
-              if (e.key === 'Escape') return (e.preventDefault(), setTmenu(null))
-            }
-            if (e.key === 'Enter') (e.preventDefault(), editor.commands.focus('start'))
-          }}
-        />
+        <div className="pg-title-row" dir={titleDir ?? dirOf(titleText)}>
+          {icon && (
+            <button
+              type="button"
+              className="pg-icon"
+              disabled={readOnly}
+              aria-label={t('Change icon')}
+              title={t('Change icon')}
+              onClick={(e) => setPicker(e.currentTarget.getBoundingClientRect())}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                if (readOnly) return
+                const at = e.currentTarget.getBoundingClientRect()
+                openMenu(
+                  [
+                    { label: 'Change icon', icon: <Icon name="sparkles" />, onSelect: () => setPicker(at) },
+                    { label: 'Remove icon', icon: <Icon name="trash" />, danger: true, onSelect: () => setPageIcon(undefined) },
+                  ],
+                  e,
+                )
+              }}
+            >
+              <span className="pg-icon-glyph" style={isGlyph(icon) ? { color: parseIcon(icon).color ?? toneOf(page.id) } : undefined}>
+                {iconNode(icon, 40)}
+              </span>
+            </button>
+          )}
+          <textarea
+            ref={titleRef}
+            readOnly={readOnly}
+            className="pg-title"
+            dir={titleDir ?? (titleText.trim() ? 'auto' : undefined)}
+            rows={1}
+            aria-label={t('Page title')}
+            placeholder={t('Untitled')}
+            defaultValue={page.title}
+            onInput={fit}
+            onChange={(e) => {
+              repo.update(page.id, { title: e.target.value.replace(/\n/g, ' ') })
+              setTitleText(e.target.value)
+              onMeta()
+              checkSlash(e.target)
+            }}
+            onClick={(e) => checkSlash(e.currentTarget)}
+            onBlur={() => setTmenu(null)}
+            onKeyDown={(e) => {
+              if (tmenu && tItems.length) {
+                const move = (d: number) => (e.preventDefault(), setTmenu({ ...tmenu, sel: (tmenu.sel + d + tItems.length) % tItems.length }))
+                if (e.key === 'ArrowDown') return move(1)
+                if (e.key === 'ArrowUp') return move(-1)
+                if (e.key === 'Enter' || e.key === 'Tab') return (e.preventDefault(), applyTitleCmd(tItems[tmenu.sel]))
+                if (e.key === 'Escape') return (e.preventDefault(), setTmenu(null))
+              }
+              if (e.key === 'Enter') (e.preventDefault(), editor.commands.focus('start'))
+            }}
+          />
+        </div>
         {tmenu && (
           <div className="slash-menu title-menu">
             <div className="slash-label">{t('Title direction')}</div>
@@ -611,213 +710,107 @@ export function PageView({
             ))}
           </div>
         )}
-      </div>
+      </header>
 
+      {/* the page's properties, one row each */}
+      <PropertyList className="pg-props" label={t('Page properties')}>
+        <PropertyRow icon={<Icon name="flag" size={16} />} label={t('Status')}>
+          <ChipButton
+            empty={!status}
+            aria-haspopup="menu"
+            aria-label={t('Status') + ': ' + t(status ? STATUS[status].label : 'No status')}
+            disabled={readOnly}
+            icon={status && <i className="ds-menu-dot" style={{ background: STATUS[status].color }} />}
+            onClick={(e) => openMenu(statusItems, e.currentTarget)}
+            onContextMenu={(e) => (e.preventDefault(), !readOnly && openMenu(statusItems, e))}
+          >
+            <span>{t(status ? STATUS[status].label : 'No status')}</span>
+            <Icon name="chevron-down" size={14} />
+          </ChipButton>
+        </PropertyRow>
+        <PropertyRow icon={<Icon name="tag" size={16} />} label={t('Tags')}>
+          {tags.map((tag) => (
+            <Tag
+              key={tag}
+              label={tag}
+              onOpen={() => showTag(tag)}
+              openLabel={t('Show pages with this tag')}
+              onRemove={readOnly ? undefined : () => saveTags(tags.filter((x) => x !== tag))}
+              removeLabel={t('Remove tag')}
+              onContextMenu={(e) => (e.preventDefault(), openMenu(tagItems(tag), e))}
+            />
+          ))}
+          {readOnly && tags.length === 0 && t('No tags')}
+          {!readOnly &&
+            (addingTag ? (
+              <span className="ds-chip-field">
+                <Icon name="tag" size={14} />
+                <input
+                  dir="auto"
+                  autoFocus
+                  value={tagDraft}
+                  aria-label={t('Tag name…')}
+                  placeholder={t('Tag name…')}
+                  onChange={(e) => setTagDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if ((e.key === 'Enter' || e.key === ',' || e.key === '،') && tagDraft.trim()) {
+                      e.preventDefault()
+                      saveTags(addTag(tags, tagDraft))
+                      setTagDraft('')
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault()
+                      setTagDraft('')
+                      setAddingTag(false)
+                    } else if (e.key === 'Backspace' && !tagDraft && tags.length) saveTags(tags.slice(0, -1))
+                  }}
+                  onBlur={() => {
+                    if (tagDraft.trim()) saveTags(addTag(tags, tagDraft))
+                    setTagDraft('')
+                    setAddingTag(false)
+                  }}
+                />
+                {tagSuggestions.length > 0 && (
+                  <div className="ds-pop ds-menu ds-chip-field-list" role="listbox" aria-label={t('Tags')}>
+                    {tagSuggestions.map((x) => (
+                      <button key={x} type="button" role="option" aria-selected={false} className="ds-menu-item" onMouseDown={(e) => (e.preventDefault(), saveTags(addTag(tags, x)), setTagDraft(''))}>
+                        <Icon name="tag" size={14} />
+                        <span className="ds-menu-label" dir="auto">
+                          {x}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </span>
+            ) : (
+              <ChipButton empty icon={<Icon name="plus" size={14} />} onClick={() => setAddingTag(true)}>
+                {t('Add tag…')}
+              </ChipButton>
+            ))}
+        </PropertyRow>
+        <PropertyRow icon={<Icon name="clock" size={16} />} label={t('Last edited')}>
+          {ago(page.updatedAt)}
+        </PropertyRow>
+      </PropertyList>
       {page.database && (
         <Suspense fallback={null}>
           <RowProperties pageId={page.id} />
         </Suspense>
       )}
-      <div className="page-meta">
-        <div className="meta-row">
-          <div className="meta-cell tags">
-            <span className="meta-ic" title={t('Tags')}>
-              <Ic.Tag size={16} />
-            </span>
-            <div className="meta-body">
-              <span className="meta-label">{t('Tags')}</span>
-              <div className="meta-val">
-                {tags.map((tag) => (
-                  <span key={tag} className="tag-chip static" dir="auto" style={{ ['--hue' as string]: [...tag].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7) } as React.CSSProperties}>
-                    {tag}
-                    <button title={t('Remove')} onClick={() => saveTags(tags.filter((x) => x !== tag))}>
-                      <Ic.Close size={11} />
-                    </button>
-                  </span>
-                ))}
-                {addingTag ? (
-                  <span className="tag-new">
-                    <span className="tag-new-h">#</span>
-                    <input
-                      className="tag-input"
-                      dir="auto"
-                      autoFocus
-                      value={tagDraft}
-                      placeholder={t('Tag name…')}
-                      onChange={(e) => setTagDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if ((e.key === 'Enter' || e.key === ',' || e.key === '،') && tagDraft.trim()) {
-                          e.preventDefault()
-                          saveTags(addTag(tags, tagDraft))
-                          setTagDraft('')
-                        } else if (e.key === 'Escape') {
-                          e.preventDefault()
-                          setTagDraft('')
-                          setAddingTag(false)
-                        } else if (e.key === 'Backspace' && !tagDraft && tags.length) saveTags(tags.slice(0, -1))
-                      }}
-                      onBlur={() => {
-                        if (tagDraft.trim()) saveTags(addTag(tags, tagDraft))
-                        setTagDraft('')
-                        setAddingTag(false)
-                      }}
-                    />
-                    {(() => {
-                      const q = normalizeFa(tagDraft.trim())
-                      const sugg = allTags(repo.pagesOnly())
-                        .filter((x) => !tags.some((y) => normalizeFa(y) === normalizeFa(x)) && (!q || normalizeFa(x).includes(q)))
-                        .slice(0, 6)
-                      return (
-                        sugg.length > 0 && (
-                          <div className="tag-sugg" role="listbox">
-                            {sugg.map((x) => (
-                              <button key={x} type="button" role="option" onMouseDown={(e) => (e.preventDefault(), saveTags(addTag(tags, x)), setTagDraft(''))}>
-                                <span className="tagchip-h">#</span>
-                                <span dir="auto">{x}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )
-                      )
-                    })()}
-                  </span>
-                ) : (
-                  <button type="button" className="tag-add" title={t('Add tag…')} aria-label={t('Add tag…')} onClick={() => setAddingTag(true)}>
-                    <Ic.Plus size={14} />
-                    {tags.length === 0 && <span>{t('Add tag…')}</span>}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="meta-row inline">
-          <div className="meta-cell">
-            <span className="meta-ic">
-              <Ic.Flag size={16} />
-            </span>
-            <div className="meta-body">
-              <span className="meta-label">{t('Status')}</span>
-              <div className="meta-val">
-                <Select
-                  className={'status-sel' + (status ? ' has' : '')}
-                  style={status ? ({ ['--st' as string]: STATUS[status].color } as React.CSSProperties) : undefined}
-                  value={status ?? ''}
-                  title={t('Status')}
-                  onChange={(val) => {
-                    const v = (val || undefined) as PageStatus | undefined
-                    setStatus(v)
-                    repo.update(page.id, { status: v })
-                    onMeta()
-                  }}
-                  options={[{ value: '', label: t('No status') }, ...(Object.keys(STATUS) as PageStatus[]).map((s) => ({ value: s, label: t(STATUS[s].label), color: STATUS[s].color }))]}
-                />
-              </div>
-            </div>
-          </div>
-          <div className="meta-cell">
-            <button
-              className={'meta-ic like' + (page.favorite ? ' on' : '')}
-              title={page.favorite ? t('Remove from favorites') : t('Add to favorites')}
-              aria-pressed={!!page.favorite}
-              onClick={() => (repo.update(page.id, { favorite: !page.favorite }), onMeta())}
-            >
-              <Ic.Star size={16} filled={page.favorite} />
-            </button>
-            <div className="meta-body">
-              <span className="meta-label">{t('Favorite')}</span>
-              <div className="meta-val">
-                <span className="meta-text">{page.favorite ? t('Yes') : t('No')}</span>
-              </div>
-            </div>
-          </div>
-          <div className="meta-cell">
-            <span className="meta-ic">
-              <Ic.Clock size={16} />
-            </span>
-            <div className="meta-body">
-              <span className="meta-label">{t('Last edited')}</span>
-              <div className="meta-val">
-                <span className="meta-text">{ago(page.updatedAt)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {!readOnly && editor.isEmpty && !editor.isFocused && (
-        <div className="templates">
-          <span className="templates-label">{t('Quick start with a template')}</span>
-          {getTemplates().map((t) => (
-            <button key={t.id} title={t.desc} onClick={() => applyTemplate(t)}>
-              <span className="tpl-chip-ic">
-                <Glyph name={TEMPLATE_GLYPH[t.id] ?? 'page'} size={14} />
-              </span>
-              {t.title}
-            </button>
+        <div className="pg-starts" role="group" aria-label={t('Quick start with a template')}>
+          <span>{t('Quick start with a template')}</span>
+          {getTemplates().map((tp) => (
+            <Button key={tp.id} size="sm" variant="ghost" title={tp.desc} icon={<Glyph name={TEMPLATE_GLYPH[tp.id] ?? 'page'} size={14} />} onClick={() => applyTemplate(tp)}>
+              {tp.title}
+            </Button>
           ))}
         </div>
       )}
 
       {!readOnly && <Toolbar editor={editor} diagram={diagram} />}
-      {ctx && editor && (
-        <Popover anchor={ctx} onClose={() => setCtx(null)}>
-          <div className="ds-menu ctx-menu">
-            {!readOnly && (
-              <div className="menu-quick">
-                <button title={t('Undo') + '  ' + shortcutLabel(['Mod', 'Z'])} onClick={() => (setCtx(null), editor.chain().focus().undo().run())}>
-                  <Ic.Undo size={16} />
-                </button>
-                <button title={t('Redo  Ctrl+Y')} onClick={() => (setCtx(null), editor.chain().focus().redo().run())}>
-                  <Ic.Redo size={16} />
-                </button>
-                {hasSel && (
-                  <button title={t('Cut') + '  ' + shortcutLabel(['Mod', 'X'])} onClick={() => (setCtx(null), document.execCommand('cut'))}>
-                    <Ic.Cut size={16} />
-                  </button>
-                )}
-                {hasSel && (
-                  <button title={t('Copy') + '  ' + shortcutLabel(['Mod', 'C'])} onClick={() => (setCtx(null), document.execCommand('copy'))}>
-                    <Ic.Copy size={16} />
-                  </button>
-                )}
-                <button title={t('Paste') + '  ' + shortcutLabel(['Mod', 'V'])} onClick={() => (setCtx(null), void paste(false))}>
-                  <Ic.Paste size={16} />
-                </button>
-              </div>
-            )}
-            {!readOnly && hasSel && (
-              <>
-                <MenuLabel>{t('Format')}</MenuLabel>
-                <MenuItem icon={<Ic.Bold />} label={t('Bold')} hint="Ctrl+B" onClick={() => (setCtx(null), editor.chain().focus().toggleBold().run())} />
-                <MenuItem icon={<Ic.Italic />} label={t('Italic')} hint="Ctrl+I" onClick={() => (setCtx(null), editor.chain().focus().toggleItalic().run())} />
-                <MenuItem icon={<Ic.Strike />} label={t('Strikethrough')} onClick={() => (setCtx(null), editor.chain().focus().toggleStrike().run())} />
-                <MenuItem icon={<Ic.Code />} label={t('Code')} onClick={() => (setCtx(null), editor.chain().focus().toggleCode().run())} />
-                <MenuItem icon={<Ic.Quote />} label={t('Quote')} onClick={() => (setCtx(null), editor.chain().focus().toggleBlockquote().run())} />
-              </>
-            )}
-            {!readOnly && (
-              <MenuItem
-                icon={<Ic.Arrow />}
-                label={t('Move to…')}
-                hint="Ctrl+Alt+M"
-                onClick={() => {
-                  setCtx(null)
-                  editor.view.dom.dispatchEvent(new CustomEvent('layout-move-menu', { detail: ctx }))
-                }}
-              />
-            )}
-            {!readOnly && <MenuItem icon={<Ic.Paste />} label={t('Paste as plain text')} hint="Ctrl+Shift+V" onClick={() => (setCtx(null), void paste(true))} />}
-            {!readOnly && <MenuItem icon={<Ic.Code />} label={t('Convert $…$ to formulas')} onClick={() => (setCtx(null), editor.commands.convertFormulas())} />}
-            <MenuItem icon={<Ic.SelectAll />} label={t('Select all')} hint="Ctrl+A" onClick={() => (setCtx(null), editor.chain().focus().selectAll().run())} />
-            <MenuSep />
-            <MenuItem icon={<Ic.Search />} label={t('Find in page')} hint={bindingHint('find')} onClick={() => (setCtx(null), window.dispatchEvent(new Event('open-find')))} />
-            <MenuItem icon={<Ic.History />} label={t('History')} onClick={() => (setCtx(null), window.dispatchEvent(new Event('open-history')))} />
-            <MenuItem icon={<Ic.Reader />} label={t('Reader mode')} hint="Ctrl ." onClick={() => (setCtx(null), window.dispatchEvent(new Event('toggle-reader')))} />
-            <MenuItem icon={<Ic.Print />} label={t('Print / PDF')} onClick={() => (setCtx(null), printPage(page.title))} />
-          </div>
-        </Popover>
-      )}
+      {menu}
       {!readOnly && <LayoutControls editor={editor} />}
       {!readOnly &&
         (() => {
@@ -843,15 +836,24 @@ export function PageView({
       {historyOpen && <History page={page} editor={editor} onClose={() => setHistoryOpen(false)} />}
 
       {backs.length > 0 && (
-        <section className="backlinks">
-          <div className="backlinks-title">
-            {t('Backlinks')} · {backs.length}
-          </div>
+        <section className="pg-links" aria-label={t('Backlinks')}>
+          <h2>
+            {t('Backlinks')}
+            <span className="ds-badge">{backs.length}</span>
+          </h2>
           {backs.map((b) => (
-            <button key={b.id} className="backlink" onClick={() => window.dispatchEvent(new CustomEvent(OPEN_PAGE, { detail: b.id }))}>
-              <span className="backlink-ic">{iconNode(b.icon, 15, <Ic.Page size={15} />)}</span>
-              <span dir="auto">{b.title || t('Untitled')}</span>
-            </button>
+            <Row
+              key={b.id}
+              as="button"
+              className="pg-link"
+              icon={<span className="pg-link-ic">{iconNode(b.icon, 16, <Icon name="page" size={16} />)}</span>}
+              text={b.title || t('Untitled')}
+              onClick={() => window.dispatchEvent(new CustomEvent(OPEN_PAGE, { detail: b.id }))}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                openMenu([{ label: 'Open page', icon: <Icon name="arrow-right" className="ds-flip" />, onSelect: () => window.dispatchEvent(new CustomEvent(OPEN_PAGE, { detail: b.id })) }], e)
+              }}
+            />
           ))}
         </section>
       )}

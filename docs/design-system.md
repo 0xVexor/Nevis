@@ -10,6 +10,8 @@ Home starts with an editable first-note sheet and short template previews, plus 
 
 First launch and the workspace list are `Onboarding` (`src/onboarding/`), a service-free composition that `VaultPicker` connects to the desktop vault commands. New users go through three steps (welcome and language, name and accent with a live `WorkspaceHeader` preview, folder) and the preview grows into the workspace; people with workspaces see the list, with a context menu on each row, and a two-step flow for a new one. Steps slide in from the side they come from (mirrored in RTL) with `--ds-base`; reduced motion turns this into a crossfade and skips the mark drawing and the landing. The interface says workspace, not vault. `AccentSwatches` is the accent choice shared with Settings. Review at `/onboarding-preview.html` (`?state=returning`, `?fail`, `?lang=fa`, `?theme=dark`, `?accent=%237151c2`, `?reduced`); nothing native is touched. Not yet tested.
 
+The page (`PageView`) is built from shared parts and its own `pg-` classes in `areas/page.css`: the icon (with a cover, a 76px tile sitting on the cover's lower edge that lifts with an accent edge on hover; without one, a 40px glyph at the start of the title line, whose direction follows the title; right-click to change or remove), ghost `Button`s for Add icon / Add cover that show on hover or focus, the title, and the properties as rows in the Settings style (label column with an icon, value column, hairlines between): Status (a chip that opens a `Menu` with swatches), Tags (every tag visible as a readable tinted `pg-tag`; the name shows the pages with that tag in the sidebar, the cross appears on hover or focus, right-click has both), and Last edited. Favourite is a page action, not a property: an outline star in the page bar beside Share that takes the accent when on. Below 560px the label sits above the value. The cover is drawn inside the page column, as wide as the text, with `Button`s on hover and a right-click menu. The formatting bar (`Toolbar`, styles in `areas/toolbar.css`) is one raised strip of `ds-icon-btn`s in groups; pressed means the format is on at the caret, every tooltip shows its shortcut from Settings → Shortcuts, image, direction, alignment and More are design-system menus, and on a narrow page the less-used commands fold into More so it stays on one line. It keeps its place but only shows while the text has focus, the pointer is on it or one of its menus is open. Editor shortcuts match the physical key (event.code), so they work with any keyboard language. The quick-start templates are one line of ghost buttons that scrolls instead of wrapping. Right-click in the text opens a `Menu` (edit, Format submenu, page actions). Backlinks are `Row`s under a heading with a `ds-badge` count.
+
 Review the actual `HomeScreen` and `HomeNote` compositions at `/home-preview.html` on an isolated Vite origin; `?state=empty`, `?state=single`, `?lang=fa&theme=dark` and `?accent=%237151c2` select fixtures. Preview documents stay in memory and do not initialize a vault. Production checks in isolated browser storage covered lazy creation, repeated edits updating one page, durable saves, opening the full editor and persistence across reload. Visual checks cover full/minimum windows, EN/FA, light/dark, custom accent and one-page/no-icon content. Typecheck and UI guard pass. No production build or full test suite was run.
 
 Current approved direction and migration handoff: [design language (Persian)](ui-design-language.fa.md), [continuation guide (Persian)](ui-handoff.fa.md). Architecture history: [ui-foundations-plan.md](ui-foundations-plan.md). Settings study and production now share their composition and foundations. Run `npm run dev:settings` from `spike/tiptap` and open `/settings-preview.html` on port 4182 for the review entry. Latest migration edits are untested at the user’s request.
@@ -60,6 +62,13 @@ All classes are prefixed `ds-` and use logical properties (`inline-start`, `inli
 | On / off | `ds-switch`; in lists and tables `ds-check` |
 | Tabs | `ds-tabs` |
 | Tag, status, label | `ds-chip` (+ `--dot` for status). Set `--c` for the color. |
+| A chip that is a control (status picker, add action) | `ds-chip-btn`; `data-empty` draws it dashed when nothing is set |
+| A tag on an object | `ds-tag` with `--hue` (from `tagHue`): `ds-tag-name` opens it, `ds-tag-x` appears on hover or focus. Typing a new one: `ds-chip-field` (+ `ds-chip-field-list` for suggestions) |
+| Properties of an object | `ds-props` > `ds-prop` (`ds-prop-label` with an icon, `ds-prop-value`), hairlines between rows; one column below 560px |
+| Choose a cover or a colour | `ds-swatches` > `ds-swatch` (pressed = chosen). A colour of your own: `ds-color` |
+| Choose an icon and its colour | `IconPicker` (`ds-icon-picker`): search, a row of `ds-color-dot`s (automatic, ten colours, your own), the design-system icons by group with Subjects and objects first |
+| The actions an object offers | `ActionGrid` > `ActionTile` (`ds-actions` > `ds-action`): three tiles a row, icon over a short label |
+| A toggle shown only by its icon (favourite) | `ds-icon-btn ds-icon-btn--toggle`: on is the icon in the accent, never a filled square |
 | Count next to a nav item | `ds-badge`: a plain number in an empty circle. Never a filled pill. |
 | Person, page icon | `ds-avatar`, `ds-tile` |
 | Progress | `ds-progress`, or the progress ring |
@@ -74,6 +83,7 @@ All classes are prefixed `ds-` and use logical properties (`inline-start`, `inli
 | Position in a short ordered flow | `ds-steps` / `Steps`: hairline segments; the current one is longer, so it never relies on colour alone. Caller supplies the translated label ("Step 2 of 3"). |
 | Persistence feedback | `SaveStatus` / `ds-save-status`: caller supplies a translated label and `idle`, `saving`, `saved` or `error`; polite live status, neutral ink and no status dot. |
 | Columns | `ds-layout` (below) |
+| Dragging a block | `ds-grip` beside the block, `ds-drag-ghost` under the pointer (`ds-drag-ghost-title` = what moves, `ds-drag-ghost-action` = what releasing does; `data-state` `ready`, `idle` or `blocked`), `ds-drag-source` dims what is moving, `ds-snap-preview` shows where it lands (`data-line` between blocks, `data-cols` with `ds-snap-col` children and the new one `data-active`). |
 
 ### React components
 
@@ -88,6 +98,9 @@ Import from `src/design-system`. Use these instead of writing the class names by
 | `WorkspaceHeader` | Service-free workspace identity: mark, name and optional action slots, with an accessible reveal button. Shared by production workspace and Settings. Styles in `navigation.css`; interactive LTR/RTL examples in Gallery. |
 | `PreferenceGroup`, `PreferenceRow` | Settings sections and label/hint/control rows. Labels are already translated. No store, platform or persistence dependencies. |
 | `Steps` | `count`, `current` (0-based) and a translated `label`. |
+| `ChipButton`, `Tag`, `tagHue` | `ChipButton` takes `empty` and `icon`. `Tag` takes the label, `onOpen` / `onRemove` with translated `openLabel` / `removeLabel`, and `onContextMenu`; the same name always gets the same hue. |
+| `IconPicker` | `name`, `color`, `onPick(name, color, close)`, `onClear`. A colour change on the chosen icon applies without closing. Page icons are stored as `i:name` or `i:name@#rrggbb`; `Glyph` draws the design-system icon first. |
+| `PropertyList`, `PropertyRow` | A translated `label` for the group; each row an optional `icon`, a `label` and the value as children. |
 | `SegmentedChoice`, `RangeControl` | Controlled choice and numeric slider with accessible labels; the caller supplies values, options and callbacks. Imported from the same design-system entry point. |
 | `Switch`, `Field`, `Chip`, `Tabs` | Switch is `role="switch"`. `Field` follows what is typed (`ltr` for codes and URLs). |
 | `dirOf(text)` | `'rtl' \| 'ltr' \| undefined` by the first letter, the same rule the editor uses. Use it for `dir=` on a row or card when `Row` does not fit. |
@@ -102,16 +115,21 @@ Import from `src/design-system`. Use these instead of writing the class names by
 
 ### Column layouts
 
-Blocks can sit side by side in 2, 3 or 4 columns (`ds-layout`). The rule is **no toolbar, nothing to learn**: it works by dragging, like snapping a window in Windows.
+Blocks can sit side by side in 2 or 3 columns in the editor (`ds-layout`). The rule is **no toolbar, nothing to learn**: it works by dragging, like snapping a window in Windows.
 
-- **Make columns:** drag a block by its grip (it appears beside any block on hover) and drop it on the left or right edge of another block. A preview shows exactly where it will land, then it snaps beside it. Dropping on the edge of a column adds one more column (up to 4).
-- **Resize:** drag the divider. It snaps to friendly ratios (1:3, 1:2, 1:1, 2:1, 3:1) and a small tip shows the split. Double-click resets to equal. Arrow keys work with focus. Minimum column width 110px.
-- **Leave a column:** drag the block out. Empty columns disappear on their own, and a layout with one column left dissolves.
+- **One drag, three outcomes, no pop-ups.** While dragging, the page itself is the chooser: nothing opens under the pointer. The ghost says in words what releasing will do, and the preview shows where.
+  - **Up or down** (including straight down the margin, where the grip is): an accent line between blocks; the block is reordered.
+  - **Sideways onto the left or right part of another block** (about a fifth of its width, 48–150px): the preview draws the columns the drop will make, the new one in the accent ("Place side by side"). Columns form only after the pointer has moved at least 32px sideways, so a straight drag never makes columns by accident.
+  - **Onto the edge or gap of a layout**: one more column ("Add as a new column"), up to 3. Dragging a column's last block over a sibling column moves the whole column.
+  - Over the block's own place, or anywhere that changes nothing, the ghost says "Release to leave it where it was". A drop that is not allowed (a fourth column, too narrow) says why, in the danger colour, and does nothing. `Escape` cancels at any time.
+- **Click the grip** for the same moves as a menu (Move to…, up, down, left, right, take out of the layout); only moves that are possible from here are listed.
+- **Resize:** drag the divider. It snaps to friendly ratios (1:3, 1:2, 1:1, 2:1, 3:1) and a small tip shows the split. Double-click resets to equal. Arrow keys work with focus. Minimum column width 180px in the editor.
+- **Leave a column:** drag the block up or down out of the layout, or into the margin beside it (upper half: above the layout, lower half: below). The preview shows the block at full width and the columns left behind. Empty columns disappear on their own, and a layout with one column left dissolves.
 - **Fill an empty column** (only after `/columns` or the insert-layout button): the empty column offers the nearest blocks as chips. Pick one, or drag one in. The × removes the column.
 - **Advanced options** (count, widths, text direction, unwrap, delete) live in the right-click menu of a layout or of a block inside it. Nothing is shown above the columns.
-- **Keyboard:** `Alt Shift ←/→` snaps the current block to a side or moves it between columns; `Alt Shift ↑/↓` reorders. `Ctrl Z` undoes.
+- **Keyboard:** `Ctrl Alt ←/→` snaps the current block to a side or moves it between columns; `Ctrl Alt ↑/↓` reorders; `Ctrl Alt M` opens the move menu, whose Move to… lets you browse every destination with Tab or the arrow keys. `Ctrl Z` undoes.
 - **Smooth:** every move slides the affected blocks to their new place (FLIP), and every change shows an Undo toast.
-- Columns stack by **container width** (560px), not viewport width. The grid is `Nfr 20px Nfr 20px Nfr`, one gutter per divider.
+- Columns stack by **container width** (560px), not viewport width. The grid is `Nfr 20px Nfr 20px Nfr`, one gutter per divider (24px in the editor).
 
 ## Icons, backgrounds and file icons
 

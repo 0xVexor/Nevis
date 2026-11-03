@@ -1,8 +1,11 @@
 import { Extension } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
 import { commandBinding, commandMatches } from '../shortcutCommands'
+import { pickImages } from './image'
+import { editLink } from './linkPrompt'
+import { linkSelection } from './slash'
 
-/** Execute editor commands directly using physical keys; never replay synthetic keyboard events. */
+/** Execute editor commands directly using physical keys (event.code), so they work with any keyboard language; never replay synthetic keyboard events. */
 export const PhysicalShortcuts = Extension.create({
   name: 'physicalShortcuts',
   priority: 10000,
@@ -12,6 +15,16 @@ export const PhysicalShortcuts = Extension.create({
       Bold: () => editor.commands.toggleBold(),
       Italic: () => editor.commands.toggleItalic(),
       Underline: () => editor.commands.toggleUnderline(),
+      'Heading 1': () => editor.commands.toggleHeading({ level: 1 }),
+      'Heading 2': () => editor.commands.toggleHeading({ level: 2 }),
+      'Heading 3': () => editor.commands.toggleHeading({ level: 3 }),
+      Link: () => (editLink(editor), true),
+      'Link to page': () => linkSelection(editor.chain().focus(), editor).run(),
+      'Insert image': () => (pickImages(editor), true),
+      'Insert table': () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+      'Align left': () => editor.chain().focus().setTextAlign('left').run(),
+      Center: () => editor.chain().focus().setTextAlign('center').run(),
+      'Align right': () => editor.chain().focus().setTextAlign('right').run(),
       Strikethrough: () => editor.commands.toggleStrike(),
       'Inline code': () => editor.commands.toggleCode(),
       'Bulleted list': () => editor.commands.toggleBulletList(),

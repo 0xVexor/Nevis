@@ -23,14 +23,6 @@
 .title-menu.slash-menu { width: 320px; }
 .title-menu .slash-item { margin: 0 8px; width: calc(100% - 16px); }
 
-/* ───────── reader mode: the cover is the top of the paper ───────── */
-.app.reading .scroller { display: flex; flex-direction: column; align-items: center; }
-.app.reading .cover { flex: none; width: 100%; max-width: var(--r-width, 760px); margin: 0; height: 240px; border-radius: 20px 20px 0 0; border: 1px solid var(--ds-line); border-bottom: 0; box-shadow: none; }
-.app.reading .cover::after { background: linear-gradient(to bottom, transparent 60%, var(--ds-bg)); }
-.app.reading .page-cols { width: 100%; }
-.app.reading .page-cols.has-cover .page { border-top: 0; border-radius: 0 0 20px 20px; padding-top: 0; }
-.app.reading .page-cols.has-cover .page-top { padding-top: 0; }
-.app.reading .page-cols.has-cover .page-head .page-icon { margin-top: -54px; }
 
 /* A small picture of what the highlighted "/" command writes, beside the menu (see editor/slashPreview.ts) */
 .slash-preview { position: fixed; z-index: 301; inline-size: 224px; padding: 8px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); box-shadow: var(--ds-shadow-pop); pointer-events: none; animation: ds-pop var(--ds-fast) var(--ds-ease); }

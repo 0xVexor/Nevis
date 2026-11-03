@@ -9,8 +9,9 @@
 .tree-scroll.hscroll { overflow: visible; padding-block-end: 0; }
 .tree-scroll .hscroll-rail { background: var(--ds-sunk); }
 .tree-in.cmp-list .row.cmp-head .ntitle, .tree-in.cmp-list .row.cmp-file .ntitle { width: auto; inline-size: auto; flex: 1 0 auto; }
-:root[data-side='icons'] .tree-scroll .hscroll-rail { display: none; }
-:root[data-side='icons'] .tree-scroll .hscroll-viewport { overflow: visible; }
+/* collapsed to icons there is nothing to scroll; expanded (hover, focus, pinned by the logo) the rail comes back */
+:root[data-side='icons'] .side:not([data-expanded]) .tree-scroll .hscroll-rail { display: none; }
+:root[data-side='icons'] .side:not([data-expanded]) .tree-scroll .hscroll-viewport { overflow: visible; }
 
 .db { gap: 8px; --db-control-h: 36px; }
 .db.inline { padding: 12px; }

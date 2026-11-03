@@ -8,7 +8,8 @@ export type Chord = string[]
 
 export const BINDINGS: Record<BindingId, Chord> = {
   search: ['Mod', 'K'],
-  sidebar: ['Mod', '\\'],
+  // one hand, any keyboard layout: the physical 1 key
+  sidebar: ['Alt', '1'],
   reader: ['Mod', '.'],
   widerColumn: ['Alt', '='],
   narrowerColumn: ['Alt', '-'],

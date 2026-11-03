@@ -189,7 +189,7 @@
 .tree-in.cmp-list { inline-size: max-content; min-inline-size: 100%; }
 .tree-in.cmp-list .row { inline-size: max-content; min-inline-size: 100%; }
 .tree-in.cmp-list .row.cmp-head .ntitle, .tree-in.cmp-list .row.cmp-file .ntitle { flex: 1 0 auto; inline-size: auto; min-inline-size: 110px; overflow: visible; text-overflow: clip; }
-:root[data-side='icons'] .tree-in.cmp-list, :root[data-side='icons'] .tree-in.cmp-list .row { inline-size: auto; min-inline-size: 0; }
+:root[data-side='icons'] .side:not([data-expanded]) .tree-in.cmp-list, :root[data-side='icons'] .side:not([data-expanded]) .tree-in.cmp-list .row { inline-size: auto; min-inline-size: 0; }
 .db-title-pre { flex: none; max-inline-size: 100%; }
 
 /* ───────── item properties (peek and page): a quiet card of label / value rows ───────── */

@@ -7,8 +7,9 @@ import { FA as FA_APP } from './fa'
 import { formatShortcutText } from './shortcuts'
 import { FA_DB } from './database/ui/fa-db'
 import { FA_ONBOARDING } from './fa-onboarding'
+import { FA_COVERS } from './fa-covers'
 
-const FA: Record<string, string> = { ...FA_DB, ...FA_APP, ...FA_SETTINGS, ...FA_HOME, ...FA_ONBOARDING }
+const FA: Record<string, string> = { ...FA_DB, ...FA_APP, ...FA_SETTINGS, ...FA_HOME, ...FA_ONBOARDING, ...FA_COVERS }
 
 export type { Lang }
 export type Dir = 'ltr' | 'rtl'

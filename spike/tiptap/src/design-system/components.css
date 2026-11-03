@@ -9,7 +9,7 @@
 .ds-muted { color: var(--ds-text-3); }
 
 /* focus: one visible ring everywhere */
-:where(.ds-btn, .ds-icon-btn, .ds-dd-btn, .ds-field, .ds-seg button, .ds-switch, .ds-menu-item, .ds-tabs button):focus-visible {
+:where(.ds-btn, .ds-icon-btn, .ds-dd-btn, .ds-field, .ds-seg button, .ds-switch, .ds-menu-item, .ds-tabs button, .ds-chip-btn, .ds-tag-name, .ds-tag-x):focus-visible {
   outline: 2px solid var(--ds-accent);
   outline-offset: 2px;
 }
@@ -37,6 +37,9 @@
 }
 .ds-icon-btn:hover { background: var(--ds-hover); color: var(--ds-text); }
 .ds-icon-btn[aria-pressed='true'] { background: var(--ds-accent-soft); color: var(--ds-accent); }
+/* a toggle whose on state is only the icon taking the accent (favourite), never a filled square */
+.ds-icon-btn--toggle[aria-pressed='true'] { background: none; color: var(--ds-accent); }
+.ds-icon-btn--toggle[aria-pressed='true']:hover { background: var(--ds-hover); color: var(--ds-accent); }
 .ds-split { display: flex; }
 .ds-split > :first-child { flex: 1; border-start-end-radius: 0; border-end-end-radius: 0; }
 .ds-split > :last-child { width: var(--ds-control); padding: 0; border-start-start-radius: 0; border-end-start-radius: 0; border-inline-start-color: color-mix(in oklab, var(--ds-accent-ink) 30%, transparent); }
@@ -89,10 +92,86 @@
 /* ───── labels and status ───── */
 .ds-chip {
   --c: var(--ds-text-3);
-  display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: var(--ds-r-full);
+  display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: var(--ds-r-sm);
   background: color-mix(in oklab, var(--c) 13%, var(--ds-bg)); color: var(--c); font: 500 12px var(--ds-font-ui); white-space: nowrap;
 }
 .ds-chip--dot::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+/* a chip that is a control (a status picker, an add action); data-empty means nothing is set yet and draws it dashed */
+.ds-chip-btn {
+  display: inline-flex; align-items: center; gap: var(--ds-s1); block-size: 28px; padding: 0 var(--ds-s3); border: 1px solid var(--ds-line); border-radius: var(--ds-r-sm);
+  background: none; color: var(--ds-text); font: 500 var(--ds-text-small) var(--ds-font-ui); white-space: nowrap; cursor: var(--cursor-hand, pointer);
+  transition: background var(--ds-fast) var(--ds-ease), border-color var(--ds-fast) var(--ds-ease), color var(--ds-fast) var(--ds-ease);
+}
+.ds-chip-btn:hover:not(:disabled) { border-color: var(--ds-line-strong); background: var(--ds-hover); }
+.ds-chip-btn[data-empty] { border-style: dashed; border-color: var(--ds-line-strong); color: var(--ds-text-3); }
+.ds-chip-btn[data-empty]:hover:not(:disabled) { color: var(--ds-text); }
+.ds-chip-btn:disabled { cursor: var(--cursor-arrow, default); }
+.ds-chip-btn > .ds-icon { flex: none; inline-size: 14px; block-size: 14px; }
+.ds-chip-btn > .ds-icon:last-child:not(:first-child) { color: var(--ds-text-3); }
+/* a tag, tinted in its own hue (--hue, 0 to 360); the name opens it, the cross shows on hover or focus */
+.ds-tag {
+  --tag: light-dark(oklch(0.5 0.13 var(--hue, 270)), oklch(0.82 0.09 var(--hue, 270)));
+  display: inline-flex; align-items: center; max-inline-size: 220px; block-size: 28px; padding-inline: var(--ds-s3); border-radius: var(--ds-r-sm);
+  background: color-mix(in oklab, var(--tag) 13%, transparent); color: var(--tag); font: 500 var(--ds-text-small) var(--ds-font-ui);
+}
+.ds-tag-name { min-inline-size: 0; overflow: hidden; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-overflow: ellipsis; white-space: nowrap; }
+button.ds-tag-name { cursor: var(--cursor-hand, pointer); }
+button.ds-tag-name:hover { text-decoration: underline; text-underline-offset: 3px; }
+.ds-tag-x {
+  flex: none; display: grid; place-items: center; inline-size: 0; block-size: 18px; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; opacity: 0; overflow: hidden; cursor: var(--cursor-hand, pointer);
+  transition: inline-size var(--ds-fast) var(--ds-ease), opacity var(--ds-fast) var(--ds-ease), margin var(--ds-fast) var(--ds-ease);
+}
+/* the cross takes room only while it shows, and sits in the end padding, so the name stays centred when it is hidden */
+.ds-tag:hover .ds-tag-x, .ds-tag:focus-within .ds-tag-x { inline-size: 18px; margin-inline: var(--ds-s1) calc(var(--ds-s1) * -1); opacity: 0.7; }
+.ds-tag-x:hover { opacity: 1; background: color-mix(in oklab, var(--tag) 18%, transparent); }
+/* a field shaped like a chip, for typing a new tag; its suggestions open under it */
+.ds-chip-field { position: relative; display: inline-flex; align-items: center; gap: var(--ds-s1); block-size: 28px; padding: 0 var(--ds-s3); border: 1px solid var(--ds-accent); border-radius: var(--ds-r-sm); color: var(--ds-text-3); }
+.ds-chip-field > input { inline-size: 120px; padding: 0; border: 0; outline: none; background: none; color: var(--ds-text); font: 500 var(--ds-text-small) var(--ds-font-ui); }
+.ds-chip-field-list { position: absolute; z-index: var(--ds-z-pop); inset-block-start: calc(100% + var(--ds-s1)); inset-inline-start: 0; min-inline-size: 180px; }
+/* icon picker: search, colour, the design system's icons by group */
+.ds-icon-picker { display: flex; flex-direction: column; gap: var(--ds-s3); inline-size: min(340px, calc(100vw - 32px)); padding: var(--ds-s3); }
+/* all the colours on one line, spread across the picker */
+.ds-icon-picker-colors { display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: var(--ds-s1); }
+.ds-color-dot { --dot: var(--ds-text-2); position: relative; flex: none; display: grid; place-items: center; inline-size: 20px; block-size: 20px; padding: 0; border: 0; border-radius: 50%; background: var(--dot); color: var(--ds-text-2); cursor: var(--cursor-hand, pointer); }
+.ds-color-dot[aria-checked='true'] { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.ds-color-dot:focus-visible, .ds-color-dot:focus-within { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.ds-color-dot--auto { background: conic-gradient(from 90deg, var(--ds-text-3) 0 25%, var(--ds-sunk) 0 50%, var(--ds-text-3) 0 75%, var(--ds-sunk) 0); background-size: 8px 8px; outline: 1px solid var(--ds-line); outline-offset: -1px; }
+.ds-color-dot--custom { background: none; border: 1px dashed var(--ds-line-strong); }
+.ds-color-dot--custom[style] { background: var(--dot); border-style: solid; }
+.ds-color-dot--custom > input { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; padding: 0; border: 0; opacity: 0; cursor: inherit; }
+.ds-icon-picker-scroll { max-block-size: 300px; overflow-y: auto; margin-inline: calc(var(--ds-s1) * -1); padding-inline: var(--ds-s1); }
+.ds-icon-picker-head { margin: var(--ds-s2) 0 var(--ds-s1); color: var(--ds-text-3); font-size: var(--ds-text-small); font-weight: 600; }
+.ds-icon-picker-head:first-child { margin-block-start: 0; }
+.ds-icon-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 2px; color: var(--ds-text-2); }
+.ds-icon-picker-grid .ds-icon-btn { inline-size: 100%; block-size: 36px; color: inherit; }
+.ds-icon-picker-grid .ds-icon-btn[aria-pressed='true'] { background: var(--ds-accent-soft); }
+.ds-icon-picker-empty { margin: var(--ds-s4) 0; color: var(--ds-text-3); text-align: center; }
+.ds-icon-picker-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-s2); padding-block-start: var(--ds-s2); border-block-start: 1px solid var(--ds-line); color: var(--ds-text-3); font-size: var(--ds-text-small); }
+/* a grid of swatches to choose from (covers, colours); the chosen one is pressed */
+.ds-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: var(--ds-s2); }
+.ds-swatch { block-size: 40px; padding: 0; border: 0; border-radius: var(--ds-r); background-size: cover; background-position: center; outline: 1px solid var(--ds-line); outline-offset: -1px; cursor: var(--cursor-hand, pointer); transition: outline-color var(--ds-fast) var(--ds-ease); }
+.ds-swatch:hover { outline-color: var(--ds-line-strong); }
+.ds-swatch[aria-pressed='true'] { outline: 2px solid var(--ds-accent); outline-offset: 1px; }
+.ds-swatch:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+/* a colour of your own: the native picker, framed like the other controls */
+.ds-color { inline-size: var(--ds-control); block-size: var(--ds-control); padding: 2px; border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); cursor: var(--cursor-hand, pointer); }
+.ds-color::-webkit-color-swatch-wrapper { padding: 0; }
+.ds-color::-webkit-color-swatch { border: 0; border-radius: var(--ds-r-sm); }
+/* the actions an object offers, as a grid of tiles: icon over a short label */
+.ds-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ds-s1); }
+.ds-action { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--ds-s1); min-block-size: 64px; padding: var(--ds-s2) var(--ds-s1); border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: none; color: var(--ds-text-2); font: 500 var(--ds-text-small) var(--ds-font-ui); text-align: center; cursor: var(--cursor-hand, pointer); transition: background var(--ds-fast) var(--ds-ease), border-color var(--ds-fast) var(--ds-ease), color var(--ds-fast) var(--ds-ease); }
+.ds-action > .ds-icon { color: var(--ds-text-3); transition: color var(--ds-fast) var(--ds-ease); }
+.ds-action > span { max-inline-size: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-action:hover { border-color: var(--ds-line-strong); background: var(--ds-hover); color: var(--ds-text); }
+.ds-action:hover > .ds-icon { color: var(--ds-accent); }
+.ds-action:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+/* properties of an object (a page): label column with an icon, value column, hairlines between rows */
+.ds-props { border-block: 1px solid var(--ds-line); }
+.ds-prop { display: grid; grid-template-columns: 148px minmax(0, 1fr); align-items: start; gap: var(--ds-s4); padding-block: var(--ds-s2); }
+.ds-prop + .ds-prop { border-block-start: 1px solid var(--ds-line); }
+.ds-prop-label { display: flex; align-items: center; gap: var(--ds-s2); min-block-size: 28px; color: var(--ds-text-3); font-size: var(--ds-text-ui); }
+.ds-prop-value { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-s2); min-inline-size: 0; min-block-size: 28px; color: var(--ds-text-2); font-size: var(--ds-text-ui); }
+@media (max-width: 560px) { .ds-prop { grid-template-columns: minmax(0, 1fr); gap: var(--ds-s1); } }
 /* count next to a nav item: a plain number in an empty circle, never a filled pill */
 .ds-badge {
   display: grid; place-items: center; min-width: 22px; height: 22px; padding: 0 4px; border-radius: 50%;
@@ -212,11 +291,26 @@
 .ds-grip[data-show='true'] { opacity: 1; pointer-events: auto; }
 .ds-grip:hover { background: var(--ds-hover); color: var(--ds-text); }
 .ds-dragging { opacity: 0.3; transition: opacity var(--ds-fast); }
-.ds-drag-ghost { position: fixed; z-index: 96; max-width: 260px; padding: 8px 12px; overflow: hidden; border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); box-shadow: var(--ds-shadow-pop); font-size: 13px; white-space: nowrap; text-overflow: ellipsis; transform: rotate(-1.5deg); pointer-events: none; }
-.ds-snap-preview { position: fixed; z-index: 93; display: grid; place-items: center; box-sizing: border-box; border: 1.5px dashed var(--ds-line-strong); border-radius: var(--ds-r); background: color-mix(in oklab, var(--ds-sunk) 55%, transparent); pointer-events: none; transition: left 0.14s var(--ds-ease), top 0.14s var(--ds-ease), width 0.14s var(--ds-ease), height 0.14s var(--ds-ease); }
+/* the ghost says what is moving and, on its second line, what releasing will do (data-state: ready · idle · blocked) */
+.ds-drag-ghost { position: fixed; z-index: 96; display: grid; gap: 2px; min-width: 150px; max-width: 280px; padding: 8px 12px; box-sizing: border-box; border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); color: var(--ds-text); box-shadow: var(--ds-shadow-pop); font-size: 13px; pointer-events: none; }
+.ds-drag-ghost-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ds-drag-ghost-action { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--ds-accent); font-size: 12px; font-weight: 500; }
+.ds-drag-ghost-action > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ds-drag-ghost-action .ds-icon { flex: none; width: 14px; height: 14px; }
+.ds-drag-ghost[data-state='idle'] .ds-drag-ghost-action { color: var(--ds-text-3); font-weight: 400; }
+.ds-drag-ghost[data-state='blocked'] .ds-drag-ghost-action { color: var(--ds-bad); }
+/* what is being moved stays in place, dimmed, until it lands */
+.ds-drag-source { position: fixed; box-sizing: border-box; border-radius: var(--ds-r-sm); background: color-mix(in oklab, var(--ds-bg) 62%, transparent); outline: 1px dashed var(--ds-line-strong); outline-offset: 2px; pointer-events: none; }
+/* landing preview: a line between blocks, or the columns the drop will make with the new one (data-active) in the accent */
+.ds-snap-preview { position: fixed; z-index: 93; display: grid; place-items: center; box-sizing: border-box; border: 1.5px dashed var(--ds-line-strong); border-radius: var(--ds-r); background: color-mix(in oklab, var(--ds-sunk) 55%, transparent); pointer-events: none; transition: left var(--ds-fast) var(--ds-ease), top var(--ds-fast) var(--ds-ease), width var(--ds-fast) var(--ds-ease), height var(--ds-fast) var(--ds-ease); }
 .ds-snap-preview[data-hot='true'] { border: 2px solid var(--ds-accent); background: color-mix(in oklab, var(--ds-accent) 16%, transparent); }
 .ds-snap-preview[data-line='true'] { height: 3px; border: 0; border-radius: 2px; background: var(--ds-accent); }
+.ds-snap-preview[data-cols='true'] { place-items: stretch; border: 0; background: none; }
 .ds-snap-preview > span { max-width: 88%; padding: 4px 10px; overflow: hidden; border: 1px solid var(--ds-accent-line); border-radius: 8px; background: var(--ds-raised); color: var(--ds-text); font-size: 12.5px; white-space: nowrap; text-overflow: ellipsis; }
+.ds-snap-col { min-width: 0; display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center; box-sizing: border-box; border: 1.5px dashed var(--ds-accent-line); border-radius: var(--ds-r-sm); background: var(--ds-accent-faint); color: var(--ds-accent); font-size: 12px; }
+.ds-snap-col[data-active='true'] { border: 2px solid var(--ds-accent); background: var(--ds-accent-soft); }
+.ds-drag-ghost[hidden], .ds-snap-preview[hidden], .ds-drag-source[hidden] { display: none !important; }
+:root[data-motion='reduce'] .ds-snap-preview { transition: none; }
 @container (max-width: 560px) {
   .ds-layout-cols { grid-template-columns: minmax(0, 1fr) !important; }
   .ds-layout-resizer { display: none; }
@@ -224,7 +318,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ds-pop, .ds-toast, .ds-modal, .ds-btn, .ds-switch::after, .ds-layout-cols, .ds-snap-preview, .ds-steps > li { animation: none; transition: none; }
+  .ds-pop, .ds-toast, .ds-modal, .ds-btn, .ds-switch::after, .ds-layout-cols, .ds-snap-preview, .ds-dragging, .ds-steps > li { animation: none; transition: none; }
 }
 
 /* ───── file icon: tinted tile with the kind's icon; sizes are set with --s ───── */

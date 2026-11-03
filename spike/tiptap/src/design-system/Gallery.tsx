@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Button, IconButton } from './Button'
-import { Card, Chip, Facts, Field, Notice, Section, Switch, Tabs } from './controls'
+import { Card, Chip, ChipButton, Facts, Field, Notice, PropertyList, PropertyRow, Section, Switch, Tabs, Tag } from './controls'
+import { IconPicker } from './IconPicker'
+import { BACKGROUNDS } from './backgrounds'
 import { Row } from './Row'
 import { Dialog, Tooltip } from './overlay'
 import { Icon } from './icons'
@@ -22,6 +24,10 @@ function Pane({ dir }: { dir: 'ltr' | 'rtl' }) {
   const [open, setOpen] = useState(false)
   const [size, setSize] = useState(16)
   const [commandOpen, setCommandOpen] = useState(false)
+  const [fav, setFav] = useState(true)
+  const [tags, setTags] = useState(['study', 'notes', 'java'])
+  const [glyph, setGlyph] = useState<{ name?: string; color?: string }>({ name: 'book' })
+  const [cover, setCover] = useState('sky-mist')
   const fa = dir === 'rtl'
   const title = fa ? 'یادداشت درس جاوا' : 'Java lecture notes'
   return (
@@ -86,6 +92,43 @@ function Pane({ dir }: { dir: 'ltr' | 'rtl' }) {
           value={tab}
           onChange={setTab}
         />
+      </Section>
+      <Section title="Properties, chips and tags">
+        <PropertyList label={fa ? 'ویژگی‌های صفحه' : 'Page properties'}>
+          <PropertyRow icon={<Icon name="flag" size={16} />} label={fa ? 'وضعیت' : 'Status'}>
+            <ChipButton icon={<i className="ds-menu-dot" style={{ background: '#f59e0b' }} />}>
+              <span>{fa ? 'در حال انجام' : 'In progress'}</span>
+              <Icon name="chevron-down" size={14} />
+            </ChipButton>
+          </PropertyRow>
+          <PropertyRow icon={<Icon name="tag" size={16} />} label={fa ? 'برچسب‌ها' : 'Tags'}>
+            {tags.map((tag) => (
+              <Tag key={tag} label={tag} onOpen={() => undefined} openLabel="Show pages with this tag" onRemove={() => setTags(tags.filter((x) => x !== tag))} removeLabel={fa ? 'حذف برچسب' : 'Remove tag'} />
+            ))}
+            <ChipButton empty icon={<Icon name="plus" size={14} />} onClick={() => setTags([...tags, 'tag ' + (tags.length + 1)])}>
+              {fa ? 'افزودن برچسب…' : 'Add tag…'}
+            </ChipButton>
+          </PropertyRow>
+          <PropertyRow icon={<Icon name="clock" size={16} />} label={fa ? 'آخرین ویرایش' : 'Last edited'}>
+            {fa ? '۵ دقیقه پیش' : '5 minutes ago'}
+          </PropertyRow>
+        </PropertyList>
+        <IconButton className="ds-icon-btn--toggle" label={fa ? 'علاقه‌مندی' : 'Favourite'} pressed={fav} onClick={() => setFav(!fav)}>
+          <Icon name="star" size={18} />
+        </IconButton>
+      </Section>
+      <Section title="Covers and colours">
+        <div className="ds-swatches">
+          {BACKGROUNDS.filter((b) => b.group === 'soft').map((b) => (
+            <button key={b.id} type="button" className="ds-swatch" aria-label={b.label} aria-pressed={cover === b.id} style={{ background: b.css }} onClick={() => setCover(b.id)} />
+          ))}
+        </div>
+        <input className="ds-color" type="color" defaultValue="#6a5cff" aria-label={fa ? 'رنگ دلخواه' : 'Your own color'} />
+      </Section>
+      <Section title="Icon picker">
+        <div className="ds-pop">
+          <IconPicker name={glyph.name} color={glyph.color} onPick={(name, color) => setGlyph({ name, color })} onClear={() => setGlyph({})} />
+        </div>
       </Section>
       <Section title="Facts and notice">
         <Facts
