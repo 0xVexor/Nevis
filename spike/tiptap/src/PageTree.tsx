@@ -2,7 +2,8 @@ import { useState, type ReactNode } from 'react'
 import type { Page } from './repo'
 import type { PageIndex } from './pageIndex'
 import { PageIcon } from './PageIcon'
-import { dirOf } from './design-system'
+import { AnimatePresence, motion } from 'motion/react'
+import { dirOf, useUIMotion } from './design-system'
 import * as Ic from './icons'
 import { t } from './i18n'
 
@@ -97,6 +98,7 @@ export function CompactList(props: Omit<RowProps, 'page' | 'depth'> & { roots: P
 export function TreeRow(props: RowProps) {
   const { page, depth, index, currentId, collapsed } = props
   const [zone, setZone] = useState<'before' | 'inside' | 'after' | null>(null)
+  const motionOf = useUIMotion()
   const kids = index.kids.get(page.id) ?? NO_KIDS
   const open = !collapsed.has(page.id)
   const folder = page.kind === 'folder'
@@ -158,12 +160,24 @@ export function TreeRow(props: RowProps) {
           </button>
         </span>
       </div>
-      {open && kids.length > 0 && (
-        <div className="tree-kids">
-          {kids.map((k) => (
-            <TreeRow key={k.id} {...props} page={k} depth={depth + 1} />
-          ))}
-        </div>
+      {kids.length > 0 && (
+        <AnimatePresence initial={false}>
+          {open && (
+            <motion.div
+              key="kids"
+              className="tree-kids"
+              style={{ overflow: 'hidden' }}
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={motionOf.transition}
+            >
+              {kids.map((k) => (
+                <TreeRow key={k.id} {...props} page={k} depth={depth + 1} />
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       )}
     </>
   )

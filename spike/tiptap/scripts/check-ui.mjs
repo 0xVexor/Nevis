@@ -17,6 +17,8 @@ const LEGACY_VARS = ['bg', 'side-bg', 'bg-raised', 'bg-sunk', 'text', 'muted', '
 export const RULES = {
   // a <button> with its own area class (a tab, a row action, a toolbar item) is a custom control; a standard button is the component
   'raw-button': { why: 'Use Button or IconButton from the design system instead of a <button> with ds-btn / ds-icon-btn classes.', files: 'tsx', skipDesignSystem: true, pattern: /<button\b[^>]*\bclassName="[^"]*\bds-(?:btn|icon-btn)\b/g },
+  // the design system takes text, data and callbacks as props; the app wires it up (iconSet and textDirection are pure data helpers)
+  'app-import': { why: 'The design system must not import app code. Pass values and callbacks in, or register a hook (see text.ts).', files: 'any', onlyDesignSystem: true, except: /Gallery\.tsx$/, pattern: /(?:from|import\()\s*'\.\.\/(?!(?:iconSet|textDirection)')/g },
   'raw-select': { why: 'Use Dropdown, never a native <select>.', files: 'tsx', skipDesignSystem: true, pattern: /<select\b/g },
   'physical-direction': { why: 'Use logical properties (inline-start/end, text-align: start) so RTL needs no overrides.', files: 'css',
     pattern: /(?:^|[;{\s])(?:margin-(?:left|right)|padding-(?:left|right)|border-(?:left|right)(?:-[a-z]+)?)\s*:|text-align\s*:\s*(?:left|right)\b|(?:^|[;{\s])(?:left|right)\s*:/g },
@@ -30,7 +32,7 @@ const blankComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, (m) => m.repla
 /** Violations per rule for one file's text. `name` decides which rules apply. */
 export function scanSource(name, text) {
   const norm = name.split(sep).join('/')
-  const kind = norm.endsWith('.tsx') ? 'tsx' : norm.endsWith('.css') ? 'css' : null
+  const kind = norm.endsWith('.tsx') ? 'tsx' : norm.endsWith('.ts') ? 'ts' : norm.endsWith('.css') ? 'css' : null
   if (!kind) return {}
   const designSystem = norm.startsWith('design-system/')
   const tokens = /(^|\/)(tokens|print)\.css$/.test(norm) // token files and the print palette are where literal colors belong
@@ -46,6 +48,8 @@ export function scanSource(name, text) {
   for (const [rule, def] of Object.entries(RULES)) {
     if (def.files !== 'any' && def.files !== kind) continue
     if (def.skipDesignSystem && designSystem) continue
+    if (def.onlyDesignSystem && !designSystem) continue
+    if (def.except?.test(norm)) continue
     if (def.skipTokens && tokens) continue
     let n = 0
     body.forEach((line, i) => { if (!(allowed.has(i) && (allowed.get(i) === null || allowed.get(i).has(rule)))) n += (line.match(def.pattern) ?? []).length })

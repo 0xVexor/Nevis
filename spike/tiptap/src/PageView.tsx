@@ -24,7 +24,8 @@ import { History } from './History'
 import { normalizeFa } from './normalize'
 import { getTemplates, type Template } from './templates'
 import { OPEN_PAGE, PAGES_CHANGED } from './editor/pageLink'
-import { ago, EmojiPicker, Popover } from './ui'
+import { ago, EmojiPicker } from './ui'
+import { Popover } from './design-system/Popover'
 import { printPage } from './print'
 import { toneOf } from './PageIcon'
 import { Glyph, isGlyph, parseIcon } from './iconSet'
@@ -40,7 +41,6 @@ const RowProperties = lazy(() => import('./database/ui/RowProperties').then((m) 
 export type SaveState = 'saved' | 'saving'
 /** Asks the app to show the pages with a tag; detail is the tag as written. */
 export const PICK_TAG = 'pick-tag'
-
 
 const TITLE_CMDS = [
   { id: 'rtl', title: 'Right-to-left (RTL)', desc: 'Make the title right-to-left', kw: 'rtl direction right to left جهت راست چین' },
@@ -601,7 +601,14 @@ export function PageView({
             {heads.length > 0 && (
               <nav className="pp-outline" aria-label={t('Outline')}>
                 {heads.map((h) => (
-                  <button key={h.pos} type="button" className="pp-outline-item" aria-current={h.pos === activeHead ? 'location' : undefined} style={{ ['--lv' as string]: h.level - 1 } as React.CSSProperties} onClick={() => gotoHeading(h.pos)}>
+                  <button
+                    key={h.pos}
+                    type="button"
+                    className="pp-outline-item"
+                    aria-current={h.pos === activeHead ? 'location' : undefined}
+                    style={{ ['--lv' as string]: h.level - 1 } as React.CSSProperties}
+                    onClick={() => gotoHeading(h.pos)}
+                  >
                     <span dir="auto">{h.text || t('Untitled')}</span>
                   </button>
                 ))}

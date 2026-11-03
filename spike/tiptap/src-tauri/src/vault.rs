@@ -241,7 +241,7 @@ impl Vault {
     pub fn pages_dir(&self) -> PathBuf {
         self.root.join("pages")
     }
-    fn page_path(&self, id: &str) -> Res<PathBuf> {
+    pub fn page_path(&self, id: &str) -> Res<PathBuf> {
         Ok(self.pages_dir().join(format!("{}.json", check_id(id)?)))
     }
 

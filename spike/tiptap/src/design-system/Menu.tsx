@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
-import { Popover } from '../ui'
-import { t } from '../i18n'
+import { Popover } from './Popover'
+import { t } from './text'
 import { useMenu } from './useMenu'
 
 /**
@@ -21,6 +21,7 @@ export type MenuItem =
       hint?: string
       checked?: boolean
       danger?: boolean
+      disabled?: boolean
       raw?: boolean
       onSelect?: () => void
       /** submenu; opens on hover or focus */
@@ -80,6 +81,7 @@ function Items({ items, onPick }: { items: MenuItem[]; onPick: () => void }) {
             role="menuitem"
             className="ds-menu-item"
             data-danger={it.danger || undefined}
+            disabled={it.items ? undefined : it.disabled}
             onMouseEnter={it.items ? (e) => placeSubmenu(e.currentTarget) : undefined}
             onFocus={it.items ? (e) => placeSubmenu(e.currentTarget) : undefined}
             onClick={() => {

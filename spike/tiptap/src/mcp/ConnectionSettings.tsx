@@ -136,7 +136,7 @@ export function McpConnectionSettings() {
             {clients.map((c) => (
               <button
                 key={c.id}
-                className="ghost-btn"
+                className="ds-btn"
                 disabled={busy}
                 onClick={() =>
                   void action(async () => {
@@ -149,7 +149,7 @@ export function McpConnectionSettings() {
               </button>
             ))}
             <button
-              className="ghost-btn"
+              className="ds-btn"
               disabled={busy || !status}
               onClick={() =>
                 void action(async () => {

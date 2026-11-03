@@ -1,8 +1,8 @@
 /* ───────── page canvas ───────── */
-.page-cols { display: flex; align-items: flex-start; gap: 8px; max-width: calc(var(--page-w, 1400px) + 80px); margin: 0 auto; padding: 0 20px; }
-.page { position: relative; max-width: 860px; margin: 0 auto; padding: 32px 64px 180px; }
+.page-cols { display: flex; align-items: flex-start; gap: var(--ds-s2); max-width: calc(var(--page-w, 1400px) + 80px); margin: 0 auto; padding: 0 var(--ds-s5); }
+.page { position: relative; max-width: 860px; margin: 0 auto; padding: var(--ds-s8) 64px 180px; }
 .page-cols .page { flex: 1; min-width: 0; max-width: var(--page-w, 1400px); margin: 0; padding-inline: 44px; }
-@media (max-width: 820px) { .page { padding-inline: 24px; } }
+@media (max-width: 820px) { .page { padding-inline: var(--ds-s6); } }
 
 /* cover: inside the page column, as wide as the text; the buttons show on hover or focus */
 .cover { position: relative; block-size: 200px; margin-block-end: var(--ds-s2); border-radius: var(--ds-r-lg); background-color: var(--ds-sunk); background-size: cover; background-position: center; overflow: hidden; }
@@ -87,13 +87,13 @@
 .title-menu { position: absolute; top: 100%; inset-inline-start: 0; z-index: 30; width: 300px; }
 
 /* tags (shared with the pages table) */
-.tag-chip { --c: light-dark(oklch(0.5 0.17 var(--hue, 270)), oklch(0.82 0.12 var(--hue, 270))); display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 0; border-radius: 10px; cursor: var(--cursor-hand, pointer); font-size: 13px; font-weight: 600; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 18%, transparent); }
+.tag-chip { --c: light-dark(oklch(0.5 0.17 var(--hue, 270)), oklch(0.82 0.12 var(--hue, 270))); display: inline-flex; align-items: center; gap: var(--ds-s2); height: var(--ds-control-sm); padding: 0 var(--ds-s3); border: 0; border-radius: 10px; cursor: var(--cursor-hand, pointer); font-size: 13px; font-weight: 600; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 18%, transparent); }
 .tag-chip::before { content: '#'; opacity: 0.55; }
 .tag-chip.static { cursor: var(--cursor-arrow, default); }
 .tag-chip.on { background: var(--ds-accent); color: var(--ds-accent-ink); box-shadow: none; }
 .tag-chip button { border: 0; background: transparent; color: inherit; opacity: 0.55; cursor: var(--cursor-hand, pointer); padding: 0 0 0 2px; font-size: 15px; line-height: 1; }
 .tag-chip button:hover { opacity: 1; }
-.status-sel, .selbox.status-sel { height: 30px; min-height: 30px; padding: 0 10px; border-radius: 10px; }
+.status-sel, .selbox.status-sel { height: var(--ds-control-sm); min-height: var(--ds-control-sm); padding: 0 var(--ds-s3); border-radius: 10px; }
 .selbox.status-sel.has { border-color: transparent; background: color-mix(in srgb, var(--st) 15%, var(--ds-raised)); color: color-mix(in srgb, var(--st) 70%, var(--ds-text)); font-weight: 600; }
 
 /* ───────── page side panel: slides in opposite the sidebar; design-system rows, the outline marks where you are ───────── */
@@ -104,7 +104,7 @@
 @media (max-width: 900px) { .main.drawer-open { padding-inline-end: 0; } .page-drawer { background: var(--ds-raised); box-shadow: var(--ds-shadow-pop); } }
 .pp-head { display: flex; align-items: center; gap: var(--ds-s2); flex: none; block-size: 56px; padding-inline: var(--ds-s1); }
 .pp-head h3 { flex: 1; min-inline-size: 0; margin: 0; overflow: hidden; color: var(--ds-text); font-size: var(--ds-text-ui); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.pp-page-ic { display: grid; place-items: center; flex: none; inline-size: 28px; block-size: 28px; border-radius: var(--ds-r-sm); background: var(--ds-sunk); }
+.pp-page-ic { display: grid; place-items: center; flex: none; inline-size: 28px; block-size: var(--ds-control-sm); border-radius: var(--ds-r-sm); background: var(--ds-sunk); }
 .pp-facts { margin: var(--ds-s1) var(--ds-s2) var(--ds-s3); }
 .pp-section .ds-actions { margin-inline: var(--ds-s1); }
 .pp-subhead { display: flex; align-items: center; justify-content: space-between; }

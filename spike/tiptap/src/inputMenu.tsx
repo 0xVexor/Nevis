@@ -1,6 +1,7 @@
 import { shortcutLabel } from './shortcuts'
 import { createRoot, type Root } from 'react-dom/client'
-import { MenuItem, MenuSep, Popover } from './ui'
+import { MenuItem, MenuSep } from './ui'
+import { Popover } from './design-system/Popover'
 import * as Ic from './icons'
 import { t } from './i18n'
 

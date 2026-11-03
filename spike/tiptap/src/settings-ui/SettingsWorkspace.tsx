@@ -1,3 +1,5 @@
+import { motion } from 'motion/react'
+import { useUIMotion } from '../design-system/motion'
 import { WorkspaceHeader } from '../design-system/WorkspaceHeader'
 import { BrandMark } from '../BrandMark'
 import { SaveStatus } from '../design-system/SaveStatus'
@@ -70,7 +72,7 @@ export interface WorkspaceProps {
   onReset?: () => void
 }
 export function SettingsWorkspace({ embedded = false, initialCategory = 'appearance', panels = {}, appearanceExtras, editorExtras, context, onReset, onLeave }: WorkspaceProps) {
-  const [category, setCategory] = useState<Category>(initialCategory), [reset, setReset] = useState(false)
+  const motionOf = useUIMotion(), [category, setCategory] = useState<Category>(initialCategory), [reset, setReset] = useState(false)
   const s = useSettings(), l = useLabels(), current = categories.find(c => c.id === category)!
   const Main = embedded ? 'div' : 'main'
   return <div className={"prefs-shell" + (embedded ? " prefs-embedded" : "")}>
@@ -86,10 +88,10 @@ export function SettingsWorkspace({ embedded = false, initialCategory = 'appeara
       <header className="prefs-top"><span>{l('Workspace')}<span>/</span>{l('Settings')}</span><SaveStatus state="saved" label={l('Saved locally')} /></header>
       <div className="prefs-content">
         <div className="prefs-title"><div><span className="prefs-eyebrow">{l('Make yourself at home')}</span><h1>{l('Settings')}</h1><p>{l('Thoughtful defaults. A few personal touches.')}</p></div></div>
-        <div className="prefs-columns"><div className="prefs-panel" key={category}><header className="prefs-panel-title"><h2>{l(current.label)}</h2><p>{l(current.description)}</p></header>{panels[category] ?? (category === 'appearance' ? <><Appearance />{appearanceExtras}</> : category === 'editor' ? <><EditorSettings />{editorExtras}</> : category === 'language' ? <LanguageSettings /> : category === 'general' ? <GeneralSettings /> : null)}
+        <div className="prefs-columns"><motion.div className="prefs-panel" key={category} initial={motionOf.reduced ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={motionOf.transition}><header className="prefs-panel-title"><h2>{l(current.label)}</h2><p>{l(current.description)}</p></header>{panels[category] ?? (category === 'appearance' ? <><Appearance />{appearanceExtras}</> : category === 'editor' ? <><EditorSettings />{editorExtras}</> : category === 'language' ? <LanguageSettings /> : category === 'general' ? <GeneralSettings /> : null)}
           <footer className="prefs-panel-footer"><span>{l(embedded ? 'Changes save automatically.' : 'Preview settings stay separate from your app.')}</span>{['appearance','editor','language','general'].includes(category) && <Button size="sm" variant="ghost" onClick={() => onReset ? onReset() : setReset(!reset)}>{l(embedded ? 'Reset all' : 'Reset preview')}</Button>}</footer>
           {reset && <section className="prefs-reset" aria-label={l('Reset preview')}><p>{l('Reset these preview preferences? Your notes and other app windows are unaffected.')}</p><div><Button size="sm" onClick={() => setReset(false)}>{l('Cancel')}</Button><Button size="sm" variant="primary" onClick={() => { updateSettings({ ...DEFAULTS, lang: s.lang, dir: s.dir }); setReset(false) }}>{l('Reset preview')}</Button></div></section>}
-        </div>{['appearance', 'editor', 'language', 'general'].includes(category) ? <LivePreview /> : context?.(category)}</div>
+        </motion.div>{['appearance', 'editor', 'language', 'general'].includes(category) ? <LivePreview /> : context?.(category)}</div>
       </div>
     </Main>
   </div>

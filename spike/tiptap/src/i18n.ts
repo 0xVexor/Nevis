@@ -8,6 +8,7 @@ import { formatShortcutText } from './shortcuts'
 import { FA_DB } from './database/ui/fa-db'
 import { FA_ONBOARDING } from './fa-onboarding'
 import { FA_COVERS } from './fa-covers'
+import { setTranslator } from './design-system/text'
 
 const FA: Record<string, string> = { ...FA_DB, ...FA_APP, ...FA_SETTINGS, ...FA_HOME, ...FA_ONBOARDING, ...FA_COVERS }
 
@@ -24,6 +25,8 @@ export function t(key: string, vars?: Record<string, string | number>): string {
   if (vars) out = out.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ''))
   return out
 }
+
+setTranslator(t)
 
 /** BCP-47 locale for dates and numbers. */
 export const locale = () => (getLang() === 'fa' ? 'fa-IR' : 'en-US')

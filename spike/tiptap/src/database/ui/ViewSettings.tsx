@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import type { Definition, Id, Json, View, ViewType } from '../model/types.ts'
 import type { DatabaseService } from '../service.ts'
-import { Popover } from '../../ui'
+import { Popover } from '../../design-system/Popover'
 import { Select } from '../../ui'
 import { t } from '../../i18n'
 import { errorText } from './common'

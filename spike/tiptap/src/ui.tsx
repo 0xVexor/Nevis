@@ -3,75 +3,13 @@ import { Button, IconButton } from './design-system/Button'
 import type { DocNode } from './docNode'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { normalizeFa } from './normalize'
-import { createPortal } from 'react-dom'
 import type { Page } from './repo'
 import * as Ic from './icons'
 import { ICON_PREFIX, iconNode, parseIcon } from './iconSet'
 import { IconPicker } from './design-system/IconPicker'
 import { t, locale } from './i18n'
 import { shortcutHint } from './shortcuts'
-import { dirOf } from './design-system/dir'
-
-/** Fixed-position popover anchored to a rect; closes on outside click / Escape. Arrow keys / Home / End move through its items. */
-export function Popover({ anchor, onClose, children, align = 'start' }: { anchor: DOMRect; onClose: () => void; children: ReactNode; align?: 'start' | 'end' }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState<{ top: number; left: number; maxH?: number }>({ top: anchor.bottom + 6, left: anchor.left })
-
-  // Placed under the anchor (above it when there is no room) and kept in view while its content grows or shrinks:
-  // a tall popover scrolls inside itself instead of running off the window.
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const place = () => {
-      const w = el.offsetWidth
-      const h = el.scrollHeight + 2
-      const below = window.innerHeight - anchor.bottom - 14
-      const above = anchor.top - 14
-      let left = align === 'end' ? anchor.right - w : anchor.left
-      left = Math.max(8, Math.min(left, window.innerWidth - w - 8))
-      let top: number
-      let maxH: number | undefined
-      if (h <= below) top = anchor.bottom + 6
-      else if (h <= above) top = anchor.top - h - 6
-      else if (Math.max(below, above) < 200) ((top = 8), (maxH = window.innerHeight - 16))
-      else if (below >= above) ((top = anchor.bottom + 6), (maxH = below))
-      else ((top = anchor.top - 6 - above), (maxH = above))
-      setPos((p) => (p.top === top && p.left === left && p.maxH === maxH ? p : { top, left, maxH }))
-    }
-    place()
-    const ro = new ResizeObserver(place)
-    ro.observe(el)
-    window.addEventListener('resize', place)
-    return () => (ro.disconnect(), window.removeEventListener('resize', place))
-  }, [anchor, align])
-
-  useEffect(() => {
-    const down = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose()
-    const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') return onClose()
-      // items of a closed submenu are hidden, so only what is on screen is reachable by the arrow keys
-      const items = [...(ref.current?.querySelectorAll<HTMLElement>('.ds-menu-item:not(:disabled)') ?? [])].filter((item) => item.offsetParent !== null)
-      if (!items.length || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return
-      e.preventDefault()
-      const i = items.indexOf(document.activeElement as HTMLElement)
-      const n = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : e.key === 'ArrowDown' ? (i + 1) % items.length : i <= 0 ? items.length - 1 : i - 1
-      items[n].focus()
-    }
-    document.addEventListener('mousedown', down)
-    document.addEventListener('keydown', key)
-    return () => {
-      document.removeEventListener('mousedown', down)
-      document.removeEventListener('keydown', key)
-    }
-  }, [onClose])
-
-  return createPortal(
-    <div ref={ref} className="ds-pop" style={{ position: 'fixed', zIndex: 500, top: pos.top, left: pos.left, ...(pos.maxH ? { maxHeight: pos.maxH, overflowY: 'auto' } : null) }}>
-      {children}
-    </div>,
-    document.body,
-  )
-}
+import { Popover } from './design-system/Popover'
 
 type SelectOption = { value: string; label: string; color?: string }
 
@@ -459,63 +397,6 @@ export function ago(ts: number) {
   return ''
 }
 
-export function TrashModal({
-  items,
-  days,
-  onRestore,
-  onPurge,
-  onEmpty,
-  onClose,
-}: {
-  items: Page[]
-  days: number
-  onRestore: (id: string) => void
-  onPurge: (p: Page) => void
-  onEmpty: () => void
-  onClose: () => void
-}) {
-  return (
-    <div className="overlay" onMouseDown={onClose}>
-      <div className="modal" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()} tabIndex={-1}>
-        <div className="modal-head">
-          <div>
-            <b>{t('Trash')}</b>
-            <small>{t('Pages are deleted permanently after {days} days.', { days })}</small>
-          </div>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {items.length > 0 && (
-              <button className="danger-link" onClick={onEmpty}>
-                {t('Empty trash')}
-              </button>
-            )}
-            <button className="icon-btn" title={t('Close')} onClick={onClose}>
-              <Ic.Close size={16} />
-            </button>
-          </span>
-        </div>
-        <div className="modal-list">
-          {items.length === 0 && <div className="modal-empty">{t('The trash is empty')}</div>}
-          {items.map((p) => (
-            <div key={p.id} dir={dirOf(p.title)} className="result trash-row">
-              <span className="result-ic">{iconNode(p.icon, 16, <Ic.Page />)}</span>
-              <span className="result-tx">
-                <b dir="auto">{p.title || t('Untitled')}</b>
-                <small>{ago(p.deletedAt!)}</small>
-              </span>
-              <span className="trash-acts">
-                <button onClick={() => onRestore(p.id)}>{t('Restore')}</button>
-                <button className="danger" onClick={() => onPurge(p)}>
-                  {t('Delete permanently')}
-                </button>
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 /** Small dialog that asks for one name (new folder, rename). Enter confirms, Esc or a click outside cancels. */
 export function NameDialog({
   title,
@@ -547,12 +428,12 @@ export function NameDialog({
           <input ref={ref} dir="auto" value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
         </label>
         <div className="nd-acts">
-          <button type="button" className="ghost-btn" onClick={onClose}>
+          <Button type="button" onClick={onClose}>
             {t('Cancel')}
-          </button>
-          <button type="submit" className="primary">
+          </Button>
+          <Button variant="primary" type="submit">
             {action}
-          </button>
+          </Button>
         </div>
       </form>
     </div>

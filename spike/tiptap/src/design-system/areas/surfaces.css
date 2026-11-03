@@ -37,9 +37,9 @@
 .row:hover .ic { color: var(--ds-text-2); }
 
 /* bottom: workspace switcher, settings, trash, and the New page split button */
-.side-new { margin-block-start: 8px; }
-.side-new .ds-btn { height: 36px; }
-.side-new .ds-btn:first-child { gap: 8px; }
+.side-new { margin-block-start: var(--ds-s2); }
+.side-new .ds-btn { height: var(--ds-control); }
+.side-new .ds-btn:first-child { gap: var(--ds-s2); }
 :root[data-side='icons'] .side:not([data-expanded]) .side-new > :last-child, :root[data-side='icons'] .side:not([data-expanded]) .side-credit { display: none; }
 :root[data-side='icons'] .side:not([data-expanded]) .side-new > :first-child { border-radius: var(--ds-r); padding: 0; }
 
@@ -63,5 +63,5 @@
 /* ───── top bar: plain breadcrumbs, a quiet "Saved", loose icon buttons, a flat Share ───── */
 
 /* dropping a page on Favorites pins it */
-.fav-zone { margin-inline: -4px; padding-inline: 4px; border-radius: var(--ds-r); outline: 1.5px dashed transparent; outline-offset: -2px; transition: outline-color var(--ds-fast), background var(--ds-fast); }
+.fav-zone { margin-inline: -4px; padding-inline: var(--ds-s1); border-radius: var(--ds-r); outline: 1.5px dashed transparent; outline-offset: -2px; transition: outline-color var(--ds-fast), background var(--ds-fast); }
 .fav-zone.over { outline-color: var(--ds-accent); background: var(--ds-accent-soft); }

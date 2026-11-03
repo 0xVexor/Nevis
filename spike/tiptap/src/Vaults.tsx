@@ -7,7 +7,8 @@ import { alertDialog, confirmDialog, promptDialog } from './dialog'
 import { explain } from './vaultErrors'
 import * as Ic from './icons'
 import { Icon, Button } from './design-system'
-import { MenuItem, MenuSep, Popover } from './ui'
+import { MenuItem, MenuSep } from './ui'
+import { Popover } from './design-system/Popover'
 import { t } from './i18n'
 
 const pickFolder = async (title: string) => {

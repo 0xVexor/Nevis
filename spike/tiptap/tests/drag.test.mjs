@@ -249,7 +249,7 @@ test('vertical extraction from two and three columns previews without editing an
       h.begin(source)
       h.move(source, x, y)
       assert.equal(json(h.doc), before)
-      const overlay = h.body.children.find((el) => el.className === 'layout-snap-overlay')
+      const overlay = h.body.children.find((el) => el.className === 'ds-snap-preview')
       assert.equal(overlay.hidden, false)
       assert.equal(overlay.classes.has('layout-snap-line'), false)
       assert.equal(overlay.children.length, 1, 'extraction previews a full-width panel')
