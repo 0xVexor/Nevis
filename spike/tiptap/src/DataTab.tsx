@@ -6,7 +6,7 @@ import { isTauri } from './db'
 import { Button, Dialog, Facts, Field, Icon, Notice, Section, Switch } from './design-system'
 import { locale, t } from './i18n'
 import * as Ic from './icons'
-import { pickDirectory, pickFiles } from './io'
+import { droppedFiles, pickDirectory, pickFiles } from './io'
 import { reviewImport, runImport, type ImportOutcome, type ImportReview } from './importPlan'
 import type { PageRepo } from './repo'
 import { Card, Row } from './SettingsParts'
@@ -91,7 +91,7 @@ export function DataTab({ api }: { api: DataApi }) {
   const drop = (e: DragEvent) => {
     e.preventDefault()
     setOver(false)
-    void look([...e.dataTransfer.files])
+    void droppedFiles(e.dataTransfer).then(look, () => setPhase({ step: 'error', message: t('The file could not be read.') }))
   }
 
   const go = async () => {
@@ -120,7 +120,7 @@ export function DataTab({ api }: { api: DataApi }) {
             <Ic.Upload size={22} />
           </span>
           <b>{t('Drop files here')}</b>
-          <small>{t('Markdown, zip or a backup file. Nothing is changed until you confirm.')}</small>
+          <small>{t('Markdown, an Obsidian folder, zip or a backup file. Nothing is changed until you confirm.')}</small>
           <span className="sx-drop-btns">
             <Button size="sm" disabled={reading} onClick={chooseFiles}>
               {t('Choose files…')}

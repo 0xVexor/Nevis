@@ -38,6 +38,41 @@ export function pickDirectory(): Promise<File[]> {
   })
 }
 
+/**
+ * What was dropped, as files. A dropped folder comes through `dataTransfer.files` as one empty entry, so folders are
+ * walked here and every file below gets the same `webkitRelativePath` the folder picker gives (`Vault/dir/Note.md`).
+ * Must be called inside the drop event: the entries are only readable until it returns.
+ */
+export function droppedFiles(dt: DataTransfer): Promise<File[]> {
+  const entries = [...dt.items].map((i) => i.webkitGetAsEntry?.()).filter((e): e is FileSystemEntry => !!e)
+  if (!entries.some((e) => e.isDirectory)) return Promise.resolve([...dt.files])
+  const fileOf = (e: FileSystemFileEntry) => new Promise<File>((res, rej) => e.file(res, rej))
+  const childrenOf = async (d: FileSystemDirectoryEntry) => {
+    const reader = d.createReader()
+    const all: FileSystemEntry[] = []
+    // readEntries hands out at most ~100 entries per call
+    for (;;) {
+      const batch = await new Promise<FileSystemEntry[]>((res, rej) => reader.readEntries(res, rej))
+      if (!batch.length) return all
+      all.push(...batch)
+    }
+  }
+  const walk = async (e: FileSystemEntry, path: string, out: File[]) => {
+    if (e.isFile) {
+      const f = await fileOf(e as FileSystemFileEntry)
+      Object.defineProperty(f, 'webkitRelativePath', { value: path })
+      out.push(f)
+    } else if (e.isDirectory) {
+      for (const c of await childrenOf(e as FileSystemDirectoryEntry)) await walk(c, `${path}/${c.name}`, out)
+    }
+  }
+  return (async () => {
+    const out: File[] = []
+    for (const e of entries) await walk(e, e.name, out)
+    return out
+  })()
+}
+
 // ───────────── Markdown parsing helpers ─────────────
 
 interface Meta {
