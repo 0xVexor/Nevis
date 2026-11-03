@@ -1,5 +1,6 @@
-import { Fragment, type CSSProperties, type ElementType, type HTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react'
+import { Fragment, type ButtonHTMLAttributes, type CSSProperties, type ElementType, type HTMLAttributes, type InputHTMLAttributes, type MouseEvent, type ReactNode } from 'react'
 import { cx } from './dir'
+import { Icon } from './icons'
 
 /** A container: `interactive` for clickable cards, `selected` for the chosen one. */
 export function Card({ as: Tag = 'div', interactive, selected, className, ...rest }: HTMLAttributes<HTMLElement> & { as?: ElementType; interactive?: boolean; selected?: boolean }) {
@@ -79,5 +80,89 @@ export function Notice({ tone, icon, children, className }: { tone?: 'warn' | 'b
       {icon}
       <div>{children}</div>
     </div>
+  )
+}
+
+/** A chip that is a control: a status picker, an add action. `empty` draws it dashed (nothing set yet). */
+export function ChipButton({ empty, icon, className, children, type = 'button', ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { empty?: boolean; icon?: ReactNode }) {
+  return (
+    <button {...rest} type={type} className={cx('ds-chip-btn', className)} data-empty={empty || undefined}>
+      {icon}
+      {children}
+    </button>
+  )
+}
+
+/** The hue a tag is tinted with: the same name always gets the same colour. */
+export const tagHue = (label: string) => [...label].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7)
+
+/** A tag in its own colour. With `onOpen` the name is a button; with `onRemove` a cross appears on hover or focus. Labels are already translated. */
+export function Tag({
+  label,
+  onOpen,
+  openLabel,
+  onRemove,
+  removeLabel,
+  onContextMenu,
+}: {
+  label: string
+  onOpen?: () => void
+  openLabel?: string
+  onRemove?: () => void
+  removeLabel?: string
+  onContextMenu?: (event: MouseEvent<HTMLElement>) => void
+}) {
+  return (
+    <span className="ds-tag" dir="auto" style={{ '--hue': tagHue(label) } as CSSProperties} onContextMenu={onContextMenu}>
+      {onOpen ? (
+        <button type="button" className="ds-tag-name" title={openLabel} onClick={onOpen}>
+          {label}
+        </button>
+      ) : (
+        <span className="ds-tag-name">{label}</span>
+      )}
+      {onRemove && (
+        <button type="button" className="ds-tag-x" aria-label={`${removeLabel} ${label}`} title={removeLabel} onClick={onRemove}>
+          <Icon name="x" size={12} />
+        </button>
+      )}
+    </span>
+  )
+}
+
+/** The properties of an object, one row each. `label` names the group for assistive technology. */
+export function PropertyList({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <section className={cx('ds-props', className)} aria-label={label}>
+      {children}
+    </section>
+  )
+}
+
+/** One property: an optional icon and its label, then the value. */
+export function PropertyRow({ icon, label, children }: { icon?: ReactNode; label: string; children: ReactNode }) {
+  return (
+    <div className="ds-prop">
+      <span className="ds-prop-label">
+        {icon}
+        {label}
+      </span>
+      <div className="ds-prop-value">{children}</div>
+    </div>
+  )
+}
+
+/** A small grid of the actions an object offers, each a tile with its icon over a short label. */
+export function ActionGrid({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cx('ds-actions', className)}>{children}</div>
+}
+
+/** One action in an ActionGrid. The label is already translated. */
+export function ActionTile({ icon, label, className, type = 'button', ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { icon: ReactNode; label: string }) {
+  return (
+    <button {...rest} type={type} className={cx('ds-action', className)}>
+      {icon}
+      <span>{label}</span>
+    </button>
   )
 }

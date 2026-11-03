@@ -1,0 +1,42 @@
+/* ───────── Reader mode: the page alone on the plain background, a thin progress line, one quiet toolbar ───────── */
+
+/* everything that frames or edits the page steps away */
+.app.reading :is(.side, .topbar, .page-drawer, .toolbar, .wscard) { display: none; }
+.app.reading { padding: 0; }
+.app.reading .main { border: 0; border-radius: 0; box-shadow: none; background: var(--ds-bg); }
+.app.reading .main::before { display: none; }
+.app.reading .scroller { padding: var(--ds-s10) var(--ds-s4) 120px; background: var(--ds-bg); }
+.app.reading .page-cols { display: block; max-inline-size: none; padding: 0; }
+.app.reading .page { max-inline-size: var(--r-width, 760px); margin: 0 auto; padding: 0 0 var(--ds-s10); border: 0; background: none; font-size: calc(17px * var(--r-scale, 1)); line-height: 1.9; }
+.app.reading .page .tiptap { font-size: inherit; line-height: inherit; caret-color: transparent; cursor: auto; }
+.app.reading .page .tiptap p { margin: 0.7em 0; }
+.app.reading .cover { margin-block-end: var(--ds-s6); }
+.app.reading .pg-title { font-size: 2.2em; pointer-events: none; padding-block-end: var(--ds-s4); }
+.app.reading .pg-icon { pointer-events: none; }
+.app.reading :is(.pg-add, .pg-starts) { display: none; }
+.app.reading .pg-props :is(.ds-chip-btn[data-empty], .ds-tag-x) { display: none; }
+.app.reading .pg-props .ds-chip-btn { pointer-events: none; }
+.app.reading :is(.img-handle, .cover-acts, .status-sel, .tag-chip button, .code-diagram, .mermaid-bar button:not(.mm-big), .img-bar > :not(.img-big):not(.sep), .img-bar .sep, .bubble) { display: none !important; }
+.app.reading .code-lang { pointer-events: none; appearance: none; border-color: transparent; background: transparent; }
+
+/* progress: a thin accent line along the top */
+.reader-chrome { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
+.reader-progress { position: absolute; inset-block-start: 0; inset-inline: 0; block-size: 2px; }
+.reader-progress > i { display: block; block-size: 100%; background: var(--ds-accent); transition: inline-size var(--ds-fast) linear; }
+
+/* the toolbar: the same raised strip as the formatting bar, at the bottom centre; icon buttons, two menus, plain text */
+.reader-bar { position: absolute; inset-block-end: var(--ds-s5); inset-inline: 0; margin-inline: auto; inline-size: max-content; max-inline-size: calc(100% - var(--ds-s6)); display: flex; align-items: center; gap: 2px; padding: var(--ds-s1); border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); box-shadow: var(--ds-shadow-pop); pointer-events: auto; animation: ds-pop var(--ds-base) var(--ds-ease); }
+.reader-bar .ds-icon-btn { flex: none; color: var(--ds-text-2); }
+.reader-bar .ds-icon-btn:disabled { opacity: 0.35; cursor: var(--cursor-arrow, default); }
+.reader-sep { flex: none; inline-size: 1px; block-size: 18px; margin-inline: var(--ds-s1); background: var(--ds-line); }
+.reader-menu { inline-size: auto; display: inline-flex; gap: 2px; padding-inline: var(--ds-s2) var(--ds-s1); }
+.reader-menu > .ds-icon:last-child { color: var(--ds-text-3); }
+.reader-a { font: 600 var(--ds-text-small) var(--ds-font-ui); line-height: 1; }
+.reader-a--sm { font-size: 11px; }
+.reader-a--lg { font-size: 16px; }
+.reader-value { min-inline-size: 40px; color: var(--ds-text-3); font-size: var(--ds-text-small); text-align: center; font-variant-numeric: tabular-nums; }
+.reader-meta { padding-inline: var(--ds-s2); color: var(--ds-text-3); font-size: var(--ds-text-small); white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) { .reader-meta, .reader-bar > .reader-sep:last-of-type { display: none; } }
+@media (prefers-reduced-motion: reduce) { .reader-bar { animation: none; } .reader-progress > i { transition: none; } }
+:root[data-motion='reduce'] .reader-bar { animation: none; }
+:root[data-motion='reduce'] .reader-progress > i { transition: none; }

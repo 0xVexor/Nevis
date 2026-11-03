@@ -6,7 +6,8 @@ import { normalizeFa } from './normalize'
 import { createPortal } from 'react-dom'
 import type { Page } from './repo'
 import * as Ic from './icons'
-import { GLYPHS, GLYPH_NAMES, Glyph, ICON_PREFIX, iconNode, parseIcon } from './iconSet'
+import { ICON_PREFIX, iconNode, parseIcon } from './iconSet'
+import { IconPicker } from './design-system/IconPicker'
 import { t, locale } from './i18n'
 import { shortcutHint } from './shortcuts'
 import { dirOf } from './design-system/dir'
@@ -48,7 +49,8 @@ export function Popover({ anchor, onClose, children, align = 'start' }: { anchor
     const down = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose()
     const key = (e: KeyboardEvent) => {
       if (e.key === 'Escape') return onClose()
-      const items = [...(ref.current?.querySelectorAll<HTMLElement>('button.ds-menu-item:not(:disabled)') ?? [])]
+      // items of a closed submenu are hidden, so only what is on screen is reachable by the arrow keys
+      const items = [...(ref.current?.querySelectorAll<HTMLElement>('.ds-menu-item:not(:disabled)') ?? [])].filter((item) => item.offsetParent !== null)
       if (!items.length || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return
       e.preventDefault()
       const i = items.indexOf(document.activeElement as HTMLElement)
@@ -230,59 +232,12 @@ export const MenuItem = ({
 export const MenuLabel = ({ children }: { children: ReactNode }) => <div className="ds-menu-head">{children}</div>
 export const MenuSep = () => <div className="ds-menu-sep" />
 
-const ICON_COLORS = ['#6a5cff', '#3b82f6', '#06b6d4', '#10b981', '#84cc16', '#f59e0b', '#f97316', '#ef4444', '#ec4899', '#a855f7', '#64748b']
 
 /** Page icon picker: search, a colour row and a grid of simple outline glyphs (stored as `i:name` or `i:name@#colour`). Pages that already have an emoji keep showing it. */
+/** Page and inline icons: the design system's picker, stored as `i:name` or `i:name@#rrggbb`. */
 export function EmojiPicker({ onPick, onClear, current, clearLabel }: { onPick: (e: string, close?: boolean) => void; onClear: () => void; current?: string; clearLabel?: string }) {
-  const [q, setQ] = useState('')
   const cur = current && current.startsWith(ICON_PREFIX) ? parseIcon(current) : null
-  const [color, setColor] = useState<string | undefined>(cur?.color)
-  const query = q.trim().toLowerCase()
-  const names = GLYPH_NAMES.filter((n) => !query || n.includes(query) || GLYPHS[n][0].includes(query))
-  const make = (n: string, c = color) => ICON_PREFIX + n + (c ? '@' + c : '')
-  return (
-    <div className="emoji-pop">
-      <input className="emoji-search" autoFocus placeholder={t('Search icons…')} value={q} onChange={(e) => setQ(e.target.value)} />
-      <div className="icon-colors" role="radiogroup" aria-label={t('Icon colour')}>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={!color}
-          className={'icon-color auto' + (!color ? ' on' : '')}
-          title={t('Automatic')}
-          onClick={() => (setColor(undefined), cur && onPick(make(cur.name, undefined), false))}
-        />
-        {ICON_COLORS.map((c) => (
-          <button
-            key={c}
-            type="button"
-            role="radio"
-            aria-checked={color === c}
-            className={'icon-color' + (color === c ? ' on' : '')}
-            style={{ background: c }}
-            title={c}
-            onClick={() => (setColor(c), cur && onPick(make(cur.name, c), false))}
-          />
-        ))}
-      </div>
-      <div className="emoji-head">
-        <span>
-          {t('Icons')} · {names.length}
-        </span>
-        <button className="link" onClick={onClear}>
-          {clearLabel ?? t('Remove icon')}
-        </button>
-      </div>
-      <div className="emoji-grid">
-        {names.map((n) => (
-          <button key={n} className={'glyph' + (cur?.name === n ? ' on' : '')} title={n} onClick={() => onPick(make(n))}>
-            <Glyph name={n} size={20} color={color} />
-          </button>
-        ))}
-        {names.length === 0 && <span className="emoji-empty">{t('No icon found')}</span>}
-      </div>
-    </div>
-  )
+  return <IconPicker name={cur?.name} color={cur?.color} clearLabel={clearLabel} onClear={onClear} onPick={(name, color, close) => onPick(ICON_PREFIX + name + (color ? '@' + color : ''), close)} />
 }
 
 const textOf = (n: DocNode | null | undefined): string => (n?.text ? n.text : (n?.content ?? []).map(textOf).join(' '))

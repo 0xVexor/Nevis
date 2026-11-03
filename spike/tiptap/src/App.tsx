@@ -28,7 +28,7 @@ import { SidebarTags } from './SidebarTags'
 import { Explorer } from './Explorer'
 import { Templates, TEMPLATE_GLYPH, BOARD_TEMPLATE, DATABASE_TEMPLATE } from './TemplateGallery'
 import { getTemplates } from './templates'
-import { PageView, type SaveState } from './PageView'
+import { PageView, PICK_TAG, type SaveState } from './PageView'
 import { buildIndex } from './pageIndex'
 import { ReaderBar, loadReaderCfg, type ReaderCfg } from './ReaderBar'
 import { Vaults } from './Vaults'
@@ -46,7 +46,7 @@ import { Brand } from './Brand'
 import { BrandMark } from './BrandMark'
 import { SaveStatus } from './design-system/SaveStatus'
 import { WorkspaceHeader } from './design-system/WorkspaceHeader'
-import { Icon, dirOf, Button } from './design-system'
+import { Icon, IconButton, dirOf, Button, useMenu } from './design-system'
 import { MenuItem, MenuLabel, MenuSep, NameDialog, Popover, SearchModal, Toast, TrashModal, type PaletteCommand } from './ui'
 import { Home } from './Home'
 import { iconNode } from './iconSet'
@@ -167,6 +167,17 @@ export default function App() {
   const [searching, setSearching] = useState(false)
   const [searchInit, setSearchInit] = useState('') // query to start the search with (a saved search)
   const [tagFilter, setTagFilter] = useState<string | null>(null) // sidebar: show only pages with this tag
+  // a tag clicked on a page opens the sidebar's tag list on that tag
+  useEffect(() => {
+    const pick = (e: Event) => {
+      setTagFilter(normalizeFa((e as CustomEvent<string>).detail))
+      setShut((x) => ({ ...x, tags: false }))
+      // the list sits low in the sidebar: bring it into view once it has rendered
+      window.setTimeout(() => document.querySelector('.side .tagres')?.scrollIntoView({ block: 'nearest' }), 60)
+    }
+    window.addEventListener(PICK_TAG, pick)
+    return () => window.removeEventListener(PICK_TAG, pick)
+  }, [])
   const [saved, setSaved] = useState<{ id: string; name: string; query: string }[]>([])
   useEffect(() => void kvGet<{ id: string; name: string; query: string }[]>('savedSearches').then((s) => setSaved(Array.isArray(s) ? s : [])), [])
   const saveSaved = (next: { id: string; name: string; query: string }[]) => (setSaved(next), void kvSet('savedSearches', next))
@@ -205,6 +216,34 @@ export default function App() {
   const [menu, setMenu] = useState<{ id: string; rect: DOMRect } | null>(null)
   const [movingId, setMovingId] = useState<string | null>(null)
   const [reader, setReader] = useState(false)
+  const { open: openCrumbs, menu: crumbsMenu } = useMenu()
+  // full screen for the whole app, from any view: the desktop window itself, or the browser's full screen
+  const [fullScreen, setFullScreen] = useState(false)
+  const toggleFullScreen = useCallback(async () => {
+    try {
+      if (isTauri) {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window')
+        const win = getCurrentWindow()
+        const next = !(await win.isFullscreen())
+        await win.setFullscreen(next)
+        setFullScreen(next)
+      } else if (document.fullscreenElement) await document.exitFullscreen()
+      else await document.documentElement.requestFullscreen()
+    } catch {
+      /* the platform refused; nothing changes */
+    }
+  }, [])
+  useEffect(() => {
+    const sync = () => !isTauri && setFullScreen(!!document.fullscreenElement)
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== 'F11' || e.ctrlKey || e.metaKey || e.altKey) return
+      e.preventDefault()
+      void toggleFullScreen()
+    }
+    document.addEventListener('fullscreenchange', sync)
+    window.addEventListener('keydown', key)
+    return () => (document.removeEventListener('fullscreenchange', sync), window.removeEventListener('keydown', key))
+  }, [toggleFullScreen])
   const [readerCfg, setReaderCfg] = useState<ReaderCfg>(loadReaderCfg)
   const [pageW, setPageW] = useState<number>(() => Number(localStorage.getItem('not.page.width')) || PAGE_W.def)
   const readerRef = useRef(reader)
@@ -260,7 +299,7 @@ export default function App() {
     ro.observe(main)
     mainWatch.current = ro
   }, [])
-  // a narrow window has no room for the sidebar beside the page: it starts out of the way (Ctrl+\ or the button brings it back)
+  // a narrow window has no room for the sidebar beside the page: it starts out of the way (the sidebar shortcut or the button brings it back)
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 760px)')
     if (mq.matches) setSideOpen(false)
@@ -706,7 +745,7 @@ export default function App() {
         />
         <div className="ws">
           <WorkspaceHeader mark={<BrandMark />} name={<Brand />} revealLabel={t(sidePinned ? 'Unpin sidebar' : sideExpanded ? 'Pin sidebar' : 'Open sidebar')} expanded={settings.sidebar !== 'icons' || sideExpanded} pressed={settings.sidebar === 'icons' ? sidePinned : undefined} onReveal={revealSidebar} onActivate={toggleSidebarPin} action={
-            <button className="icon-btn" aria-label={t('Close sidebar')} title={bindingHint('sidebar')} onClick={() => { setSidePinned(false); setSidePeek(false); setSideOpen(false) }}>
+            <button className="icon-btn" aria-label={t('Close sidebar')} title={t('Close sidebar') + '  ' + bindingHint('sidebar')} onClick={() => { setSidePinned(false); setSidePeek(false); setSideOpen(false) }}>
               <Icon name="panel-left" />
             </button>
           } />
@@ -936,22 +975,22 @@ export default function App() {
       <main ref={mainRef} className={'main' + (panelOpen && !reader && view === 'page' && current ? ' drawer-open' : '')}>
         <header className="topbar">
           {!sideOpen && !preferencesOpen && (
-            <button className="icon-btn" title={t('Open sidebar  Ctrl+\\')} onClick={() => setSideOpen(true)}>
-              <Ic.Sidebar />
-            </button>
+            <IconButton label={t('Open sidebar') + '  ' + bindingHint('sidebar')} onClick={() => setSideOpen(true)}>
+              <Icon name="panel-left" size={17} />
+            </IconButton>
           )}
           <div className="nav-hist">
-            <button className="icon-btn" title={t('Back  Alt+←')} aria-label={t('Back')} disabled={hpos.current <= 0} onClick={() => goHist(-1)}>
+            <IconButton label={t('Back  Alt+←')} disabled={hpos.current <= 0} onClick={() => goHist(-1)}>
               <Icon name="arrow-left" size={17} className="ds-flip" />
-            </button>
-            <button className="icon-btn" title={t('Forward  Alt+→')} aria-label={t('Forward')} disabled={hpos.current >= hist.current.length - 1} onClick={() => goHist(1)}>
+            </IconButton>
+            <IconButton label={t('Forward  Alt+→')} disabled={hpos.current >= hist.current.length - 1} onClick={() => goHist(1)}>
               <Icon name="arrow-right" size={17} className="ds-flip" />
-            </button>
+            </IconButton>
           </div>
           <nav className="crumbs">
-            <button className="crumb-home" title={t('Home')} onClick={() => setView('home')}>
-              <Ic.Home size={15} />
-            </button>
+            <IconButton className="crumb-home" label={t('Home')} onClick={() => setView('home')}>
+              <Icon name="home" size={15} />
+            </IconButton>
             {graphOpen && (
               <span className="crumb">
                 <span className="crumb-cur">
@@ -979,7 +1018,7 @@ export default function App() {
             {cardsOpen && !tplOpen && !graphOpen && !tableOpen && (
               <span className="crumb">
                 <span className="crumb-cur">
-                  <Ic.Cards size={14} />
+                  <Icon name="cards" size={14} />
                   {t('Flashcards')}
                 </span>
               </span>
@@ -987,7 +1026,7 @@ export default function App() {
             {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'home' && (
               <span className="crumb">
                 <span className="crumb-cur">
-                  <Ic.Sidebar size={14} />
+                  <Icon name="panel-left" size={14} />
                   {t('Home')}
                 </span>
               </span>
@@ -995,7 +1034,7 @@ export default function App() {
             {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'files' && (
               <span className="crumb">
                 <span className="crumb-cur">
-                  <Ic.Folders size={14} />
+                  <Icon name="folder" size={14} />
                   {t('Files')}
                 </span>
               </span>
@@ -1003,7 +1042,7 @@ export default function App() {
             {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'tasks' && (
               <span className="crumb">
                 <span className="crumb-cur">
-                  <Ic.Checklist size={14} />
+                  <Icon name="tasks" size={14} />
                   {t('Tasks')}
                 </span>
               </span>
@@ -1011,7 +1050,7 @@ export default function App() {
             {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'databases' && (
               <span className="crumb">
                 <span className="crumb-cur">
-                  <Ic.Table size={14} />
+                  <Icon name="table" size={14} />
                   {t('Databases')}
                 </span>
               </span>
@@ -1019,7 +1058,7 @@ export default function App() {
             {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'drawings' && (
               <span className="crumb">
                 <span className="crumb-cur">
-                  <Ic.Pencil size={14} />
+                  <Icon name="pencil" size={14} />
                   {t('Drawings')}
                 </span>
               </span>
@@ -1027,7 +1066,7 @@ export default function App() {
             {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'settings' && (
               <span className="crumb">
                 <span className="crumb-cur">
-                  <Ic.Settings size={14} />
+                  <Icon name="settings" size={14} />
                   {t('Settings')}
                 </span>
               </span>
@@ -1037,14 +1076,36 @@ export default function App() {
               !graphOpen &&
               !tableOpen &&
               view === 'page' &&
-              crumbs.map((c, i) => (
-                <span key={c.id} className={'crumb' + (i === crumbs.length - 1 ? ' last' : '')}>
+              // a deep page keeps the top level and its last two ancestors in view; the ones between wait behind "…"
+              (crumbs.length > 3 ? [crumbs[0], null, ...crumbs.slice(-2)] : crumbs).map((c, i, shown) =>
+                c === null ? (
+                  <span key="more" className="crumb crumb-more">
+                    <span className="crumb-sep">
+                      <Icon name="chevron-right" size={13} />
+                    </span>
+                    <button
+                      type="button"
+                      aria-haspopup="menu"
+                      aria-label={t('{n} more pages', { n: crumbs.length - 3 })}
+                      title={t('{n} more pages', { n: crumbs.length - 3 })}
+                      onClick={(e) =>
+                        openCrumbs(
+                          crumbs.slice(1, -2).map((p) => ({ label: p.title || t(p.kind === 'folder' ? 'Folder' : 'Untitled'), raw: !!p.title, icon: p.kind === 'folder' ? <Icon name="folder" /> : iconNode(p.icon, 16, <Icon name="file" />), onSelect: () => p.kind !== 'folder' && setCurrentId(p.id) })),
+                          e.currentTarget,
+                        )
+                      }
+                    >
+                      …
+                    </button>
+                  </span>
+                ) : (
+                <span key={c.id} className={'crumb' + (i === shown.length - 1 ? ' last' : '')}>
                   <span className="crumb-sep">
-                    <Ic.Chevron size={13} />
+                    <Icon name="chevron-right" size={13} />
                   </span>
                   {c.kind === 'folder' ? (
                     <span className="crumb-folder" dir="auto">
-                      <Ic.Folder size={14} />
+                      <Icon name="folder" size={14} />
                       <span>{c.title || t('Folder')}</span>
                     </span>
                   ) : (
@@ -1054,33 +1115,39 @@ export default function App() {
                     </button>
                   )}
                 </span>
-              ))}
+                ),
+              )}
           </nav>
+          {crumbsMenu}
           <span className="spacer" />
           {current && view === 'page' && <SaveStatus state={save} label={save === 'saving' ? t('Saving…') : t('All changes saved')} />}
           <div className="tb-group">
             {current && view === 'page' && (
               <>
-                <button className="icon-btn" title={t('Reader mode  Ctrl+.')} onClick={() => setReader(true)}>
-                  <Ic.Reader />
-                </button>
-                <button className={'icon-btn' + (current.favorite ? ' fav-on' : '')} title={t('Favorite')} onClick={() => fav(current.id)}>
-                  <Ic.Star filled={current.favorite} />
-                </button>
-                <button className={'icon-btn panel-toggle' + (panelOpen ? ' active' : '')} title={t('Page side panel (quick actions & navigation)')} onClick={() => setPanelOpen((o) => !o)}>
-                  <Ic.Panel />
-                </button>
+                <IconButton label={t('Reader mode') + '  ' + bindingHint('reader')} onClick={() => setReader(true)}>
+                  <Icon name="book" size={17} />
+                </IconButton>
+                <IconButton label={t('Page side panel (quick actions & navigation)')} pressed={panelOpen} onClick={() => setPanelOpen((o) => !o)}>
+                  <Icon name="panel-right" size={17} />
+                </IconButton>
               </>
             )}
-            <button className="icon-btn" title={dark ? t('Light mode') : t('Dark mode')} onClick={() => updateSettings({ theme: dark ? 'light' : 'dark' })}>
-              {dark ? <Ic.Sun /> : <Ic.Moon />}
-            </button>
+            <IconButton label={(fullScreen ? t('Exit full screen') : t('Full screen')) + '  F11'} pressed={fullScreen} className="ds-icon-btn--toggle" onClick={() => void toggleFullScreen()}>
+              <Icon name={fullScreen ? 'minimize' : 'maximize'} size={17} />
+            </IconButton>
+            <IconButton label={dark ? t('Light mode') : t('Dark mode')} onClick={() => updateSettings({ theme: dark ? 'light' : 'dark' })}>
+              <Icon name={dark ? 'sun' : 'moon'} size={17} />
+            </IconButton>
           </div>
           {current && view === 'page' && (
-            <button className="share-btn" title={t('Share & export')} onClick={(e) => setDataMenu(e.currentTarget.getBoundingClientRect())}>
-              <Ic.Share size={15} />
+            <IconButton className="ds-icon-btn--toggle" pressed={!!current.favorite} label={current.favorite ? t('Remove from favorites') : t('Add to favorites')} onClick={() => fav(current.id)}>
+              <Icon name="star" size={18} />
+            </IconButton>
+          )}
+          {current && view === 'page' && (
+            <Button variant="primary" size="sm" className="share-btn" title={t('Share & export')} icon={<Icon name="share" size={15} />} onClick={(e) => setDataMenu(e.currentTarget.getBoundingClientRect())}>
               {t('Share')}
-            </button>
+            </Button>
           )}
         </header>
 
@@ -1135,9 +1202,16 @@ export default function App() {
             <BoardView key={current.id} page={current} onSave={setSave} onMeta={refresh} readOnly={reader} />
           ) : current ? (
             <>
-              {current.cover && <CoverBanner cover={current.cover} onChange={setCoverMenu} onRemove={() => setCover(undefined)} />}
               <div className={'page-cols' + (current.cover ? ' has-cover' : '')}>
-                <PageView key={current.id} page={current} onSave={setSave} onMeta={refresh} onCover={setCoverMenu} readOnly={reader} />
+                <PageView
+                  key={current.id}
+                  page={current}
+                  onSave={setSave}
+                  onMeta={refresh}
+                  onCover={setCoverMenu}
+                  cover={current.cover && <CoverBanner cover={current.cover} onChange={setCoverMenu} onRemove={() => setCover(undefined)} />}
+                  readOnly={reader}
+                />
               </div>
             </>
           ) : (
@@ -1161,11 +1235,8 @@ export default function App() {
             onClose={() => setPanelOpen(false)}
             onOpen={setCurrentId}
             onNewSub={() => add(current.id)}
-            onFav={() => fav(current.id)}
             onCover={setCoverMenu}
-            onSearch={() => setSearching(true)}
             onExport={() => exportMd(current.id)}
-            onSettings={() => setView('settings')}
           />
         )}
       </main>

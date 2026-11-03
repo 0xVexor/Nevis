@@ -1,33 +1,4 @@
 /* ───────── formatting toolbar: one floating glass pill ───────── */
-.toolbar { position: sticky; top: 8px; z-index: 6; display: flex; justify-content: center; align-items: center; gap: 8px; margin: 8px 0 18px; }
-.toolbar .tb-pill { display: flex; flex-wrap: wrap; align-items: center; gap: 1px; max-width: 100%; padding: 5px 6px; background: color-mix(in srgb, var(--ds-raised) 80%, transparent); backdrop-filter: blur(18px) saturate(1.6); border: 1px solid var(--ds-line); border-radius: 16px; box-shadow: var(--panel-shadow), inset 0 1px 0 light-dark(var(--ds-white), rgb(255 255 255 / 0.05)); }
-.toolbar button { flex: none; min-width: 30px; height: 32px; padding: 0 5px; border: 0; background: transparent; color: var(--ds-text); border-radius: 10px; cursor: var(--cursor-hand, pointer); display: grid; place-items: center; font-size: 13px; transition: background 0.15s, color 0.15s, transform 0.2s var(--ease); }
-.toolbar button:hover { background: var(--ds-hover); }
-.toolbar button:active { transform: scale(0.9); }
-.toolbar button.on { background: var(--ds-accent-soft); color: var(--ds-accent); }
-.toolbar button:disabled { opacity: 0.35; cursor: var(--cursor-arrow, default); }
-.toolbar .sep { width: 1px; height: 18px; background: var(--ds-line-strong); margin: 0 5px; }
-.toolbar .tb-tx { font-size: 11px; font-weight: 800; direction: ltr; letter-spacing: 0.02em; }
-.toolbar .tb-add { background: var(--ds-accent); color: var(--ds-accent-ink); border-radius: 11px; min-width: 34px; box-shadow: 0 4px 12px var(--ds-accent-line); }
-.toolbar .tb-add:hover { background: var(--ds-accent); filter: brightness(1.1); }
-.tb-dd { position: relative; display: flex; }
-.tb-dd > button { gap: 2px; display: flex; align-items: center; justify-content: center; }
-.tb-chev { display: inline-flex; transform: rotate(90deg); opacity: 0.55; }
-.tb-menu { position: absolute; top: calc(100% + 10px); inset-inline-end: 0; z-index: 50; min-width: 220px; padding: 6px; background: var(--ds-raised); border: 1px solid var(--ds-line); border-radius: 14px; box-shadow: var(--ds-shadow-pop); direction: ltr; animation: pop-in 0.2s var(--ease); }
-.toolbar .tb-menu button.tb-mi { display: flex; align-items: center; gap: 10px; width: 100%; height: auto; min-height: 34px; padding: 6px 10px; border-radius: 8px; justify-content: flex-start; font-size: 14px; text-align: start; white-space: nowrap; }
-.toolbar .tb-menu button.tb-mi.on { background: var(--ds-accent-soft); color: var(--ds-accent);
-  font-weight: 550; }
-.toolbar .tb-menu button.tb-mi.danger { color: var(--ds-bad); }
-.toolbar .tb-menu button.tb-mi.danger:hover { background: color-mix(in srgb, var(--ds-bad) 10%, transparent); }
-.tb-mi-l { flex: 1; }
-.tb-mi-ic { display: inline-flex; width: 20px; justify-content: center; color: var(--ds-text-2); }
-.tb-mi.danger .tb-mi-ic { color: inherit; }
-.tb-msep { height: 1px; background: var(--ds-line); margin: 6px 4px; }
-.tb-table-menu { min-width: 260px; }
-.tb-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; padding: 8px; }
-.tb-grid span { aspect-ratio: 1; border-radius: 6px; background: var(--ds-hover); cursor: var(--cursor-hand, pointer); transition: background 0.1s; }
-.tb-grid span.on { background: color-mix(in srgb, var(--ds-accent) 40%, var(--ds-raised)); }
-.tb-grid-size { text-align: center; font-size: 12.5px; color: var(--ds-text-2); padding: 2px 0 4px; }
 
 /* ───────── editor text ───────── */
 .ec { position: relative; }
@@ -100,8 +71,6 @@
 .tiptap .hljs-quote, .tiptap .hljs-formula { color: var(--hl-com); font-style: italic; }
 .tiptap .hljs-strong { font-weight: 700; }
 .tiptap .hljs-emphasis { font-style: italic; }
-.tiptap .find-hit { background: rgb(255 213 0 / 0.4); border-radius: 3px; }
-.tiptap .find-hit.find-cur { background: rgb(255 140 0 / 0.65); outline: 1px solid rgb(255 140 0 / 0.9); }
 
 /* drag handle */
 /* 32×32 hit area; the ::before bridges the gap to the text so the pointer never loses the handle on its way */

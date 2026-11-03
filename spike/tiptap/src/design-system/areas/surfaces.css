@@ -20,13 +20,13 @@
 .row.cur .badge { border-color: var(--ds-accent); color: var(--ds-accent); }
 
 /* ───── buttons: flat accent, no shine ───── */
-.new-page:hover, .primary:hover:not(:disabled), .share-btn:hover { transform: none; }
-.primary, .share-btn { border-radius: var(--ds-r); box-shadow: none; font-weight: 550; }
+.new-page:hover, .primary:hover:not(:disabled) { transform: none; }
+.primary { border-radius: var(--ds-r); box-shadow: none; font-weight: 550; }
 
 /* ───── empty states ───── */
 
 /* ───── floating surfaces: slash menu, toolbar menus, bubble toolbar, palette share one panel style ───── */
-.tb-menu, .bubble, .bubble.tbl, .slash-menu {
+.bubble, .bubble.tbl, .slash-menu {
   border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised);
   backdrop-filter: none; box-shadow: var(--ds-shadow-pop);
 }

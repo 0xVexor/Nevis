@@ -41,4 +41,6 @@
 @import './design-system/screens.css';
 @import './design-system/areas/preferences-workspace.css';
 @import './design-system/areas/onboarding.css';
+@import './design-system/areas/reader.css';
+@import './design-system/areas/toolbar.css';
 @import './design-system/areas/print.css';
