@@ -194,16 +194,6 @@ export const Panel = (p: P) => (
     <path d="M15 4v16" />
   </I>
 )
-/** Nevis mark: a leaf; the veins are cut out of the body so it follows the text colour. */
-export const Logo = ({ size = 16 }: P) => (
-  <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden>
-    <mask id="noviq-leaf-veins">
-      <rect width="100" height="100" fill="#fff" />
-      <path d="M24 74.5L68 34M56 48L69 50M47 56L61 60M37 64L52 68M33.5 62L30 47M42 55L39 39M51 46L49 33" stroke="#000" strokeWidth="3.4" strokeLinecap="round" fill="none" />
-    </mask>
-    <path d="M22 72C20 52 28 36 44 28C55 23 70 27 80 22C83 21 84 24 83 29C82 48 79 62 70 72C60 82 45 80 28 78C23 77 22 75 22 72Z" fill="currentColor" mask="url(#noviq-leaf-veins)" />
-  </svg>
-)
 export const OrderedList = (p: P) => (
   <I {...p}>
     <path d="M10 6h11M10 12h11M10 18h11M3.5 5l1.5-1v4M3 13.5c.5-1 2.5-1 2.5.3 0 1.2-2.5 1.7-2.5 3h2.7M3 20h2.2l-1 1.2c.9-.2 1.5.3 1.5 1" />

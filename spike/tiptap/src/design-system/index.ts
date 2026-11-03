@@ -18,3 +18,5 @@ export { PreferenceRow, PreferenceGroup, SegmentedChoice, RangeControl } from '.
 export { WorkspaceHeader } from './WorkspaceHeader'
 
 export { CommandDialog, CommandResult } from './CommandDialog'
+export { SaveStatus } from './SaveStatus'
+export { Steps } from './Steps'

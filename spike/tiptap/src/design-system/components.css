@@ -107,6 +107,16 @@
 .ds-tile--lg .ds-icon { width: 22px; height: 22px; }
 .ds-progress { height: 5px; overflow: hidden; border-radius: 3px; background: var(--ds-sunk); }
 .ds-progress > i { display: block; height: 100%; border-radius: 3px; background: var(--ds-accent); }
+/* steps: where a person is in a short ordered flow; the current step is longer, never colour alone */
+.ds-steps { display: flex; align-items: center; gap: var(--ds-s1); margin: 0; padding: 0; list-style: none; }
+.ds-steps > li { inline-size: var(--ds-s6); block-size: 3px; border-radius: var(--ds-r-full); background: var(--ds-line-strong); transition: inline-size var(--ds-base) var(--ds-ease), background var(--ds-base) var(--ds-ease); }
+.ds-steps > .is-done { background: var(--ds-accent-line); }
+.ds-steps > .is-current { inline-size: var(--ds-s10); background: var(--ds-accent); }
+
+/* Passive save feedback, shared by editor chrome, note sheets and preferences. */
+.ds-save-status { display: inline-flex; align-items: center; gap: var(--ds-s2); min-inline-size: 0; min-block-size: var(--ds-control-sm); color: var(--ds-text-3); font: 400 var(--ds-text-caption)/1.5 var(--ds-font-ui); }
+.ds-save-status > .ds-icon { inline-size: 14px; block-size: 14px; flex: none; }
+.ds-save-status[data-state='error'] { color: var(--ds-bad); }
 
 /* ───── surfaces ───── */
 .ds-card { border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); }
@@ -214,7 +224,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ds-pop, .ds-toast, .ds-modal, .ds-btn, .ds-switch::after, .ds-layout-cols, .ds-snap-preview { animation: none; transition: none; }
+  .ds-pop, .ds-toast, .ds-modal, .ds-btn, .ds-switch::after, .ds-layout-cols, .ds-snap-preview, .ds-steps > li { animation: none; transition: none; }
 }
 
 /* ───── file icon: tinted tile with the kind's icon; sizes are set with --s ───── */

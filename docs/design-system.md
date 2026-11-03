@@ -1,5 +1,17 @@
 # Nevis design system
 
+The product logo is `BrandMark` with canonical geometry in `src/brand/mark.ts`; no Settings-specific logo or legacy leaf component remains. `node scripts/generate-brand.mjs` generates the web/site favicon and `src-tauri/app-icon.svg`; add `--icons` to regenerate the existing desktop icon set. `SaveStatus` is the shared, passive save indicator: neutral check and text when saved, a save glyph while saving, and a labelled error state. It has no coloured dot, pill, or pulsing animation. Editor status appears only on an actual open page; Home's note sheet owns its own save feedback.
+
+In the icons-only workspace sidebar, hovering/focusing the logo previews navigation; activating it pins the expanded sidebar. The logo exposes both expanded and pressed states. A second activation or a click outside releases the pin. Sidebar rows remain interactive while pinned; portaled menus and dialogs finish their own interaction before outside-dismissal applies. Returning from Settings clears temporary reveal/pin state.
+
+Settings navigation uses one row geometry for categories and Back to workspace: full-width hit areas inside equal sidebar insets, fixed icon spacing, and labels that can wrap with custom fonts. On short windows only the category list scrolls; the return action stays outside it. At narrow widths categories form a horizontal strip and the return action remains visible below it. Hover, pressed, selected and keyboard focus states use the shared tokens. Production browser checks cover EN/FA, light/dark, monospace, short/narrow windows, keyboard return and default/compact/icons workspace sidebars.
+
+Home starts with an editable first-note sheet and short template previews, plus the existing import/settings entry. The sheet creates a real page on the first meaningful edit, saves through the document service, and stays mounted while writing. Returning users see their last note, a collapsible quick-note sheet and recent pages. The quick draft is excluded from the continuation preview while it is being written. `HomeNote` composes the existing TipTap starter, block-identity and per-block direction extensions; existing rich documents open in PageView. Save feedback waits for durable persistence and failures keep the text available for retry.
+
+First launch and the workspace list are `Onboarding` (`src/onboarding/`), a service-free composition that `VaultPicker` connects to the desktop vault commands. New users go through three steps (welcome and language, name and accent with a live `WorkspaceHeader` preview, folder) and the preview grows into the workspace; people with workspaces see the list, with a context menu on each row, and a two-step flow for a new one. Steps slide in from the side they come from (mirrored in RTL) with `--ds-base`; reduced motion turns this into a crossfade and skips the mark drawing and the landing. The interface says workspace, not vault. `AccentSwatches` is the accent choice shared with Settings. Review at `/onboarding-preview.html` (`?state=returning`, `?fail`, `?lang=fa`, `?theme=dark`, `?accent=%237151c2`, `?reduced`); nothing native is touched. Not yet tested.
+
+Review the actual `HomeScreen` and `HomeNote` compositions at `/home-preview.html` on an isolated Vite origin; `?state=empty`, `?state=single`, `?lang=fa&theme=dark` and `?accent=%237151c2` select fixtures. Preview documents stay in memory and do not initialize a vault. Production checks in isolated browser storage covered lazy creation, repeated edits updating one page, durable saves, opening the full editor and persistence across reload. Visual checks cover full/minimum windows, EN/FA, light/dark, custom accent and one-page/no-icon content. Typecheck and UI guard pass. No production build or full test suite was run.
+
 Current approved direction and migration handoff: [design language (Persian)](ui-design-language.fa.md), [continuation guide (Persian)](ui-handoff.fa.md). Architecture history: [ui-foundations-plan.md](ui-foundations-plan.md). Settings study and production now share their composition and foundations. Run `npm run dev:settings` from `spike/tiptap` and open `/settings-preview.html` on port 4182 for the review entry. Latest migration edits are untested at the user’s request.
 
 Every new screen, feature and component is built from this system. The old layered "Aurora Paper" styles and the `skin.css` that flattened them are gone: every stylesheet now lives in `src/design-system/` (the `ds-` components and tokens, plus `areas/` for the per-screen layouts).
@@ -59,6 +71,8 @@ All classes are prefixed `ds-` and use logical properties (`inline-start`, `inli
 | One thing that must be seen: a warning, a consequence, an error | `ds-notice` / `Notice` (`tone="warn"` or `"bad"`). Always has an icon and words, never color alone. |
 | Floating lists | **`Menu` / `useMenu`**: dropdowns, context menus, submenus, shortcut hints. |
 | Feedback | `ds-toast` (past tense, same verb as the button: "Saved"), `ds-modal`, `ds-drawer` |
+| Position in a short ordered flow | `ds-steps` / `Steps`: hairline segments; the current one is longer, so it never relies on colour alone. Caller supplies the translated label ("Step 2 of 3"). |
+| Persistence feedback | `SaveStatus` / `ds-save-status`: caller supplies a translated label and `idle`, `saving`, `saved` or `error`; polite live status, neutral ink and no status dot. |
 | Columns | `ds-layout` (below) |
 
 ### React components
@@ -73,6 +87,7 @@ Import from `src/design-system`. Use these instead of writing the class names by
 | `CommandDialog`, `CommandResult` | Service-free search/command surface with header/filter/footer slots, focus containment and restoration, result icon/content/trailing slots. App owns search and commands; styles in `commands.css`. |
 | `WorkspaceHeader` | Service-free workspace identity: mark, name and optional action slots, with an accessible reveal button. Shared by production workspace and Settings. Styles in `navigation.css`; interactive LTR/RTL examples in Gallery. |
 | `PreferenceGroup`, `PreferenceRow` | Settings sections and label/hint/control rows. Labels are already translated. No store, platform or persistence dependencies. |
+| `Steps` | `count`, `current` (0-based) and a translated `label`. |
 | `SegmentedChoice`, `RangeControl` | Controlled choice and numeric slider with accessible labels; the caller supplies values, options and callbacks. Imported from the same design-system entry point. |
 | `Switch`, `Field`, `Chip`, `Tabs` | Switch is `role="switch"`. `Field` follows what is typed (`ltr` for codes and URLs). |
 | `dirOf(text)` | `'rtl' \| 'ltr' \| undefined` by the first letter, the same rule the editor uses. Use it for `dir=` on a row or card when `Row` does not fit. |
@@ -141,7 +156,7 @@ After changing `iconData.ts`, `backgrounds.ts` or `fileKinds.ts`, regenerate the
 
 ## Where the styles live
 
-`src/index.css` imports, in order: the fonts, `design-system/areas/tokens.css` (the few shared tokens that are not `--ds-*`: fonts, motion, code colors), the area stylesheets (`areas/base`, `shell`, `page`, `editor`, `overlays`, `views`, `settings`, `panels`, `page-meta`, `palette`, `bubbles`, `notices`, `content`, `explorer`, `database*`, `home-templates`, `scrollbars`, `updates`, `layout`), then `tokens.css`, `components.css`, `areas/surfaces.css` (the flat sidebar, buttons and popovers), `home.css`, `screens.css` and `areas/print.css`. Order matters: later files win.
+`src/index.css` imports, in order: the fonts, `design-system/areas/tokens.css` (the few shared tokens that are not `--ds-*`: fonts, motion, code colors), the area stylesheets (`areas/base`, `shell`, `page`, `editor`, `overlays`, `views`, `settings`, `panels`, `page-meta`, `palette`, `bubbles`, `notices`, `content`, `explorer`, `database*`, `scrollbars`, `updates`, `layout`), then `tokens.css`, `components.css`, `areas/surfaces.css` (the flat sidebar, buttons and popovers), `home.css`, `screens.css` and `areas/print.css`. Order matters: later files win.
 
 Every color, radius and shadow in those files is a `--ds-*` token. Settings writes `--user-accent`, `--user-radius`, `--user-radius-sm`, `--user-radius-lg` and `--font`; the design system reads them. The five hue tokens (`--ds-violet`, `--ds-blue`, `--ds-green`, `--ds-orange`, `--ds-pink`) and `--ds-white` replace the literals that used to be repeated.
 

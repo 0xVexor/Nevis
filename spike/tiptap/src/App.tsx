@@ -1,7 +1,6 @@
 import { cssVars } from './cssVars'
 import { setPreference } from './preferenceEvents'
 import { UpdateCenter } from './UpdateUI'
-import { shortcutLabel } from './shortcuts'
 import { bindingHint, matches } from './shortcutBindings'
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { repo, gcFiles, TRASH_DAYS } from './store'
@@ -44,7 +43,8 @@ import { isTauri, kvGet, kvSet } from './db'
 import { watchDueCards } from './cardsDue'
 import { normalizeFa } from './normalize'
 import { Brand } from './Brand'
-import { WorkspaceMark } from './settings-ui/WorkspaceMark'
+import { BrandMark } from './BrandMark'
+import { SaveStatus } from './design-system/SaveStatus'
 import { WorkspaceHeader } from './design-system/WorkspaceHeader'
 import { Icon, dirOf, Button } from './design-system'
 import { MenuItem, MenuLabel, MenuSep, NameDialog, Popover, SearchModal, Toast, TrashModal, type PaletteCommand } from './ui'
@@ -159,6 +159,7 @@ export default function App() {
   const [sidePeek, setSidePeek] = useState(false)
   const [sidePinned, setSidePinned] = useState(false)
   const sidebarRef = useRef<HTMLElement>(null)
+  const sidePreviewSuppressed = useRef(false)
   const [sideOpen, setSideOpen] = useState<boolean>(() => store('not.side', true))
   const [sideW, setSideW] = useState<number | null>(() => store<number | null>('not.sideW', null)) // null: the width of the chosen sidebar style
   const [sideDrag, setSideDrag] = useState(false)
@@ -212,7 +213,10 @@ export default function App() {
   useEffect(() => {
     if (!sidePinned) return
     const dismiss = (event: PointerEvent) => {
-      if (event.target instanceof Node && !sidebarRef.current?.contains(event.target)) {
+      const sidebar = sidebarRef.current
+      // Menus/dialogs live in portals. Finish their interaction before dismissing the sidebar.
+      const inOverlay = event.composedPath().some(node => node instanceof Element && node.matches('.ds-pop, [role="dialog"]'))
+      if (sidebar && event.target instanceof Node && !sidebar.contains(event.target) && !inOverlay) {
         setSidePinned(false)
         setSidePeek(false)
       }
@@ -222,6 +226,7 @@ export default function App() {
   }, [sidePinned])
   useEffect(() => {
     if (settings.sidebar !== 'icons' || !sideOpen || view === 'settings') {
+      sidePreviewSuppressed.current = false
       setSidePinned(false)
       setSidePeek(false)
     }
@@ -654,14 +659,27 @@ export default function App() {
   const menuPage = menu ? pages.find((p) => p.id === menu.id) : undefined
 
   const sideExpanded = settings.sidebar === 'icons' && (sidePeek || sidePinned || newMenu !== null) && sideOpen
+  const revealSidebar = () => {
+    if (!sidePreviewSuppressed.current) setSidePeek(true)
+  }
+  const toggleSidebarPin = () => {
+    if (settings.sidebar !== 'icons') return
+    const pinned = !sidePinned
+    // Shrinking the panel can fire pointer-enter again; honor an explicit unpin until the pointer leaves.
+    sidePreviewSuppressed.current = !pinned
+    setSidePinned(pinned)
+    setSidePeek(pinned)
+  }
   const preferencesOpen = view === 'settings' && !cardsOpen && !tplOpen && !graphOpen && !tableOpen
   const rowProps = { index, currentId: current?.id ?? '', collapsed, onToggle: toggle, onOpen: setCurrentId, onAdd: add, onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }), onMove: move }
 
   return (
     <div data-preferences={preferencesOpen ? '' : undefined} className={'app' + (reader && view === 'page' && current ? ' reading' : '')} style={cssVars({ '--page-w': pageW + 'px', '--r-scale': readerCfg.scale, '--r-width': readerCfg.width + 'px' })}>
       <aside
+        ref={sidebarRef}
         data-expanded={sideExpanded ? '' : undefined}
-        onPointerLeave={() => setSidePeek(false)}
+        data-pinned={sidePinned ? '' : undefined}
+        onPointerLeave={() => { sidePreviewSuppressed.current = false; setSidePeek(false) }}
         onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setSidePeek(false) }}
         className={'side' + (sideOpen ? '' : ' closed') + (sideDrag ? ' resizing' : '')}
         style={sideW ? cssVars({ '--side-w': sideW + 'px' }) : undefined}
@@ -687,7 +705,7 @@ export default function App() {
           }}
         />
         <div className="ws">
-          <WorkspaceHeader mark={<WorkspaceMark />} name={<Brand />} revealLabel={t('Open sidebar')} expanded={settings.sidebar !== 'icons' || sideExpanded} onReveal={() => setSidePeek(true)} onActivate={() => { if (settings.sidebar === 'icons') setSidePinned(true); setSidePeek(true) }} action={
+          <WorkspaceHeader mark={<BrandMark />} name={<Brand />} revealLabel={t(sidePinned ? 'Unpin sidebar' : sideExpanded ? 'Pin sidebar' : 'Open sidebar')} expanded={settings.sidebar !== 'icons' || sideExpanded} pressed={settings.sidebar === 'icons' ? sidePinned : undefined} onReveal={revealSidebar} onActivate={toggleSidebarPin} action={
             <button className="icon-btn" aria-label={t('Close sidebar')} title={bindingHint('sidebar')} onClick={() => { setSidePinned(false); setSidePeek(false); setSideOpen(false) }}>
               <Icon name="panel-left" />
             </button>
@@ -1039,10 +1057,7 @@ export default function App() {
               ))}
           </nav>
           <span className="spacer" />
-          <span className={'status' + (save === 'saving' ? ' busy' : '')}>
-            <i className="dot" />
-            {save === 'saving' ? t('Saving…') : t('Saved')}
-          </span>
+          {current && view === 'page' && <SaveStatus state={save} label={save === 'saving' ? t('Saving…') : t('All changes saved')} />}
           <div className="tb-group">
             {current && view === 'page' && (
               <>
@@ -1086,11 +1101,14 @@ export default function App() {
           ) : view === 'home' ? (
             <Home
               pages={pages}
+              onPagesChange={refresh}
               onOpen={setCurrentId}
               onNew={() => add(null)}
               onTable={() => setTableOpen(true)}
               onCards={() => setCardsOpen(true)}
               onTemplates={() => setTplOpen(true)}
+              onTemplate={addFromTemplate}
+              onImport={openData}
               onFiles={() => setView('files')}
               onTasks={() => setView('tasks')}
             />

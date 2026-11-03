@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-const TARGET = '.row, .new-page, .ws-logo'
+const TARGET = '.row, .side-new button'
 const DELAY = 220
 
 /** Icons-only sidebar: a label that opens beside the hovered entry, since its own text is hidden. */
@@ -22,10 +22,11 @@ export function SideTip() {
       const side = el?.closest('.side')
       if (!el || !side || side.hasAttribute('data-expanded') || el === target) return
       hide()
-      const text = (el.querySelector('.ntitle') ?? (el.matches('.new-page') ? el : null))?.textContent?.trim() || (el as HTMLElement).title || ''
+      const text = el.querySelector('.ntitle')?.textContent?.trim() || el.getAttribute('aria-label') || (el as HTMLElement).title || ''
       if (!text) return
       target = el
       timer = window.setTimeout(() => {
+        if (!el.isConnected || side.hasAttribute('data-expanded')) return
         const r = el.getBoundingClientRect()
         const s = side.getBoundingClientRect()
         const rtl = getComputedStyle(side).direction === 'rtl'

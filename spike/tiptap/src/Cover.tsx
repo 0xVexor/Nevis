@@ -149,12 +149,6 @@ function useCoverStyle(cover: Cover | undefined) {
   return url ? { backgroundImage: `url("${url}")` } : undefined
 }
 
-/** Read-only cover surface; shares attachment resolution with the real page cover. */
-export function PageCoverPreview({ cover, className }: { cover: Cover; className?: string }) {
-  const style = useCoverStyle(cover)
-  return <span className={className} style={style} aria-hidden="true" />
-}
-
 export function CoverBanner({ cover, onChange, onRemove }: { cover: Cover; onChange: (anchor: DOMRect) => void; onRemove: () => void }) {
   const style = useCoverStyle(cover)
   return (

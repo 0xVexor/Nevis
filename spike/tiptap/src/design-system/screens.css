@@ -825,8 +825,6 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 .mermaid-block { border-radius: var(--ds-r-lg); }
 .mermaid-block:hover { border-color: var(--ds-line); background: var(--ds-sunk); }
 
-.home-month { grid-template-columns: repeat(7, minmax(0, 1fr)); }
-.home-month i { inline-size: auto; min-inline-size: 0; max-inline-size: 100%; }
 
 /* ───── Block drag area: no label strip, the empty part of the block is the handle ───── */
 .section-drag-surface { block-size: 12px; padding: 0; border: 0; border-radius: 0; background: none; color: transparent; font-size: 0; cursor: var(--cursor-grab, grab); }
@@ -887,23 +885,6 @@ textarea.title::placeholder { color: var(--ds-text-3); }
 .tiptap th { background: var(--ds-sunk); }
 .tiptap .tableWrapper > .section-drag-surface { position: absolute; inset-block-start: 0; inset-inline: 0; z-index: 2; block-size: 8px; inline-size: auto; }
 
-/* ───── Writing streak, as in the design: a row of rounded cells, quiet until a day was written ───── */
-.home-streak { padding: 12px 14px; }
-.home-streak-head { gap: 8px; margin-block-end: 8px; }
-.home-flame { color: var(--ds-accent); }
-.home-flame .ds-icon { fill: color-mix(in oklab, var(--ds-accent) 20%, transparent); }
-.home-streak-head b { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
-.home-month-head { margin-block-end: 8px; padding-block-start: 8px; border-block-start: 1px solid var(--ds-line); }
-.home-month-head b { font-size: 13.5px; font-weight: 550; }
-.home-month { gap: 4px; }
-.home-month .wd { padding: 0 0 2px; color: var(--ds-text-3); font-size: 11.5px; font-weight: 500; }
-.home-month i { aspect-ratio: auto; block-size: 24px; border-radius: calc(var(--ds-r-sm) * 0.85); background: var(--ds-sunk); color: var(--ds-text-3); font-size: 11.5px; font-weight: 500; }
-.home-month i.pad { background: none; }
-.home-month i.done { background: var(--ds-accent); color: var(--ds-accent-ink); }
-.home-month i.now { box-shadow: inset 0 0 0 1.5px var(--ds-accent); color: var(--ds-text); background: var(--ds-sunk); }
-.home-month i.now.done { background: var(--ds-accent); color: var(--ds-accent-ink); }
-.home-month i.future { background: none; box-shadow: inset 0 0 0 1px var(--ds-line); opacity: 1; color: var(--ds-text-3); }
-.home-month i.pad { block-size: 24px; height: 24px; }
 
 /* no negative-margin trick (it made a sliver of horizontal scroll): the outer edge borders are simply left off, by physical side */
 .tiptap .tableWrapper > table { margin: 0; inline-size: 100%; }

@@ -607,7 +607,11 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(updates::Updates::default())
         .setup(|app| {
-            let app_data = app.path().app_data_dir()?;
+            // NEVIS_APP_DATA (shared with the MCP relay) runs a separate copy with its own workspace list, e.g. to try first launch
+            let app_data = match std::env::var_os("NEVIS_APP_DATA") {
+                Some(dir) => PathBuf::from(dir),
+                None => app.path().app_data_dir()?,
+            };
             std::fs::create_dir_all(&app_data)?;
             document_operations::configure(&app_data).map_err(std::io::Error::other)?;
             app.manage(Store { mcp: Arc::new(mcp::Host::default()), reg: Mutex::new(Registry::load(&app_data)), app_data, vault: Mutex::new(None), index: Mutex::new(None) });

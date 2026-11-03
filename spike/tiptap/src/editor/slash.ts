@@ -181,8 +181,11 @@ export function paletteItems(query: string, editor: Editor): Item[] {
   return filter(query, list)
 }
 
-export const SlashCommand = Extension.create({
+export const SlashCommand = Extension.create<{ allowedCommands: readonly string[] | null }>({
   name: 'slashCommand',
+  addOptions() {
+    return { allowedCommands: null }
+  },
   addProseMirrorPlugins() {
     return [
       Suggestion({
@@ -196,7 +199,7 @@ export const SlashCommand = Extension.create({
         char: '/',
         startOfLine: false,
         allowSpaces: false,
-        items: ({ query }: { query: string }) => filter(query),
+        items: ({ query }: { query: string }) => filter(query).filter(item => !this.options.allowedCommands || this.options.allowedCommands.includes(item.title)),
         command: ({ editor, range, props }: { editor: Editor; range: Range; props: Item }) => {
           if (props.disabled) return
           props.run(editor.chain().focus().deleteRange(range), editor).run()

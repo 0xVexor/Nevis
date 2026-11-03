@@ -10,6 +10,8 @@ import { initBackup } from './autobackup'
 import { initSearchIndex } from './searchIndex'
 import { isTauri, vaultList, vaultClose } from './db'
 import { VaultPicker } from './VaultPicker'
+import { FirstLaunch, firstNoteMark, pendingFirstNote } from './onboarding/FirstNoteStart'
+import { LandingFrame } from './onboarding/Onboarding'
 import { initPreferences } from './sharedPreferences'
 import { initInputMenu } from './inputMenu'
 
@@ -23,6 +25,9 @@ function start() {
   // the workspace is loaded before the first render
   const bench = import.meta.env.DEV && !isTauri ? Number(new URLSearchParams(location.search).get('bench')) : 0
   const seeded = bench > 0 ? import('./devBench').then((m) => m.seedBench(bench)) : Promise.resolve()
+  // a new workspace: keep the start flow's last frame on screen while it loads, so there is no blank moment
+  const handoff = firstNoteMark()
+  if (handoff !== null) root.render(<LandingFrame name={handoff} />)
   seeded
     .then(initPreferences)
     .then(initStore)
@@ -31,7 +36,7 @@ function start() {
       void repo.watch()
       initSearchIndex()
       if (isTauri) void startMcpBridge().catch(() => {})
-      root.render(
+      const app = (
         <StrictMode>
           {Gallery && showGallery() ? (
             <Suspense fallback={null}>
@@ -40,8 +45,11 @@ function start() {
           ) : (
             <App />
           )}
-        </StrictMode>,
+        </StrictMode>
       )
+      // a workspace just created by the start flow opens on its first note, then on the app
+      const firstNote = pendingFirstNote()
+      root.render(firstNote === null ? app : <FirstLaunch workspace={firstNote} app={app} />)
     })
     .catch((e) => {
       root.render(

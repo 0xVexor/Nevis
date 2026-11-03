@@ -1,5 +1,6 @@
 import { ShortcutsSettings } from '../../settings-ui/ShortcutsSettings'
-import { useLabels } from './labels'
+import { useLabels } from '../../settings-ui/labels'
+import { BrandMark } from '../../BrandMark'
 import { useRef, useState } from 'react'
 import { Button } from '../../design-system/Button'
 import { Field, Switch } from '../../design-system/controls'
@@ -8,7 +9,7 @@ import { Icon } from '../../design-system/icons'
 import { getSettings, updateSettings, type Settings } from '../../settings'
 import { setPreference } from '../../preferenceEvents'
 import appPackage from '../../../package.json'
-import { SettingGroup, SettingRow, Toggle } from './parts'
+import { SettingGroup, SettingRow, Toggle } from '../../settings-ui/parts'
 import type { Category } from '../../settings-ui/SettingsWorkspace'
 import { readStudyBackup, STUDY_FORMAT } from './backup'
 
@@ -105,7 +106,7 @@ function DatabaseSettings() {
 function AboutSettings() {
   const l = useLabels()
   return <>
-    <div className="prefs-about-brand"><Icon name="leaf" size={32} /><h3>Nevis<span>.</span></h3><p>{l('Your notes, checklists and drawings in one calm place. Everything stays on your device.')}</p><span className="prefs-status-tag">{l('Version')} {appPackage.version}</span></div>
+    <div className="prefs-about-brand"><BrandMark size={32} /><h3>Nevis<span>.</span></h3><p>{l('Your notes, checklists and drawings in one calm place. Everything stays on your device.')}</p><span className="prefs-status-tag">{l('Version')} {appPackage.version}</span></div>
     <SettingGroup title={l('Updates')}><SettingRow label={l('App updates')} hint={l('Update checks and installation run in the desktop app.')}><Button disabled>{l('Check for updates')}</Button></SettingRow><Toggle label={l('Receive pre-release updates')} hint={l('Include early versions that may be less stable.')} setting="prereleaseUpdates" /></SettingGroup>
     <SettingGroup title={l('Design system')}><p className="prefs-caption">{l('This preview explores the shared foundations and complete Settings navigation before production migration.')}</p><div className="prefs-actions"><a className="prefs-text-link" href="/#/design-system" target="_blank" rel="noreferrer">{l('Open component gallery')} ↗</a></div></SettingGroup>
     <p className="prefs-caption">{l('Created by')} Vexor</p>

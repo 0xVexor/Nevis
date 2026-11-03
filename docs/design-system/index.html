@@ -2,6 +2,7 @@
 <html lang="en" dir="ltr" data-theme="light">
 <head>
 <meta charset="utf-8">
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nevis — redesign preview</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -685,6 +686,8 @@ body.is-dragging{cursor:grabbing;user-select:none}
 }
 @media print{.side,.top,.fmt,.reader-bar{display:none!important}.app{display:block}body{overflow:visible}.view{overflow:visible}}
 </style>
+<style>.save-feedback{display:inline-flex;align-items:center;gap:8px;color:var(--text-3);font:400 12px/1.5 var(--ui)}</style>
+<style>.ds-steps{display:flex;align-items:center;gap:4px;margin:0;padding:0;list-style:none}.ds-steps>li{inline-size:24px;block-size:3px;border-radius:999px;background:var(--line)}.ds-steps>.is-done{background:var(--accent-line)}.ds-steps>.is-current{inline-size:40px;background:var(--accent)}</style>
 </head>
 <body>
 <div id="app" class="app"></div>
@@ -919,7 +922,7 @@ function sidebar(){
   const fav=PAGES.filter(p=>p.fav);
   return `<aside class="side" aria-label="Sidebar">
   <div class="side-top">
-    <button class="vault" id="vaultBtn"><span class="logo">N</span><div><b>${esc(vname(activeV()))}</b><small>${t('Local workspace')}</small></div>${ic('chevd')}</button>
+    <button class="vault" id="vaultBtn"><span class="logo"><img src="../favicon.svg" width="24" height="24" alt="" /></span><div><b>${esc(vname(activeV()))}</b><small>${t('Local workspace')}</small></div>${ic('chevd')}</button>
     <button class="search-btn" id="searchBtn">${ic('search',16)}<span>${t('Search…')}</span><kbd class="kbd">Ctrl K</kbd></button>
   </div>
   <div class="side-scroll">
@@ -951,7 +954,7 @@ function topbar(){
   return `<header class="top">
     <button class="icon-btn" id="toggleSide" aria-label="${t('Toggle sidebar')}">${ic('panel')}</button>
     <div class="crumbs">${crumbs}</div><div class="spacer"></div>
-    ${isPage?`<span class="saved">${t('Saved')}</span>
+    ${isPage?`<span class="save-feedback" role="status">${ic('check',14)}${LANG==='fa'?'تغییرات ذخیره شد':'All changes saved'}</span>
     <button class="icon-btn" id="readBtn" title="${t('Reading mode')}" aria-label="${t('Reading mode')}">${ic('book')}</button>
     <button class="icon-btn ${byId[S.arg].fav?'on':''}" id="favBtn" aria-label="${t('Favorite')}">${ic('star')}</button>
     <button class="icon-btn" id="histBtn" title="${t('Version history')}" aria-label="${t('Version history')}">${ic('history')}</button>
@@ -1501,7 +1504,7 @@ function system(){
   const TY=[['Display','46 / 1.08 · Newsreader 500','font:500 46px/1.08 var(--serif);letter-spacing:-.03em'],['Page title','40 / 1.15 · 600','font:600 40px/1.15 var(--ui);letter-spacing:-.03em'],['Heading 1','30 / 1.15 · 600','font:600 30px/1.15 var(--ui);letter-spacing:-.025em'],['Heading 2','20 / 1.4 · 600','font:600 20px/1.4 var(--ui)'],['Body','14 / 1.5 · 400','font:400 14px/1.5 var(--ui)'],['Editor','17 / 1.8 · 400','font:400 17px/1.8 var(--ui)'],['Caption','12.5 / 1.5 · 400','font:400 12.5px/1.5 var(--ui);color:var(--text-3)']];
   const sample=LANG==='fa'?'نویس یادداشت‌هایتان را نگه می‌دارد':'Nevis keeps your notes yours';
   const MAP=[['--bg','--bg'],['--side','--side-bg'],['--raised','--bg-raised'],['--sunk','--bg-sunk'],['--text','--text'],['--text-2','--muted'],['--text-3','--faint'],['--line','--border'],['--line-2','--border-strong'],['--hover','--hover'],['--press','--active'],['--accent-soft','--accent-bg'],['--bad','--danger'],['--ok','--ok'],['--warn','--warn']];
-  const NAV=[['ds-color','Color'],['ds-type','Typography'],['ds-shape','Shape and depth'],['ds-preferences','Preferences patterns'],['ds-buttons','Buttons'],['ds-inputs','Inputs and dropdowns'],['ds-select','Selection and status'],['ds-menus','Menus'],['ds-layout','Layout'],['ds-icons','Icons'],['ds-bgs','Backgrounds'],['ds-files','File icons'],['ds-feedback','Feedback'],['ds-map','Port to the app']];
+  const NAV=[['ds-color','Color'],['ds-type','Typography'],['ds-shape','Shape and depth'],['ds-preferences','Preferences patterns'],['ds-buttons','Buttons'],['ds-inputs','Inputs and dropdowns'],['ds-select','Selection and status'],['ds-steps','Steps'],['ds-menus','Menus'],['ds-layout','Layout'],['ds-icons','Icons'],['ds-bgs','Backgrounds'],['ds-files','File icons'],['ds-feedback','Feedback'],['ds-map','Port to the app']];
   const demoMenu=menuHtml([{i:'arrow',l:'Open'},{i:'star',l:'Add to favorites'},{i:'copy',l:'Duplicate',k:'Ctrl D'},{i:'move',l:'Move to',sub:[{l:'Top level'}]},{sep:1},{i:'trash',l:'Delete',danger:1,k:'Del'}]);
   return `<div class="wrap page-in" style="max-width:1120px"><h1 class="h1">${t('Design system')}</h1><p class="lead">${t('Every token and component, live. Change the theme or accent and watch it all follow.')}</p>
   <div class="ds"><nav class="dsnav">${NAV.map(([id,l])=>`<a data-dsj="${id}">${t(l)}</a>`).join('')}</nav><div><section id="ds-preferences" class="card" style="padding:20px"><h2>Preferences and workspace patterns</h2><p><code>CommandDialog</code> and <code>CommandResult</code> compose a shared search surface: query header, filters, result groups and keyboard footer. Focus is contained and restored; search engines and command execution stay in the application. Styles: <code>commands.css</code>. Interactive examples are in the component gallery.</p><p><code>WorkspaceHeader</code> supplies product mark, name and action slots without application services. An optional keyboard-accessible reveal button supports collapsed navigation. Workspace and Settings use the same identity component; interactive LTR/RTL examples live in the component gallery. Include <code>navigation.css</code> alongside the shared control stylesheet.</p><p>PreferenceGroup, PreferenceRow, SegmentedChoice and RangeControl are controlled React patterns: translated labels and callbacks come from the application; storage and platform services stay outside the UI core.</p><p>Production Settings and the review study share these components. Open the development component gallery at <code>/#/design-system</code> for interactive LTR and RTL examples.</p><code>PreferenceGroup → PreferenceRow → Switch / SegmentedChoice / RangeControl</code></section>
@@ -1518,6 +1521,8 @@ function system(){
     <div class="demo"><button class="btn pri">${ic('plus',16)}${t('New page')}</button><button class="btn acc">${t('Install and restart')}</button><button class="btn">${t('Filter')}</button><button class="btn ghost">${t('Cancel')}</button><button class="btn danger">${ic('trash',16)}${t('Delete')}</button><button class="btn sm">${t('Open')}</button><button class="icon-btn" aria-label="More">${ic('more')}</button><div class="split"><button class="btn pri">${ic('plus',16)}${t('New page')}</button><button class="btn pri caret" data-dd="newmenu" aria-label="More">${ic('chevd',16)}</button></div></div></section>
   <section class="dsec" id="ds-inputs"><h2>${t('Inputs and dropdowns')}</h2><p>${t('Dropdowns replace native selects everywhere, so they follow the theme and the writing direction.')}</p>
     <div class="demo"><div style="position:relative;width:240px"><input class="field" placeholder="${t('Search pages')}" style="padding-inline-start:34px"><span style="position:absolute;inset-inline-start:10px;top:8px;color:var(--text-3)">${ic('search',16)}</span></div><button class="ddbtn" data-dd="set:defview"><span>${t(S.dd.defview)}</span>${ic('chevd',16)}</button><button class="ddchip" data-dd="rstatus" data-r="0">${stChip(ROWS[0].s)}${ic('chevd',14)}</button><button class="ddb" data-dd="lang"><span>Java</span>${ic('chevd',14)}</button></div></section>
+  <section class="dsec" id="ds-save"><h2>${LANG==='fa'?'وضعیت ذخیره':'Save feedback'}</h2><p>${LANG==='fa'?'نشان ذخیره، خنثی و بدون دایرهٔ رنگی یا کپسول است.':'Passive save feedback uses neutral ink, without a status dot or pill.'}</p><div class="demo"><span class="save-feedback" role="status">${ic('check',14)}${LANG==='fa'?'تغییرات ذخیره شد':'All changes saved'}</span></div></section>
+  <section class="dsec" id="ds-steps"><h2>${LANG==='fa'?'قدم‌ها':'Steps'}</h2><p>${LANG==='fa'?'جای فرد در یک فلوی کوتاه و ترتیبی، مثل اولین اجرا. قدم فعلی بلندتر است، نه فقط رنگی‌تر. اولین اجرا (Onboarding) از همین، WorkspaceHeader، Field، Facts و Notice ساخته شده است.':'Where a person is in a short ordered flow, such as first launch. The current step is longer, not only coloured. First launch (Onboarding) is built from this, WorkspaceHeader, Field, Facts and Notice.'}</p><div class="demo"><ol class="ds-steps" aria-label="Step 2 of 3"><li class="is-done"></li><li class="is-current" aria-current="step"></li><li></li></ol></div></section>
   <section class="dsec" id="ds-select"><h2>${t('Selection and status')}</h2>
     <div class="demo"><span class="check on">${ic('check')}</span><span class="check">${ic('check')}</span><button class="switch on" role="switch" aria-checked="true" data-flip aria-label="on"></button><button class="switch" role="switch" aria-checked="false" data-flip aria-label="off"></button><div class="seg"><button class="on">${t('Light')}</button><button>${t('Dark')}</button><button>${t('System')}</button></div>${stChip('todo')}${stChip('prog')}${stChip('done')}${chip('java','#3b82d6')}${chip('ideas','#d9692c')}<span class="av" style="--c:${HUES.violet}">AM</span><span class="av" style="--c:${HUES.teal}">SK</span><span class="badge" style="margin:0">3</span></div>
     <div class="vtabs" style="margin-top:18px"><button class="on">${ic('table')}${t('Table view')}</button><button>${ic('board')}${t('Board')}</button><button>${ic('cal')}${t('Calendar')}</button></div></section>
