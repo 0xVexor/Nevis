@@ -157,11 +157,11 @@ button.ds-tag-name:hover { text-decoration: underline; text-underline-offset: 3p
 .ds-color { inline-size: var(--ds-control); block-size: var(--ds-control); padding: 2px; border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); cursor: var(--cursor-hand, pointer); }
 .ds-color::-webkit-color-swatch-wrapper { padding: 0; }
 .ds-color::-webkit-color-swatch { border: 0; border-radius: var(--ds-r-sm); }
-/* the actions an object offers, as a grid of tiles: icon over a short label */
-.ds-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ds-s1); }
-.ds-action { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--ds-s1); min-block-size: 64px; padding: var(--ds-s2) var(--ds-s1); border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: none; color: var(--ds-text-2); font: 500 var(--ds-text-small) var(--ds-font-ui); text-align: center; cursor: var(--cursor-hand, pointer); transition: background var(--ds-fast) var(--ds-ease), border-color var(--ds-fast) var(--ds-ease), color var(--ds-fast) var(--ds-ease); }
-.ds-action > .ds-icon { color: var(--ds-text-3); transition: color var(--ds-fast) var(--ds-ease); }
-.ds-action > span { max-inline-size: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the actions an object offers, as a grid of tiles: icon beside the label; a long label wraps, it is never cut */
+.ds-actions { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: var(--ds-s1); }
+.ds-action { display: flex; align-items: center; gap: var(--ds-s2); min-block-size: 44px; padding: var(--ds-s2) var(--ds-s3); border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: none; color: var(--ds-text-2); font: 500 var(--ds-text-small) var(--ds-font-ui); line-height: 1.3; text-align: start; cursor: var(--cursor-hand, pointer); transition: background var(--ds-fast) var(--ds-ease), border-color var(--ds-fast) var(--ds-ease), color var(--ds-fast) var(--ds-ease); }
+.ds-action > .ds-icon { flex: none; inline-size: 16px; block-size: 16px; color: var(--ds-text-3); transition: color var(--ds-fast) var(--ds-ease); }
+.ds-action > span { min-inline-size: 0; overflow-wrap: anywhere; }
 .ds-action:hover { border-color: var(--ds-line-strong); background: var(--ds-hover); color: var(--ds-text); }
 .ds-action:hover > .ds-icon { color: var(--ds-accent); }
 .ds-action:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
