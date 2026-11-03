@@ -367,6 +367,10 @@ export function SearchModal({
   </CommandDialog>
 }
 
+/** Event a screen sends to show the app's toast; with `undo`, the toast offers Undo and Ctrl+Z runs it. */
+export const APP_TOAST = 'app-toast'
+export const showToast = (msg: string, undo?: () => void) => window.dispatchEvent(new CustomEvent(APP_TOAST, { detail: { msg, undo } }))
+
 export function Toast({ msg, action, onAction, onClose }: { msg: string; action?: string; onAction?: () => void; onClose: () => void }) {
   useEffect(() => {
     const t = window.setTimeout(onClose, 7000)
@@ -378,7 +382,11 @@ export function Toast({ msg, action, onAction, onClose }: { msg: string; action?
         <Ic.Check size={13} />
       </span>
       <span dir="auto">{msg}</span>
-      {action && <button onClick={() => (onAction?.(), onClose())}>{action}</button>}
+      {action && (
+        <button onClick={() => (onAction?.(), onClose())} title={action + '  Ctrl+Z'}>
+          {action}
+        </button>
+      )}
     </div>
   )
 }

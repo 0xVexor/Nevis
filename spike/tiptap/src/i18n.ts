@@ -8,9 +8,10 @@ import { formatShortcutText } from './shortcuts'
 import { FA_DB } from './database/ui/fa-db'
 import { FA_ONBOARDING } from './fa-onboarding'
 import { FA_COVERS } from './fa-covers'
+import { FA_VIEWS } from './fa-views'
 import { setTranslator } from './design-system/text'
 
-const FA: Record<string, string> = { ...FA_DB, ...FA_APP, ...FA_SETTINGS, ...FA_HOME, ...FA_ONBOARDING, ...FA_COVERS }
+const FA: Record<string, string> = { ...FA_DB, ...FA_APP, ...FA_SETTINGS, ...FA_HOME, ...FA_ONBOARDING, ...FA_COVERS, ...FA_VIEWS }
 
 export type { Lang }
 export type Dir = 'ltr' | 'rtl'

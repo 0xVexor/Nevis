@@ -1,4 +1,4 @@
-import { Button, Icon, IconButton, dirOf } from './design-system'
+import { Button, Icon, IconButton, Screen, dirOf } from './design-system'
 import { iconNode } from './iconSet'
 import type { Page } from './repo'
 import { ago } from './ui'
@@ -10,25 +10,24 @@ const DAY = 86_400_000
 export function Trash({ items, days, onRestore, onPurge, onEmpty }: { items: Page[]; days: number; onRestore: (id: string) => void; onPurge: (page: Page) => void; onEmpty: () => void }) {
   const daysLeft = (page: Page) => Math.max(0, days - Math.floor((Date.now() - page.deletedAt!) / DAY))
   return (
-    <div className="tr">
-      <header className="tr-head">
-        <div>
-          <h1>{t('Trash')}</h1>
-          <p>{t('Pages are deleted permanently after {days} days.', { days })}</p>
-        </div>
-        {items.length > 0 && (
+    <Screen
+      title={t('Trash')}
+      description={t('Pages are deleted permanently after {days} days.', { days })}
+      actions={
+        items.length > 0 && (
           <Button variant="danger" icon={<Icon name="trash" size={16} />} onClick={onEmpty}>
             {t('Empty trash')}
           </Button>
-        )}
-      </header>
+        )
+      }
+    >
       {items.length === 0 ? (
-        <div className="ds-empty">
+        <div className="ds-empty ds-empty--framed">
           <Icon name="trash" />
           <span>{t('The trash is empty')}</span>
         </div>
       ) : (
-        <div className="ds-list tr-list">
+        <div className="ds-list ds-list--framed">
           {items.map((page) => (
             <div key={page.id} dir={dirOf(page.title)} className="ds-list-row">
               <span className="ds-list-ic">{iconNode(page.icon, 18, <Icon name={page.kind === 'folder' ? 'folder' : 'file'} />)}</span>
@@ -50,6 +49,6 @@ export function Trash({ items, days, onRestore, onPurge, onEmpty }: { items: Pag
           ))}
         </div>
       )}
-    </div>
+    </Screen>
   )
 }

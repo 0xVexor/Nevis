@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { motion } from 'motion/react'
 import { getTemplates } from './templates'
 import { Glyph } from './iconSet'
-import { Icon } from './design-system'
+import { Button, Icon, Screen, useUIMotion } from './design-system'
 import { t } from './i18n'
 
 /** Glyph shown for each built-in template (new pages get it as their icon). */
@@ -11,138 +12,274 @@ export const TEMPLATE_GLYPH: Record<string, string> = { lecture: 'graduation', c
 export const BOARD_TEMPLATE = '__board'
 export const DATABASE_TEMPLATE = '__database'
 
-const SAMPLE: Record<string, string> = { lecture: 'doc', chapter: 'quote', exercise: 'exercise', meeting: 'meeting', todo: 'todo' }
+/** What a template writes, block by block, read from its HTML so the preview always matches the page it creates. */
+type Block =
+  | { kind: 'heading'; text: string }
+  | { kind: 'text' }
+  | { kind: 'list'; items: string[] }
+  | { kind: 'tasks'; items: { text: string; done: boolean }[] }
+  | { kind: 'toggle'; text: string }
+  | { kind: 'callout'; text: string }
+  | { kind: 'code'; text: string }
+  | { kind: 'table'; head: string[]; rows: number }
+  | { kind: 'math'; text: string }
 
-/** Template gallery as a page: pick one and a new page is created from it. */
+const textOf = (el: Element | null | undefined) => (el?.textContent ?? '').trim()
+
+function outline(html: string): Block[] {
+  const body = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html').body
+  return Array.from(body.children).map((el): Block => {
+    const type = el.getAttribute('data-type')
+    if (/^H[1-6]$/.test(el.tagName)) return { kind: 'heading', text: textOf(el) }
+    if (type === 'taskList') return { kind: 'tasks', items: Array.from(el.children).map((li) => ({ text: textOf(li), done: li.getAttribute('data-checked') === 'true' })) }
+    if (el.tagName === 'UL' || el.tagName === 'OL') return { kind: 'list', items: Array.from(el.children).map(textOf) }
+    if (type === 'toggle') return { kind: 'toggle', text: textOf(el.firstElementChild) }
+    if (type === 'callout') return { kind: 'callout', text: textOf(el) }
+    if (type === 'math-block') return { kind: 'math', text: el.getAttribute('data-latex') ?? '' }
+    if (el.tagName === 'PRE') return { kind: 'code', text: textOf(el) }
+    if (el.tagName === 'TABLE') {
+      const rows = Array.from(el.querySelectorAll('tr'))
+      return { kind: 'table', head: Array.from(rows[0]?.children ?? []).map(textOf), rows: Math.max(0, rows.length - 1) }
+    }
+    return { kind: 'text' }
+  })
+}
+
+interface Choice {
+  id: string
+  title: string
+  hint: string
+  icon: ReactNode
+  /** the action the preview's button names */
+  action: string
+  /** the new page's suggested title */
+  pageTitle?: string
+  blocks?: Block[]
+}
+
+/** An empty line where the person will write. */
+const Line = ({ width = 60 }: { width?: number }) => <span className="tpl-line" style={{ inlineSize: width + '%' }} />
+
+function Paper({ choice }: { choice: Choice }) {
+  if (choice.id === DATABASE_TEMPLATE) {
+    const cols = [t('Name'), t('Status'), t('Date')]
+    return (
+      <div className="tpl-db" role="img" aria-label={t('A table with columns for name, status and date')}>
+        {cols.map((c) => (
+          <b key={c}>{c}</b>
+        ))}
+        {[72, 48, 64].map((w) => [
+          <span key={w + 'a'}>
+            <Line width={w} />
+          </span>,
+          <span key={w + 'b'}>
+            <span className="tpl-pill" />
+          </span>,
+          <span key={w + 'c'}>
+            <Line width={50} />
+          </span>,
+        ])}
+      </div>
+    )
+  }
+  if (choice.id === BOARD_TEMPLATE)
+    return (
+      <svg className="tpl-board" viewBox="0 0 320 180" role="img" aria-label={t('A blank whiteboard')}>
+        <rect x="36" y="40" width="92" height="56" rx="10" />
+        <circle cx="250" cy="118" r="34" />
+        <path d="M128 68h44a24 24 0 0 1 24 24v6" />
+        <path d="m188 92 8 8 8-8" />
+        <path d="M70 136c22-14 44 14 66 0" />
+      </svg>
+    )
+  return (
+    <>
+      <span className="tpl-paper-icon">{choice.icon}</span>
+      <p className="tpl-paper-title" dir="auto" data-empty={!choice.pageTitle?.trim() || undefined}>
+        {choice.pageTitle?.trim() || t('Untitled')}
+      </p>
+      {!choice.blocks?.length ? (
+        <p className="tpl-paper-hint">{t('Start writing, or press / for blocks')}</p>
+      ) : (
+        choice.blocks.map((b, i) => <PaperBlock key={i} block={b} />)
+      )}
+    </>
+  )
+}
+
+function PaperBlock({ block: b }: { block: Block }) {
+  switch (b.kind) {
+    case 'heading':
+      return (
+        <h3 className="tpl-h" dir="auto">
+          {b.text}
+        </h3>
+      )
+    case 'text':
+      return <Line width={70} />
+    case 'list':
+      return (
+        <ul className="tpl-list">
+          {b.items.map((x, i) => (
+            <li key={i} dir="auto">
+              {x || <Line width={50} />}
+            </li>
+          ))}
+        </ul>
+      )
+    case 'tasks':
+      return (
+        <div className="tpl-tasks">
+          {b.items.map((x, i) => (
+            <span key={i} className="tpl-task" dir="auto">
+              <span className="ds-check" aria-hidden="true" />
+              {x.text || <Line width={45} />}
+            </span>
+          ))}
+        </div>
+      )
+    case 'toggle':
+      return (
+        <span className="tpl-toggle" dir="auto">
+          <Icon name="chevron-right" size={14} className="ds-flip" />
+          {b.text}
+        </span>
+      )
+    case 'callout':
+      return (
+        <span className="tpl-callout" dir="auto">
+          <Icon name="callout" size={15} />
+          {b.text || <Line width={40} />}
+        </span>
+      )
+    case 'code':
+      return (
+        <pre className="tpl-code" dir="ltr">
+          {b.text}
+        </pre>
+      )
+    case 'math':
+      return (
+        <code className="tpl-code" dir="ltr">
+          {b.text}
+        </code>
+      )
+    case 'table':
+      return (
+        <div className="tpl-table" style={{ gridTemplateColumns: `repeat(${b.head.length || 2}, 1fr)` }}>
+          {b.head.map((h, i) => (
+            <b key={i} dir="auto">
+              {h}
+            </b>
+          ))}
+          {Array.from({ length: b.rows * b.head.length }, (_, i) => (
+            <span key={i} />
+          ))}
+        </div>
+      )
+  }
+}
+
+/**
+ * Templates as a page: the choices on one side, a preview of the page the chosen one creates on the other.
+ * Arrow keys move through the list, Enter (or a double click) creates, Escape leaves.
+ */
 export function Templates({ onPick, onClose }: { onPick: (id: string) => void; onClose: () => void }) {
-  const list = getTemplates()
+  const motionOf = useUIMotion()
+  const { empty, templates } = useMemo(() => {
+    const empty: Choice[] = [
+      { id: '', title: t('Blank page'), hint: t('Start from scratch'), icon: <Icon name="file-text" />, action: t('Create page') },
+      { id: DATABASE_TEMPLATE, title: t('Database'), hint: t('Tables, views, forms and dashboards in one database.'), icon: <Icon name="database" />, action: t('Create database') },
+      { id: BOARD_TEMPLATE, title: t('Drawing'), hint: t('A blank whiteboard for sketches and diagrams.'), icon: <Icon name="pencil" />, action: t('Create drawing') },
+    ]
+    const templates: Choice[] = getTemplates().map((tp) => ({
+      id: tp.id,
+      title: tp.title,
+      hint: tp.desc,
+      icon: <Glyph name={TEMPLATE_GLYPH[tp.id] ?? 'page'} size={18} />,
+      action: t('Use template'),
+      pageTitle: tp.pageTitle.replace(/[\s—–-]+$/, ''),
+      blocks: outline(tp.html),
+    }))
+    return { empty, templates }
+  }, [])
+  const all = useMemo(() => [...empty, ...templates], [empty, templates])
+  const [current, setCurrent] = useState(all[0].id)
+  const chosen = all.find((c) => c.id === current) ?? all[0]
+  const list = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
   }, [onClose])
 
-  /** A small black-and-white picture of what the template creates. */
-  const Sample = ({ kind }: { kind: string }) => {
-    const L = (w: number, strong?: boolean) => <i className={strong ? 'h' : ''} style={{ inlineSize: w + '%' }} />
-    if (kind === 'todo')
-      return (
-        <span className="tplv-s">
-          {[70, 55, 80].map((w, i) => (
-            <span key={w} className="row">
-              <u className={i === 1 ? 'on' : ''} />
-              {L(w)}
-            </span>
-          ))}
-        </span>
-      )
-    if (kind === 'table')
-      return (
-        <svg className="tplv-svg" viewBox="0 0 160 90">
-          <rect x="6" y="6" width="148" height="78" rx="6" />
-          <path d="M6 24h148M6 44h148M6 64h148M56 6v78M104 6v78" />
-          <path className="fill" d="M10 12h40v6H10zM60 12h38v6H60zM108 12h38v6h-38z" />
-        </svg>
-      )
-    if (kind === 'draw')
-      return (
-        <svg className="tplv-svg" viewBox="0 0 160 90">
-          <rect x="14" y="14" width="46" height="30" rx="6" />
-          <circle cx="122" cy="58" r="20" />
-          <path d="M60 29h30a12 12 0 0 1 12 12v0M78 70H50" />
-          <path d="m98 37 4 4 4-4" />
-        </svg>
-      )
-    if (kind === 'meeting')
-      return (
-        <span className="tplv-s">
-          {L(50, true)}
-          <span className="row dots">
-            <b />
-            <b />
-            <b />
-          </span>
-          {L(86)}
-          {L(64)}
-          <span className="row">
-            <u />
-            {L(55)}
-          </span>
-        </span>
-      )
-    if (kind === 'exercise')
-      return (
-        <span className="tplv-s">
-          {L(46, true)}
-          <span className="row">
-            <em>1</em>
-            {L(70)}
-          </span>
-          <span className="row">
-            <em>2</em>
-            {L(58)}
-          </span>
-          <span className="row">
-            <em>3</em>
-            {L(76)}
-          </span>
-        </span>
-      )
-    if (kind === 'quote')
-      return (
-        <span className="tplv-s">
-          {L(50, true)}
-          {L(88)}
-          <span className="row quote">{L(60)}</span>
-          {L(72)}
-        </span>
-      )
-    return (
-      <span className="tplv-s">
-        {L(50, true)}
-        {L(90)}
-        {L(78)}
-        <span className="row">
-          <b />
-          {L(60)}
-        </span>
-        <span className="row">
-          <b />
-          {L(46)}
-        </span>
-      </span>
-    )
+  const move = (e: ReactKeyboardEvent) => {
+    const i = all.findIndex((c) => c.id === current)
+    const next = e.key === 'ArrowDown' ? i + 1 : e.key === 'ArrowUp' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? all.length - 1 : -2
+    if (next === -2) return
+    e.preventDefault()
+    const id = all[Math.max(0, Math.min(all.length - 1, next))].id
+    setCurrent(id)
+    list.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`)?.focus()
   }
 
-  const Card = ({ title, hint, icon, onClick, blank, sample }: { title: string; hint: string; icon: React.ReactNode; onClick: () => void; blank?: boolean; sample?: string }) => (
-    <button type="button" className={'tplv-card' + (blank ? ' blank' : '')} onClick={onClick}>
-      <span className="tplv-pv" aria-hidden="true">
-        {blank ? <Icon name="plus" size={26} /> : <Sample kind={sample ?? 'doc'} />}
-      </span>
-      <span className="tplv-bd">
-        <span className="ds-tile ds-tile--md">{icon}</span>
-        <span>
-          <b dir="auto">{title}</b>
-          <small dir="auto">{hint}</small>
-        </span>
+  const option = (c: Choice) => (
+    <button
+      key={c.id}
+      type="button"
+      role="option"
+      data-id={c.id}
+      aria-selected={c.id === current}
+      tabIndex={c.id === current ? 0 : -1}
+      className="tpl-option"
+      onClick={() => setCurrent(c.id)}
+      onDoubleClick={() => onPick(c.id)}
+      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), onPick(c.id))}
+    >
+      <span className="tpl-option-ic">{c.icon}</span>
+      <span className="tpl-option-text">
+        <b dir="auto">{c.title}</b>
+        <small dir="auto">{c.hint}</small>
       </span>
     </button>
   )
 
   return (
-    <div className="tplv">
-      <header className="tplv-head">
-        <h1>{t('Templates')}</h1>
-        <p>{t('Start a new page from a ready-made structure.')}</p>
-      </header>
-      <div className="tplv-grid">
-        <Card blank title={t('Blank page')} hint={t('Start from scratch')} icon={<Icon name="plus" />} onClick={() => onPick('')} />
-        <Card title={t('Database')} hint={t('Tables, views, forms and dashboards in one database.')} icon={<Icon name="database" />} sample="table" onClick={() => onPick(DATABASE_TEMPLATE)} />
-        <Card title={t('Drawing')} hint={t('A blank whiteboard for sketches and diagrams.')} icon={<Icon name="pencil" />} sample="draw" onClick={() => onPick(BOARD_TEMPLATE)} />
-        {list.map((tp) => (
-          <Card key={tp.id} title={tp.title} hint={tp.desc} icon={<Glyph name={TEMPLATE_GLYPH[tp.id] ?? 'page'} size={17} />} sample={SAMPLE[tp.id] ?? 'doc'} onClick={() => onPick(tp.id)} />
-        ))}
+    <Screen width="wide" fill title={t('Templates')} description={t('Pick a starting point. The preview shows what the new page will contain.')}>
+      <div className="tpl">
+        <div ref={list} className="tpl-choices" role="listbox" aria-label={t('Templates')} onKeyDown={move}>
+          <div role="group" aria-labelledby="tpl-empty">
+            <h2 id="tpl-empty" className="tpl-group">
+              {t('Start empty')}
+            </h2>
+            {empty.map(option)}
+          </div>
+          <div role="group" aria-labelledby="tpl-ready">
+            <h2 id="tpl-ready" className="tpl-group">
+              {t('Ready-made pages')}
+            </h2>
+            {templates.map(option)}
+          </div>
+        </div>
+
+        <section className="tpl-preview" aria-label={t('Preview')} aria-live="polite">
+          <header className="tpl-preview-head">
+            <div>
+              <h2 dir="auto">{chosen.title}</h2>
+              <p dir="auto">{chosen.hint}</p>
+            </div>
+            <Button variant="primary" onClick={() => onPick(chosen.id)}>
+              {chosen.action}
+            </Button>
+          </header>
+          <div className="tpl-stage">
+            <motion.div key={chosen.id} className="tpl-paper" initial={motionOf.reduced ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={motionOf.transition}>
+              <Paper choice={chosen} />
+            </motion.div>
+          </div>
+        </section>
       </div>
-    </div>
+    </Screen>
   )
 }

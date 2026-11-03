@@ -34,12 +34,6 @@
 /* tags: a round "+" that turns into a field */
 .bubble.tbl { position: fixed; }
 
-/* status + tags: states fill completely and move like the rest of the set */
-.selbox.status-sel { gap: var(--ds-s2); padding: 0 var(--ds-s2) 0 var(--ds-s3); border-radius: 10px; transition: background 0.25s var(--ease), color 0.2s, border-color 0.25s, box-shadow 0.25s; }
-.selbox.status-sel.has { background: color-mix(in srgb, var(--st) 22%, var(--ds-raised)); border-color: color-mix(in srgb, var(--st) 38%, transparent); color: color-mix(in srgb, var(--st) 78%, var(--ds-text)); font-weight: 700; box-shadow: 0 0 0 3px color-mix(in srgb, var(--st) 12%, transparent); animation: pop-in 0.28s var(--ease); }
-.selbox.status-sel.has .sel-chev { background: color-mix(in srgb, var(--st) 24%, transparent); color: inherit; }
-.selbox.status-sel.has .sel-dot { box-shadow: 0 0 8px var(--st); }
-.selbox.status-sel .sel-chev { width: 18px; height: 18px; }
 .tag-chip { animation: pop-in 0.28s var(--spring); transition: background 0.2s, transform 0.2s var(--ease); }
 .tag-chip:hover { transform: translateY(-1px); }
 

@@ -93,8 +93,6 @@
 .tag-chip.on { background: var(--ds-accent); color: var(--ds-accent-ink); box-shadow: none; }
 .tag-chip button { border: 0; background: transparent; color: inherit; opacity: 0.55; cursor: var(--cursor-hand, pointer); padding: 0 0 0 2px; font-size: 15px; line-height: 1; }
 .tag-chip button:hover { opacity: 1; }
-.status-sel, .selbox.status-sel { height: var(--ds-control-sm); min-height: var(--ds-control-sm); padding: 0 var(--ds-s3); border-radius: 10px; }
-.selbox.status-sel.has { border-color: transparent; background: color-mix(in srgb, var(--st) 15%, var(--ds-raised)); color: color-mix(in srgb, var(--st) 70%, var(--ds-text)); font-weight: 600; }
 
 /* ───────── page side panel: slides in opposite the sidebar; design-system rows, the outline marks where you are ───────── */
 .page-drawer { position: absolute; z-index: 15; inset-block: 0; inset-inline-end: 0; inline-size: 288px; display: flex; flex-direction: column; padding: 0 var(--ds-s3); border-inline-start: 1px solid var(--ds-line); background: var(--ds-bg); transform: translateX(100%); visibility: hidden; transition: transform var(--ds-slow) var(--ds-ease), visibility 0s var(--ds-slow); }

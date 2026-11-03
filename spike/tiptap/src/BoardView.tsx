@@ -8,7 +8,7 @@ import type { Page } from './repo'
 import type { SaveState } from './PageView'
 import { loadScene, saveScene, type SceneData } from './editor/excalidraw'
 import { t } from './i18n'
-import * as Ic from './icons'
+import { Icon, IconButton } from './design-system'
 import { registerUpdateSave } from './updateSave'
 
 const Canvas = lazy(() => import('./DrawingCanvas')) // the library loads only when a board is opened
@@ -17,7 +17,7 @@ const SAVE_DELAY = 1500
 const signature = (elements: readonly ExcalidrawElement[]) => elements.map((e) => e.id + ':' + e.version).join(',')
 const boardDoc = (ids: { scene: string; preview: string }) => ({ type: 'doc', content: [{ type: 'drawing', attrs: ids }] })
 
-export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Page; onSave: (s: SaveState) => void; onMeta: () => void; readOnly?: boolean }) {
+export function BoardView({ page, onSave, onMeta, onBack, readOnly = false }: { page: Page; onSave: (s: SaveState) => void; onMeta: () => void; onBack?: () => void; readOnly?: boolean }) {
   const [initial, setInitial] = useState<SceneData | null | undefined>(undefined) // undefined = still loading
   const latest = useRef<SceneData | null>(null) // newest canvas state; read on save so the Excalidraw API is never touched after unmount
   const saved = useRef('') // signature of what is stored
@@ -117,6 +117,11 @@ export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Pa
   return (
     <div ref={root} className={'board' + (full ? ' full' : '')}>
       <div className="board-head">
+        {onBack && (
+          <IconButton label={t('Back to drawings')} onClick={onBack}>
+            <Icon name="arrow-left" className="ds-flip" />
+          </IconButton>
+        )}
         <input
           className="board-title"
           readOnly={readOnly}
@@ -125,9 +130,9 @@ export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Pa
           defaultValue={page.title}
           onChange={(e) => (repo.update(page.id, { title: e.target.value }), onMeta())}
         />
-        <button className="icon-btn board-full" title={full ? t('Exit full screen') : t('Full screen')} aria-pressed={full} onClick={toggleFull}>
-          {full ? <Ic.Shrink /> : <Ic.Enlarge />}
-        </button>
+        <IconButton label={full ? t('Exit full screen') : t('Full screen')} pressed={full} onClick={toggleFull}>
+          <Icon name={full ? 'minimize' : 'maximize'} />
+        </IconButton>
       </div>
       <div className="board-stage" dir="ltr">
         {initial === undefined ? (

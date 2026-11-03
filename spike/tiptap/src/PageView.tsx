@@ -19,7 +19,8 @@ import { ImageBubble } from './ImageBubble'
 import { extensions } from './editor/extensions'
 import { repo } from './store'
 import type { Page, PageStatus } from './repo'
-import { STATUS, addTag, allTags } from './meta'
+import { addTag, allTags } from './meta'
+import { PageStatusChip } from './PageStatusChip'
 import { History } from './History'
 import { normalizeFa } from './normalize'
 import { getTemplates, type Template } from './templates'
@@ -491,10 +492,6 @@ export function PageView({
     repo.update(page.id, { status: v })
     onMeta()
   }
-  const statusItems: MenuItem[] = [
-    { label: 'No status', checked: !status, onSelect: () => setPageStatus(undefined) },
-    ...(Object.keys(STATUS) as PageStatus[]).map((s) => ({ label: STATUS[s].label, swatch: STATUS[s].color, checked: status === s, onSelect: () => setPageStatus(s) })),
-  ]
   const setPageIcon = (next: string | undefined) => {
     repo.update(page.id, { icon: next })
     setIcon(next)
@@ -722,18 +719,7 @@ export function PageView({
       {/* the page's properties, one row each */}
       <PropertyList className="pg-props" label={t('Page properties')}>
         <PropertyRow icon={<Icon name="flag" size={16} />} label={t('Status')}>
-          <ChipButton
-            empty={!status}
-            aria-haspopup="menu"
-            aria-label={t('Status') + ': ' + t(status ? STATUS[status].label : 'No status')}
-            disabled={readOnly}
-            icon={status && <i className="ds-menu-dot" style={{ background: STATUS[status].color }} />}
-            onClick={(e) => openMenu(statusItems, e.currentTarget)}
-            onContextMenu={(e) => (e.preventDefault(), !readOnly && openMenu(statusItems, e))}
-          >
-            <span>{t(status ? STATUS[status].label : 'No status')}</span>
-            <Icon name="chevron-down" size={14} />
-          </ChipButton>
+          <PageStatusChip status={status} onChange={setPageStatus} disabled={readOnly} />
         </PropertyRow>
         <PropertyRow icon={<Icon name="tag" size={16} />} label={t('Tags')}>
           {tags.map((tag) => (

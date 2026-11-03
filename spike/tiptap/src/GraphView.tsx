@@ -1,14 +1,12 @@
 import { PageIcon } from './PageIcon'
-import { dirOf, Button, IconButton } from './design-system'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { dirOf, Button, ChipButton, Icon, IconButton, SearchField, Stats, Tag } from './design-system'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { getDatabase } from './database/runtime'
 import { useDatabaseEdges, EdgeKindToggles, type ExtraKinds } from './database/ui/GraphEdges'
 import { repo } from './store'
 import { layoutAsync } from './graphLayout'
-import { toneOf } from './PageIcon'
 import { normalizeFa } from './normalize'
-import * as Ic from './icons'
-import { t } from './i18n'
+import { t, locale } from './i18n'
 
 const MAX_ALL = 3000 // nodes drawn in the whole-vault view (most connected first)
 const LABEL_ZOOM = 1.25 // above this zoom (1 = fitted) every visible label shows, up to MAX_LABELS
@@ -22,7 +20,6 @@ interface N {
   x: number
   y: number
   deg: number
-  tone: string
 }
 
 interface Scene {
@@ -45,7 +42,7 @@ const NO_NODES: N[] = []
 const NO_SET = new Set<number>()
 const LINE_BUDGET = 1_500_000 // px of link (|dx| + |dy| summed) drawn per full repaint before evenly spread links start being skipped; the repaint cost grows with it
 let quiet = new Float32Array(0) // scratch for the links of one repaint
-const VARS = ['--ds-accent', '--ds-line-strong', '--ds-text', '--ds-sunk'] as const
+const VARS = ['--ds-accent', '--ds-line-strong', '--ds-text', '--ds-text-2', '--ds-text-3', '--ds-bg'] as const
 let palette: { key: string; at: number; c: Record<(typeof VARS)[number], string>; font: string } | null = null
 
 /** Theme colours as plain rgb() strings (the canvas does not understand light-dark() or color-mix() that the stylesheet uses) and the font; looked up at most twice a second, not on every frame. */
@@ -75,7 +72,7 @@ function labelSprite(label: string, bold: boolean, text: string, halo: string, f
   const key = `${bold ? 1 : 0}|${dpr}|${text}|${halo}|${label}`
   const hit = sprites.get(key)
   if (hit) return hit
-  const css = `${bold ? 700 : 500} 12.5px ${font}`
+  const css = `${bold ? 600 : 500} 12px ${font}`
   measure ??= document.createElement('canvas').getContext('2d')!
   measure.font = css
   const w = Math.ceil(measure.measureText(label).width) + 10
@@ -99,7 +96,8 @@ function labelSprite(label: string, bold: boolean, text: string, halo: string, f
   return sp
 }
 
-const baseRadius = (deg: number) => 5 + Math.min(deg, 10) * 0.9
+/** A page's dot grows with its links, quickly at first and then slowly, so hubs stand out without swallowing their neighbours. */
+const baseRadius = (deg: number) => 3.5 + Math.sqrt(Math.min(deg, 40)) * 1.6
 /** Dots shrink when pages are packed close on screen and grow as you zoom in, so a big vault does not turn into one blob. */
 const radiusScale = (s: Scene, k: number) => clamp((s.gap * k) / 26, 0.3, 1.25)
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v))
@@ -124,6 +122,10 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
   const links = useMemo(() => repo.linkGraph(), [])
   const g = useMemo(() => (extra.length ? { nodes: links.nodes, edges: [...links.edges, ...extra] as [string, string][] } : links), [links, extra])
   const [scope, setScope] = useState<'local' | 'all'>(currentId && g.edges.some(([a, b]) => a === currentId || b === currentId) ? 'local' : 'all')
+  // the page "Around this page" is centred on: the open page at first, any page you explore from afterwards
+  const [root, setRoot] = useState<string | null>(currentId ?? null)
+  const [depth, setDepth] = useState<1 | 2 | 3>(2)
+  const [tag, setTag] = useState<string | null>(null) // pages with this tag stay lit, the rest dim
   const [hover, setHover] = useState<string | null>(null)
   const [sel, setSel] = useState<string | null>(null) // the page picked on the map: it stays lit and gets the card on the side
   const [query, setQuery] = useState('')
@@ -143,11 +145,20 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
   // The page under the pointer, kept outside React state so hovering repaints at once (null = use the state, e.g. a hover in the side list).
   const hoverRef = useRef<{ idx: number; near: Set<number> } | null>(null)
 
+  // Escape lets go of the picked page first, then leaves; F fits, + and − zoom (physical keys, any keyboard language)
+  const keys = useRef<{ fit: () => void; zoom: (f: number) => void }>({ fit: () => {}, zoom: () => {} })
   useEffect(() => {
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') return sel ? setSel(null) : onClose()
+      const target = e.target as HTMLElement
+      if (e.ctrlKey || e.metaKey || e.altKey || target.isContentEditable || target.matches('input, textarea, select')) return
+      if (e.code === 'KeyF') keys.current.fit()
+      else if (e.code === 'Equal' || e.code === 'NumpadAdd') keys.current.zoom(1.3)
+      else if (e.code === 'Minus' || e.code === 'NumpadSubtract') keys.current.zoom(1 / 1.3)
+    }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [onClose])
+  }, [onClose, sel])
 
   // which pages are drawn
   const picked = useMemo(() => {
@@ -160,10 +171,11 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
       ;(adj.get(b) ?? adj.set(b, new Set()).get(b)!).add(a)
     }
     let keep: Set<string>
-    if (scope === 'local' && currentId) {
-      keep = new Set([currentId])
-      let frontier = [currentId]
-      for (let hop = 0; hop < 2; hop++) {
+    const from = root ?? currentId
+    if (scope === 'local' && from) {
+      keep = new Set([from])
+      let frontier = [from]
+      for (let hop = 0; hop < depth; hop++) {
         const next: string[] = []
         for (const id of frontier) for (const n of adj.get(id) ?? []) if (!keep.has(n)) (keep.add(n), next.push(n))
         frontier = next
@@ -172,8 +184,8 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
       const linked = g.nodes.filter((p) => deg.has(p.id)).sort((a, b) => deg.get(b.id)! - deg.get(a.id)!)
       keep = new Set(linked.slice(0, MAX_ALL).map((p) => p.id))
     }
-    return { pages: g.nodes.filter((p) => keep.has(p.id)), edges: g.edges.filter(([a, b]) => keep.has(a) && keep.has(b)), deg }
-  }, [g, scope, currentId])
+    return { pages: g.nodes.filter((p) => keep.has(p.id)), edges: g.edges.filter(([a, b]) => keep.has(a) && keep.has(b)), deg, unlinked: g.nodes.length - deg.size }
+  }, [g, scope, currentId, root, depth])
 
   // lay them out (off the main thread), then fit the picture to the stage
   useEffect(() => {
@@ -189,7 +201,7 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
     idx.forEach(([a, b], i) => ((pairs[i * 2] = a), (pairs[i * 2 + 1] = b)))
     void layoutAsync(pages.length, pairs).then((l) => {
       if (!live) return
-      const nodes = pages.map((p, i): N => ({ id: p.id, title: p.title || t('Untitled'), x: l.xy[i * 2], y: l.xy[i * 2 + 1], deg: deg.get(p.id) ?? 0, tone: toneOf(p.id) }))
+      const nodes = pages.map((p, i): N => ({ id: p.id, title: p.title || t('Untitled'), x: l.xy[i * 2], y: l.xy[i * 2 + 1], deg: deg.get(p.id) ?? 0 }))
       const off = new Int32Array(pages.length + 1)
       for (let e = 0; e < pairs.length; e++) off[pairs[e] + 1]++
       for (let i = 0; i < pages.length; i++) off[i + 1] += off[i]
@@ -206,15 +218,27 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
 
   const nodes = scene?.nodes ?? NO_NODES
   const q = normalizeFa(query.trim())
-  const matches = useMemo(() => new Set(q ? nodes.flatMap((n, i) => (normalizeFa(n.title).includes(q) ? [i] : [])) : []), [nodes, q])
+  // the pages that stay lit: those whose title has the search words and, with a tag picked, carry that tag
+  const tagged = useMemo(() => (tag ? new Set(nodes.flatMap((n, i) => ((repo.get(n.id)?.tags ?? []).some((x) => normalizeFa(x) === normalizeFa(tag)) ? [i] : []))) : null), [nodes, tag])
+  const matches = useMemo(
+    () => new Set(q || tagged ? nodes.flatMap((n, i) => ((!q || normalizeFa(n.title).includes(q)) && (!tagged || tagged.has(i)) ? [i] : [])) : []),
+    [nodes, q, tagged],
+  )
+  const filtering = q || (tag ? '#' + tag : '')
   const focusIdx = hover != null || sel != null ? (scene?.byId.get((hover ?? sel)!) ?? -1) : -1
+  // neighbours straight from the adjacency index, not a scan of every link
   const near = useMemo(() => {
     const s = new Set<number>()
     if (!scene || focusIdx < 0) return s
-    const e = scene.edges
-    for (let i = 0; i < e.length; i += 2) (e[i] === focusIdx && s.add(e[i + 1]), e[i + 1] === focusIdx && s.add(e[i]))
+    for (let k = scene.adj.off[focusIdx]; k < scene.adj.off[focusIdx + 1]; k++) s.add(scene.adj.nb[k])
     return s
   }, [scene, focusIdx])
+  // tags of the drawn pages, most used first: the chips that filter the map
+  const tags = useMemo(() => {
+    const count = new Map<string, number>()
+    for (const n of nodes) for (const x of repo.get(n.id)?.tags ?? []) count.set(x, (count.get(x) ?? 0) + 1)
+    return [...count].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([x]) => x)
+  }, [nodes])
   const top = useMemo(() => [...nodes].sort((a, b) => b.deg - a.deg).slice(0, 8), [nodes])
   const topIdx = useMemo(() => new Set(top.slice(0, 5).map((n) => scene?.byId.get(n.id) ?? -1)), [top, scene])
   const curIdx = currentId && scene ? (scene.byId.get(currentId) ?? -1) : -1
@@ -222,16 +246,23 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
   const selIdx = sel != null ? (scene?.byId.get(sel) ?? -1) : -1
   const selNode = selIdx >= 0 ? nodes[selIdx] : undefined
   const selPage = selNode ? repo.get(selNode.id) : undefined
+  // the picked page's links in both directions: the pages it links to, and the pages that link to it
   const conn = useMemo(() => {
-    if (!scene || selIdx < 0) return []
-    const out: N[] = []
-    for (let k = scene.adj.off[selIdx]; k < scene.adj.off[selIdx + 1]; k++) out.push(scene.nodes[scene.adj.nb[k]])
-    return out
+    const to: N[] = []
+    const from: N[] = []
+    if (!scene || selIdx < 0) return { to, from }
+    const e = scene.edges
+    for (let i = 0; i < e.length; i += 2) {
+      if (e[i] === selIdx && e[i + 1] !== selIdx) to.push(scene.nodes[e[i + 1]])
+      else if (e[i + 1] === selIdx) from.push(scene.nodes[e[i]])
+    }
+    const byTitle = (a: N, b: N) => a.title.localeCompare(b.title)
+    return { to: to.sort(byTitle), from: from.sort(byTitle) }
   }, [scene, selIdx])
 
   // everything the painter needs, so it can run from animation frames without React
-  const paintInput = useRef({ scene, focusIdx, near, matches, topIdx, curIdx, q })
-  paintInput.current = { scene, focusIdx, near, matches, topIdx, curIdx, q }
+  const paintInput = useRef({ scene, focusIdx, near, matches, topIdx, curIdx, q: filtering })
+  paintInput.current = { scene, focusIdx, near, matches, topIdx, curIdx, q: filtering }
 
   type Input = typeof paintInput.current
   // The map drawn once at rest, with a margin around the screen (so panning has something to show), and the view it was drawn for.
@@ -251,10 +282,13 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     if (!overlay) ctx.clearRect(0, 0, W, H)
     const pal = colors(cv.parentElement!)
+    // one accent for what you are looking at (the open page, the picked one, its links, what search or a tag lights); the rest is ink
     const accent = pal.c['--ds-accent']
     const line = pal.c['--ds-line-strong']
     const text = pal.c['--ds-text']
-    const halo = pal.c['--ds-sunk']
+    const ink = pal.c['--ds-text-2']
+    const quietInk = pal.c['--ds-text-3']
+    const halo = pal.c['--ds-bg'] // the stage's own colour: a ring of it around dots and labels cuts the links that pass under them
     const v = frame?.v ?? view.current
     const z = v.k / base.current
     const grow = radiusScale(scene, v.k)
@@ -345,32 +379,55 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
       drawn += Math.abs(quiet[o + 2] - quiet[o]) + Math.abs(quiet[o + 3] - quiet[o + 1])
       nq++
     }
+    // links are straight hairlines: calmer than curves, and the cheapest thing to rasterise
     const stride = drawn > LINE_BUDGET ? Math.ceil(drawn / LINE_BUDGET) : 1
-    const curved = !moving && !straight
     ctx.beginPath()
     for (let i = 0; i < nq; i += stride) {
       const o = i * 5
       ctx.moveTo(quiet[o], quiet[o + 1])
-      if (curved && quiet[o + 4])
-        ctx.quadraticCurveTo((quiet[o] + quiet[o + 2]) / 2 - (quiet[o + 3] - quiet[o + 1]) * 0.12, (quiet[o + 1] + quiet[o + 3]) / 2 + (quiet[o + 2] - quiet[o]) * 0.12, quiet[o + 2], quiet[o + 3])
-      else ctx.lineTo(quiet[o + 2], quiet[o + 3])
+      ctx.lineTo(quiet[o + 2], quiet[o + 3])
     }
     ctx.strokeStyle = line
-    ctx.lineWidth = 1.2
-    ctx.lineCap = straight ? 'butt' : 'round'
-    ctx.globalAlpha = dimming ? 0.15 : 0.8
+    ctx.lineWidth = straight ? 0.8 : 1
+    ctx.lineCap = 'butt'
+    ctx.globalAlpha = dimming ? 0.12 : 0.9
     ctx.stroke()
     if (hot.length) {
       ctx.beginPath()
       for (const e of hot) {
         const a = nodes[edges[e]]
         const b = nodes[edges[e + 1]]
-        link(sx(a), sy(a), sx(b), sy(b), true)
+        link(sx(a), sy(a), sx(b), sy(b), false)
       }
       ctx.strokeStyle = accent
-      ctx.lineWidth = focusIdx >= 0 ? 2.2 : 1.6
+      ctx.lineWidth = 1.5
       ctx.globalAlpha = 1
       ctx.stroke()
+      // around the picked page each link shows its direction: a small arrowhead where it arrives
+      if (focusIdx >= 0) {
+        ctx.beginPath()
+        for (const e of hot) {
+          const a = nodes[edges[e]]
+          const b = nodes[edges[e + 1]]
+          const ax = sx(a),
+            ay = sy(a),
+            bx = sx(b),
+            by = sy(b)
+          const len = Math.hypot(bx - ax, by - ay)
+          if (len < 24 || !inView(bx, by)) continue
+          const ux = (bx - ax) / len,
+            uy = (by - ay) / len
+          const tip = baseRadius(b.deg) * grow + 3
+          const px = bx - ux * tip,
+            py = by - uy * tip
+          ctx.moveTo(px, py)
+          ctx.lineTo(px - ux * 7 - uy * 3.5, py - uy * 7 + ux * 3.5)
+          ctx.lineTo(px - ux * 7 + uy * 3.5, py - uy * 7 - ux * 3.5)
+          ctx.closePath()
+        }
+        ctx.fillStyle = accent
+        ctx.fill()
+      }
     }
 
     // nodes
@@ -382,32 +439,27 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
       if (!inView(x, y)) continue
       if (overlay && i !== focusIdx && !near.has(i)) continue
       const cur = i === curIdx
+      const focus = i === focusIdx
       const r = baseRadius(n.deg) * grow
       const bright = lit(i)
-      ctx.globalAlpha = dimming && !bright ? 0.2 : 1
-      if (cur || matches.has(i) || i === focusIdx) {
-        const glow = ctx.createRadialGradient(x, y, r * 0.5, x, y, r + 14)
-        glow.addColorStop(0, (cur ? accent : n.tone) + (cur ? '' : '99'))
-        glow.addColorStop(1, 'transparent')
-        ctx.fillStyle = glow
-        ctx.globalAlpha = 0.45
-        ctx.beginPath()
-        ctx.arc(x, y, r + 14, 0, 6.2832)
-        ctx.fill()
-        ctx.globalAlpha = 1
-      }
+      ctx.globalAlpha = dimming && !bright ? 0.18 : 1
+      // a solid dot with a ring of the stage colour, so the links that end under it stop cleanly at its edge
+      ctx.beginPath()
+      ctx.arc(x, y, r + 2, 0, 6.2832)
+      ctx.fillStyle = halo
+      ctx.fill()
       ctx.beginPath()
       ctx.arc(x, y, r, 0, 6.2832)
-      ctx.fillStyle = n.tone + '33'
+      // the accent marks what you are looking at; neighbours of it are full ink, hubs a shade darker than the rest
+      ctx.fillStyle = cur || focus || (matches.has(i) && dimming) ? accent : near.has(i) ? text : topIdx.has(i) ? ink : quietInk
       ctx.fill()
-      ctx.lineWidth = cur ? 3 : 2
-      ctx.strokeStyle = cur ? accent : n.tone
-      ctx.stroke()
-      if (r > 3.5 && !moving) {
+      // the picked page and the open page carry a thin target ring, so they read at a glance without a glow
+      if ((focus || cur) && !moving) {
         ctx.beginPath()
-        ctx.arc(x, y, Math.max(2.5, r * 0.42), 0, 6.2832)
-        ctx.fillStyle = cur ? accent : n.tone
-        ctx.fill()
+        ctx.arc(x, y, r + 5, 0, 6.2832)
+        ctx.strokeStyle = accent
+        ctx.lineWidth = 1.5
+        ctx.stroke()
       }
       if (cur || matches.has(i) || i === focusIdx || near.has(i) || topIdx.has(i)) labels.push(i)
       else if (z >= LABEL_ZOOM && !moving && labels.length < MAX_LABELS) labels.push(i)
@@ -417,10 +469,11 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
     for (const i of labels) {
       const n = nodes[i]
       const bold = i === curIdx || i === focusIdx
-      ctx.globalAlpha = dimming && !lit(i) ? 0.2 : 1
-      const label = n.title.length > 24 ? n.title.slice(0, 23) + '…' : n.title
-      const sp = labelSprite(label, bold, text, halo, pal.font, dpr)
-      ctx.drawImage(sp.cv, sx(n) - sp.w / 2, sy(n) + baseRadius(n.deg) * grow + 15 - LABEL_BASE, sp.w, sp.h)
+      ctx.globalAlpha = dimming && !lit(i) ? 0.18 : 1
+      const label = n.title.length > 28 ? n.title.slice(0, 27) + '…' : n.title
+      // the picked, open and hub pages in full ink, the rest a step quieter; each label is cut out of the links under it
+      const sp = labelSprite(label, bold, bold || topIdx.has(i) || near.has(i) ? text : ink, halo, pal.font, dpr)
+      ctx.drawImage(sp.cv, sx(n) - sp.w / 2, sy(n) + baseRadius(n.deg) * grow + 17 - LABEL_BASE, sp.w, sp.h)
     }
     ctx.globalAlpha = 1
   }, [])
@@ -616,7 +669,7 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
   }, [redraw])
 
   useEffect(fit, [scene, fit])
-  useEffect(redraw, [redraw, scene, focusIdx, near, matches, curIdx])
+  useEffect(redraw, [redraw, scene, focusIdx, near, matches, curIdx, filtering])
 
   /** Zoom keeping the screen point (cx, cy) fixed. */
   const zoomAt = useCallback(
@@ -628,6 +681,20 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
     },
     [moveTo],
   )
+  keys.current = { fit: () => fit(true), zoom: (f) => zoomAt(f) }
+
+  /** Picks a page and glides the map so it sits in the middle, close enough to read its neighbours. */
+  const goTo = (id: string) => {
+    setSel(id)
+    const i = scene?.byId.get(id) ?? -1
+    if (i < 0 || !scene) return
+    const n = scene.nodes[i]
+    const k = Math.max(target.current.k, base.current * 1.8)
+    moveTo({ k, x: size.current.w / 2 - n.x * k, y: size.current.h / 2 - n.y * k })
+    moved.current = true
+  }
+  /** Redraws the map around a page, `depth` links out. */
+  const exploreFrom = (id: string) => (setRoot(id), setScope('local'), setSel(id))
 
   // the wheel listener is native so it can stop the page from scrolling
   useEffect(() => {
@@ -659,21 +726,52 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
     return best
   }
 
+  const rootPage = (root ?? currentId) ? repo.get((root ?? currentId)!) : undefined
+  const found = q ? [...matches].slice(0, 6).map((i) => nodes[i]) : []
+  const num = (n: number) => n.toLocaleString(locale())
+  /** One page in a side list: its colour, its title; hovering lights it on the map, clicking takes you there. */
+  const row = (n: N, trailing?: ReactNode) => (
+    <button
+      key={n.id}
+      type="button"
+      className="gr-row"
+      data-on={n.id === hover || undefined}
+      dir={dirOf(n.title)}
+      onPointerEnter={() => ((hoverRef.current = null), setHover(n.id))}
+      onPointerLeave={() => ((hoverRef.current = null), setHover(null))}
+      onFocus={() => ((hoverRef.current = null), setHover(n.id))}
+      onBlur={() => ((hoverRef.current = null), setHover(null))}
+      onClick={() => goTo(n.id)}
+    >
+      <span className="gr-row-ic" aria-hidden="true">
+        {(() => {
+          const page = repo.get(n.id)
+          return page ? <PageIcon page={page} /> : <Icon name="file-text" size={14} />
+        })()}
+      </span>
+      <span dir="auto">{n.title}</span>
+      {trailing}
+    </button>
+  )
+
   return (
-    <div className="gv gv-page" role="region" aria-label={t('Graph view')}>
+    <div className="gr" role="region" aria-label={t('Graph')}>
       {picked.pages.length === 0 ? (
-        <div className="gv-empty">
-          <span className="fc2-art">
-            <Ic.Link size={34} />
-          </span>
-          <h3>{t('No links yet')}</h3>
-          <p>{t('No links between pages yet. Link pages with [[ or @ to see them here.')}</p>
+        <div className="gr-none">
+          <div className="ds-empty ds-empty--framed">
+            <Icon name="graph" />
+            <b>{t('No links yet')}</b>
+            <span>{t('Link pages with [[ or @ and they appear here, joined by their links.')}</span>
+          </div>
         </div>
       ) : (
-        <div className="gv-stage" ref={stage}>
+        <div className="gr-stage" ref={stage}>
           <canvas
             ref={canvas}
-            className={'gv-svg' + (drag.current?.moved ? ' grabbing' : '')}
+            className="gr-canvas"
+            data-grabbing={drag.current?.moved || undefined}
+            aria-label={t('Map of {n} pages and {m} links', { n: num(picked.pages.length), m: num(picked.edges.length) })}
+            role="img"
             style={hovered ? { cursor: 'var(--cursor-hand, pointer)' } : undefined}
             onPointerDown={(e) => {
               try {
@@ -718,114 +816,139 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
             onDoubleClick={() => fit(true)}
           />
           {!scene && (
-            <div className="gv-empty" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-              <small>{t('Arranging the map…')}</small>
+            <div className="gr-loading" role="status">
+              {t('Arranging the map…')}
             </div>
           )}
 
-          <div className="gpanel">
-            <label className="gv-search">
-              <Ic.Search size={15} />
-              <input placeholder={t('Find a page…')} value={query} dir="auto" onChange={(e) => setQuery(e.target.value)} />
-              {q && <span className="gv-hits">{matches.size}</span>}
-            </label>
-            <div className="ds-seg gv-scope">
-              {currentId && (
-                <button aria-pressed={scope === 'local'} onClick={() => setScope('local')}>
-                  {t('Around this page')}
-                </button>
-              )}
-              <button aria-pressed={scope === 'all'} onClick={() => setScope('all')}>
-                {t('Whole vault')}
+          {/* find and narrow: search, what is drawn, tags */}
+          <div className="gr-panel gr-find">
+            <SearchField
+              value={query}
+              onChange={setQuery}
+              onEnter={() => found[0] && goTo(found[0].id)}
+              label={t('Find a page')}
+              placeholder={t('Find a page…')}
+              clearLabel={t('Clear')}
+              className="gr-search"
+            />
+            {q && (
+              <div className="gr-found" role="list" aria-label={t('{n} pages found', { n: num(matches.size) })}>
+                {found.length ? found.map((n) => row(n)) : <p className="gr-note">{t('No page with that name is on the map')}</p>}
+                {matches.size > found.length && <p className="gr-note">{t('{n} more lit on the map', { n: num(matches.size - found.length) })}</p>}
+              </div>
+            )}
+            <div className="ds-seg gr-scope" role="group" aria-label={t('Show')}>
+              <button type="button" aria-pressed={scope === 'all'} onClick={() => setScope('all')}>
+                {t('Whole workspace')}
+              </button>
+              <button type="button" aria-pressed={scope === 'local'} disabled={!rootPage} onClick={() => setScope('local')}>
+                {t('Around a page')}
               </button>
             </div>
+            {scope === 'local' && rootPage && (
+              <div className="gr-around">
+                <span className="gr-around-page" dir="auto">
+                  {rootPage.title || t('Untitled')}
+                </span>
+                <div className="ds-seg" role="group" aria-label={t('Links away')}>
+                  {([1, 2, 3] as const).map((d) => (
+                    <button key={d} type="button" aria-pressed={depth === d} title={t('{n} links away', { n: d })} onClick={() => setDepth(d)}>
+                      {num(d)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {tags.length > 0 && (
+              <div className="gr-tags" role="group" aria-label={t('Light up a tag')}>
+                {tags.map((x) => (
+                  <ChipButton key={x} aria-pressed={tag === x} icon={<Icon name="hash" size={12} />} onClick={() => setTag(tag === x ? null : x)}>
+                    <span dir="auto">{x}</span>
+                  </ChipButton>
+                ))}
+              </div>
+            )}
             <EdgeKindToggles kinds={kinds} onChange={setKinds} />
-            <small className="ds-muted">{t('Size shows how many links a page has.')}</small>
           </div>
 
-          <aside className="gsel">
+          {/* the picked page and its links both ways; with nothing picked, the most connected pages */}
+          <aside className="gr-panel gr-card" aria-label={selNode ? selNode.title : t('Most connected')}>
             {selNode ? (
               <>
-                <div className="gsel-head" dir={dirOf(selNode.title)}>
-                  <span className="ds-tile ds-tile--lg">{selPage ? <PageIcon page={selPage} /> : <Ic.Link size={20} />}</span>
-                  <span>
+                <div className="gr-card-head" dir={dirOf(selNode.title)}>
+                  <span className="gr-card-ic">{selPage ? <PageIcon page={selPage} /> : <Icon name="file-text" />}</span>
+                  <span className="gr-card-title">
                     <b dir="auto">{selNode.title}</b>
-                    <small className="ds-muted">{t('{n} links', { n: selNode.deg })}</small>
+                    <small>{t(selNode.deg === 1 ? '1 link' : '{n} links', { n: num(selNode.deg) })}</small>
                   </span>
-                  <IconButton type="button" label={t('Close')} onClick={() => setSel(null)}>
-                    <Ic.Close size={14} />
+                  <IconButton label={t('Close')} onClick={() => setSel(null)}>
+                    <Icon name="x" size={16} />
                   </IconButton>
                 </div>
                 {selPage?.tags?.length ? (
-                  <div className="gsel-tags">
-                    {selPage.tags.map((g) => (
-                      <span key={g} className="tag-chip static">
-                        {g}
-                      </span>
+                  <div className="gr-card-tags">
+                    {selPage.tags.map((x) => (
+                      <Tag key={x} label={x} />
                     ))}
                   </div>
                 ) : null}
-                <div className="gsel-sec">
-                  {t('Connections')} · {conn.length}
+                <div className="gr-card-acts">
+                  <Button variant="primary" size="sm" icon={<Icon name="arrow-up-right" size={15} className="ds-flip" />} onClick={() => onOpen(selNode.id)}>
+                    {t('Open page')}
+                  </Button>
+                  <Button size="sm" icon={<Icon name="graph" size={15} />} onClick={() => exploreFrom(selNode.id)} disabled={scope === 'local' && root === selNode.id}>
+                    {t('Explore from here')}
+                  </Button>
                 </div>
-                <div className="gsel-list">
-                  {conn.map((n) => (
-                    <button key={n.id} type="button" dir={dirOf(n.title)} className="gsel-row" onClick={() => setSel(n.id)}>
-                      <i style={{ background: n.tone }} />
-                      <span dir="auto">{n.title}</span>
-                    </button>
-                  ))}
+                <div className="gr-lists">
+                  <section aria-labelledby="gr-to">
+                    <h3 id="gr-to">
+                      {t('Links to')} <span>{num(conn.to.length)}</span>
+                    </h3>
+                    {conn.to.length ? conn.to.map((n) => row(n)) : <p className="gr-note">{t('This page links to no other page')}</p>}
+                  </section>
+                  <section aria-labelledby="gr-from">
+                    <h3 id="gr-from">
+                      {t('Linked from')} <span>{num(conn.from.length)}</span>
+                    </h3>
+                    {conn.from.length ? conn.from.map((n) => row(n)) : <p className="gr-note">{t('No page links here yet')}</p>}
+                  </section>
                 </div>
-                <Button variant="primary" type="button" onClick={() => onOpen(selNode.id)}>
-                  {t('Open page')}
-                </Button>
               </>
             ) : (
               <>
-                <div className="gsel-sec">{t('Most connected')}</div>
-                <div className="gsel-list">
-                  {top.map((n) => (
-                    <button
-                      key={n.id}
-                      type="button"
-                      className={'gsel-row' + (n.id === hover ? ' on' : '')}
-                      onPointerEnter={() => ((hoverRef.current = null), setHover(n.id))}
-                      onPointerLeave={() => ((hoverRef.current = null), setHover(null))}
-                      onClick={() => setSel(n.id)}
-                    >
-                      <i style={{ background: n.tone }} />
-                      <span dir="auto">{n.title}</span>
-                      <em>{n.deg}</em>
-                    </button>
-                  ))}
-                </div>
+                <h3 className="gr-card-sec">{t('Most connected')}</h3>
+                <div className="gr-lists">{top.map((n) => row(n, <em>{num(n.deg)}</em>))}</div>
+                <p className="gr-note">{t('Pick a page on the map to see what it links to and what links to it.')}</p>
               </>
             )}
           </aside>
 
-          <div className="gzoom">
-            <button title={t('Zoom in')} onClick={() => zoomAt(1.3)}>
-              <Ic.Plus size={16} />
-            </button>
-            <span className="gv-pct">{pct}%</span>
-            <button title={t('Zoom out')} onClick={() => zoomAt(1 / 1.3)}>
-              <span className="gv-minus" />
-            </button>
-            <button title={t('Fit to screen  (double-click)')} onClick={() => fit(true)}>
-              <Ic.SelectAll size={16} />
-            </button>
+          <div className="gr-panel gr-zoom">
+            <IconButton label={t('Zoom out') + '  −'} onClick={() => zoomAt(1 / 1.3)}>
+              <Icon name="minus" size={16} />
+            </IconButton>
+            <span className="gr-pct" aria-live="polite">
+              {num(pct)}%
+            </span>
+            <IconButton label={t('Zoom in') + '  +'} onClick={() => zoomAt(1.3)}>
+              <Icon name="plus" size={16} />
+            </IconButton>
+            <IconButton label={t('Fit to screen') + '  F'} onClick={() => fit(true)}>
+              <Icon name="maximize" size={16} />
+            </IconButton>
           </div>
 
-          <div className="gstat">
-            <span className="ds-chip">
-              <b>{picked.pages.length}</b>
-              {t('Pages')}
-            </span>
-            <span className="ds-chip">
-              <b>{picked.edges.length}</b>
-              {t('Links')}
-            </span>
-          </div>
+          <Stats
+            className="gr-panel gr-stats"
+            label={t('Map')}
+            items={[
+              { label: t(picked.pages.length === 1 ? 'page' : 'pages'), value: num(picked.pages.length) },
+              { label: t(picked.edges.length === 1 ? 'link' : 'links'), value: num(picked.edges.length) },
+              ...(scope === 'all' && picked.unlinked > 0 ? [{ label: t('without links'), value: num(picked.unlinked) }] : []),
+            ]}
+          />
         </div>
       )}
     </div>

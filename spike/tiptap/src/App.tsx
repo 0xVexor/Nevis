@@ -47,7 +47,7 @@ import { BrandMark } from './BrandMark'
 import { SaveStatus } from './design-system/SaveStatus'
 import { WorkspaceHeader } from './design-system/WorkspaceHeader'
 import { Icon, IconButton, dirOf, Button, useMenu, type MenuItem as MenuSpec } from './design-system'
-import { MenuItem, MenuLabel, MenuSep, NameDialog, SearchModal, Toast, type PaletteCommand } from './ui'
+import { APP_TOAST, MenuItem, MenuLabel, MenuSep, NameDialog, SearchModal, Toast, type PaletteCommand } from './ui'
 import { Popover } from './design-system/Popover'
 import { Home } from './Home'
 import { Trash } from './Trash'
@@ -338,7 +338,10 @@ export default function App() {
       if (String((e as CustomEvent).detail).includes('VAULT_MISSING')) setToast({ msg: t('The vault folder was not found. Open Workspaces to locate it or download it again.') })
     }
     const layoutNotice = (e: Event) => setToast({ msg: String((e as CustomEvent).detail) })
+    // screens report their own changes here: { msg, undo? } (see APP_TOAST in ui.tsx)
+    const screenToast = (e: Event) => setToast((e as CustomEvent<{ msg: string; undo?: () => void }>).detail)
     window.addEventListener('layout-message', layoutNotice)
+    window.addEventListener(APP_TOAST, screenToast)
     window.addEventListener('page-conflict', kept)
     window.addEventListener('storage-error', storageError)
     return () => {
@@ -346,10 +349,25 @@ export default function App() {
       window.removeEventListener(PAGES_CHANGED, changed)
       window.removeEventListener('external-change', changed)
       window.removeEventListener('layout-message', layoutNotice)
+      window.removeEventListener(APP_TOAST, screenToast)
       window.removeEventListener('page-conflict', kept)
       window.removeEventListener('storage-error', storageError)
     }
   }, [refresh])
+  // Ctrl+Z (Cmd+Z) undoes what the open toast offers to undo, unless the focus is in something that has its own undo (text, the editor)
+  useEffect(() => {
+    if (!toast?.undo) return
+    const undo = toast.undo
+    const key = (e: KeyboardEvent) => {
+      const editable = e.target instanceof HTMLElement && (e.target.isContentEditable || e.target.matches('input, textarea, select'))
+      if (editable || e.shiftKey || e.altKey || !(e.ctrlKey || e.metaKey) || e.code !== 'KeyZ') return
+      e.preventDefault()
+      undo()
+      setToast(null)
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [toast])
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (matches(e, 'sidebar')) (e.preventDefault(), setSideOpen((s) => !s))
@@ -687,8 +705,8 @@ export default function App() {
         ]
       : []),
     { id: 'home', label: t('Home'), icon: <Ic.Home />, keywords: 'dashboard خانه', run: () => setView('home') },
-    { id: 'table', label: t('Pages table'), icon: <Ic.Table />, keywords: 'database جدول', run: () => setTableOpen(true) },
-    { id: 'graph', label: t('Graph view'), icon: <Ic.Link />, keywords: 'graph links map backlinks گراف نقشه ارتباط پیوند', run: () => setGraphOpen(true) },
+    { id: 'table', label: t('All pages'), icon: <Ic.Table />, keywords: 'database جدول', run: () => setTableOpen(true) },
+    { id: 'graph', label: t('Graph'), icon: <Ic.Link />, keywords: 'graph links map backlinks گراف نقشه ارتباط پیوند', run: () => setGraphOpen(true) },
     { id: 'files', label: t('Files'), icon: <Ic.Folders />, keywords: 'files explorer folders manage فایل مدیریت پوشه فایل‌ها', run: () => setView('files') },
     { id: 'tasks', label: t('Tasks'), icon: <Ic.Checklist />, keywords: 'tasks todo checklist کارها وظایف چک لیست', run: () => setView('tasks') },
     { id: 'databases', label: t('Databases'), icon: <Ic.Table />, keywords: 'databases tables projects all database پایگاه داده دیتابیس پروژه جدول', run: () => setView('databases') },
@@ -794,6 +812,13 @@ export default function App() {
             <span className="ntitle">{t('Home')}</span>
           </button>
 
+          <button aria-label={t('Templates')} className={"row plain" + (tplOpen ? " cur" : "")} onClick={() => (setCardsOpen(false), setGraphOpen(false), setTableOpen(false), setTplOpen(true))}>
+            <span className="ic">
+              <Icon name="templates" />
+            </span>
+            <span className="ntitle">{t('Templates')}</span>
+          </button>
+
           <button aria-label={t('Tasks')} className={'row plain' + (view === 'tasks' && !overlayOpen ? ' cur' : '')} onClick={() => (closeOverlays(), setView('tasks'))}>
             <span className="ic">
               <Icon name="tasks" />
@@ -807,13 +832,6 @@ export default function App() {
             </span>
             <span className="ntitle">{t('Flashcards')}</span>
             {dueCards > 0 && <span className="badge">{dueCards}</span>}
-          </button>
-
-          <button aria-label={t('Templates')} className={"row plain" + (tplOpen ? " cur" : "")} onClick={() => (setCardsOpen(false), setGraphOpen(false), setTableOpen(false), setTplOpen(true))}>
-            <span className="ic">
-              <Icon name="templates" />
-            </span>
-            <span className="ntitle">{t('Templates')}</span>
           </button>
 
           <button aria-label={t('Databases')}
@@ -837,18 +855,18 @@ export default function App() {
             <span className="ntitle">{t('Drawings')}</span>
           </button>
 
-          <button aria-label={t('Graph view')} className={"row plain" + (graphOpen ? " cur" : "")} onClick={() => (setCardsOpen(false), setTplOpen(false), setTableOpen(false), setGraphOpen(true))}>
+          <button aria-label={t('Graph')} className={"row plain" + (graphOpen ? " cur" : "")} onClick={() => (setCardsOpen(false), setTplOpen(false), setTableOpen(false), setGraphOpen(true))}>
             <span className="ic">
               <Icon name="graph" />
             </span>
-            <span className="ntitle">{t('Graph view')}</span>
+            <span className="ntitle">{t('Graph')}</span>
           </button>
 
-          <button aria-label={t('Pages table')} className={"row plain" + (tableOpen ? " cur" : "")} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(true))}>
+          <button aria-label={t('All pages')} className={"row plain" + (tableOpen ? " cur" : "")} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(true))}>
             <span className="ic">
               <Icon name="table" />
             </span>
-            <span className="ntitle">{t('Pages table')}</span>
+            <span className="ntitle">{t('All pages')}</span>
           </button>
 
           <div className="side-collections">
@@ -1021,7 +1039,7 @@ export default function App() {
               <span className="crumb">
                 <span className="crumb-cur">
                   <Icon name="graph" size={14} />
-                  {t('Graph view')}
+                  {t('Graph')}
                 </span>
               </span>
             )}
@@ -1029,7 +1047,7 @@ export default function App() {
               <span className="crumb">
                 <span className="crumb-cur">
                   <Icon name="table" size={14} />
-                  {t('Pages table')}
+                  {t('All pages')}
                 </span>
               </span>
             )}
@@ -1235,7 +1253,7 @@ export default function App() {
               <DatabasePage key={current.id} page={current} onOpenPage={setCurrentId} onMeta={refresh} readOnly={reader} />
             </Suspense>
           ) : current?.kind === 'board' ? (
-            <BoardView key={current.id} page={current} onSave={setSave} onMeta={refresh} readOnly={reader} />
+            <BoardView key={current.id} page={current} onSave={setSave} onMeta={refresh} onBack={() => (closeOverlays(), setView('drawings'))} readOnly={reader} />
           ) : current ? (
             <>
               <div className={'page-cols' + (current.cover ? ' has-cover' : '')}>
@@ -1319,9 +1337,9 @@ export default function App() {
             <MenuItem icon={<Ic.Home />} label={t('Home')} onClick={() => (setView('home'), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Folders />} label={t('Files')} onClick={() => (setView('files'), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Table />} label={t('Databases')} onClick={() => (setView('databases'), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Table />} label={t('Pages table')} onClick={() => (setTableOpen(true), setBlankMenu(null))} />
+            <MenuItem icon={<Ic.Table />} label={t('All pages')} onClick={() => (setTableOpen(true), setBlankMenu(null))} />
             <MenuItem icon={<Ic.Cards />} label={t('Flashcards')} onClick={() => (setCardsOpen(true), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Link />} label={t('Graph view')} onClick={() => (setGraphOpen(true), setBlankMenu(null))} />
+            <MenuItem icon={<Ic.Link />} label={t('Graph')} onClick={() => (setGraphOpen(true), setBlankMenu(null))} />
             <MenuSep />
             <MenuItem icon={<Ic.Upload />} label={t('Import or restore…')} onClick={() => (setBlankMenu(null), openData())} />
             <MenuItem icon={<Ic.Trash />} label={t('Trash')} onClick={() => (setView('trash'), setBlankMenu(null))} />

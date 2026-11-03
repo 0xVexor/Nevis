@@ -16,7 +16,7 @@
 .app.reading :is(.pg-add, .pg-starts) { display: none; }
 .app.reading .pg-props :is(.ds-chip-btn[data-empty], .ds-tag-x) { display: none; }
 .app.reading .pg-props .ds-chip-btn { pointer-events: none; }
-.app.reading :is(.img-handle, .cover-acts, .status-sel, .tag-chip button, .code-diagram, .mermaid-bar button:not(.mm-big), .img-bar > :not(.img-big):not(.sep), .img-bar .sep, .bubble) { display: none !important; }
+.app.reading :is(.img-handle, .cover-acts, .tag-chip button, .code-diagram, .mermaid-bar button:not(.mm-big), .img-bar > :not(.img-big):not(.sep), .img-bar .sep, .bubble) { display: none !important; }
 .app.reading .code-lang { pointer-events: none; appearance: none; border-color: transparent; background: transparent; }
 
 /* progress: a thin accent line along the top */
