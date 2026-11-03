@@ -30,13 +30,6 @@
 .swatch.custom svg { opacity: 1; }
 .swatch.custom input { position: absolute; inset: 0; opacity: 0; cursor: var(--cursor-hand, pointer); width: 100%; height: 100%; }
 
-.bg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: var(--ds-s3); }
-.bg-tile { display: flex; flex-direction: column; gap: var(--ds-s2); align-items: center; padding: var(--ds-s2) var(--ds-s2) var(--ds-s3); border: 1px solid var(--ds-line); background: var(--ds-bg); border-radius: 16px; cursor: var(--cursor-hand, pointer); font-size: 12px; color: var(--ds-text-2); transition: transform 0.25s var(--ease), border-color 0.2s, box-shadow 0.2s; }
-.bg-tile:hover { transform: translateY(-2px); border-color: var(--ds-line-strong); }
-.bg-tile.on { border-color: var(--ds-accent); box-shadow: 0 0 0 4px var(--ds-accent-line); color: var(--ds-text); font-weight: 600; }
-.bg-prev { width: 100%; height: 56px; border-radius: 11px; background: linear-gradient(135deg, light-dark(var(--l1), var(--c1)), light-dark(var(--l2), var(--c2))), var(--ds-sunk); display: grid; place-items: center; }
-.bp-default { --l1: rgb(150 130 255 / 0.45); --l2: rgb(255 140 190 / 0.35); --c1: rgb(90 70 220 / 0.45); --c2: rgb(220 70 150 / 0.3); }
-.bp-none, .bp-add { --l1: transparent; --l2: transparent; --c1: transparent; --c2: transparent; border: 1px dashed var(--ds-line-strong); color: var(--ds-text-2); }
 
 .font-preview { margin-top: var(--ds-s6); padding: var(--ds-s5) var(--ds-s5); border: 1px solid var(--ds-line); border-radius: 16px; background: var(--ds-sunk); }
 .font-preview h4 { margin: 0 0 var(--ds-s2); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; color: var(--ds-text-3); }
@@ -44,20 +37,6 @@
 .font-preview code { font-family: var(--mono); background: var(--code-bg); color: var(--code-text); padding: 0.1em 0.45em; border-radius: 6px; font-size: 0.85em; }
 
 
-.sc-search { display: flex; align-items: center; gap: var(--ds-s3); height: 42px; padding: 0 var(--ds-s4); margin-bottom: var(--ds-s6); border: 1px solid var(--ds-line); background: var(--ds-bg); border-radius: 14px; color: var(--ds-text-2); }
-.sc-search:focus-within { border-color: var(--ds-accent); box-shadow: 0 0 0 4px var(--ds-accent-line); }
-.sc-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ds-text); font-size: 14px; }
-.sc-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--ds-line); border-radius: 16px; overflow: hidden; }
-.sc-list li { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-s4); padding: var(--ds-s3) var(--ds-s4); font-size: 13.5px; }
-.sc-list li:hover { background: var(--ds-hover); }
-.sc-list li + li { border-top: 1px solid var(--ds-line); }
-.sc-keys { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--ds-s2) var(--ds-s3); direction: ltr; flex: none; }
-.sc-chord { display: inline-flex; align-items: center; gap: var(--ds-s1); }
-.sc-chord em { font-style: normal; font-size: 11.5px; color: var(--ds-text-3); margin-inline-end: var(--ds-s1); }
-.sc-edit { display: inline-flex; gap: 2px; margin-inline-start: var(--ds-s2); direction: inherit; }
-.sc-recording { color: var(--ds-accent); border-color: var(--ds-accent); }
-.sc-problem { display: block; margin-top: 2px; color: var(--ds-bad); font-size: 12px; }
-.sc-none { color: var(--ds-text-2); font-size: 13.5px; text-align: center; padding: 28px 0; }
 .field { display: flex; flex-direction: column; gap: var(--ds-s2); font-size: 13px; color: var(--ds-text-2); }
 
 /* ═════════ Graph, history, pages table ═════════ */

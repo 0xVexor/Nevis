@@ -69,7 +69,6 @@
 .acts button:hover { background: var(--ds-press); color: var(--ds-text); }
 .row.drop-before { box-shadow: 0 -2px 0 var(--ds-accent); }
 .row.drop-after { box-shadow: 0 2px 0 var(--ds-accent); }
-.row.drop-inside { background: var(--ds-accent-soft); outline: 1.5px dashed var(--ds-accent); outline-offset: -1px; }
 
 .new-page { position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; gap: var(--ds-s2); width: 100%; height: var(--ds-control); border: 0; background: var(--ds-accent); color: var(--ds-accent-ink); border-radius: var(--ds-r); cursor: var(--cursor-hand, pointer); font-size: 14px; font-weight: 550; box-shadow: none; transition: transform 0.2s var(--ease), box-shadow 0.2s, filter 0.2s; }
 .new-page::after { content: ''; position: absolute; inset: 0; background: linear-gradient(115deg, transparent 30%, rgb(255 255 255 / 0.28) 50%, transparent 70%); transform: translateX(-120%); transition: transform 0.6s var(--ease);
@@ -141,5 +140,5 @@
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
 
 /* user content shown in UI labels: text direction follows the text, alignment follows the UI */
-.ntitle, .crumb button, .result-tx b { direction: inherit; unicode-bidi: plaintext; text-align: start; }
+.ntitle, .crumb button { direction: inherit; unicode-bidi: plaintext; text-align: start; }
 

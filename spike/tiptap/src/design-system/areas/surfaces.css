@@ -44,7 +44,7 @@
 :root[data-side='icons'] .side:not([data-expanded]) .side-new > :first-child { border-radius: var(--ds-r); padding: 0; }
 
 /* brand row: logo and name share one centre line */
-.ws .brand, .ws-name { display: inline-flex; align-items: center; line-height: 1; }
+.ws .brand { display: inline-flex; align-items: center; line-height: 1; }
 
 /* ───── sidebar pages: monochrome and borderless; hover turns the accent colour, like search results ───── */
 .side .pg-ic.tile { background: none; box-shadow: none; color: var(--ds-text-3); }

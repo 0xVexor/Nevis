@@ -13,7 +13,7 @@
 .field .selbox { width: 100%; height: var(--ds-control); background: var(--ds-bg); }
 
 /* emoji + icon picker */
-.nd-body input, .pt-search, .sc-search { transition: border-color 0.15s, box-shadow 0.15s; }
+.nd-body input, .pt-search { transition: border-color 0.15s, box-shadow 0.15s; }
 
 /* ───────── modals ───────── */
 .overlay { position: fixed; inset: 0; z-index: 200; display: flex; justify-content: center; align-items: flex-start; padding-top: 11vh; background: radial-gradient(60% 50% at 50% 0%, color-mix(in srgb, var(--ds-accent) 16%, transparent), transparent), light-dark(rgb(24 16 70 / 0.38), rgb(2 2 8 / 0.66)); backdrop-filter: blur(8px) saturate(1.2); animation: fade-in 0.2s; }
@@ -30,15 +30,6 @@
 .result.sel { background: linear-gradient(var(--to-end), var(--ds-accent-soft), transparent 160%); }
 .result-ic { width: 32px; height: 32px; display: grid; place-items: center; flex: none; border-radius: 10px; border: 1px solid var(--ds-line); background: var(--ds-raised); font-size: 16px; color: var(--ds-text-2); }
 .result.sel .result-ic { border-color: var(--ds-accent-line); color: var(--ds-accent); }
-.result-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.result-tx b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.result-tx small { color: var(--ds-text-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.result-meta { flex: none; margin-inline-start: auto; font-size: 12px; color: var(--ds-text-3); }
-.result-kbd { flex: none; }
-.palette-foot { display: flex; align-items: center; gap: var(--ds-s4); padding: var(--ds-s3) var(--ds-s5); border-top: 1px solid var(--ds-line); background: var(--ds-sunk); font-size: 12px; color: var(--ds-text-2); }
-.palette-foot span { display: inline-flex; align-items: center; gap: var(--ds-s1); }
-.palette-foot kbd { min-width: 20px; height: 20px; font-size: 11px; }
-.palette-tip { margin-inline-start: auto; color: var(--ds-text-3); }
 
 /* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
 .toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); z-index: 600; display: flex; align-items: center; gap: var(--ds-s3); background: var(--ds-raised); color: var(--ds-text); border: 1px solid var(--ds-line); border-radius: 16px; box-shadow: var(--ds-shadow-pop); padding: var(--ds-s3) var(--ds-s4); font-size: 14px; animation: rise-in 0.4s var(--spring); }
