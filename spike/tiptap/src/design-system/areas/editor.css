@@ -155,7 +155,6 @@
 .drawing-bar .drawing-done:hover { color: var(--ds-white); filter: brightness(1.08); }
 .drawing-bar .drawing-done:disabled { opacity: 0.6; cursor: var(--cursor-arrow, default); }
 .drawing-stage { flex: 1; min-height: 0; position: relative; }
-.drawing-stage .excalidraw { --color-primary: var(--ds-accent); }
 
 /* images */
 .tiptap .img-fig { position: relative; display: block; margin: 10px 0; max-width: 100%; width: fit-content; }
@@ -214,41 +213,7 @@
 .slash-tx small { font-size: 11.5px; color: var(--ds-text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .slash-empty { padding: 12px; color: var(--ds-text-2); font-size: 14px; }
 
-/* boards (a whole page that is one drawing) and the drawings gallery */
-.scroller:has(.board) { overflow: hidden; display: flex; flex-direction: column; }
-.board { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.board-head { display: flex; align-items: center; gap: 8px; padding: 12px 24px 8px; }
-.board-full { flex: none; }
-.board.full { position: fixed; inset: 0; z-index: 60; background: var(--ds-bg); }
-.board:fullscreen { background: var(--ds-bg); }
-.board.full .board-head { padding: 10px 16px 6px; }
-.board.full .board-title { font-size: 20px; }
-.board.full .board-stage { margin: 0 8px 8px; }
-.board-title { width: 100%; border: 0; outline: none; background: transparent; color: var(--ds-text); font: inherit; font-size: 26px; font-weight: 700; padding: 4px 0; }
-.board-title::placeholder { color: var(--ds-text-3); }
-.board-stage { flex: 1; min-height: 0; margin: 0 16px 16px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); overflow: hidden; position: relative; background: var(--ds-bg); }
-.board-loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ds-text-3); font-size: 14px; }
-.dw { max-width: 1040px; }
 .dw-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
-.dw-tools .tk-tabs { margin-bottom: 0; }
-.dw-search { flex: 1; min-width: 160px; height: 36px; border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-bg); color: var(--ds-text); padding: 0 12px; font: inherit; outline: none; }
-.dw-search:focus { border-color: var(--ds-accent); box-shadow: 0 0 0 3px var(--ds-accent-line); }
-.dw-tools .primary { display: inline-flex; align-items: center; gap: 6px; }
-.dw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
-.dw-item { position: relative; display: flex; flex-direction: column; }
-.dw-item .dw-card { flex: 1; }
-.dw-del { position: absolute; top: 8px; inset-inline-end: 8px; width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-bg); color: var(--ds-text-2, var(--ds-text-3)); opacity: 0; cursor: var(--cursor-hand, pointer); transition: opacity 0.15s, color 0.15s, border-color 0.15s; }
-.dw-item:hover .dw-del, .dw-del:focus-visible { opacity: 1; }
-.dw-del:hover { color: var(--ds-bad); border-color: var(--ds-bad); }
-@media (hover: none) { .dw-del { opacity: 1; } }
-.dw-card { display: flex; flex-direction: column; text-align: start; padding: 0; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-bg); color: inherit; overflow: hidden; cursor: var(--cursor-hand, pointer); transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s; }
-.dw-card:hover { border-color: var(--ds-accent); box-shadow: var(--panel-shadow); transform: translateY(-1px); }
-.dw-thumb { aspect-ratio: 4 / 3; display: grid; place-items: center; background: var(--ds-white); border-bottom: 1px solid var(--ds-line); overflow: hidden; }
-.dw-thumb img { width: 100%; height: 100%; object-fit: contain; }
-.dw-blank { color: var(--ds-text-3); }
-.dw-meta { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; min-width: 0; }
-.dw-meta b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dw-meta small { color: var(--ds-text-3); font-size: 12px; }
 
 /* Excalidraw menus (right-click and the main menu) drawn like the app's own menus (see .ds-pop / .ds-menu-item in overlays.css, v2.css) */
 /* the app's global .ds-pop styles must not leak onto Excalidraw's own .ds-pop wrapper (the menu above draws the box itself) */

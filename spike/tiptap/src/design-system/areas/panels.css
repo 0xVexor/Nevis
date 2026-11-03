@@ -54,9 +54,4 @@
 
 /* outline: a connected timeline; the dot of the section you are in lights up */
 
-/* ───────── flashcards: a focused study room ───────── */
-.fc2 { position: relative; width: min(1060px, 95vw); height: min(740px, 92vh); display: flex; flex-direction: column; border: 1px solid var(--ds-line); border-radius: calc(var(--ds-r-lg) * 1.1); background: var(--ds-raised); box-shadow: var(--ds-shadow-pop); overflow: hidden; animation: pop-in 0.35s var(--ease); isolation: isolate; }
-.fc2::before { content: ''; position: absolute; inset: 0; z-index: -1; background: radial-gradient(60% 50% at 20% 0%, var(--ds-accent-soft), transparent), radial-gradient(50% 40% at 100% 100%, color-mix(in srgb, var(--ds-accent) 12%, transparent), transparent); pointer-events: none; }
-/* ui-allow hard-coded-color: flashcard grade colors */
-.fc2-art { display: grid; place-items: center; width: 84px; height: 84px; border-radius: 26px; background: var(--ds-accent-soft); border: 1px solid var(--ds-accent-line); color: var(--ds-accent); box-shadow: var(--glow); }
 

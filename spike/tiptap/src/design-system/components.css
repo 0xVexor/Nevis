@@ -30,7 +30,7 @@
 .ds-btn--ghost { background: none; border-color: transparent; }
 .ds-btn--ghost:hover { background: var(--ds-hover); border-color: transparent; }
 .ds-btn--danger { color: var(--ds-bad); }
-.ds-btn--sm { height: var(--ds-control-sm); padding: 0 var(--ds-s3); font-size: 13px; border-radius: 8px; }
+.ds-btn--sm { height: var(--ds-control-sm); padding: 0 var(--ds-s3); font-size: 13px; border-radius: var(--ds-r-sm); }
 .ds-icon-btn, .icon-btn {
   width: 32px; height: 32px; flex: none; display: grid; place-items: center; border-radius: var(--ds-r-sm);
   color: var(--ds-text-2); background: none; border: 0; cursor: var(--cursor-hand, pointer); transition: background var(--ds-fast);
@@ -65,7 +65,7 @@
 
 /* ───── selection ───── */
 .ds-check {
-  width: 18px; height: 18px; flex: none; display: grid; place-items: center; border-radius: 6px;
+  width: 18px; height: 18px; flex: none; display: grid; place-items: center; border-radius: var(--ds-r-sm);
   border: 1.5px solid var(--ds-line-strong); background: var(--ds-bg); color: transparent; transition: var(--ds-fast);
 }
 .ds-check .ds-icon { width: 12px; height: 12px; stroke-width: 2.4; }
@@ -83,7 +83,7 @@
 .ds-switch[aria-checked='true']::after { transform: translateX(16px); }
 .ds-switch:dir(rtl)[aria-checked='true']::after { transform: translateX(-16px); }
 .ds-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--ds-r); background: var(--ds-sunk); }
-.ds-seg button { height: var(--ds-control-sm); padding: 0 var(--ds-s3); border: 0; border-radius: 8px; background: none; color: var(--ds-text-2); font: 500 14px var(--ds-font-ui); cursor: var(--cursor-hand, pointer); white-space: nowrap; }
+.ds-seg button { height: var(--ds-control-sm); padding: 0 var(--ds-s3); border: 0; border-radius: var(--ds-r-sm); background: none; color: var(--ds-text-2); font: 500 14px var(--ds-font-ui); cursor: var(--cursor-hand, pointer); white-space: nowrap; }
 .ds-seg button[aria-pressed='true'] { background: var(--ds-raised); color: var(--ds-text); box-shadow: 0 0 0 1px var(--ds-line), 0 1px 2px rgb(0 0 0 / 0.06); }
 .ds-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--ds-line); overflow-x: auto; }
 .ds-tabs button { display: flex; align-items: center; gap: var(--ds-s2); padding: var(--ds-s2) var(--ds-s3); margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--ds-text-2); font: 500 14px var(--ds-font-ui); white-space: nowrap; cursor: var(--cursor-hand, pointer); }
@@ -109,6 +109,9 @@
 .ds-chip-btn[data-empty] { border-style: dashed; border-color: var(--ds-line-strong); color: var(--ds-text-3); }
 .ds-chip-btn[data-empty]:hover:not(:disabled) { color: var(--ds-text); }
 .ds-chip-btn:disabled { cursor: var(--cursor-arrow, default); }
+/* a chip that filters: pressed = the filter is on */
+.ds-chip-btn[aria-pressed='true'] { border-color: var(--ds-accent-line); background: var(--ds-accent-soft); color: var(--ds-accent); }
+.ds-chip-btn[aria-pressed='true']:hover:not(:disabled) { border-color: var(--ds-accent); background: var(--ds-accent-soft); }
 .ds-chip-btn > .ds-icon { flex: none; inline-size: 14px; block-size: 14px; }
 .ds-chip-btn > .ds-icon:last-child:not(:first-child) { color: var(--ds-text-3); }
 /* a tag, tinted in its own hue (--hue, 0 to 360); the name opens it, the cross shows on hover or focus */
@@ -182,11 +185,11 @@ button.ds-tag-name:hover { text-decoration: underline; text-underline-offset: 3p
   border: 1.5px solid var(--ds-line-strong); color: var(--ds-text-2); font: 600 11.5px var(--ds-font-ui); font-variant-numeric: tabular-nums;
 }
 .ds-avatar { --c: var(--ds-accent); display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--c); color: var(--ds-white); font: 650 10.5px var(--ds-font-ui); }
-.ds-tile { --c: var(--ds-text-2); display: grid; place-items: center; width: 20px; height: 20px; flex: none; border-radius: 6px; background: color-mix(in oklab, var(--c) 14%, var(--ds-bg)); color: var(--c); }
+.ds-tile { --c: var(--ds-text-2); display: grid; place-items: center; width: 20px; height: 20px; flex: none; border-radius: var(--ds-r-sm); background: color-mix(in oklab, var(--c) 14%, var(--ds-bg)); color: var(--c); }
 .ds-tile .ds-icon { width: 13px; height: 13px; stroke-width: 1.9; }
-.ds-tile--md { width: 32px; height: 32px; border-radius: 9px; }
+.ds-tile--md { width: 32px; height: 32px; border-radius: var(--ds-r); }
 .ds-tile--md .ds-icon { width: 17px; height: 17px; }
-.ds-tile--lg { width: 44px; height: 44px; border-radius: 12px; }
+.ds-tile--lg { width: 44px; height: 44px; border-radius: var(--ds-r-lg); }
 .ds-tile--lg .ds-icon { width: 22px; height: 22px; }
 .ds-progress { height: 5px; overflow: hidden; border-radius: 3px; background: var(--ds-sunk); }
 .ds-progress > i { display: block; height: 100%; border-radius: 3px; background: var(--ds-accent); }
@@ -224,7 +227,7 @@ button.ds-tag-name:hover { text-decoration: underline; text-underline-offset: 3p
 .ds-menu { min-width: 220px; padding: var(--ds-s2); }
 .ds-menu-item {
   position: relative; display: flex; align-items: center; gap: var(--ds-s3); width: 100%; min-height: var(--ds-control); padding: var(--ds-s2) var(--ds-s3);
-  border: 0; border-radius: 8px; background: none; color: var(--ds-text); font: 14px var(--ds-font-ui); text-align: start; cursor: var(--cursor-hand, pointer); user-select: none;
+  border: 0; border-radius: var(--ds-r-sm); background: none; color: var(--ds-text); font: 14px var(--ds-font-ui); text-align: start; cursor: var(--cursor-hand, pointer); user-select: none;
 }
 .ds-menu-item:hover, .ds-menu-item:focus-visible { background: var(--ds-hover); }
 .ds-menu-item .ds-icon, .ds-menu-ic { color: var(--ds-text-3); }
@@ -358,7 +361,59 @@ button.ds-tag-name:hover { text-decoration: underline; text-underline-offset: 3p
 .ds-empty > .ds-icon { inline-size: 28px; block-size: 28px; }
 .ds-list { display: flex; flex-direction: column; margin-inline: calc(-1 * var(--ds-s2)); }
 .ds-empty b { color: var(--ds-text); font-weight: 500; }
+/* an empty state that stands where a list would be: a dashed frame the list will fill */
+.ds-empty--framed { border: 1px dashed var(--ds-line-strong); border-radius: var(--ds-r-lg); }
+.ds-empty--framed > span { max-inline-size: 46ch; }
 .ds-modal-actions { display: flex; justify-content: flex-end; gap: var(--ds-s2); margin-block-start: var(--ds-s5); }
+/* a list in a frame: rows meet at hairlines and the frame's corners follow the radius setting */
+.ds-list--framed { margin-inline: 0; overflow: hidden; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); }
+.ds-list--framed > .ds-list-row, .ds-list--framed > * > .ds-list-row { padding-inline: var(--ds-s4); border-radius: 0; }
+.ds-list--framed > :not(:last-child) { border-block-end: 1px solid var(--ds-line); }
+button.ds-list-row { inline-size: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: var(--cursor-hand, pointer); }
+button.ds-list-row:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: -2px; }
+
+/* Screen: a full-page tool (Tasks, Flashcards, Templates, Pages table, Trash) */
+.ds-screen { --ds-screen-max: 760px; inline-size: 100%; max-inline-size: calc(var(--ds-screen-max) + 2 * var(--ds-s8)); margin-inline: auto; padding: var(--ds-s8) var(--ds-s8) 96px; container-type: inline-size; }
+.ds-screen[data-width='wide'] { --ds-screen-max: 1120px; }
+.ds-screen[data-fill] { display: flex; flex-direction: column; block-size: 100%; min-block-size: 0; padding-block: var(--ds-s6); }
+.ds-screen[data-fill] > :last-child { flex: 1; min-block-size: 0; }
+.ds-screen-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--ds-s3) var(--ds-s6); margin-block-end: var(--ds-s6); }
+.ds-screen-title { min-inline-size: 0; }
+.ds-screen-title h1 { margin: 0; font-size: var(--ds-text-heading); font-weight: 600; line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; }
+.ds-screen-title p { margin: var(--ds-s2) 0 0; color: var(--ds-text-2); font-size: 15px; }
+.ds-screen-acts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-s2); }
+@media (max-width: 640px) { .ds-screen { padding-inline: var(--ds-s4); } }
+
+/* Checkbox: a real input drawn as ds-check; the label is clickable */
+.ds-checkbox { display: inline-flex; align-items: flex-start; gap: var(--ds-s3); min-inline-size: 0; cursor: var(--cursor-hand, pointer); }
+.ds-checkbox-input { position: absolute; inline-size: 1px; block-size: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); }
+.ds-checkbox > .ds-check { margin-block-start: 1px; }
+.ds-checkbox .ds-check .ds-icon { transform: scale(0.4); opacity: 0; transition: transform var(--ds-base) var(--ds-ease), opacity var(--ds-fast); }
+.ds-checkbox:hover > .ds-check { border-color: var(--ds-accent); }
+.ds-checkbox-input:checked + .ds-check { background: var(--ds-accent); border-color: var(--ds-accent); color: var(--ds-accent-ink); }
+.ds-checkbox-input:checked + .ds-check .ds-icon { transform: none; opacity: 1; }
+.ds-checkbox-input:focus-visible + .ds-check { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.ds-checkbox-input:disabled + .ds-check { opacity: 0.5; }
+
+/* Search field: icon, input, clear */
+.ds-search { display: flex; align-items: center; gap: var(--ds-s2); min-inline-size: 0; block-size: var(--ds-control); padding-inline: var(--ds-s3) var(--ds-s1); border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); color: var(--ds-text-3); transition: border-color var(--ds-fast); }
+.ds-search:hover { border-color: var(--ds-line-strong); }
+.ds-search:focus-within { border-color: var(--ds-accent); box-shadow: 0 0 0 3px var(--ds-accent-soft); }
+.ds-search > input { flex: 1; min-inline-size: 0; border: 0; outline: 0; background: none; color: var(--ds-text); font: inherit; }
+.ds-search > input::placeholder { color: var(--ds-text-3); }
+.ds-search > input::-webkit-search-cancel-button { display: none; }
+.ds-search-clear { display: grid; place-items: center; inline-size: var(--ds-control-sm); block-size: var(--ds-control-sm); padding: 0; border: 0; border-radius: var(--ds-r-sm); background: none; color: var(--ds-text-3); cursor: var(--cursor-hand, pointer); }
+.ds-search-clear:hover { background: var(--ds-hover); color: var(--ds-text); }
+.ds-search-clear:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: -2px; }
+
+/* Stats: one line of facts, each a number and its words ("3 due now"); an item never breaks, the line wraps between items */
+.ds-stats { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--ds-s2) var(--ds-s6); margin: 0; }
+.ds-stat { display: inline-flex; align-items: baseline; gap: var(--ds-s1); white-space: nowrap; }
+.ds-stat dt { order: 1; color: var(--ds-text-2); }
+.ds-stat dd { margin: 0; color: var(--ds-text); font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* a key the person can press, shown inside a button or a hint */
+.ds-kbd { display: inline-grid; place-items: center; min-inline-size: 20px; block-size: 20px; padding: 0 var(--ds-s1); border: 1px solid var(--ds-line-strong); background: none; box-shadow: none; border-radius: var(--ds-r-sm); color: var(--ds-text-3); font: 500 11.5px var(--ds-font-ui); font-variant-numeric: tabular-nums; }
 
 /* Tooltip: a short label on hover or keyboard focus, centred above the control it wraps */
 .ds-tip { position: relative; display: inline-flex; }

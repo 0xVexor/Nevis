@@ -1,21 +1,60 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { repo } from './store'
 import { PageIcon } from './PageIcon'
-import { dirOf, Button } from './design-system'
+import type { Page } from './repo'
+import { Button, Checkbox, Icon, IconButton, Screen, dirOf, useUIMotion } from './design-system'
 import { allTasks, loadInbox, saveInbox, setChecked, type InboxTask, type Task } from './taskData'
-import { t } from './i18n'
-import * as Ic from './icons'
+import { showToast } from './ui'
+import { t, locale } from './i18n'
 
-type Filter = 'open' | 'done' | 'all'
+/** What the right-hand pane shows: everything, the inbox, or the tasks of one page. */
+type Source = 'all' | 'inbox' | string
 
-/** Every checklist item of every page in one place. Ticking a box here changes the page itself. */
+/** How long a ticked task stays among the open ones, so the tick is seen before the row moves to Completed. */
+const SETTLE_MS = 700
+
+const keyOf = (x: Task) => `${x.pageId}:${x.index}`
+
+/** One task as the list draws it: a checklist item of a page, or an inbox item. */
+interface Item {
+  key: string
+  text: string
+  checked: boolean
+  depth: number
+  page?: Page
+  task?: Task
+  inbox?: InboxTask
+}
+
+/**
+ * Tasks: every checklist item of every page, plus an inbox for tasks typed here. On one side the sources (all, inbox,
+ * your to-do lists, the pages that have checklists) with what is still open; on the other the chosen source's open
+ * tasks, and its completed ones folded away underneath. Ticking a box here changes the page itself.
+ */
 export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onNewList: () => void }) {
+  const motionOf = useUIMotion()
   const [tick, setTick] = useState(0)
-  const [filter, setFilter] = useState<Filter>('open')
+  const [source, setSource] = useState<Source>('all')
+  const [showDone, setShowDone] = useState(false)
   const [draft, setDraft] = useState('')
   const [inbox, setInbox] = useState<InboxTask[]>([])
+  const [settling, setSettling] = useState<string[]>([])
+  const input = useRef<HTMLInputElement>(null)
   useEffect(() => void loadInbox().then(setInbox), [])
   const editInbox = (next: InboxTask[]) => (setInbox(next), void saveInbox(next))
+  /** Deletes an inbox task; the toast's Undo (or Ctrl+Z) puts it back where it was. */
+  const remove = (task: InboxTask) => {
+    const at = inbox.findIndex((y) => y.id === task.id)
+    editInbox(inbox.filter((y) => y.id !== task.id))
+    showToast(t('Task deleted'), () =>
+      setInbox((cur) => {
+        const next = [...cur.slice(0, at), task, ...cur.slice(at)]
+        void saveInbox(next)
+        return next
+      }),
+    )
+  }
   useEffect(() => {
     const bump = () => setTick((n) => n + 1)
     window.addEventListener('data-changed', bump)
@@ -24,144 +63,204 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
   }, [])
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const tasks = useMemo(allTasks, [tick])
-  const inboxDone = inbox.filter((x) => x.checked).length
-  const total = tasks.length + inbox.length
-  const open = tasks.filter((x) => !x.checked).length + inbox.length - inboxDone
-  const pct = total ? Math.round(((total - open) / total) * 100) : 0
-  const shown = tasks.filter((x) => x.text && (filter === 'all' || (filter === 'done') === x.checked))
-  const groups = new Map<string, Task[]>()
-  for (const x of shown) groups.set(x.pageId, [...(groups.get(x.pageId) ?? []), x])
-  // stand-alone to-do lists first, then checklists that live inside ordinary pages
-  const isList = (id: string) => repo.get(id)?.kind === 'todo'
-  const listGroups = [...groups].filter(([id]) => isList(id))
-  const pageGroups = [...groups].filter(([id]) => !isList(id))
-  const lists = useMemo(
-    () =>
-      repo
-        .pagesOnly()
-        .filter((p) => p.kind === 'todo')
-        .map((p) => ({ page: p, all: tasks.filter((x) => x.pageId === p.id && x.text) })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tasks],
-  )
+  const tasks = useMemo(() => allTasks().filter((x) => x.text), [tick])
+  const num = (n: number) => n.toLocaleString(locale())
 
+  const items = useMemo(() => {
+    const fromPages: Item[] = tasks.map((x) => ({ key: keyOf(x), text: x.text, checked: x.checked, depth: x.depth, page: repo.get(x.pageId), task: x }))
+    const fromInbox: Item[] = inbox.map((x) => ({ key: x.id, text: x.text, checked: x.checked, depth: 0, inbox: x }))
+    return [...fromInbox, ...fromPages]
+  }, [tasks, inbox])
+
+  // the sources: to-do lists first (even empty ones), then ordinary pages that have checklists
+  const sources = useMemo(() => {
+    const pages = new Map<string, Page>()
+    for (const p of repo.pagesOnly()) if (p.kind === 'todo') pages.set(p.id, p)
+    for (const x of tasks) {
+      const p = repo.get(x.pageId)
+      if (p) pages.set(p.id, p)
+    }
+    const count = (id: string) => tasks.filter((x) => x.pageId === id && !x.checked).length
+    const all = [...pages.values()].map((page) => ({ page, open: count(page.id) }))
+    return { lists: all.filter((s) => s.page.kind === 'todo'), pages: all.filter((s) => s.page.kind !== 'todo') }
+  }, [tasks])
+  // a page that was deleted or emptied while chosen falls back to everything
+  const current: Source = source === 'all' || source === 'inbox' || [...sources.lists, ...sources.pages].some((s) => s.page.id === source) ? source : 'all'
+
+  const shown = items.filter((x) => (current === 'all' ? true : current === 'inbox' ? !!x.inbox : x.page?.id === current))
+  const open = shown.filter((x) => !x.checked || settling.includes(x.key))
+  const done = shown.filter((x) => x.checked && !settling.includes(x.key))
+  const total = shown.length
+  const pct = total ? Math.round((shown.filter((x) => x.checked).length / total) * 100) : 0
+  const page = current !== 'all' && current !== 'inbox' ? repo.get(current) : undefined
+  const canAdd = current === 'all' || current === 'inbox'
+
+  const toggle = (x: Item, next: boolean) => {
+    if (next) {
+      setSettling((s) => [...s, x.key])
+      window.setTimeout(() => setSettling((s) => s.filter((k) => k !== x.key)), SETTLE_MS)
+    }
+    if (x.inbox) editInbox(inbox.map((y) => (y.id === x.key ? { ...y, checked: next } : y)))
+    else if (x.task) (setChecked(x.task, next), setTick((n) => n + 1))
+  }
   const add = () => {
     const text = draft.trim()
     if (!text) return
     setDraft('')
     editInbox([...inbox, { id: crypto.randomUUID(), text, checked: false }])
+    input.current?.focus()
   }
-  const inboxShown = inbox.filter((x) => filter === 'all' || (filter === 'done') === x.checked)
+
+  const row = (x: Item) => (
+    <motion.div
+      key={x.key}
+      className="ds-list-row tk-row"
+      data-done={x.checked || undefined}
+      style={{ '--depth': current === 'all' ? 0 : x.depth } as CSSProperties}
+      layout={motionOf.reduced ? false : 'position'}
+      initial={motionOf.reduced ? false : { opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={motionOf.reduced ? undefined : { opacity: 0, height: 0 }}
+      transition={{ ...motionOf.transition, layout: motionOf.spring }}
+    >
+      {x.inbox ? (
+        <>
+          <Checkbox checked={x.checked} label={x.text} onChange={(next) => toggle(x, next)} />
+          <input
+            className="tk-text tk-edit"
+            dir="auto"
+            value={x.text}
+            aria-label={t('Task')}
+            onChange={(e) => editInbox(inbox.map((y) => (y.id === x.key ? { ...y, text: e.target.value } : y)))}
+            onBlur={() => !x.text.trim() && editInbox(inbox.filter((y) => y.id !== x.key))}
+          />
+          <IconButton label={t('Delete')} className="tk-del" onClick={() => remove(x.inbox!)}>
+            <Icon name="trash" size={16} />
+          </IconButton>
+        </>
+      ) : (
+        <Checkbox checked={x.checked} onChange={(next) => toggle(x, next)} className="tk-check">
+          <span className="tk-text" dir="auto">
+            {x.text}
+          </span>
+        </Checkbox>
+      )}
+      {current === 'all' && (
+        <button type="button" className="tk-from" dir="auto" onClick={() => setSource(x.page ? x.page.id : 'inbox')} title={t('Show only this list')}>
+          {x.page ? x.page.title || t('Untitled') : t('Inbox')}
+        </button>
+      )}
+    </motion.div>
+  )
+
+  const sourceButton = (id: Source, icon: ReactNode, name: string, count: number) => (
+    <button key={id} type="button" className="tk-source" aria-current={current === id || undefined} dir={dirOf(name)} onClick={() => (setSource(id), setShowDone(false))}>
+      <span className="tk-source-ic">{icon}</span>
+      <span className="tk-source-name" dir="auto">
+        {name}
+      </span>
+      {count > 0 && <span className="ds-badge">{num(count)}</span>}
+    </button>
+  )
+
+  const title = current === 'all' ? t('All tasks') : current === 'inbox' ? t('Inbox') : page?.title || t('Untitled')
+  const allOpen = items.filter((x) => !x.checked).length
 
   return (
-    <div className="tk">
-      <header className="tk-head">
-        <h1>{t('Tasks')}</h1>
-        <p>{total ? t('{open} open · {done} done', { open, done: total - open }) : t('Checklist items from all your pages appear here.')}</p>
-        {total > 0 && (
-          <div className="tk-bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-            <i style={{ width: pct + '%' }} />
-          </div>
-        )}
-      </header>
-
-      <form className="tk-add" onSubmit={(e) => (e.preventDefault(), add())}>
-        <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t('Add a task…')} dir="auto" />
-        <Button variant="primary" type="submit" disabled={!draft.trim()}>
-          <Ic.Plus size={16} />
-          {t('Add')}
-        </Button>
-      </form>
-
-      <div className="dw-tools">
-        <div className="ds-seg" role="tablist">
-          {(['open', 'done', 'all'] as Filter[]).map((f) => (
-            <button key={f} role="tab" aria-selected={filter === f} aria-pressed={filter === f} className={filter === f ? 'on' : ''} onClick={() => setFilter(f)}>
-              {f === 'open' ? t('Active') : f === 'done' ? t('Done') : t('All')}
-            </button>
-          ))}
-        </div>
-        <span className="spacer" />
-        <Button variant="primary" onClick={onNewList}>
-          <Ic.Plus size={15} />
-          {t('New list')}
-        </Button>
-      </div>
-
-      {inboxShown.length > 0 && (
-        <section className="tk-group">
-          <div className="tk-page static">
-            <span className="hm-row-ic">
-              <Ic.Checklist size={16} />
+    <Screen width="wide" title={t('Tasks')} description={allOpen ? t('{n} open across your pages and inbox', { n: num(allOpen) }) : t('Checklist items from all your pages appear here.')}>
+      <div className="tk">
+        <nav className="tk-sources" aria-label={t('Task lists')}>
+          {sourceButton('all', <Icon name="checklist" size={17} />, t('All tasks'), allOpen)}
+          {sourceButton('inbox', <Icon name="inbox" size={17} />, t('Inbox'), inbox.filter((x) => !x.checked).length)}
+          <h2 className="tk-sources-title">{t('Lists')}</h2>
+          {sources.lists.map((s) => sourceButton(s.page.id, <PageIcon page={s.page} />, s.page.title || t('Untitled'), s.open))}
+          <button type="button" className="tk-source tk-source-new" onClick={onNewList}>
+            <span className="tk-source-ic">
+              <Icon name="plus" size={16} />
             </span>
-            <b>{t('Inbox')}</b>
-            <small>{inboxShown.length}</small>
-          </div>
-          {inboxShown.map((x) => (
-            <div key={x.id} className={'tk-item' + (x.checked ? ' done' : '')}>
-              <input type="checkbox" checked={x.checked} onChange={(e) => editInbox(inbox.map((y) => (y.id === x.id ? { ...y, checked: e.target.checked } : y)))} />
-              <input
-                className="tk-text"
-                dir="auto"
-                value={x.text}
-                onChange={(e) => editInbox(inbox.map((y) => (y.id === x.id ? { ...y, text: e.target.value } : y)))}
-                onBlur={() => !x.text.trim() && editInbox(inbox.filter((y) => y.id !== x.id))}
-              />
-              <button className="tk-del" title={t('Delete')} onClick={() => editInbox(inbox.filter((y) => y.id !== x.id))}>
-                <Ic.Close size={14} />
-              </button>
+            <span className="tk-source-name">{t('New list')}</span>
+          </button>
+          {sources.pages.length > 0 && (
+            <>
+              <h2 className="tk-sources-title">{t('In pages')}</h2>
+              {sources.pages.map((s) => sourceButton(s.page.id, <PageIcon page={s.page} />, s.page.title || t('Untitled'), s.open))}
+            </>
+          )}
+        </nav>
+
+        <section className="tk-main" aria-labelledby="tk-title">
+          <header className="tk-main-head">
+            <div className="tk-main-title">
+              <h2 id="tk-title" dir="auto">
+                {title}
+              </h2>
+              <p>{total ? t('{done} of {total} done', { done: num(shown.filter((x) => x.checked).length), total: num(total) }) : t('Nothing here yet')}</p>
             </div>
-          ))}
-        </section>
-      )}
-      {lists.length > 0 && (
-        <section className="tk-group">
-          <div className="tk-label">{t('To-do lists')}</div>
-          {lists.map(({ page, all }) => (
-            <button key={page.id} dir={dirOf(page.title)} className="tk-page" onClick={() => onOpen(page.id)}>
-              <span className="hm-row-ic">
-                <PageIcon page={page} />
+            {page && (
+              <Button variant="ghost" size="sm" icon={<Icon name="arrow-up-right" size={15} className="ds-flip" />} onClick={() => onOpen(page.id)}>
+                {t('Open page')}
+              </Button>
+            )}
+          </header>
+          {total > 0 && (
+            <div className="ds-progress tk-progress" role="progressbar" aria-label={t('Tasks done')} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+              <i style={{ inlineSize: pct + '%' }} />
+            </div>
+          )}
+
+          {canAdd && (
+            <form className="tk-add" onSubmit={(e) => (e.preventDefault(), add())}>
+              <Icon name="plus" size={18} />
+              <input ref={input} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t('Add a task to your inbox')} aria-label={t('New task')} dir="auto" autoComplete="off" />
+              {draft.trim() && <kbd className="ds-kbd">{t('Enter')}</kbd>}
+            </form>
+          )}
+
+          {open.length > 0 ? (
+            <div className="ds-list ds-list--framed tk-list">
+              <AnimatePresence initial={false}>{open.map(row)}</AnimatePresence>
+            </div>
+          ) : (
+            <div className="ds-empty ds-empty--framed">
+              <Icon name={total ? 'check-circle' : 'checklist'} />
+              <b>{total ? t('All caught up') : t('No tasks here yet')}</b>
+              <span>
+                {total
+                  ? t('Every task here is done')
+                  : canAdd
+                    ? t('Type one above, or add a checklist to any page with /todo')
+                    : t('Open the page and add a checklist with /todo')}
               </span>
-              <b dir="auto">{page.title || t('Untitled')}</b>
-              <small>
-                {all.filter((x) => x.checked).length}/{all.length}
-              </small>
-            </button>
-          ))}
-        </section>
-      )}
+            </div>
+          )}
 
-      {inboxShown.length > 0 && groups.size > 0 && <hr className="tk-sep" />}
-
-      {groups.size === 0 && inboxShown.length === 0 ? (
-        <div className="ds-empty ds-card">
-          <b>{filter === 'open' && tasks.length ? t('All caught up') : t('No tasks here')}</b>
-        </div>
-      ) : (
-        [...listGroups, ...pageGroups].map(([pageId, items], i) => {
-          const page = repo.get(pageId)!
-          const head = i === 0 && listGroups.length ? t('In lists') : i === listGroups.length && pageGroups.length ? t('In pages') : ''
-          return (
-            <section key={pageId} className="tk-group">
-              {head && <div className="tk-label">{head}</div>}
-              <button dir={dirOf(page.title)} className="tk-page" onClick={() => onOpen(pageId)}>
-                <span className="hm-row-ic">
-                  <PageIcon page={page} />
-                </span>
-                <b dir="auto">{page.title || t('Untitled')}</b>
-                <small>{items.length}</small>
+          {done.length > 0 && (
+            <div className="tk-done">
+              <button type="button" className="tk-done-toggle" aria-expanded={showDone} onClick={() => setShowDone((v) => !v)}>
+                <Icon name="chevron-right" size={15} className="tk-done-chev ds-flip" />
+                {t('Completed')}
+                <span className="ds-badge">{num(done.length)}</span>
               </button>
-              {items.map((x) => (
-                <label key={x.index} className={'tk-item' + (x.checked ? ' done' : '')} style={{ paddingInlineStart: 6 + x.depth * 22 }}>
-                  <input type="checkbox" checked={x.checked} onChange={(e) => (setChecked(x, e.target.checked), setTick((n) => n + 1))} />
-                  <span dir="auto">{x.text}</span>
-                </label>
-              ))}
-            </section>
-          )
-        })
-      )}
-    </div>
+              <AnimatePresence initial={false}>
+                {showDone && (
+                  <motion.div
+                    key="done"
+                    className="tk-done-body"
+                    initial={motionOf.reduced ? false : { opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={motionOf.reduced ? undefined : { opacity: 0, height: 0 }}
+                    transition={motionOf.transition}
+                  >
+                    <div className="ds-list ds-list--framed tk-list">
+                      <AnimatePresence initial={false}>{done.map(row)}</AnimatePresence>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+        </section>
+      </div>
+    </Screen>
   )
 }

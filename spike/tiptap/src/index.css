@@ -39,6 +39,12 @@
 @import './design-system/areas/surfaces.css';
 @import './design-system/home.css';
 @import './design-system/screens.css';
+@import './design-system/areas/templates.css';
+@import './design-system/areas/tasks.css';
+@import './design-system/areas/flashcards.css';
+@import './design-system/areas/pages-table.css';
+@import './design-system/areas/drawings.css';
+@import './design-system/areas/graph.css';
 @import './design-system/areas/preferences-workspace.css';
 @import './design-system/areas/onboarding.css';
 @import './design-system/areas/reader.css';

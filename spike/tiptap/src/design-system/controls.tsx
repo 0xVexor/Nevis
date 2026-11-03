@@ -14,6 +14,48 @@ export function Switch({ checked, onChange, label, disabled, className }: { chec
   return <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} className={cx('ds-switch', className)} onClick={() => onChange(!checked)} />
 }
 
+/** A checkbox for lists and tables: a real input (keyboard, forms, screen readers) drawn as `ds-check`. `children` is its visible label. */
+export function Checkbox({ checked, onChange, label, disabled, className, children }: { checked: boolean; onChange: (next: boolean) => void; label?: string; disabled?: boolean; className?: string; children?: ReactNode }) {
+  return (
+    <label className={cx('ds-checkbox', className)} data-checked={checked || undefined}>
+      <input type="checkbox" className="ds-checkbox-input" checked={checked} disabled={disabled} aria-label={label} onChange={(event) => onChange(event.target.checked)} />
+      <span className="ds-check" aria-hidden="true">
+        <Icon name="check" size={12} />
+      </span>
+      {children}
+    </label>
+  )
+}
+
+/** A search box: the icon, the input and a clear button once something is typed. `label` names it for assistive technology; `onEnter` runs on Enter (go to the first result). */
+export function SearchField({ value, onChange, onEnter, label, placeholder, clearLabel, autoFocus, className }: { value: string; onChange: (next: string) => void; onEnter?: () => void; label: string; placeholder?: string; clearLabel: string; autoFocus?: boolean; className?: string }) {
+  return (
+    <div className={cx('ds-search', className)}>
+      <Icon name="search" size={16} />
+      <input type="search" dir="auto" autoComplete="off" value={value} placeholder={placeholder} aria-label={label} autoFocus={autoFocus} onChange={(event) => onChange(event.target.value)} onKeyDown={(event) => (event.key === 'Escape' && value ? (event.stopPropagation(), onChange('')) : event.key === 'Enter' && onEnter ? (event.preventDefault(), onEnter()) : undefined)} />
+      {value && (
+        <button type="button" className="ds-search-clear" aria-label={clearLabel} title={clearLabel} onClick={() => onChange('')}>
+          <Icon name="x" size={14} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** One line of facts, each a number and its words ("3 due now"). Labels are already translated and read after the number. */
+export function Stats({ items, label, className }: { items: { label: string; value: ReactNode }[]; label: string; className?: string }) {
+  return (
+    <dl className={cx('ds-stats', className)} aria-label={label}>
+      {items.map((item) => (
+        <div key={item.label} className="ds-stat">
+          <dt>{item.label}</dt>
+          <dd>{item.value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
 /** Text input. The direction follows what is typed unless `ltr` (codes, URLs, numbers). */
 export function Field({ ltr, className, ...rest }: Omit<InputHTMLAttributes<HTMLInputElement>, 'dir'> & { ltr?: boolean }) {
   return <input {...rest} className={cx('ds-field', className)} dir={ltr ? 'ltr' : 'auto'} />
