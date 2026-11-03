@@ -1,0 +1,134 @@
+/* First launch and the workspace list (src/onboarding/Onboarding.tsx). Flat surfaces; motion only explains moving between steps. */
+.onb { position: fixed; inset: 0; z-index: var(--ds-z-modal); display: grid; grid-template-rows: auto 1fr; overflow: auto; container-type: inline-size; background: var(--ds-bg); color: var(--ds-text); font-family: var(--ds-font-ui); font-size: var(--ds-text-ui); }
+.onb-top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: var(--ds-s4); min-block-size: calc(var(--ds-control) + var(--ds-s8)); padding-inline: var(--ds-s6); }
+.onb-brand { display: inline-flex; align-items: center; gap: var(--ds-s2); color: var(--ds-text-2); font-weight: 600; }
+.onb-brand .brand-mark { color: var(--ds-accent); }
+.onb-top-end { justify-self: end; }
+
+/* each step slides in from the side it comes from; inline direction follows the interface */
+.onb-stage { --onb-from: var(--ds-s4); display: grid; place-items: center; padding: var(--ds-s8) var(--ds-s6) var(--ds-s10); animation: onb-enter var(--ds-base) var(--ds-ease) both; }
+.onb-stage.is-back, :root[dir='rtl'] .onb-stage { --onb-from: calc(var(--ds-s4) * -1); }
+:root[dir='rtl'] .onb-stage.is-back { --onb-from: var(--ds-s4); }
+@keyframes onb-enter { from { opacity: 0; translate: var(--onb-from) 0; } }
+@keyframes onb-fade { from { opacity: 0; } }
+
+.onb-panel { display: grid; gap: var(--ds-s5); inline-size: min(100%, 440px); }
+.onb-panel--center { justify-items: center; text-align: center; }
+.onb-panel--wide { inline-size: min(100%, 640px); }
+.onb-panel h1 { margin: 0; font-size: var(--ds-text-heading); font-weight: 600; line-height: 1.15; letter-spacing: -.02em; outline: none; }
+.onb-panel h1 + p { margin: calc(var(--ds-s3) * -1) 0 0; color: var(--ds-text-2); line-height: 1.7; }
+.onb-field { display: grid; gap: var(--ds-s2); justify-items: start; }
+.onb-field > span { color: var(--ds-text-2); font-size: var(--ds-text-small); font-weight: 500; }
+.onb-field > .ds-field { justify-self: stretch; }
+.onb-panel--center .onb-field { justify-items: center; }
+.onb-row { display: flex; }
+.onb-muted { color: var(--ds-text-3); font-weight: 400; }
+.onb-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--ds-s3); margin-block-start: var(--ds-s2); }
+.onb-actions:has(> :only-child) { justify-content: flex-end; }
+.onb-panel--center .onb-actions, .onb-actions--start { justify-content: flex-start; }
+.onb-panel--center .onb-actions { justify-content: center; }
+.onb-aside { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-s1); margin: 0; color: var(--ds-text-3); font-size: var(--ds-text-small); }
+
+/* the mark draws itself once, on the welcome step */
+.onb-mark { color: var(--ds-accent); }
+.onb-mark path { stroke-dasharray: 80; stroke-dashoffset: 80; animation: onb-draw calc(var(--ds-slow) * 3) var(--ds-ease) var(--ds-fast) forwards; }
+.onb-mark path + path { animation-delay: calc(var(--ds-slow) * 2); }
+@keyframes onb-draw { to { stroke-dashoffset: 0; } }
+
+/* name step: the form beside the workspace taking shape */
+.onb-split { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 360px); align-items: center; gap: var(--ds-s10); }
+@container (max-width: 820px) { .onb-split { grid-template-columns: minmax(0, 440px); gap: var(--ds-s8); } }
+
+.onb-preview { display: grid; grid-template-columns: minmax(0, 148px) minmax(0, 1fr); block-size: 240px; overflow: hidden; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); }
+.onb-preview-side { display: flex; flex-direction: column; gap: var(--ds-s1); min-inline-size: 0; padding: var(--ds-s3); border-inline-end: 1px solid var(--ds-line); background: var(--ds-side); }
+.onb-preview-side .ds-workspace-header { margin-block-end: var(--ds-s3); }
+.onb-preview-side .ds-workspace-name { font-size: var(--ds-text-ui); }
+.onb-preview-row { display: flex; align-items: center; gap: var(--ds-s2); block-size: var(--ds-control-sm); padding-inline: var(--ds-s2); border-radius: var(--ds-r-sm); color: var(--ds-text-2); font-size: var(--ds-text-small); white-space: nowrap; }
+.onb-preview-row.is-current { background: var(--ds-accent-soft); color: var(--ds-accent); }
+.onb-preview-page { display: grid; align-content: start; gap: var(--ds-s3); padding: var(--ds-s6) var(--ds-s5); }
+.onb-preview-line { display: block; block-size: var(--ds-s2); border-radius: var(--ds-r-full); background: var(--ds-sunk); }
+.onb-preview-line--title { inline-size: 60%; block-size: var(--ds-s3); margin-block-end: var(--ds-s2); background: var(--ds-line-strong); }
+.onb-preview-line--short { inline-size: 45%; }
+.onb-preview-line--accent { inline-size: 30%; background: var(--ds-accent-line); }
+.onb-preview :is(.ds-workspace-mark, .onb-preview-row, .onb-preview-line--accent) { transition: color var(--ds-base) var(--ds-ease), background var(--ds-base) var(--ds-ease); }
+
+/* workspace list for people who already have one */
+.onb-list { display: grid; margin: 0; padding: 0; overflow: hidden; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); list-style: none; }
+.onb-list > li { display: flex; align-items: center; gap: var(--ds-s3); padding: var(--ds-s3) var(--ds-s4); transition: background var(--ds-fast) var(--ds-ease); }
+.onb-list > li + li { border-block-start: 1px solid var(--ds-line); }
+.onb-list > li:hover { background: var(--ds-hover); }
+.onb-list > li > .ds-icon { flex: none; color: var(--ds-accent); }
+.onb-list > li.is-unavailable > .ds-icon { color: var(--ds-text-3); }
+.onb-list-text { display: grid; flex: 1; gap: 2px; min-inline-size: 0; }
+.onb-list-text > :is(b, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.onb-list-text b { font-weight: 600; }
+.onb-list-text small { color: var(--ds-text-3); font-size: var(--ds-text-caption); }
+.onb-list-text small.onb-warn { display: inline-flex; align-items: center; gap: var(--ds-s1); color: var(--ds-warn); }
+.onb-list-actions { display: flex; flex: none; align-items: center; gap: var(--ds-s2); }
+@container (max-width: 520px) {
+  .onb-list > li { flex-wrap: wrap; }
+  .onb-list-actions { inline-size: 100%; justify-content: flex-end; }
+  .onb-top { grid-template-columns: 1fr auto; }
+  .onb-top .ds-steps { grid-row: 2; grid-column: 1 / -1; justify-self: center; }
+}
+
+
+/* the end of the flow: the preview grows into the workspace, then the screen hands over */
+.onb-landing { display: grid; justify-items: center; gap: var(--ds-s4); color: var(--ds-text-2); }
+.onb-landing .onb-preview { inline-size: min(560px, 90cqi); block-size: 340px; animation: onb-grow var(--ds-slow) var(--ds-ease) both; }
+.onb[data-stage='landing']:not([data-handoff]) { animation: onb-out var(--ds-slow) var(--ds-ease) var(--ds-slow) forwards; }
+/* a new workspace keeps its last frame; after the reload LandingFrame draws it again, still, then fades over the first note */
+.onb[data-stage='arrive'] :is(.onb-stage, .onb-landing .onb-preview) { animation: none; }
+.onb.is-leaving { pointer-events: none; animation: onb-out var(--ds-base) var(--ds-ease) forwards; }
+@keyframes onb-grow { from { scale: .72; } }
+@keyframes onb-out { to { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .onb-stage { animation-name: onb-fade; }
+  .onb-mark path, .onb-landing .onb-preview, .onb[data-stage='landing'] { animation: none; stroke-dashoffset: 0; }
+  .onb-list > li, .onb-preview * { transition: none; }
+}
+:root[data-motion='reduce'] .onb-stage { animation-name: onb-fade; }
+:root[data-motion='reduce'] :is(.onb-mark path, .onb-landing .onb-preview, .onb[data-stage='landing']) { animation: none; stroke-dashoffset: 0; }
+:root[data-motion='reduce'] :is(.onb-list > li, .onb-preview *) { transition: none; }
+
+/* First note (src/onboarding/FirstNote.tsx): one sheet like a real page, a few ways in, one tip at a time.
+   On leaving, the app is already behind it: the background clears and the sheet flies into its sidebar row (FLIP in the component). */
+.fn { position: fixed; inset: 0; z-index: var(--ds-z-modal); overflow: auto; container-type: inline-size; background-color: var(--ds-bg); color: var(--ds-text); font-family: var(--ds-font-ui); font-size: var(--ds-text-ui); transition: background-color var(--ds-slow) var(--ds-ease); }
+.fn-stage { display: grid; align-content: center; justify-items: center; gap: var(--ds-s4); inline-size: min(100% - var(--ds-s8), 720px); min-block-size: 100%; margin-inline: auto; padding-block: var(--ds-s10); }
+.fn-kicker { display: inline-flex; align-items: center; gap: var(--ds-s2); margin: 0; color: var(--ds-text-3); font-size: var(--ds-text-small); animation: onb-fade var(--ds-slow) var(--ds-ease) both; }
+.fn-kicker .brand-mark { color: var(--ds-accent); }
+
+.fn-sheet { display: grid; grid-template-rows: auto 1fr auto; gap: var(--ds-s6); inline-size: 100%; min-block-size: min(560px, 66vh); padding: var(--ds-s8) var(--ds-s10) var(--ds-s6); border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); transition: border-color var(--ds-base) var(--ds-ease); animation: fn-arrive var(--ds-slow) var(--ds-ease) both; }
+.fn-sheet:focus-within { border-color: var(--ds-accent-line); }
+.fn-sheet-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-s3); min-block-size: var(--ds-control-sm); color: var(--ds-text-3); font-size: var(--ds-text-caption); }
+.fn-sheet .home-note-bare { display: grid; align-content: start; gap: var(--ds-s4); }
+.fn-sheet .home-note-title { margin: 0; color: var(--ds-text); font: 600 var(--ds-text-heading)/1.2 var(--ds-font-ui); letter-spacing: -.02em; }
+.fn-sheet .home-note-title:focus-visible, .fn-sheet .home-note-editor:focus-within { outline: none; }
+.fn-sheet .home-note-editor .tiptap { min-block-size: 200px; max-block-size: none; overflow: visible; font: 400 17px/1.8 var(--ds-font-ui); }
+/* one line at any width or font: the label gives way first, then the row scrolls rather than wrapping */
+.fn-ideas { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--ds-s1); padding-block-start: var(--ds-s4); overflow-x: auto; scrollbar-width: none; border-block-start: 1px solid var(--ds-line); white-space: nowrap; animation: fn-rise var(--ds-base) var(--ds-ease) var(--ds-slow) both; }
+.fn-ideas > .ds-btn { flex: none; }
+@container (max-width: 700px) { .fn-ideas > span { display: none; } }
+.fn-ideas > span { margin-inline-end: var(--ds-s1); color: var(--ds-text-3); font-size: var(--ds-text-small); }
+@container (max-width: 600px) { .fn-sheet { padding: var(--ds-s6) var(--ds-s5) var(--ds-s5); } }
+
+/* one line, always: a long tip is cut, never wrapped */
+.fn-tip { display: flex; align-items: center; justify-content: center; gap: var(--ds-s2); max-inline-size: 100%; min-block-size: var(--ds-control); margin: 0; color: var(--ds-text-2); font-size: var(--ds-text-small); white-space: nowrap; animation: fn-rise var(--ds-base) var(--ds-ease) both; }
+.fn-tip > .ds-icon { flex: none; color: var(--ds-accent); }
+.fn-tip > span { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; }
+.fn-tip kbd { margin-inline: var(--ds-s1); padding-inline: var(--ds-s1); border: 1px solid var(--ds-line-strong); border-radius: var(--ds-r-sm); background: var(--ds-raised); color: var(--ds-text); font-family: var(--ds-font-mono); }
+.fn-actions { display: flex; justify-content: center; }
+@keyframes fn-arrive { from { opacity: 0; scale: .96; translate: 0 var(--ds-s4); } }
+@keyframes fn-rise { from { opacity: 0; translate: 0 var(--ds-s2); } }
+
+.fn[data-phase='leaving'] { background-color: transparent; pointer-events: none; }
+.fn[data-phase='leaving'] .fn-stage > :not(.fn-sheet) { opacity: 0; transition: opacity var(--ds-fast) var(--ds-ease); }
+
+@media (prefers-reduced-motion: reduce) {
+  .fn-kicker, .fn-sheet, .fn-ideas, .fn-tip { animation-name: onb-fade; }
+  .fn, .fn-sheet { transition: none; }
+  .onb.is-leaving { animation-duration: var(--ds-fast); }
+}
+:root[data-motion='reduce'] :is(.fn-kicker, .fn-sheet, .fn-ideas, .fn-tip) { animation-name: onb-fade; }
+:root[data-motion='reduce'] :is(.fn, .fn-sheet) { transition: none; }

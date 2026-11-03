@@ -1,5 +1,6 @@
 import { WorkspaceHeader } from '../design-system/WorkspaceHeader'
-import { WorkspaceMark } from './WorkspaceMark'
+import { BrandMark } from '../BrandMark'
+import { SaveStatus } from '../design-system/SaveStatus'
 import { useLabels } from './labels'
 import { useState, type ReactNode } from 'react'
 import { Button } from '../design-system/Button'
@@ -10,6 +11,7 @@ import { Icon } from '../design-system/icons'
 import { SettingRow, SettingGroup, Range, Choice, Toggle } from './parts'
 import { SidebarStylePicker } from './SidebarPreview'
 import { LivePreview } from './WorkspacePreview'
+import { AccentSwatches } from './AccentSwatches'
 
 export type Category = 'appearance' | 'editor' | 'language' | 'general' | 'data' | 'database' | 'connections' | 'shortcuts' | 'about'
 const categories: { id: Category; label: string; icon: string; description: string }[] = [
@@ -25,11 +27,10 @@ const categories: { id: Category; label: string; icon: string; description: stri
 ]
 export function Appearance() {
   const s = useSettings(), l = useLabels()
-  const accents = [{ value: null, label: 'Teal', css: 'teal' }, { value: '#6857f0', label: 'Violet', css: 'violet' }, { value: '#3b6cf6', label: 'Blue', css: 'blue' }, { value: '#22b07d', label: 'Green', css: 'green' }, { value: '#ef5b4f', label: 'Coral', css: 'coral' }]
   return <>
     <SettingGroup title={l('Theme & color')}>
       <SettingRow label={l('Theme')} hint={l('Set the mood for your workspace.')}><Choice label={l('Theme')} value={s.theme} items={[{ value: 'light', label: l('Light'), icon: 'sun' }, { value: 'dark', label: l('Dark'), icon: 'moon' }, { value: 'system', label: l('System'), icon: 'monitor' }]} onChange={theme => updateSettings({ theme })} /></SettingRow>
-      <SettingRow label={l('Accent color')} hint={l('A small detail. A personal touch.')}><div className="prefs-swatches" role="group" aria-label={l('Accent color')}>{accents.map(a => <Button key={a.label} className={'prefs-swatch tone-' + a.css} aria-label={l(a.label)} title={l(a.label)} aria-pressed={s.accent === a.value} onClick={() => updateSettings({ accent: a.value })}>{s.accent === a.value ? '✓' : ''}</Button>)}<label className="prefs-custom-color" title={l('Custom color')}>+<input type="color" aria-label={l('Custom color')} value={s.accent ?? '#087f74'} onChange={event => updateSettings({ accent: event.target.value })} /></label></div></SettingRow>
+      <SettingRow label={l('Accent color')} hint={l('A small detail. A personal touch.')}><AccentSwatches /></SettingRow>
     </SettingGroup>
     <SettingGroup title={l('Workspace')}>
       <SettingRow label={l('Corner radius')} hint={l('From crisp edges to softer shapes.')}><Range label={l('Corner radius')} value={s.radius} min={4} max={20} onChange={radius => updateSettings({ radius })} /></SettingRow>
@@ -74,15 +75,15 @@ export function SettingsWorkspace({ embedded = false, initialCategory = 'appeara
   const Main = embedded ? 'div' : 'main'
   return <div className={"prefs-shell" + (embedded ? " prefs-embedded" : "")}>
     <aside className="prefs-nav">
-      <div className="prefs-brand"><WorkspaceHeader mark={<WorkspaceMark />} name={<Brand />} /></div>
+      <div className="prefs-brand"><WorkspaceHeader mark={<BrandMark />} name={<Brand />} /></div>
       
       <div className="prefs-workspace"><span className="prefs-workspace-icon"><Icon name="layers" /></span><div><b>{l('Personal space')}</b><small>{l('Local workspace')}</small></div></div>
       <div className="prefs-nav-caption">{l('Preferences')}</div>
-      <nav aria-label={l('Settings')}>{categories.map(c => <Button key={c.id} variant="ghost" aria-current={category === c.id ? 'page' : undefined} onClick={() => { setCategory(c.id); setReset(false); if (embedded) document.querySelector('.scroller')?.scrollTo(0, 0); else window.scrollTo(0, 0) }}><Icon name={c.icon} />{l(c.label)}</Button>)}</nav>
-      <div className="prefs-nav-footer">{onLeave && <Button variant="ghost" icon={<Icon name="arrow-left" className="ds-flip" />} onClick={onLeave}>{l('Back to workspace')}</Button>}<span className="prefs-prefs-tag">{l(embedded ? 'Settings' : 'Design study')}</span><p>{l(embedded ? 'Make the appearance and editor your own.' : 'A preview of the new shared UI direction.')}</p>{!embedded && <small>{l('Preview settings stay separate from your app.')}</small>}</div>
+      <nav aria-label={l('Settings')}>{categories.map(c => <Button key={c.id} className="prefs-nav-button" variant="ghost" aria-current={category === c.id ? 'page' : undefined} onClick={() => { setCategory(c.id); setReset(false); if (embedded) document.querySelector('.scroller')?.scrollTo(0, 0); else window.scrollTo(0, 0) }} icon={<Icon name={c.icon} />}><span>{l(c.label)}</span></Button>)}</nav>
+      <div className="prefs-nav-footer">{onLeave && <Button className="prefs-nav-button prefs-back" variant="ghost" icon={<Icon name="arrow-left" className="ds-flip" />} onClick={onLeave}><span>{l('Back to workspace')}</span></Button>}<span className="prefs-prefs-tag">{l(embedded ? 'Settings' : 'Design study')}</span><p>{l(embedded ? 'Make the appearance and editor your own.' : 'A preview of the new shared UI direction.')}</p>{!embedded && <small>{l('Preview settings stay separate from your app.')}</small>}</div>
     </aside>
     <Main className="prefs-main">
-      <header className="prefs-top"><span>{l('Workspace')}<span>/</span>{l('Settings')}</span><span className="prefs-saved" role="status"><i />{l('Saved locally')}</span></header>
+      <header className="prefs-top"><span>{l('Workspace')}<span>/</span>{l('Settings')}</span><SaveStatus state="saved" label={l('Saved locally')} /></header>
       <div className="prefs-content">
         <div className="prefs-title"><div><span className="prefs-eyebrow">{l('Make yourself at home')}</span><h1>{l('Settings')}</h1><p>{l('Thoughtful defaults. A few personal touches.')}</p></div></div>
         <div className="prefs-columns"><div className="prefs-panel" key={category}><header className="prefs-panel-title"><h2>{l(current.label)}</h2><p>{l(current.description)}</p></header>{panels[category] ?? (category === 'appearance' ? <><Appearance />{appearanceExtras}</> : category === 'editor' ? <><EditorSettings />{editorExtras}</> : category === 'language' ? <LanguageSettings /> : category === 'general' ? <GeneralSettings /> : null)}

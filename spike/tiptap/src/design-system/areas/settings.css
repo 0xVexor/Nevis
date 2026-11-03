@@ -19,14 +19,6 @@
 .sx-row:not(.wide) .sx-ctl { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--ds-s2); }
 .sx-row.wide .sx-ctl { flex: 1; }
 
-.sx-range { display: flex; align-items: center; gap: 12px; width: 260px; max-width: 100%; }
-.sx-range output { min-width: 44px; text-align: end; color: var(--ds-text-2); font-size: 13px; direction: ltr; font-variant-numeric: tabular-nums; }
-.sx-range input { flex: 1; min-width: 0; height: 22px; margin: 0; background: transparent; appearance: none; cursor: var(--cursor-hand, pointer); }
-.sx-range input::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(var(--ds-accent), var(--ds-accent)) 0 / var(--p, 0%) 100% no-repeat, var(--ds-line-strong); block-size: 4px; }
-.sx-range input::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; margin-top: -6px; border-radius: 50%; border: 1px solid var(--ds-line-strong); background: var(--ds-white); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); transition: transform 0.2s var(--spring); inline-size: 16px; block-size: 16px; margin-block-start: -6px; }
-.sx-range input:hover::-webkit-slider-thumb { transform: scale(1.12); }
-.sx-range input:focus-visible { outline: none; }
-.sx-range input:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--ds-accent-line); }
 
 /* font picker: every card shows its own face */
 .fp { display: flex; flex-direction: column; gap: 18px; padding: 4px 0 14px; }
@@ -57,16 +49,9 @@
 
 /* the live preview follows the glass sliders */
 
-/* narrower main panel (data-main on .app): the nav becomes a row of tabs */
-.app:is([data-main='sm'], [data-main='xs']) .settings { padding-inline: 16px; }
-.app:is([data-main='sm'], [data-main='xs']) .sx-layout { grid-template-columns: minmax(0, 1fr); gap: 18px; }
-.app:is([data-main='sm'], [data-main='xs']) .set-tabs { flex-direction: row; position: static; overflow-x: auto; }
-.app:is([data-main='sm'], [data-main='xs']) .set-tabs button { flex: none; }
-.app:is([data-main='sm'], [data-main='xs']) .set-head h2 { font-size: 26px; }
+/* Legacy service panels still used by data, updates and AI settings. */
 .app:is([data-main='sm'], [data-main='xs']) .sx-card-head, .app:is([data-main='sm'], [data-main='xs']) .sx-card-body { padding-inline: 14px; }
-.app[data-main='xs'] .set-head { flex-direction: column; }
 .app:is([data-main='sm'], [data-main='xs']) .sx-row:not(.wide) { flex-direction: column; align-items: stretch; gap: 10px; }
-.app:is([data-main='sm'], [data-main='xs']) .sx-range { width: 100%; }
 .app:is([data-main='sm'], [data-main='xs']) .sx-ctl:has(.ds-switch) { align-self: flex-start; }
 
 /* AI connection: one switch on top, the per-document hide list tucked into a disclosure */

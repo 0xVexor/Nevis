@@ -3,6 +3,7 @@
 .ds-workspace-mark { display: grid; place-items: center; flex: none; inline-size: var(--ds-control); block-size: var(--ds-control); padding: 0; border: 0; border-radius: var(--ds-r-sm); background: transparent; color: var(--ds-accent); }
 button.ds-workspace-mark { cursor: pointer; transition: background var(--ds-fast) var(--ds-ease); }
 button.ds-workspace-mark:hover { background: var(--ds-hover); }
+button.ds-workspace-mark[aria-pressed='true'] { background: var(--ds-accent-soft); }
 button.ds-workspace-mark:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
 .ds-workspace-mark > svg { inline-size: var(--ds-s6); block-size: var(--ds-s6); }
 .ds-workspace-name { flex: 1; min-inline-size: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ds-text); font-size: var(--ds-text-section); font-weight: 600; letter-spacing: -.02em; }

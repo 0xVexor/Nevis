@@ -1,4 +1,5 @@
 import { Brand } from '../Brand'
+import { BrandMark } from '../BrandMark'
 import { UpdateSettings } from '../UpdateUI'
 import appPackage from '../../package.json'
 import { useEffect, useRef } from 'react'
@@ -124,7 +125,7 @@ export function About() {
       <Card icon={<Ic.Info />} title={<Brand />}>
         <div className="sx-about">
           <span className="sx-logo">
-            <Ic.Logo size={34} />
+            <BrandMark size={34} />
           </span>
           <p>{t('Your notes, checklists and drawings in one calm place. Everything stays on your device.')}</p>
           <small>{t('Version {version}', { version: appPackage.version })}</small>

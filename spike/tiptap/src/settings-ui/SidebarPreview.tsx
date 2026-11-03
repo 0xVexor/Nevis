@@ -1,4 +1,4 @@
-import { WorkspaceMark } from './WorkspaceMark'
+import { BrandMark } from '../BrandMark'
 import { shortcutLabel } from '../shortcuts'
 import { useLabels } from './labels'
 import { Icon } from '../design-system/icons'
@@ -15,7 +15,7 @@ const styles: { id: Mode; label: string; hint: string }[] = [
 export function SidebarSample({ mode, pagesView = 'tree', thumbnail = false }: { mode: Mode; pagesView?: Settings['pagesView']; thumbnail?: boolean }) {
   const l = useLabels()
   return <div className={'prefs-sidebar-sample' + (thumbnail ? ' thumbnail' : '')} data-mode={mode} aria-hidden={thumbnail || undefined}>
-    <div className="sample-brand"><WorkspaceMark /><b>Nevis.</b></div>
+    <div className="sample-brand"><BrandMark /><b>Nevis.</b></div>
     <div className="sample-search"><Icon name="search" /><span>{l('Search')}</span><kbd>{shortcutLabel(['Mod', 'K'])}</kbd></div>
     <div className="sample-nav">
       {[['home', 'Home'], ['tasks', 'Tasks'], ['layers', 'Flashcards']].map(([icon, label]) => <div key={label} className="sample-nav-row"><Icon name={icon} /><span>{l(label)}</span>{label === 'Flashcards' && <i className="sample-count">6</i>}</div>)}

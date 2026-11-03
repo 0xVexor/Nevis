@@ -8,6 +8,8 @@ import { COVER_SCENES, landscapeFor } from './scenery'
 import { PreferenceGroup, PreferenceRow, SegmentedChoice, RangeControl } from './Preferences'
 import { WorkspaceHeader } from './WorkspaceHeader'
 import { CommandDialog, CommandResult } from './CommandDialog'
+import { SaveStatus } from './SaveStatus'
+import { BrandMark } from '../BrandMark'
 import './gallery.css'
 
 /**
@@ -56,7 +58,10 @@ function Pane({ dir }: { dir: 'ltr' | 'rtl' }) {
         </CommandDialog>}
       </Section>
       <Section title="Workspace identity">
-        <WorkspaceHeader mark={<Icon name="book" />} name="Workspace" revealLabel="Open sidebar" expanded={on} onReveal={() => setOn(true)} action={<IconButton label="Close sidebar" onClick={() => setOn(false)}><Icon name="panel-left" /></IconButton>} />
+        <WorkspaceHeader mark={<BrandMark />} name="Nevis" revealLabel="Open sidebar" expanded={on} onReveal={() => setOn(true)} action={<IconButton label="Close sidebar" onClick={() => setOn(false)}><Icon name="panel-left" /></IconButton>} />
+      </Section>
+      <Section title="Save feedback">
+        <div className="gallery-line"><SaveStatus state="saving" label={fa ? 'در حال ذخیره…' : 'Saving…'} /><SaveStatus state="saved" label={fa ? 'تغییرات ذخیره شد' : 'All changes saved'} /><SaveStatus state="error" label={fa ? 'ذخیره نشد' : 'Could not save'} /></div>
       </Section>
       <Section title="Preferences patterns">
         <PreferenceGroup title={fa ? 'ترجیحات' : 'Preferences'}>

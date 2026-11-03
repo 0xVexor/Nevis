@@ -28,7 +28,6 @@
 @import './design-system/areas/database.css';
 @import './design-system/areas/database-grid.css';
 @import './design-system/areas/database-layout.css';
-@import './design-system/areas/home-templates.css';
 @import './design-system/areas/scrollbars.css';
 @import './design-system/areas/updates.css';
 @import './design-system/areas/layout.css';
@@ -41,4 +40,5 @@
 @import './design-system/home.css';
 @import './design-system/screens.css';
 @import './design-system/areas/preferences-workspace.css';
+@import './design-system/areas/onboarding.css';
 @import './design-system/areas/print.css';

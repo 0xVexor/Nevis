@@ -12,7 +12,7 @@ let closeActive: (() => void) | null = null
  * It opens at the caret, you type to filter, ↑ ↓ Enter to run, Esc to close. With text selected the commands
  * work on the selection (turn it into a heading / list / code, wrap it in a callout, draw it as a diagram…).
  */
-function openPalette(editor: Editor) {
+export function openCommandPalette(editor: Editor, allowedCommands: readonly string[] | null = null) {
   if (closeActive) return closeActive() // the shortcut toggles
 
   let query = ''
@@ -21,7 +21,7 @@ function openPalette(editor: Editor) {
     const c = editor.view.coordsAtPos(editor.state.selection.head)
     return new DOMRect(c.left, c.top, 0, c.bottom - c.top)
   }
-  const props = () => ({ items: paletteItems(query, editor), command: pick, clientRect: caret })
+  const props = () => ({ items: paletteItems(query, editor).filter(item => !allowedCommands || allowedCommands.includes(item.title)), command: pick, clientRect: caret })
 
   function pick(item: CommandItem) {
     if (item.disabled) return
@@ -62,8 +62,11 @@ function openPalette(editor: Editor) {
   closeActive = close
 }
 
-export const CommandPalette = Extension.create({
+export const CommandPalette = Extension.create<{ allowedCommands: readonly string[] | null }>({
   name: 'commandPalette',
+  addOptions() {
+    return { allowedCommands: null }
+  },
   addProseMirrorPlugins() {
     const editor = this.editor
     return [
@@ -73,7 +76,7 @@ export const CommandPalette = Extension.create({
           handleKeyDown: (_view, e) => {
             if (editor.isEditable && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === 'Slash' || e.key === '/')) {
               e.preventDefault()
-              openPalette(editor)
+              openCommandPalette(editor, this.options.allowedCommands)
               return true
             }
             return false

@@ -8,5 +8,3 @@
 .acct-err, .acct-note { margin: 0; padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.75; }
 .acct-err { background: color-mix(in srgb, var(--ds-bad) 10%, transparent); border: 1px solid color-mix(in srgb, var(--ds-bad) 32%, transparent); color: var(--ds-text); }
 .acct-note { background: var(--ds-accent-faint); border: 1px solid var(--ds-accent-line); color: var(--ds-text-2); }
-.acct-lang { flex: none; }
-.acct-lang button { padding: 5px 12px; }

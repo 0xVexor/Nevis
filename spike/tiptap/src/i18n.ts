@@ -6,8 +6,9 @@ import { getSettings, type Lang } from './settings'
 import { FA as FA_APP } from './fa'
 import { formatShortcutText } from './shortcuts'
 import { FA_DB } from './database/ui/fa-db'
+import { FA_ONBOARDING } from './fa-onboarding'
 
-const FA: Record<string, string> = { ...FA_DB, ...FA_APP, ...FA_SETTINGS, ...FA_HOME }
+const FA: Record<string, string> = { ...FA_DB, ...FA_APP, ...FA_SETTINGS, ...FA_HOME, ...FA_ONBOARDING }
 
 export type { Lang }
 export type Dir = 'ltr' | 'rtl'

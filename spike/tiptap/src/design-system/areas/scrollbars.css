@@ -17,7 +17,7 @@
 /* Firefox fallback for horizontal surfaces; WebKit uses the precise axis rules below. */
 :is(.hscroll-rail, .tree-scroll, .db-tabs, .db-cal-weeks, .db-chart-svg,
     .tiptap pre, .tiptap .tableWrapper, .math-block, .math-live,
-    .mermaid-view, .drawing-view, .fx-path, .set-tabs, .fc-a table,
+    .mermaid-view, .drawing-view, .fx-path, .fc-a table,
     .page-meta .meta-cell.tags .meta-val) {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) transparent;
@@ -27,7 +27,7 @@
   /* Native scrollbar-width/color would override the WebKit pseudo elements. */
   *, :is(.hscroll-rail, .tree-scroll, .db-tabs, .db-cal-weeks, .db-chart-svg,
          .tiptap pre, .tiptap .tableWrapper, .math-block, .math-live,
-         .mermaid-view, .drawing-view, .fx-path, .set-tabs, .fc-a table,
+         .mermaid-view, .drawing-view, .fx-path, .fc-a table,
          .page-meta .meta-cell.tags .meta-val) {
     scrollbar-width: auto;
     scrollbar-color: auto;
