@@ -21,39 +21,27 @@
 .layout-stacked > .layout-columns { grid-template-columns: minmax(0, 1fr) !important; }
 .layout-stacked > .layout-resizers { display: none; }
 .tiptap[contenteditable='false'] .layout-resizers { display: none; }
-.layout-menu { min-width: 250px; max-width: min(360px, 90vw); }
-.layout-menu .ds-menu-label { white-space: normal; }
 .layout-protection { padding: 12px 16px; color: var(--ds-text-2); font-size: 13px; }
 .layout-protection { margin-block: 12px; background: var(--ds-raised); border: 1px solid var(--ds-line); border-radius: var(--ds-r); }
 .layout-protection pre { max-height: 400px; overflow: auto; white-space: pre-wrap; font-size: 11px; direction: ltr; }
 .layout-width-warning { font-size: 12px; color: var(--ds-text-2); }
-.layout-drag-preview { position: fixed; z-index: 91; pointer-events: none; max-width: 280px; padding: 8px 12px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-sm); background: var(--ds-raised); color: var(--ds-text); box-shadow: var(--ds-shadow-pop); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.layout-snap-overlay[hidden], .layout-snap-hover-outline[hidden], .layout-snap-column-highlight[hidden], .layout-snap-tray[hidden], .layout-drag-preview[hidden], .layout-snap-picker[hidden] { display: none !important; }
+.layout-snap-hover-outline[hidden], .layout-snap-column-highlight[hidden], .layout-snap-picker[hidden] { display: none !important; }
 .layout-snap-picker:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
-.layout-snap-overlay { position: fixed; display: grid; direction: ltr; z-index: 90; pointer-events: none; box-sizing: border-box; }
 .layout-snap-hover-outline { position: fixed; z-index: 88; pointer-events: none; box-sizing: border-box; background: var(--ds-accent-faint); border: 1px solid transparent; border-radius: var(--ds-r-sm); }
 .tiptap.layout-surface-hover, .tiptap.layout-surface-armed { cursor: var(--cursor-grab, grab); }
 .tiptap.layout-dragging { cursor: var(--cursor-grabbing, grabbing); user-select: none; }
 .layout-snap-column-highlight { position: fixed; z-index: 89; pointer-events: none; box-sizing: border-box; border: 1px solid var(--ds-accent-line); border-radius: var(--ds-r-sm); background: var(--ds-accent-faint); }
-.layout-snap-tray { position: fixed; z-index: 94; display: flex; gap: 4px; padding: 4px; box-sizing: border-box; background: var(--ds-raised); color: var(--ds-text); border: 1px solid var(--ds-line); border-radius: var(--ds-r); box-shadow: var(--ds-shadow-pop); font: inherit; font-size: 11px; user-select: none; }
-.layout-snap-tray-slot { flex: 1; min-width: 0; min-height: 60px; padding: 7px 4px; display: grid; gap: 5px; justify-items: center; align-content: center; box-sizing: border-box; border: 1px solid var(--ds-line); border-radius: var(--ds-r-sm); background: var(--ds-accent-faint); }
 .layout-snap-miniature { display: grid; direction: ltr; gap: 3px; width: 40px; height: 20px; }
 .layout-snap-miniature-extraction { height: 28px; grid-template-rows: repeat(2, minmax(0, 1fr)); }
 .layout-snap-miniature-row { display: grid; gap: 3px; min-height: 0; }
 .layout-snap-miniature-panel { min-width: 0; border: 1px solid var(--ds-accent-line); border-radius: var(--ds-r-sm); background: var(--ds-raised); }
 .layout-snap-miniature-panel.active { border-color: var(--ds-accent); background: var(--ds-accent-soft); }
-.layout-snap-tray-with-exits { display: grid; }
-.layout-snap-tray-slot.layout-snap-tray-active { background: var(--ds-accent-soft); border: 1px solid var(--ds-accent); color: var(--ds-accent); }
-.layout-snap-column { min-width: 0; display: flex; gap: 8px; align-items: center; justify-content: center; font: inherit; font-size: 12px; color: var(--ds-accent); border: 1px dashed var(--ds-accent-line); border-radius: var(--ds-r-sm); background: var(--ds-accent-faint); box-sizing: border-box; }
-.layout-snap-column.layout-snap-active { border: 2px solid var(--ds-accent); background: var(--ds-accent-soft); }
-.layout-snap-overlay.layout-snap-line { display: block; border-radius: var(--ds-r-sm); background: var(--ds-accent); }
 .layout-snap-source-overlay { position: fixed; inset: 0; z-index: 89; pointer-events: none; }
-.layout-snap-source-outline { position: fixed; box-sizing: border-box; outline: 1px dashed var(--ds-accent-line); outline-offset: 2px; border-radius: var(--ds-r-sm); pointer-events: none; }
 .layout-snap-picker { position: fixed; inset-inline-start: 50%; bottom: 20px; transform: translateX(-50%); z-index: 92; width: max-content; max-width: min(520px, calc(100vw - 32px)); box-sizing: border-box; padding: 12px 16px; border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); color: var(--ds-text); box-shadow: var(--ds-shadow-pop); font: inherit; font-size: 12px; }
 .layout-snap-picker:dir(rtl) { transform: translateX(50%); }
 .layout-snap-hint { color: var(--ds-text-2); line-height: 1.6; }
 .layout-snap-choice { margin-block: 6px; font-weight: 500; overflow-wrap: anywhere; }
-.layout-snap-picker .ghost-btn { min-height: 30px; }
+.layout-snap-picker .ds-btn { margin-block-start: 2px; }
 .layout-snap-announcement { position: fixed; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .section-drag-surface { height: 24px; min-width: 0; box-sizing: border-box; display: flex; align-items: center; padding-inline: 10px; border-bottom: 1px solid var(--ds-line); border-radius: var(--ds-r-sm) var(--ds-r-sm) 0 0; background: var(--ds-accent-faint); color: var(--ds-text-2); font-family: var(--font); font-size: 11px; font-weight: 500; cursor: var(--cursor-grab, grab); user-select: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; touch-action: none; }
 .section-drag-surface:hover { background: var(--ds-accent-soft); color: var(--ds-accent); }
@@ -72,7 +60,7 @@
 .layout-export { grid-template-columns: var(--layout-tracks); }
 @media (max-width: 640px) { .layout-export { grid-template-columns: minmax(0, 1fr); } }
 @media print {
-  .layout-resizers, .layout-drag-preview, .layout-width-warning, .layout-snap-overlay, .layout-snap-source-overlay, .layout-snap-hover-outline, .layout-snap-column-highlight, .layout-snap-tray, .layout-snap-picker, .layout-snap-announcement, .section-drag-surface { display: none !important; }
+  .layout-resizers, .ds-drag-ghost, .layout-width-warning, .ds-snap-preview, .layout-snap-source-overlay, .layout-snap-hover-outline, .layout-snap-column-highlight, .layout-snap-picker, .layout-snap-announcement, .section-drag-surface { display: none !important; }
   .tiptap .layout-column { outline: none !important; }
   .layout-group { break-inside: auto; }
 }

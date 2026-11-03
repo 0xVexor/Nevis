@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/core'
-import { MenuItem, MenuLabel, MenuSep, Popover } from './ui'
-import * as Ic from './icons'
+import { Icon, Menu, type MenuItem } from './design-system'
 import { t } from './i18n'
 import { confirmDialog } from './dialog'
 import { ancestor, blockRange, equalWidths, GROUP, validWidths, type BlockRange } from './editor/layoutModel'
@@ -16,10 +15,9 @@ interface MoveMenu {
   range: BlockRange
 }
 
-/** No permanent layout toolbar: the grip/keyboard menu exposes only contextual actions. */
+/** No permanent layout toolbar: the grip/keyboard menu lists only the moves that can happen from here. */
 export function LayoutControls({ editor }: { editor: Editor }) {
   const [menu, setMenu] = useState<MoveMenu | null>(null)
-  const ref = useRef<HTMLDivElement>(null)
   const pendingFrame = useRef(0)
   const close = () => {
     setMenu(null)
@@ -59,14 +57,6 @@ export function LayoutControls({ editor }: { editor: Editor }) {
       editor.off('transaction', changed)
     }
   }, [editor])
-  useEffect(() => {
-    if (!menu) return
-    const frame = requestAnimationFrame(() => {
-      ref.current?.querySelectorAll('button.ds-menu-item').forEach((button) => button.setAttribute('role', 'menuitem'))
-      ref.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [menu])
   if (!menu || editor.isDestroyed || !editor.isEditable || menu.doc !== editor.state.doc) return null
   const valid = () => !editor.isDestroyed && editor.isEditable && !editor.view.composing && editor.state.doc === menu.doc
   const move = (mode: SnapPickRequest['mode']) => {
@@ -76,7 +66,7 @@ export function LayoutControls({ editor }: { editor: Editor }) {
     }
     const detail: SnapPickRequest = { mode, range: menu.range, doc: menu.doc }
     setMenu(null)
-    // Let Popover unmount before moving focus to the in-page destination picker.
+    // Let the menu unmount before moving focus to the in-page destination picker.
     pendingFrame.current = requestAnimationFrame(() => {
       pendingFrame.current = 0
       if (valid()) editor.view.dom.dispatchEvent(new CustomEvent(SNAP_PICK, { detail }))
@@ -105,11 +95,7 @@ export function LayoutControls({ editor }: { editor: Editor }) {
       editor.commands.focus()
     }
   }
-  const before = verticalSnapTarget(editor.state, menu.range, 'up')
-  const after = verticalSnapTarget(editor.state, menu.range, 'down')
   const context = snapContext(editor.view)
-  const left = directionalSnapTarget(editor.state, menu.range, 'left', context)
-  const right = directionalSnapTarget(editor.state, menu.range, 'right', context)
   const destinations = snapDestinations(editor.view, menu.range)
   const available = (target: SnapTarget | null | undefined) => {
     if (!target) return false
@@ -119,61 +105,45 @@ export function LayoutControls({ editor }: { editor: Editor }) {
     const destination = destinations.find((d) => d.key === snapKey(target))
     return !!destination && fitsSnapColumns(destination.rect.width, result.plan.columns.widths)
   }
-  return (
-    <Popover anchor={menu.rect} onClose={close}>
-      <div ref={ref} className="ds-menu layout-menu" role="menu">
-        <MenuLabel>{t(selectedGroup ? 'Move layout' : 'Move block')}</MenuLabel>
-        <MenuItem icon={<Ic.Arrow size={16} />} label={t('Move to…')} hint="Ctrl+Alt+M" onClick={() => move('pick')} />
-        <MenuItem disabled={!available(before)} label={t('Move block up')} onClick={() => move('up')} />
-        <MenuItem disabled={!available(after)} label={t('Move block down')} onClick={() => move('down')} />
-        {!selectedGroup && (
-          <>
-            <MenuItem disabled={!available(left.target)} label={t('Move left')} onClick={() => move('left')} />
-            <MenuItem disabled={!available(right.target)} label={t('Move right')} onClick={() => move('right')} />
-          </>
-        )}
-        {group && (
-          <>
-            <MenuSep />
-            {!selectedGroup && (
-              <>
-                <MenuItem label={t('Extract above layout')} onClick={() => move('outside-before')} />
-                <MenuItem label={t('Extract below layout')} onClick={() => move('outside-after')} />
-              </>
-            )}
-            {!validWidths(group.node.attrs.widths, group.node.childCount) && (
-              <MenuItem
-                icon={<Ic.Columns count={group.node.childCount} size={16} />}
-                label={t('Equal widths')}
-                onClick={() =>
-                  run(() => {
-                    editor.commands.setLayoutWidths(equalWidths(group.node.childCount), group.pos)
-                  })
-                }
-              />
-            )}
-            <MenuItem
-              icon={<Ic.Columns count={1} size={16} />}
-              label={t('Convert entire layout to full width')}
-              onClick={() =>
-                run(() => {
-                  editor.commands.setLayoutColumns(1, group.pos)
-                })
-              }
-            />
-            <MenuItem
-              icon={<Ic.Plus size={16} />}
-              label={t('Add full-width text after layout')}
-              onClick={() =>
-                run(() => {
-                  editor.commands.addAfterLayout(group.pos)
-                })
-              }
-            />
-            {selectedGroup && <MenuItem icon={<Ic.Trash size={16} />} label={t('Delete layout and content')} danger onClick={() => void remove()} />}
-          </>
-        )}
-      </div>
-    </Popover>
-  )
+  const icon = (name: string) => <Icon name={name} size={16} />
+  // A move that cannot happen from here is left out rather than shown disabled: fewer, real choices.
+  const when = (condition: boolean, item: MenuItem): MenuItem[] => (condition ? [item] : [])
+  const items: MenuItem[] = [
+    { kind: 'head', label: selectedGroup ? 'Move layout' : 'Move block' },
+    { label: 'Move to…', icon: icon('move'), hint: 'Ctrl+Alt+M', onSelect: () => move('pick') },
+    ...when(available(verticalSnapTarget(editor.state, menu.range, 'up')), { label: 'Move block up', icon: icon('arrow-up'), hint: 'Ctrl+Alt+↑', onSelect: () => move('up') }),
+    ...when(available(verticalSnapTarget(editor.state, menu.range, 'down')), { label: 'Move block down', icon: icon('arrow-down'), hint: 'Ctrl+Alt+↓', onSelect: () => move('down') }),
+    ...(selectedGroup
+      ? []
+      : [
+          ...when(available(directionalSnapTarget(editor.state, menu.range, 'left', context).target), {
+            label: 'Move left',
+            icon: icon('arrow-left'),
+            hint: 'Ctrl+Alt+←',
+            onSelect: () => move('left'),
+          }),
+          ...when(available(directionalSnapTarget(editor.state, menu.range, 'right', context).target), {
+            label: 'Move right',
+            icon: icon('arrow-right'),
+            hint: 'Ctrl+Alt+→',
+            onSelect: () => move('right'),
+          }),
+        ]),
+  ]
+  if (group) {
+    items.push({ kind: 'sep' }, { kind: 'head', label: 'Layout' })
+    if (!selectedGroup)
+      items.push(
+        { label: 'Extract above layout', icon: icon('arrow-up'), onSelect: () => move('outside-before') },
+        { label: 'Extract below layout', icon: icon('arrow-down'), onSelect: () => move('outside-after') },
+      )
+    if (!validWidths(group.node.attrs.widths, group.node.childCount))
+      items.push({ label: 'Equal widths', icon: icon(group.node.childCount === 3 ? 'columns-3' : 'columns'), onSelect: () => run(() => editor.commands.setLayoutWidths(equalWidths(group.node.childCount), group.pos)) })
+    items.push(
+      { label: 'Convert entire layout to full width', icon: icon('panel-left'), onSelect: () => run(() => editor.commands.setLayoutColumns(1, group.pos)) },
+      { label: 'Add full-width text after layout', icon: icon('plus'), hint: 'Ctrl+Alt+Enter', onSelect: () => run(() => editor.commands.addAfterLayout(group.pos)) },
+    )
+    if (selectedGroup) items.push({ kind: 'sep' }, { label: 'Delete layout and content', icon: icon('trash'), danger: true, onSelect: () => void remove() })
+  }
+  return <Menu anchor={menu.rect} items={items} onClose={close} autoFocus />
 }

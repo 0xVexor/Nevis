@@ -48,19 +48,15 @@ function domRect(view: EditorView, pos: number): DOMRect | null {
   const dom = view.nodeDOM(pos)
   return dom instanceof HTMLElement ? dom.getBoundingClientRect() : null
 }
-function textCenter(view: EditorView, pos: number, fallback: DOMRect): number {
-  const dom = view.nodeDOM(pos),
-    node = view.state.doc.nodeAt(pos)
-  if (!(dom instanceof HTMLElement) || !node?.isTextblock || !node.textContent.trim()) return fallback.left + fallback.width / 2
-  const range = view.dom.ownerDocument.createRange()
-  range.selectNodeContents(dom.querySelector('code') ?? dom)
-  const lines = Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0)
-  if (!lines.length) return fallback.left + fallback.width / 2
-  const left = Math.max(fallback.left, Math.min(...lines.map((r) => r.left)))
-  const right = Math.min(fallback.right, Math.max(...lines.map((r) => r.right)))
-  return (left + right) / 2
-}
 const rect = (r: DOMRect): SnapRect => ({ left: r.left, top: r.top, width: r.width, height: r.height })
+/** The page margin beside the text, where the grip sits. */
+const GUTTER = 52
+/** How far into a block (or column) its side-by-side zone reaches. */
+const sideZone = (width: number) => Math.max(48, Math.min(150, width * 0.22))
+/** A one- or two-line block still gets side targets you can hit, and a preview you can read: at least this tall, centred on it. */
+const MIN_TARGET = 44,
+  MIN_PREVIEW = 56
+const atLeast = (top: number, height: number, min: number) => (height >= min ? { top, height } : { top: top + height / 2 - min / 2, height: min })
 export const containsSnapPoint = (r: SnapRect, x: number, y: number, extra = 0) => x >= r.left - extra && x <= r.left + r.width + extra && y >= r.top - extra && y <= r.top + r.height + extra
 export const hitsSnapDestination = (destination: SnapDestination, x: number, y: number, extra = 0) =>
   containsSnapPoint(destination.hit, x, y, extra) || !!destination.escapeAreas?.some((r) => containsSnapPoint(r, x, y, extra))
@@ -95,7 +91,8 @@ export function snapDestinations(view: EditorView, source?: BlockRange): SnapDes
     sourcePos += node.nodeSize
   }
   const previewHeight = source ? Math.max(40, Math.min(88, sourceHeight)) : 48
-  const groupEdge = (r: DOMRect) => Math.min(20, r.height * 0.2)
+  // The strip at the top and bottom of a layout that leaves it. A short layout keeps it thin, so its columns stay reachable.
+  const groupEdge = (r: DOMRect) => (r.height < 96 ? Math.min(8, r.height * 0.12) : Math.min(20, r.height * 0.2))
   let ordinal = 0
   const add = (destination: Omit<SnapDestination, 'key'>) => {
     out.push({ ...destination, key: snapKey(destination.target) })
@@ -129,7 +126,10 @@ export function snapDestinations(view: EditorView, source?: BlockRange): SnapDes
                 : previous
                   ? t('After {content}', { content: previous.label })
                   : t('Move here'),
-        hit: { left: bounds.left, top, width: bounds.width, height: Math.max(0, bottom - top) },
+        // On the page the rows reach into the gutters, where the grip is: dragging straight down the margin always reorders.
+        hit: root
+          ? { left: bounds.left - GUTTER, top, width: bounds.width + GUTTER * 2, height: Math.max(0, bottom - top) }
+          : { left: bounds.left, top, width: bounds.width, height: Math.max(0, bottom - top) },
         rect: { left: bounds.left, top: root ? y : y - 1, width: bounds.width, height: root ? previewHeight : 2 },
         priority: 1,
         kind: root ? 'full-width' : 'line',
@@ -147,26 +147,34 @@ export function snapDestinations(view: EditorView, source?: BlockRange): SnapDes
     for (const block of blocks) {
       const { r, pos, label } = block
       if (root && block.node.type.name !== GROUP) {
-        // Snap beside the visible writing, not at the distant edges of a full-width paragraph.
-        // Keep only a small top/bottom band for vertical insertion, including on a single line.
-        const center = textCenter(view, pos, r),
-          vertical = Math.min(4, r.height * 0.18)
+        // Side by side: move the pointer onto the left or right part of the block itself, like snapping a window.
+        // The middle and the margins reorder, so an ordinary drag never turns two paragraphs into columns by accident.
+        const edge = sideZone(r.width),
+          vertical = r.height > MIN_TARGET ? Math.min(6, r.height * 0.2) : 0,
+          band = atLeast(r.top + vertical, r.height - vertical * 2, MIN_TARGET)
         for (const side of ['left', 'right'] as const)
           add({
             target: { kind: 'pair', targetFrom: pos, side },
             label: t(side === 'left' ? 'Left of {content}' : 'Right of {content}', { content: label }),
-            hit: {
-              left: side === 'left' ? bounds.left - 28 : center,
-              top: r.top + vertical,
-              width: side === 'left' ? center - bounds.left + 28 : bounds.right + 28 - center,
-              height: r.height - vertical * 2,
-            },
-            rect: { left: bounds.left, top: r.top, width: bounds.width, height: r.height },
+            hit: { left: side === 'left' ? r.left : r.right - edge, top: band.top, width: edge, height: band.height },
+            rect: { left: bounds.left, ...atLeast(r.top, r.height, MIN_PREVIEW), width: bounds.width },
             priority: 3,
             kind: 'columns',
           })
       }
       if (block.node.type.name !== GROUP) continue
+      if (root) {
+        // Beside a layout the margin still reorders: its upper half moves above the layout, its lower half below.
+        const middle = r.top + r.height / 2
+        const margins = (top: number, bottom: number): SnapRect[] => [
+          { left: r.left - GUTTER, top, width: GUTTER, height: Math.max(0, bottom - top) },
+          { left: r.right, top, width: GUTTER, height: Math.max(0, bottom - top) },
+        ]
+        const above = out.find((d) => d.key === snapKey({ kind: 'insert', pos })),
+          below = out.find((d) => d.key === snapKey({ kind: 'insert', pos: pos + block.node.nodeSize }))
+        if (above) above.escapeAreas = [...(above.escapeAreas ?? []), ...margins(r.top, middle)]
+        if (below) below.escapeAreas = [...(below.escapeAreas ?? []), ...margins(middle, r.bottom)]
+      }
       const dom = view.nodeDOM(pos)
       if (!(dom instanceof HTMLElement)) continue
       const body = dom.querySelector<HTMLElement>(':scope > .layout-columns')
@@ -185,6 +193,7 @@ export function snapDestinations(view: EditorView, source?: BlockRange): SnapDes
       if (dom.classList.contains('layout-stacked') || visual.length !== block.node.childCount) continue
       visual.sort((a, b) => a.left - b.left)
       const reordering = movingColumn?.groupPos === pos
+      const inner = atLeast(r.top + groupEdge(r), Math.max(0, r.height - groupEdge(r) * 2), MIN_TARGET)
       const rtl = getComputedStyle(dom).direction === 'rtl'
       const sourceIndex = movingColumn && reordering ? (rtl ? visual.length - 1 - movingColumn.logicalIndex : movingColumn.logicalIndex) : -1
       for (let gap = 0; gap <= visual.length; gap++) {
@@ -192,6 +201,8 @@ export function snapDestinations(view: EditorView, source?: BlockRange): SnapDes
           right = visual[gap]
         const x = left && right ? (left.right + right.left) / 2 : right ? right.left : left.right
         const hitWidth = Math.min(112, (left?.width ?? Infinity) * 0.44, (right?.width ?? Infinity) * 0.44)
+        // The outer edges of a layout work like the edges of a block: inside the column, never in the margin.
+        const outer = !left ? { left: x, width: sideZone(right.width) } : !right ? { left: x - sideZone(left.width), width: sideZone(left.width) } : { left: x - hitWidth / 2, width: hitWidth }
         // Dragging the last content in a column onto a sibling moves that column to the
         // sibling's position. Tiny insertion bands still allow an explicit content merge.
         const sibling = reordering && gap !== sourceIndex && gap !== sourceIndex + 1 ? visual[gap < sourceIndex ? gap : gap - 1] : null
@@ -203,9 +214,9 @@ export function snapDestinations(view: EditorView, source?: BlockRange): SnapDes
               : gap === visual.length
                 ? t('Right of {content}', { content: label })
                 : t('Between columns {a} and {b} of {content}', { a: gap, b: gap + 1, content: label }),
-          hit: { left: sibling ? sibling.left - 12 : x - hitWidth / 2, top: r.top + groupEdge(r), width: sibling ? sibling.width + 24 : hitWidth, height: Math.max(0, r.height - groupEdge(r) * 2) },
+          hit: { left: sibling ? sibling.left - 12 : outer.left, top: inner.top, width: sibling ? sibling.width + 24 : outer.width, height: inner.height },
           pointerDisabled: reordering && !sibling,
-          rect: rect(groupBounds),
+          rect: { left: groupBounds.left, ...atLeast(groupBounds.top, groupBounds.height, MIN_PREVIEW), width: groupBounds.width },
           priority: 3,
           kind: 'columns',
         })
@@ -263,15 +274,27 @@ export function snapDestinations(view: EditorView, source?: BlockRange): SnapDes
   return out
 }
 
-export function chooseSnapDestination(destinations: SnapDestination[], x: number, y: number, previous?: SnapDestination | null) {
+/** `columns: false` leaves out every side-by-side choice: the pointer has not moved sideways yet. */
+export function chooseSnapDestination(destinations: SnapDestination[], x: number, y: number, previous?: SnapDestination | null, columns = true) {
+  // Dropping where the block already is changes nothing: let the pointer fall through to a real choice beneath.
+  const allowed = (dest: SnapDestination) => !dest.pointerDisabled && dest.error !== 'no-change' && (columns || dest.kind !== 'columns')
   const priority = (destination: SnapDestination) =>
     destination.escapeAreas?.some((r) => containsSnapPoint(r, x, y)) ? 5 : destination.edgeBands?.some((band) => y >= band.top && y <= band.bottom) ? 4 : destination.priority
-  const hits = destinations.filter((dest) => !dest.pointerDisabled && hitsSnapDestination(dest, x, y)).sort((a, b) => priority(b) - priority(a))
+  // Targets of short neighbouring blocks overlap a little; the one whose middle is nearest the pointer wins.
+  const distance = (dest: SnapDestination) => Math.abs(y - (dest.hit.top + dest.hit.height / 2))
+  const hits = destinations.filter((dest) => allowed(dest) && hitsSnapDestination(dest, x, y)).sort((a, b) => priority(b) - priority(a) || distance(a) - distance(b))
   const hit = hits[0]
   // An invalid gap must not silently become a different, destructive operation beneath it.
   if (hit?.error) return hit
-  const retained = previous && destinations.find((dest) => dest.key === previous.key && !dest.error && !dest.pointerDisabled)
+  const retained = previous && destinations.find((dest) => dest.key === previous.key && !dest.error && allowed(dest))
   // Crossing from a column interior into an insertion seam is an explicit change of intent.
-  if (retained && (!hit || retained.kind === hit.kind) && hitsSnapDestination(retained, x, y, 3) && (!hit || priority(hit) <= priority(retained))) return retained
+  // The previous choice holds while the pointer is still on it, unless it is now clearly nearer another one (8px of slack).
+  if (
+    retained &&
+    (!hit || retained.kind === hit.kind) &&
+    hitsSnapDestination(retained, x, y, 3) &&
+    (!hit || (priority(hit) <= priority(retained) && distance(hit) + 8 >= distance(retained)))
+  )
+    return retained
   return hit ?? null
 }
