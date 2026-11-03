@@ -67,7 +67,7 @@ All classes are prefixed `ds-` and use logical properties (`inline-start`, `inli
 | Properties of an object | `ds-props` > `ds-prop` (`ds-prop-label` with an icon, `ds-prop-value`), hairlines between rows; one column below 560px |
 | Choose a cover or a colour | `ds-swatches` > `ds-swatch` (pressed = chosen). A colour of your own: `ds-color` |
 | Choose an icon and its colour | `IconPicker` (`ds-icon-picker`): search, a row of `ds-color-dot`s (automatic, ten colours, your own), the design-system icons by group with Subjects and objects first |
-| The actions an object offers | `ActionGrid` > `ActionTile` (`ds-actions` > `ds-action`): three tiles a row, icon over a short label |
+| The actions an object offers | `ActionGrid` > `ActionTile` (`ds-actions` > `ds-action`): tiles with the icon beside the label, as many a row as fit; a long label wraps and is never cut |
 | A toggle shown only by its icon (favourite) | `ds-icon-btn ds-icon-btn--toggle`: on is the icon in the accent, never a filled square |
 | Count next to a nav item | `ds-badge`: a plain number in an empty circle. Never a filled pill. |
 | Person, page icon | `ds-avatar`, `ds-tile` |
@@ -119,7 +119,7 @@ Blocks can sit side by side in 2 or 3 columns in the editor (`ds-layout`). The r
 
 - **One drag, three outcomes, no pop-ups.** While dragging, the page itself is the chooser: nothing opens under the pointer. The ghost says in words what releasing will do, and the preview shows where.
   - **Up or down** (including straight down the margin, where the grip is): an accent line between blocks; the block is reordered.
-  - **Sideways onto the left or right part of another block** (about a fifth of its width, 48–150px): the preview draws the columns the drop will make, the new one in the accent ("Place side by side"). Columns form only after the pointer has moved at least 32px sideways, so a straight drag never makes columns by accident.
+  - **Sideways onto the left or right part of another block** (about a fifth of its width, 48–150px): the preview draws the columns the drop will make, the new one in the accent ("Place side by side"). Columns form only after the pointer has moved at least 32px sideways, so a straight drag never makes columns by accident. A one- or two-line block still gets side targets at least 44px tall and a preview at least 56px tall, centred on it; where the targets of short neighbours overlap, the nearest one wins.
   - **Onto the edge or gap of a layout**: one more column ("Add as a new column"), up to 3. Dragging a column's last block over a sibling column moves the whole column.
   - Over the block's own place, or anywhere that changes nothing, the ghost says "Release to leave it where it was". A drop that is not allowed (a fourth column, too narrow) says why, in the danger colour, and does nothing. `Escape` cancels at any time.
 - **Click the grip** for the same moves as a menu (Move to…, up, down, left, right, take out of the layout); only moves that are possible from here are listed.
