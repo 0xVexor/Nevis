@@ -373,11 +373,10 @@ export function TimelineView({ svc, view, ctl }: ViewProps) {
   const today = civilOf(svc.now(), zone)
   const px = UNIT_PX[scale] / UNIT_MS[scale] // pixels per millisecond
   const model = def ? scheduleModel(svc.state, ctl.rs, q.matchIds, def.id, '1900-01-01', '2200-12-31', zone) : null
-  const { origin, items } = useMemo(() => {
-    const its = model?.items ?? []
-    const t0 = its.length ? Math.min(...its.map((i) => i.startMs)) : startOfDayMs(today, zone)
-    return { origin: Math.min(t0, startOfDayMs(today, zone)) - UNIT_MS[scale] * 4, items: its }
-  }, [model?.items.length, scale, today, zone]) // eslint-disable-line react-hooks/exhaustive-deps
+  // items follow every edit (a moved bar must move); the origin only shifts when the earliest start does, so scrolling stays put
+  const items = model?.items ?? []
+  const earliest = items.length ? Math.min(...items.map((i) => i.startMs)) : Infinity
+  const origin = useMemo(() => Math.min(earliest, startOfDayMs(today, zone)) - UNIT_MS[scale] * 4, [earliest, scale, today, zone])
   // Open on today (a third of the way in), not on the earliest item: once per view and scale, so scrolling is left alone after.
   const opened = useRef('')
   useLayoutEffect(() => {

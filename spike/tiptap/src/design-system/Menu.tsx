@@ -113,9 +113,12 @@ export function Menu({
   onClose,
   align = 'start',
   autoFocus = false,
+  header,
 }: {
   anchor: DOMRect
   items: MenuItem[]
+  /** custom content above the items, such as the table size grid; a focusable part marks itself with data-menu-item to join the arrow keys */
+  header?: ReactNode
   onClose: () => void
   align?: 'start' | 'end'
   /** focus the first item when it opens, for a menu opened from the keyboard */
@@ -130,6 +133,7 @@ export function Menu({
   return (
     <Popover anchor={anchor} onClose={onClose} align={align}>
       <div ref={ref} className="ds-menu" role="menu">
+        {header}
         <Items items={items} onPick={onClose} />
       </div>
     </Popover>

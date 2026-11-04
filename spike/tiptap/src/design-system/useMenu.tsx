@@ -17,15 +17,15 @@ const rectOf = (target: Target): DOMRect => {
  */
 export function useMenu() {
   const trigger = useRef<HTMLElement | null>(null)
-  const [state, setState] = useState<{ items: MenuItem[]; anchor: DOMRect } | null>(null)
-  const open = useCallback((items: MenuItem[], target: Target) => {
+  const [state, setState] = useState<{ items: MenuItem[]; anchor: DOMRect; header?: ReactNode } | null>(null)
+  const open = useCallback((items: MenuItem[], target: Target, header?: ReactNode) => {
     trigger.current = target instanceof HTMLElement ? target : document.activeElement instanceof HTMLElement ? document.activeElement : null
-    setState({ items, anchor: rectOf(target) })
+    setState({ items, anchor: rectOf(target), header })
   }, [])
   const close = useCallback(() => {
     setState(null)
     if (trigger.current?.isConnected) trigger.current.focus({ preventScroll: true })
   }, [])
-  const menu: ReactNode = state ? <Menu anchor={state.anchor} items={state.items} onClose={close} /> : null
+  const menu: ReactNode = state ? <Menu anchor={state.anchor} items={state.items} header={state.header} onClose={close} /> : null
   return { open, close, menu }
 }

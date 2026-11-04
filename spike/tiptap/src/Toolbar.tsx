@@ -1,6 +1,6 @@
 import type { ChainedCommands } from '@tiptap/core'
 import type { Editor } from '@tiptap/core'
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { alertDialog } from './dialog'
 import { hasHeaderColumn, hasHeaderRow } from './editor/tableHeader'
 import { linkSelection } from './editor/slash'
@@ -27,9 +27,9 @@ const tip = (label: string) => {
  * The formatting bar above the page: one raised strip of design-system icon buttons in groups, each with its shortcut in the tooltip.
  * Less-used commands fold into "More" when the page is narrow. Dropdowns are design-system menus.
  */
-export function Toolbar({ editor, diagram }: { editor: Editor; diagram?: { from: number; to: number; code: string } | null }) {
-  const { open, menu } = useMenu()
-  const B = ({ label, name, icon, on, run, primary }: { label: string; name?: string; icon: ReactNode; on?: boolean; run: (c: Chain) => Chain; primary?: boolean }) => (
+/** One button of the bar. Defined at module level so the bar's per-keystroke re-render updates the buttons instead of remounting them. */
+function B({ editor, label, name, icon, on, run, primary }: { editor: Editor; label: string; name?: string; icon: ReactNode; on?: boolean; run: (c: Chain) => Chain; primary?: boolean }) {
+  return (
     <button
       type="button"
       className={'ds-icon-btn tb-btn' + (primary ? ' tb-btn--primary' : '')}
@@ -42,6 +42,10 @@ export function Toolbar({ editor, diagram }: { editor: Editor; diagram?: { from:
       {icon}
     </button>
   )
+}
+
+export function Toolbar({ editor, diagram }: { editor: Editor; diagram?: { from: number; to: number; code: string } | null }) {
+  const { open, close, menu } = useMenu()
   // re-render on every transaction so the active states (bold, heading, …) follow the selection
   const [, tick] = useState(0)
   useEffect(() => {
@@ -72,8 +76,8 @@ export function Toolbar({ editor, diagram }: { editor: Editor; diagram?: { from:
     return () => ro.disconnect()
   }, [])
   const run = (fn: (c: Chain) => Chain) => () => fn(editor.chain().focus()).run()
-  const menuItem = (label: string, icon: string, fn: () => unknown, on?: boolean, more: { hint?: string; danger?: boolean } = {}): MenuItem => ({ label, icon: <Icon name={icon} />, hint: more.hint ?? keysOf(label), checked: on, danger: more.danger, onSelect: () => void fn() })
-  const dropdown = (label: string, icon: string, items: () => MenuItem[]) => (
+  const menuItem = (label: string, icon: string, fn: () => unknown, on?: boolean, more: { hint?: string; danger?: boolean; disabled?: boolean } = {}): MenuItem => ({ label, icon: <Icon name={icon} />, hint: more.hint ?? keysOf(label), checked: on, danger: more.danger, disabled: more.disabled, onSelect: () => void fn() })
+  const dropdown = (label: string, icon: string, items: () => MenuItem[], header?: () => ReactNode) => (
     <button
       type="button"
       className="ds-icon-btn tb-btn tb-btn--menu"
@@ -81,7 +85,7 @@ export function Toolbar({ editor, diagram }: { editor: Editor; diagram?: { from:
       aria-label={t(label)}
       aria-haspopup="menu"
       onMouseDown={(e) => e.preventDefault()}
-      onClick={(e) => open(items(), e.currentTarget)}
+      onClick={(e) => open(items(), e.currentTarget, header?.())}
     >
       <Icon name={icon} size={16} />
       <Icon name="chevron-down" size={10} />
@@ -117,6 +121,35 @@ export function Toolbar({ editor, diagram }: { editor: Editor; diagram?: { from:
     menuItem('Center', 'align-center', run((c) => c.setTextAlign('center')), align === 'center'),
     menuItem('Align right', 'align-right', run((c) => c.setTextAlign('right')), align === 'right'),
   ]
+  // the table menu: a size grid above the row, column, header and alignment actions; "Insert table" uses the size picked in the grid
+  const tableSize = useRef(GRID_START)
+  const insertTable = (r: number, c: number) => editor.chain().focus().insertTable({ rows: r, cols: c, withHeaderRow: true }).run()
+  const tableGrid = () => {
+    tableSize.current = GRID_START
+    return <TableGrid onChange={(size) => (tableSize.current = size)} onPick={(r, c) => (close(), insertTable(r, c))} />
+  }
+  const tableItems = (): MenuItem[] => {
+    const off = !is('table')
+    const act = (label: string, icon: string, fn: (c: Chain) => Chain, more: { on?: boolean; danger?: boolean } = {}) => menuItem(label, icon, run(fn), more.on, { danger: more.danger, disabled: off })
+    return [
+      { kind: 'sep' },
+      menuItem('Insert table', 'table', () => insertTable(tableSize.current.r, tableSize.current.c)),
+      act('Insert row above', 'plus', (c) => c.addRowBefore()),
+      act('Insert row below', 'plus', (c) => c.addRowAfter()),
+      act('Insert column left', 'plus', (c) => c.addColumnBefore()),
+      act('Insert column right', 'plus', (c) => c.addColumnAfter()),
+      { kind: 'sep' },
+      act('Header row', 'table', (c) => c.toggleHeaderRow(), { on: !off && hasHeaderRow(editor) }),
+      act('Header column', 'table', (c) => c.toggleHeaderColumn(), { on: !off && hasHeaderColumn(editor) }),
+      { kind: 'sep' },
+      act('Align table left', 'align-left', (c) => c.setTableAlign('left')),
+      act('Center table', 'align-center', (c) => c.setTableAlign('center')),
+      act('Align table right', 'align-right', (c) => c.setTableAlign('right')),
+      act('Full-width table', 'maximize', (c) => c.setTableAlign(null).setTableWidth(100)),
+      { kind: 'sep' },
+      act('Delete table', 'trash', (c) => c.deleteTable(), { danger: true }),
+    ]
+  }
   // less-used commands: in the bar when there is room, otherwise in "More"
   const extras: { label: string; icon: string; on?: boolean; fn: (c: Chain) => Chain }[] = [
     { label: 'Strikethrough', icon: 'strikethrough', on: is('strike'), fn: (c) => c.toggleStrike() },
@@ -134,19 +167,19 @@ export function Toolbar({ editor, diagram }: { editor: Editor; diagram?: { from:
   return (
     <div className={'toolbar' + (menu ? ' is-open' : '')} role="toolbar" aria-label={t('Formatting')} ref={wrap}>
       <div className="tb-pill" ref={pill}>
-        <B primary label="Open the “/” menu" icon={<Icon name="plus" size={16} />} run={(c) => c.setTextSelection(editor.state.selection.to).insertContent('/')} />
+        <B editor={editor} primary label="Open the “/” menu" icon={<Icon name="plus" size={16} />} run={(c) => c.setTextSelection(editor.state.selection.to).insertContent('/')} />
         <span className="tb-sep" />
-        <B label="Heading 1" icon={<span className="tb-tx">H1</span>} on={is('heading', { level: 1 })} run={(c) => c.toggleHeading({ level: 1 })} />
-        <B label="Heading 2" icon={<span className="tb-tx">H2</span>} on={is('heading', { level: 2 })} run={(c) => c.toggleHeading({ level: 2 })} />
-        <B label="Heading 3" icon={<span className="tb-tx">H3</span>} on={is('heading', { level: 3 })} run={(c) => c.toggleHeading({ level: 3 })} />
+        <B editor={editor} label="Heading 1" icon={<span className="tb-tx">H1</span>} on={is('heading', { level: 1 })} run={(c) => c.toggleHeading({ level: 1 })} />
+        <B editor={editor} label="Heading 2" icon={<span className="tb-tx">H2</span>} on={is('heading', { level: 2 })} run={(c) => c.toggleHeading({ level: 2 })} />
+        <B editor={editor} label="Heading 3" icon={<span className="tb-tx">H3</span>} on={is('heading', { level: 3 })} run={(c) => c.toggleHeading({ level: 3 })} />
         <span className="tb-sep" />
-        <B label="Bold" icon={<span className="tb-tx tb-tx--bold">B</span>} on={is('bold')} run={(c) => c.toggleBold()} />
-        <B label="Italic" icon={<span className="tb-tx tb-tx--italic">I</span>} on={is('italic')} run={(c) => c.toggleItalic()} />
-        <B label="Underline" icon={<span className="tb-tx tb-tx--underline">U</span>} on={is('underline')} run={(c) => c.toggleUnderline()} />
-        <B label="Bulleted list" icon={<Icon name="list" size={16} />} on={is('bulletList')} run={(c) => c.toggleBulletList()} />
+        <B editor={editor} label="Bold" icon={<span className="tb-tx tb-tx--bold">B</span>} on={is('bold')} run={(c) => c.toggleBold()} />
+        <B editor={editor} label="Italic" icon={<span className="tb-tx tb-tx--italic">I</span>} on={is('italic')} run={(c) => c.toggleItalic()} />
+        <B editor={editor} label="Underline" icon={<span className="tb-tx tb-tx--underline">U</span>} on={is('underline')} run={(c) => c.toggleUnderline()} />
+        <B editor={editor} label="Bulleted list" icon={<Icon name="list" size={16} />} on={is('bulletList')} run={(c) => c.toggleBulletList()} />
         <span className="tb-sep" />
         {dropdown('Insert image', 'image', imageItems)}
-        <TableMenu editor={editor} />
+        {dropdown('Insert table', 'table', tableItems, tableGrid)}
         {dropdown('Line direction', 'text-direction', dirItems)}
         <span className="tb-sep" />
         {dropdown('Alignment', 'align-' + (align ?? 'left'), alignItems)}
@@ -157,11 +190,11 @@ export function Toolbar({ editor, diagram }: { editor: Editor; diagram?: { from:
         ) : (
           <>
             {extras.map((x) => (
-              <B key={x.label} label={x.label} icon={<Icon name={x.icon} size={16} />} on={x.on} run={x.fn} />
+              <B editor={editor} key={x.label} label={x.label} icon={<Icon name={x.icon} size={16} />} on={x.on} run={x.fn} />
             ))}
             <span className="tb-sep" />
-            <B label="Undo" icon={<Icon name="undo" size={16} />} run={(c) => c.undo()} />
-            <B label="Redo" icon={<Icon name="redo" size={16} />} run={(c) => c.redo()} />
+            <B editor={editor} label="Undo" icon={<Icon name="undo" size={16} />} run={(c) => c.undo()} />
+            <B editor={editor} label="Redo" icon={<Icon name="redo" size={16} />} run={(c) => c.redo()} />
           </>
         )}
       </div>
@@ -170,85 +203,45 @@ export function Toolbar({ editor, diagram }: { editor: Editor; diagram?: { from:
   )
 }
 
-/** Open/close state for the table dropdown: closes on an outside click or Escape. */
-function useDropdown() {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const off = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false)
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
-    document.addEventListener('mousedown', off)
-    document.addEventListener('keydown', esc)
-    return () => (document.removeEventListener('mousedown', off), document.removeEventListener('keydown', esc))
-  }, [open])
-  return { open, setOpen, ref }
-}
-
 const GRID_ROWS = 5
 const GRID_COLS = 9
+const GRID_START = { r: 3, c: 3 }
 
-/** Table menu: a size grid to insert a table, then row, column, header, alignment and delete actions for the table the cursor is in. */
-function TableMenu({ editor }: { editor: Editor }) {
-  const { open, setOpen, ref } = useDropdown()
-  const [hover, setHover] = useState({ r: 3, c: 3 })
-  const inTable = editor.isActive('table')
-  const run = (fn: (c: Chain) => Chain) => (fn(editor.chain().focus()).run(), setOpen(false))
-  const insert = (rows: number, cols: number) => run((c) => c.insertTable({ rows, cols, withHeaderRow: true }))
-  const Item = ({ icon, label, onClick, danger, off, on, hint }: { icon: string; label: string; onClick: () => void; danger?: boolean; off?: boolean; on?: boolean; hint?: string }) => (
-    <button type="button" className="ds-menu-item" role={on === undefined ? 'menuitem' : 'menuitemcheckbox'} aria-checked={on} data-danger={danger || undefined} disabled={off} onMouseDown={(e) => e.preventDefault()} onClick={onClick}>
-      <Icon name={icon} />
-      <span className="ds-menu-label">{label}</span>
-      {on && <Icon name="check" size={14} />}
-      {hint && <kbd className="ds-menu-hint">{hint}</kbd>}
-    </button>
-  )
+/**
+ * The table size grid at the top of the table menu. The pointer picks a size by hovering; the keyboard moves with the arrows
+ * (Up from the first row and Down from the last hand back to the menu) and Enter inserts.
+ */
+function TableGrid({ onChange, onPick }: { onChange: (size: { r: number; c: number }) => void; onPick: (r: number, c: number) => void }) {
+  const [size, setSize] = useState(GRID_START)
+  const current = useRef(GRID_START) // read by the keys, so presses faster than a render still add up
+  const move = (next: { r: number; c: number }) => ((current.current = next), setSize(next), onChange(next))
+  const key = (e: KeyboardEvent<HTMLDivElement>) => {
+    const { r, c } = current.current
+    // the grid is laid out left to right in both directions, so Right always adds a column
+    const next =
+      e.key === 'ArrowRight' ? { r, c: Math.min(GRID_COLS, c + 1) }
+      : e.key === 'ArrowLeft' ? { r, c: Math.max(1, c - 1) }
+      : e.key === 'ArrowDown' && r < GRID_ROWS ? { r: r + 1, c }
+      : e.key === 'ArrowUp' && r > 1 ? { r: r - 1, c }
+      : null
+    if (next) move(next)
+    else if (e.key === 'Enter' || e.key === ' ') onPick(r, c)
+    else return
+    e.preventDefault()
+    e.stopPropagation() // the menu's own arrow keys wait until the grid hands over
+  }
   return (
-    <div className="tb-dd" ref={ref}>
-      <button
-        type="button"
-        className="ds-icon-btn tb-btn tb-btn--menu"
-        aria-pressed={open}
-        title={tip('Insert table')}
-        aria-label={t('Table')}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => setOpen(!open)}
-      >
-        <Icon name="table" size={16} />
-        <Icon name="chevron-down" size={10} />
-      </button>
-      {open && (
-        <div className="ds-pop ds-menu tb-table-menu" role="menu">
-          <div className="tb-grid" onMouseLeave={() => setHover({ r: 3, c: 3 })}>
-            {Array.from({ length: GRID_ROWS * GRID_COLS }, (_, i) => {
-              const r = Math.floor(i / GRID_COLS) + 1
-              const c = (i % GRID_COLS) + 1
-              return <span key={i} className={r <= hover.r && c <= hover.c ? 'on' : ''} onMouseEnter={() => setHover({ r, c })} onMouseDown={(e) => e.preventDefault()} onClick={() => insert(r, c)} />
-            })}
-          </div>
-          <div className="tb-grid-size">
-            {hover.r} × {hover.c}
-          </div>
-          <div className="ds-menu-sep" role="separator" />
-          <Item icon="table" label={t('Insert table')} hint={keysOf('Insert table')} onClick={() => insert(hover.r, hover.c)} />
-          <Item icon="plus" label={t('Insert row above')} off={!inTable} onClick={() => run((c) => c.addRowBefore())} />
-          <Item icon="plus" label={t('Insert row below')} off={!inTable} onClick={() => run((c) => c.addRowAfter())} />
-          <Item icon="plus" label={t('Insert column left')} off={!inTable} onClick={() => run((c) => c.addColumnBefore())} />
-          <Item icon="plus" label={t('Insert column right')} off={!inTable} onClick={() => run((c) => c.addColumnAfter())} />
-          <div className="ds-menu-sep" role="separator" />
-          <Item icon="table" label={t('Header row')} on={inTable && hasHeaderRow(editor)} off={!inTable} onClick={() => run((c) => c.toggleHeaderRow())} />
-          <Item icon="table" label={t('Header column')} on={inTable && hasHeaderColumn(editor)} off={!inTable} onClick={() => run((c) => c.toggleHeaderColumn())} />
-          <div className="ds-menu-sep" role="separator" />
-          <Item icon="align-left" label={t('Align table left')} off={!inTable} onClick={() => run((c) => c.setTableAlign('left'))} />
-          <Item icon="align-center" label={t('Center table')} off={!inTable} onClick={() => run((c) => c.setTableAlign('center'))} />
-          <Item icon="align-right" label={t('Align table right')} off={!inTable} onClick={() => run((c) => c.setTableAlign('right'))} />
-          <Item icon="maximize" label={t('Full-width table')} off={!inTable} onClick={() => run((c) => c.setTableAlign(null).setTableWidth(100))} />
-          <div className="ds-menu-sep" role="separator" />
-          <Item danger icon="trash" label={t('Delete table')} off={!inTable} onClick={() => run((c) => c.deleteTable())} />
-        </div>
-      )}
-    </div>
+    <>
+      <div className="tb-grid" data-menu-item tabIndex={0} role="group" aria-label={`${t('Insert table')} ${size.r} × ${size.c}`} onKeyDown={key} onMouseLeave={() => move(GRID_START)}>
+        {Array.from({ length: GRID_ROWS * GRID_COLS }, (_, i) => {
+          const r = Math.floor(i / GRID_COLS) + 1
+          const c = (i % GRID_COLS) + 1
+          return <span key={i} className={r <= size.r && c <= size.c ? 'on' : ''} onMouseEnter={() => move({ r, c })} onMouseDown={(e) => e.preventDefault()} onClick={() => onPick(r, c)} />
+        })}
+      </div>
+      <div className="tb-grid-size" aria-hidden="true">
+        {size.r} × {size.c}
+      </div>
+    </>
   )
 }
