@@ -7,7 +7,6 @@
 .hm-row { display: flex; align-items: center; gap: var(--ds-s3); width: 100%; min-height: 44px; padding: var(--ds-s1) var(--ds-s2); border: 0; border-radius: 13px; background: transparent; text-align: start; cursor: var(--cursor-hand, pointer); color: var(--ds-text); transition: background 0.15s, transform 0.2s var(--ease); }
 .hm-row:hover { background: var(--ds-hover); transform: translateX(2px); }
 :root[dir='rtl'] .hm-row:hover { transform: translateX(-2px); }
-.hm-empty { padding: var(--ds-s3) var(--ds-s3) var(--ds-s4); font-size: 13px; color: var(--ds-text-3); text-align: center; }
 
 /* ═════════ Settings ═════════ */
 
@@ -53,9 +52,4 @@
 
 .sort-arrow { font-size: 9px; margin-inline-start: var(--ds-s1); }
 
-.tk-head h1 { display: flex; align-items: center; gap: var(--ds-s3); margin: 0 0 var(--ds-s2); font-size: 28px; }
-.tk-head p { margin: 0 0 var(--ds-s4); color: var(--ds-text-2); font-size: 14px; }
-.tk-tabs { display: inline-flex; gap: var(--ds-s1); padding: var(--ds-s1); margin-bottom: var(--ds-s5); border-radius: 12px; background: var(--ds-sunk); }
-.tk-tabs button { height: 30px; padding: 0 var(--ds-s4); border: 0; border-radius: 9px; background: transparent; color: var(--ds-text-2); font-weight: 600; cursor: var(--cursor-hand, pointer); }
-.tk-tabs button.on { background: var(--ds-raised); color: var(--ds-text); box-shadow: var(--panel-shadow); }
 

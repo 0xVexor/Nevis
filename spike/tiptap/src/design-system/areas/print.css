@@ -20,3 +20,10 @@
   .code-wrap pre { padding-top: 12px !important; }
   a { color: inherit !important; }
 }
+
+
+@media print {
+  .hscroll-rail { display: none; }
+  .hscroll-viewport { overflow: visible; }
+  .hscroll-content { inline-size: auto; }
+}

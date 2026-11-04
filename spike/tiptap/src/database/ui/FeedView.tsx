@@ -7,10 +7,10 @@ import { repo } from '../../store'
 import { urlFor } from '../../attachments'
 import { t } from '../../i18n'
 import { ago } from '../../ui'
-import * as Ic from '../../icons'
+import { Button, Icon } from '../../design-system'
 import { CellView, useNav } from './CellView'
 import { CommentsThread } from './Comments'
-import { errorText, plainTitle } from './common'
+import { ViewMessage, errorText, plainTitle } from './common'
 import { useViewQuery } from './useViewQuery'
 import type { ViewProps } from './viewTypes'
 
@@ -40,7 +40,7 @@ function preview(doc: PM | undefined, max = 420): { text: string[]; image: strin
   return { text, image, cut: cut || n > max }
 }
 
-function FeedCard({ svc, id, ctl, props }: { svc: ViewProps['svc']; id: Id; ctl: ViewProps['ctl']; props: ReturnType<ViewProps['svc']['state']['props']> }) {
+function FeedCard({ svc, id, ctl, props, showCounts }: { svc: ViewProps['svc']; id: Id; ctl: ViewProps['ctl']; props: ReturnType<ViewProps['svc']['state']['props']>; showCounts: boolean }) {
   const nav = useNav()
   const ref = useRef<HTMLElement>(null)
   const [open, setOpen] = useState(false)
@@ -74,9 +74,9 @@ function FeedCard({ svc, id, ctl, props }: { svc: ViewProps['svc']; id: Id; ctl:
   const counts = feedCounts(svc.state, id)
   const author = row.page.recordMeta?.createdBy ? svc.state.get('principal', row.page.recordMeta.createdBy)?.displayName : null
   return (
-    <article ref={ref} className="db-feed-card">
+    <article ref={ref} className="dv-feed-card">
       <header>
-        <button type="button" className="db-feed-title" dir="auto" onClick={() => nav.openRow(id, 'side')}>
+        <button type="button" className="dv-feed-title" dir="auto" onClick={() => nav.openRow(id, 'side')}>
           {plainTitle(row.page.title)}
         </button>
         <small>
@@ -84,34 +84,36 @@ function FeedCard({ svc, id, ctl, props }: { svc: ViewProps['svc']; id: Id; ctl:
           {ago(row.page.recordMeta?.createdAt ?? row.page.updatedAt)}
         </small>
       </header>
-      <div className="db-feed-props">
+      <div className="dv-feed-props">
         {props.map((d) => (
           <span key={d.id}>
-            <CellView svc={svc} rs={ctl.rs} row={row} def={d} compact />
+            <CellView svc={svc} rs={ctl.rs} row={row} def={d} />
           </span>
         ))}
       </div>
       {pv.text.length > 0 && (
-        <div className="db-feed-body" dir="auto">
+        <div className="dv-feed-body" dir="auto">
           {pv.text.slice(0, 4).map((s, i) => (
             <p key={i}>{s}</p>
           ))}
           {pv.cut && (
-            <button type="button" className="db-linkbtn" onClick={() => nav.openRow(id, 'side')}>
+            <Button size="sm" variant="ghost" onClick={() => nav.openRow(id, 'side')}>
               {t('Open the page to read more')}
-            </button>
+            </Button>
           )}
         </div>
       )}
-      {img && <img className="db-feed-img" src={img} alt="" loading="lazy" />}
-      <footer>
-        <span title={t('Views')}>
-          <Ic.Eye size={12} /> {counts.views}
-        </span>
-        <button type="button" className="db-linkbtn" aria-expanded={open} onClick={() => setOpen(!open)}>
-          <Ic.Quote size={12} /> {counts.comments}
-        </button>
-      </footer>
+      {img && <img className="dv-feed-img" src={img} alt="" loading="lazy" />}
+      {showCounts && (
+        <footer className="dv-feed-foot">
+          <span title={t('Views')}>
+            <Icon name="eye" size={14} /> {t('{n} views', { n: counts.views })}
+          </span>
+          <Button size="sm" variant="ghost" aria-expanded={open} icon={<Icon name="comment" size={14} />} onClick={() => setOpen(!open)}>
+            {t('{n} comments', { n: counts.comments })}
+          </Button>
+        </footer>
+      )}
       {open && <CommentsThread svc={svc} pageId={id} propertyId={null} />}
     </article>
   )
@@ -130,25 +132,21 @@ export function FeedView({ svc, view, ctl }: ViewProps) {
     .slice(0, 3)
   if (q.error)
     return (
-      <div className="db-error-box" role="alert">
+      <ViewMessage tone="bad" title={t('This view cannot be shown')}>
         {errorText(q.error.code, q.error.message)}
-      </div>
+      </ViewMessage>
     )
   return (
-    <div className="db-feed">
+    <div className="dv-feed">
       {q.rows.slice(0, more).map((r) => (
-        <FeedCard key={r.pageId} svc={svc} id={r.pageId} ctl={ctl} props={props} />
+        <FeedCard key={r.pageId} svc={svc} id={r.pageId} ctl={ctl} props={props} showCounts={cfg.counts !== false} />
       ))}
       {q.rows.length > more && (
-        <button type="button" className="db-more" onClick={() => setMore(more + 20)}>
+        <button type="button" className="dv-more" onClick={() => setMore(more + 20)}>
           {t('Load more')}
         </button>
       )}
-      {q.total === 0 && (
-        <div className="db-empty">
-          <b>{t('Nothing here yet')}</b>
-        </div>
-      )}
+      {q.total === 0 && <ViewMessage title={t('Nothing here yet')} />}
     </div>
   )
 }

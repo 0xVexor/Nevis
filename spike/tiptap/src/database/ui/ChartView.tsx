@@ -1,19 +1,17 @@
-// Chart view: configuration on top, an accessible SVG below (also the export), click on a bar opens a read-only drill-down list of
-// exactly the rows it counts. The chart itself never writes anything.
+// Chart view: the chart itself (an accessible SVG, also the export) with its settings beside it; a click on a bar opens a
+// read-only list of exactly the rows it counts. The chart never writes anything.
 import { useMemo, useState } from 'react'
 import type { Id, Json } from '../model/types.ts'
 import { chartData, chartToSvg, drilldownFilter, type ChartRequest, type ChartType, type Measure } from '../query/chart.ts'
 import { NONE_GROUP } from '../query/engine.ts'
 import type { RollupAggregation } from '../props/config.ts'
-import { Select } from '../../ui'
 import { download } from '../../backup'
+import { Button, Dropdown, FormField, Icon, IconButton, Segmented, SwitchRow } from '../../design-system'
 import { t } from '../../i18n'
-import * as Ic from '../../icons'
 import { CellView, useNav } from './CellView'
-import { errorText, plainTitle } from './common'
-import { Field, Seg, Switch } from './forms'
+import { Hint, ViewMessage, errorText, plainTitle, rawOptions } from './common'
 import { useViewQuery } from './useViewQuery'
-import { aggLabel } from './PropertyEditor'
+import { aggKey } from './PropertyEditor'
 import type { ViewProps } from './viewTypes'
 
 type ChartCfg = {
@@ -29,6 +27,13 @@ type ChartCfg = {
 }
 
 const MEASURE_OPS: RollupAggregation[] = ['sum', 'average', 'median', 'min', 'max', 'range', 'count_values', 'count_unique', 'count_empty', 'count_not_empty']
+const TYPES: { value: ChartType; label: string; icon: string }[] = [
+  { value: 'bar_vertical', label: 'Bars', icon: 'chart-bar' },
+  { value: 'bar_horizontal', label: 'Horizontal bars', icon: 'rows' },
+  { value: 'line', label: 'Line', icon: 'chart-line' },
+  { value: 'donut', label: 'Donut', icon: 'chart-pie' },
+  { value: 'number', label: 'One number', icon: 'hash' },
+]
 
 export function ChartView({ svc, view, ctl }: ViewProps) {
   const cfg = ((view.configuration as { chart?: ChartCfg }).chart ?? {}) as ChartCfg
@@ -41,8 +46,8 @@ export function ChartView({ svc, view, ctl }: ViewProps) {
   const numeric = props.filter((p) => p.kind === 'number' || p.kind === 'formula' || p.kind === 'checkbox')
   const set = (patch: Partial<ChartCfg>) => void ctl.patch({ chart: { ...cfg, ...patch } as unknown as Json })
   const q = useViewQuery(svc, view, { search: ctl.search, personal: ctl.personal, want: 1 }) // only for the filter / error state
+  const type = cfg.type ?? 'bar_vertical'
   const req: ChartRequest | null = useMemo(() => {
-    const type = cfg.type ?? 'bar_vertical'
     if (type !== 'number' && !cfg.categoryPropertyId) return null
     return {
       sourceId: view.sourceId!,
@@ -60,7 +65,7 @@ export function ChartView({ svc, view, ctl }: ViewProps) {
       hideEmpty: cfg.hideEmpty,
       weekStart: svc.weekStart,
     }
-  }, [cfg, view.sourceId, q.filter, ctl.search, svc, svc.getVersion()]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cfg, type, view.sourceId, q.filter, ctl.search, svc, svc.getVersion()]) // eslint-disable-line react-hooks/exhaustive-deps
   const result = useMemo(() => {
     if (!req) return { data: null, error: null as string | null }
     try {
@@ -102,162 +107,158 @@ export function ChartView({ svc, view, ctl }: ViewProps) {
     img.src = url
   }
   const measure = cfg.measure ?? { kind: 'count' as const }
+  const isDate = ['date', 'created_time', 'last_edited_time'].includes(svc.state.prop(cfg.categoryPropertyId ?? '')?.kind ?? '')
+  const measureProp = measure.kind === 'agg' ? svc.state.prop(measure.propertyId) : undefined
+
   return (
-    <div className="db-chart">
-      {ctl.canSchema && (
-        <div className="db-chart-cfg">
-          <Seg
-            value={cfg.type ?? 'bar_vertical'}
-            onChange={(v) => set({ type: v })}
-            label={t('Chart type')}
-            options={[
-              { value: 'bar_vertical', label: t('Bars') },
-              { value: 'bar_horizontal', label: t('Horizontal') },
-              { value: 'line', label: t('Line') },
-              { value: 'donut', label: t('Donut') },
-              { value: 'number', label: t('Number') },
-            ]}
-          />
-          {(cfg.type ?? 'bar_vertical') !== 'number' && (
+    <div className="dv-chart" data-settings={ctl.canSchema || undefined}>
+      <div className="dv-chart-main">
+        <div className="dv-chart-stage">
+          {q.error ? (
+            <ViewMessage tone="bad" title={t('This view cannot be shown')}>
+              {errorText(q.error.code, q.error.message)}
+            </ViewMessage>
+          ) : result.error ? (
+            <ViewMessage tone="bad" title={t('This chart cannot be drawn')}>
+              {result.error}
+            </ViewMessage>
+          ) : !req ? (
+            <ViewMessage title={t('Choose what to chart')}>{t('Pick a property for the X axis, or switch to the Number chart.')}</ViewMessage>
+          ) : result.data?.empty ? (
+            <ViewMessage title={t('No data to chart')}>{t('No items match the filters of this view.')}</ViewMessage>
+          ) : result.data ? (
             <>
-              <Field label={t('X axis')}>
-                <Select
-                  value={cfg.categoryPropertyId ?? ''}
-                  options={[{ value: '', label: t('Choose…') }, ...axisOk.map((p) => ({ value: p.id, label: p.name }))]}
-                  onChange={(v) => set({ categoryPropertyId: v || null })}
-                />
-              </Field>
-              {['date', 'created_time', 'last_edited_time'].includes(svc.state.prop(cfg.categoryPropertyId ?? '')?.kind ?? '') && (
-                <Field label={t('Group dates by')}>
-                  <Select
-                    value={cfg.dateBucket ?? 'month'}
-                    options={['day', 'week', 'month', 'year'].map((b) => ({ value: b, label: t(b[0].toUpperCase() + b.slice(1)) }))}
-                    onChange={(v) => set({ dateBucket: v as never })}
-                  />
-                </Field>
+              {result.data.warnings.map((w) => (
+                <Hint key={w.code}>{w.detail}</Hint>
+              ))}
+              {result.data.comparison && (
+                <p className="dv-text">
+                  {t('Compared with the previous period')}:{' '}
+                  <b dir="ltr">
+                    {result.data.comparison.delta !== null && result.data.comparison.delta > 0 ? '+' : ''}
+                    {result.data.comparison.delta ?? '—'}
+                  </b>
+                </p>
               )}
-              <Field label={t('Split by')}>
-                <Select
-                  value={cfg.seriesPropertyId ?? ''}
-                  options={[
-                    { value: '', label: t('None') },
-                    ...axisOk.filter((p) => ['select', 'multi_select', 'status', 'people', 'checkbox'].includes(p.kind)).map((p) => ({ value: p.id, label: p.name })),
-                  ]}
-                  onChange={(v) => set({ seriesPropertyId: v || null })}
-                />
-              </Field>
-            </>
-          )}
-          <Field label={t('Measure')}>
-            <Select
-              value={measure.kind === 'count' ? 'count' : measure.propertyId}
-              options={[{ value: 'count', label: t('Count of items') }, ...numeric.map((p) => ({ value: p.id, label: p.name }))]}
-              onChange={(v) => set({ measure: v === 'count' ? { kind: 'count' } : { kind: 'agg', propertyId: v, op: 'sum' } })}
-            />
-          </Field>
-          {measure.kind === 'agg' && (
-            <Field label={t('Calculate')}>
-              <Select value={measure.op} options={MEASURE_OPS.map((o) => ({ value: o, label: aggLabel(o) }))} onChange={(v) => set({ measure: { ...measure, op: v as never } })} />
-            </Field>
-          )}
-          {(cfg.type ?? 'bar_vertical') !== 'number' && (
-            <Field label={t('Order')}>
-              <Seg
-                value={cfg.order ?? 'category'}
-                onChange={(v) => set({ order: v })}
-                options={[
-                  { value: 'category', label: t('Natural') },
-                  { value: 'value_desc', label: t('Largest first') },
-                  { value: 'value_asc', label: t('Smallest first') },
-                ]}
+              <div
+                className="dv-chart-svg"
+                dangerouslySetInnerHTML={{ __html: svg }}
+                onClick={(e) => {
+                  const el = (e.target as Element).closest('[data-cat]') as HTMLElement | null
+                  if (el) setDrill({ cat: el.dataset.cat!, series: el.dataset.series && el.dataset.series !== '_' ? el.dataset.series : undefined })
+                }}
               />
-            </Field>
-          )}
-          <Switch label={t('Hide “No value”')} on={!!cfg.hideEmpty} onChange={(v) => set({ hideEmpty: v })} />
+              <p className="dv-hint">{t('Click a bar or a slice to see the items in it.')}</p>
+            </>
+          ) : null}
         </div>
-      )}
-      <div className="db-view-actions db-chart-actions">
-        <button type="button" className="db-btn" disabled={!svg} onClick={exportSvg}>
-          <Ic.Download size={13} /> SVG
-        </button>
-        <button type="button" className="db-btn" disabled={!svg} onClick={exportPng}>
-          <Ic.Image size={13} /> PNG
-        </button>
+        {drill && (
+          <section className="dv-drill" aria-label={t('Items in this bar')}>
+            <header className="dv-section-head">
+              <span>{drill.cat === NONE_GROUP ? t('No value') : t('Items in this bar')}</span>
+              <span className="ds-badge">{rowsFor.length}</span>
+              <IconButton label={t('Close')} onClick={() => setDrill(null)}>
+                <Icon name="x" size={15} />
+              </IconButton>
+            </header>
+            <div className="ds-list ds-list--framed">
+              {rowsFor.map((id) => {
+                const row = svc.state.row(id)
+                return row ? (
+                  <button key={id} type="button" className="ds-list-row" onClick={() => nav.openRow(id, 'side')}>
+                    <span className="dv-listrow-title" dir="auto">
+                      {plainTitle(row.page.title)}
+                    </span>
+                    {measureProp && (
+                      <span className="dv-listrow-props">
+                        <CellView svc={svc} rs={ctl.rs} row={row} def={measureProp} />
+                      </span>
+                    )}
+                  </button>
+                ) : null
+              })}
+            </div>
+            <Hint>{t('This list is read-only. Open an item to edit it.')}</Hint>
+          </section>
+        )}
       </div>
-      {q.error && (
-        <div className="db-error-box" role="alert">
-          {errorText(q.error.code, q.error.message)}
-        </div>
-      )}
-      {result.error && (
-        <div className="db-error-box" role="alert">
-          {result.error}
-        </div>
-      )}
-      {!req && !result.error && (
-        <div className="db-error-box">
-          <b>{t('Choose what to chart')}</b>
-          <p>{t('Pick a property for the X axis, or switch to the Number chart.')}</p>
-        </div>
-      )}
-      {result.data?.empty && (
-        <div className="db-empty">
-          <b>{t('No data to chart')}</b>
-          <p>{t('No items match the filters of this view.')}</p>
-        </div>
-      )}
-      {result.data && !result.data.empty && (
-        <>
-          {result.data.warnings.map((w) => (
-            <div key={w.code} className="db-date-hint" role="status">
-              {w.detail}
-            </div>
-          ))}
-          {result.data.comparison && (
-            <div className="db-compare">
-              {t('Compared with the previous period')}:{' '}
-              <b dir="ltr">
-                {result.data.comparison.delta !== null && result.data.comparison.delta > 0 ? '+' : ''}
-                {result.data.comparison.delta ?? '—'}
-              </b>
-            </div>
-          )}
-          <div
-            className="db-chart-svg"
-            dangerouslySetInnerHTML={{ __html: svg }}
-            onClick={(e) => {
-              const el = (e.target as Element).closest('[data-cat]') as HTMLElement | null
-              if (el) setDrill({ cat: el.dataset.cat!, series: el.dataset.series && el.dataset.series !== '_' ? el.dataset.series : undefined })
-            }}
-          />
-        </>
-      )}
-      {drill && (
-        <div className="db-drill" role="region" aria-label={t('Items in this bar')}>
-          <div className="db-drill-head">
-            <b>
-              {drill.cat === NONE_GROUP ? t('No value') : t('Items')} <span className="db-count">{rowsFor.length}</span>
-            </b>
-            <button type="button" className="icon-btn" aria-label={t('Close')} onClick={() => setDrill(null)}>
-              <Ic.Close size={13} />
-            </button>
-          </div>
-          {rowsFor.map((id) => {
-            const row = svc.state.row(id)
-            return row ? (
-              <button key={id} type="button" className="db-listrow" onClick={() => nav.openRow(id, 'side')}>
-                <span dir="auto">{plainTitle(row.page.title)}</span>
-                {measure.kind === 'agg' && svc.state.prop(measure.propertyId) && (
-                  <span className="db-list-props">
-                    <CellView svc={svc} rs={ctl.rs} row={row} def={svc.state.prop(measure.propertyId)!} compact />
-                  </span>
+      <aside className="dv-chart-side" aria-label={t('Chart settings')}>
+        {ctl.canSchema && (
+          <>
+            <FormField label={t('Chart type')}>
+              <div className="dv-layouts" role="radiogroup" aria-label={t('Chart type')}>
+                {TYPES.map((o) => (
+                  <button key={o.value} type="button" role="radio" aria-checked={o.value === type} className="dv-layout" onClick={() => set({ type: o.value })}>
+                    <Icon name={o.icon} size={18} />
+                    <span>{t(o.label)}</span>
+                  </button>
+                ))}
+              </div>
+            </FormField>
+            {type !== 'number' && (
+              <>
+                <FormField label={t('X axis')}>
+                  <Dropdown label={t('X axis')} placeholder={t('Choose…')} value={cfg.categoryPropertyId ?? ''} options={rawOptions(axisOk)} onChange={(v) => set({ categoryPropertyId: v || null })} />
+                </FormField>
+                {isDate && (
+                  <FormField label={t('Group dates by')}>
+                    <Segmented
+                      label={t('Group dates by')}
+                      value={cfg.dateBucket ?? 'month'}
+                      options={(['day', 'week', 'month', 'year'] as const).map((b) => ({ value: b, label: t(b[0].toUpperCase() + b.slice(1)) }))}
+                      onChange={(v) => set({ dateBucket: v })}
+                    />
+                  </FormField>
                 )}
-              </button>
-            ) : null
-          })}
-          <div className="db-date-hint">{t('This list is read-only. Open an item to edit it.')}</div>
+                <FormField label={t('Split by')}>
+                  <Dropdown
+                    label={t('Split by')}
+                    value={cfg.seriesPropertyId ?? ''}
+                    options={[{ value: '', label: 'None' }, ...rawOptions(axisOk.filter((p) => ['select', 'multi_select', 'status', 'people', 'checkbox'].includes(p.kind)))]}
+                    onChange={(v) => set({ seriesPropertyId: v || null })}
+                  />
+                </FormField>
+              </>
+            )}
+            <FormField label={t('Measure')}>
+              <Dropdown
+                label={t('Measure')}
+                value={measure.kind === 'count' ? 'count' : measure.propertyId}
+                options={[{ value: 'count', label: 'Count of items' }, ...rawOptions(numeric)]}
+                onChange={(v) => set({ measure: v === 'count' ? { kind: 'count' } : { kind: 'agg', propertyId: v, op: 'sum' } })}
+              />
+            </FormField>
+            {measure.kind === 'agg' && (
+              <FormField label={t('Calculate')}>
+                <Dropdown label={t('Calculate')} value={measure.op} options={MEASURE_OPS.map((o) => ({ value: o, label: aggKey(o) }))} onChange={(v) => set({ measure: { ...measure, op: v as never } })} />
+              </FormField>
+            )}
+            {type !== 'number' && (
+              <FormField label={t('Order')}>
+                <Dropdown
+                  label={t('Order')}
+                  value={cfg.order ?? 'category'}
+                  onChange={(v) => set({ order: v })}
+                  options={[
+                    { value: 'category', label: 'Natural' },
+                    { value: 'value_desc', label: 'Largest first' },
+                    { value: 'value_asc', label: 'Smallest first' },
+                  ]}
+                />
+              </FormField>
+            )}
+            <SwitchRow label={t('Hide “No value”')} checked={!!cfg.hideEmpty} onChange={(v) => set({ hideEmpty: v })} />
+          </>
+        )}
+        <div className="dv-chart-export">
+          <Button size="sm" icon={<Icon name="download" size={15} />} disabled={!svg} onClick={exportSvg}>
+            SVG
+          </Button>
+          <Button size="sm" icon={<Icon name="image" size={15} />} disabled={!svg} onClick={exportPng}>
+            PNG
+          </Button>
         </div>
-      )}
+      </aside>
     </div>
   )
 }

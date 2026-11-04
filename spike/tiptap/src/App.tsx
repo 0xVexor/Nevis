@@ -208,7 +208,7 @@ export default function App() {
     if (view !== 'settings') setSettingsTab(undefined)
   }, [view])
   const [folderOpen, setFolderOpen] = useState(false)
-  const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null)
+  const [toast, setToast] = useState<{ msg: string; undo?: () => void; action?: { label: string; run: () => void } } | null>(null)
   const [tableOpen, setTableOpen] = useState(false)
   const [graphOpen, setGraphOpen] = useState(false)
   const [dueCards, setDueCards] = useState(0)
@@ -338,8 +338,8 @@ export default function App() {
       if (String((e as CustomEvent).detail).includes('VAULT_MISSING')) setToast({ msg: t('The vault folder was not found. Open Workspaces to locate it or download it again.') })
     }
     const layoutNotice = (e: Event) => setToast({ msg: String((e as CustomEvent).detail) })
-    // screens report their own changes here: { msg, undo? } (see APP_TOAST in ui.tsx)
-    const screenToast = (e: Event) => setToast((e as CustomEvent<{ msg: string; undo?: () => void }>).detail)
+    // screens report their own changes here: { msg, undo?, action? } (see APP_TOAST in ui.tsx)
+    const screenToast = (e: Event) => setToast((e as CustomEvent<{ msg: string; undo?: () => void; action?: { label: string; run: () => void } }>).detail)
     window.addEventListener('layout-message', layoutNotice)
     window.addEventListener(APP_TOAST, screenToast)
     window.addEventListener('page-conflict', kept)
@@ -1421,7 +1421,7 @@ export default function App() {
 
       {naming && <NameDialog {...naming} onClose={() => setNaming(null)} />}
       <UpdateCenter />
-      {toast && <Toast msg={toast.msg} action={toast.undo ? t('Undo') : undefined} onAction={toast.undo} onClose={() => setToast(null)} />}
+      {toast && <Toast msg={toast.msg} action={toast.undo ? t('Undo') : toast.action?.label} onAction={toast.undo ?? toast.action?.run} onClose={() => setToast(null)} />}
 
       {searching && (
         <SearchModal

@@ -84,6 +84,17 @@
   --ds-text-heading: 32px;
   --ds-teal: #087f74;
   --ds-dot-grid: light-dark(#d6ddd7, #37403a);
+  /* the ten colours a database option (select, status, multi-select) can take; used through --c on .ds-chip */
+  --ds-opt-default: var(--ds-text-2);
+  --ds-opt-gray: light-dark(oklch(0.5 0.01 250), oklch(0.75 0.01 250));
+  --ds-opt-brown: light-dark(oklch(0.5 0.07 55), oklch(0.76 0.06 55));
+  --ds-opt-orange: light-dark(oklch(0.56 0.15 55), oklch(0.8 0.12 60));
+  --ds-opt-yellow: light-dark(oklch(0.55 0.12 90), oklch(0.84 0.12 95));
+  --ds-opt-green: light-dark(oklch(0.5 0.12 155), oklch(0.8 0.12 155));
+  --ds-opt-blue: light-dark(oklch(0.5 0.14 250), oklch(0.8 0.1 250));
+  --ds-opt-purple: light-dark(oklch(0.5 0.15 300), oklch(0.8 0.1 300));
+  --ds-opt-pink: light-dark(oklch(0.55 0.16 350), oklch(0.82 0.1 350));
+  --ds-opt-red: light-dark(oklch(0.52 0.17 25), oklch(0.8 0.11 25));
 
   /* motion */
   --ds-ease: cubic-bezier(.22, 1, .36, 1);

@@ -1,7 +1,8 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react'
 import { cx } from './dir'
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  ref?: Ref<HTMLButtonElement>
   variant?: 'default' | 'primary' | 'ghost' | 'danger'
   size?: 'md' | 'sm'
   icon?: ReactNode
@@ -18,6 +19,7 @@ export function Button({ variant = 'default', size = 'md', icon, className, chil
 }
 
 type IconButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label'> & {
+  ref?: Ref<HTMLButtonElement>
   /** Required: an icon-only button has no other name. Also shown as the tooltip. */
   label: string
   pressed?: boolean

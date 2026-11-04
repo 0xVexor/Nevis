@@ -1,16 +1,7 @@
 /* ───────── popovers + menus ───────── */
 
 /* shared select */
-.selbox { display: inline-flex; align-items: center; gap: var(--ds-s2); min-height: var(--ds-control); padding: 0 var(--ds-s3) 0 var(--ds-s4); border: 1px solid var(--ds-line); border-radius: 11px; background: var(--ds-raised); color: var(--ds-text); font-size: 13px; cursor: var(--cursor-hand, pointer); max-width: 100%; transition: border-color 0.15s, box-shadow 0.15s; }
-.selbox:hover { border-color: var(--ds-line-strong); }
-.selbox.open, .selbox:focus-visible { outline: none; border-color: var(--ds-accent); box-shadow: 0 0 0 3px var(--ds-accent-line); }
-.sel-label { flex: 1; text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sel-chev { display: inline-flex; transform: rotate(90deg); color: var(--ds-text-3); transition: transform 0.2s var(--ease); }
-.selbox.open .sel-chev { transform: rotate(-90deg); }
-.sel-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; display: inline-block; }
 .sel-check { margin-inline-start: auto; color: var(--ds-accent); display: inline-flex; }
-.sel-menu .ds-menu-ic { width: 14px; }
-.field .selbox { width: 100%; height: var(--ds-control); background: var(--ds-bg); }
 
 /* emoji + icon picker */
 .nd-body input { transition: border-color 0.15s, box-shadow 0.15s; }

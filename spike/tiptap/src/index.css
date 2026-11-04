@@ -25,9 +25,7 @@
 @import './design-system/areas/notices.css';
 @import './design-system/areas/content.css';
 @import './design-system/areas/explorer.css';
-@import './design-system/areas/database.css';
-@import './design-system/areas/database-grid.css';
-@import './design-system/areas/database-layout.css';
+@import './design-system/areas/databases.css';
 @import './design-system/areas/scrollbars.css';
 @import './design-system/areas/updates.css';
 @import './design-system/areas/layout.css';
