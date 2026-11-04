@@ -1,10 +1,19 @@
 import { useState } from 'react'
 import { Button, IconButton } from './Button'
-import { Card, Chip, Facts, Field, Notice, Section, Switch, Tabs } from './controls'
+import { Card, Chip, ChipButton, Disclosure, Facts, Field, Notice, PropertyList, PropertyRow, Radio, Section, Switch, Tabs, Tag } from './controls'
+import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarSep } from './Toolbar'
+import { IconPicker } from './IconPicker'
+import { BACKGROUNDS } from './backgrounds'
 import { Row } from './Row'
 import { Dialog, Tooltip } from './overlay'
 import { Icon } from './icons'
 import { COVER_SCENES, landscapeFor } from './scenery'
+import { PreferenceGroup, PreferenceRow, SegmentedChoice, RangeControl } from './Preferences'
+import { WorkspaceHeader } from './WorkspaceHeader'
+import { WindowTitleBar } from './WindowTitleBar'
+import { CommandDialog, CommandResult } from './CommandDialog'
+import { SaveStatus } from './SaveStatus'
+import { BrandMark } from '../BrandMark'
 import './gallery.css'
 
 /**
@@ -15,6 +24,14 @@ function Pane({ dir }: { dir: 'ltr' | 'rtl' }) {
   const [on, setOn] = useState(true)
   const [tab, setTab] = useState('one')
   const [open, setOpen] = useState(false)
+  const [size, setSize] = useState(16)
+  const [commandOpen, setCommandOpen] = useState(false)
+  const [fav, setFav] = useState(true)
+  const [tags, setTags] = useState(['study', 'notes', 'java'])
+  const [glyph, setGlyph] = useState<{ name?: string; color?: string }>({ name: 'book' })
+  const [cover, setCover] = useState('sky-mist')
+  const [choice, setChoice] = useState('a')
+  const [align, setAlign] = useState('left')
   const fa = dir === 'rtl'
   const title = fa ? 'یادداشت درس جاوا' : 'Java lecture notes'
   return (
@@ -43,6 +60,26 @@ function Pane({ dir }: { dir: 'ltr' | 'rtl' }) {
           <Row icon={<Icon name="home" />} text="فصل ۱۵ — Graph" trailing={<Chip>2</Chip>} />
         </Card>
       </Section>
+      <Section title="Search and commands">
+        <Button onClick={() => setCommandOpen(true)}>Open command surface</Button>
+        {commandOpen && <CommandDialog dir={dir} label="Search" onClose={() => setCommandOpen(false)} header={<input aria-label="Search" placeholder="Search the workspace" />} filters={<span>All / Pages / Commands</span>} footer={<span>Esc: close</span>}>
+          <CommandResult icon={<Icon name="file" />} selected trailing={<kbd>Enter</kbd>} onClick={() => setCommandOpen(false)}><b>Reading notes</b><small>Search result with a content passage</small></CommandResult>
+          <CommandResult icon={<Icon name="plus" />} onClick={() => setCommandOpen(false)}><b>Create a page</b></CommandResult>
+        </CommandDialog>}
+      </Section>
+      <Section title="Workspace identity">
+        <WorkspaceHeader mark={<BrandMark />} name="Nevis" revealLabel="Open sidebar" expanded={on} onReveal={() => setOn(true)} action={<IconButton label="Close sidebar" onClick={() => setOn(false)}><Icon name="panel-left" /></IconButton>} />
+      </Section>
+      <Section title="Save feedback">
+        <div className="gallery-line"><SaveStatus state="saving" label={fa ? 'در حال ذخیره…' : 'Saving…'} /><SaveStatus state="saved" label={fa ? 'تغییرات ذخیره شد' : 'All changes saved'} /><SaveStatus state="error" label={fa ? 'ذخیره نشد' : 'Could not save'} /></div>
+      </Section>
+      <Section title="Preferences patterns">
+        <PreferenceGroup title={fa ? 'ترجیحات' : 'Preferences'}>
+          <PreferenceRow label={fa ? 'حرکت' : 'Motion'}><Switch checked={on} onChange={setOn} label="Motion" /></PreferenceRow>
+          <PreferenceRow label={fa ? 'اندازهٔ متن' : 'Text size'}><RangeControl label="Text size" value={size} min={13} max={22} onChange={setSize} /></PreferenceRow>
+          <PreferenceRow label={fa ? 'انتخاب' : 'Choice'}><SegmentedChoice label="Choice" value={tab} onChange={setTab} items={[{value:'one',label:'One'},{value:'two',label:'Two'}]} /></PreferenceRow>
+        </PreferenceGroup>
+      </Section>
       <Section title="Controls">
         <div className="gallery-line">
           <Switch checked={on} onChange={setOn} label="Switch" />
@@ -59,6 +96,83 @@ function Pane({ dir }: { dir: 'ltr' | 'rtl' }) {
           value={tab}
           onChange={setTab}
         />
+      </Section>
+      <Section title="Properties, chips and tags">
+        <PropertyList label={fa ? 'ویژگی‌های صفحه' : 'Page properties'}>
+          <PropertyRow icon={<Icon name="flag" size={16} />} label={fa ? 'وضعیت' : 'Status'}>
+            <ChipButton icon={<i className="ds-menu-dot" style={{ background: '#f59e0b' }} />}>
+              <span>{fa ? 'در حال انجام' : 'In progress'}</span>
+              <Icon name="chevron-down" size={14} />
+            </ChipButton>
+          </PropertyRow>
+          <PropertyRow icon={<Icon name="tag" size={16} />} label={fa ? 'برچسب‌ها' : 'Tags'}>
+            {tags.map((tag) => (
+              <Tag key={tag} label={tag} onOpen={() => undefined} openLabel="Show pages with this tag" onRemove={() => setTags(tags.filter((x) => x !== tag))} removeLabel={fa ? 'حذف برچسب' : 'Remove tag'} />
+            ))}
+            <ChipButton empty icon={<Icon name="plus" size={14} />} onClick={() => setTags([...tags, 'tag ' + (tags.length + 1)])}>
+              {fa ? 'افزودن برچسب…' : 'Add tag…'}
+            </ChipButton>
+          </PropertyRow>
+          <PropertyRow icon={<Icon name="clock" size={16} />} label={fa ? 'آخرین ویرایش' : 'Last edited'}>
+            {fa ? '۵ دقیقه پیش' : '5 minutes ago'}
+          </PropertyRow>
+        </PropertyList>
+        <IconButton className="ds-icon-btn--toggle" label={fa ? 'علاقه‌مندی' : 'Favourite'} pressed={fav} onClick={() => setFav(!fav)}>
+          <Icon name="star" size={18} />
+        </IconButton>
+      </Section>
+      <Section title="Covers and colours">
+        <div className="ds-swatches">
+          {BACKGROUNDS.filter((b) => b.group === 'soft').map((b) => (
+            <button key={b.id} type="button" className="ds-swatch" aria-label={b.label} aria-pressed={cover === b.id} style={{ background: b.css }} onClick={() => setCover(b.id)} />
+          ))}
+        </div>
+        <input className="ds-color" type="color" defaultValue="#6a5cff" aria-label={fa ? 'رنگ دلخواه' : 'Your own color'} />
+      </Section>
+      <Section title="Toolbar">
+        <Toolbar label={fa ? 'ابزار جدول' : 'Table tools'}>
+          <ToolbarGroup label={fa ? 'سطر' : 'Row'}>
+            <ToolbarButton label={fa ? 'سطر بالا' : 'Insert row above'}><Icon name="row-above" size={16} /></ToolbarButton>
+            <ToolbarButton label={fa ? 'سطر پایین' : 'Insert row below'}><Icon name="row-below" size={16} /></ToolbarButton>
+            <ToolbarButton label={fa ? 'حذف سطر' : 'Delete row'} danger><Icon name="row-delete" size={16} /></ToolbarButton>
+          </ToolbarGroup>
+          <ToolbarSep />
+          <ToolbarGroup label={fa ? 'عرض' : 'Width'}>
+            {['50%', '75%', '100%'].map((w) => (
+              <ToolbarButton key={w} text label={w} pressed={w === '100%'}>{w}</ToolbarButton>
+            ))}
+          </ToolbarGroup>
+          <ToolbarSep />
+          <ToolbarGroup label={fa ? 'تراز' : 'Position'}>
+            {(['left', 'center', 'right'] as const).map((a) => (
+              <ToolbarButton key={a} label={a} pressed={align === a} onClick={() => setAlign(a)}><Icon name={'align-' + a} size={16} /></ToolbarButton>
+            ))}
+          </ToolbarGroup>
+        </Toolbar>
+      </Section>
+      <Section title="Radio and disclosure">
+        <div className="gallery-line">
+          <Radio name={'gallery-' + dir} checked={choice === 'a'} onChange={() => setChoice('a')}>{fa ? 'گزینهٔ اول' : 'First choice'}</Radio>
+          <Radio name={'gallery-' + dir} checked={choice === 'b'} onChange={() => setChoice('b')}>{fa ? 'گزینهٔ دوم' : 'Second choice'}</Radio>
+        </div>
+        <Disclosure title={fa ? 'جزئیات بیشتر' : 'More details'}>
+          <p>{fa ? 'محتوای بخش بازشونده.' : 'Content of the opening section.'}</p>
+        </Disclosure>
+      </Section>
+      <Section title="Command list">
+        <div className="ds-pop ds-menu ds-menu--command gallery-static">
+          <div className="ds-menu-head">{fa ? 'دستورها' : 'Commands'}</div>
+          <div className="ds-menu-list">
+            <button type="button" className="ds-menu-item hot" role="menuitem"><span className="ds-menu-ic">H1</span><span className="ds-menu-label"><b>{fa ? 'عنوان ۱' : 'Heading 1'}</b><small>{fa ? 'عنوان بزرگ' : 'Large section title'}</small></span></button>
+            <button type="button" className="ds-menu-item" role="menuitem"><span className="ds-menu-ic"><Icon name="table" size={17} /></span><span className="ds-menu-label"><b>{fa ? 'جدول' : 'Table'}</b><small>{fa ? 'سطر و ستون' : 'Rows and columns'}</small></span></button>
+          </div>
+          <div className="ds-menu-foot"><span><kbd className="ds-kbd">↑</kbd><kbd className="ds-kbd">↓</kbd> {fa ? 'حرکت' : 'Navigate'}</span><span><kbd className="ds-kbd">↵</kbd> {fa ? 'انتخاب' : 'Select'}</span></div>
+        </div>
+      </Section>
+      <Section title="Icon picker">
+        <div className="ds-pop">
+          <IconPicker name={glyph.name} color={glyph.color} onPick={(name, color) => setGlyph({ name, color })} onClear={() => setGlyph({})} />
+        </div>
       </Section>
       <Section title="Facts and notice">
         <Facts
@@ -109,6 +223,8 @@ function Pane({ dir }: { dir: 'ltr' | 'rtl' }) {
 
 export function Gallery() {
   const [dark, setDark] = useState(false)
+  const [windowMaximized, setWindowMaximized] = useState(false)
+  const [windowFeedback, setWindowFeedback] = useState('')
   const toggle = () => {
     const next = !dark
     setDark(next)
@@ -120,6 +236,51 @@ export function Gallery() {
         <h1>Nevis design system</h1>
         <Button onClick={toggle}>{dark ? 'Light' : 'Dark'}</Button>
       </header>
+      <Section title="Window title bar">
+        <Card>
+          <WindowTitleBar
+            title="Nevis"
+            mark={<BrandMark />}
+            labels={{ minimize: 'Minimize window', maximize: 'Maximize window', restore: 'Restore window', close: 'Close window' }}
+            maximized={windowMaximized}
+            onMinimize={() => setWindowFeedback('Minimize window')}
+            onToggleMaximize={() => {
+              setWindowFeedback(windowMaximized ? 'Restore window' : 'Maximize window')
+              setWindowMaximized(!windowMaximized)
+            }}
+            onClose={() => setWindowFeedback('Close window')}
+          />
+          {windowFeedback && <Notice compact role="status">{windowFeedback}</Notice>}
+        </Card>
+      </Section>
+      <Section title="System notices">
+        <div className="gallery-panes">
+          <div className="ds-stack" dir="ltr">
+            <Notice title="Update available" icon={<Icon name="download" size={16} />}>
+              Version 1.1.0 is ready to install.
+            </Notice>
+            <Notice tone="warn" title="Before you restore">
+              Restoring this backup will replace the current pages.
+            </Notice>
+            <Notice tone="bad" title="Workspace unavailable">
+              The workspace folder could not be opened.
+            </Notice>
+            <Notice tone="ok">Backup saved.</Notice>
+          </div>
+          <div className="ds-stack" dir="rtl" lang="fa">
+            <Notice title="به‌روزرسانی آماده است" icon={<Icon name="download" size={16} />}>
+              نسخهٔ ۱٫۱٫۰ آمادهٔ نصب است.
+            </Notice>
+            <Notice tone="warn" title="پیش از بازیابی">
+              بازیابی این پشتیبان، صفحه‌های فعلی را جایگزین می‌کند.
+            </Notice>
+            <Notice tone="bad" title="فضای کاری در دسترس نیست">
+              پوشهٔ فضای کاری باز نشد.
+            </Notice>
+            <Notice tone="ok">پشتیبان ذخیره شد.</Notice>
+          </div>
+        </div>
+      </Section>
       <div className="gallery-panes">
         <Pane dir="ltr" />
         <Pane dir="rtl" />

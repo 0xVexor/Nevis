@@ -28,17 +28,18 @@ export function openLightbox(source: LightboxSource): () => void {
   stage.append(content)
 
   const bar = document.createElement('div')
-  bar.className = 'lb-bar'
+  bar.className = 'lb-bar ds-toolbar'
   const mk = (label: string, title: string, fn: () => void) => {
     const b = document.createElement('button')
     b.type = 'button'
+    b.className = 'ds-icon-btn ds-toolbar-btn' + (label.startsWith('<svg') ? '' : ' ds-toolbar-btn--text')
     setLabel(b, label)
     b.title = title
     b.onclick = (e) => (e.stopPropagation(), fn())
     return b
   }
   const pct = document.createElement('span')
-  pct.className = 'lb-pct'
+  pct.className = 'lb-pct ds-toolbar-readout'
   bar.append(
     mk(svgIcon.minus, t('Zoom out') + '  −', () => zoomBy(1 / 1.25)),
     pct,

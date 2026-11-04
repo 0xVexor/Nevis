@@ -24,7 +24,7 @@ async function vaultPayload(plan: BackupPlan) {
       await add(path, new Uint8Array(await f.blob.arrayBuffer()))
       await add(path + '.json', enc({ id: f.id, type: f.type, name: f.name, size: f.size, addedAt: Date.now() }))
     }
-    await add('.noviq/vault.json', enc({ format: 1, id: crypto.randomUUID(), name: 'Imported backup' }))
+    await add('.nevis/vault.json', enc({ format: 1, id: crypto.randomUUID(), name: 'Imported backup' }))
     return { format: TAURI_FORMAT, version: 2, name: 'Imported backup', created_at: Date.now(), entries }
   }
 }

@@ -1,4 +1,4 @@
-//! Local full-text index of a vault (ADR-0003, rule 8): `<vault>/.noviq/index.db`, SQLite FTS5.
+//! Local full-text index of a vault (ADR-0003, rule 8): `<vault>/.nevis/index.db`, SQLite FTS5.
 //! It is never synced and can be deleted at any time; the UI rebuilds what is missing. The UI normalizes text
 //! (Persian letters, digits, ZWNJ…) before it gets here, so this file only deals with words.
 
@@ -21,7 +21,7 @@ pub struct Doc {
 const LAYOUT: i64 = 2;
 
 pub fn open(vault_root: &Path) -> Res<Connection> {
-    let dir = vault_root.join(".noviq");
+    let dir = vault_root.join(".nevis");
     std::fs::create_dir_all(&dir).map_err(err)?;
     let db = Connection::open(dir.join("index.db")).map_err(err)?;
     db.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;").map_err(err)?;
@@ -82,7 +82,7 @@ mod tests {
 
     #[test]
     fn indexes_updates_removes_and_ranks() {
-        let dir = std::env::temp_dir().join(format!("noviq-idx-{}", crate::vault::now_ms()));
+        let dir = std::env::temp_dir().join(format!("nevis-idx-{}", crate::vault::now_ms()));
         let mut db = open(&dir).unwrap();
         update(&mut db, &[doc("a", "کلاس جاوا", "", "متن درباره شی", 1), doc("b", "یادداشت", "جاوا", "کلاس و وراثت", 1), doc("c", "other", "", "the quick brown fox", 1)], &[]).unwrap();
         fn s(db: &Connection, q: &[&str]) -> Vec<String> {
@@ -102,7 +102,7 @@ mod tests {
 
     #[test]
     fn replacing_and_removing_a_page_leaves_exactly_one_row_per_page() {
-        let dir = std::env::temp_dir().join(format!("noviq-idx-rows-{}", crate::vault::now_ms()));
+        let dir = std::env::temp_dir().join(format!("nevis-idx-rows-{}", crate::vault::now_ms()));
         let mut db = open(&dir).unwrap();
         update(&mut db, &[doc("a", "first", "", "alpha", 1), doc("b", "second", "", "beta", 1)], &[]).unwrap();
         update(&mut db, &[doc("a", "first", "", "gamma", 2)], &[]).unwrap();
@@ -117,10 +117,10 @@ mod tests {
 
     #[test]
     fn an_index_of_an_older_layout_is_emptied_not_misread() {
-        let dir = std::env::temp_dir().join(format!("noviq-idx-old-{}", crate::vault::now_ms()));
-        std::fs::create_dir_all(dir.join(".noviq")).unwrap();
+        let dir = std::env::temp_dir().join(format!("nevis-idx-old-{}", crate::vault::now_ms()));
+        std::fs::create_dir_all(dir.join(".nevis")).unwrap();
         {
-            let old = Connection::open(dir.join(".noviq/index.db")).unwrap();
+            let old = Connection::open(dir.join(".nevis/index.db")).unwrap();
             old.execute_batch("CREATE TABLE meta(id TEXT PRIMARY KEY, updated INTEGER NOT NULL); INSERT INTO meta VALUES('ghost', 5); CREATE VIRTUAL TABLE fts USING fts5(id UNINDEXED, title, tags, body);").unwrap();
         }
         let mut db = open(&dir).unwrap();

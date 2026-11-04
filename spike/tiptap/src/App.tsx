@@ -1,7 +1,7 @@
+import { commandHint, commandMatches, EDITOR_COMMANDS } from './shortcutCommands'
 import { cssVars } from './cssVars'
 import { setPreference } from './preferenceEvents'
 import { UpdateCenter } from './UpdateUI'
-import { shortcutLabel } from './shortcuts'
 import { bindingHint, matches } from './shortcutBindings'
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { repo, gcFiles, TRASH_DAYS } from './store'
@@ -29,7 +29,7 @@ import { SidebarTags } from './SidebarTags'
 import { Explorer } from './Explorer'
 import { Templates, TEMPLATE_GLYPH, BOARD_TEMPLATE, DATABASE_TEMPLATE } from './TemplateGallery'
 import { getTemplates } from './templates'
-import { PageView, type SaveState } from './PageView'
+import { PageView, PICK_TAG, type SaveState } from './PageView'
 import { buildIndex } from './pageIndex'
 import { ReaderBar, loadReaderCfg, type ReaderCfg } from './ReaderBar'
 import { Vaults } from './Vaults'
@@ -40,20 +40,27 @@ import { save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { saveBeforeUpdate } from './updateSave'
 import { flushPreferences } from './sharedPreferences'
-import { isTauri, kvGet, kvSet } from './db'
+import { isTauri, kvGet, kvSet, pageFilePath, revealPageFile } from './db'
 import { watchDueCards } from './cardsDue'
 import { normalizeFa } from './normalize'
 import { Brand } from './Brand'
-import { Icon, dirOf, Button } from './design-system'
-import { MenuItem, MenuLabel, MenuSep, NameDialog, Popover, SearchModal, Toast, TrashModal, type PaletteCommand } from './ui'
+import { BrandMark } from './BrandMark'
+import { SaveStatus } from './design-system/SaveStatus'
+import { WorkspaceHeader } from './design-system/WorkspaceHeader'
+import { Dialog, Icon, IconButton, Menu, Row, dirOf, Button, useMenu, type MenuItem as MenuSpec } from './design-system'
+import { APP_TOAST, NameDialog, SearchModal, Toast, type PaletteCommand } from './ui'
+import { Popover } from './design-system/Popover'
 import { Home } from './Home'
+import { Trash } from './Trash'
 import { iconNode } from './iconSet'
-import * as Ic from './icons'
 import { printPage } from './print'
 import { confirmDialog } from './dialog'
 import { OPEN_PAGE, PAGES_CHANGED } from './editor/pageLink'
 import { t } from './i18n'
+import { isMac, shortcutHint } from './shortcuts'
 import { CompactList, TreeRow } from './PageTree'
+
+const revealKey = isMac() ? 'Reveal in Finder' : /Windows/i.test(navigator.userAgent) ? 'Show in Explorer' : 'Show in file manager'
 
 const PAGE_W = { min: 640, max: 1800, def: 1400, step: 80 }
 
@@ -80,7 +87,7 @@ const BIG_TREE = 150 // pages from which the sidebar tree starts collapsed
 export default function App() {
   const [pages, setPages] = useState<Page[]>(() => repo.list())
   const [currentId, setCurrentIdRaw] = useState<string>(() => localStorage.getItem('not.current') || repo.pagesOnly()[0]?.id || '')
-  const [view, setViewRaw] = useState<'home' | 'page' | 'settings' | 'tasks' | 'drawings' | 'databases' | 'files'>('home')
+  const [view, setViewRaw] = useState<'home' | 'page' | 'settings' | 'tasks' | 'drawings' | 'databases' | 'files' | 'trash'>('home')
   // back / forward through the places visited (pages and views), each remembering how far it was scrolled
   const hist = useRef<{ view: string; id: string; scroll: number }[]>([])
   const hpos = useRef(-1)
@@ -154,17 +161,35 @@ export default function App() {
   })
   const [shut, setShut] = useState<{ favs: boolean; pages: boolean; tags: boolean; saved: boolean }>({ favs: false, pages: false, tags: false, saved: false })
   const [save, setSave] = useState<SaveState>('saved')
+  const [sidePeek, setSidePeek] = useState(false)
+  const [sidePinned, setSidePinned] = useState(false)
+  const sidebarRef = useRef<HTMLElement>(null)
+  const sidePreviewSuppressed = useRef(false)
   const [sideOpen, setSideOpen] = useState<boolean>(() => store('not.side', true))
   const [sideW, setSideW] = useState<number | null>(() => store<number | null>('not.sideW', null)) // null: the width of the chosen sidebar style
   const [sideDrag, setSideDrag] = useState(false)
   useEffect(() => put('not.sideW', sideW), [sideW])
   const [searching, setSearching] = useState(false)
+  const [writingCatalog, setWritingCatalog] = useState<typeof import('./editor/slash').editorSearchItems>()
+  useEffect(() => {
+    if (searching && !writingCatalog) void import('./editor/slash').then(module => setWritingCatalog(() => module.editorSearchItems))
+  }, [searching, writingCatalog])
   const [searchInit, setSearchInit] = useState('') // query to start the search with (a saved search)
   const [tagFilter, setTagFilter] = useState<string | null>(null) // sidebar: show only pages with this tag
+  // a tag clicked on a page opens the sidebar's tag list on that tag
+  useEffect(() => {
+    const pick = (e: Event) => {
+      setTagFilter(normalizeFa((e as CustomEvent<string>).detail))
+      setShut((x) => ({ ...x, tags: false }))
+      // the list sits low in the sidebar: bring it into view once it has rendered
+      window.setTimeout(() => document.querySelector('.side .tagres')?.scrollIntoView({ block: 'nearest' }), 60)
+    }
+    window.addEventListener(PICK_TAG, pick)
+    return () => window.removeEventListener(PICK_TAG, pick)
+  }, [])
   const [saved, setSaved] = useState<{ id: string; name: string; query: string }[]>([])
   useEffect(() => void kvGet<{ id: string; name: string; query: string }[]>('savedSearches').then((s) => setSaved(Array.isArray(s) ? s : [])), [])
   const saveSaved = (next: { id: string; name: string; query: string }[]) => (setSaved(next), void kvSet('savedSearches', next))
-  const [trashOpen, setTrashOpen] = useState(false)
   const [newMenu, setNewMenu] = useState<DOMRect | null>(null)
   // dragging a page from the tree shows a Favorites drop zone, so a page can be pinned by dropping it there
   const [dragPage, setDragPage] = useState(false)
@@ -187,23 +212,71 @@ export default function App() {
     if (view !== 'settings') setSettingsTab(undefined)
   }, [view])
   const [folderOpen, setFolderOpen] = useState(false)
-  const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null)
+  const [toast, setToast] = useState<{ msg: string; undo?: () => void; action?: { label: string; run: () => void } } | null>(null)
   const [tableOpen, setTableOpen] = useState(false)
   const [graphOpen, setGraphOpen] = useState(false)
   const [dueCards, setDueCards] = useState(0)
   useEffect(() => watchDueCards(setDueCards, isTauri), [])
   const [cardsOpen, setCardsOpen] = useState(false)
-  const [dataMenu, setDataMenu] = useState<DOMRect | null>(null)
+  const { open: openShare, menu: shareMenu } = useMenu()
   const [blankMenu, setBlankMenu] = useState<DOMRect | null>(null) // right-click on empty sidebar space
-  const [trashTick, setTrashTick] = useState(0)
   const [menu, setMenu] = useState<{ id: string; rect: DOMRect } | null>(null)
   const [movingId, setMovingId] = useState<string | null>(null)
   const [reader, setReader] = useState(false)
+  const { open: openCrumbs, menu: crumbsMenu } = useMenu()
+  // full screen for the whole app, from any view: the desktop window itself, or the browser's full screen
+  const [fullScreen, setFullScreen] = useState(false)
+  const toggleFullScreen = useCallback(async () => {
+    try {
+      if (isTauri) {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window')
+        const win = getCurrentWindow()
+        const next = !(await win.isFullscreen())
+        await win.setFullscreen(next)
+        setFullScreen(next)
+      } else if (document.fullscreenElement) await document.exitFullscreen()
+      else await document.documentElement.requestFullscreen()
+    } catch {
+      /* the platform refused; nothing changes */
+    }
+  }, [])
+  useEffect(() => {
+    const sync = () => !isTauri && setFullScreen(!!document.fullscreenElement)
+    const key = (e: KeyboardEvent) => {
+      if (!commandMatches(e, 'Full screen')) return
+      e.preventDefault()
+      void toggleFullScreen()
+    }
+    document.addEventListener('fullscreenchange', sync)
+    window.addEventListener('keydown', key)
+    return () => (document.removeEventListener('fullscreenchange', sync), window.removeEventListener('keydown', key))
+  }, [toggleFullScreen])
   const [readerCfg, setReaderCfg] = useState<ReaderCfg>(loadReaderCfg)
   const [pageW, setPageW] = useState<number>(() => Number(localStorage.getItem('not.page.width')) || PAGE_W.def)
   const readerRef = useRef(reader)
   readerRef.current = reader
   const settings = useSettings()
+  useEffect(() => {
+    if (!sidePinned) return
+    const dismiss = (event: PointerEvent) => {
+      const sidebar = sidebarRef.current
+      // Menus/dialogs live in portals. Finish their interaction before dismissing the sidebar.
+      const inOverlay = event.composedPath().some(node => node instanceof Element && node.matches('.ds-pop, [role="dialog"]'))
+      if (sidebar && event.target instanceof Node && !sidebar.contains(event.target) && !inOverlay) {
+        setSidePinned(false)
+        setSidePeek(false)
+      }
+    }
+    document.addEventListener('pointerdown', dismiss, true)
+    return () => document.removeEventListener('pointerdown', dismiss, true)
+  }, [sidePinned])
+  useEffect(() => {
+    if (settings.sidebar !== 'icons' || !sideOpen || view === 'settings') {
+      sidePreviewSuppressed.current = false
+      setSidePinned(false)
+      setSidePeek(false)
+    }
+  }, [settings.sidebar, sideOpen, view])
 
   const refresh = useCallback(() => setPages(repo.list()), [])
   useEffect(() => {
@@ -233,7 +306,7 @@ export default function App() {
     ro.observe(main)
     mainWatch.current = ro
   }, [])
-  // a narrow window has no room for the sidebar beside the page: it starts out of the way (Ctrl+\ or the button brings it back)
+  // a narrow window has no room for the sidebar beside the page: it starts out of the way (the sidebar shortcut or the button brings it back)
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 760px)')
     if (mq.matches) setSideOpen(false)
@@ -269,7 +342,10 @@ export default function App() {
       if (String((e as CustomEvent).detail).includes('VAULT_MISSING')) setToast({ msg: t('The vault folder was not found. Open Workspaces to locate it or download it again.') })
     }
     const layoutNotice = (e: Event) => setToast({ msg: String((e as CustomEvent).detail) })
+    // screens report their own changes here: { msg, undo?, action? } (see APP_TOAST in ui.tsx)
+    const screenToast = (e: Event) => setToast((e as CustomEvent<{ msg: string; undo?: () => void; action?: { label: string; run: () => void } }>).detail)
     window.addEventListener('layout-message', layoutNotice)
+    window.addEventListener(APP_TOAST, screenToast)
     window.addEventListener('page-conflict', kept)
     window.addEventListener('storage-error', storageError)
     return () => {
@@ -277,10 +353,25 @@ export default function App() {
       window.removeEventListener(PAGES_CHANGED, changed)
       window.removeEventListener('external-change', changed)
       window.removeEventListener('layout-message', layoutNotice)
+      window.removeEventListener(APP_TOAST, screenToast)
       window.removeEventListener('page-conflict', kept)
       window.removeEventListener('storage-error', storageError)
     }
   }, [refresh])
+  // Ctrl+Z (Cmd+Z) undoes what the open toast offers to undo, unless the focus is in something that has its own undo (text, the editor)
+  useEffect(() => {
+    if (!toast?.undo) return
+    const undo = toast.undo
+    const key = (e: KeyboardEvent) => {
+      const editable = e.target instanceof HTMLElement && (e.target.isContentEditable || e.target.matches('input, textarea, select'))
+      if (editable || !commandMatches(e, 'Undo')) return
+      e.preventDefault()
+      undo()
+      setToast(null)
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [toast])
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (matches(e, 'sidebar')) (e.preventDefault(), setSideOpen((s) => !s))
@@ -303,7 +394,7 @@ export default function App() {
           })
       }
       if (matches(e, 'reader')) (e.preventDefault(), setReader((r) => !r)) // physical key: works with the Persian layout
-      if (e.key === 'Escape' && !document.querySelector('.lightbox, .palette-overlay')) setReader(false)
+      if (commandMatches(e, 'Leave reader mode') && !document.querySelector('.lightbox, .palette-overlay')) setReader(false)
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
@@ -346,6 +437,9 @@ export default function App() {
     return () => window.removeEventListener('open-search', open)
   }, [])
   const [tplOpen, setTplOpen] = useState(false)
+  const trashed = repo.trash()
+  const overlayOpen = cardsOpen || tplOpen || graphOpen || tableOpen
+  const closeOverlays = () => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false))
   // Flashcards and Templates are pages: going to another page or view (search, links, the sidebar) leaves them
   useEffect(() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false)), [view, currentId])
   const addFromTemplate = (id: string) => {
@@ -428,19 +522,16 @@ export default function App() {
     repo.purge(p.id)
     await gcFiles()
     refresh()
-    setTrashTick((t) => t + 1)
   }
   const emptyTrash = async () => {
     if (!(await confirmDialog({ title: t('Empty trash'), message: t('Permanently delete everything in the trash? This cannot be undone.'), confirmLabel: t('Empty trash'), danger: true }))) return
     repo.emptyTrash()
     await gcFiles()
     refresh()
-    setTrashTick((t) => t + 1)
   }
   const restore = (id: string) => {
     repo.restoreFromTrash(id)
     refresh()
-    setTrashTick((t) => t + 1)
     if (repo.get(id)?.kind !== 'folder') setCurrentId(id)
   }
   const fav = (id: string) => {
@@ -522,6 +613,29 @@ export default function App() {
     const p = repo.get(id)
     if (p) download((p.title || 'page') + '.md', new Blob([await pageToMarkdown(p)], { type: 'text/markdown' }))
   }
+  const copied = (text: string) => navigator.clipboard?.writeText(text).then(() => setToast({ msg: t('Copied') }))
+  const copyPath = (id: string) => void pageFilePath(id).then(copied).catch(() => setToast({ msg: t('Could not read the page path') }))
+  const revealFile = (id: string) => void revealPageFile(id).catch(() => setToast({ msg: t('Could not open the folder') }))
+  const shareItems = (page: Page): MenuSpec[] => [
+    { kind: 'head', label: 'Export' },
+    { label: 'Markdown file', hint: '.md', icon: <Icon name="download" />, onSelect: () => void exportMd(page.id) },
+    { label: 'PDF or print', icon: <Icon name="printer" />, onSelect: () => printPage(page.title) },
+    { kind: 'sep' },
+    { kind: 'head', label: 'Copy' },
+    {
+      label: 'Copy as Markdown',
+      icon: <Icon name="copy" />,
+      onSelect: () => void pageToMarkdown(page).then(copied),
+    },
+    ...(isTauri
+      ? ([
+          { label: 'Copy path', icon: <Icon name="link" />, onSelect: () => copyPath(page.id) },
+          { label: revealKey, icon: <Icon name="folder" />, onSelect: () => revealFile(page.id) },
+        ] satisfies MenuSpec[])
+      : []),
+    { kind: 'sep' },
+    { label: 'Export the whole workspace', hint: '.zip', icon: <Icon name="vault" />, onSelect: () => void doExportAll() },
+  ]
   const dark = isDark(settings)
   const setCover = (cover: Cover | undefined) => {
     if (!current) return
@@ -550,35 +664,36 @@ export default function App() {
     for (let p: Page | undefined = current; p; p = p.parentId ? pages.find((x) => x.id === p!.parentId) : undefined) out.unshift(p)
     return out
   }, [current, pages])
-  const commands: PaletteCommand[] = [
-    { id: 'new-page', label: t('New page'), icon: <Ic.Page />, keywords: 'create add صفحه جدید', run: () => add(null) },
-    { id: 'templates', label: t('Templates'), icon: <Ic.Blocks />, keywords: 'template قالب تمپلیت', run: () => setTplOpen(true) },
-    { id: 'new-folder', label: t('New folder'), icon: <Ic.Folder />, keywords: 'create add پوشه', run: () => addFolder(null) },
+  const writingCommandsAvailable = current && view === 'page' && !overlayOpen && !reader && (!current.kind || current.kind === 'todo')
+  const commands: PaletteCommand[] = ([
+    { id: 'new-page', label: t('New page'), icon: <Icon name="file" size={16} />, keywords: 'create add صفحه جدید', run: () => add(null) },
+    { id: 'templates', label: t('Templates'), icon: <Icon name="blocks" size={16} />, keywords: 'template قالب تمپلیت', run: () => (closeOverlays(), setTplOpen(true)) },
+    { id: 'new-folder', label: t('New folder'), icon: <Icon name="folder" size={16} />, keywords: 'create add پوشه', run: () => addFolder(null) },
     {
       id: 'compact-pages',
       label: settings.pagesView === 'compact' ? t('Show pages as a tree') : t('Show pages as a compact list'),
-      icon: <Ic.Layers />,
+      icon: <Icon name="layers" size={16} />,
       keywords: 'compact flat list tree pages sidebar intellij فشرده لیست درخت صفحه',
       run: () => updateSettings({ pagesView: settings.pagesView === 'compact' ? 'tree' : 'compact' }),
     },
-    { id: 'new-todo', label: t('New to-do list'), icon: <Ic.Checklist />, keywords: 'create add todo task list checklist لیست کار تسک چک‌لیست جدید', run: () => add(null, 'todo') },
-    { id: 'new-database', label: t('New database'), icon: <Ic.Table />, keywords: 'create add table database board calendar پایگاه داده جدول جدید', run: () => addDatabase(null) },
-    { id: 'new-board', label: t('New board'), icon: <Ic.Pencil />, keywords: 'create add whiteboard drawing canvas sketch بوم نقاشی طراحی جدید', run: () => add(null, 'board') },
+    { id: 'new-todo', label: t('New to-do list'), icon: <Icon name="checklist" size={16} />, keywords: 'create add todo task list checklist لیست کار تسک چک‌لیست جدید', run: () => add(null, 'todo') },
+    { id: 'new-database', label: t('New database'), icon: <Icon name="table" size={16} />, keywords: 'create add table database board calendar پایگاه داده جدول جدید', run: () => addDatabase(null) },
+    { id: 'new-board', label: t('New board'), icon: <Icon name="pencil" size={16} />, keywords: 'create add whiteboard drawing canvas sketch بوم نقاشی طراحی جدید', run: () => add(null, 'board') },
     ...(current && view === 'page'
       ? [
-          { id: 'subpage', label: t('Add subpage'), icon: <Ic.Plus />, keywords: 'زیرصفحه', run: () => add(current.id) },
+          { id: 'subpage', label: t('Add subpage'), icon: <Icon name="plus" size={16} />, keywords: 'زیرصفحه', run: () => add(current.id) },
           {
             id: 'fav',
             label: current.favorite ? t('Remove from favorites') : t('Add to favorites'),
-            icon: <Ic.Star filled={current.favorite} />,
+            icon: <Icon name="star" size={16} />,
             keywords: 'star pin علاقه‌مندی',
             run: () => fav(current.id),
           },
-          { id: 'reader', label: t('Reader mode'), icon: <Ic.Reader />, keywords: 'read مطالعه', hint: bindingHint('reader'), run: () => setReader(true) },
+          { id: 'reader', label: t(reader ? 'Leave reader mode' : 'Reader mode'), icon: <Icon name="bookopen" size={16} />, keywords: 'read مطالعه', hint: reader ? commandHint('Leave reader mode') : bindingHint('reader'), run: () => setReader(open => !open) },
           {
             id: 'find',
             label: t('Find in page'),
-            icon: <Ic.Search />,
+            icon: <Icon name="search" size={16} />,
             keywords: 'search ctrl+f جست‌وجو پیدا',
             hint: bindingHint('find'),
             run: () => window.setTimeout(() => window.dispatchEvent(new Event('open-find')), 0),
@@ -586,56 +701,116 @@ export default function App() {
           {
             id: 'history',
             label: t('Version history'),
-            icon: <Ic.History />,
+            icon: <Icon name="history" size={16} />,
             keywords: 'versions restore earlier تاریخچه نسخه',
             run: () => window.setTimeout(() => window.dispatchEvent(new Event('open-history')), 0),
           },
-          { id: 'export-md', label: t('Export Markdown'), icon: <Ic.Markdown />, keywords: 'download خروجی', run: () => exportMd(current.id) },
-          { id: 'print', label: t('Print / PDF'), icon: <Ic.Pdf />, keywords: 'pdf print چاپ', run: () => printPage(current.title) },
+          { id: 'export-md', label: t('Export Markdown'), icon: <Icon name="markdown" size={16} />, keywords: 'download خروجی', run: () => exportMd(current.id) },
+          { id: 'print', label: t('Print / PDF'), icon: <Icon name="file-pdf" size={16} />, keywords: 'pdf print چاپ', run: () => printPage(current.title) },
         ]
       : []),
-    { id: 'home', label: t('Home'), icon: <Ic.Home />, keywords: 'dashboard خانه', run: () => setView('home') },
-    { id: 'table', label: t('Pages table'), icon: <Ic.Table />, keywords: 'database جدول', run: () => setTableOpen(true) },
-    { id: 'graph', label: t('Graph view'), icon: <Ic.Link />, keywords: 'graph links map backlinks گراف نقشه ارتباط پیوند', run: () => setGraphOpen(true) },
-    { id: 'files', label: t('Files'), icon: <Ic.Folders />, keywords: 'files explorer folders manage فایل مدیریت پوشه فایل‌ها', run: () => setView('files') },
-    { id: 'tasks', label: t('Tasks'), icon: <Ic.Checklist />, keywords: 'tasks todo checklist کارها وظایف چک لیست', run: () => setView('tasks') },
-    { id: 'databases', label: t('Databases'), icon: <Ic.Table />, keywords: 'databases tables projects all database پایگاه داده دیتابیس پروژه جدول', run: () => setView('databases') },
-    { id: 'drawings', label: t('Drawings'), icon: <Ic.Pencil />, keywords: 'drawings boards whiteboard sketch canvas excalidraw نقاشی بوم طراحی ترسیم', run: () => setView('drawings') },
-    { id: 'cards', label: t('Flashcards'), icon: <Ic.Cards />, keywords: 'review srs فلش‌کارت', run: () => setCardsOpen(true) },
-    { id: 'trash', label: t('Trash'), icon: <Ic.Trash />, keywords: 'deleted سطل', run: () => setTrashOpen(true) },
+    ...(writingCommandsAvailable ? EDITOR_COMMANDS.filter(label => !['Heading 1', 'Heading 2', 'Heading 3', 'Link to page', 'Bulleted list', 'Numbered list', 'Checklist', 'Quote', 'Code block'].includes(label)).map(label => ({
+      id: 'format-' + label,
+      group: 'Writing',
+      label: t(label),
+      keywords: label + ' formatting editor',
+      hint: commandHint(label),
+      icon: <Icon name="pencil" size={16} />,
+      run: () => window.setTimeout(() => window.dispatchEvent(new CustomEvent('run-editor-command', { detail: label })), 0),
+    })) : []),
+    ...(writingCommandsAvailable && writingCatalog ? writingCatalog().map(({ item, title, desc, searchOnly }) => ({
+      id: 'editor-' + item.title + (item.vars?.name ?? ''),
+      searchOnly,
+      group: 'Writing',
+      label: title,
+      keywords: item.title + ' ' + item.keywords + ' ' + desc,
+      icon: <Icon name="pencil" size={16} />,
+      run: () => window.setTimeout(() => window.dispatchEvent(new CustomEvent('run-editor-command', { detail: item })), 0),
+    })) : []),
+    { id: 'fullscreen', label: t(fullScreen ? 'Exit full screen' : 'Full screen'), icon: <Icon name="maximize" size={16} />, keywords: 'fullscreen F11', hint: commandHint('Full screen'), run: () => void toggleFullScreen() },
+    ...(current && view === 'page' ? [
+      { id: 'rename-page', label: t('Rename'), icon: <Icon name="pencil" size={16} />, keywords: 'rename page title', run: () => rename(current.id) },
+      { id: 'duplicate-page', label: t('Duplicate'), icon: <Icon name="copy" size={16} />, keywords: 'duplicate page copy', run: () => duplicate(current.id) },
+      { id: 'delete-page', label: t('Delete'), icon: <Icon name="trash" size={16} />, keywords: 'delete move page to trash', run: () => del(current.id) },
+      { id: 'move-page', label: t('Move to folder'), icon: <Icon name="folder" size={16} />, keywords: 'move page folder', run: () => setMovingId(current.id) },
+      { id: 'page-panel', label: t('Page side panel (quick actions & navigation)'), icon: <Icon name="panel-left" size={16} />, keywords: 'page panel outline backlinks', run: () => setPanelOpen(open => !open) },
+      ...shareItems(current).flatMap((item, index) => 'onSelect' in item && item.onSelect && item.label !== 'Markdown file' && item.label !== 'PDF or print' && item.label !== 'Export the whole workspace'
+        ? [{ id: 'share-' + index, label: t(item.label), keywords: item.label, icon: item.icon ?? <Icon name="share" size={16} />, run: () => item.onSelect?.() }]
+        : []),
+    ] : []),
+    { id: 'home', label: t('Home'), icon: <Icon name="home" size={16} />, keywords: 'dashboard خانه', run: () => (closeOverlays(), setView('home')) },
+    { id: 'table', label: t('All pages'), icon: <Icon name="table" size={16} />, keywords: 'database جدول', run: () => (closeOverlays(), setTableOpen(true)) },
+    { id: 'graph', label: t('Graph'), icon: <Icon name="link" size={16} />, keywords: 'graph links map backlinks گراف نقشه ارتباط پیوند', run: () => (closeOverlays(), setGraphOpen(true)) },
+    { id: 'files', label: t('Files'), icon: <Icon name="folder-plus" size={16} />, keywords: 'files explorer folders manage فایل مدیریت پوشه فایل‌ها', run: () => (closeOverlays(), setView('files')) },
+    { id: 'tasks', label: t('Tasks'), icon: <Icon name="checklist" size={16} />, keywords: 'tasks todo checklist کارها وظایف چک لیست', run: () => (closeOverlays(), setView('tasks')) },
+    { id: 'databases', label: t('Databases'), icon: <Icon name="table" size={16} />, keywords: 'databases tables projects all database پایگاه داده دیتابیس پروژه جدول', run: () => (closeOverlays(), setView('databases')) },
+    { id: 'drawings', label: t('Drawings'), icon: <Icon name="pencil" size={16} />, keywords: 'drawings boards whiteboard sketch canvas excalidraw نقاشی بوم طراحی ترسیم', run: () => (closeOverlays(), setView('drawings')) },
+    { id: 'cards', label: t('Flashcards'), icon: <Icon name="cards" size={16} />, keywords: 'review srs فلش‌کارت', run: () => (closeOverlays(), setCardsOpen(true)) },
+    { id: 'trash', label: t('Trash'), icon: <Icon name="trash" size={16} />, keywords: 'deleted سطل', run: () => (closeOverlays(), setView('trash')) },
     {
       id: 'theme',
       label: dark ? t('Light mode') : t('Dark mode'),
-      icon: dark ? <Ic.Sun /> : <Ic.Moon />,
+      icon: dark ? <Icon name="sun" size={16} /> : <Icon name="moon" size={16} />,
       keywords: 'theme dark light تم',
       run: () => updateSettings({ theme: dark ? 'light' : 'dark' }),
     },
     {
       id: 'sidebar',
       label: sideOpen ? t('Close sidebar') : t('Open sidebar'),
-      icon: <Ic.Sidebar />,
+      icon: <Icon name="panel-left" size={16} />,
       keywords: 'side panel نوار کناری',
       hint: bindingHint('sidebar'),
       run: () => setSideOpen((o) => !o),
     },
-    { id: 'import', label: t('Import or restore…'), icon: <Ic.Upload />, keywords: 'وارد کردن بازیابی markdown obsidian restore zip', run: openData },
-    { id: 'restore', label: t('Restore from backup'), icon: <Ic.Upload />, keywords: 'backup restore desktop workspace بازیابی پشتیبان بکاپ', run: openData },
-    { id: 'export-all', label: t('Export all pages (zip with Markdown & images)'), icon: <Ic.Download />, keywords: 'zip', run: doExportAll },
-    { id: 'backup', label: t('Full backup (JSON)'), icon: <Ic.Save />, keywords: 'پشتیبان', run: doBackup },
-    ...[{ id: 'data-folder', label: t('Workspaces…'), icon: <Ic.Folder />, keywords: 'vault switch workspace پوشه داده', run: () => setFolderOpen(true) }],
-    { id: 'auto-backup', label: t('Automatic backup to folder…'), icon: <Ic.Save />, keywords: 'پشتیبان خودکار', run: openData },
-    { id: 'check-updates', label: t('Check for updates'), icon: <Ic.Download />, keywords: 'update version beta release upgrade به‌روزرسانی نسخه', run: () => void updates.check(true) },
-    { id: 'settings', label: t('Settings'), icon: <Ic.Settings />, keywords: 'preferences تنظیمات', run: () => openSettings() },
+    { id: 'import', label: t('Import or restore…'), icon: <Icon name="upload" size={16} />, keywords: 'وارد کردن بازیابی markdown obsidian restore zip', run: openData },
+    { id: 'restore', label: t('Restore from backup'), icon: <Icon name="upload" size={16} />, keywords: 'backup restore desktop workspace بازیابی پشتیبان بکاپ', run: openData },
+    { id: 'export-all', label: t('Export all pages (zip with Markdown & images)'), icon: <Icon name="download" size={16} />, keywords: 'zip', run: doExportAll },
+    { id: 'backup', label: t('Full backup (JSON)'), icon: <Icon name="save" size={16} />, keywords: 'پشتیبان', run: doBackup },
+    ...[{ id: 'data-folder', label: t('Workspaces…'), icon: <Icon name="folder" size={16} />, keywords: 'vault switch workspace پوشه داده', run: () => setFolderOpen(true) }],
+    { id: 'auto-backup', label: t('Automatic backup to folder…'), icon: <Icon name="save" size={16} />, keywords: 'پشتیبان خودکار', run: openData },
+    { id: 'check-updates', label: t('Check for updates'), icon: <Icon name="download" size={16} />, keywords: 'update version beta release upgrade به‌روزرسانی نسخه', run: () => void updates.check(true) },
+    { id: 'settings', label: t('Settings'), icon: <Icon name="settings" size={16} />, keywords: 'preferences تنظیمات', run: () => openSettings() },
     // every page of the settings, one command each: "Settings › Shortcuts", "Settings › Data & backup"…
     ...SETTINGS_TABS.map((x) => ({ id: 'settings-' + x.id, label: t('Settings') + ' › ' + t(x.label), icon: x.icon, keywords: x.id + ' ' + x.hint + ' ' + t(x.hint), run: () => openSettings(x.id) })),
-  ]
+  ] satisfies PaletteCommand[]).map(command => {
+    if ('group' in command && command.group) return command
+    const id = command.id
+    const group = id.startsWith('settings') || ['theme', 'sidebar', 'compact-pages', 'check-updates', 'fullscreen'].includes(id)
+      ? 'Settings'
+      : id.startsWith('new-') || id === 'subpage'
+        ? 'Create'
+        : ['import', 'restore', 'export-all', 'backup', 'data-folder', 'auto-backup'].includes(id)
+          ? 'Data & backup'
+          : ['home', 'templates', 'table', 'graph', 'files', 'tasks', 'databases', 'drawings', 'cards', 'trash'].includes(id)
+            ? 'Workspace'
+            : 'Page actions'
+    return { ...command, group }
+  })
   const menuPage = menu ? pages.find((p) => p.id === menu.id) : undefined
 
+  const sideExpanded = settings.sidebar === 'icons' && (sidePeek || sidePinned || newMenu !== null) && sideOpen
+  const revealSidebar = () => {
+    if (!sidePreviewSuppressed.current) setSidePeek(true)
+  }
+  const toggleSidebarPin = () => {
+    if (settings.sidebar !== 'icons') return
+    const pinned = !sidePinned
+    // Shrinking the panel can fire pointer-enter again; honor an explicit unpin until the pointer leaves.
+    sidePreviewSuppressed.current = !pinned
+    setSidePinned(pinned)
+    setSidePeek(pinned)
+  }
+  const preferencesOpen = view === 'settings' && !overlayOpen
   const rowProps = { index, currentId: current?.id ?? '', collapsed, onToggle: toggle, onOpen: setCurrentId, onAdd: add, onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }), onMove: move }
 
   return (
-    <div className={'app' + (reader && view === 'page' && current ? ' reading' : '')} style={cssVars({ '--page-w': pageW + 'px', '--r-scale': readerCfg.scale, '--r-width': readerCfg.width + 'px' })}>
+    <div data-preferences={preferencesOpen ? '' : undefined} className={'app' + (reader && view === 'page' && current ? ' reading' : '')} style={cssVars({ '--page-w': pageW + 'px', '--r-scale': readerCfg.scale, '--r-width': readerCfg.width + 'px' })}>
       <aside
+        ref={sidebarRef}
+        data-expanded={sideExpanded ? '' : undefined}
+        data-pinned={sidePinned ? '' : undefined}
+        onPointerLeave={() => { sidePreviewSuppressed.current = false; setSidePeek(false) }}
+        onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setSidePeek(false) }}
         className={'side' + (sideOpen ? '' : ' closed') + (sideDrag ? ' resizing' : '')}
         style={sideW ? cssVars({ '--side-w': sideW + 'px' }) : undefined}
         onContextMenu={(e) => (e.preventDefault(), setBlankMenu(new DOMRect(e.clientX, e.clientY, 0, 0)))}
@@ -660,39 +835,45 @@ export default function App() {
           }}
         />
         <div className="ws">
-          <span className="ws-logo">
-            <Ic.Logo size={28} />
-          </span>
-          <Brand className="ws-name" />
-          <button className="icon-btn" title={t('Close sidebar  Ctrl+\\')} onClick={() => setSideOpen(false)}>
-            <Icon name="panel-left" />
-          </button>
+          <WorkspaceHeader mark={<BrandMark />} name={<Brand />} revealLabel={t(sidePinned ? 'Unpin sidebar' : sideExpanded ? 'Pin sidebar' : 'Open sidebar')} expanded={settings.sidebar !== 'icons' || sideExpanded} pressed={settings.sidebar === 'icons' ? sidePinned : undefined} onReveal={revealSidebar} onActivate={toggleSidebarPin} action={
+            <IconButton label={t('Close sidebar') + '  ' + bindingHint('sidebar')} onClick={() => { setSidePinned(false); setSidePeek(false); setSideOpen(false) }}>
+              <Icon name="panel-left" />
+            </IconButton>
+          } />
         </div>
+        <div className="side-workspace"><WorkspaceCard onOpen={() => setFolderOpen(true)} /></div>
 
         <div className="side-scroll">
-          <button className="row plain search-row" onClick={() => setSearching(true)}>
+          <button aria-label={t('Search')} className="row plain search-row" onClick={() => setSearching(true)}>
             <span className="ic">
               <Icon name="search" />
             </span>
             <span className="ntitle">{t('Search')}...</span>
-            <kbd dir="ltr">{shortcutLabel(['Mod', 'K'])}</kbd>
+            <kbd dir="ltr">{bindingHint('search')}</kbd>
           </button>
 
-          <button className={'row plain' + (view === 'home' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('home'))}>
+          <button aria-label={t('Home')} className={'row plain' + (view === 'home' && !overlayOpen ? ' cur' : '')} onClick={() => (closeOverlays(), setView('home'))}>
             <span className="ic">
               <Icon name="home" />
             </span>
             <span className="ntitle">{t('Home')}</span>
           </button>
 
-          <button className={'row plain' + (view === 'tasks' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('tasks'))}>
+          <button aria-label={t('Templates')} className={"row plain" + (tplOpen ? " cur" : "")} onClick={() => (setCardsOpen(false), setGraphOpen(false), setTableOpen(false), setTplOpen(true))}>
+            <span className="ic">
+              <Icon name="templates" />
+            </span>
+            <span className="ntitle">{t('Templates')}</span>
+          </button>
+
+          <button aria-label={t('Tasks')} className={'row plain' + (view === 'tasks' && !overlayOpen ? ' cur' : '')} onClick={() => (closeOverlays(), setView('tasks'))}>
             <span className="ic">
               <Icon name="tasks" />
             </span>
             <span className="ntitle">{t('Tasks')}</span>
           </button>
 
-          <button className="row plain" onClick={() => (setTplOpen(false), setGraphOpen(false), setTableOpen(false), setCardsOpen(true))}>
+          <button aria-label={t('Flashcards')} className={"row plain" + (cardsOpen && !tplOpen && !graphOpen && !tableOpen ? " cur" : "")} onClick={() => (setTplOpen(false), setGraphOpen(false), setTableOpen(false), setCardsOpen(true))}>
             <span className="ic">
               <Icon name="cards" />
             </span>
@@ -700,16 +881,9 @@ export default function App() {
             {dueCards > 0 && <span className="badge">{dueCards}</span>}
           </button>
 
-          <button className="row plain" onClick={() => (setCardsOpen(false), setGraphOpen(false), setTableOpen(false), setTplOpen(true))}>
-            <span className="ic">
-              <Icon name="templates" />
-            </span>
-            <span className="ntitle">{t('Templates')}</span>
-          </button>
-
-          <button
-            className={'row plain' + (view === 'databases' ? ' cur' : '')}
-            onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('databases'))}
+          <button aria-label={t('Databases')}
+            className={'row plain' + (view === 'databases' && !overlayOpen ? ' cur' : '')}
+            onClick={() => (closeOverlays(), setView('databases'))}
           >
             <span className="ic">
               <Icon name="database" />
@@ -717,10 +891,10 @@ export default function App() {
             <span className="ntitle">{t('Databases')}</span>
           </button>
 
-          <button
-            className={'row plain' + (view === 'drawings' ? ' cur' : '')}
+          <button aria-label={t('Drawings')}
+            className={'row plain' + (view === 'drawings' && !overlayOpen ? ' cur' : '')}
             onPointerEnter={warmDrawing}
-            onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('drawings'))}
+            onClick={() => (closeOverlays(), setView('drawings'))}
           >
             <span className="ic">
               <Icon name="pencil" />
@@ -728,20 +902,21 @@ export default function App() {
             <span className="ntitle">{t('Drawings')}</span>
           </button>
 
-          <button className="row plain" onClick={() => (setCardsOpen(false), setTplOpen(false), setTableOpen(false), setGraphOpen(true))}>
+          <button aria-label={t('Graph')} className={"row plain" + (graphOpen ? " cur" : "")} onClick={() => (setCardsOpen(false), setTplOpen(false), setTableOpen(false), setGraphOpen(true))}>
             <span className="ic">
               <Icon name="graph" />
             </span>
-            <span className="ntitle">{t('Graph view')}</span>
+            <span className="ntitle">{t('Graph')}</span>
           </button>
 
-          <button className="row plain" onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(true))}>
+          <button aria-label={t('All pages')} className={"row plain" + (tableOpen ? " cur" : "")} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(true))}>
             <span className="ic">
               <Icon name="table" />
             </span>
-            <span className="ntitle">{t('Pages table')}</span>
+            <span className="ntitle">{t('All pages')}</span>
           </button>
 
+          <div className="side-collections">
           {(favs.length > 0 || dragPage) && (
             <div className={favs.length === 0 ? 'fav-float' : undefined}>
               <div
@@ -760,7 +935,7 @@ export default function App() {
               >
                 <button className={'section' + (shut.favs ? ' shut' : '')} onClick={() => setShut((s) => ({ ...s, favs: !s.favs }))}>
                   {t('Favorites')}
-                  <Ic.Chevron size={13} />
+                  <Icon name="chevron-right" size={13} />
                 </button>
                 {!shut.favs &&
                   favs.map((p) => (
@@ -782,20 +957,20 @@ export default function App() {
             <>
               <button className={'section' + (shut.saved ? ' shut' : '')} onClick={() => setShut((s) => ({ ...s, saved: !s.saved }))}>
                 {t('Saved searches')}
-                <Ic.Chevron size={13} />
+                <Icon name="chevron-right" size={13} />
               </button>
               {!shut.saved &&
                 saved.map((s) => (
                   <div key={s.id} className="row saved-row" style={{ paddingInlineStart: 24 }} title={s.query} onClick={() => (setSearchInit(s.query), setSearching(true))}>
                     <span className="ic">
-                      <Ic.Search size={15} />
+                      <Icon name="search" size={15} />
                     </span>
                     <span className="ntitle" dir="auto">
                       {s.name}
                     </span>
                     <span className="acts">
                       <button title={t('Delete')} onClick={(e) => (e.stopPropagation(), saveSaved(saved.filter((x) => x.id !== s.id)))}>
-                        <Ic.Close size={14} />
+                        <Icon name="x" size={14} />
                       </button>
                     </span>
                   </div>
@@ -806,7 +981,7 @@ export default function App() {
           {
             <button className={'section' + (shut.pages ? ' shut' : '')} onClick={() => setShut((s) => ({ ...s, pages: !s.pages }))}>
               {t('Pages')}
-              <Ic.Chevron size={13} />
+              <Icon name="chevron-right" size={13} />
             </button>
           }
           {!shut.pages && settings.pagesView === 'compact' && (
@@ -839,49 +1014,52 @@ export default function App() {
               onOpen={setCurrentId}
             />
           )}
+          </div>
         </div>
 
         <SideTip />
         <div className="side-foot">
-          <WorkspaceCard onOpen={() => setFolderOpen(true)} />
-          <button className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('settings'))}>
+
+          <button aria-label={t('Settings')} className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => (closeOverlays(), setView('settings'))}>
             <span className="ic">
               <Icon name="settings" />
             </span>
             <span className="ntitle">{t('Settings')}</span>
           </button>
-          <button className={'row plain' + (view === 'files' ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false), setView('files'))}>
+          <button aria-label={t('Files')} className={'row plain' + (view === 'files' && !overlayOpen ? ' cur' : '')} onClick={() => (closeOverlays(), setView('files'))}>
             <span className="ic">
               <Icon name="paperclip" />
             </span>
             <span className="ntitle">{t('Files')}</span>
           </button>
-          <button className="row plain" onClick={() => setTrashOpen(true)}>
+          <button aria-label={t('Trash')} className={'row plain' + (view === 'trash' && !overlayOpen ? ' cur' : '')} onClick={() => (closeOverlays(), setView('trash'))}>
             <span className="ic">
               <Icon name="trash" />
             </span>
             <span className="ntitle">{t('Trash')}</span>
-            {repo.trash().length > 0 && <span className="badge">{repo.trash().length}</span>}
+            {trashed.length > 0 && <span className="badge">{trashed.length}</span>}
           </button>
           <div className="ds-split side-new">
-            <Button variant="primary" onClick={() => add(null)}>
-              <Ic.Plus size={16} />
+            <Button variant="primary" aria-label={t('New page')} onClick={() => add(null)}>
+              <Icon name="plus" size={16} />
               <span className="ntitle">{t('New page')}</span>
             </Button>
             <Button variant="primary" aria-label={t('More')} aria-expanded={!!newMenu} onClick={(e) => setNewMenu(newMenu ? null : e.currentTarget.parentElement!.getBoundingClientRect())}>
-              <Ic.Chevron size={14} />
+              <Icon name="chevron-right" size={14} />
             </Button>
           </div>
           {newMenu && (
-            <Popover anchor={newMenu} onClose={() => setNewMenu(null)}>
-              <div className="ds-menu">
-                <MenuItem icon={<Ic.Page />} label={t('New page')} onClick={() => (setNewMenu(null), add(null))} />
-                <MenuItem icon={<Ic.Folder />} label={t('New folder')} onClick={() => (setNewMenu(null), addFolder(null))} />
-                <MenuItem icon={<Ic.Pencil />} label={t('New board')} onClick={() => (setNewMenu(null), add(null, 'board'))} />
-                <MenuItem icon={<Ic.Table />} label={t('New database')} onClick={() => (setNewMenu(null), addDatabase(null))} />
-                <MenuItem icon={<Ic.Checklist />} label={t('New to-do list')} onClick={() => (setNewMenu(null), add(null, 'todo'))} />
-              </div>
-            </Popover>
+            <Menu
+              anchor={newMenu}
+              onClose={() => setNewMenu(null)}
+              items={[
+                { label: t('New page'), icon: <Icon name="file" size={16} />, onSelect: () => add(null) },
+                { label: t('New folder'), icon: <Icon name="folder" size={16} />, onSelect: () => addFolder(null) },
+                { label: t('New board'), icon: <Icon name="pencil" size={16} />, onSelect: () => add(null, 'board') },
+                { label: t('New database'), icon: <Icon name="table" size={16} />, onSelect: () => addDatabase(null) },
+                { label: t('New to-do list'), icon: <Icon name="checklist" size={16} />, onSelect: () => add(null, 'todo') },
+              ]}
+            />
           )}
           <div className="side-credit">{t('Created by')} Vexor</div>
         </div>
@@ -889,28 +1067,28 @@ export default function App() {
 
       <main ref={mainRef} className={'main' + (panelOpen && !reader && view === 'page' && current ? ' drawer-open' : '')}>
         <header className="topbar">
-          {!sideOpen && (
-            <button className="icon-btn" title={t('Open sidebar  Ctrl+\\')} onClick={() => setSideOpen(true)}>
-              <Ic.Sidebar />
-            </button>
+          {!sideOpen && !preferencesOpen && (
+            <IconButton label={t('Open sidebar') + '  ' + bindingHint('sidebar')} onClick={() => setSideOpen(true)}>
+              <Icon name="panel-left" size={17} />
+            </IconButton>
           )}
           <div className="nav-hist">
-            <button className="icon-btn" title={t('Back  Alt+←')} aria-label={t('Back')} disabled={hpos.current <= 0} onClick={() => goHist(-1)}>
+            <IconButton label={t('Back  Alt+←')} disabled={hpos.current <= 0} onClick={() => goHist(-1)}>
               <Icon name="arrow-left" size={17} className="ds-flip" />
-            </button>
-            <button className="icon-btn" title={t('Forward  Alt+→')} aria-label={t('Forward')} disabled={hpos.current >= hist.current.length - 1} onClick={() => goHist(1)}>
+            </IconButton>
+            <IconButton label={t('Forward  Alt+→')} disabled={hpos.current >= hist.current.length - 1} onClick={() => goHist(1)}>
               <Icon name="arrow-right" size={17} className="ds-flip" />
-            </button>
+            </IconButton>
           </div>
           <nav className="crumbs">
-            <button className="crumb-home" title={t('Home')} onClick={() => setView('home')}>
-              <Ic.Home size={15} />
-            </button>
+            <IconButton className="crumb-home" label={t('Home')} onClick={() => setView('home')}>
+              <Icon name="home" size={15} />
+            </IconButton>
             {graphOpen && (
               <span className="crumb">
                 <span className="crumb-cur">
                   <Icon name="graph" size={14} />
-                  {t('Graph view')}
+                  {t('Graph')}
                 </span>
               </span>
             )}
@@ -918,7 +1096,7 @@ export default function App() {
               <span className="crumb">
                 <span className="crumb-cur">
                   <Icon name="table" size={14} />
-                  {t('Pages table')}
+                  {t('All pages')}
                 </span>
               </span>
             )}
@@ -933,55 +1111,63 @@ export default function App() {
             {cardsOpen && !tplOpen && !graphOpen && !tableOpen && (
               <span className="crumb">
                 <span className="crumb-cur">
-                  <Ic.Cards size={14} />
+                  <Icon name="cards" size={14} />
                   {t('Flashcards')}
                 </span>
               </span>
             )}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'home' && (
+            {!overlayOpen && view === 'home' && (
               <span className="crumb">
                 <span className="crumb-cur">
-                  <Ic.Sidebar size={14} />
+                  <Icon name="panel-left" size={14} />
                   {t('Home')}
                 </span>
               </span>
             )}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'files' && (
+            {!overlayOpen && view === 'files' && (
               <span className="crumb">
                 <span className="crumb-cur">
-                  <Ic.Folders size={14} />
+                  <Icon name="folder" size={14} />
                   {t('Files')}
                 </span>
               </span>
             )}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'tasks' && (
+            {!overlayOpen && view === 'trash' && (
               <span className="crumb">
                 <span className="crumb-cur">
-                  <Ic.Checklist size={14} />
+                  <Icon name="trash" size={14} />
+                  {t('Trash')}
+                </span>
+              </span>
+            )}
+            {!overlayOpen && view === 'tasks' && (
+              <span className="crumb">
+                <span className="crumb-cur">
+                  <Icon name="tasks" size={14} />
                   {t('Tasks')}
                 </span>
               </span>
             )}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'databases' && (
+            {!overlayOpen && view === 'databases' && (
               <span className="crumb">
                 <span className="crumb-cur">
-                  <Ic.Table size={14} />
+                  <Icon name="table" size={14} />
                   {t('Databases')}
                 </span>
               </span>
             )}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'drawings' && (
+            {!overlayOpen && view === 'drawings' && (
               <span className="crumb">
                 <span className="crumb-cur">
-                  <Ic.Pencil size={14} />
+                  <Icon name="pencil" size={14} />
                   {t('Drawings')}
                 </span>
               </span>
             )}
-            {!cardsOpen && !tplOpen && !graphOpen && !tableOpen && view === 'settings' && (
+            {!overlayOpen && view === 'settings' && (
               <span className="crumb">
                 <span className="crumb-cur">
-                  <Ic.Settings size={14} />
+                  <Icon name="settings" size={14} />
                   {t('Settings')}
                 </span>
               </span>
@@ -991,14 +1177,36 @@ export default function App() {
               !graphOpen &&
               !tableOpen &&
               view === 'page' &&
-              crumbs.map((c, i) => (
-                <span key={c.id} className={'crumb' + (i === crumbs.length - 1 ? ' last' : '')}>
+              // a deep page keeps the top level and its last two ancestors in view; the ones between wait behind "…"
+              (crumbs.length > 3 ? [crumbs[0], null, ...crumbs.slice(-2)] : crumbs).map((c, i, shown) =>
+                c === null ? (
+                  <span key="more" className="crumb crumb-more">
+                    <span className="crumb-sep">
+                      <Icon name="chevron-right" size={13} />
+                    </span>
+                    <button
+                      type="button"
+                      aria-haspopup="menu"
+                      aria-label={t('{n} more pages', { n: crumbs.length - 3 })}
+                      title={t('{n} more pages', { n: crumbs.length - 3 })}
+                      onClick={(e) =>
+                        openCrumbs(
+                          crumbs.slice(1, -2).map((p) => ({ label: p.title || t(p.kind === 'folder' ? 'Folder' : 'Untitled'), raw: !!p.title, icon: p.kind === 'folder' ? <Icon name="folder" /> : iconNode(p.icon, 16, <Icon name="file" />), onSelect: () => p.kind !== 'folder' && setCurrentId(p.id) })),
+                          e.currentTarget,
+                        )
+                      }
+                    >
+                      …
+                    </button>
+                  </span>
+                ) : (
+                <span key={c.id} className={'crumb' + (i === shown.length - 1 ? ' last' : '')}>
                   <span className="crumb-sep">
-                    <Ic.Chevron size={13} />
+                    <Icon name="chevron-right" size={13} />
                   </span>
                   {c.kind === 'folder' ? (
                     <span className="crumb-folder" dir="auto">
-                      <Ic.Folder size={14} />
+                      <Icon name="folder" size={14} />
                       <span>{c.title || t('Folder')}</span>
                     </span>
                   ) : (
@@ -1008,36 +1216,39 @@ export default function App() {
                     </button>
                   )}
                 </span>
-              ))}
+                ),
+              )}
           </nav>
+          {crumbsMenu}
           <span className="spacer" />
-          <span className={'status' + (save === 'saving' ? ' busy' : '')}>
-            <i className="dot" />
-            {save === 'saving' ? t('Saving…') : t('Saved')}
-          </span>
+          {current && view === 'page' && <SaveStatus state={save} label={save === 'saving' ? t('Saving…') : t('All changes saved')} />}
           <div className="tb-group">
             {current && view === 'page' && (
               <>
-                <button className="icon-btn" title={t('Reader mode  Ctrl+.')} onClick={() => setReader(true)}>
-                  <Ic.Reader />
-                </button>
-                <button className={'icon-btn' + (current.favorite ? ' fav-on' : '')} title={t('Favorite')} onClick={() => fav(current.id)}>
-                  <Ic.Star filled={current.favorite} />
-                </button>
-                <button className={'icon-btn panel-toggle' + (panelOpen ? ' active' : '')} title={t('Page side panel (quick actions & navigation)')} onClick={() => setPanelOpen((o) => !o)}>
-                  <Ic.Panel />
-                </button>
+                <IconButton label={t('Reader mode') + '  ' + bindingHint('reader')} onClick={() => setReader(true)}>
+                  <Icon name="book" size={17} />
+                </IconButton>
+                <IconButton label={t('Page side panel (quick actions & navigation)')} pressed={panelOpen} onClick={() => setPanelOpen((o) => !o)}>
+                  <Icon name="panel-right" size={17} />
+                </IconButton>
               </>
             )}
-            <button className="icon-btn" title={dark ? t('Light mode') : t('Dark mode')} onClick={() => updateSettings({ theme: dark ? 'light' : 'dark' })}>
-              {dark ? <Ic.Sun /> : <Ic.Moon />}
-            </button>
+            <IconButton label={(fullScreen ? t('Exit full screen') : t('Full screen')) + '  ' + commandHint('Full screen')} pressed={fullScreen} className="ds-icon-btn--toggle topbar-fullscreen" onClick={() => void toggleFullScreen()}>
+              <Icon name={fullScreen ? 'minimize' : 'maximize'} size={17} />
+            </IconButton>
+            <IconButton label={dark ? t('Light mode') : t('Dark mode')} onClick={() => updateSettings({ theme: dark ? 'light' : 'dark' })}>
+              <Icon name={dark ? 'sun' : 'moon'} size={17} />
+            </IconButton>
           </div>
           {current && view === 'page' && (
-            <button className="share-btn" title={t('Share & export')} onClick={(e) => setDataMenu(e.currentTarget.getBoundingClientRect())}>
-              <Ic.Share size={15} />
-              {t('Share')}
-            </button>
+            <IconButton className="ds-icon-btn--toggle" pressed={!!current.favorite} label={current.favorite ? t('Remove from favorites') : t('Add to favorites')} onClick={() => fav(current.id)}>
+              <Icon name="star" size={18} />
+            </IconButton>
+          )}
+          {current && view === 'page' && (
+            <Button variant="primary" size="sm" className="share-btn" title={t('Share & export')} icon={<Icon name="share" size={16} />} aria-haspopup="menu" onClick={(e) => openShare(shareItems(current), e.currentTarget)}>
+              <span className="share-btn-label">{t('Share')}</span>
+            </Button>
           )}
         </header>
 
@@ -1058,16 +1269,21 @@ export default function App() {
           ) : view === 'home' ? (
             <Home
               pages={pages}
+              onPagesChange={refresh}
               onOpen={setCurrentId}
               onNew={() => add(null)}
               onTable={() => setTableOpen(true)}
               onCards={() => setCardsOpen(true)}
               onTemplates={() => setTplOpen(true)}
+              onTemplate={addFromTemplate}
+              onImport={openData}
               onFiles={() => setView('files')}
               onTasks={() => setView('tasks')}
             />
           ) : view === 'files' ? (
             <Explorer pages={pages} onOpen={setCurrentId} onChange={refresh} onToast={(msg, undo) => setToast({ msg, undo })} />
+          ) : view === 'trash' ? (
+            <Trash items={trashed} days={TRASH_DAYS} onRestore={restore} onPurge={purge} onEmpty={emptyTrash} />
           ) : view === 'tasks' ? (
             <Tasks onOpen={setCurrentId} onNewList={() => add(null, 'todo')} />
           ) : view === 'databases' ? (
@@ -1078,6 +1294,7 @@ export default function App() {
             <SettingsView
               key={settingsTab ?? 'settings'}
               initialTab={settingsTab}
+              onLeave={() => setView('home')}
               data={{ repo, refresh, toast: (msg) => setToast({ msg }), open: setCurrentId, exportAll: doExportAll, backup: doBackup, workspaces: () => setFolderOpen(true) }}
             />
           ) : current?.dbHost ? (
@@ -1085,24 +1302,31 @@ export default function App() {
               <DatabasePage key={current.id} page={current} onOpenPage={setCurrentId} onMeta={refresh} readOnly={reader} />
             </Suspense>
           ) : current?.kind === 'board' ? (
-            <BoardView key={current.id} page={current} onSave={setSave} onMeta={refresh} readOnly={reader} />
+            <BoardView key={current.id} page={current} onSave={setSave} onMeta={refresh} onBack={() => (closeOverlays(), setView('drawings'))} readOnly={reader} />
           ) : current ? (
             <>
-              {current.cover && <CoverBanner cover={current.cover} onChange={setCoverMenu} onRemove={() => setCover(undefined)} />}
               <div className={'page-cols' + (current.cover ? ' has-cover' : '')}>
-                <PageView key={current.id} page={current} onSave={setSave} onMeta={refresh} onCover={setCoverMenu} readOnly={reader} />
+                <PageView
+                  key={current.id}
+                  page={current}
+                  onSave={setSave}
+                  onMeta={refresh}
+                  onCover={setCoverMenu}
+                  cover={current.cover && <CoverBanner cover={current.cover} onChange={setCoverMenu} onRemove={() => setCover(undefined)} />}
+                  readOnly={reader}
+                />
               </div>
             </>
           ) : (
             <div className="blank">
               <div className="blank-ic">
-                <Ic.Page size={40} />
+                <Icon name="file" size={40} />
               </div>
               <h2>{t('No page open')}</h2>
               <p>{t('Create a page or search with {keys}.', { keys: bindingHint('search').replace(/ /g, '+') })}</p>
-              <button className="primary" onClick={() => add(null)}>
+              <Button variant="primary" onClick={() => add(null)}>
                 {t('New page')}
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -1114,64 +1338,74 @@ export default function App() {
             onClose={() => setPanelOpen(false)}
             onOpen={setCurrentId}
             onNewSub={() => add(current.id)}
-            onFav={() => fav(current.id)}
             onCover={setCoverMenu}
-            onSearch={() => setSearching(true)}
             onExport={() => exportMd(current.id)}
-            onSettings={() => setView('settings')}
           />
         )}
       </main>
 
       {menu && menuPage && (
-        <Popover anchor={menu.rect} onClose={() => setMenu(null)} align="end">
-          <div className="ds-menu">
-            {menuPage.kind !== 'folder' && <MenuItem icon={<Ic.Open />} label={t('Open')} onClick={() => (setCurrentId(menu.id), setView('page'), setMenu(null))} />}
-            {menuPage.kind !== 'folder' && (
-              <MenuItem icon={<Ic.Star filled={menuPage.favorite} />} label={menuPage.favorite ? t('Remove from favorites') : t('Add to favorites')} onClick={() => (fav(menu.id), setMenu(null))} />
-            )}
-            <MenuSep />
-            <MenuLabel>{t('Create')}</MenuLabel>
-            <MenuItem icon={<Ic.Plus />} label={menuPage.kind === 'folder' ? t('Add page in this folder') : t('Add subpage')} onClick={() => (add(menu.id), setMenu(null))} />
-            <MenuItem icon={<Ic.Folders />} label={t('Add folder')} onClick={() => (addFolder(menu.id), setMenu(null))} />
-            <MenuItem icon={<Ic.Pencil />} label={t('Add board')} onClick={() => (add(menu.id, 'board'), setMenu(null))} />
-            <MenuSep />
-            <MenuLabel>{t('Organize')}</MenuLabel>
-            <MenuItem icon={<Ic.Pencil />} label={t('Rename')} onClick={() => (rename(menu.id), setMenu(null))} />
-            {menuPage.kind !== 'folder' && <MenuItem icon={<Ic.Copy />} label={t('Duplicate')} onClick={() => (duplicate(menu.id), setMenu(null))} />}
-            <MenuItem icon={<Ic.Folder />} label={t('Move to folder')} onClick={() => (setMovingId(menu.id), setMenu(null))} />
-            {menuPage.parentId && <MenuItem icon={<Ic.Up />} label={t('Move to top level')} onClick={() => (move(menu.id, null, null), setMenu(null))} />}
-            <MenuItem icon={<Ic.Clipboard />} label={t('Copy title')} onClick={() => (void navigator.clipboard?.writeText(menuPage.title || ''), setMenu(null))} />
-            {menuPage.kind !== 'folder' && <MenuItem icon={<Ic.Markdown />} label={t('Export Markdown')} onClick={() => (exportMd(menu.id), setMenu(null))} />}
-            <MenuSep />
-            <MenuItem danger icon={<Ic.Trash />} label={t('Delete')} hint="Delete" onClick={() => (del(menu.id), setMenu(null))} />
-          </div>
-        </Popover>
+        <Menu
+          anchor={menu.rect}
+          align="end"
+          onClose={() => setMenu(null)}
+          items={[
+            ...(menuPage.kind !== 'folder'
+              ? [
+                  { label: t('Open'), icon: <Icon name="external-link" size={16} />, onSelect: () => (setCurrentId(menu.id), setView('page')) },
+                  { label: menuPage.favorite ? t('Remove from favorites') : t('Add to favorites'), icon: <Icon name="star" size={16} />, onSelect: () => fav(menu.id) },
+                ]
+              : []),
+            { kind: 'sep' as const },
+            { kind: 'head' as const, label: t('Create') },
+            { label: menuPage.kind === 'folder' ? t('Add page in this folder') : t('Add subpage'), icon: <Icon name="plus" size={16} />, onSelect: () => add(menu.id) },
+            { label: t('Add folder'), icon: <Icon name="folder-plus" size={16} />, onSelect: () => addFolder(menu.id) },
+            { label: t('Add board'), icon: <Icon name="pencil" size={16} />, onSelect: () => add(menu.id, 'board') },
+            { kind: 'sep' as const },
+            { kind: 'head' as const, label: t('Organize') },
+            { label: t('Rename'), icon: <Icon name="pencil" size={16} />, onSelect: () => rename(menu.id) },
+            ...(menuPage.kind !== 'folder' ? [{ label: t('Duplicate'), icon: <Icon name="copy" size={16} />, onSelect: () => duplicate(menu.id) }] : []),
+            { label: t('Move to folder'), icon: <Icon name="folder" size={16} />, onSelect: () => setMovingId(menu.id) },
+            ...(menuPage.parentId ? [{ label: t('Move to top level'), icon: <Icon name="arrow-up" size={16} />, onSelect: () => move(menu.id, null, null) }] : []),
+            { label: t('Copy title'), icon: <Icon name="clipboard" size={16} />, onSelect: () => void navigator.clipboard?.writeText(menuPage.title || '') },
+            ...(isTauri
+              ? [
+                  { label: t('Copy path'), icon: <Icon name="clipboard" size={16} />, onSelect: () => copyPath(menu.id) },
+                  { label: t(revealKey), icon: <Icon name="folder" size={16} />, onSelect: () => revealFile(menu.id) },
+                ]
+              : []),
+            ...(menuPage.kind !== 'folder' ? [{ label: t('Export Markdown'), icon: <Icon name="markdown" size={16} />, onSelect: () => exportMd(menu.id) }] : []),
+            { kind: 'sep' as const },
+            { label: t('Delete'), icon: <Icon name="trash" size={16} />, danger: true, hint: shortcutHint('Delete'), onSelect: () => del(menu.id) },
+          ]}
+        />
       )}
 
       {blankMenu && (
-        <Popover anchor={blankMenu} onClose={() => setBlankMenu(null)}>
-          <div className="ds-menu">
-            <MenuItem icon={<Ic.Plus />} label={t('New page')} onClick={() => (add(null), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Folders />} label={t('New folder')} onClick={() => (addFolder(null), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Pencil />} label={t('New board')} onClick={() => (add(null, 'board'), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Table />} label={t('New database')} onClick={() => (addDatabase(null), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Checklist />} label={t('New to-do list')} onClick={() => (add(null, 'todo'), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Blocks />} label={t('New from template…')} onClick={() => (setTplOpen(true), setBlankMenu(null))} />
-            <MenuSep />
-            <MenuLabel>{t('Go to')}</MenuLabel>
-            <MenuItem icon={<Ic.Home />} label={t('Home')} onClick={() => (setView('home'), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Folders />} label={t('Files')} onClick={() => (setView('files'), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Table />} label={t('Databases')} onClick={() => (setView('databases'), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Table />} label={t('Pages table')} onClick={() => (setTableOpen(true), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Cards />} label={t('Flashcards')} onClick={() => (setCardsOpen(true), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Link />} label={t('Graph view')} onClick={() => (setGraphOpen(true), setBlankMenu(null))} />
-            <MenuSep />
-            <MenuItem icon={<Ic.Upload />} label={t('Import or restore…')} onClick={() => (setBlankMenu(null), openData())} />
-            <MenuItem icon={<Ic.Trash />} label={t('Trash')} onClick={() => (setTrashOpen(true), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Settings />} label={t('Settings')} onClick={() => (setView('settings'), setBlankMenu(null))} />
-          </div>
-        </Popover>
+        <Menu
+          anchor={blankMenu}
+          onClose={() => setBlankMenu(null)}
+          items={[
+            { label: t('New page'), icon: <Icon name="plus" size={16} />, onSelect: () => add(null) },
+            { label: t('New folder'), icon: <Icon name="folder-plus" size={16} />, onSelect: () => addFolder(null) },
+            { label: t('New board'), icon: <Icon name="pencil" size={16} />, onSelect: () => add(null, 'board') },
+            { label: t('New database'), icon: <Icon name="table" size={16} />, onSelect: () => addDatabase(null) },
+            { label: t('New to-do list'), icon: <Icon name="checklist" size={16} />, onSelect: () => add(null, 'todo') },
+            { label: t('New from template…'), icon: <Icon name="blocks" size={16} />, onSelect: () => setTplOpen(true) },
+            { kind: 'sep' as const },
+            { kind: 'head' as const, label: t('Go to') },
+            { label: t('Home'), icon: <Icon name="home" size={16} />, onSelect: () => setView('home') },
+            { label: t('Files'), icon: <Icon name="folder-plus" size={16} />, onSelect: () => setView('files') },
+            { label: t('Databases'), icon: <Icon name="table" size={16} />, onSelect: () => setView('databases') },
+            { label: t('All pages'), icon: <Icon name="table" size={16} />, onSelect: () => setTableOpen(true) },
+            { label: t('Flashcards'), icon: <Icon name="cards" size={16} />, onSelect: () => setCardsOpen(true) },
+            { label: t('Graph'), icon: <Icon name="link" size={16} />, onSelect: () => setGraphOpen(true) },
+            { kind: 'sep' as const },
+            { label: t('Import or restore…'), icon: <Icon name="upload" size={16} />, onSelect: () => openData() },
+            { label: t('Trash'), icon: <Icon name="trash" size={16} />, onSelect: () => setView('trash') },
+            { label: t('Settings'), icon: <Icon name="settings" size={16} />, onSelect: () => setView('settings') },
+          ]}
+        />
       )}
 
       {coverMenu && current && (
@@ -1180,29 +1414,7 @@ export default function App() {
         </Popover>
       )}
 
-      {dataMenu && (
-        <Popover anchor={dataMenu} onClose={() => setDataMenu(null)} align="end">
-          <div className="ds-menu share-menu">
-            {current && view === 'page' && (
-              <>
-                <MenuLabel>{t('Share this page')}</MenuLabel>
-                <MenuItem icon={<Ic.Markdown />} label={t('Export Markdown')} desc={t('Download as a .md file')} onClick={() => (setDataMenu(null), exportMd(current.id))} />
-                <MenuItem icon={<Ic.Pdf />} label={t('Print / PDF')} desc={t('Save as PDF or print')} onClick={() => (setDataMenu(null), printPage(current.title))} />
-                <MenuItem
-                  icon={<Ic.Copy />}
-                  label={t('Copy as Markdown')}
-                  desc={t('Put it on the clipboard')}
-                  onClick={async () => {
-                    setDataMenu(null)
-                    await navigator.clipboard?.writeText(await pageToMarkdown(current))
-                    setToast({ msg: t('Copied') })
-                  }}
-                />
-              </>
-            )}
-          </div>
-        </Popover>
-      )}
+      {shareMenu}
 
       {folderOpen && (
         <Vaults
@@ -1211,32 +1423,19 @@ export default function App() {
         />
       )}
       {movingId && (
-        <div className="overlay" onMouseDown={() => setMovingId(null)}>
-          <div
-            className="modal move-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('Move to folder')}
-            onMouseDown={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.key === 'Escape' && setMovingId(null)}
-          >
-            <div className="modal-head">
-              <b>{t('Move to folder')}</b>
-              <button className="icon-btn" title={t('Close')} onClick={() => setMovingId(null)}>
-                <Ic.Close />
-              </button>
-            </div>
-            <div className="modal-list">
-              <button
-                className="result"
+        <Dialog open title={t('Move to folder')} onClose={() => setMovingId(null)}>
+          <div className="ds-modal-body">
+            <div className="ds-list ds-list--framed">
+              <Row
+                as="button"
+                className="ds-list-row"
+                icon={<Icon name="book" size={16} />}
+                text={t('Move to top level')}
                 onClick={() => {
                   move(movingId, null, null)
                   setMovingId(null)
                 }}
-              >
-                <Ic.Book />
-                <span>{t('Move to top level')}</span>
-              </button>
+              />
               {pages
                 .filter((p) => {
                   if (p.kind !== 'folder' || p.id === movingId) return false
@@ -1250,27 +1449,26 @@ export default function App() {
                   return true
                 })
                 .map((p) => (
-                  <button
-                    className="result"
+                  <Row
+                    as="button"
+                    className="ds-list-row"
                     key={p.id}
+                    icon={<Icon name="folder" size={16} />}
+                    text={p.title || t('Untitled folder')}
                     onClick={() => {
                       move(movingId, p.id, null)
                       setMovingId(null)
                     }}
-                  >
-                    <Ic.Folder />
-                    <span dir="auto">{p.title || t('Untitled folder')}</span>
-                  </button>
+                  />
                 ))}
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {naming && <NameDialog {...naming} onClose={() => setNaming(null)} />}
-      {trashOpen && <TrashModal key={trashTick} items={repo.trash()} days={TRASH_DAYS} onRestore={restore} onPurge={purge} onEmpty={emptyTrash} onClose={() => setTrashOpen(false)} />}
       <UpdateCenter />
-      {toast && <Toast msg={toast.msg} action={toast.undo ? t('Undo') : undefined} onAction={toast.undo} onClose={() => setToast(null)} />}
+      {toast && <Toast msg={toast.msg} action={toast.undo ? t('Undo') : toast.action?.label} onAction={toast.undo ?? toast.action?.run} onClose={() => setToast(null)} />}
 
       {searching && (
         <SearchModal

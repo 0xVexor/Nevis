@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { DS_ICONS } from './design-system/iconData'
 import { MORE_GLYPHS } from './iconSetMore'
 import { EXTRA_GLYPHS } from './iconSetExtra'
 import { ICON_GROUPS } from './design-system/iconData'
@@ -86,7 +87,8 @@ export const parseIcon = (icon: string) => {
 }
 
 export function Glyph({ name, size = 18, color }: { name: string; size?: number; color?: string }) {
-  const g = GLYPHS[name]
+  // the design-system icon first; names only the older set had keep rendering
+  const g = DS_ICONS[name] ?? GLYPHS[name]
   if (!g) return null
   return (
     <svg

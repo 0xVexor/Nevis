@@ -23,9 +23,9 @@ import {
   toIso,
 } from '../dates.ts'
 import type { DateConfig } from '../props/config.ts'
+import { Button, Dropdown, Icon, IconButton, SwitchRow } from '../../design-system'
 import { locale, t } from '../../i18n'
-import { Select } from '../../ui'
-import * as Ic from '../../icons'
+import { Hint } from './common'
 
 type Props = {
   value: DateValue | null
@@ -35,9 +35,12 @@ type Props = {
   todayCivil: string
   onChange: (v: DateValue | null) => void
   onClose: () => void
+  /** one day only (a form answer): no end date, no time of day */
+  single?: boolean
 }
 
 const WD = { en: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], fa: ['د', 'س', 'چ', 'پ', 'ج', 'ش', 'ی'] }
+export const faDigits = (n: number | string) => String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)])
 
 export function monthGrid(anchor: string, cal: 'gregorian' | 'jalali', weekStart: number): { civil: string; inMonth: boolean }[] {
   if (cal === 'gregorian') {
@@ -64,7 +67,7 @@ const timeOf = (iso: string, zone: string) => {
   return `${pad(p.h)}:${pad(p.mi)}`
 }
 
-export function DatePicker({ value, config, zone, weekStart, todayCivil, onChange, onClose }: Props) {
+export function DatePicker({ value, config, zone, weekStart, todayCivil, onChange, onClose, single }: Props) {
   const cal = config.displayCalendar
   const vz = value?.kind === 'datetime' ? (value.timeZone ?? zone) : zone
   const startCivil = value ? (value.kind === 'date' ? value.start : civilOf(parseIsoInstant(value.start, vz)!, vz)) : null
@@ -79,7 +82,7 @@ export function DatePicker({ value, config, zone, weekStart, todayCivil, onChang
   const header = (() => {
     if (cal === 'jalali') {
       const j = civilToJalali(anchor)
-      return `${JALALI_MONTHS[j.m - 1]} ${fa ? String(j.y).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]) : j.y}`
+      return `${JALALI_MONTHS[j.m - 1]} ${fa ? faDigits(j.y) : j.y}`
     }
     return new Intl.DateTimeFormat(locale(), { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(civilToDays(anchor) * 86400000))
   })()
@@ -87,9 +90,7 @@ export function DatePicker({ value, config, zone, weekStart, todayCivil, onChang
     if (cal === 'gregorian') {
       const { y, m, d } = parseCivil(anchor)
       const tot = y * 12 + (m - 1) + n
-      const ny = Math.floor(tot / 12)
-      const nm = (tot % 12) + 1
-      setAnchor(civilString(ny, nm, Math.min(d, 28)))
+      setAnchor(civilString(Math.floor(tot / 12), (tot % 12) + 1, Math.min(d, 28)))
     } else {
       const j = civilToJalali(anchor)
       const tot = j.y * 12 + (j.m - 1) + n
@@ -98,7 +99,7 @@ export function DatePicker({ value, config, zone, weekStart, todayCivil, onChang
       setAnchor(jalaliToCivil(ny, nm, Math.min(j.d, jalaliMonthLength(ny, nm))))
     }
   }
-  const dayLabel = (c: string) => (cal === 'jalali' ? (fa ? String(civilToJalali(c).d).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]) : civilToJalali(c).d) : parseCivil(c).d)
+  const dayLabel = (c: string) => (cal === 'jalali' ? (fa ? faDigits(civilToJalali(c).d) : civilToJalali(c).d) : parseCivil(c).d)
 
   const build = (s: string, e: string | null, timed: { s: string; e: string; zone: string } | null): DateValue => {
     if (timed) {
@@ -137,13 +138,12 @@ export function DatePicker({ value, config, zone, weekStart, todayCivil, onChang
   const toggleTime = () => {
     if (!value) return
     if (hasTime)
-      onChange(timedToCivil(value as Extract<DateValue, { kind: 'datetime' }>, vz)) // preview: the time of day is dropped
+      onChange(timedToCivil(value as Extract<DateValue, { kind: 'datetime' }>, vz)) // the time of day is dropped
     else onChange(civilToTimed(value as Extract<DateValue, { kind: 'date' }>, config.defaultZone ?? zone)) // default 09:00 local, visible in the inputs
   }
   const setTime = (which: 's' | 'e', hhmm: string) => {
     if (!value || value.kind !== 'datetime' || !startCivil) return
-    const cur = timed()!
-    onChange(build(startCivil, endCivil, { ...cur, [which]: hhmm }))
+    onChange(build(startCivil, endCivil, { ...timed()!, [which]: hhmm }))
   }
   const zones = useMemo(() => {
     try {
@@ -153,23 +153,21 @@ export function DatePicker({ value, config, zone, weekStart, todayCivil, onChang
     }
   }, [])
 
-  const inRange = (c: string) => startCivil && endCivil && c >= startCivil && c <= endCivil
+  const inRange = (c: string) => !!startCivil && !!endCivil && c >= startCivil && c <= endCivil
   return (
-    <div className="db-date-pop" onKeyDown={(e) => e.key === 'Escape' && onClose()}>
-      <div className="db-date-head">
-        <button type="button" className="icon-btn" aria-label={t('Previous month')} onClick={() => shift(-1)}>
-          <span style={{ display: 'inline-block', transform: 'scaleX(-1)' }}>
-            <Ic.Chevron size={14} />
-          </span>
-        </button>
+    <div className="dv-date" onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <div className="dv-date-head">
+        <IconButton label={t('Previous month')} onClick={() => shift(-1)}>
+          <Icon name="chevron-left" size={16} className="ds-flip" />
+        </IconButton>
         <b>{header}</b>
-        <button type="button" className="icon-btn" aria-label={t('Next month')} onClick={() => shift(1)}>
-          <Ic.Chevron size={14} />
-        </button>
+        <IconButton label={t('Next month')} onClick={() => shift(1)}>
+          <Icon name="chevron-right" size={16} className="ds-flip" />
+        </IconButton>
       </div>
-      <div className="db-date-grid" role="grid" aria-label={header}>
+      <div className="dv-date-grid" role="grid" aria-label={header}>
         {Array.from({ length: 7 }, (_, i) => (
-          <span key={i} className="db-date-wd">
+          <span key={i} className="dv-date-wd" aria-hidden>
             {names[(weekStart - 1 + i) % 7]}
           </span>
         ))}
@@ -180,48 +178,47 @@ export function DatePicker({ value, config, zone, weekStart, todayCivil, onChang
             role="gridcell"
             aria-label={formatCivil(c, { calendar: cal, locale: locale() })}
             aria-selected={c === startCivil || c === endCivil}
-            className={'db-day' + (inMonth ? '' : ' out') + (c === todayCivil ? ' today' : '') + (c === startCivil || c === endCivil ? ' sel' : '') + (inRange(c) ? ' range' : '')}
+            className="dv-date-day"
+            data-out={!inMonth || undefined}
+            data-today={c === todayCivil || undefined}
+            data-range={inRange(c) || undefined}
             onClick={() => pick(c)}
           >
             {dayLabel(c)}
           </button>
         ))}
       </div>
+      {pickingEnd && <Hint>{t('Choose the end day.')}</Hint>}
+      {value && !single && (
+        <div className="dv-date-opts">
+          <SwitchRow label={t('End date')} checked={isRange} onChange={toggleRange} />
+          <SwitchRow label={t('Include time')} checked={hasTime} onChange={toggleTime} />
+        </div>
+      )}
       {hasTime && (
-        <div className="db-date-time">
-          <input type="time" aria-label={t('Start time')} value={timed()!.s} onChange={(e) => setTime('s', e.target.value)} />
-          {isRange && <input type="time" aria-label={t('End time')} value={timed()!.e} onChange={(e) => setTime('e', e.target.value)} />}
-          <Select
-            title={t('Time zone')}
+        <div className="dv-date-time">
+          <input className="ds-field" type="time" dir="ltr" aria-label={t('Start time')} value={timed()!.s} onChange={(e) => setTime('s', e.target.value)} />
+          {isRange && <input className="ds-field" type="time" dir="ltr" aria-label={t('End time')} value={timed()!.e} onChange={(e) => setTime('e', e.target.value)} />}
+          <Dropdown
+            label={t('Time zone')}
             value={isValidZone(vz) ? vz : zone}
             onChange={(nextZone) => {
               if (value?.kind === 'datetime' && startCivil) onChange(build(startCivil, endCivil, { ...timed()!, zone: nextZone }))
             }}
-            options={(zones.includes(vz) ? zones : [vz, ...zones]).map((value) => ({ value, label: value }))}
+            options={(zones.includes(vz) ? zones : [vz, ...zones]).map((z) => ({ value: z, label: z, raw: true }))}
           />
         </div>
       )}
-      {value && (
-        <div className="db-date-opts">
-          <label>
-            <input type="checkbox" checked={isRange} onChange={toggleRange} /> {t('End date')}
-          </label>
-          <label>
-            <input type="checkbox" checked={hasTime} onChange={toggleTime} /> {t('Include time')}
-          </label>
-        </div>
-      )}
-      {hasTime && <div className="db-date-hint">{t('Switching off the time keeps only the day.')}</div>}
-      <div className="db-date-foot">
-        <button type="button" onClick={() => onChange({ kind: 'date', start: todayCivil, end: null })}>
+      <div className="dv-date-foot">
+        <Button size="sm" variant="ghost" onClick={() => onChange({ kind: 'date', start: todayCivil, end: null })}>
           {t('Today')}
-        </button>
-        <button type="button" className="danger" onClick={() => (onChange(null), onClose())}>
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => (onChange(null), onClose())}>
           {t('Clear')}
-        </button>
-        <button type="button" className="primary" onClick={onClose}>
+        </Button>
+        <Button size="sm" variant="primary" onClick={onClose}>
           {t('Done')}
-        </button>
+        </Button>
       </div>
     </div>
   )

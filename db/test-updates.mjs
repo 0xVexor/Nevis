@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createUpdateController } from '../spike/tiptap/src/updateController.ts'
+import { createUpdateController, wantsPrerelease } from '../spike/tiptap/src/updateController.ts'
 
 const stable = { version: '1.1.0', prerelease: false, notes: 'Changes', publishedAt: null }
 const preview = { ...stable, version: '1.2.0-beta.1', prerelease: true }
@@ -97,4 +97,11 @@ test('manual no-update and offline checks have visible status', async () => {
   await offline.check(true)
   assert.equal(offline.getSnapshot().phase, 'error')
   assert.equal(offline.getSnapshot().notice, false)
+})
+
+test('a pre-release build always follows the pre-release channel; a stable build follows the setting', () => {
+  assert.equal(wantsPrerelease(false, '1.1.0-beta.7'), true)
+  assert.equal(wantsPrerelease(false, '1.1.0'), false)
+  assert.equal(wantsPrerelease(true, '1.1.0'), true)
+  assert.equal(wantsPrerelease(false, '1.1.0+build-5'), false)
 })

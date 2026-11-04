@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client'
 import DrawingCanvas from './DrawingCanvas'
 import { saveScene, type SceneData } from './editor/excalidraw'
 import { t } from './i18n'
+import { Button } from './design-system'
 
 /** Stored file ids of the finished drawing (both empty for a cleared canvas). */
 export interface DrawingResult {
@@ -52,12 +53,12 @@ function DrawingEditor({ initial, onClose }: { initial: SceneData | null; onClos
       <div className="drawing-bar">
         <strong>{t('Drawing')}</strong>
         <span className="drawing-hint">{t('Ctrl+Enter save')}</span>
-        <button type="button" className="drawing-cancel" onClick={() => onClose(null)}>
+        <Button size="sm" onClick={() => onClose(null)}>
           {t('Cancel')}
-        </button>
-        <button type="button" className="drawing-done" onClick={() => void done()} disabled={saving}>
+        </Button>
+        <Button size="sm" variant="primary" onClick={() => void done()} disabled={saving}>
           {saving ? t('Saving…') : t('Done')}
-        </button>
+        </Button>
       </div>
       <div className="drawing-stage" dir="ltr">
         <DrawingCanvas initial={initial} onApi={(a) => (api.current = a)} />

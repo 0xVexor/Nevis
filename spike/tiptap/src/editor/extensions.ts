@@ -1,3 +1,4 @@
+import { PhysicalShortcuts } from './physicalShortcuts'
 import StarterKit from '@tiptap/starter-kit'
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 import { TaskList, TaskItem } from '@tiptap/extension-list'
@@ -221,6 +222,7 @@ const Direction = Extension.create({
 })
 
 export const extensions = [
+  PhysicalShortcuts,
   BlockIdentity,
   RtlTableResize,
   StarterKit.configure({ codeBlock: false }),

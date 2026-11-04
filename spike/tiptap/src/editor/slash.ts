@@ -129,17 +129,31 @@ const ITEMS: Item[] = [
   { title: 'Auto direction', desc: 'Detect direction from the text', icon: 'i:dir', keywords: 'auto direction خودکار جهت', run: (c) => c.setDirection('auto') },
 ]
 
+const GROUPS = [
+  ['Text', 'Heading 1', 'Heading 2', 'Heading 3', 'Quote', 'Callout', 'Toggle', 'Divider'],
+  ['Bulleted list', 'Numbered list', 'Checklist'],
+  ['Link to page', 'Icon', 'Image', 'Image from link', 'Drawing'],
+  ['Table', 'Database'],
+  ['Code block', 'Diagram (Mermaid)', 'Formula (block)', 'Formula (inline)'],
+  ['Right-to-left (RTL)', 'Left-to-right (LTR)', 'Auto direction'],
+]
+const GROUP_LABELS = ['Text', 'Lists', 'Media', 'Databases', 'Code and math', 'Text direction']
+const rank = (item: Item) => {
+  const group = GROUPS.findIndex(items => items.includes(item.title))
+  return group < 0 ? GROUPS.length * 100 : group * 100 + GROUPS[group].indexOf(item.title)
+}
+
 const shown = (i: Item) => {
   const vars = i.vars && Object.fromEntries(Object.entries(i.vars).map(([k, v]) => [k, t(v)]))
-  return { ...i, title: t(i.title, vars), desc: t(i.desc, vars) }
+  return { ...i, group: GROUP_LABELS[Math.floor(rank(i) / 100)], title: t(i.title, vars), desc: t(i.desc, vars) }
 }
 
 function filter(query: string, list: Item[] = ITEMS): Item[] {
   const q = normalizeFa(query).trim()
-  if (!q) return list
+  if (!q) return list.filter(i => i.title !== 'Code {name}').sort((a, b) => rank(a) - rank(b))
   // match what the user sees (translated) as well as the English source and the keywords
-  const inTitle = (i: Item) => Number(normalizeFa(shown(i).title).includes(q))
-  return list.filter((i) => normalizeFa(`${shown(i).title} ${i.title} ${i.keywords}`).includes(q)).sort((a, b) => inTitle(b) - inTitle(a))
+  const inTitle = (i: Item) => Number(normalizeFa(shown(i).title).startsWith(q))
+  return list.filter(i => q.split(/\s+/).every(word => normalizeFa(`${shown(i).title} ${shown(i).desc} ${i.title} ${i.keywords}`).includes(word))).sort((a, b) => inTitle(b) - inTitle(a) || rank(a) - rank(b))
 }
 
 export const previewOf = (i: Item) => slashPreview(i.title, i.vars?.name)
@@ -147,6 +161,7 @@ export const previewOf = (i: Item) => slashPreview(i.title, i.vars?.name)
 // ───────────── Ctrl+/ palette (see commandPalette.ts) ─────────────
 export type CommandItem = Item
 export const shownItem = shown
+export const editorSearchItems = () => [...ITEMS].sort((a, b) => rank(a) - rank(b)).map(item => ({ item, ...shown(item), searchOnly: item.title === 'Code {name}' }))
 
 /** Items that put something new into the page: with a selection they go after it instead of replacing it. */
 export const INSERTS = new Set(['Icon', 'Table', 'Divider', 'Image', 'Image from link', 'Formula (block)', 'Formula (inline)', 'Diagram (Mermaid)'])
@@ -181,8 +196,11 @@ export function paletteItems(query: string, editor: Editor): Item[] {
   return filter(query, list)
 }
 
-export const SlashCommand = Extension.create({
+export const SlashCommand = Extension.create<{ allowedCommands: readonly string[] | null }>({
   name: 'slashCommand',
+  addOptions() {
+    return { allowedCommands: null }
+  },
   addProseMirrorPlugins() {
     return [
       Suggestion({
@@ -196,7 +214,7 @@ export const SlashCommand = Extension.create({
         char: '/',
         startOfLine: false,
         allowSpaces: false,
-        items: ({ query }: { query: string }) => filter(query),
+        items: ({ query }: { query: string }) => filter(query).filter(item => !this.options.allowedCommands || this.options.allowedCommands.includes(item.title)),
         command: ({ editor, range, props }: { editor: Editor; range: Range; props: Item }) => {
           if (props.disabled) return
           props.run(editor.chain().focus().deleteRange(range), editor).run()

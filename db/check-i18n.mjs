@@ -2,6 +2,7 @@
 // Usage: node db/check-i18n.mjs   (exit code 1 when something is missing)
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const src = new URL('../spike/tiptap/src/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
 
@@ -15,10 +16,10 @@ const walk = (d) => {
 }
 walk(src)
 
-// keys are double-quoted JSON-ish strings at the start of lines in fa.ts
-const faText = readFileSync(join(src, 'fa.ts'), 'utf8') + readFileSync(join(src, 'database/ui/fa-db.ts'), 'utf8')
-const have = new Set()
-for (const m of faText.matchAll(/^\s*"((?:[^"\\]|\\.)*)"\s*:/gm)) have.add(JSON.parse(`"${m[1]}"`))
+// Import the dictionaries themselves (Node runs the .ts directly), so the check does not depend on how Prettier quotes the keys.
+const { FA } = await import(pathToFileURL(join(src, 'fa.ts')).href)
+const { FA_DB } = await import(pathToFileURL(join(src, 'database/ui/fa-db.ts')).href)
+const have = new Set([...Object.keys(FA), ...Object.keys(FA_DB)])
 
 const used = new Map() // key -> first file
 const re = /\b(?:t|tr)\(\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1/g // mermaid.ts imports t as tr

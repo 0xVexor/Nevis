@@ -1,0 +1,69 @@
+/* ───── Tasks: the sources on one side, the chosen one's tasks on the other ───── */
+.tk { display: grid; grid-template-columns: minmax(200px, 248px) minmax(0, 1fr); gap: var(--ds-s8); align-items: start; }
+
+/* sources: all, inbox, your lists, pages with checklists; open counts as outlined circles */
+.tk-sources { position: sticky; inset-block-start: var(--ds-s4); display: flex; flex-direction: column; gap: 2px; }
+.tk-sources-title { margin: var(--ds-s5) 0 var(--ds-s1); padding-inline: var(--ds-s3); color: var(--ds-text-3); font-size: var(--ds-text-caption); font-weight: 550; }
+.tk-source { display: flex; align-items: center; gap: var(--ds-s3); inline-size: 100%; min-block-size: var(--ds-control); padding: 0 var(--ds-s3); border: 0; border-radius: var(--ds-r); background: none; color: var(--ds-text-2); font: inherit; text-align: start; cursor: var(--cursor-hand, pointer); transition: background var(--ds-fast), color var(--ds-fast); }
+.tk-source:hover { background: var(--ds-hover); color: var(--ds-text); }
+.tk-source[aria-current] { background: var(--ds-accent-soft); color: var(--ds-accent); font-weight: 550; }
+.tk-source:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: -2px; }
+.tk-source-ic { display: grid; place-items: center; flex: none; inline-size: 20px; block-size: 20px; font-size: var(--ds-text-ui); }
+.tk-source-ic svg { inline-size: 17px; block-size: 17px; }
+.tk-source-name { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tk-source .ds-badge { flex: none; }
+.tk-source-new { color: var(--ds-text-3); }
+
+/* the chosen source */
+.tk-main { min-inline-size: 0; }
+.tk-main-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ds-s4); }
+.tk-main-title { min-inline-size: 0; }
+.tk-main-title h2 { margin: 0; overflow: hidden; font-size: var(--ds-text-section); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.tk-main-title p { margin: 2px 0 0; color: var(--ds-text-3); font-size: var(--ds-text-small); font-variant-numeric: tabular-nums; }
+.tk-progress { margin-block: var(--ds-s3) var(--ds-s5); }
+.tk-progress > i { transition: inline-size var(--ds-slow) var(--ds-ease); }
+
+/* the composer: one line that takes a task, Enter adds it to the inbox */
+.tk-add { display: flex; align-items: center; gap: var(--ds-s3); block-size: 48px; margin-block-end: var(--ds-s3); padding-inline: var(--ds-s4) var(--ds-s3); border: 1px dashed var(--ds-line-strong); border-radius: var(--ds-r-lg); color: var(--ds-text-3); transition: border-color var(--ds-fast), background var(--ds-fast), box-shadow var(--ds-fast); }
+.tk-add:hover { border-color: var(--ds-accent-line); color: var(--ds-accent); }
+.tk-add:focus-within { border-style: solid; border-color: var(--ds-accent); background: var(--ds-raised); box-shadow: 0 0 0 3px var(--ds-accent-soft); color: var(--ds-accent); }
+.tk-add input { flex: 1; min-inline-size: 0; border: 0; outline: 0; background: none; color: var(--ds-text); font: inherit; font-size: var(--ds-text-ui); }
+.tk-add input::placeholder { color: var(--ds-text-3); }
+
+/* a task: the whole line is the checkbox's label; nested items step in; in All tasks its list is named at the end */
+.tk-row { min-block-size: 0; padding-block: 0; overflow: hidden; }
+.ds-list--framed > .tk-row { padding-inline-start: calc(var(--ds-s4) + var(--depth, 0) * var(--ds-s6)); }
+.tk-row > .ds-checkbox, .tk-row > .ds-checkbox + .tk-edit { padding-block: var(--ds-s3); }
+.tk-check { flex: 1; min-inline-size: 0; }
+.tk-text { flex: 1; min-inline-size: 0; color: var(--ds-text); font-size: var(--ds-text-ui); line-height: 1.45; overflow-wrap: anywhere; transition: color var(--ds-base) var(--ds-ease); }
+.tk-row[data-done] .tk-text { color: var(--ds-text-3); text-decoration: line-through; text-decoration-thickness: 1px; }
+.tk-edit { border: 0; outline: 0; background: none; font: inherit; font-size: var(--ds-text-ui); }
+.tk-edit:focus-visible { box-shadow: 0 1px 0 var(--ds-accent); }
+.tk-from { flex: none; max-inline-size: 30%; overflow: hidden; padding: 2px var(--ds-s2); border: 1px solid var(--ds-line); border-radius: var(--ds-r-sm); background: none; color: var(--ds-text-3); font: inherit; font-size: var(--ds-text-caption); text-overflow: ellipsis; white-space: nowrap; cursor: var(--cursor-hand, pointer); }
+.tk-from:hover { border-color: var(--ds-accent-line); color: var(--ds-accent); }
+.tk-from:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 1px; }
+.tk-del { flex: none; opacity: 0; transition: opacity var(--ds-fast); }
+.tk-row:hover .tk-del, .tk-del:focus-visible { opacity: 1; }
+.tk-del:hover { color: var(--ds-bad); }
+@media (hover: none) { .tk-del { opacity: 1; } }
+
+/* completed tasks fold away under the open ones */
+.tk-done { margin-block-start: var(--ds-s5); }
+.tk-done-toggle { display: inline-flex; align-items: center; gap: var(--ds-s2); min-block-size: var(--ds-control-sm); padding: 0 var(--ds-s2); border: 0; border-radius: var(--ds-r-sm); background: none; color: var(--ds-text-2); font: inherit; font-weight: 550; cursor: var(--cursor-hand, pointer); }
+.tk-done-toggle:hover { background: var(--ds-hover); color: var(--ds-text); }
+.tk-done-toggle:focus-visible { outline: 2px solid var(--ds-accent); }
+.tk-done-chev { transition: transform var(--ds-base) var(--ds-ease); }
+.tk-done-toggle[aria-expanded='true'] .tk-done-chev { transform: rotate(90deg); }
+:root[dir='rtl'] .tk-done-toggle[aria-expanded='true'] .tk-done-chev { transform: scaleX(-1) rotate(90deg); }
+.tk-done-body { overflow: hidden; }
+.tk-done-body > .tk-list { margin-block-start: var(--ds-s2); }
+
+
+/* narrow: the sources become one scrolling row above the tasks */
+@container (max-width: 720px) {
+  .tk { grid-template-columns: minmax(0, 1fr); gap: var(--ds-s5); }
+  .tk-sources { position: static; flex-direction: row; overflow-x: auto; padding-block-end: var(--ds-s1); }
+  .tk-sources-title { display: none; }
+  .tk-source { flex: none; inline-size: auto; max-inline-size: 220px; }
+  .tk-from { display: none; }
+}

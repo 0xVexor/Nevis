@@ -1,19 +1,8 @@
-import { Repo, WELCOME_DOC } from './repo'
+import { Repo } from './repo'
 import { setPageTitleResolver } from './markdown'
 
-export const repo = new Repo(() => [
-  {
-    id: crypto.randomUUID(),
-    parentId: null,
-    title: 'خوش آمدید',
-    icon: 'i:hand',
-    favorite: true,
-    sort: 0,
-    content: WELCOME_DOC,
-    updatedAt: Date.now(),
-    deletedAt: null,
-  },
-])
+// A new workspace starts empty: Home then opens on the first-note sheet, ready to write.
+export const repo = new Repo(() => [])
 
 export const TRASH_DAYS = 7
 

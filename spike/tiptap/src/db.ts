@@ -159,3 +159,8 @@ export const vaultLocate = (id: string, path: string) => invoke<void>('vault_loc
 /** Moves the vault's folder to the Recycle Bin / Trash and forgets it here. */
 export const vaultTrashLocal = (id: string) => invoke<void>('vault_trash_local', { id })
 export const vaultRename = (id: string, name: string) => invoke<void>('vault_rename', { id, name })
+
+/** The file on disk that holds a page (desktop app only). */
+export const pageFilePath = (id: string) => invoke<string>('page_path', { id })
+/** Shows that file in Explorer, Finder or the file manager (desktop app only). */
+export const revealPageFile = (id: string) => invoke<void>('page_reveal', { id })

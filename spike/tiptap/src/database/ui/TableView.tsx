@@ -1,3 +1,4 @@
+import { commandMatches } from '../../shortcutCommands'
 // The table: virtualized rows, keyboard-first cell selection and editing, TSV + typed clipboard, resizable / reorderable /
 // freezable columns, grouping, sub-items, totals. Every change is a command; nothing here writes pages directly.
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as RKeyEvent } from 'react'
@@ -7,14 +8,14 @@ import { cfgOf, type RollupAggregation } from '../props/config.ts'
 import { NONE_GROUP } from '../query/engine.ts'
 import type { Row } from '../state.ts'
 import { matchKey } from '../text.ts'
-import { Popover, MenuItem, MenuSep } from '../../ui'
+import { Button, Checkbox, Icon, IconButton, useMenu, type MenuItem } from '../../design-system'
 import { confirmDialog } from '../../dialog'
+import { showToast } from '../../ui'
 import { t } from '../../i18n'
-import * as Ic from '../../icons'
 import { CellView, useNav } from './CellView'
 import { InlineCellEditor, PopoverEditor, isInlineKind, isPopoverKind } from './CellEditor'
-import { KindIcon, errorText, plainTitle } from './common'
-import { NewPropertyPopover, PropertyMenu, aggLabel } from './PropertyEditor'
+import { KindIcon, ViewMessage, errorText, plainTitle } from './common'
+import { NewPropertyPopover, PropertyMenu, aggKey, aggLabel } from './PropertyEditor'
 import { useViewQuery } from './useViewQuery'
 import type { ViewProps } from './viewTypes'
 import { PageIcon } from '../../PageIcon'
@@ -23,8 +24,10 @@ import { HorizontalScroll } from '../../HorizontalScroll'
 
 const DEFAULT_W = 200
 const TITLE_W = 280
-const HANDLE_W = 34
-const ROW_H = { compact: 36, normal: 52 }
+const HANDLE_W = 56
+const ADD_W = 48
+const ROW_H = { compact: 40, normal: 52 }
+const HEAD_H = 40
 
 type Item = { t: 'row'; id: Id; depth: number; context: boolean; r: number } | { t: 'group'; key: string; label: string; count: number; collapsed: boolean; memberId: Id | null }
 type Sel = { r1: number; c1: number; r2: number; c2: number }
@@ -82,10 +85,8 @@ export function TableView({ svc, view, ctl }: ViewProps) {
   const [active, setActive] = useState<{ r: number; c: number } | null>(null)
   const [sel, setSel] = useState<Sel | null>(null)
   const [edit, setEdit] = useState<Edit | null>(null)
-  const [menu, setMenu] = useState<{ def: Definition; rect: DOMRect } | null>(null)
+  const [colMenu, setColMenu] = useState<{ def: Definition; rect: DOMRect } | null>(null)
   const [newProp, setNewProp] = useState<DOMRect | null>(null)
-  const [rowMenu, setRowMenu] = useState<{ id: Id; rect: DOMRect } | null>(null)
-  const [totalMenu, setTotalMenu] = useState<{ def: Definition; rect: DOMRect } | null>(null)
   const [resizing, setResizing] = useState<Record<Id, number>>({})
   const [pinned, setPinned] = useState<Id | null>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -96,6 +97,7 @@ export function TableView({ svc, view, ctl }: ViewProps) {
   const [dropAt, setDropAt] = useState<{ id: Id; after: boolean } | null>(null)
   const [checked, setChecked] = useState<Set<Id>>(new Set())
   const mouseDown = useRef(false)
+  const { open: openMenu, menu } = useMenu()
 
   // columns --------------------------------------------------------------------------------------------------------------
   const allProps = svc.state.props(view.sourceId!)
@@ -120,7 +122,7 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cols, widths, resizing])
-  const gridCols = `${HANDLE_W}px ${cols.map((d) => wOf(d) + 'px').join(' ')} 44px`
+  const gridCols = `${HANDLE_W}px ${cols.map((d) => wOf(d) + 'px').join(' ')} ${ADD_W}px`
 
   // data -----------------------------------------------------------------------------------------------------------------
   const group = (cfg.group as { propertyId: Id; mode?: string } | null | undefined) ?? null
@@ -142,14 +144,15 @@ export function TableView({ svc, view, ctl }: ViewProps) {
             ? ({ mode: 'flat', include: 'children' } as const)
             : undefined,
     }),
-    [ctl.search, ctl.personal, want, group?.propertyId, group?.mode, JSON.stringify(totals), nested, cfg.subItems],
-  ) // eslint-disable-line react-hooks/exhaustive-deps
+    [ctl.search, ctl.personal, want, group?.propertyId, group?.mode, JSON.stringify(totals), nested, cfg.subItems], // eslint-disable-line react-hooks/exhaustive-deps
+  )
   const q = useViewQuery(svc, view, qopts)
   const rs = ctl.rs
   const hasSorts = q.sorts.length > 0
   const density = (cfg.density as string) ?? 'compact'
   const wrap = !!cfg.wrap || density === 'relaxed'
   const rowH = density === 'normal' ? ROW_H.normal : ROW_H.compact
+  const openMode = cfg.openMode === 'full_page' ? 'full' : cfg.openMode === 'center_peek' ? 'center' : 'side'
 
   const items: Item[] = useMemo(() => {
     const out: Item[] = []
@@ -184,9 +187,14 @@ export function TableView({ svc, view, ctl }: ViewProps) {
   const virtual = !wrap && !q.groups.length && rowCount > 150
   const start = virtual ? Math.min(Math.max(0, items.length - 1), Math.max(0, Math.floor(scrollTop / rowH) - 8)) : 0
   const end = virtual ? Math.min(items.length, Math.ceil((scrollTop + viewH) / rowH) + 8) : items.length
-  // The table never scrolls vertically itself: the page does. Rows are windowed against the page's scroller.
-  const hostOf = () => scroller.current?.closest<HTMLElement>('.scroller, .db-peek-body') ?? null
-  const tableTop = (host: HTMLElement) => scroller.current!.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop
+  // On a full database page the table scrolls inside its own frame (see areas/databases.css); embedded in a page, a peek
+  // or a widget it grows and the page scrolls. Rows are windowed against whichever of the two scrolls.
+  const selfScrolls = () => {
+    const el = scroller.current
+    return !!el && /(auto|scroll)/.test(getComputedStyle(el).overflowY)
+  }
+  const hostOf = () => (selfScrolls() ? scroller.current : (scroller.current?.closest<HTMLElement>('.scroller, .dv-peek-body') ?? null))
+  const tableTop = (host: HTMLElement) => (host === scroller.current ? 0 : scroller.current!.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop)
   const measure = useCallback(() => {
     const el = scroller.current
     const host = hostOf()
@@ -194,7 +202,8 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     const top = tableTop(host)
     setScrollTop(Math.max(0, host.scrollTop - top))
     setViewH(host.clientHeight)
-    if (q.hasMore && host.scrollTop + host.clientHeight > top + el.offsetHeight - 400) setWant((w) => w + 500)
+    const contentH = host === el ? el.scrollHeight : el.offsetHeight
+    if (q.hasMore && host.scrollTop + host.clientHeight > top + contentH - 400) setWant((w) => w + 500)
   }, [q.hasMore]) // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const host = hostOf()
@@ -220,7 +229,7 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     if (!el) return
     const host = hostOf()
     if (virtual && host) {
-      const top = tableTop(host) + 38 + r * rowH // 38 = header
+      const top = tableTop(host) + HEAD_H + r * rowH
       if (top < host.scrollTop + 8) host.scrollTop = top - 8
       else if (top + rowH > host.scrollTop + host.clientHeight - 48) host.scrollTop = top + rowH - host.clientHeight + 48
     } else cellEl(r, c)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
@@ -257,13 +266,20 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     }
     focusGrid()
   }
+  const readOnlyWhy = (d: Definition) =>
+    d.kind === 'formula'
+      ? t('This is a formula result; change the formula instead.')
+      : d.kind === 'rollup'
+        ? t('This is a rollup; it follows the related items.')
+        : d.kind === 'unique_id'
+          ? t('IDs are assigned automatically and never change.')
+          : t('This value is set by the system.')
   const begin = (r: number, c: number, initial?: string) => {
     const row = rowAt(r)
     const def = cols[c]
     if (!row || !def) return
     if (!ctl.canEditRows && def.kind !== 'button') return ctl.notice(t('You can view this database but not edit it.'))
-    const el = cellEl(r, c)
-    const rect = el?.getBoundingClientRect()
+    const rect = cellEl(r, c)?.getBoundingClientRect()
     if (def.kind === 'checkbox') {
       const cur = row.ext.cells[def.id]?.value
       void svc
@@ -276,14 +292,6 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     setPinned(row.page.id)
     setEdit({ r, c, rect, initial })
   }
-  const readOnlyWhy = (d: Definition) =>
-    d.kind === 'formula'
-      ? t('This is a formula result; change the formula instead.')
-      : d.kind === 'rollup'
-        ? t('This is a rollup; it follows the related items.')
-        : d.kind === 'unique_id'
-          ? t('IDs are assigned automatically and never change.')
-          : t('This value is set by the system.')
 
   const clearSelection = async () => {
     if (!selected) return
@@ -297,11 +305,8 @@ export function TableView({ svc, view, ctl }: ViewProps) {
         const d = cols[c]
         if (d.kind === 'relation') extra.push({ type: 'relation.replace', payload: { propertyId: d.id, fromPageId: row.page.id, orderedTargetPageIds: [] } })
         else if (DESCRIPTORS[d.kind].writable && d.kind !== 'title') cc[d.id] = null
-        else if (d.kind === 'title') cc[d.id] = null
       }
-      const real: Record<Id, Json> = {}
-      for (const [k, v] of Object.entries(cc)) if (cols.find((x) => x.id === k)?.kind !== 'title') real[k] = v
-      if (Object.keys(real).length) patches.push({ pageId: row.page.id, cellChanges: real })
+      if (Object.keys(cc).length) patches.push({ pageId: row.page.id, cellChanges: cc })
     }
     const r = await svc.tryExec([...(patches.length ? [{ type: 'row.patch_bulk', payload: { patches } as Json }] : []), ...extra])
     if (!r.ok) ctl.notice(errorText(r.code, r.message))
@@ -364,7 +369,7 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     const cd = (e as ClipboardEvent).clipboardData
     if (!cd) return
     cd.setData('text/plain', lines.join('\n'))
-    cd.setData('application/x-noviq-cells', JSON.stringify({ sourceId: view.sourceId, props: cols.slice(selected.c1, selected.c2 + 1).map((d) => d.id), cells: typed }))
+    cd.setData('application/x-nevis-cells', JSON.stringify({ sourceId: view.sourceId, props: cols.slice(selected.c1, selected.c2 + 1).map((d) => d.id), cells: typed }))
     e.preventDefault()
     if (cut) void clearSelection()
   }
@@ -373,18 +378,18 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     if (edit || !active) return
     const cd = e.clipboardData
     const text = cd.getData('text/plain')
-    if (!text && !cd.getData('application/x-noviq-cells')) return
+    if (!text && !cd.getData('application/x-nevis-cells')) return
     e.preventDefault()
     let internal: { sourceId: Id; props: Id[]; cells: (Cell | null)[][] } | null = null
     try {
-      const raw = cd.getData('application/x-noviq-cells')
+      const raw = cd.getData('application/x-nevis-cells')
       internal = raw ? JSON.parse(raw) : null
     } catch {
       internal = null
     }
     const grid = text ? parseTsv(text.replace(/\n$/, '')) : internal!.cells.map((r) => r.map(() => ''))
     const rowsNeeded = active.r + grid.length - rowCount
-    type Plan = { pageId: Id | null; newIdx: number | null; cell: Id; value: Cell | null; rel?: Id[] }
+    type Plan = { pageId: Id | null; newIdx: number | null; cell: Id; value: Cell | null; rel?: Id[]; title?: string }
     const problems: string[] = []
     const plans: Plan[] = []
     const newIds: Id[] = Array.from({ length: Math.max(0, rowsNeeded) }, () => crypto.randomUUID())
@@ -392,13 +397,10 @@ export function TableView({ svc, view, ctl }: ViewProps) {
       const rowIdx = active.r + i
       const row = rowAt(rowIdx)
       line.forEach((txt, j) => {
-        const cIdx = active.c + j
-        const d = cols[cIdx]
+        const d = cols[active.c + j]
         if (!d) return
-        if (d.kind === 'title') {
-          plans.push({ pageId: row?.page.id ?? null, newIdx: row ? null : rowIdx - rowCount, cell: d.id, value: null, rel: undefined, ...{ title: txt } } as Plan)
-          return
-        }
+        const at = { pageId: row?.page.id ?? null, newIdx: row ? null : rowIdx - rowCount, cell: d.id }
+        if (d.kind === 'title') return void plans.push({ ...at, value: null, title: txt })
         if (!DESCRIPTORS[d.kind].writable && d.kind !== 'relation') {
           if (txt) problems.push(`${plainTitle(row?.page.title)} · ${d.name}: ${readOnlyWhy(d)}`)
           return
@@ -416,13 +418,12 @@ export function TableView({ svc, view, ctl }: ViewProps) {
               if (hits.length !== 1) throw new Error(hits.length ? t('“{n}” matches several items', { n: label }) : t('“{n}” was not found', { n: label }))
               ids.push(hits[0].page.id)
             }
-            plans.push({ pageId: row?.page.id ?? null, newIdx: row ? null : rowIdx - rowCount, cell: d.id, value: null, rel: ids })
-            return
+            return void plans.push({ ...at, value: null, rel: ids })
           }
           const ic = internal && internal.sourceId === view.sourceId ? internal.cells[i]?.[j] : undefined
           const srcDef = internal && internal.props[j] ? svc.state.prop(internal.props[j]) : undefined
           const v: Cell | null = ic !== undefined && srcDef && srcDef.id === d.id ? ic : txt.trim() === '' ? null : parseCellText(d, txt, { listDelimiter: ', ', zone: svc.zone })
-          plans.push({ pageId: row?.page.id ?? null, newIdx: row ? null : rowIdx - rowCount, cell: d.id, value: v })
+          plans.push({ ...at, value: v })
         } catch (err) {
           problems.push(`${plainTitle(row?.page.title)} · ${d.name}: ${err instanceof Error ? err.message : String(err)}`)
         }
@@ -453,7 +454,7 @@ export function TableView({ svc, view, ctl }: ViewProps) {
       const pid = p.pageId ?? newIds[p.newIdx ?? 0]
       if (!pid) continue
       const e2 = patches.get(pid) ?? patches.set(pid, { pageId: pid, cellChanges: {} }).get(pid)!
-      if ('title' in p) e2.title = (p as unknown as { title: string }).title
+      if (p.title !== undefined) e2.title = p.title
       else if (p.rel) rels.push({ type: 'relation.replace', payload: { propertyId: p.cell, fromPageId: pid, orderedTargetPageIds: p.rel } })
       else e2.cellChanges[p.cell] = p.value as unknown as Json
     }
@@ -463,24 +464,34 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     if (!r.ok) ctl.notice(errorText(r.code, r.message))
   }
 
-  // keyboard --------------------------------------------------------------------------------------------------------------
+  // keyboard (shortcuts by physical key, so they work with any keyboard language) -------------------------------------------
   const onKeyDown = (e: RKeyEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return // keys typed inside an editor belong to the editor
     if (e.nativeEvent.isComposing) return
     const mod = e.ctrlKey || e.metaKey
-    if (mod && e.key.toLowerCase() === 'z') {
+    if (commandMatches(e.nativeEvent, 'Undo database edit')) {
       e.preventDefault()
       void svc.undo().then((r) => !r.ok && r.conflicts.length && ctl.notice(t('Some fields changed since; undo was not applied.')))
       return
     }
-    if (mod && e.key.toLowerCase() === 'a') {
+    if (commandMatches(e.nativeEvent, 'Select all database cells')) {
       e.preventDefault()
       setSel({ r1: 0, c1: 0, r2: rowCount - 1, c2: cols.length - 1 })
       return
     }
-    if (mod && e.key.toLowerCase() === 'd') {
+    if (commandMatches(e.nativeEvent, 'Fill down')) {
       e.preventDefault()
       void fillDown()
+      return
+    }
+    if (active && commandMatches(e.nativeEvent, 'Edit database cell')) {
+      e.preventDefault()
+      begin(active.r, active.c)
+      return
+    }
+    if (active && commandMatches(e.nativeEvent, 'Clear database cells')) {
+      e.preventDefault()
+      void clearSelection()
       return
     }
     if (mod || e.altKey) return
@@ -521,24 +532,14 @@ export function TableView({ svc, view, ctl }: ViewProps) {
         moveTo(nr, nc)
         break
       }
-      case 'Enter':
-      case 'F2':
-        e.preventDefault()
-        begin(r, c)
-        break
       case ' ':
         if (cols[c]?.kind === 'checkbox') {
           e.preventDefault()
           begin(r, c)
         }
         break
-      case 'Delete':
-      case 'Backspace':
-        e.preventDefault()
-        void clearSelection()
-        break
       case 'Escape':
-        setSel(active ? { r1: active.r, c1: active.c, r2: active.r, c2: active.c } : null)
+        setSel({ r1: r, c1: c, r2: r, c2: c })
         break
       case 'Home':
         e.preventDefault()
@@ -564,25 +565,25 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     }
   }
 
-  // mouse -----------------------------------------------------------------------------------------------------------------
   useEffect(() => {
     const up = () => (mouseDown.current = false)
     window.addEventListener('mouseup', up)
     return () => window.removeEventListener('mouseup', up)
   }, [])
 
-  // column resize ---------------------------------------------------------------------------------------------------------
+  // column resize and reorder ----------------------------------------------------------------------------------------------
   const startResize = (e: React.PointerEvent, d: Definition) => {
     e.preventDefault()
     e.stopPropagation()
     const x0 = e.clientX
     const w0 = wOf(d)
     const sign = rtl() ? -1 : 1
-    const move = (ev: PointerEvent) => setResizing((r) => ({ ...r, [d.id]: Math.max(80, Math.min(1200, w0 + (ev.clientX - x0) * sign)) }))
+    const clamp = (x: number) => Math.max(80, Math.min(1200, w0 + (x - x0) * sign))
+    const move = (ev: PointerEvent) => setResizing((r) => ({ ...r, [d.id]: clamp(ev.clientX) }))
     const up = (ev: PointerEvent) => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
-      const w = Math.max(80, Math.min(1200, w0 + (ev.clientX - x0) * sign))
+      const w = clamp(ev.clientX)
       setResizing((r) => {
         const n = { ...r }
         delete n[d.id]
@@ -606,8 +607,7 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     if (!drag || drag === target.id || !ctl.canSchema) return
     const ids = cols.map((c) => c.id).filter((id) => id !== drag)
     ids.splice(ids.indexOf(target.id) + (after ? 1 : 0), 0, drag)
-    // the title stays the first column
-    const tid = cols.find((c) => c.kind === 'title')!.id
+    const tid = cols.find((c) => c.kind === 'title')!.id // the title stays the first column
     void ctl.patch({ visibleProperties: [tid, ...ids.filter((i) => i !== tid)] })
   }
 
@@ -635,60 +635,98 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [justCreated, rowItems.length])
 
-  const bulkTrash = async () => {
-    const ids = [...checked]
-    if (!ids.length || !(await confirmDialog({ title: t('Move {n} item(s) to the trash?', { n: ids.length }), danger: true, confirmLabel: t('Move to trash') }))) return
+  const trash = async (ids: Id[]) => {
     const r = await svc.tryExec([{ type: 'row.trash', payload: { pageIds: ids } }])
-    if (r.ok) setChecked(new Set())
+    if (r.ok) showToast(ids.length === 1 ? t('Moved to trash') : t('{n} items moved to trash', { n: ids.length }), () => void svc.undo())
     else ctl.notice(errorText(r.code, r.message))
+    return r.ok
   }
-  const bulkDuplicate = async () => {
-    const r = await svc.tryExec([{ type: 'row.duplicate', payload: { rootPageIds: [...checked] } }])
-    if (r.ok) setChecked(new Set())
+  const duplicate = async (ids: Id[]) => {
+    const r = await svc.tryExec([{ type: 'row.duplicate', payload: { rootPageIds: ids } }])
+    if (r.ok) showToast(ids.length === 1 ? t('Duplicated') : t('{n} items duplicated', { n: ids.length }), () => void svc.undo())
     else ctl.notice(errorText(r.code, r.message))
+    return r.ok
   }
+  const rowItemsMenu = (id: Id): MenuItem[] => [
+    { label: 'Open', icon: <Icon name="maximize" size={16} />, onSelect: () => nav.openRow(id, 'full') },
+    { label: 'Open in side peek', icon: <Icon name="panel-right" size={16} />, onSelect: () => nav.openRow(id, 'side') },
+    { label: 'Open in the center', icon: <Icon name="minimize" size={16} />, onSelect: () => nav.openRow(id, 'center') },
+    { kind: 'sep' },
+    { label: 'Duplicate', icon: <Icon name="copy" size={16} />, disabled: !ctl.canEditRows, onSelect: () => void duplicate([id]) },
+    { kind: 'sep' },
+    { label: 'Delete', icon: <Icon name="trash" size={16} />, danger: true, disabled: !ctl.canEditRows, onSelect: () => void trash([id]) },
+  ]
+  const totalItems = (d: Definition): MenuItem[] => [
+    {
+      label: 'None',
+      checked: !totals[d.id],
+      onSelect: () => {
+        const n = { ...totals }
+        delete n[d.id]
+        void ctl.patch({ totals: n as never })
+      },
+    },
+    { kind: 'sep' },
+    ...totalOps(d).map((op): MenuItem => ({ label: aggKey(op), checked: totals[d.id] === op, onSelect: () => void ctl.patch({ totals: { ...totals, [d.id]: op } as never }) })),
+  ]
 
   // render ----------------------------------------------------------------------------------------------------------------
   if (q.error)
     return (
-      <div className="db-error-box" role="alert">
-        <b>{t('This view cannot be shown')}</b>
-        <p>{errorText(q.error.code, q.error.message)}</p>
-        <button type="button" className="primary" onClick={() => ctl.setPersonal({ filter: null, sorts: null })}>
-          {t('Reset filters and sorts')}
-        </button>
-      </div>
+      <ViewMessage
+        tone="bad"
+        title={t('This view cannot be shown')}
+        action={
+          <Button size="sm" onClick={() => ctl.setPersonal({ filter: null, sorts: null })}>
+            {t('Reset filters and sorts')}
+          </Button>
+        }
+      >
+        {errorText(q.error.code, q.error.message)}
+      </ViewMessage>
     )
   const version = svc.getVersion()
-  const firstVisible = items.slice(start, end)
-  const totalW = HANDLE_W + cols.reduce((n, d) => n + wOf(d), 0) + 44
+  const shownItems = items.slice(start, end)
+  const totalW = HANDLE_W + cols.reduce((n, d) => n + wOf(d), 0) + ADD_W
   const filtered = !!(q.filter || ctl.search)
-  const colCount = cols.length
+  const frozenStyle = (ci: number) => (ci <= frozenIdx ? { insetInlineStart: offsets[ci] } : undefined)
+  const allChecked = rowCount > 0 && rowItems.every((r) => checked.has(r.id))
 
   return (
-    <div className="db-table-wrap">
+    <div className="dv-table-wrap">
       {checked.size > 0 && (
-        <div className="db-bulk" role="toolbar" aria-label={t('Selected items')}>
+        <div className="dv-bulk" role="toolbar" aria-label={t('Selected items')}>
           <b>{t('{n} selected', { n: checked.size })}</b>
-          <button type="button" onClick={() => void bulkDuplicate()}>
-            <Ic.Copy size={13} /> {t('Duplicate')}
-          </button>
-          <button type="button" className="danger" onClick={() => void bulkTrash()}>
-            <Ic.Trash size={13} /> {t('Delete')}
-          </button>
-          <button type="button" onClick={() => setChecked(new Set())}>
+          <Button size="sm" variant="ghost" icon={<Icon name="copy" size={15} />} disabled={!ctl.canEditRows} onClick={() => void duplicate([...checked]).then((ok) => ok && setChecked(new Set()))}>
+            {t('Duplicate')}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="dv-danger"
+            icon={<Icon name="trash" size={15} />}
+            disabled={!ctl.canEditRows}
+            onClick={async () => {
+              const ids = [...checked]
+              if (!(await confirmDialog({ title: t('Move {n} item(s) to the trash?', { n: ids.length }), danger: true, confirmLabel: t('Move to trash') }))) return
+              if (await trash(ids)) setChecked(new Set())
+            }}
+          >
+            {t('Delete')}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setChecked(new Set())}>
             {t('Clear selection')}
-          </button>
+          </Button>
         </div>
       )}
       <HorizontalScroll
         viewportRef={scroller}
-        viewportClassName="db-table"
+        viewportClassName="dv-table"
         label={t('Database')}
         viewportProps={{
           role: 'grid',
           'aria-rowcount': rowCount + 1,
-          'aria-colcount': colCount,
+          'aria-colcount': cols.length,
           tabIndex: 0,
           onKeyDown,
           onCopy: (e) => onCopy(e),
@@ -697,59 +735,69 @@ export function TableView({ svc, view, ctl }: ViewProps) {
           'data-density': density,
         }}
       >
-        <div className="db-thead" role="row" style={{ gridTemplateColumns: gridCols, minWidth: totalW }}>
-          <div className="db-th handle" />
-          {cols.map((d, ci) => (
-            <div
-              key={d.id}
-              role="columnheader"
-              className={'db-th' + (ci <= frozenIdx ? ' frozen' : '') + (dragCol === d.id ? ' dragging' : '') + (dropAt?.id === d.id ? (dropAt.after ? ' drop-after' : ' drop-before') : '')}
-              style={ci <= frozenIdx ? { insetInlineStart: offsets[ci] } : undefined}
-              draggable={ctl.canSchema && d.kind !== 'title'}
-              onDragStart={(e) => {
-                dragColRef.current = d.id
-                e.dataTransfer.effectAllowed = 'move'
-                e.dataTransfer.setData('application/x-noviq-column', d.id)
-                e.dataTransfer.setData('text/plain', d.name)
-                window.setTimeout(() => dragColRef.current === d.id && setDragCol(d.id), 0) // after the browser took its drag image
-              }}
-              onDragOver={(e) => {
-                if (!dragColRef.current) return
-                e.preventDefault()
-                e.dataTransfer.dropEffect = 'move'
-                const after = dropsAfter(d)
-                if (dragColRef.current !== d.id) setDropAt((cur) => (cur?.id === d.id && cur.after === after ? cur : { id: d.id, after }))
-              }}
-              onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setDropAt((cur) => (cur?.id === d.id ? null : cur))}
-              onDrop={(e) => (e.preventDefault(), dropColumn(d))}
-              onDragEnd={endColDrag}
-              onClick={(e) => setMenu({ def: d, rect: e.currentTarget.getBoundingClientRect() })}
-            >
-              <KindIcon kind={d.kind} />
-              <span className="db-th-name" dir="auto">
-                {d.name}
-              </span>
-              {q.sorts.some((s) => s.propertyId === d.id) && <span className="db-th-sort">{q.sorts.find((s) => s.propertyId === d.id)!.direction === 'asc' ? '↑' : '↓'}</span>}
-              <span className="db-resize" onPointerDown={(e) => startResize(e, d)} onClick={(e) => e.stopPropagation()} />
-            </div>
-          ))}
-          <div className="db-th add">
+        <div className="dv-thead" role="row" style={{ gridTemplateColumns: gridCols, minWidth: totalW }}>
+          <div className="dv-th dv-handle">
+            {rowCount > 0 && <Checkbox label={t('Select all')} checked={allChecked} onChange={(on) => setChecked(on ? new Set(rowItems.map((r) => r.id)) : new Set())} />}
+          </div>
+          {cols.map((d, ci) => {
+            const sort = q.sorts.find((s) => s.propertyId === d.id)
+            return (
+              <div
+                key={d.id}
+                role="columnheader"
+                aria-sort={sort ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}
+                className="dv-th"
+                data-frozen={ci <= frozenIdx || undefined}
+                data-dragging={dragCol === d.id || undefined}
+                data-drop={dropAt?.id === d.id ? (dropAt.after ? 'after' : 'before') : undefined}
+                style={frozenStyle(ci)}
+                draggable={ctl.canSchema && d.kind !== 'title'}
+                onDragStart={(e) => {
+                  dragColRef.current = d.id
+                  e.dataTransfer.effectAllowed = 'move'
+                  e.dataTransfer.setData('application/x-nevis-column', d.id)
+                  e.dataTransfer.setData('text/plain', d.name)
+                  window.setTimeout(() => dragColRef.current === d.id && setDragCol(d.id), 0) // after the browser took its drag image
+                }}
+                onDragOver={(e) => {
+                  if (!dragColRef.current) return
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  const after = dropsAfter(d)
+                  if (dragColRef.current !== d.id) setDropAt((cur) => (cur?.id === d.id && cur.after === after ? cur : { id: d.id, after }))
+                }}
+                onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setDropAt((cur) => (cur?.id === d.id ? null : cur))}
+                onDrop={(e) => (e.preventDefault(), dropColumn(d))}
+                onDragEnd={endColDrag}
+              >
+                <button type="button" className="dv-th-btn" onClick={(e) => setColMenu({ def: d, rect: e.currentTarget.getBoundingClientRect() })}>
+                  <KindIcon kind={d.kind} />
+                  <span className="dv-th-name" dir="auto">
+                    {d.name}
+                  </span>
+                  {sort && <Icon name={sort.direction === 'asc' ? 'arrow-up' : 'arrow-down'} size={14} className="dv-th-sort" />}
+                </button>
+                <span className="dv-resize" aria-hidden onPointerDown={(e) => startResize(e, d)} onClick={(e) => e.stopPropagation()} />
+              </div>
+            )
+          })}
+          <div className="dv-th dv-add">
             {ctl.canSchema && (
-              <button type="button" className="icon-btn" aria-label={t('Add a property')} onClick={(e) => setNewProp(e.currentTarget.getBoundingClientRect())}>
-                <Ic.Plus size={14} />
-              </button>
+              <IconButton label={t('Add a property')} onClick={(e) => setNewProp(e.currentTarget.getBoundingClientRect())}>
+                <Icon name="plus" size={16} />
+              </IconButton>
             )}
           </div>
         </div>
-        <div className="db-tbody" role="rowgroup" style={{ minWidth: totalW }}>
+        <div className="dv-tbody" role="rowgroup" style={{ minWidth: totalW }}>
           {virtual && start > 0 && <div style={{ height: start * rowH }} aria-hidden />}
-          {firstVisible.map((it) => {
+          {shownItems.map((it) => {
             if (it.t === 'group') {
               return (
-                <div key={'g' + it.key} className="db-group-row" role="row" style={{ minWidth: totalW }}>
+                <div key={'g' + it.key} className="dv-group-row" role="row" style={{ minWidth: totalW }}>
                   <button
                     type="button"
-                    className="db-group-t"
+                    className="dv-group-toggle"
                     aria-expanded={!it.collapsed}
                     onClick={() =>
                       setCollapsedG((s) => {
@@ -759,15 +807,14 @@ export function TableView({ svc, view, ctl }: ViewProps) {
                       })
                     }
                   >
-                    <span className={'db-caret' + (it.collapsed ? '' : ' open')}>
-                      <Ic.Chevron size={12} />
-                    </span>{' '}
-                    <b dir="auto">{it.label}</b> <span className="db-count">{it.count}</span>
+                    <Icon name="chevron-down" size={15} className="dv-caret" />
+                    <b dir="auto">{it.label}</b>
+                    <span className="ds-badge">{it.count}</span>
                   </button>
                   {ctl.canEditRows && group && (
-                    <button type="button" className="icon-btn" aria-label={t('New item in this group')} onClick={() => void addRow(groupContext(svc, group, it.key, it.memberId))}>
-                      <Ic.Plus size={13} />
-                    </button>
+                    <IconButton label={t('New item in this group')} onClick={() => void addRow(groupContext(svc, group, it.key))}>
+                      <Icon name="plus" size={15} />
+                    </IconButton>
                   )}
                 </div>
               )
@@ -775,83 +822,89 @@ export function TableView({ svc, view, ctl }: ViewProps) {
             const row = svc.state.row(it.id)
             if (!row) return null
             const isActiveRow = active?.r === it.r
+            const hasKids = nested && (svc.state.snapshot().childrenOf.get(it.id)?.length ?? 0) > 0
             return (
               <div
                 key={it.id}
                 role="row"
                 aria-rowindex={it.r + 2}
-                className={'db-row' + (it.context ? ' context' : '') + (checked.has(it.id) ? ' checked' : '') + (dragRow === it.id ? ' dragging' : '') + (row.page.deletedAt ? ' trashed' : '')}
+                className="dv-row"
+                data-context={it.context || undefined}
+                data-checked={checked.has(it.id) || undefined}
+                data-dragging={dragRow === it.id || undefined}
+                data-trashed={row.page.deletedAt ? true : undefined}
                 style={{ gridTemplateColumns: gridCols, minWidth: totalW, height: wrap ? undefined : rowH }}
                 data-id={it.id}
                 onDragOver={(e) => dragRow && e.preventDefault()}
                 onDrop={() => dropRow(it.id)}
+                onContextMenu={(e) => {
+                  if ((e.target as HTMLElement).closest('input, textarea, [contenteditable="true"]')) return
+                  e.preventDefault()
+                  openMenu(rowItemsMenu(it.id), e)
+                }}
               >
-                <div className="db-td handle" role="rowheader">
-                  <input
-                    type="checkbox"
-                    aria-label={t('Select item')}
+                <div className="dv-td dv-handle" role="rowheader">
+                  <button
+                    type="button"
+                    className="dv-grip"
+                    draggable={!hasSorts && !q.groups.length && ctl.canEditRows}
+                    aria-label={t('Item actions')}
+                    title={hasSorts || q.groups.length ? t('Remove the sort to reorder rows by hand') : t('Drag to reorder, click for actions')}
+                    onDragStart={() => !hasSorts && setDragRow(it.id)}
+                    onDragEnd={() => setDragRow(null)}
+                    onClick={(e) => openMenu(rowItemsMenu(it.id), e.currentTarget)}
+                  >
+                    <Icon name="more-vertical" size={16} />
+                  </button>
+                  <Checkbox
+                    label={t('Select item')}
                     checked={checked.has(it.id)}
-                    onChange={(e) =>
+                    onChange={(on) =>
                       setChecked((s) => {
                         const n = new Set(s)
-                        e.target.checked ? n.add(it.id) : n.delete(it.id)
+                        on ? n.add(it.id) : n.delete(it.id)
                         return n
                       })
                     }
                   />
-                  <span
-                    className={'db-grip' + (hasSorts || q.groups.length ? ' off' : '')}
-                    draggable={!hasSorts && !q.groups.length && ctl.canEditRows}
-                    title={hasSorts ? t('Remove the sort to reorder rows by hand') : t('Drag to reorder')}
-                    onDragStart={() => !hasSorts && setDragRow(it.id)}
-                    onDragEnd={() => setDragRow(null)}
-                    onContextMenu={(e) => {
-                      e.preventDefault()
-                      setRowMenu({ id: it.id, rect: e.currentTarget.getBoundingClientRect() })
-                    }}
-                    onClick={(e) => setRowMenu({ id: it.id, rect: e.currentTarget.getBoundingClientRect() })}
-                  >
-                    ⋮⋮
-                  </span>
                 </div>
                 {cols.map((d, ci) => {
                   const isActive = isActiveRow && active?.c === ci
-                  const inSel = selected && it.r >= selected.r1 && it.r <= selected.r2 && ci >= selected.c1 && ci <= selected.c2
-                  const editing = edit && edit.r === it.r && edit.c === ci
+                  const inSel = !!selected && it.r >= selected.r1 && it.r <= selected.r2 && ci >= selected.c1 && ci <= selected.c2
+                  const editing = !!edit && edit.r === it.r && edit.c === ci
                   return (
                     <div
                       key={d.id}
                       role="gridcell"
                       aria-colindex={ci + 1}
-                      aria-selected={!!inSel}
+                      aria-selected={inSel}
                       data-r={it.r}
                       data-c={ci}
-                      className={
-                        'db-td' +
-                        (ci <= frozenIdx ? ' frozen' : '') +
-                        (isActive ? ' active' : '') +
-                        (inSel && !isActive ? ' sel' : '') +
-                        (d.kind === 'title' ? ' title' : '') +
-                        (wrap ? ' wrap' : '') +
-                        (!DESCRIPTORS[d.kind].writable && d.kind !== 'title' ? ' ro' : '')
-                      }
-                      style={ci <= frozenIdx ? { insetInlineStart: offsets[ci] } : undefined}
+                      className="dv-td"
+                      data-kind={d.kind}
+                      data-frozen={ci <= frozenIdx || undefined}
+                      data-active={isActive || undefined}
+                      data-sel={(inSel && !isActive) || undefined}
+                      data-wrap={wrap || undefined}
+                      data-ro={(!DESCRIPTORS[d.kind].writable && d.kind !== 'title') || undefined}
+                      style={frozenStyle(ci)}
                       onMouseDown={(e) => {
-                        if ((e.target as HTMLElement).closest('button, a, input, .db-chip.db-rel')) return
+                        if (e.button !== 0 || (e.target as HTMLElement).closest('button, a, input, .dv-rel')) return
                         mouseDown.current = true
                         moveTo(it.r, ci, e.shiftKey)
                         focusGrid()
                       }}
                       onMouseEnter={() => mouseDown.current && setSel((s) => (s ? { ...s, r2: it.r, c2: ci } : s))}
                       onDoubleClick={() => begin(it.r, ci)}
-                      onClick={() => active?.r === it.r && active?.c === ci && d.kind !== 'title' && !editing && isPopoverKind(d.kind) && begin(it.r, ci)}
+                      onClick={() => isActive && d.kind !== 'title' && !editing && isPopoverKind(d.kind) && begin(it.r, ci)}
                     >
                       {d.kind === 'title' && (
-                        <span className="db-title-pre" style={{ paddingInlineStart: it.depth * 18 }}>
-                          {nested && (svc.state.snapshot().childrenOf.get(it.id)?.length ?? 0) > 0 ? (
+                        <span className="dv-title-pre" style={{ paddingInlineStart: it.depth * 20 }}>
+                          {hasKids ? (
                             <button
                               type="button"
-                              className={'db-caret' + (collapsedR.has(it.id) ? '' : ' open')}
+                              className="dv-subtoggle"
+                              aria-expanded={!collapsedR.has(it.id)}
                               aria-label={t('Show / hide sub-items')}
                               onClick={(e) => {
                                 e.stopPropagation()
@@ -862,10 +915,10 @@ export function TableView({ svc, view, ctl }: ViewProps) {
                                 })
                               }}
                             >
-                              <Ic.Chevron size={12} />
+                              <Icon name="chevron-down" size={14} className="dv-caret" />
                             </button>
                           ) : nested ? (
-                            <span className="db-caret sp" />
+                            <span className="dv-subtoggle" aria-hidden />
                           ) : null}
                           <PageIcon page={repo.getRaw(it.id) ?? { id: it.id, icon: undefined, kind: undefined }} />
                         </span>
@@ -880,77 +933,76 @@ export function TableView({ svc, view, ctl }: ViewProps) {
                           onNavigate={(dir) => (dir === 'down' ? moveTo(it.r + 1, ci) : dir === 'next' ? moveTo(it.r, ci + 1) : moveTo(it.r, ci - 1))}
                         />
                       ) : (
-                        <div className="db-cell-in">
+                        <div className="dv-cell">
                           <CellBox svc={svc} rs={rs} row={row} def={d} version={version} />
                         </div>
                       )}
                       {d.kind === 'title' && !editing && (
                         <button
                           type="button"
-                          className="db-open"
-                          aria-label={t('Open')}
-                          title={t('Open')}
+                          className="dv-open"
+                          aria-label={t('Open {n}', { n: plainTitle(row.page.title) })}
                           onClick={(e) => {
                             e.stopPropagation()
-                            nav.openRow(it.id, cfg.openMode === 'full_page' ? 'full' : cfg.openMode === 'center_peek' ? 'center' : 'side')
+                            nav.openRow(it.id, openMode)
                           }}
                         >
-                          <Ic.Open size={13} /> {t('Open')}
+                          <Icon name="panel-right" size={14} /> {t('Open')}
                         </button>
                       )}
                       {editing && isPopoverKind(d.kind) && edit?.rect && <PopoverEditor svc={svc} row={row} def={d} anchor={edit.rect} onClose={closeEdit} />}
                     </div>
                   )
                 })}
-                <div className="db-td add" />
+                <div className="dv-td dv-add" />
               </div>
             )
           })}
           {virtual && end < items.length && <div style={{ height: (items.length - end) * rowH }} aria-hidden />}
           {rowCount === 0 && (
-            <div className="db-empty">
+            <div className="dv-table-empty">
               {filtered ? (
-                <>
-                  <b>{t('No items match')}</b>
-                  <p>{t('The database is not empty: your filters or search hide everything.')}</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      ctl.setPersonal({ filter: null, sorts: q.sorts })
-                      void ctl.patch({})
-                    }}
-                  >
-                    {t('Clear filters')}
-                  </button>
-                </>
+                <ViewMessage
+                  title={t('No items match')}
+                  action={
+                    <Button size="sm" onClick={() => ctl.setPersonal({ filter: null, sorts: q.sorts })}>
+                      {t('Clear filters')}
+                    </Button>
+                  }
+                >
+                  {t('The database is not empty: your filters or search hide everything.')}
+                </ViewMessage>
               ) : (
-                <>
-                  <b>{t('Nothing here yet')}</b>
-                  <p>{t('Add the first item, import a CSV file, or link another database.')}</p>
-                  {ctl.canEditRows && (
-                    <button type="button" className="primary" onClick={() => void addRow()}>
-                      <Ic.Plus size={13} /> {t('New item')}
-                    </button>
-                  )}
-                </>
+                <ViewMessage
+                  title={t('Nothing here yet')}
+                  action={
+                    ctl.canEditRows && (
+                      <Button size="sm" variant="primary" icon={<Icon name="plus" size={15} />} onClick={() => void addRow()}>
+                        {t('New item')}
+                      </Button>
+                    )
+                  }
+                >
+                  {t('Add the first item, import a CSV file, or link another database.')}
+                </ViewMessage>
               )}
             </div>
           )}
           {q.hasMore && (
-            <button type="button" className="db-more" onClick={() => setWant((w) => w + 500)}>
+            <button type="button" className="dv-more" onClick={() => setWant((w) => w + 500)}>
               {t('Load more ({n} of {m})', { n: rowCount, m: q.total })}
             </button>
           )}
         </div>
         {ctl.canEditRows && rowCount > 0 && (
-          <div className="db-newrow" style={{ minWidth: totalW }}>
+          <div className="dv-newrow" style={{ minWidth: totalW }}>
             <button type="button" onClick={() => void addRow()}>
-              <Ic.Plus size={13} /> {t('New item')}
+              <Icon name="plus" size={15} /> {t('New item')}
             </button>
           </div>
         )}
-        <div className="db-tfoot" role="row" style={{ gridTemplateColumns: gridCols, minWidth: totalW }}>
-          <div className="db-tf handle" />
+        <div className="dv-tfoot" role="row" style={{ gridTemplateColumns: gridCols, minWidth: totalW }}>
+          <div className="dv-tf dv-handle" />
           {cols.map((d, ci) => {
             const op = totals[d.id]
             const res = (q.totals as Record<string, unknown> | null)?.[d.id] as { value: { c: string; n?: number; v?: { start: string; end: string | null } } } | undefined
@@ -958,35 +1010,39 @@ export function TableView({ svc, view, ctl }: ViewProps) {
               <button
                 type="button"
                 key={d.id}
-                className={'db-tf' + (ci <= frozenIdx ? ' frozen' : '')}
-                style={ci <= frozenIdx ? { insetInlineStart: offsets[ci] } : undefined}
-                onClick={(e) => setTotalMenu({ def: d, rect: e.currentTarget.getBoundingClientRect() })}
+                className="dv-tf"
+                data-frozen={ci <= frozenIdx || undefined}
+                data-set={op ? true : undefined}
+                style={frozenStyle(ci)}
+                onClick={(e) => openMenu(totalItems(d), e.currentTarget)}
               >
                 {op ? (
                   <>
-                    <small>{aggLabel(op)}</small> <b dir="ltr">{res?.value.c === 'number' ? Number((res.value.n ?? 0).toFixed(4)) : res?.value.c === 'date' ? res.value.v?.start : ''}</b>
+                    <small>{aggLabel(op)}</small>
+                    <b dir="ltr">{res?.value.c === 'number' ? Number((res.value.n ?? 0).toFixed(4)) : res?.value.c === 'date' ? res.value.v?.start : ''}</b>
                   </>
                 ) : ci === 0 ? (
                   <small>{t('{n} items', { n: q.total })}</small>
                 ) : (
-                  <small className="calc">{t('Calculate')}</small>
+                  <small className="dv-tf-calc">{t('Calculate')}</small>
                 )}
               </button>
             )
           })}
         </div>
       </HorizontalScroll>
-      {menu && (
+      {colMenu && (
         <PropertyMenu
           svc={svc}
-          def={menu.def}
-          anchor={menu.rect}
-          onClose={() => setMenu(null)}
+          def={colMenu.def}
+          anchor={colMenu.rect}
+          onClose={() => setColMenu(null)}
           actions={{
-            sort: (dir) => ctl.setPersonal({ ...(ctl.personal ?? {}), sorts: [{ propertyId: menu.def.id, direction: dir }] }),
-            filter: () => ctl.openFilterFor(menu.def.id),
-            freeze: () => void ctl.patch({ frozenThrough: frozenId === menu.def.id ? null : menu.def.id }),
-            hide: () => void ctl.patch({ visibleProperties: cols.map((c) => c.id).filter((id) => id !== menu.def.id) }),
+            sort: (dir) => ctl.setPersonal({ ...(ctl.personal ?? {}), sorts: [{ propertyId: colMenu.def.id, direction: dir }] }),
+            filter: () => ctl.openFilterFor(colMenu.def.id),
+            freeze: () => void ctl.patch({ frozenThrough: frozenId === colMenu.def.id ? null : colMenu.def.id }),
+            frozen: frozenId === colMenu.def.id,
+            hide: () => void ctl.patch({ visibleProperties: cols.map((c) => c.id).filter((id) => id !== colMenu.def.id) }),
           }}
           onEditActions={(d) => window.dispatchEvent(new CustomEvent('db-edit-actions', { detail: d.id }))}
         />
@@ -1000,60 +1056,7 @@ export function TableView({ svc, view, ctl }: ViewProps) {
           onCreated={(id) => void ctl.patch({ visibleProperties: [...cols.map((c) => c.id), id] })}
         />
       )}
-      {rowMenu && (
-        <Popover anchor={rowMenu.rect} onClose={() => setRowMenu(null)}>
-          <div className="ds-menu">
-            <MenuItem icon={<Ic.Open size={14} />} label={t('Open')} onClick={() => (nav.openRow(rowMenu.id, 'full'), setRowMenu(null))} />
-            <MenuItem icon={<Ic.Panel size={14} />} label={t('Open in side peek')} onClick={() => (nav.openRow(rowMenu.id, 'side'), setRowMenu(null))} />
-            <MenuItem
-              icon={<Ic.Copy size={14} />}
-              label={t('Duplicate')}
-              onClick={async () => {
-                setRowMenu(null)
-                const r = await svc.tryExec([{ type: 'row.duplicate', payload: { rootPageIds: [rowMenu.id] } }])
-                if (!r.ok) ctl.notice(errorText(r.code, r.message))
-              }}
-            />
-            <MenuSep />
-            <MenuItem
-              icon={<Ic.Trash size={14} />}
-              label={t('Delete')}
-              danger
-              onClick={async () => {
-                setRowMenu(null)
-                const r = await svc.tryExec([{ type: 'row.trash', payload: { pageIds: [rowMenu.id] } }])
-                if (r.ok) ctl.notice(t('Moved to trash'), { label: t('Undo'), run: () => void svc.undo() })
-                else ctl.notice(errorText(r.code, r.message))
-              }}
-            />
-          </div>
-        </Popover>
-      )}
-      {totalMenu && (
-        <Popover anchor={totalMenu.rect} onClose={() => setTotalMenu(null)}>
-          <div className="ds-menu">
-            <MenuItem
-              label={t('None')}
-              onClick={() => {
-                const n = { ...totals }
-                delete n[totalMenu.def.id]
-                void ctl.patch({ totals: n as never })
-                setTotalMenu(null)
-              }}
-            />
-            {totalOps(totalMenu.def).map((op) => (
-              <MenuItem
-                key={op}
-                label={aggLabel(op)}
-                onClick={() => {
-                  void ctl.patch({ totals: { ...totals, [totalMenu.def.id]: op } as never })
-                  setTotalMenu(null)
-                }}
-              />
-            ))}
-          </div>
-        </Popover>
-      )}
+      {menu}
     </div>
   )
 }
@@ -1066,7 +1069,7 @@ function totalOps(d: Definition): RollupAggregation[] {
 }
 
 /** Creating inside a group sets that group's value (location beats template and inference). */
-function groupContext(svc: ViewProps['svc'], group: { propertyId: Id; mode?: string }, key: string, memberId: Id | null): { propertyId: Id; cell: Cell }[] {
+function groupContext(svc: ViewProps['svc'], group: { propertyId: Id; mode?: string }, key: string): { propertyId: Id; cell: Cell }[] {
   const def = svc.state.prop(group.propertyId)
   if (!def || key === NONE_GROUP) return []
   switch (def.kind) {
@@ -1081,7 +1084,6 @@ function groupContext(svc: ViewProps['svc'], group: { propertyId: Id; mode?: str
     case 'checkbox':
       return [{ propertyId: def.id, cell: { kind: 'checkbox', value: key === 'true' } }]
     default:
-      void memberId
       return []
   }
 }

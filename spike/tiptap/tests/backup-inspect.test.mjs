@@ -52,7 +52,7 @@ test('a damaged backup is refused before anything could be written', async () =>
 
 test('a desktop vault backup is summarised from its entries', async () => {
   const enc = (v) => Buffer.from(JSON.stringify(v)).toString('base64')
-  const data = { format: 'noviq-vault-backup', version: 2, name: 'My notes', created_at: 1793512537801, entries: {
+  const data = { format: 'nevis-vault-backup', version: 2, name: 'My notes', created_at: 1793512537801, entries: {
     'pages/a.json': { data: enc(page('a')), sha256: 'x' },
     'pages/f.json': { data: enc(page('f', { kind: 'folder' })), sha256: 'x' },
     'pages/t.json': { data: enc(page('t', { deletedAt: 1 })), sha256: 'x' },
@@ -61,4 +61,6 @@ test('a desktop vault backup is summarised from its entries', async () => {
   } }
   const plan = await inspectBackup(JSON.stringify(data))
   assert.deepEqual({ ...plan.summary, bytes: 0 }, { kind: 'vault', version: 2, createdAt: 1793512537801, name: 'My notes', pages: 2, folders: 1, trashed: 1, files: 1, bytes: 0 })
+  const legacy = await inspectBackup(JSON.stringify({ ...data, format: 'noviq-vault-backup' }))
+  assert.deepEqual({ ...legacy.summary, bytes: 0 }, { ...plan.summary, bytes: 0 })
 })

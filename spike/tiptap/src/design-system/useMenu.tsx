@@ -1,4 +1,4 @@
-import { useCallback, useState, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { Menu, type MenuItem } from './Menu'
 
 type Target = DOMRect | HTMLElement | MouseEvent
@@ -16,9 +16,16 @@ const rectOf = (target: Target): DOMRect => {
  * {menu}
  */
 export function useMenu() {
+  const trigger = useRef<HTMLElement | null>(null)
   const [state, setState] = useState<{ items: MenuItem[]; anchor: DOMRect } | null>(null)
-  const open = useCallback((items: MenuItem[], target: Target) => setState({ items, anchor: rectOf(target) }), [])
-  const close = useCallback(() => setState(null), [])
+  const open = useCallback((items: MenuItem[], target: Target) => {
+    trigger.current = target instanceof HTMLElement ? target : document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setState({ items, anchor: rectOf(target) })
+  }, [])
+  const close = useCallback(() => {
+    setState(null)
+    if (trigger.current?.isConnected) trigger.current.focus({ preventScroll: true })
+  }, [])
   const menu: ReactNode = state ? <Menu anchor={state.anchor} items={state.items} onClose={close} /> : null
   return { open, close, menu }
 }

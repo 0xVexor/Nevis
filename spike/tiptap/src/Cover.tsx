@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import type { Cover, Page } from './repo'
 import { pickFiles } from './io'
 import { putFile, urlFor } from './attachments'
-import * as Ic from './icons'
 import { t } from './i18n'
-import { BACKGROUNDS } from './design-system/backgrounds'
+import { BACKGROUND_GROUPS, BACKGROUNDS, type BackgroundGroup } from './design-system/backgrounds'
+import { Button, Icon, Tabs, useMenu } from './design-system'
 import { COVER_SCENES } from './design-system/scenery'
 
 /** Built-in covers: ten abstract designs, pure CSS, so they cost no storage and survive backup/restore untouched. */
@@ -151,69 +151,81 @@ function useCoverStyle(cover: Cover | undefined) {
 
 export function CoverBanner({ cover, onChange, onRemove }: { cover: Cover; onChange: (anchor: DOMRect) => void; onRemove: () => void }) {
   const style = useCoverStyle(cover)
+  const { open, menu } = useMenu()
   return (
-    <div className="cover" style={style}>
+    <div
+      className="cover"
+      style={style}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        const at = new DOMRect(e.clientX, e.clientY, 0, 0)
+        open(
+          [
+            { label: 'Change cover', icon: <Icon name="image" />, onSelect: () => onChange(at) },
+            { label: 'Remove cover', icon: <Icon name="trash" />, danger: true, onSelect: onRemove },
+          ],
+          e,
+        )
+      }}
+    >
       <div className="cover-acts">
-        <button onClick={(e) => onChange(e.currentTarget.getBoundingClientRect())}>
-          <Ic.Image size={15} />
+        <Button size="sm" icon={<Icon name="image" size={14} />} onClick={(e) => onChange(e.currentTarget.getBoundingClientRect())}>
           {t('Change cover')}
-        </button>
-        <button onClick={onRemove}>
-          <Ic.Trash size={15} />
+        </Button>
+        <Button size="sm" icon={<Icon name="trash" size={14} />} onClick={onRemove}>
           {t('Remove')}
-        </button>
+        </Button>
       </div>
+      {menu}
     </div>
   )
 }
 
+/** The covers on offer are the design system's backgrounds, in its groups; then your own two colours, or an image. Older cover ids keep rendering. */
 export function CoverPicker({ page, onPick, onClose }: { page: Page; onPick: (c: Cover | undefined) => void; onClose: () => void }) {
   const cur = page.cover
   const curId = cur?.kind === 'gradient' ? gradientOf(cur.id).id : null
   const mine = curId && /^custom:/.test(curId) ? curId.slice(7).split(',') : ['#e7d6f7', '#bcd7f7']
   const [a, setA] = useState(mine[0])
   const [b, setB] = useState(mine[1])
+  const [group, setGroup] = useState<BackgroundGroup>(() => BACKGROUNDS.find((bg) => bg.id === curId)?.group ?? 'soft')
   return (
     <div className="cover-pop">
-      <div className="cover-grid">
-        {PICKER.map((g) => (
-          <button
-            key={g.id}
-            title={t(g.label)}
-            aria-label={t(g.label)}
-            className={curId === g.id ? 'on' : ''}
-            style={{ background: g.css }}
-            onClick={() => (onPick({ kind: 'gradient', id: g.id }), onClose())}
-          />
+      <Tabs items={BACKGROUND_GROUPS.map((g) => ({ id: g.id, label: t(g.label) }))} value={group} onChange={(id) => setGroup(id as BackgroundGroup)} />
+      <div className="ds-swatches cover-swatches">
+        {BACKGROUNDS.filter((bg) => bg.group === group).map((bg) => (
+          <button key={bg.id} type="button" className="ds-swatch" title={t(bg.label)} aria-label={t(bg.label)} aria-pressed={curId === bg.id} style={{ background: bg.css }} onClick={() => (onPick({ kind: 'gradient', id: bg.id }), onClose())} />
         ))}
       </div>
       <div className="cover-custom">
         <span>{t('Your own colors')}</span>
-        <input type="color" value={a} aria-label={t('First color')} onChange={(e) => setA(e.target.value)} />
-        <input type="color" value={b} aria-label={t('Second color')} onChange={(e) => setB(e.target.value)} />
-        <i style={{ background: soft(a, b) }} />
-        <button type="button" onClick={() => (onPick({ kind: 'gradient', id: `custom:${a},${b}` }), onClose())}>
+        <input className="ds-color" type="color" value={a} aria-label={t('First color')} onChange={(e) => setA(e.target.value)} />
+        <input className="ds-color" type="color" value={b} aria-label={t('Second color')} onChange={(e) => setB(e.target.value)} />
+        <i className="cover-custom-preview" style={{ background: soft(a, b) }} />
+        <Button size="sm" variant="primary" onClick={() => (onPick({ kind: 'gradient', id: `custom:${a},${b}` }), onClose())}>
           {t('Use')}
-        </button>
+        </Button>
       </div>
-      <button
-        className="cover-row"
-        onClick={async () => {
-          const [f] = await pickFiles('image/*')
-          if (!f) return
-          onPick({ kind: 'image', file: await putFile(f) })
-          onClose()
-        }}
-      >
-        <Ic.Upload size={15} />
-        {t('Upload image…')}
-      </button>
-      {cur && (
-        <button className="cover-row danger" onClick={() => (onPick(undefined), onClose())}>
-          <Ic.Trash size={15} />
-          {t('Remove cover')}
-        </button>
-      )}
+      <div className="cover-more">
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<Icon name="upload" size={14} />}
+          onClick={async () => {
+            const [f] = await pickFiles('image/*')
+            if (!f) return
+            onPick({ kind: 'image', file: await putFile(f) })
+            onClose()
+          }}
+        >
+          {t('Upload image…')}
+        </Button>
+        {cur && (
+          <Button size="sm" variant="ghost" className="ds-btn--danger" icon={<Icon name="trash" size={14} />} onClick={() => (onPick(undefined), onClose())}>
+            {t('Remove cover')}
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

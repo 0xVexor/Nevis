@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { isTauri, vaultInfo } from './db'
-import * as Ic from './icons'
 import { Icon } from './design-system'
 import { t } from './i18n'
 
@@ -21,7 +20,7 @@ export function WorkspaceCard({ onOpen }: { onOpen: () => void }) {
         <small>{t('Local workspace')}</small>
       </span>
       <span className="wscard-chev">
-        <Ic.UpDown size={14} />
+        <Icon name="chevrons-up-down" size={14} />
       </span>
     </button>
   )

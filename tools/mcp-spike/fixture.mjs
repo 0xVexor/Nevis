@@ -19,8 +19,8 @@ const pages = [
  ]) },
  { ...base, id: excludedId, parentId: rootId, title: 'Excluded fixture sentinel', content: doc([paragraph('private-p', 'PRIVATE_SENTINEL_DO_NOT_DISCLOSE')]) },
 ]
-await mkdir(join(vaultPath, '.noviq'), { recursive: true }); await mkdir(join(vaultPath, 'pages'))
-await writeFile(join(vaultPath, '.noviq/vault.json'), JSON.stringify({ format: 1, id: vaultId, name: 'MCP disposable acceptance' }))
+await mkdir(join(vaultPath, '.nevis'), { recursive: true }); await mkdir(join(vaultPath, 'pages'))
+await writeFile(join(vaultPath, '.nevis/vault.json'), JSON.stringify({ format: 1, id: vaultId, name: 'MCP disposable acceptance' }))
 for (const page of pages) await writeFile(join(vaultPath, 'pages', `${page.id}.json`), JSON.stringify(page))
 await writeFile(join(root, 'fixture.json'), JSON.stringify({ vaultId, documentId, rootId, excludedId, vaultPath }, null, 2))
 await writeFile(join(root, 'registry.json'), JSON.stringify({ current: vaultId, vaults: [{ id: vaultId, name: 'MCP disposable acceptance', path: vaultPath, sync: false }] }))

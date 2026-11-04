@@ -1,10 +1,10 @@
 import type { ChainedCommands } from '@tiptap/core'
+import { Icon, Toolbar, ToolbarButton, ToolbarGroup, ToolbarSep } from './design-system'
 import type { Editor } from '@tiptap/core'
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useEditorState } from '@tiptap/react'
 import { NodeSelection } from '@tiptap/pm/state'
-import * as Ic from './icons'
 import { useAnchor } from './editor/useAnchor'
 import { hasHeaderColumn, hasHeaderRow } from './editor/tableHeader'
 import { t } from './i18n'
@@ -24,28 +24,14 @@ function tableDom(editor: Editor): HTMLElement | null {
   return null
 }
 
-function B({ icon, title, on, danger, off, onClick }: { icon: ReactNode; title: string; on?: boolean; danger?: boolean; off?: boolean; onClick: () => void }) {
+function B({ icon, title, on, danger, off, text, onClick }: { icon: ReactNode; title: string; on?: boolean; danger?: boolean; off?: boolean; text?: boolean; onClick: () => void }) {
   return (
-    <button
-      type="button"
-      className={'tbb' + (on ? ' on' : '') + (danger ? ' danger' : '')}
-      title={title}
-      aria-label={title}
-      aria-pressed={on}
-      disabled={off}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
-    >
+    <ToolbarButton label={title} pressed={on} danger={danger} text={text} disabled={off} onClick={onClick}>
       {icon}
-    </button>
+    </ToolbarButton>
   )
 }
-const Group = ({ label, children }: { label: string; children: ReactNode }) => (
-  <div className="tbg" role="group" aria-label={label}>
-    <span className="tbg-l">{label}</span>
-    <div className="tbg-b">{children}</div>
-  </div>
-)
+const Group = ToolbarGroup
 
 /**
  * Toolbar for the table the cursor is in: rows, columns, cells, header, direction, size, position.
@@ -80,41 +66,47 @@ export function TableBubble({ editor }: { editor: Editor }) {
   if (!open) return null
   const run = (fn: (c: ChainedCommands) => ChainedCommands) => fn(editor.chain().focus()).run()
   return createPortal(
-    <div ref={box} className="bubble tbl" role="toolbar" aria-label={t('Table')} dir="ltr" style={{ position: 'fixed', zIndex: 60 }} onMouseDown={(e) => e.preventDefault()}>
+    <Toolbar ref={box} label={t('Table')} style={{ position: 'fixed', zIndex: 'var(--ds-z-float)' }} onMouseDown={(e) => e.preventDefault()}>
       <Group label={t('Row')}>
-        <B icon={<Ic.RowAbove />} title={t('Insert row above')} onClick={() => run((c) => c.addRowBefore())} />
-        <B icon={<Ic.RowBelow />} title={t('Insert row below')} onClick={() => run((c) => c.addRowAfter())} />
-        <B icon={<Ic.RowDelete />} title={t('Delete row')} danger onClick={() => run((c) => c.deleteRow())} />
+        <B icon={<Icon name="row-above" size={16} />} title={t('Insert row above')} onClick={() => run((c) => c.addRowBefore())} />
+        <B icon={<Icon name="row-below" size={16} />} title={t('Insert row below')} onClick={() => run((c) => c.addRowAfter())} />
+        <B icon={<Icon name="row-delete" size={16} />} title={t('Delete row')} danger onClick={() => run((c) => c.deleteRow())} />
       </Group>
+      <ToolbarSep />
       <Group label={t('Column')}>
-        <B icon={<Ic.ColLeft />} title={t('Insert column left')} onClick={() => run((c) => c.addColumnBefore())} />
-        <B icon={<Ic.ColRight />} title={t('Insert column right')} onClick={() => run((c) => c.addColumnAfter())} />
-        <B icon={<Ic.ColDelete />} title={t('Delete column')} danger onClick={() => run((c) => c.deleteColumn())} />
+        <B icon={<Icon name="col-left" size={16} />} title={t('Insert column left')} onClick={() => run((c) => c.addColumnBefore())} />
+        <B icon={<Icon name="col-right" size={16} />} title={t('Insert column right')} onClick={() => run((c) => c.addColumnAfter())} />
+        <B icon={<Icon name="col-delete" size={16} />} title={t('Delete column')} danger onClick={() => run((c) => c.deleteColumn())} />
       </Group>
+      <ToolbarSep />
       <Group label={t('Cells')}>
-        <B icon={<Ic.CellMerge />} title={t('Merge cells')} off={!s?.merge} onClick={() => run((c) => c.mergeCells())} />
-        <B icon={<Ic.CellSplit />} title={t('Split cell')} off={!s?.split} onClick={() => run((c) => c.splitCell())} />
-        <B icon={<Ic.HeadRow />} title={t('Header row')} on={s?.hr} onClick={() => run((c) => c.toggleHeaderRow())} />
-        <B icon={<Ic.HeadCol />} title={t('Header column')} on={s?.hc} onClick={() => run((c) => c.toggleHeaderColumn())} />
+        <B icon={<Icon name="cell-merge" size={16} />} title={t('Merge cells')} off={!s?.merge} onClick={() => run((c) => c.mergeCells())} />
+        <B icon={<Icon name="cell-split" size={16} />} title={t('Split cell')} off={!s?.split} onClick={() => run((c) => c.splitCell())} />
+        <B icon={<Icon name="head-row" size={16} />} title={t('Header row')} on={s?.hr} onClick={() => run((c) => c.toggleHeaderRow())} />
+        <B icon={<Icon name="head-col" size={16} />} title={t('Header column')} on={s?.hc} onClick={() => run((c) => c.toggleHeaderColumn())} />
       </Group>
+      <ToolbarSep />
       <Group label={t('Direction')}>
-        <B icon={<span className="tbb-t">RTL</span>} title={t('Table RTL')} on={s?.dir === 'rtl'} onClick={() => run((c) => c.setTableDirection('rtl'))} />
-        <B icon={<span className="tbb-t">LTR</span>} title={t('Table LTR')} on={s?.dir === 'ltr'} onClick={() => run((c) => c.setTableDirection('ltr'))} />
+        <B icon={<>RTL</>} text title={t('Table RTL')} on={s?.dir === 'rtl'} onClick={() => run((c) => c.setTableDirection('rtl'))} />
+        <B icon={<>LTR</>} text title={t('Table LTR')} on={s?.dir === 'ltr'} onClick={() => run((c) => c.setTableDirection('ltr'))} />
       </Group>
+      <ToolbarSep />
       <Group label={t('Width')}>
         {[50, 75, 100].map((w) => (
-          <B key={w} icon={<span className="tbb-t">{w}%</span>} title={t('Table width {w}%', { w })} on={s?.w === w} onClick={() => run((c) => c.setTableWidth(w))} />
+          <B key={w} icon={<>{w}%</>} text title={t('Table width {w}%', { w })} on={s?.w === w} onClick={() => run((c) => c.setTableWidth(w))} />
         ))}
       </Group>
+      <ToolbarSep />
       <Group label={t('Position')}>
-        <B icon={<Ic.AlignLeft size={16} />} title={t('Align table left')} on={s?.align === 'left'} onClick={() => run((c) => c.setTableAlign('left'))} />
-        <B icon={<Ic.AlignCenter size={16} />} title={t('Center table')} on={s?.align === 'center'} onClick={() => run((c) => c.setTableAlign('center'))} />
-        <B icon={<Ic.AlignRight size={16} />} title={t('Align table right')} on={s?.align === 'right'} onClick={() => run((c) => c.setTableAlign('right'))} />
+        <B icon={<Icon name="align-left" size={16} />} title={t('Align table left')} on={s?.align === 'left'} onClick={() => run((c) => c.setTableAlign('left'))} />
+        <B icon={<Icon name="align-center" size={16} />} title={t('Center table')} on={s?.align === 'center'} onClick={() => run((c) => c.setTableAlign('center'))} />
+        <B icon={<Icon name="align-right" size={16} />} title={t('Align table right')} on={s?.align === 'right'} onClick={() => run((c) => c.setTableAlign('right'))} />
       </Group>
+      <ToolbarSep />
       <Group label={t('Table')}>
-        <B icon={<Ic.TableDelete />} title={t('Delete table')} danger onClick={() => run((c) => c.deleteTable())} />
+        <B icon={<Icon name="table-delete" size={16} />} title={t('Delete table')} danger onClick={() => run((c) => c.deleteTable())} />
       </Group>
-    </div>,
+    </Toolbar>,
     document.body,
   )
 }

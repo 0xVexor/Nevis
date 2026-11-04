@@ -55,7 +55,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Res<()> {
 /// File locks are released by the OS on close or process exit.
 pub fn commit_lock(root: &Path) -> Res<fs::File> {
     let file = fs::OpenOptions::new().read(true).write(true).create(true).truncate(false)
-        .open(root.join(".noviq/document-commit.lock")).map_err(err)?;
+        .open(root.join(".nevis/document-commit.lock")).map_err(err)?;
     file.lock().map_err(err)?;
     crate::document_operations::recover_locked(root)?;
     Ok(file)
@@ -128,9 +128,46 @@ fn marker_id(meta: &Value) -> Res<String> {
     check_id(id)?;
     Ok(id.to_string())
 }
+const LEGACY_METADATA: &str = ".noviq";
+
+pub(crate) fn marker_path(root: &Path) -> PathBuf {
+    let current = root.join(".nevis/vault.json");
+    if root.join(".nevis").exists() {
+        current
+    } else {
+        root.join(LEGACY_METADATA).join("vault.json")
+    }
+}
+
+fn migrate_metadata(root: &Path) -> Res<()> {
+    let legacy = root.join(LEGACY_METADATA);
+    let current = root.join(".nevis");
+    if current.exists() || !legacy.join("vault.json").is_file() {
+        return Ok(());
+    }
+    // The lock only guards the checks. Windows cannot rename a folder while a file inside it is open, so the lock
+    // is released before the rename; a competing process that wins the rename is found by the check below it.
+    {
+        let _lock = match crate::vault_lock::acquire_metadata(root, LEGACY_METADATA) {
+            Ok(lock) => lock,
+            Err(_) if current.join("vault.json").is_file() => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        let marker = legacy.join("vault.json");
+        if fs::symlink_metadata(&marker).is_ok_and(|m| m.is_symlink()) {
+            return Err("STORAGE:symlink".into());
+        }
+        marker_id(&read_json(&marker).ok_or(VAULT_MISSING)?)?;
+    }
+    match fs::rename(legacy, &current) {
+        Err(_) if current.join("vault.json").is_file() => Ok(()),
+        result => result.map_err(err),
+    }
+}
+
 /// What is at `root`, reading only: the vault `id` ("ok"), another vault ("mismatch") or nothing ("missing").
 pub fn probe(root: &Path, id: &str) -> &'static str {
-    match read_json(&root.join(".noviq/vault.json")) {
+    match read_json(&marker_path(root)) {
         None => "missing",
         Some(m) if marker_id(&m).is_ok_and(|actual|actual==id) => "ok",
         Some(_) => "mismatch",
@@ -151,13 +188,14 @@ impl Vault {
     /// Opens a vault that exists. It never creates the folder or an identity: a vault whose folder vanished must not
     /// come back as an empty vault under a new id (a sync tool would then take that as "everything was deleted").
     pub fn open(root: PathBuf) -> Res<Vault> {
-        if !root.is_dir() || !root.join(".noviq/vault.json").is_file() {
+        migrate_metadata(&root)?;
+        if !root.is_dir() || !root.join(".nevis/vault.json").is_file() {
             return Err(VAULT_MISSING.into());
         }
-        for p in [&root, &root.join(".noviq"), &root.join(".noviq/vault.json"), &root.join("pages"), &root.join("files"), &root.join("databases"), &root.join("kv"), &root.join("history"), &root.join("conflicts")] {
+        for p in [&root, &root.join(".nevis"), &root.join(".nevis/vault.json"), &root.join("pages"), &root.join("files"), &root.join("databases"), &root.join("kv"), &root.join("history"), &root.join("conflicts")] {
             if fs::symlink_metadata(p).is_ok_and(|m|m.file_type().is_symlink()){return Err("STORAGE:symlink".into());}
         }
-        let expected_id=marker_id(&read_json(&root.join(".noviq/vault.json")).ok_or(VAULT_MISSING)?)?;
+        let expected_id=marker_id(&read_json(&root.join(".nevis/vault.json")).ok_or(VAULT_MISSING)?)?;
         let lock=crate::vault_lock::acquire(&root)?;
         let v = Vault { root,expected_id,_lock:lock };
         if v.id().is_empty() {
@@ -185,21 +223,22 @@ impl Vault {
 
     /// The user picked a folder that may be an existing vault or just a folder: it becomes a vault (gets an identity if it has none).
     pub fn adopt(root: PathBuf) -> Res<Vault> {
+        migrate_metadata(&root)?;
         if !root.is_dir() {
             return Err(VAULT_MISSING.into());
         }
-        if !root.join(".noviq/vault.json").is_file() {
+        if !root.join(".nevis/vault.json").is_file() {
             let name = root.file_name().and_then(|n| n.to_str()).unwrap_or("Nevis").to_string();
-            fs::create_dir_all(root.join(".noviq")).map_err(err)?;
+            fs::create_dir_all(root.join(".nevis")).map_err(err)?;
             let _initializing=crate::vault_lock::acquire(&root)?;
-            if root.join(".noviq/vault.json").is_file(){return Vault::open(root);}
-            write_atomic(&root.join(".noviq/vault.json"), json!({ "format": 1, "id": uuid::Uuid::new_v4().to_string(), "name": name }).to_string().as_bytes())?;
+            if root.join(".nevis/vault.json").is_file(){return Vault::open(root);}
+            write_atomic(&root.join(".nevis/vault.json"), json!({ "format": 1, "id": uuid::Uuid::new_v4().to_string(), "name": name }).to_string().as_bytes())?;
         }
         Vault::open(root)
     }
 
     fn make_dirs(&self) -> Res<()> {
-        for d in ["pages", "files", "history", "kv", ".noviq", ".trash/pages", ".trash/files"] {
+        for d in ["pages", "files", "history", "kv", ".nevis", ".trash/pages", ".trash/files"] {
             fs::create_dir_all(self.root.join(d)).map_err(err)?;
         }
         let workspace=self.root.join("kv/workspace.json");
@@ -208,7 +247,7 @@ impl Vault {
     }
 
     fn meta_value(&self) -> Value {
-        read_json(&self.root.join(".noviq/vault.json")).unwrap_or(Value::Null)
+        read_json(&self.root.join(".nevis/vault.json")).unwrap_or(Value::Null)
     }
 
     pub fn id(&self) -> String {
@@ -221,9 +260,10 @@ impl Vault {
 
     /// A new vault in `root` with the given display name.
     pub fn create(root: PathBuf, name: &str) -> Res<Vault> {
-        fs::create_dir_all(root.join(".noviq")).map_err(err)?;
+        migrate_metadata(&root)?;
+        fs::create_dir_all(root.join(".nevis")).map_err(err)?;
         let _initializing=crate::vault_lock::acquire(&root)?;
-        let marker = root.join(".noviq/vault.json");
+        let marker = root.join(".nevis/vault.json");
         if !marker.exists() {
             write_atomic(&marker, json!({ "format": 1, "id": uuid::Uuid::new_v4().to_string(), "name": name }).to_string().as_bytes())?;
         }
@@ -235,13 +275,13 @@ impl Vault {
         write_atomic(&self.root.join("kv/workspace.json"), &serde_json::to_vec(&json!({"name":name})).map_err(err)?)?;
         let mut meta = self.meta_value();
         meta["name"] = Value::String(name.to_string());
-        write_atomic(&self.root.join(".noviq/vault.json"), meta.to_string().as_bytes())
+        write_atomic(&self.root.join(".nevis/vault.json"), meta.to_string().as_bytes())
     }
 
     pub fn pages_dir(&self) -> PathBuf {
         self.root.join("pages")
     }
-    fn page_path(&self, id: &str) -> Res<PathBuf> {
+    pub fn page_path(&self, id: &str) -> Res<PathBuf> {
         Ok(self.pages_dir().join(format!("{}.json", check_id(id)?)))
     }
 
@@ -365,7 +405,7 @@ impl Vault {
             if !before.is_null() {
                 use sha2::{Digest, Sha256};
                 let hash = format!("{:x}", Sha256::digest(before.to_string().as_bytes()));
-                let dir = self.root.join(".noviq/document-preimages").join(id);
+                let dir = self.root.join(".nevis/document-preimages").join(id);
                 write_atomic(&dir.join(format!("{hash}.json")), before.to_string().as_bytes())?;
                 let mut files: Vec<_> = fs::read_dir(&dir).map_err(err)?.flatten().map(|e| e.path()).collect();
                 files.sort_by_key(|p| fs::metadata(p).and_then(|m| m.modified()).ok());
@@ -560,7 +600,7 @@ mod tests {
     use super::*;
 
     fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("noviq-test-{name}-{}", now_ms()));
+        let d = std::env::temp_dir().join(format!("nevis-test-{name}-{}", now_ms()));
         let _ = fs::remove_dir_all(&d);
         d
     }
@@ -590,7 +630,7 @@ mod tests {
         let results: Vec<_> = threads.into_iter().map(|t| t.join().unwrap()).collect();
         assert_eq!(results.iter().filter(|r| r.is_ok()).count(), 1);
         assert_eq!(results.iter().filter(|r| r.as_ref().err().is_some_and(|e| e.contains("revision conflict"))).count(), 1);
-        assert!(v.root.join(".noviq/document-preimages").join(A).is_dir());
+        assert!(v.root.join(".nevis/document-preimages").join(A).is_dir());
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -606,7 +646,7 @@ mod tests {
         assert!(v.save_pages_checked(&[], &[], true, None, Some(&[before])).unwrap_err().contains("revision conflict"));
         let expected = serde_json::Map::from_iter([(A.to_string(), fresh.clone())]);
         // Block the pre-image directory, causing I/O failure before installation.
-        fs::write(v.root.join(".noviq/document-preimages"), b"blocked").unwrap();
+        fs::write(v.root.join(".nevis/document-preimages"), b"blocked").unwrap();
         assert!(v.save_pages_checked(&[page(A, "new", 200)], &[], false, Some(&expected), None).is_err());
         assert_eq!(v.pages_all().unwrap(), vec![fresh]);
         fs::remove_dir_all(v.root).unwrap();
@@ -670,7 +710,7 @@ mod tests {
         // a folder that exists but has no marker is not a vault either (the user must adopt it on purpose)
         fs::create_dir_all(&root).unwrap();
         assert_eq!(Vault::open(root.clone()).err().as_deref(), Some(VAULT_MISSING));
-        assert!(!root.join(".noviq").exists());
+        assert!(!root.join(".nevis").exists());
         let adopted = Vault::adopt(root.clone()).unwrap();
         assert_ne!(adopted.id(), id);
     }
@@ -727,12 +767,12 @@ mod locking_tests {
         let v = Vault::create(root.clone(), "T").unwrap();
         let id = v.id();
         drop(v);
-        write_atomic(&root.join(".noviq/vault.json"), &serde_json::to_vec(&json!({"format":2,"id":id,"name":"T"})).unwrap()).unwrap();
+        write_atomic(&root.join(".nevis/vault.json"), &serde_json::to_vec(&json!({"format":2,"id":id,"name":"T"})).unwrap()).unwrap();
         assert_eq!(Vault::open(root.clone()).err().as_deref(), Some("VAULT_UNSUPPORTED_FORMAT"));
         fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn replacing_marker_never_changes_the_open_vault_identity(){
-        let root=std::env::temp_dir().join(format!("nevis-identity-{}",uuid::Uuid::new_v4()));let v=Vault::create(root.clone(),"T").unwrap();let original=v.id();write_atomic(&root.join(".noviq/vault.json"),&serde_json::to_vec(&json!({"format":1,"id":uuid::Uuid::new_v4().to_string(),"name":"other"})).unwrap()).unwrap();assert_eq!(v.id(),original);assert_eq!(v.ensure_exclusive().unwrap_err(),VAULT_MISMATCH);drop(v);fs::remove_dir_all(root).unwrap();
+        let root=std::env::temp_dir().join(format!("nevis-identity-{}",uuid::Uuid::new_v4()));let v=Vault::create(root.clone(),"T").unwrap();let original=v.id();write_atomic(&root.join(".nevis/vault.json"),&serde_json::to_vec(&json!({"format":1,"id":uuid::Uuid::new_v4().to_string(),"name":"other"})).unwrap()).unwrap();assert_eq!(v.id(),original);assert_eq!(v.ensure_exclusive().unwrap_err(),VAULT_MISMATCH);drop(v);fs::remove_dir_all(root).unwrap();
     }
 }

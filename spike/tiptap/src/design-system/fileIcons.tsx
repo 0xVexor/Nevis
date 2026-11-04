@@ -1,6 +1,6 @@
 import { Icon } from './icons'
 import { FILE_KINDS, extensionOf, fileKind, type FileKind } from './fileKinds'
-import { t } from '../i18n'
+import { t } from './text'
 
 /**
  * <FileIcon name="report.pdf" /> or <FileIcon kind="folder" />.

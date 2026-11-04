@@ -43,7 +43,7 @@ fn with<T>(s: &St, f: impl FnOnce(&Vault) -> Res<T>) -> Res<T> {
         Some(v) => {
             v.ensure_exclusive()?;
             // a vault whose folder vanished while it was open is not written to: that would re-create half of it
-            if !v.root.join(".noviq/vault.json").is_file() {
+            if !v.root.join(".nevis/vault.json").is_file() {
                 return Err(VAULT_MISSING.into());
             }
             if expected.as_deref()!=Some(v.id().as_str()){return Err(VAULT_MISMATCH.into());}
@@ -55,6 +55,17 @@ fn with<T>(s: &St, f: impl FnOnce(&Vault) -> Res<T>) -> Res<T> {
 
 // Settings that belong to this device and must not travel through the vault.
 const LOCAL_KEYS: [&str; 2] = ["backupCfg", "graphLayouts"];
+
+fn migrate_app_directory(current: &Path) -> std::io::Result<()> {
+    let legacy = current.with_file_name("com.vexor.noviq");
+    if current.exists() || !legacy.is_dir() {
+        return Ok(());
+    }
+    match std::fs::rename(legacy, current) {
+        Err(_) if current.is_dir() => Ok(()),
+        result => result,
+    }
+}
 
 // ───── vaults: list, create, open, switch ─────
 
@@ -104,7 +115,7 @@ fn vault_create(s: St, parent: String, name: String) -> Res<String> {
     if !PathBuf::from(&parent).is_absolute() {
         return Err("path must be absolute".into());
     }
-    if root.join(".noviq/vault.json").exists() {
+    if vault::marker_path(&root).exists() {
         return Err("a vault already exists there".into());
     }
     let v = Vault::create(root.clone(), &name)?;
@@ -458,6 +469,38 @@ fn file_get(s: St, id: String) -> Res<Response> {
     with(&s, |v| v.file_get(&id)).map(Response::new)
 }
 
+/// Absolute path of the file that holds a page.
+#[tauri::command]
+fn page_path(s: St, id: String) -> Res<String> {
+    with(&s, |v| v.page_path(&id)).map(|p| p.to_string_lossy().into_owned())
+}
+
+/// Shows a page's file in Explorer, Finder or the system file manager.
+#[tauri::command]
+fn page_reveal(s: St, id: String) -> Res<()> {
+    let path = with(&s, |v| v.page_path(&id))?;
+    // a page that has not been written yet has no file: show the folder it will live in
+    let shown = if path.is_file() { path.clone() } else { path.parent().map(Path::to_path_buf).unwrap_or(path) };
+    let mut command;
+    #[cfg(target_os = "windows")]
+    {
+        command = std::process::Command::new("explorer");
+        if shown.is_file() { command.arg(format!("/select,{}", shown.display())); } else { command.arg(&shown); }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        command = std::process::Command::new("open");
+        if shown.is_file() { command.arg("-R"); }
+        command.arg(&shown);
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        command = std::process::Command::new("xdg-open");
+        command.arg(if shown.is_file() { shown.parent().unwrap_or(&shown) } else { &shown });
+    }
+    command.spawn().map(|_| ()).map_err(err)
+}
+
 /// Metadata of every stored file (no bytes).
 #[tauri::command]
 fn files_list(s: St) -> Res<Vec<Value>> {
@@ -601,13 +644,29 @@ fn main() {
     if std::env::args().any(|a| a == mcp_relay::RELAY_FLAG) {
         std::process::exit(mcp_relay::run_stdio());
     }
+    // WebView2 opens its profile when Tauri creates the first window.
+    #[cfg(windows)]
+    if let Some(local_data) = std::env::var_os("LOCALAPPDATA") {
+        let profile = PathBuf::from(local_data).join("com.vexor.nevis");
+        if let Err(error) = migrate_app_directory(&profile) {
+            eprintln!("Cannot migrate the previous Nevis WebView profile: {error}");
+        }
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(updates::Updates::default())
         .setup(|app| {
-            let app_data = app.path().app_data_dir()?;
+            // NEVIS_APP_DATA (shared with the MCP relay) runs a separate copy with its own workspace list, e.g. to try first launch
+            let app_data = match std::env::var_os("NEVIS_APP_DATA") {
+                Some(dir) => PathBuf::from(dir),
+                None => {
+                    let current = app.path().app_data_dir()?;
+                    migrate_app_directory(&current)?;
+                    current
+                },
+            };
             std::fs::create_dir_all(&app_data)?;
             document_operations::configure(&app_data).map_err(std::io::Error::other)?;
             app.manage(Store { mcp: Arc::new(mcp::Host::default()), reg: Mutex::new(Registry::load(&app_data)), app_data, vault: Mutex::new(None), index: Mutex::new(None) });
@@ -635,7 +694,7 @@ fn main() {
             vault_backup_save, vault_backup_folder_save, vault_backup_folder_read, vault_backup_export, vault_backup_restore, vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
             db_recover, db_load_all, db_commit, db_get_operation, db_history, db_undo_load, db_undo_save, db_runtime_get, db_runtime_set, db_runtime_delete,
             db_runtime_keys, db_index_rebuild, db_index_candidates, db_index_count,
-            vault_stamp, pages_all, pages_save, document_operation_list, document_operation_find, document_operation_commit, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list,
+            vault_stamp, pages_all, pages_save, document_operation_list, document_operation_find, document_operation_commit, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list, page_path, page_reveal,
             index_state, index_update, index_search
         ])
         .run(tauri::generate_context!())

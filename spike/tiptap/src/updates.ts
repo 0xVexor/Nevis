@@ -1,13 +1,14 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
 import { useSyncExternalStore } from 'react'
 import { getSettings } from './settings'
-import { createUpdateController, type AvailableUpdate, type UpdateProgress } from './updateController'
+import { createUpdateController, wantsPrerelease, type AvailableUpdate, type UpdateProgress } from './updateController'
+import appPackage from '../package.json'
 import { saveBeforeUpdate } from './updateSave'
 import { repo } from './store'
 import { peekDatabase } from './database/runtime'
 
 export const updates = createUpdateController({
-  includePrerelease: () => getSettings().prereleaseUpdates === true,
+  includePrerelease: () => wantsPrerelease(getSettings().prereleaseUpdates === true, appPackage.version),
   check: (includePrerelease) => invoke<AvailableUpdate | null>('updates_check', { includePrerelease }),
   download: (version, progress) => {
     const onProgress = new Channel<UpdateProgress>()

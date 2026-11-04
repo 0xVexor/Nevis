@@ -1,7 +1,7 @@
 // Shared by every backup module: the file format name, the error type and the byte helpers. No app state in here.
 
 export const FORMAT = 'notes-backup'
-export const TAURI_FORMAT = 'noviq-vault-backup'
+export const TAURI_FORMAT = 'nevis-vault-backup'
 /** The IndexedDB stores a full backup carries (the first one is what a v1 backup held). */
 export const STORES = ['pages', 'versions', 'kv', 'db_records', 'db_history', 'db_meta', 'db_ops']
 

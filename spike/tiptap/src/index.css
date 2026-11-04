@@ -22,20 +22,27 @@
 @import './design-system/areas/page-meta.css';
 @import './design-system/areas/palette.css';
 @import './design-system/areas/bubbles.css';
-@import './design-system/areas/notices.css';
 @import './design-system/areas/content.css';
 @import './design-system/areas/explorer.css';
-@import './design-system/areas/database.css';
-@import './design-system/areas/database-grid.css';
-@import './design-system/areas/database-layout.css';
-@import './design-system/areas/home-templates.css';
+@import './design-system/areas/databases.css';
 @import './design-system/areas/scrollbars.css';
 @import './design-system/areas/updates.css';
 @import './design-system/areas/layout.css';
 /* New design system (docs/design-system.md). Everything is prefixed ds-, so it never touches the legacy styles above. */
 @import './design-system/tokens.css';
 @import './design-system/components.css';
-@import './design-system/areas/surfaces.css';
+@import './design-system/navigation.css';
+@import './design-system/preferences.css';
 @import './design-system/home.css';
-@import './design-system/screens.css';
+
+@import './design-system/areas/templates.css';
+@import './design-system/areas/tasks.css';
+@import './design-system/areas/flashcards.css';
+@import './design-system/areas/pages-table.css';
+@import './design-system/areas/drawings.css';
+@import './design-system/areas/graph.css';
+@import './design-system/areas/preferences-workspace.css';
+@import './design-system/areas/onboarding.css';
+@import './design-system/areas/reader.css';
+@import './design-system/areas/toolbar.css';
 @import './design-system/areas/print.css';

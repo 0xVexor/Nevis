@@ -4,7 +4,7 @@ use serde_json::json;
 
 fn vault() -> (Vault, std::path::PathBuf) {
     static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-    let dir = std::env::temp_dir().join(format!("noviq-dbtest-{}-{}", std::process::id(), N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)));
+    let dir = std::env::temp_dir().join(format!("nevis-dbtest-{}-{}", std::process::id(), N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)));
     let _ = fs::remove_dir_all(&dir);
     let v = Vault::create(dir.clone(), "test").unwrap();
     (v, dir)

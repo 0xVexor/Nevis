@@ -1,3 +1,5 @@
+import { Plugin } from '@tiptap/pm/state'
+import { commandMatches } from '../shortcutCommands'
 import type { ChainedCommands } from '@tiptap/core'
 import { Extension } from '@tiptap/core'
 
@@ -20,9 +22,11 @@ const BLOCKED = ['listItem', 'taskItem', 'tableCell', 'tableHeader', 'codeBlock'
 export const MarkdownTab = Extension.create({
   name: 'markdownTab',
   priority: 1000,
-  addKeyboardShortcuts() {
-    return {
-      Tab: ({ editor }) => {
+  addProseMirrorPlugins() {
+    const editor = this.editor
+    return [new Plugin({ props: {
+      handleKeyDown: (_view, event) => {
+        if (!editor.isEditable || !commandMatches(event, 'Turn a typed marker (#, -, 1., >, [], ```, ---) into a block')) return false
         const { $from, empty } = editor.state.selection
         if (!empty || $from.parent.type.name !== 'paragraph') return false
         for (let d = $from.depth; d > 0; d--) if (BLOCKED.includes($from.node(d).type.name)) return false
@@ -36,6 +40,6 @@ export const MarkdownTab = Extension.create({
         }
         return false
       },
-    }
+    } })]
   },
 })

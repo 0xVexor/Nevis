@@ -41,11 +41,23 @@ function search(doc: PMNode, query: string): { from: number; to: number }[] {
   return out
 }
 
+/**
+ * Bring a match into view the way a reader would: a match already on screen leaves the page where it is;
+ * one outside glides to a third of the way down, clear of the find bar and the formatting bar.
+ */
 function scrollTo(view: EditorView, from: number) {
   try {
-    const { node } = view.domAtPos(from)
-    const el = node.nodeType === 1 ? (node as HTMLElement) : node.parentElement
-    el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    const at = view.coordsAtPos(from)
+    const scroller = view.dom.closest<HTMLElement>('.scroller')
+    if (!scroller) {
+      const { node } = view.domAtPos(from)
+      ;(node.nodeType === 1 ? (node as HTMLElement) : node.parentElement)?.scrollIntoView({ block: 'nearest' })
+      return
+    }
+    const box = scroller.getBoundingClientRect()
+    if (at.top >= box.top + 112 && at.bottom <= box.bottom - 64) return
+    const reduced = document.documentElement.dataset.motion === 'reduce' || matchMedia('(prefers-reduced-motion: reduce)').matches
+    scroller.scrollTo({ top: Math.max(0, scroller.scrollTop + at.top - box.top - box.height / 3), behavior: reduced ? 'auto' : 'smooth' })
   } catch {
     /* position no longer in the DOM */
   }
@@ -80,7 +92,7 @@ export const FindInPage = Extension.create({
             if (!s?.matches.length) return DecorationSet.empty
             return DecorationSet.create(
               state.doc,
-              s.matches.map((m, i) => Decoration.inline(m.from, m.to, { class: i === s.index ? 'find-hit find-cur' : 'find-hit' })),
+              s.matches.map((m, i) => Decoration.inline(m.from, m.to, i === s.index ? { class: 'find-hit find-cur', 'data-find-step': String(i) } : { class: 'find-hit' })),
             )
           },
         },

@@ -3,7 +3,7 @@ set -euo pipefail
 app="${1:?Path to Nevis.app is required}"
 output="${2:?Output package path is required}"
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
-if [[ "$('/usr/libexec/PlistBuddy' -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" != com.vexor.noviq ]]; then
+if [[ "$('/usr/libexec/PlistBuddy' -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" != com.vexor.nevis ]]; then
   echo 'Unexpected application identifier.' >&2
   exit 1
 fi
@@ -30,5 +30,5 @@ with open(path, 'wb') as destination:
     plistlib.dump(components, destination)
 PYTHON
 /usr/bin/pkgbuild --root "$staging/root" --component-plist "$staging/components.plist" \
-  --scripts "$repo/.github/macos-installer" --identifier com.vexor.noviq.installer \
+  --scripts "$repo/.github/macos-installer" --identifier com.vexor.nevis.installer \
   --version "$version" --install-location / "$output"

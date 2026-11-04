@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
+import { Icon, SearchField } from './design-system'
 import { repo } from './store'
 import { normalizeFa } from './normalize'
 import { iconNode } from './iconSet'
-import * as Ic from './icons'
 import { t } from './i18n'
 
 /** Picker for "make the selected text a link to a page": search the pages, or create one named like the text. */
@@ -25,25 +25,24 @@ export function PageLinkPicker({ text, currentId, onPick }: { text: string; curr
   const choose = (i: number) => (i < pages.length ? onPick(pages[i].id) : canCreate && onPick(null))
   return (
     <div className="plp">
-      <div className="plp-search">
-        <Ic.Search size={15} />
-        <input
-          autoFocus
-          dir="auto"
-          value={q}
-          placeholder={t('Search pages…')}
-          onChange={(e) => (setQ(e.target.value), setSel(0))}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') (e.preventDefault(), setSel((s) => (count ? (s + 1) % count : 0)))
-            else if (e.key === 'ArrowUp') (e.preventDefault(), setSel((s) => (count ? (s - 1 + count) % count : 0)))
-            else if (e.key === 'Enter') (e.preventDefault(), choose(sel))
-          }}
-        />
-      </div>
+      <SearchField
+        className="plp-search"
+        autoFocus
+        value={q}
+        label={t('Search pages…')}
+        placeholder={t('Search pages…')}
+        clearLabel={t('Clear')}
+        onChange={(next) => (setQ(next), setSel(0))}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') (e.preventDefault(), setSel((s) => (count ? (s + 1) % count : 0)))
+          else if (e.key === 'ArrowUp') (e.preventDefault(), setSel((s) => (count ? (s - 1 + count) % count : 0)))
+          else if (e.key === 'Enter') (e.preventDefault(), choose(sel))
+        }}
+      />
       <div className="plp-list" role="listbox">
         {pages.map((p, i) => (
           <button key={p.id} type="button" role="option" aria-selected={i === sel} className={'ds-menu-item' + (i === sel ? ' hot' : '')} onMouseMove={() => setSel(i)} onClick={() => onPick(p.id)}>
-            <span className="ds-menu-ic">{iconNode(p.icon, 15, <Ic.Page size={15} />)}</span>
+            <span className="ds-menu-ic">{iconNode(p.icon, 15, <Icon name="file" size={15} />)}</span>
             <span className="ds-menu-label" dir="auto">
               {p.title || t('Untitled')}
             </span>
@@ -52,7 +51,7 @@ export function PageLinkPicker({ text, currentId, onPick }: { text: string; curr
         {canCreate && (
           <button type="button" className={'ds-menu-item' + (sel === pages.length ? ' hot' : '')} onMouseMove={() => setSel(pages.length)} onClick={() => onPick(null)}>
             <span className="ds-menu-ic">
-              <Ic.Plus size={15} />
+              <Icon name="plus" size={15} />
             </span>
             <span className="ds-menu-label">
               <b>{t('Create a new page')}</b>

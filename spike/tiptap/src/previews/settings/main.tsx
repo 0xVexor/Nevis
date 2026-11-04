@@ -1,0 +1,16 @@
+import { createRoot } from 'react-dom/client'
+import '@fontsource/instrument-sans/400.css'
+import '@fontsource/instrument-sans/500.css'
+import '@fontsource/instrument-sans/600.css'
+import '@fontsource/vazirmatn/400.css'
+import '@fontsource/vazirmatn/500.css'
+import '@fontsource/vazirmatn/700.css'
+import '../../design-system/tokens.css'
+import '../../design-system/components.css'
+import '../../design-system/navigation.css'
+import '../../design-system/preferences.css'
+import '../../design-system/areas/preferences-workspace.css'
+import './entry.css'
+import { Study } from './Study'
+
+createRoot(document.getElementById('root')!).render(<Study />)
