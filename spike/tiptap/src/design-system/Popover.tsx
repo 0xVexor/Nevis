@@ -81,7 +81,7 @@ export function Popover({ anchor, onClose, children, align = 'start' }: { anchor
       ref={ref}
       className="ds-pop"
       data-leaving={leaving ? '' : undefined}
-      style={{ position: 'fixed', zIndex: 500, top: pos.top, left: pos.left, ...(pos.maxH ? { maxHeight: pos.maxH, overflowY: 'auto' } : null) }}
+      style={{ position: 'fixed', zIndex: 'var(--ds-z-float)', top: pos.top, left: pos.left, ...(pos.maxH ? { maxHeight: pos.maxH, overflowY: 'auto' } : null) }}
     >
       {children}
     </div>,

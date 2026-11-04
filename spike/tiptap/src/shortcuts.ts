@@ -26,6 +26,7 @@ export const SHORTCUTS: ShortcutGroup[] = [
       bound('Open or close the sidebar', 'sidebar', ['Alt', '1']),
       bound('Reader mode', 'reader', ['Mod', '.']),
       sc('Leave reader mode', ['Esc']),
+      sc('Full screen', ['F11']),
       bound('Wider text column', 'widerColumn', ['Alt', '=']),
       bound('Narrower text column', 'narrowerColumn', ['Alt', '-']),
     ],
@@ -42,7 +43,9 @@ export const SHORTCUTS: ShortcutGroup[] = [
       sc('Heading 1', ['Mod', 'Alt', '1']),
       sc('Heading 2', ['Mod', 'Alt', '2']),
       sc('Heading 3', ['Mod', 'Alt', '3']),
-      sc('Heading 4–6', ['Mod', 'Alt', '4–6']),
+      sc('Heading 4', ['Mod', 'Alt', '4']),
+      sc('Heading 5', ['Mod', 'Alt', '5']),
+      sc('Heading 6', ['Mod', 'Alt', '6']),
       sc('Bulleted list', ['Mod', 'Shift', '8']),
       sc('Numbered list', ['Mod', 'Shift', '7']),
       sc('Checklist', ['Mod', 'Shift', '9']),
@@ -84,7 +87,8 @@ export const SHORTCUTS: ShortcutGroup[] = [
     title: 'Markdown by hand',
     items: [
       sc('Turn a typed marker (#, -, 1., >, [], ```, ---) into a block', ['Tab']),
-      sc('Indent / outdent inside a code block', ['Tab'], ['Shift', 'Tab']),
+      sc('Indent code', ['Tab']),
+      sc('Outdent code', ['Shift', 'Tab']),
       sc('New formula (empty line: block; selected text or elsewhere: inline)', ['Mod', 'Shift', 'M']),
       sc('Edit the selected formula', ['Enter']),
       sc('Save a formula', ['Enter']),
@@ -94,8 +98,16 @@ export const SHORTCUTS: ShortcutGroup[] = [
     ],
   },
   {
+    title: 'Graph',
+    items: [sc('Fit graph', ['F']), sc('Zoom graph in', ['='], ['Shift', '='], ['Numpad+']), sc('Zoom graph out', ['-'], ['Numpad-']), sc('Close graph', ['Esc'])],
+  },
+  {
+    title: 'Database',
+    items: [sc('Undo database edit', ['Mod', 'Z']), sc('Select all database cells', ['Mod', 'A']), sc('Fill down', ['Mod', 'D']), sc('Edit database cell', ['Enter'], ['F2']), sc('Clear database cells', ['Delete'], ['Backspace'])],
+  },
+  {
     title: 'Flashcards',
-    items: [sc('Show the answer', ['Space'], ['Enter']), sc('Rate the card: again, hard, good, easy', ['1'], ['2'], ['3'], ['4']), sc('End the session', ['Esc'])],
+    items: [sc('Start review', ['Enter']), sc('Show the answer', ['Space'], ['Enter']), sc('Again', ['1']), sc('Hard', ['2']), sc('Good', ['3']), sc('Easy', ['4']), sc('End the session', ['Esc'])],
   },
 ]
 

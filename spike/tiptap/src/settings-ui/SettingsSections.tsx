@@ -1,12 +1,12 @@
 import { Brand } from '../Brand'
+import type { CSSProperties } from 'react'
+import { Button, Disclosure, Icon, PreferenceGroup, PreferenceRow } from '../design-system'
 import { BrandMark } from '../BrandMark'
 import { UpdateSettings } from '../UpdateUI'
 import appPackage from '../../package.json'
 import { useEffect, useRef } from 'react'
 import { FONTS, TEXT_COLORS, loadFontPreview, updateSettings, useSettings, type FontDef, type FontGroup, type FontId } from '../settings'
-import * as Ic from '../icons'
 import { t } from '../i18n'
-import { Card, Row } from '../SettingsParts'
 import { LATIN_DEFAULT } from '../fontStack'
 
 // ───── building blocks: a card holds rows; a row is "label + hint" on one side and its control on the other ─────
@@ -14,18 +14,18 @@ import { LATIN_DEFAULT } from '../fontStack'
 const Swatches = ({ value, colors, onPick, fallback }: { value: string | null; colors: string[]; onPick: (c: string | null) => void; fallback: string }) => {
   const custom = !!value && !colors.includes(value)
   return (
-    <div className="swatches">
-      <button className={'swatch default' + (!value ? ' on' : '')} title={t('Default')} aria-label={t('Default')} onClick={() => onPick(null)}>
-        <Ic.Check size={14} />
-      </button>
+    <div className="prefs-swatches" role="group">
+      <Button className="prefs-swatch tone-teal" title={t('Default')} aria-label={t('Default')} aria-pressed={!value} onClick={() => onPick(null)}>
+        {!value && <Icon name="check" size={12} />}
+      </Button>
       {colors.map((c) => (
-        <button key={c} className={'swatch' + (value === c ? ' on' : '')} style={{ background: c }} title={c} aria-label={c} onClick={() => onPick(c)}>
-          <Ic.Check size={14} />
-        </button>
+        <Button key={c} className="prefs-swatch" style={{ '--swatch': c } as CSSProperties} title={c} aria-label={c} aria-pressed={value === c} onClick={() => onPick(c)}>
+          {value === c && <Icon name="check" size={12} />}
+        </Button>
       ))}
-      <label className={'swatch custom' + (custom ? ' on' : '')} title={t('Custom color')} style={custom ? { background: value! } : undefined}>
-        {custom ? <Ic.Check size={14} /> : <Ic.Plus size={14} />}
-        <input type="color" value={value ?? fallback} onChange={(e) => onPick(e.target.value)} />
+      <label className="prefs-custom-color" title={t('Custom color')} data-on={custom || undefined} style={custom ? ({ '--swatch': value } as CSSProperties) : undefined}>
+        <Icon name={custom ? 'check' : 'plus'} size={12} />
+        <input type="color" aria-label={t('Custom color')} value={value ?? fallback} onChange={(e) => onPick(e.target.value)} />
       </label>
     </div>
   )
@@ -50,7 +50,7 @@ function FontCard({ face, sample, on, onPick }: { face: FontDef; sample: string;
     <button ref={ref} className={'fp-card' + (on ? ' on' : '')} aria-pressed={on} onClick={onPick}>
       <span className="fp-name">
         {t(face.label)}
-        {on && <Ic.Check size={14} />}
+        {on && <Icon name="check" size={14} />}
       </span>
       <span className="fp-sample" dir="auto" style={{ fontFamily: face.stack }}>
         {sample}
@@ -68,7 +68,7 @@ function FontPicker({ value, groups, none, onPick }: { value: FontId | null; gro
             <button className={'fp-card' + (value === null ? ' on' : '')} aria-pressed={value === null} onClick={() => onPick(null)}>
               <span className="fp-name">
                 {none.label}
-                {value === null && <Ic.Check size={14} />}
+                {value === null && <Icon name="check" size={14} />}
               </span>
               <span className="fp-sample" dir="auto" style={{ fontFamily: none.stack }}>
                 The quick brown fox 123
@@ -95,26 +95,26 @@ export function EditorExtras() {
   const s = useSettings()
   return (
     <>
-      <Card icon={<Ic.Settings />} title={t('Text')}>
-        <Row label={t('Text color')} hint={t('Leave on default to follow the theme.')} wide>
+      <PreferenceGroup title={t('Text')}>
+        <PreferenceRow label={t('Text color')} hint={t('Leave on default to follow the theme.')} wide>
           <Swatches value={s.textColor} colors={TEXT_COLORS} fallback="#888888" onPick={(textColor) => updateSettings({ textColor })} />
-        </Row>
+        </PreferenceRow>
         <div className="font-preview tiptap-like">
           <h4>{t('Preview')}</h4>
           <p>
             متغیر <code>count</code> را تعریف کنید و مقدار ۱۰ بدهید. This is an English sentence in the middle.
           </p>
         </div>
-      </Card>
-      <details className="prefs-disclosure"><summary>{t('Font previews')}</summary>      <Card icon={<Ic.Type />} title={t('Persian font')} hint={t('For Persian and Arabic letters only. English letters use the English font below. Every font is built in, so it works offline.')}>
+      </PreferenceGroup>
+      <Disclosure className="prefs-disclosure" title={t('Font previews')}>      <PreferenceGroup title={t('Persian font')} hint={t('For Persian and Arabic letters only. English letters use the English font below. Every font is built in, so it works offline.')}>
         <FontPicker value={s.font} groups={['persian', 'system']} onPick={(font) => font && updateSettings({ font })} />
-      </Card>
+      </PreferenceGroup>
 
-      <Card icon={<Ic.Type />} title={t('English font')} hint={t('For Latin letters and numbers, whatever the Persian font is.')}>
+      <PreferenceGroup title={t('English font')} hint={t('For Latin letters and numbers, whatever the Persian font is.')}>
         <FontPicker value={s.fontEn} groups={['english', 'system']} none={{ label: t('Default (Instrument Sans)'), stack: LATIN_DEFAULT }} onPick={(fontEn) => updateSettings({ fontEn })} />
-      </Card>
+      </PreferenceGroup>
 
-</details>
+</Disclosure>
     </>
   )
 }
@@ -122,19 +122,19 @@ export function EditorExtras() {
 export function About() {
   return (
     <>
-      <Card icon={<Ic.Info />} title={<Brand />}>
-        <div className="sx-about">
-          <span className="sx-logo">
+      <PreferenceGroup title={<Brand />}>
+        <div className="prefs-about">
+          <span className="prefs-about-logo">
             <BrandMark size={34} />
           </span>
           <p>{t('Your notes, checklists and drawings in one calm place. Everything stays on your device.')}</p>
           <small>{t('Version {version}', { version: appPackage.version })}</small>
           <small>{t('Created by')} Vexor</small>
         </div>
-      </Card>
-      <Card icon={<Ic.Download />} title={t('Updates')}>
+      </PreferenceGroup>
+      <PreferenceGroup title={t('Updates')}>
         <UpdateSettings />
-      </Card>
+      </PreferenceGroup>
     </>
   )
 }

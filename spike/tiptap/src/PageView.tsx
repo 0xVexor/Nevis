@@ -1,3 +1,6 @@
+import type { EditorCommand } from './shortcutCommands'
+import type { CommandItem } from './editor/slash'
+import { commandHint, commandMatches } from './shortcutCommands'
 import { shortcutLabel } from './shortcuts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { registerUpdateSave } from './updateSave'
@@ -11,12 +14,13 @@ import { contentProblem } from './editor/contentSafety'
 import { LAYOUT_CANCEL } from './editor/layout'
 import { activeGroup, validWidths } from './editor/layoutModel'
 import { getFind, scrollToMatch } from './editor/find'
-import { Button, ChipButton, dirOf, Icon, IconButton, PropertyList, PropertyRow, Row, Tag, useMenu, type MenuItem } from './design-system'
+import { Button, ChipButton, Disclosure, dirOf, Icon, IconButton, Notice, PropertyList, PropertyRow, Row, Tag, useMenu, type MenuItem } from './design-system'
 import { looksLikeMermaid } from './editor/mermaid'
 import { TableBubble } from './TableBubble'
 import { PageLinkPicker } from './PageLinkPicker'
 import { ImageBubble } from './ImageBubble'
 import { extensions } from './editor/extensions'
+import { editorShortcutActions } from './editor/physicalShortcuts'
 import { repo } from './store'
 import type { Page, PageStatus } from './repo'
 import { addTag, allTags } from './meta'
@@ -32,7 +36,6 @@ import { toneOf } from './PageIcon'
 import { Glyph, isGlyph, parseIcon } from './iconSet'
 import { TEMPLATE_GLYPH } from './TemplateGallery'
 import { iconNode } from './iconSet'
-import * as Ic from './icons'
 import { Toolbar } from './Toolbar'
 import { t } from './i18n'
 import { bindingHint, matches } from './shortcutBindings'
@@ -401,20 +404,36 @@ export function PageView({
       })
     }
     const key = (e: KeyboardEvent) => {
-      const mod = e.ctrlKey || e.metaKey
       // by the physical key (event.code), so Ctrl+F also works while the system keyboard is Persian
       if (matches(e, 'find')) {
         e.preventDefault() // replaces the browser's own find: ours understands Persian letter variants and ZWNJ
         openFind()
-      } else if (e.key === 'F3' || (mod && !e.altKey && e.code === 'KeyG')) {
+      } else if ((findOpen || e.ctrlKey || e.metaKey || e.altKey || /^F\d+$/.test(e.code)) && !['Enter', 'NumpadEnter'].includes(e.code) && (commandMatches(e, 'Previous match') || commandMatches(e, 'Next match'))) {
+        const previous = commandMatches(e, 'Previous match')
         e.preventDefault()
-        stepFind(e.shiftKey ? -1 : 1)
+        stepFind(previous ? -1 : 1)
       }
     }
     window.addEventListener('keydown', key)
     window.addEventListener('open-find', openFind)
     return () => (window.removeEventListener('keydown', key), window.removeEventListener('open-find', openFind))
-  }, [editor])
+  }, [editor, findOpen])
+
+  useEffect(() => {
+    if (!editor || readOnly) return
+    const run = (event: Event) => {
+      if (!editor.isEditable) return
+      const item = (event as CustomEvent<CommandItem | EditorCommand>).detail
+      if (typeof item === 'string') {
+        editor.commands.focus()
+        editorShortcutActions(editor)[item]()
+      } else {
+        item.run(editor.chain().focus(), editor).run()
+      }
+    }
+    window.addEventListener('run-editor-command', run)
+    return () => window.removeEventListener('run-editor-command', run)
+  }, [editor, readOnly])
 
   // a page created from the Templates gallery: fill it once its editor exists
   useEffect(() => {
@@ -571,20 +590,23 @@ export function PageView({
                 scrollToMatch(editor)
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') (e.preventDefault(), stepFind(e.shiftKey ? -1 : 1))
-                else if (e.key === 'Escape') (e.preventDefault(), e.stopPropagation(), closeFind()) // only the find bar closes
+                if (commandMatches(e.nativeEvent, 'Previous match') || commandMatches(e.nativeEvent, 'Next match')) {
+                  const previous = commandMatches(e.nativeEvent, 'Previous match')
+                  e.preventDefault(); e.stopPropagation(); stepFind(previous ? -1 : 1)
+                }
+                else if (commandMatches(e.nativeEvent, 'Close find')) (e.preventDefault(), e.stopPropagation(), closeFind()) // only the find bar closes
               }}
             />
             <span className="pg-find-count" aria-live="polite">
               {find.matches.length ? t('{i} of {n}', { i: find.index + 1, n: find.matches.length }) : find.query ? t('Not found') : ''}
             </span>
-            <IconButton label={t('Previous  Shift+Enter')} disabled={!find.matches.length} onClick={() => stepFind(-1)}>
+            <IconButton label={t('Previous') + '  ' + commandHint('Previous match')} disabled={!find.matches.length} onClick={() => stepFind(-1)}>
               <Icon name="chevron-up" size={16} />
             </IconButton>
-            <IconButton label={t('Next  Enter')} disabled={!find.matches.length} onClick={() => stepFind(1)}>
+            <IconButton label={t('Next') + '  ' + commandHint('Next match')} disabled={!find.matches.length} onClick={() => stepFind(1)}>
               <Icon name="chevron-down" size={16} />
             </IconButton>
-            <IconButton label={t('Close  Esc')} onClick={closeFind}>
+            <IconButton label={t('Close') + '  ' + commandHint('Close find')} onClick={closeFind}>
               <Icon name="x" size={16} />
             </IconButton>
           </div>
@@ -693,25 +715,29 @@ export function PageView({
           />
         </div>
         {tmenu && (
-          <div className="slash-menu title-menu">
-            <div className="slash-label">{t('Title direction')}</div>
-            {tItems.length === 0 && <div className="slash-empty">{t('No items found')}</div>}
+          <div className="ds-pop ds-menu ds-menu--command slash-menu title-menu" role="menu">
+            <div className="ds-menu-head">{t('Title direction')}</div>
+            {tItems.length === 0 && <div className="ds-menu-empty">{t('No items found')}</div>}
+            <div className="ds-menu-list">
             {tItems.map((c, i) => (
               <button
                 key={c.id}
-                className={'slash-item' + (i === tmenu.sel ? ' sel' : '')}
+                type="button"
+                role="menuitem"
+                className={'ds-menu-item' + (i === tmenu.sel ? ' hot' : '')}
                 onMouseDown={(e) => (e.preventDefault(), applyTitleCmd(c))}
                 onMouseMove={() => i !== tmenu.sel && setTmenu({ ...tmenu, sel: i })}
               >
-                <span className="slash-ic">
-                  <Ic.Direction size={16} />
+                <span className="ds-menu-ic">
+                  <Icon name="text-direction" size={16} />
                 </span>
-                <span className="slash-tx">
+                <span className="ds-menu-label">
                   <b>{t(c.title)}</b>
                   <small>{t(c.desc)}</small>
                 </span>
               </button>
             ))}
+            </div>
           </div>
         )}
       </header>
@@ -809,19 +835,18 @@ export function PageView({
         (() => {
           const group = activeGroup(editor.state)
           return group && !validWidths(group.node.attrs.widths, group.node.childCount) ? (
-            <p className="layout-width-warning" role="status">
+            <Notice className="layout-width-warning" tone="warn" role="status">
               {t('Column widths are displayed equally. Open the block menu and choose Equal widths to keep this arrangement.')}
-            </p>
+            </Notice>
           ) : null
         })()}
       {contentIssue ? (
-        <div className="layout-protection" role="status">
+        <Notice className="layout-protection" tone="warn" role="status">
           <p>{t(contentIssue)}</p>
-          <details>
-            <summary>{t('View original page data')}</summary>
+          <Disclosure title={t('View original page data')}>
             <pre>{JSON.stringify(originalContent, null, 2)}</pre>
-          </details>
-        </div>
+          </Disclosure>
+        </Notice>
       ) : (
         <EditorContent editor={editor} className="ec" />
       )}

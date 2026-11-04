@@ -1,4 +1,4 @@
-import { Button, FileIcon, Icon, IconButton, Menu, type MenuItem as MenuSpec } from './design-system'
+import { Button, FileIcon, Icon, IconButton, Menu, SearchField, type MenuItem as MenuSpec } from './design-system'
 import { setPreference } from './preferenceEvents'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { repo } from './store'
@@ -464,10 +464,7 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
             </span>
           ))}
         </nav>
-        <label className="fx-search">
-          <Icon name="search" size={16} />
-          <input value={q} dir="auto" placeholder={t('Search in all folders…')} onChange={(e) => setQ(e.target.value)} />
-        </label>
+        <SearchField className="fx-search" value={q} onChange={setQ} label={t('Search in all folders…')} placeholder={t('Search in all folders…')} clearLabel={t('Clear')} />
         <div className="ds-seg" role="group" aria-label={t('View')}>
           <button type="button" aria-pressed={mode === 'list'} title={t('List')} onClick={() => setMode('list')}>
             <Icon name="list" size={16} />

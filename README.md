@@ -137,7 +137,7 @@ A **vault** is an ordinary folder (default `Documents/Nevis`), the single source
 
 ```
 MyVault/
-  .noviq/vault.json            vault format version
+  .nevis/vault.json            vault format version
   pages/<id>.json              one file per page or folder (TipTap document + metadata)
   files/ab/<sha256>            attachments, content-addressed (never conflict)
   history/<pageId>/<ts>.json   previous versions of a page (up to 40)

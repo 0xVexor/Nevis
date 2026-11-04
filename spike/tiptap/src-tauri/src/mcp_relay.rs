@@ -78,7 +78,7 @@ fn default_app_data() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("NEVIS_APP_DATA") {
         return Some(PathBuf::from(dir));
     }
-    const ID: &str = "com.vexor.noviq";
+    const ID: &str = "com.vexor.nevis";
     if cfg!(windows) {
         std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join(ID))
     } else if cfg!(target_os = "macos") {

@@ -1,7 +1,7 @@
 import { useState } from 'react'
+import { Icon } from './design-system'
 import type { Page } from './repo'
 import { PageIcon } from './PageIcon'
-import * as Ic from './icons'
 import { t } from './i18n'
 
 export interface TagInfo {
@@ -43,7 +43,7 @@ export function SidebarTags({
       <button className={'section' + (shut ? ' shut' : '')} onClick={onToggle}>
         {t('Tags')}
         <span className="section-n">{tags.length}</span>
-        <Ic.Chevron size={13} />
+        <Icon name="chevron-right" size={13} />
       </button>
       {!shut && (
         <div className="tagbox">
@@ -77,7 +77,7 @@ export function SidebarTags({
                   {t('Pages tagged')} <b dir="auto">#{pick.label}</b>
                 </span>
                 <button title={t('Clear filter')} onClick={() => onPick(null)}>
-                  <Ic.Close size={13} />
+                  <Icon name="x" size={13} />
                 </button>
               </div>
               {pages.map((p) => (

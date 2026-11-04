@@ -5,12 +5,17 @@ target="${3:-/}"
 for name in Nevis Noviq; do
   app="${target%/}/Applications/$name.app"
   if [[ -e "$app" || -L "$app" ]]; then
-    if [[ -L "$app" ]] || [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" 2>/dev/null || true)" != com.vexor.noviq ]]; then
+    if [[ -L "$app" ]]; then
+      echo "Cannot replace $app: it is a symbolic link." >&2
+      exit 1
+    fi
+    identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" 2>/dev/null || true)"
+    if [[ "$identifier" != com.vexor.noviq && ( "$name" != Nevis || "$identifier" != com.vexor.nevis ) ]]; then
       echo "Cannot replace $app: it is not a recognized Nevis installation." >&2
       exit 1
     fi
     if /bin/ps -axo command= | /usr/bin/grep -F "$app/Contents/MacOS/" | /usr/bin/grep -v grep >/dev/null; then
-      echo 'Close Nevis and Noviq before installing this update. Your notes will be kept.' >&2
+      echo 'Close the application before installing this update. Your notes will be kept.' >&2
       exit 1
     fi
   fi

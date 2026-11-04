@@ -1,5 +1,5 @@
 import type { Page } from './repo'
-import * as Ic from './icons'
+import { Icon } from './design-system'
 import { GLYPHS, iconNode, isGlyph, parseIcon } from './iconSet'
 
 const TONES = ['#4f7cff', '#e24a9f', '#f59e0b', '#22b07d', '#8b5cf6', '#ef5b4f', '#0ea5c6']
@@ -22,13 +22,13 @@ export function PageIcon({ page }: { page: Pick<Page, 'id' | 'icon' | 'kind'> })
       {icon ? (
         iconNode(icon, 14)
       ) : page.kind === 'folder' ? (
-        <Ic.Folder size={13} />
+        <Icon name="folder" size={13} />
       ) : page.kind === 'board' ? (
-        <Ic.Pencil size={13} />
+        <Icon name="pencil" size={13} />
       ) : page.kind === 'todo' ? (
-        <Ic.Checklist size={13} />
+        <Icon name="checklist" size={13} />
       ) : (
-        <Ic.Page size={13} />
+        <Icon name="file" size={13} />
       )}
     </span>
   )

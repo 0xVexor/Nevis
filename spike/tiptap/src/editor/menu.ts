@@ -16,6 +16,7 @@ interface MenuView {
   title: string
   desc: string
   disabled?: boolean
+  group?: string
 }
 
 /** `preview` returns trusted SVG markup (see slashPreview.ts) for the highlighted item, drawn in a small frame beside the menu. */
@@ -55,34 +56,45 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
 
     const draw = () => {
       if (!el) return
-      const kept = el.querySelector('.slash-list')?.scrollTop ?? 0
+      const kept = el.querySelector('.ds-menu-list')?.scrollTop ?? 0
       el.innerHTML = ''
       const label = document.createElement('div')
-      label.className = 'slash-label'
+      label.className = 'ds-menu-head'
       label.textContent = typeof cfg.label === 'function' ? cfg.label() : cfg.label
       el.append(label)
       if (!items.length) {
         const none = document.createElement('div')
-        none.className = 'slash-empty'
+        none.className = 'ds-menu-empty'
         none.textContent = cfg.empty ?? t('No items found')
         el.append(none)
         return
       }
       const list = document.createElement('div')
-      list.className = 'slash-list'
+      list.className = 'ds-menu-list'
       el.append(list)
+      let group: string | undefined
       items.forEach((it, i) => {
         const v = cfg.view(it)
+        if (v.group && v.group !== group) {
+          const heading = document.createElement('div')
+          heading.className = 'ds-menu-head'
+          heading.setAttribute('role', 'presentation')
+          heading.textContent = t(v.group)
+          list.append(heading)
+        }
+        group = v.group
         const b = document.createElement('button')
         b.disabled = !!v.disabled
-        b.className = 'slash-item' + (i === selected ? ' sel' : '')
-        b.innerHTML = '<span class="slash-ic"></span><span class="slash-tx"><b></b><small></small></span>'
-        const ic = b.querySelector('.slash-ic') as HTMLElement
+        b.type = 'button'
+        b.setAttribute('role', 'menuitem')
+        b.className = 'ds-menu-item' + (i === selected ? ' hot' : '')
+        b.innerHTML = '<span class="ds-menu-ic"></span><span class="ds-menu-label"><b></b><small></small></span>'
+        const ic = b.querySelector('.ds-menu-ic') as HTMLElement
         if (v.icon.startsWith(ICON_PREFIX)) ic.innerHTML = iconSvg(v.icon.slice(ICON_PREFIX.length))
         else ic.textContent = v.icon
-        const t = b.querySelector('b') as HTMLElement
-        t.textContent = v.title
-        t.setAttribute('dir', 'auto')
+        const name = b.querySelector('b') as HTMLElement
+        name.textContent = v.title
+        name.setAttribute('dir', 'auto')
         ;(b.querySelector('small') as HTMLElement).textContent = v.desc
         b.onmousedown = (e) => {
           e.preventDefault()
@@ -91,20 +103,20 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
         b.onmousemove = () => {
           if (selected !== i) {
             selected = i
-            list.querySelector('.sel')?.classList.remove('sel')
-            b.classList.add('sel')
+            list.querySelector('.hot')?.classList.remove('hot')
+            b.classList.add('hot')
             drawPreview()
           }
         }
         list.append(b)
       })
       const foot = document.createElement('div')
-      foot.className = 'slash-foot'
-      foot.innerHTML = '<span><kbd>↑</kbd><kbd>↓</kbd> ' + t('Navigate') + '</span><span><kbd>↵</kbd> ' + t('Select') + '</span><span><kbd>Esc</kbd> ' + t('Close') + '</span>'
+      foot.className = 'ds-menu-foot'
+      foot.innerHTML = '<span><kbd class="ds-kbd">↑</kbd><kbd class="ds-kbd">↓</kbd> ' + t('Navigate') + '</span><span><kbd class="ds-kbd">↵</kbd> ' + t('Select') + '</span><span><kbd class="ds-kbd">Esc</kbd> ' + t('Close') + '</span>'
       el.append(foot)
       // keep the scroll position across redraws, then make sure the selected row is fully inside the visible list (never under the footer)
       list.scrollTop = kept
-      const cur = list.querySelector<HTMLElement>('.sel')
+      const cur = list.querySelector<HTMLElement>('.hot')
       if (cur) {
         if (cur.offsetTop - 6 < list.scrollTop) list.scrollTop = Math.max(0, cur.offsetTop - 6)
         else if (cur.offsetTop + cur.offsetHeight + 6 > list.scrollTop + list.clientHeight) list.scrollTop = cur.offsetTop + cur.offsetHeight + 6 - list.clientHeight
@@ -127,7 +139,8 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
     return {
       onStart: (props: MenuProps<T>) => {
         el = document.createElement('div')
-        el.className = 'slash-menu'
+        el.className = 'ds-pop ds-menu ds-menu--command slash-menu'
+        el.setAttribute('role', 'menu')
         document.body.append(el)
         items = props.items
         selected = Math.max(

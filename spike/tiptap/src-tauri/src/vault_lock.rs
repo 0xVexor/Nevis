@@ -12,16 +12,21 @@ pub struct Guard {
 }
 static LOCKS: OnceLock<Mutex<Vec<Weak<Guard>>>> = OnceLock::new();
 pub fn acquire(root: &Path) -> Res<Arc<Guard>> {
+    acquire_metadata(root, ".nevis")
+}
+
+pub(crate) fn acquire_metadata(root: &Path, directory: &str) -> Res<Arc<Guard>> {
+    let metadata = root.join(directory);
     for p in [
         root.to_path_buf(),
-        root.join(".noviq"),
-        root.join(".noviq/vault-write.lock"),
+        metadata.clone(),
+        metadata.join("vault-write.lock"),
     ] {
         if fs::symlink_metadata(&p).is_ok_and(|m| m.file_type().is_symlink()) {
             return Err("STORAGE:symlink".into());
         }
     }
-    if !root.is_dir() || !root.join(".noviq").is_dir() {
+    if !root.is_dir() || !metadata.is_dir() {
         return Err("VAULT_MISSING".into());
     }
     let mut locks = LOCKS
@@ -29,7 +34,7 @@ pub fn acquire(root: &Path) -> Res<Arc<Guard>> {
         .lock()
         .map_err(err)?;
     locks.retain(|w| w.strong_count() > 0);
-    let path = root.join(".noviq/vault-write.lock");
+    let path = metadata.join("vault-write.lock");
     let file = OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -62,7 +67,7 @@ pub fn acquire(root: &Path) -> Res<Arc<Guard>> {
 }
 impl Guard {
     pub fn check(&self, root: &Path) -> Res<()> {
-        let path = root.join(".noviq/vault-write.lock");
+        let path = root.join(".nevis/vault-write.lock");
         if fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
             return Err("VAULT_LOCK_LOST".into());
         }

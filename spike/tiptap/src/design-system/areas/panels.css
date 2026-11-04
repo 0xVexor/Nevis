@@ -5,16 +5,31 @@
 *::-webkit-scrollbar { display: none; }
 
 /* Top-bar content; shell geometry and counters live in shell.css. */
-.topbar { gap: var(--ds-s3); }
-.crumbs { display: flex; min-width: 0; overflow: hidden; align-items: center; height: var(--ds-control); padding: 0; gap: 0; border: 0; border-radius: 0; background: none; box-shadow: none;
-  block-size: 32px; }
-.crumb { display: flex; min-width: 0; align-items: center; gap: 2px; height: var(--ds-control-sm);
-  block-size: var(--ds-control-sm); }
+.crumbs {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  align-items: center;
+  padding: 0;
+  gap: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  block-size: 32px;
+}
+.crumb {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+  block-size: var(--ds-control-sm);
+}
 .crumb-home { display: grid; place-items: center; flex: none; width: 28px; height: var(--ds-control-sm); padding: 0; border: 0; border-radius: var(--ds-r-sm); background: none; color: var(--ds-text-2); cursor: var(--cursor-hand, pointer); transition: background 0.15s, color 0.15s; }
 .crumb-home:hover { background: var(--ds-hover); color: var(--ds-text); }
 .crumb-sep { display: grid; place-items: center; width: 14px; height: var(--ds-control-sm); padding: 0; color: var(--ds-text-3); }
 :root[dir='rtl'] .crumb-sep svg { transform: scaleX(-1); }
-.crumb button, .crumb-folder, .crumb-cur { display: inline-flex; align-items: center; gap: var(--ds-s2); height: var(--ds-control-sm); padding: 0 var(--ds-s2); border: 0; border-radius: var(--ds-r-sm); background: transparent; color: var(--ds-text-2); font-size: 13.5px; line-height: 1; max-width: 200px; box-shadow: none; }
+.crumb button, .crumb-folder, .crumb-cur { display: inline-flex; align-items: center; gap: var(--ds-s2); height: var(--ds-control-sm); padding: 0 var(--ds-s2); border: 0; border-radius: var(--ds-r-sm); background: transparent; color: var(--ds-text-2); font-size: var(--ds-text-small); line-height: 1; max-width: 200px; box-shadow: none; }
 .crumb button { cursor: var(--cursor-hand, pointer); }
 .crumb button:hover { background: var(--ds-hover); color: var(--ds-text); }
 .crumb button .ic, .crumb-folder svg, .crumb-cur svg { display: grid; place-items: center; flex: none; }
@@ -23,22 +38,30 @@
 .crumb { flex: 0 1 auto; }
 /* the current page keeps its whole name; only a name wider than half the window is shortened */
 .crumb.last { flex: 0 0 auto; max-inline-size: 50vw; }
-.crumb.last button { max-width: none; max-inline-size: 100%; }
+.crumb.last button { max-inline-size: 100%; }
 .crumb-more { flex: none; }
 .crumb-more button { padding-inline: var(--ds-s2); color: var(--ds-text-3); letter-spacing: 0.1em; }
 .crumb:last-child button, .crumb.last button, .crumb-cur { background: none; color: var(--ds-text); font-weight: 550; box-shadow: none; }
 
-.status { height: var(--ds-control); padding: 0 var(--ds-s2); border: 0; background: none;
+.status {
+  padding: 0 var(--ds-s2);
+  border: 0;
+  background: none;
   block-size: var(--ds-control-sm);
-  font-size: 12.5px;
-  color: var(--ds-text-3); }
-.tb-group { display: inline-flex; align-items: center; gap: 2px; height: var(--ds-control); padding: 0; border: 0; border-radius: 0; background: none;
-  block-size: auto; }
+  font-size: var(--ds-text-small);
+  color: var(--ds-text-3);
+}
+.tb-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  block-size: auto;
+}
 .tb-group .icon-btn { width: 32px; height: 32px; border-radius: var(--ds-r-sm); }
-.tb-group .icon-btn.active { background: var(--ds-accent-soft); color: var(--ds-accent); }
-.tb-group .icon-btn + .icon-btn { position: relative; }
-.tb-group .icon-btn:hover { background: var(--ds-hover);
-  color: var(--ds-text); }
 
 /* ───────── menus ───────── */
 
@@ -49,5 +72,4 @@
 /* ───────── page drawer: same floating dock as the sidebar ───────── */
 
 /* outline: a connected timeline; the dot of the section you are in lights up */
-
 

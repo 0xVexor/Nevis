@@ -3,10 +3,10 @@
 //! ```text
 //! databases/<containers|sources|properties|views|relations|edges|templates|workflows|comments|principals|grants|events|allocators>/<id>.json
 //! history/records/<kind>/<id>/<revision>.json         full pre-images (synced)
-//! .noviq/database-journal/<operation>.json            redo journal, local only
-//! .noviq/database-ops/<operation>.json                results of applied operations (idempotent retries), local only
-//! .noviq/database-undo.json, .noviq/workflow-runtime/ local only
-//! .noviq/index.db                                     disposable query index (see index.rs)
+//! .nevis/database-journal/<operation>.json            redo journal, local only
+//! .nevis/database-ops/<operation>.json                results of applied operations (idempotent retries), local only
+//! .nevis/database-undo.json, .nevis/workflow-runtime/ local only
+//! .nevis/index.db                                     disposable query index (see index.rs)
 //! ```
 //!
 //! A batch is one durable unit: it is written to a journal, the journal is marked committed, the post-images are applied
@@ -86,10 +86,10 @@ fn page_path(root: &Path, id: &str) -> Res<PathBuf> {
     Ok(root.join("pages").join(format!("{id}.json")))
 }
 fn journal_dir(root: &Path) -> PathBuf {
-    root.join(".noviq/database-journal")
+    root.join(".nevis/database-journal")
 }
 fn ops_dir(root: &Path) -> PathBuf {
-    root.join(".noviq/database-ops")
+    root.join(".nevis/database-ops")
 }
 
 fn revision_of(v: &Value) -> i64 {
@@ -382,25 +382,25 @@ pub fn history(root: &Path, kind: &str, id: &str) -> Res<Vec<Value>> {
 // ───── device-local state ─────
 
 pub fn undo_load(root: &Path) -> Value {
-    read_json(&root.join(".noviq/database-undo.json")).unwrap_or(json!([]))
+    read_json(&root.join(".nevis/database-undo.json")).unwrap_or(json!([]))
 }
 pub fn undo_save(root: &Path, v: &Value) -> Res<()> {
-    write_atomic(&root.join(".noviq/database-undo.json"), v.to_string().as_bytes())
+    write_atomic(&root.join(".nevis/database-undo.json"), v.to_string().as_bytes())
 }
 pub fn runtime_get(root: &Path, key: &str) -> Res<Option<Value>> {
-    Ok(read_json(&root.join(".noviq/workflow-runtime").join(format!("{}.json", enc(key)?))).and_then(|v| v.get("value").cloned()))
+    Ok(read_json(&root.join(".nevis/workflow-runtime").join(format!("{}.json", enc(key)?))).and_then(|v| v.get("value").cloned()))
 }
 pub fn runtime_set(root: &Path, key: &str, v: &Value) -> Res<()> {
-    write_atomic(&root.join(".noviq/workflow-runtime").join(format!("{}.json", enc(key)?)), json!({ "__key": key, "value": v }).to_string().as_bytes())
+    write_atomic(&root.join(".nevis/workflow-runtime").join(format!("{}.json", enc(key)?)), json!({ "__key": key, "value": v }).to_string().as_bytes())
 }
 pub fn runtime_delete(root: &Path, key: &str) -> Res<()> {
-    let _ = fs::remove_file(root.join(".noviq/workflow-runtime").join(format!("{}.json", enc(key)?)));
+    let _ = fs::remove_file(root.join(".nevis/workflow-runtime").join(format!("{}.json", enc(key)?)));
     Ok(())
 }
 /// Keys are stored inside the file (`{"key": ..., "value": ...}`) so prefixes can be listed despite name encoding.
 pub fn runtime_keys(root: &Path, prefix: &str) -> Vec<String> {
     let mut out = vec![];
-    for e in fs::read_dir(root.join(".noviq/workflow-runtime")).into_iter().flatten().flatten() {
+    for e in fs::read_dir(root.join(".nevis/workflow-runtime")).into_iter().flatten().flatten() {
         if let Some(v) = read_json(&e.path()) {
             if let Some(k) = v.get("__key").and_then(Value::as_str) {
                 if k.starts_with(prefix) {

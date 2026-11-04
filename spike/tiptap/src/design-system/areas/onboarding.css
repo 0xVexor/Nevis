@@ -63,7 +63,6 @@
 .onb-list-text > :is(b, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .onb-list-text b { font-weight: 600; }
 .onb-list-text small { color: var(--ds-text-3); font-size: var(--ds-text-caption); }
-.onb-list-text small.onb-warn { display: inline-flex; align-items: center; gap: var(--ds-s1); color: var(--ds-warn); }
 .onb-list-actions { display: flex; flex: none; align-items: center; gap: var(--ds-s2); }
 @container (max-width: 520px) {
   .onb-list > li { flex-wrap: wrap; }
@@ -105,7 +104,7 @@
 .fn-sheet .home-note-bare { display: grid; align-content: start; gap: var(--ds-s4); }
 .fn-sheet .home-note-title { margin: 0; color: var(--ds-text); font: 600 var(--ds-text-heading)/1.2 var(--ds-font-ui); letter-spacing: -.02em; }
 .fn-sheet .home-note-title:focus-visible, .fn-sheet .home-note-editor:focus-within { outline: none; }
-.fn-sheet .home-note-editor .tiptap { min-block-size: 200px; max-block-size: none; overflow: visible; font: 400 17px/1.8 var(--ds-font-ui); }
+.fn-sheet .home-note-editor .tiptap { min-block-size: 200px; max-block-size: none; overflow: visible; font: 400 var(--ds-text-section) /1.8 var(--ds-font-ui); }
 /* one line at any width or font: the label gives way first, then the row scrolls rather than wrapping */
 .fn-ideas { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--ds-s1); padding-block-start: var(--ds-s4); overflow-x: auto; scrollbar-width: none; border-block-start: 1px solid var(--ds-line); white-space: nowrap; animation: fn-rise var(--ds-base) var(--ds-ease) var(--ds-slow) both; }
 .fn-ideas > .ds-btn { flex: none; }

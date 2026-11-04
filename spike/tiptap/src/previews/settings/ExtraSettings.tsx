@@ -3,7 +3,7 @@ import { useLabels } from '../../settings-ui/labels'
 import { BrandMark } from '../../BrandMark'
 import { useRef, useState } from 'react'
 import { Button } from '../../design-system/Button'
-import { Field, Switch } from '../../design-system/controls'
+import { Disclosure, Field, Notice, Switch } from '../../design-system/controls'
 import { Dropdown } from '../../design-system/Menu'
 import { Icon } from '../../design-system/icons'
 import { getSettings, updateSettings, type Settings } from '../../settings'
@@ -43,7 +43,7 @@ function BackupSettings() {
       <SettingRow label={l('Restore preview preferences')} hint={l('Review a preview export before applying it. Existing notes are never replaced.')}><Button icon={<Icon name="upload" />} onClick={() => file.current?.click()}>{l('Choose a file')}</Button><input ref={file} hidden type="file" accept=".json,application/json" onChange={async event => { const selected = event.target.files?.[0]; if (!selected) return; try { if (selected.size > 1_000_000) throw new Error('This file is too large.'); setReview(readStudyBackup(await selected.text())); setError(''); setMessage('') } catch (e) { setError(l(e instanceof Error ? e.message : 'Could not read the file.')) } event.target.value = '' }} /></SettingRow>
       {lastExport && <p className="prefs-caption">{l('Last export')}: <time dateTime={lastExport}>{new Date(lastExport).toLocaleString()}</time></p>}
       {review && <section className="prefs-review"><h3>{l('Ready to restore preferences')}</h3><p>{l('Theme, fonts, language and layout will be applied to this preview only.')}</p><div className="prefs-actions"><Button onClick={() => setReview(null)}>{l('Cancel')}</Button><Button variant="primary" onClick={() => { updateSettings(review); setReview(null); setMessage(l('Preview preferences restored.')) }}>{l('Apply preferences')}</Button></div></section>}
-      {message && <p className="prefs-message" role="status">{message}</p>}{error && <p className="prefs-error" role="alert">{error}</p>}
+      {message && <Notice tone="ok" role="status" compact>{message}</Notice>}{error && <Notice tone="bad" compact>{error}</Notice>}
     </SettingGroup>
     <SettingGroup title={l('Automatic backups')}>
       <SettingRow label={l('Back up automatically')} hint={l('Scheduled vault backups need the desktop app and an open workspace.')}><Switch label={l('Back up automatically')} checked={false} disabled onChange={() => {}} /></SettingRow>
@@ -72,7 +72,7 @@ function ConnectionSettings() {
     <SettingGroup title={l('Connect a client')}>
       <SettingRow label={l('AI app')}><Dropdown label={l('AI app')} value={policy.client} options={[{ value: 'claude', label: 'Claude Desktop' }, { value: 'codex', label: 'ChatGPT / Codex' }, { value: 'gemini', label: 'Gemini CLI' }]} onChange={client => set({ client })} /></SettingRow>
       <div className="prefs-actions"><Button variant="primary" disabled>{l('Add to AI app')}</Button><Button disabled>{l('Copy connection')}</Button></div>
-      <details className="prefs-disclosure"><summary>{l('How the connection works')}</summary><ol><li>{l('Open your vault in the desktop app.')}</li><li>{l('Review the scope and editing permissions.')}</li><li>{l('Enable the connection, add your client, then restart the AI app.')}</li></ol><p>{l('The connection works only while Nevis is open. Changing vaults disconnects the client.')}</p></details>
+      <Disclosure className="prefs-disclosure" title={l('How the connection works')}><ol><li>{l('Open your vault in the desktop app.')}</li><li>{l('Review the scope and editing permissions.')}</li><li>{l('Enable the connection, add your client, then restart the AI app.')}</li></ol><p>{l('The connection works only while Nevis is open. Changing vaults disconnects the client.')}</p></Disclosure>
     </SettingGroup>
   </>
 }
@@ -89,16 +89,16 @@ function DatabaseSettings() {
     </SettingGroup>
     <SettingGroup title={l('Maps')}>
       <label className="prefs-field"><span>{l('Map tile URL')}</span><Field ltr value={config.tiles} placeholder="https://tiles.example.com/{z}/{x}/{y}.png" aria-invalid={tilesInvalid} onChange={event => set({ tiles: event.target.value })} /><small>{l('Choose an HTTPS provider with {z}, {x} and {y}. No provider is built in.')}</small></label>
-      {tilesInvalid && <p role="alert" className="prefs-error">{l('Use an HTTPS URL containing {z}, {x} and {y}.')}</p>}
+      {tilesInvalid && <Notice tone="bad" compact>{l('Use an HTTPS URL containing {z}, {x} and {y}.')}</Notice>}
       <label className="prefs-field"><span>{l('Map attribution')}</span><Field value={config.attribution} placeholder={l('Map provider attribution')} onChange={event => set({ attribution: event.target.value })} /></label>
     </SettingGroup>
     <SettingGroup title={l('Gateway')}>
       <p className="prefs-caption">{l('Connect your own gateway for public forms and scheduled messages. Saving does not contact a server.')}</p>
       <label className="prefs-field"><span>{l('Gateway address')}</span><Field ltr value={config.gateway} placeholder="https://gateway.example.com" aria-invalid={gatewayInvalid} onChange={event => set({ gateway: event.target.value })} /></label>
-      {gatewayInvalid && <p role="alert" className="prefs-error">{l('Use HTTPS, or an HTTP localhost address.')}</p>}
+      {gatewayInvalid && <Notice tone="bad" compact>{l('Use HTTPS, or an HTTP localhost address.')}</Notice>}
       <label className="prefs-field"><span>{l('Gateway owner token')}</span><Field ltr type="password" autoComplete="off" value={token} onChange={event => { setToken(event.target.value); setSaved(false) }} /><small>{l('Use a test value in this preview. The token is kept in memory and is not sent anywhere.')}</small></label>
       <div className="prefs-actions"><Button variant="primary" disabled={tilesInvalid || gatewayInvalid} onClick={() => { setPreference('not.db.weekStart', config.week); setPreference('not.db.map', config.tiles ? JSON.stringify({ template: config.tiles, attribution: config.attribution }) : 'null'); setPreference('not.db.gateway', config.gateway); setSaved(true) }}>{l('Save preview configuration')}</Button><Button disabled>{l('Check connection')}</Button></div>
-      {saved && <p className="prefs-message" role="status">{l('Configuration saved on this preview origin. No server was contacted.')}</p>}
+      {saved && <Notice tone="ok" role="status" compact>{l('Configuration saved on this preview origin. No server was contacted.')}</Notice>}
     </SettingGroup>
     <div className="prefs-status-list"><div><span>{l('Local database')}</span><b>{l('On this device')}</b></div><div><span>{l('Gateway')}</span><b>{l('Not verified')}</b></div><div><span>{l('Connected providers')}</span><b>{l('Not connected')}</b></div></div>
   </>

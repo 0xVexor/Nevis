@@ -107,10 +107,11 @@ function FeedCard({ svc, id, ctl, props, showCounts }: { svc: ViewProps['svc']; 
       {showCounts && (
         <footer className="dv-feed-foot">
           <span title={t('Views')}>
-            <Icon name="eye" size={14} /> {t('{n} views', { n: counts.views })}
+            <Icon name="eye" size={14} /> {/* not '{n} views': that string names database views elsewhere and is translated as such */}
+            {counts.views === 1 ? t('Seen once') : t('Seen {n} times', { n: counts.views })}
           </span>
           <Button size="sm" variant="ghost" aria-expanded={open} icon={<Icon name="comment" size={14} />} onClick={() => setOpen(!open)}>
-            {t('{n} comments', { n: counts.comments })}
+            {counts.comments === 1 ? t('1 comment') : t('{n} comments', { n: counts.comments })}
           </Button>
         </footer>
       )}

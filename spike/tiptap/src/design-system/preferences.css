@@ -11,3 +11,21 @@
 .prefs-range { display: flex; gap: var(--ds-s3); align-items: center; }
 .prefs-range input { inline-size: 120px; accent-color: var(--ds-accent); cursor: pointer; }
 .prefs-range output { min-inline-size: 38px; color: var(--ds-text-2); font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; }
+.prefs-group-hint { margin: 0 0 var(--ds-s2); max-inline-size: 60ch; color: var(--ds-text-3); font-size: var(--ds-text-caption); line-height: 1.5; }
+.prefs-row--wide { flex-direction: column; align-items: stretch; gap: var(--ds-s3); }
+.prefs-row--wide p { max-inline-size: 60ch; }
+.prefs-row--wide .prefs-control { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-s2); }
+.prefs-note { margin: var(--ds-s2) 0 0; color: var(--ds-text-2); font-size: var(--ds-text-small); line-height: 1.6; }
+.prefs-code { flex: 1 1 240px; min-inline-size: 0; padding: var(--ds-s2) var(--ds-s3); border: 1px solid var(--ds-line); border-radius: var(--ds-r-sm); background: var(--ds-sunk); font: var(--ds-text-small) var(--ds-font-mono); overflow-wrap: anywhere; }
+.prefs-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--ds-s2) var(--ds-s4); max-block-size: 240px; margin-block-start: var(--ds-s3); overflow: auto; }
+/* import drop area (Data) and the About block */
+.prefs-about { display: flex; flex-direction: column; align-items: flex-start; gap: var(--ds-s3); padding: var(--ds-s2) 0 var(--ds-s4); }
+.prefs-about-logo { width: 56px; height: 56px; display: grid; place-items: center; border-radius: var(--ds-r-lg); background: var(--ds-accent-soft); border: 1px solid var(--ds-accent-line); color: var(--ds-accent); border-color: var(--ds-accent-line); }
+.prefs-about p { margin: 0; color: var(--ds-text-2); font-size: var(--ds-text-small); line-height: 1.8; max-width: 52ch; }
+.prefs-about small { color: var(--ds-text-3); }
+.prefs-drop { display: flex; flex-direction: column; align-items: center; gap: var(--ds-s2); margin-block: var(--ds-s2) var(--ds-s5); padding: var(--ds-s6) var(--ds-s5); border: 1.5px dashed var(--ds-line-strong); border-radius: var(--ds-r-lg); background: var(--ds-bg); color: var(--ds-text-2); text-align: center; }
+.prefs-drop[data-over='true'] { border-color: var(--ds-accent); background: var(--ds-accent-soft); }
+.prefs-drop-ic { display: grid; place-items: center; inline-size: 44px; block-size: 44px; border-radius: var(--ds-r-lg); background: var(--ds-sunk); color: var(--ds-text-2); }
+.prefs-drop b { color: var(--ds-text); font-weight: 500; }
+.prefs-drop small { color: var(--ds-text-3); font-size: var(--ds-text-small); }
+.prefs-drop-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--ds-s2); margin-block-start: var(--ds-s3); }

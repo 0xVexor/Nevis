@@ -31,7 +31,7 @@
 .pt-title > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pt-title:hover > span:last-child { color: var(--ds-accent); }
 .pt-title:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 4px; border-radius: var(--ds-r-sm); }
-.pt-ic { display: grid; place-items: center; flex: none; inline-size: 28px; block-size: 28px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-sm); color: var(--ds-text-3); font-size: 15px; }
+.pt-ic { display: grid; place-items: center; flex: none; inline-size: 28px; block-size: 28px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-sm); color: var(--ds-text-3); font-size: var(--ds-text-ui); }
 .pt-path { overflow: hidden; color: var(--ds-text-3); font-size: var(--ds-text-small); text-overflow: ellipsis; white-space: nowrap; }
 /* tags stay on one line: the first two, then +N that opens the rest */
 .pt-tag-list { display: flex; align-items: center; gap: var(--ds-s1); min-inline-size: 0; overflow: hidden; }

@@ -92,18 +92,9 @@ function Card({
 }) {
   const page = repo.getRaw(row.page.id)
   return (
-    <div
-      className="dv-card"
-      role="button"
-      tabIndex={0}
-      draggable={draggable}
-      data-dragging={dragging || undefined}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onClick={onOpen}
-      onContextMenu={onContextMenu}
-      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}
-    >
+    <div className="dv-card dv-stretch" draggable={draggable} data-dragging={dragging || undefined} onDragStart={onDragStart} onDragEnd={onDragEnd} onContextMenu={onContextMenu}>
+      {/* the card opens through one button under its content, so its chips and links stay real controls of their own */}
+      <button type="button" className="dv-stretch-hit" aria-label={plainTitle(row.page.title) || t('Untitled')} onClick={onOpen} />
       {cover && (
         <div className="dv-card-cover">
           <img src={cover} alt="" loading="lazy" />
@@ -238,7 +229,15 @@ export function DatabaseBoardView({ svc, view, ctl }: ViewProps) {
     const plan = planBoardDrop(svc.state, { pageId: d.pageId, groupPropertyId: def.id, fromKey: d.from, toKey, sortsActive: sorted, mode: mode as never })
     if (!plan.ok) return ctl.notice(plan.reason)
     if (plan.noop) return
-    if (plan.confirm && !(await confirmDialog({ title: t('Clear this property?'), message: t('The card has several values here; dropping it in “No value” removes all of them.'), confirmLabel: t('Clear'), danger: true })))
+    if (
+      plan.confirm &&
+      !(await confirmDialog({
+        title: t('Clear this property?'),
+        message: t('The card has several values here; dropping it in “No value” removes all of them.'),
+        confirmLabel: t('Clear'),
+        danger: true,
+      }))
+    )
       return
     const cmds = [...plan.commands]
     if (subDef && toSub !== d.sub && toSub !== null) {
@@ -397,10 +396,11 @@ export function ListView({ svc, view, ctl }: ViewProps) {
     const row = svc.state.row(id)
     if (!row) return null
     return (
-      <button type="button" className="ds-list-row dv-listrow" dir={dirOf(row.page.title)} key={id} onClick={() => open(id)} onContextMenu={itemMenu.onContextMenu(id)}>
+      <div className="ds-list-row dv-listrow dv-stretch" dir={dirOf(row.page.title)} key={id} onContextMenu={itemMenu.onContextMenu(id)}>
+        <button type="button" className="dv-stretch-hit" aria-label={plainTitle(row.page.title) || t('Untitled')} onClick={() => open(id)} />
         <PageIcon page={repo.getRaw(id) ?? { id, icon: undefined, kind: undefined }} />
-        <span className="dv-listrow-title" dir="auto">
-          {plainTitle(row.page.title)}
+        <span className="dv-listrow-title">
+          <span dir="auto">{plainTitle(row.page.title)}</span>
         </span>
         <span className="dv-listrow-props">
           {props.map((d) => (
@@ -409,7 +409,7 @@ export function ListView({ svc, view, ctl }: ViewProps) {
             </span>
           ))}
         </span>
-      </button>
+      </div>
     )
   }
   const add = ctl.canEditRows && (

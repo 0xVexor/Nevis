@@ -10,8 +10,8 @@ npm run build
 
 ## Desktop app (Tauri)
 
-Data is stored in a real SQLite file (`noviq.db`) and `files/` under the OS app-data folder
-(`%APPDATA%\com.vexor.noviq` on Windows, `~/Library/Application Support/com.vexor.noviq` on macOS).
+Data is stored in a real SQLite file (`nevis.db`) and `files/` under the OS app-data folder
+(`%APPDATA%\com.vexor.nevis` on Windows, `~/Library/Application Support/com.vexor.nevis` on macOS).
 
 Prerequisites: Rust **MSVC** toolchain (`rustup default stable-x86_64-pc-windows-msvc`) and Visual Studio Build Tools
 ("Desktop development with C++") on Windows; Xcode Command Line Tools on macOS.

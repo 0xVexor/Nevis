@@ -1,3 +1,4 @@
+import { commandHint, commandMatches, EDITOR_COMMANDS } from './shortcutCommands'
 import { cssVars } from './cssVars'
 import { setPreference } from './preferenceEvents'
 import { UpdateCenter } from './UpdateUI'
@@ -46,18 +47,17 @@ import { Brand } from './Brand'
 import { BrandMark } from './BrandMark'
 import { SaveStatus } from './design-system/SaveStatus'
 import { WorkspaceHeader } from './design-system/WorkspaceHeader'
-import { Icon, IconButton, dirOf, Button, useMenu, type MenuItem as MenuSpec } from './design-system'
-import { APP_TOAST, MenuItem, MenuLabel, MenuSep, NameDialog, SearchModal, Toast, type PaletteCommand } from './ui'
+import { Dialog, Icon, IconButton, Menu, Row, dirOf, Button, useMenu, type MenuItem as MenuSpec } from './design-system'
+import { APP_TOAST, NameDialog, SearchModal, Toast, type PaletteCommand } from './ui'
 import { Popover } from './design-system/Popover'
 import { Home } from './Home'
 import { Trash } from './Trash'
 import { iconNode } from './iconSet'
-import * as Ic from './icons'
 import { printPage } from './print'
 import { confirmDialog } from './dialog'
 import { OPEN_PAGE, PAGES_CHANGED } from './editor/pageLink'
 import { t } from './i18n'
-import { isMac } from './shortcuts'
+import { isMac, shortcutHint } from './shortcuts'
 import { CompactList, TreeRow } from './PageTree'
 
 const revealKey = isMac() ? 'Reveal in Finder' : /Windows/i.test(navigator.userAgent) ? 'Show in Explorer' : 'Show in file manager'
@@ -170,6 +170,10 @@ export default function App() {
   const [sideDrag, setSideDrag] = useState(false)
   useEffect(() => put('not.sideW', sideW), [sideW])
   const [searching, setSearching] = useState(false)
+  const [writingCatalog, setWritingCatalog] = useState<typeof import('./editor/slash').editorSearchItems>()
+  useEffect(() => {
+    if (searching && !writingCatalog) void import('./editor/slash').then(module => setWritingCatalog(() => module.editorSearchItems))
+  }, [searching, writingCatalog])
   const [searchInit, setSearchInit] = useState('') // query to start the search with (a saved search)
   const [tagFilter, setTagFilter] = useState<string | null>(null) // sidebar: show only pages with this tag
   // a tag clicked on a page opens the sidebar's tag list on that tag
@@ -239,7 +243,7 @@ export default function App() {
   useEffect(() => {
     const sync = () => !isTauri && setFullScreen(!!document.fullscreenElement)
     const key = (e: KeyboardEvent) => {
-      if (e.key !== 'F11' || e.ctrlKey || e.metaKey || e.altKey) return
+      if (!commandMatches(e, 'Full screen')) return
       e.preventDefault()
       void toggleFullScreen()
     }
@@ -360,7 +364,7 @@ export default function App() {
     const undo = toast.undo
     const key = (e: KeyboardEvent) => {
       const editable = e.target instanceof HTMLElement && (e.target.isContentEditable || e.target.matches('input, textarea, select'))
-      if (editable || e.shiftKey || e.altKey || !(e.ctrlKey || e.metaKey) || e.code !== 'KeyZ') return
+      if (editable || !commandMatches(e, 'Undo')) return
       e.preventDefault()
       undo()
       setToast(null)
@@ -390,7 +394,7 @@ export default function App() {
           })
       }
       if (matches(e, 'reader')) (e.preventDefault(), setReader((r) => !r)) // physical key: works with the Persian layout
-      if (e.key === 'Escape' && !document.querySelector('.lightbox, .palette-overlay')) setReader(false)
+      if (commandMatches(e, 'Leave reader mode') && !document.querySelector('.lightbox, .palette-overlay')) setReader(false)
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
@@ -660,35 +664,36 @@ export default function App() {
     for (let p: Page | undefined = current; p; p = p.parentId ? pages.find((x) => x.id === p!.parentId) : undefined) out.unshift(p)
     return out
   }, [current, pages])
-  const commands: PaletteCommand[] = [
-    { id: 'new-page', label: t('New page'), icon: <Ic.Page />, keywords: 'create add صفحه جدید', run: () => add(null) },
-    { id: 'templates', label: t('Templates'), icon: <Ic.Blocks />, keywords: 'template قالب تمپلیت', run: () => setTplOpen(true) },
-    { id: 'new-folder', label: t('New folder'), icon: <Ic.Folder />, keywords: 'create add پوشه', run: () => addFolder(null) },
+  const writingCommandsAvailable = current && view === 'page' && !overlayOpen && !reader && (!current.kind || current.kind === 'todo')
+  const commands: PaletteCommand[] = ([
+    { id: 'new-page', label: t('New page'), icon: <Icon name="file" size={16} />, keywords: 'create add صفحه جدید', run: () => add(null) },
+    { id: 'templates', label: t('Templates'), icon: <Icon name="blocks" size={16} />, keywords: 'template قالب تمپلیت', run: () => (closeOverlays(), setTplOpen(true)) },
+    { id: 'new-folder', label: t('New folder'), icon: <Icon name="folder" size={16} />, keywords: 'create add پوشه', run: () => addFolder(null) },
     {
       id: 'compact-pages',
       label: settings.pagesView === 'compact' ? t('Show pages as a tree') : t('Show pages as a compact list'),
-      icon: <Ic.Layers />,
+      icon: <Icon name="layers" size={16} />,
       keywords: 'compact flat list tree pages sidebar intellij فشرده لیست درخت صفحه',
       run: () => updateSettings({ pagesView: settings.pagesView === 'compact' ? 'tree' : 'compact' }),
     },
-    { id: 'new-todo', label: t('New to-do list'), icon: <Ic.Checklist />, keywords: 'create add todo task list checklist لیست کار تسک چک‌لیست جدید', run: () => add(null, 'todo') },
-    { id: 'new-database', label: t('New database'), icon: <Ic.Table />, keywords: 'create add table database board calendar پایگاه داده جدول جدید', run: () => addDatabase(null) },
-    { id: 'new-board', label: t('New board'), icon: <Ic.Pencil />, keywords: 'create add whiteboard drawing canvas sketch بوم نقاشی طراحی جدید', run: () => add(null, 'board') },
+    { id: 'new-todo', label: t('New to-do list'), icon: <Icon name="checklist" size={16} />, keywords: 'create add todo task list checklist لیست کار تسک چک‌لیست جدید', run: () => add(null, 'todo') },
+    { id: 'new-database', label: t('New database'), icon: <Icon name="table" size={16} />, keywords: 'create add table database board calendar پایگاه داده جدول جدید', run: () => addDatabase(null) },
+    { id: 'new-board', label: t('New board'), icon: <Icon name="pencil" size={16} />, keywords: 'create add whiteboard drawing canvas sketch بوم نقاشی طراحی جدید', run: () => add(null, 'board') },
     ...(current && view === 'page'
       ? [
-          { id: 'subpage', label: t('Add subpage'), icon: <Ic.Plus />, keywords: 'زیرصفحه', run: () => add(current.id) },
+          { id: 'subpage', label: t('Add subpage'), icon: <Icon name="plus" size={16} />, keywords: 'زیرصفحه', run: () => add(current.id) },
           {
             id: 'fav',
             label: current.favorite ? t('Remove from favorites') : t('Add to favorites'),
-            icon: <Ic.Star filled={current.favorite} />,
+            icon: <Icon name="star" size={16} />,
             keywords: 'star pin علاقه‌مندی',
             run: () => fav(current.id),
           },
-          { id: 'reader', label: t('Reader mode'), icon: <Ic.Reader />, keywords: 'read مطالعه', hint: bindingHint('reader'), run: () => setReader(true) },
+          { id: 'reader', label: t(reader ? 'Leave reader mode' : 'Reader mode'), icon: <Icon name="bookopen" size={16} />, keywords: 'read مطالعه', hint: reader ? commandHint('Leave reader mode') : bindingHint('reader'), run: () => setReader(open => !open) },
           {
             id: 'find',
             label: t('Find in page'),
-            icon: <Ic.Search />,
+            icon: <Icon name="search" size={16} />,
             keywords: 'search ctrl+f جست‌وجو پیدا',
             hint: bindingHint('find'),
             run: () => window.setTimeout(() => window.dispatchEvent(new Event('open-find')), 0),
@@ -696,49 +701,91 @@ export default function App() {
           {
             id: 'history',
             label: t('Version history'),
-            icon: <Ic.History />,
+            icon: <Icon name="history" size={16} />,
             keywords: 'versions restore earlier تاریخچه نسخه',
             run: () => window.setTimeout(() => window.dispatchEvent(new Event('open-history')), 0),
           },
-          { id: 'export-md', label: t('Export Markdown'), icon: <Ic.Markdown />, keywords: 'download خروجی', run: () => exportMd(current.id) },
-          { id: 'print', label: t('Print / PDF'), icon: <Ic.Pdf />, keywords: 'pdf print چاپ', run: () => printPage(current.title) },
+          { id: 'export-md', label: t('Export Markdown'), icon: <Icon name="markdown" size={16} />, keywords: 'download خروجی', run: () => exportMd(current.id) },
+          { id: 'print', label: t('Print / PDF'), icon: <Icon name="file-pdf" size={16} />, keywords: 'pdf print چاپ', run: () => printPage(current.title) },
         ]
       : []),
-    { id: 'home', label: t('Home'), icon: <Ic.Home />, keywords: 'dashboard خانه', run: () => setView('home') },
-    { id: 'table', label: t('All pages'), icon: <Ic.Table />, keywords: 'database جدول', run: () => setTableOpen(true) },
-    { id: 'graph', label: t('Graph'), icon: <Ic.Link />, keywords: 'graph links map backlinks گراف نقشه ارتباط پیوند', run: () => setGraphOpen(true) },
-    { id: 'files', label: t('Files'), icon: <Ic.Folders />, keywords: 'files explorer folders manage فایل مدیریت پوشه فایل‌ها', run: () => setView('files') },
-    { id: 'tasks', label: t('Tasks'), icon: <Ic.Checklist />, keywords: 'tasks todo checklist کارها وظایف چک لیست', run: () => setView('tasks') },
-    { id: 'databases', label: t('Databases'), icon: <Ic.Table />, keywords: 'databases tables projects all database پایگاه داده دیتابیس پروژه جدول', run: () => setView('databases') },
-    { id: 'drawings', label: t('Drawings'), icon: <Ic.Pencil />, keywords: 'drawings boards whiteboard sketch canvas excalidraw نقاشی بوم طراحی ترسیم', run: () => setView('drawings') },
-    { id: 'cards', label: t('Flashcards'), icon: <Ic.Cards />, keywords: 'review srs فلش‌کارت', run: () => setCardsOpen(true) },
-    { id: 'trash', label: t('Trash'), icon: <Ic.Trash />, keywords: 'deleted سطل', run: () => setView('trash') },
+    ...(writingCommandsAvailable ? EDITOR_COMMANDS.filter(label => !['Heading 1', 'Heading 2', 'Heading 3', 'Link to page', 'Bulleted list', 'Numbered list', 'Checklist', 'Quote', 'Code block'].includes(label)).map(label => ({
+      id: 'format-' + label,
+      group: 'Writing',
+      label: t(label),
+      keywords: label + ' formatting editor',
+      hint: commandHint(label),
+      icon: <Icon name="pencil" size={16} />,
+      run: () => window.setTimeout(() => window.dispatchEvent(new CustomEvent('run-editor-command', { detail: label })), 0),
+    })) : []),
+    ...(writingCommandsAvailable && writingCatalog ? writingCatalog().map(({ item, title, desc, searchOnly }) => ({
+      id: 'editor-' + item.title + (item.vars?.name ?? ''),
+      searchOnly,
+      group: 'Writing',
+      label: title,
+      keywords: item.title + ' ' + item.keywords + ' ' + desc,
+      icon: <Icon name="pencil" size={16} />,
+      run: () => window.setTimeout(() => window.dispatchEvent(new CustomEvent('run-editor-command', { detail: item })), 0),
+    })) : []),
+    { id: 'fullscreen', label: t(fullScreen ? 'Exit full screen' : 'Full screen'), icon: <Icon name="maximize" size={16} />, keywords: 'fullscreen F11', hint: commandHint('Full screen'), run: () => void toggleFullScreen() },
+    ...(current && view === 'page' ? [
+      { id: 'rename-page', label: t('Rename'), icon: <Icon name="pencil" size={16} />, keywords: 'rename page title', run: () => rename(current.id) },
+      { id: 'duplicate-page', label: t('Duplicate'), icon: <Icon name="copy" size={16} />, keywords: 'duplicate page copy', run: () => duplicate(current.id) },
+      { id: 'delete-page', label: t('Delete'), icon: <Icon name="trash" size={16} />, keywords: 'delete move page to trash', run: () => del(current.id) },
+      { id: 'move-page', label: t('Move to folder'), icon: <Icon name="folder" size={16} />, keywords: 'move page folder', run: () => setMovingId(current.id) },
+      { id: 'page-panel', label: t('Page side panel (quick actions & navigation)'), icon: <Icon name="panel-left" size={16} />, keywords: 'page panel outline backlinks', run: () => setPanelOpen(open => !open) },
+      ...shareItems(current).flatMap((item, index) => 'onSelect' in item && item.onSelect && item.label !== 'Markdown file' && item.label !== 'PDF or print' && item.label !== 'Export the whole workspace'
+        ? [{ id: 'share-' + index, label: t(item.label), keywords: item.label, icon: item.icon ?? <Icon name="share" size={16} />, run: () => item.onSelect?.() }]
+        : []),
+    ] : []),
+    { id: 'home', label: t('Home'), icon: <Icon name="home" size={16} />, keywords: 'dashboard خانه', run: () => (closeOverlays(), setView('home')) },
+    { id: 'table', label: t('All pages'), icon: <Icon name="table" size={16} />, keywords: 'database جدول', run: () => (closeOverlays(), setTableOpen(true)) },
+    { id: 'graph', label: t('Graph'), icon: <Icon name="link" size={16} />, keywords: 'graph links map backlinks گراف نقشه ارتباط پیوند', run: () => (closeOverlays(), setGraphOpen(true)) },
+    { id: 'files', label: t('Files'), icon: <Icon name="folder-plus" size={16} />, keywords: 'files explorer folders manage فایل مدیریت پوشه فایل‌ها', run: () => (closeOverlays(), setView('files')) },
+    { id: 'tasks', label: t('Tasks'), icon: <Icon name="checklist" size={16} />, keywords: 'tasks todo checklist کارها وظایف چک لیست', run: () => (closeOverlays(), setView('tasks')) },
+    { id: 'databases', label: t('Databases'), icon: <Icon name="table" size={16} />, keywords: 'databases tables projects all database پایگاه داده دیتابیس پروژه جدول', run: () => (closeOverlays(), setView('databases')) },
+    { id: 'drawings', label: t('Drawings'), icon: <Icon name="pencil" size={16} />, keywords: 'drawings boards whiteboard sketch canvas excalidraw نقاشی بوم طراحی ترسیم', run: () => (closeOverlays(), setView('drawings')) },
+    { id: 'cards', label: t('Flashcards'), icon: <Icon name="cards" size={16} />, keywords: 'review srs فلش‌کارت', run: () => (closeOverlays(), setCardsOpen(true)) },
+    { id: 'trash', label: t('Trash'), icon: <Icon name="trash" size={16} />, keywords: 'deleted سطل', run: () => (closeOverlays(), setView('trash')) },
     {
       id: 'theme',
       label: dark ? t('Light mode') : t('Dark mode'),
-      icon: dark ? <Ic.Sun /> : <Ic.Moon />,
+      icon: dark ? <Icon name="sun" size={16} /> : <Icon name="moon" size={16} />,
       keywords: 'theme dark light تم',
       run: () => updateSettings({ theme: dark ? 'light' : 'dark' }),
     },
     {
       id: 'sidebar',
       label: sideOpen ? t('Close sidebar') : t('Open sidebar'),
-      icon: <Ic.Sidebar />,
+      icon: <Icon name="panel-left" size={16} />,
       keywords: 'side panel نوار کناری',
       hint: bindingHint('sidebar'),
       run: () => setSideOpen((o) => !o),
     },
-    { id: 'import', label: t('Import or restore…'), icon: <Ic.Upload />, keywords: 'وارد کردن بازیابی markdown obsidian restore zip', run: openData },
-    { id: 'restore', label: t('Restore from backup'), icon: <Ic.Upload />, keywords: 'backup restore desktop workspace بازیابی پشتیبان بکاپ', run: openData },
-    { id: 'export-all', label: t('Export all pages (zip with Markdown & images)'), icon: <Ic.Download />, keywords: 'zip', run: doExportAll },
-    { id: 'backup', label: t('Full backup (JSON)'), icon: <Ic.Save />, keywords: 'پشتیبان', run: doBackup },
-    ...[{ id: 'data-folder', label: t('Workspaces…'), icon: <Ic.Folder />, keywords: 'vault switch workspace پوشه داده', run: () => setFolderOpen(true) }],
-    { id: 'auto-backup', label: t('Automatic backup to folder…'), icon: <Ic.Save />, keywords: 'پشتیبان خودکار', run: openData },
-    { id: 'check-updates', label: t('Check for updates'), icon: <Ic.Download />, keywords: 'update version beta release upgrade به‌روزرسانی نسخه', run: () => void updates.check(true) },
-    { id: 'settings', label: t('Settings'), icon: <Ic.Settings />, keywords: 'preferences تنظیمات', run: () => openSettings() },
+    { id: 'import', label: t('Import or restore…'), icon: <Icon name="upload" size={16} />, keywords: 'وارد کردن بازیابی markdown obsidian restore zip', run: openData },
+    { id: 'restore', label: t('Restore from backup'), icon: <Icon name="upload" size={16} />, keywords: 'backup restore desktop workspace بازیابی پشتیبان بکاپ', run: openData },
+    { id: 'export-all', label: t('Export all pages (zip with Markdown & images)'), icon: <Icon name="download" size={16} />, keywords: 'zip', run: doExportAll },
+    { id: 'backup', label: t('Full backup (JSON)'), icon: <Icon name="save" size={16} />, keywords: 'پشتیبان', run: doBackup },
+    ...[{ id: 'data-folder', label: t('Workspaces…'), icon: <Icon name="folder" size={16} />, keywords: 'vault switch workspace پوشه داده', run: () => setFolderOpen(true) }],
+    { id: 'auto-backup', label: t('Automatic backup to folder…'), icon: <Icon name="save" size={16} />, keywords: 'پشتیبان خودکار', run: openData },
+    { id: 'check-updates', label: t('Check for updates'), icon: <Icon name="download" size={16} />, keywords: 'update version beta release upgrade به‌روزرسانی نسخه', run: () => void updates.check(true) },
+    { id: 'settings', label: t('Settings'), icon: <Icon name="settings" size={16} />, keywords: 'preferences تنظیمات', run: () => openSettings() },
     // every page of the settings, one command each: "Settings › Shortcuts", "Settings › Data & backup"…
     ...SETTINGS_TABS.map((x) => ({ id: 'settings-' + x.id, label: t('Settings') + ' › ' + t(x.label), icon: x.icon, keywords: x.id + ' ' + x.hint + ' ' + t(x.hint), run: () => openSettings(x.id) })),
-  ]
+  ] satisfies PaletteCommand[]).map(command => {
+    if ('group' in command && command.group) return command
+    const id = command.id
+    const group = id.startsWith('settings') || ['theme', 'sidebar', 'compact-pages', 'check-updates', 'fullscreen'].includes(id)
+      ? 'Settings'
+      : id.startsWith('new-') || id === 'subpage'
+        ? 'Create'
+        : ['import', 'restore', 'export-all', 'backup', 'data-folder', 'auto-backup'].includes(id)
+          ? 'Data & backup'
+          : ['home', 'templates', 'table', 'graph', 'files', 'tasks', 'databases', 'drawings', 'cards', 'trash'].includes(id)
+            ? 'Workspace'
+            : 'Page actions'
+    return { ...command, group }
+  })
   const menuPage = menu ? pages.find((p) => p.id === menu.id) : undefined
 
   const sideExpanded = settings.sidebar === 'icons' && (sidePeek || sidePinned || newMenu !== null) && sideOpen
@@ -888,7 +935,7 @@ export default function App() {
               >
                 <button className={'section' + (shut.favs ? ' shut' : '')} onClick={() => setShut((s) => ({ ...s, favs: !s.favs }))}>
                   {t('Favorites')}
-                  <Ic.Chevron size={13} />
+                  <Icon name="chevron-right" size={13} />
                 </button>
                 {!shut.favs &&
                   favs.map((p) => (
@@ -910,20 +957,20 @@ export default function App() {
             <>
               <button className={'section' + (shut.saved ? ' shut' : '')} onClick={() => setShut((s) => ({ ...s, saved: !s.saved }))}>
                 {t('Saved searches')}
-                <Ic.Chevron size={13} />
+                <Icon name="chevron-right" size={13} />
               </button>
               {!shut.saved &&
                 saved.map((s) => (
                   <div key={s.id} className="row saved-row" style={{ paddingInlineStart: 24 }} title={s.query} onClick={() => (setSearchInit(s.query), setSearching(true))}>
                     <span className="ic">
-                      <Ic.Search size={15} />
+                      <Icon name="search" size={15} />
                     </span>
                     <span className="ntitle" dir="auto">
                       {s.name}
                     </span>
                     <span className="acts">
                       <button title={t('Delete')} onClick={(e) => (e.stopPropagation(), saveSaved(saved.filter((x) => x.id !== s.id)))}>
-                        <Ic.Close size={14} />
+                        <Icon name="x" size={14} />
                       </button>
                     </span>
                   </div>
@@ -934,7 +981,7 @@ export default function App() {
           {
             <button className={'section' + (shut.pages ? ' shut' : '')} onClick={() => setShut((s) => ({ ...s, pages: !s.pages }))}>
               {t('Pages')}
-              <Ic.Chevron size={13} />
+              <Icon name="chevron-right" size={13} />
             </button>
           }
           {!shut.pages && settings.pagesView === 'compact' && (
@@ -994,23 +1041,25 @@ export default function App() {
           </button>
           <div className="ds-split side-new">
             <Button variant="primary" aria-label={t('New page')} onClick={() => add(null)}>
-              <Ic.Plus size={16} />
+              <Icon name="plus" size={16} />
               <span className="ntitle">{t('New page')}</span>
             </Button>
             <Button variant="primary" aria-label={t('More')} aria-expanded={!!newMenu} onClick={(e) => setNewMenu(newMenu ? null : e.currentTarget.parentElement!.getBoundingClientRect())}>
-              <Ic.Chevron size={14} />
+              <Icon name="chevron-right" size={14} />
             </Button>
           </div>
           {newMenu && (
-            <Popover anchor={newMenu} onClose={() => setNewMenu(null)}>
-              <div className="ds-menu">
-                <MenuItem icon={<Ic.Page />} label={t('New page')} onClick={() => (setNewMenu(null), add(null))} />
-                <MenuItem icon={<Ic.Folder />} label={t('New folder')} onClick={() => (setNewMenu(null), addFolder(null))} />
-                <MenuItem icon={<Ic.Pencil />} label={t('New board')} onClick={() => (setNewMenu(null), add(null, 'board'))} />
-                <MenuItem icon={<Ic.Table />} label={t('New database')} onClick={() => (setNewMenu(null), addDatabase(null))} />
-                <MenuItem icon={<Ic.Checklist />} label={t('New to-do list')} onClick={() => (setNewMenu(null), add(null, 'todo'))} />
-              </div>
-            </Popover>
+            <Menu
+              anchor={newMenu}
+              onClose={() => setNewMenu(null)}
+              items={[
+                { label: t('New page'), icon: <Icon name="file" size={16} />, onSelect: () => add(null) },
+                { label: t('New folder'), icon: <Icon name="folder" size={16} />, onSelect: () => addFolder(null) },
+                { label: t('New board'), icon: <Icon name="pencil" size={16} />, onSelect: () => add(null, 'board') },
+                { label: t('New database'), icon: <Icon name="table" size={16} />, onSelect: () => addDatabase(null) },
+                { label: t('New to-do list'), icon: <Icon name="checklist" size={16} />, onSelect: () => add(null, 'todo') },
+              ]}
+            />
           )}
           <div className="side-credit">{t('Created by')} Vexor</div>
         </div>
@@ -1184,7 +1233,7 @@ export default function App() {
                 </IconButton>
               </>
             )}
-            <IconButton label={(fullScreen ? t('Exit full screen') : t('Full screen')) + '  F11'} pressed={fullScreen} className="ds-icon-btn--toggle" onClick={() => void toggleFullScreen()}>
+            <IconButton label={(fullScreen ? t('Exit full screen') : t('Full screen')) + '  ' + commandHint('Full screen')} pressed={fullScreen} className="ds-icon-btn--toggle topbar-fullscreen" onClick={() => void toggleFullScreen()}>
               <Icon name={fullScreen ? 'minimize' : 'maximize'} size={17} />
             </IconButton>
             <IconButton label={dark ? t('Light mode') : t('Dark mode')} onClick={() => updateSettings({ theme: dark ? 'light' : 'dark' })}>
@@ -1198,7 +1247,7 @@ export default function App() {
           )}
           {current && view === 'page' && (
             <Button variant="primary" size="sm" className="share-btn" title={t('Share & export')} icon={<Icon name="share" size={16} />} aria-haspopup="menu" onClick={(e) => openShare(shareItems(current), e.currentTarget)}>
-              {t('Share')}
+              <span className="share-btn-label">{t('Share')}</span>
             </Button>
           )}
         </header>
@@ -1271,13 +1320,13 @@ export default function App() {
           ) : (
             <div className="blank">
               <div className="blank-ic">
-                <Ic.Page size={40} />
+                <Icon name="file" size={40} />
               </div>
               <h2>{t('No page open')}</h2>
               <p>{t('Create a page or search with {keys}.', { keys: bindingHint('search').replace(/ /g, '+') })}</p>
-              <button className="primary" onClick={() => add(null)}>
+              <Button variant="primary" onClick={() => add(null)}>
                 {t('New page')}
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -1296,56 +1345,67 @@ export default function App() {
       </main>
 
       {menu && menuPage && (
-        <Popover anchor={menu.rect} onClose={() => setMenu(null)} align="end">
-          <div className="ds-menu">
-            {menuPage.kind !== 'folder' && <MenuItem icon={<Ic.Open />} label={t('Open')} onClick={() => (setCurrentId(menu.id), setView('page'), setMenu(null))} />}
-            {menuPage.kind !== 'folder' && (
-              <MenuItem icon={<Ic.Star filled={menuPage.favorite} />} label={menuPage.favorite ? t('Remove from favorites') : t('Add to favorites')} onClick={() => (fav(menu.id), setMenu(null))} />
-            )}
-            <MenuSep />
-            <MenuLabel>{t('Create')}</MenuLabel>
-            <MenuItem icon={<Ic.Plus />} label={menuPage.kind === 'folder' ? t('Add page in this folder') : t('Add subpage')} onClick={() => (add(menu.id), setMenu(null))} />
-            <MenuItem icon={<Ic.Folders />} label={t('Add folder')} onClick={() => (addFolder(menu.id), setMenu(null))} />
-            <MenuItem icon={<Ic.Pencil />} label={t('Add board')} onClick={() => (add(menu.id, 'board'), setMenu(null))} />
-            <MenuSep />
-            <MenuLabel>{t('Organize')}</MenuLabel>
-            <MenuItem icon={<Ic.Pencil />} label={t('Rename')} onClick={() => (rename(menu.id), setMenu(null))} />
-            {menuPage.kind !== 'folder' && <MenuItem icon={<Ic.Copy />} label={t('Duplicate')} onClick={() => (duplicate(menu.id), setMenu(null))} />}
-            <MenuItem icon={<Ic.Folder />} label={t('Move to folder')} onClick={() => (setMovingId(menu.id), setMenu(null))} />
-            {menuPage.parentId && <MenuItem icon={<Ic.Up />} label={t('Move to top level')} onClick={() => (move(menu.id, null, null), setMenu(null))} />}
-            <MenuItem icon={<Ic.Clipboard />} label={t('Copy title')} onClick={() => (void navigator.clipboard?.writeText(menuPage.title || ''), setMenu(null))} />
-            {isTauri && <MenuItem icon={<Ic.Clipboard />} label={t('Copy path')} onClick={() => (copyPath(menu.id), setMenu(null))} />}
-            {isTauri && <MenuItem icon={<Ic.Folder />} label={t(revealKey)} onClick={() => (revealFile(menu.id), setMenu(null))} />}
-            {menuPage.kind !== 'folder' && <MenuItem icon={<Ic.Markdown />} label={t('Export Markdown')} onClick={() => (exportMd(menu.id), setMenu(null))} />}
-            <MenuSep />
-            <MenuItem danger icon={<Ic.Trash />} label={t('Delete')} hint="Delete" onClick={() => (del(menu.id), setMenu(null))} />
-          </div>
-        </Popover>
+        <Menu
+          anchor={menu.rect}
+          align="end"
+          onClose={() => setMenu(null)}
+          items={[
+            ...(menuPage.kind !== 'folder'
+              ? [
+                  { label: t('Open'), icon: <Icon name="external-link" size={16} />, onSelect: () => (setCurrentId(menu.id), setView('page')) },
+                  { label: menuPage.favorite ? t('Remove from favorites') : t('Add to favorites'), icon: <Icon name="star" size={16} />, onSelect: () => fav(menu.id) },
+                ]
+              : []),
+            { kind: 'sep' as const },
+            { kind: 'head' as const, label: t('Create') },
+            { label: menuPage.kind === 'folder' ? t('Add page in this folder') : t('Add subpage'), icon: <Icon name="plus" size={16} />, onSelect: () => add(menu.id) },
+            { label: t('Add folder'), icon: <Icon name="folder-plus" size={16} />, onSelect: () => addFolder(menu.id) },
+            { label: t('Add board'), icon: <Icon name="pencil" size={16} />, onSelect: () => add(menu.id, 'board') },
+            { kind: 'sep' as const },
+            { kind: 'head' as const, label: t('Organize') },
+            { label: t('Rename'), icon: <Icon name="pencil" size={16} />, onSelect: () => rename(menu.id) },
+            ...(menuPage.kind !== 'folder' ? [{ label: t('Duplicate'), icon: <Icon name="copy" size={16} />, onSelect: () => duplicate(menu.id) }] : []),
+            { label: t('Move to folder'), icon: <Icon name="folder" size={16} />, onSelect: () => setMovingId(menu.id) },
+            ...(menuPage.parentId ? [{ label: t('Move to top level'), icon: <Icon name="arrow-up" size={16} />, onSelect: () => move(menu.id, null, null) }] : []),
+            { label: t('Copy title'), icon: <Icon name="clipboard" size={16} />, onSelect: () => void navigator.clipboard?.writeText(menuPage.title || '') },
+            ...(isTauri
+              ? [
+                  { label: t('Copy path'), icon: <Icon name="clipboard" size={16} />, onSelect: () => copyPath(menu.id) },
+                  { label: t(revealKey), icon: <Icon name="folder" size={16} />, onSelect: () => revealFile(menu.id) },
+                ]
+              : []),
+            ...(menuPage.kind !== 'folder' ? [{ label: t('Export Markdown'), icon: <Icon name="markdown" size={16} />, onSelect: () => exportMd(menu.id) }] : []),
+            { kind: 'sep' as const },
+            { label: t('Delete'), icon: <Icon name="trash" size={16} />, danger: true, hint: shortcutHint('Delete'), onSelect: () => del(menu.id) },
+          ]}
+        />
       )}
 
       {blankMenu && (
-        <Popover anchor={blankMenu} onClose={() => setBlankMenu(null)}>
-          <div className="ds-menu">
-            <MenuItem icon={<Ic.Plus />} label={t('New page')} onClick={() => (add(null), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Folders />} label={t('New folder')} onClick={() => (addFolder(null), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Pencil />} label={t('New board')} onClick={() => (add(null, 'board'), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Table />} label={t('New database')} onClick={() => (addDatabase(null), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Checklist />} label={t('New to-do list')} onClick={() => (add(null, 'todo'), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Blocks />} label={t('New from template…')} onClick={() => (setTplOpen(true), setBlankMenu(null))} />
-            <MenuSep />
-            <MenuLabel>{t('Go to')}</MenuLabel>
-            <MenuItem icon={<Ic.Home />} label={t('Home')} onClick={() => (setView('home'), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Folders />} label={t('Files')} onClick={() => (setView('files'), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Table />} label={t('Databases')} onClick={() => (setView('databases'), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Table />} label={t('All pages')} onClick={() => (setTableOpen(true), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Cards />} label={t('Flashcards')} onClick={() => (setCardsOpen(true), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Link />} label={t('Graph')} onClick={() => (setGraphOpen(true), setBlankMenu(null))} />
-            <MenuSep />
-            <MenuItem icon={<Ic.Upload />} label={t('Import or restore…')} onClick={() => (setBlankMenu(null), openData())} />
-            <MenuItem icon={<Ic.Trash />} label={t('Trash')} onClick={() => (setView('trash'), setBlankMenu(null))} />
-            <MenuItem icon={<Ic.Settings />} label={t('Settings')} onClick={() => (setView('settings'), setBlankMenu(null))} />
-          </div>
-        </Popover>
+        <Menu
+          anchor={blankMenu}
+          onClose={() => setBlankMenu(null)}
+          items={[
+            { label: t('New page'), icon: <Icon name="plus" size={16} />, onSelect: () => add(null) },
+            { label: t('New folder'), icon: <Icon name="folder-plus" size={16} />, onSelect: () => addFolder(null) },
+            { label: t('New board'), icon: <Icon name="pencil" size={16} />, onSelect: () => add(null, 'board') },
+            { label: t('New database'), icon: <Icon name="table" size={16} />, onSelect: () => addDatabase(null) },
+            { label: t('New to-do list'), icon: <Icon name="checklist" size={16} />, onSelect: () => add(null, 'todo') },
+            { label: t('New from template…'), icon: <Icon name="blocks" size={16} />, onSelect: () => setTplOpen(true) },
+            { kind: 'sep' as const },
+            { kind: 'head' as const, label: t('Go to') },
+            { label: t('Home'), icon: <Icon name="home" size={16} />, onSelect: () => setView('home') },
+            { label: t('Files'), icon: <Icon name="folder-plus" size={16} />, onSelect: () => setView('files') },
+            { label: t('Databases'), icon: <Icon name="table" size={16} />, onSelect: () => setView('databases') },
+            { label: t('All pages'), icon: <Icon name="table" size={16} />, onSelect: () => setTableOpen(true) },
+            { label: t('Flashcards'), icon: <Icon name="cards" size={16} />, onSelect: () => setCardsOpen(true) },
+            { label: t('Graph'), icon: <Icon name="link" size={16} />, onSelect: () => setGraphOpen(true) },
+            { kind: 'sep' as const },
+            { label: t('Import or restore…'), icon: <Icon name="upload" size={16} />, onSelect: () => openData() },
+            { label: t('Trash'), icon: <Icon name="trash" size={16} />, onSelect: () => setView('trash') },
+            { label: t('Settings'), icon: <Icon name="settings" size={16} />, onSelect: () => setView('settings') },
+          ]}
+        />
       )}
 
       {coverMenu && current && (
@@ -1363,32 +1423,19 @@ export default function App() {
         />
       )}
       {movingId && (
-        <div className="overlay" onMouseDown={() => setMovingId(null)}>
-          <div
-            className="modal move-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('Move to folder')}
-            onMouseDown={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.key === 'Escape' && setMovingId(null)}
-          >
-            <div className="modal-head">
-              <b>{t('Move to folder')}</b>
-              <IconButton label={t('Close')} onClick={() => setMovingId(null)}>
-                <Ic.Close />
-              </IconButton>
-            </div>
-            <div className="modal-list">
-              <button
-                className="result"
+        <Dialog open title={t('Move to folder')} onClose={() => setMovingId(null)}>
+          <div className="ds-modal-body">
+            <div className="ds-list ds-list--framed">
+              <Row
+                as="button"
+                className="ds-list-row"
+                icon={<Icon name="book" size={16} />}
+                text={t('Move to top level')}
                 onClick={() => {
                   move(movingId, null, null)
                   setMovingId(null)
                 }}
-              >
-                <Ic.Book />
-                <span>{t('Move to top level')}</span>
-              </button>
+              />
               {pages
                 .filter((p) => {
                   if (p.kind !== 'folder' || p.id === movingId) return false
@@ -1402,21 +1449,21 @@ export default function App() {
                   return true
                 })
                 .map((p) => (
-                  <button
-                    className="result"
+                  <Row
+                    as="button"
+                    className="ds-list-row"
                     key={p.id}
+                    icon={<Icon name="folder" size={16} />}
+                    text={p.title || t('Untitled folder')}
                     onClick={() => {
                       move(movingId, p.id, null)
                       setMovingId(null)
                     }}
-                  >
-                    <Ic.Folder />
-                    <span dir="auto">{p.title || t('Untitled folder')}</span>
-                  </button>
+                  />
                 ))}
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {naming && <NameDialog {...naming} onClose={() => setNaming(null)} />}

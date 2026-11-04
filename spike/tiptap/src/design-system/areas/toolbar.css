@@ -12,9 +12,9 @@
 .tb-btn--primary:hover { filter: brightness(1.06); }
 .tb-tx { font: 600 var(--ds-text-small) var(--ds-font-ui); letter-spacing: 0; }
 /* bold, italic and underline are shown as the letters they style, like H1 to H3 beside them */
-.tb-tx--bold, .tb-tx--italic, .tb-tx--underline { font-size: 15px; line-height: 1; }
+.tb-tx--bold, .tb-tx--italic, .tb-tx--underline { font-size: var(--ds-text-ui); line-height: 1; }
 .tb-tx--bold { font-weight: 800; }
-.tb-tx--italic { font-family: var(--ds-font-serif); font-style: italic; font-weight: 500; font-size: 17px; }
+.tb-tx--italic { font-family: var(--ds-font-serif); font-style: italic; font-weight: 500; font-size: var(--ds-text-section); }
 .tb-tx--underline { font-weight: 500; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
 
 /* the table dropdown: a size grid on top of an ordinary design-system menu */

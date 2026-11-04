@@ -1,6 +1,6 @@
 import { startMcpBridge } from './mcp/bridge'
 import 'katex/dist/katex.min.css'
-import { lazy, StrictMode, Suspense } from 'react'
+import { lazy, StrictMode, Suspense, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import './settings'
@@ -14,9 +14,12 @@ import { FirstLaunch, firstNoteMark, pendingFirstNote } from './onboarding/First
 import { LandingFrame } from './onboarding/Onboarding'
 import { initPreferences } from './sharedPreferences'
 import { initInputMenu } from './inputMenu'
+import { Button, Dialog, Notice } from './design-system'
+import { DesktopFrame } from './DesktopFrame'
 
 initInputMenu()
 const root = createRoot(document.getElementById('root')!)
+const render = (content: ReactNode) => root.render(<DesktopFrame>{content}</DesktopFrame>)
 // the component gallery: development only, open /#/design-system
 const Gallery = import.meta.env.DEV ? lazy(() => import('./design-system/Gallery').then((m) => ({ default: m.Gallery }))) : null
 const showGallery = () => !!Gallery && location.hash === '#/design-system'
@@ -27,7 +30,7 @@ function start() {
   const seeded = bench > 0 ? import('./devBench').then((m) => m.seedBench(bench)) : Promise.resolve()
   // a new workspace: keep the start flow's last frame on screen while it loads, so there is no blank moment
   const handoff = firstNoteMark()
-  if (handoff !== null) root.render(<LandingFrame name={handoff} />)
+  if (handoff !== null) render(<LandingFrame name={handoff} />)
   seeded
     .then(initPreferences)
     .then(initStore)
@@ -49,30 +52,10 @@ function start() {
       )
       // a workspace just created by the start flow opens on its first note, then on the app
       const firstNote = pendingFirstNote()
-      root.render(firstNote === null ? app : <FirstLaunch workspace={firstNote} app={app} />)
+      render(firstNote === null ? app : <FirstLaunch workspace={firstNote} app={app} />)
     })
     .catch((e) => {
-      root.render(
-        <div className="overlay">
-          <div className="modal acct">
-            <h2>Unable to open workspace / باز کردن فضای کاری ممکن نشد</h2>
-            <p role="alert">{String(e)}</p>
-            <p>The original files were kept. / فایل‌های اصلی حفظ شده‌اند.</p>
-            <button onClick={() => location.reload()}>Retry / تلاش دوباره</button>
-            {isTauri && (
-              <button
-                onClick={() =>
-                  void vaultClose()
-                    .then(() => location.reload())
-                    .catch(console.error)
-                }
-              >
-                Choose workspace / انتخاب فضای کاری
-              </button>
-            )}
-          </div>
-        </div>,
-      )
+      render(<StartupError error={e} kept chooseWorkspace={isTauri} />)
     })
 }
 
@@ -81,18 +64,10 @@ if (isTauri) {
   vaultList()
     .then(({ current }) => {
       if (current) return start()
-      root.render(<VaultPicker onOpened={() => window.location.reload()} />)
+      render(<VaultPicker onOpened={() => window.location.reload()} />)
     })
     .catch((e) => {
-      root.render(
-        <div className="overlay">
-          <div className="modal acct">
-            <h2>Unable to open workspace / باز کردن فضای کاری ممکن نشد</h2>
-            <p role="alert">{String(e)}</p>
-            <button onClick={() => location.reload()}>Retry / تلاش دوباره</button>
-          </div>
-        </div>,
-      )
+      render(<StartupError error={e} />)
     })
 } else {
   start()
@@ -104,4 +79,38 @@ if (isTauri) {
   document.addEventListener('contextmenu', (e) => {
     if (!e.defaultPrevented && !(e.target as HTMLElement).closest('input, textarea')) e.preventDefault()
   })
+}
+
+/** The workspace could not be opened. Shown before the app (and its language) exist, so the text is in both languages. */
+function StartupError({ error, kept, chooseWorkspace }: { error: unknown; kept?: boolean; chooseWorkspace?: boolean }) {
+  return (
+    <Dialog
+      open
+      title="Unable to open workspace / باز کردن فضای کاری ممکن نشد"
+      onClose={() => {}}
+      actions={
+        <>
+          {chooseWorkspace && (
+            <Button
+              onClick={() =>
+                void vaultClose()
+                  .then(() => location.reload())
+                  .catch(console.error)
+              }
+            >
+              Choose workspace / انتخاب فضای کاری
+            </Button>
+          )}
+          <Button variant="primary" onClick={() => location.reload()}>
+            Retry / تلاش دوباره
+          </Button>
+        </>
+      }
+    >
+      <div className="ds-modal-body">
+        <Notice tone="bad">{String(error)}</Notice>
+        {kept && <p>The original files were kept. / فایل‌های اصلی حفظ شده‌اند.</p>}
+      </div>
+    </Dialog>
+  )
 }

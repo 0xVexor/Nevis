@@ -5,10 +5,7 @@ import { saveWorkspace } from './saveWorkspace'
 import { freezeStorage, isTauri, thawStorage, vaultAdd, vaultClose, vaultCreate, vaultForget, vaultInfo, vaultList, vaultLocate, vaultOpen, vaultRename, vaultTrashLocal, type VaultEntry } from './db'
 import { alertDialog, confirmDialog, promptDialog } from './dialog'
 import { explain } from './vaultErrors'
-import * as Ic from './icons'
-import { Icon, Button } from './design-system'
-import { MenuItem, MenuSep } from './ui'
-import { Popover } from './design-system/Popover'
+import { Icon, Button, Dialog, IconButton, Menu, Notice } from './design-system'
 import { t } from './i18n'
 
 const pickFolder = async (title: string) => {
@@ -146,16 +143,15 @@ export function Vaults({ onClose, onNew }: { onClose: () => void; onNew: (create
             {v.status === 'missing' ? t('Folder not found') : v.status === 'mismatch' ? t('A different vault is in this folder.') : v.path}
           </small>
         </div>
-        <button
-          className="icon-btn wsd-more"
+        <IconButton
+          className="wsd-more"
           disabled={busy}
-          aria-label={t('Actions')}
-          title={t('Actions')}
+          label={t('Actions')}
           aria-expanded={menu === v.id}
           onClick={(e) => (setMenu(v.id), setMenuAt(e.currentTarget.getBoundingClientRect()))}
         >
           <Icon name="more-horizontal" />
-        </button>
+        </IconButton>
       </div>
       <div className="wsd-card-foot">
         {v.id === id ? (
@@ -177,37 +173,33 @@ export function Vaults({ onClose, onNew }: { onClose: () => void; onNew: (create
   )
 
   return (
-    <div className="overlay" onMouseDown={onClose}>
-      <div className="modal wsd" role="dialog" aria-modal="true" aria-label={t('Workspaces')} onMouseDown={(e) => e.stopPropagation()}>
-        <div className="wsd-head">
-          <div>
-            <b>{t('Workspaces')}</b>
-            <small>{t('Each workspace is a folder you own. Switch any time.')}</small>
-          </div>
-          <span className="wsd-head-acts">
-            {isTauri && (
+    <>
+      <Dialog
+        open
+        wide
+        title={t('Workspaces')}
+        onClose={onClose}
+        actions={
+          isTauri && (
+            <>
               <Button disabled={busy} onClick={() => void openFolder()}>
                 <Icon name="folder" size={16} />
                 {t('Open a folder as vault…')}
               </Button>
-            )}
-            {isTauri && (
               <Button variant="primary" disabled={busy} onClick={() => (onClose(), onNew(create))}>
                 <Icon name="plus" size={16} />
                 {t('New workspace…')}
               </Button>
-            )}
-            <button className="icon-btn" title={t('Close  Esc')} onClick={onClose}>
-              <Ic.Close size={16} />
-            </button>
-          </span>
-        </div>
-
-        <div className="wsd-body">
+            </>
+          )
+        }
+      >
+        <p className="wsd-hint">{t('Each workspace is a folder you own. Switch any time.')}</p>
+        <div className="ds-modal-body wsd-body">
           {error && (
-            <p className="backup-warn" dir="auto">
-              {error}
-            </p>
+            <Notice tone="bad">
+              <span dir="auto">{error}</span>
+            </Notice>
           )}
           <div className="wsd-grid">
             {isTauri ? (
@@ -228,38 +220,40 @@ export function Vaults({ onClose, onNew }: { onClose: () => void; onNew: (create
               </div>
             )}
             {isTauri && (
-              <button className="wsd-card wsd-add" disabled={busy} onClick={() => (onClose(), onNew(create))}>
+              <button type="button" className="wsd-card wsd-add" disabled={busy} onClick={() => (onClose(), onNew(create))}>
                 <Icon name="plus" size={22} />
                 <b>{t('New workspace…')}</b>
               </button>
             )}
           </div>
-
           {!isTauri && <p className="wsd-note">{t('Your notes live locally. This preview uses its own sample content, separate from your Nevis workspace.')}</p>}
           {isTauri && <p className="wsd-note">{t('Removing a workspace from the list never deletes its files.')}</p>}
           {isTauri && (
-            <button className="wsd-link" disabled={busy} onClick={() => void toPicker()}>
+            <Button variant="ghost" size="sm" className="wsd-link" disabled={busy} onClick={() => void toPicker()}>
               {t('All workspaces…')}
-            </button>
+            </Button>
           )}
         </div>
-      </div>
+      </Dialog>
       {menuVault && menuAt && (
-        <Popover anchor={menuAt} align="end" onClose={closeMenu}>
-          <div className="ds-menu" onMouseDown={(e) => e.stopPropagation()}>
-            {menuVault.status === 'ok' && menuVault.id !== id && <MenuItem icon={<Ic.Open size={16} />} label={t('Switch')} onClick={() => void switchTo(menuVault.id)} />}
-            {menuVault.status === 'ok' && <MenuItem icon={<Ic.Pencil size={16} />} label={t('Rename…')} onClick={() => void rename(menuVault)} />}
-            {menuVault.status !== 'ok' && <MenuItem icon={<Ic.Folder size={16} />} label={t('Locate folder…')} onClick={() => void locate(menuVault)} />}
-            <MenuItem icon={<Ic.Close size={16} />} label={t('Remove from list')} onClick={() => void forget(menuVault)} />
-            {menuVault.status === 'ok' && (
-              <>
-                <MenuSep />
-                <MenuItem danger icon={<Ic.Trash size={16} />} label={t('Move folder to Recycle Bin…')} onClick={() => void trashLocal(menuVault)} />
-              </>
-            )}
-          </div>
-        </Popover>
+        // a click in this menu must not reach the dialog behind it
+        <span onMouseDown={(e) => e.stopPropagation()}>
+          <Menu
+            anchor={menuAt}
+            align="end"
+            onClose={closeMenu}
+            items={[
+              ...(menuVault.status === 'ok' && menuVault.id !== id ? [{ label: t('Switch'), raw: true, icon: <Icon name="external-link" size={16} />, onSelect: () => void switchTo(menuVault.id) }] : []),
+              ...(menuVault.status === 'ok' ? [{ label: t('Rename…'), raw: true, icon: <Icon name="pencil" size={16} />, onSelect: () => void rename(menuVault) }] : []),
+              ...(menuVault.status !== 'ok' ? [{ label: t('Locate folder…'), raw: true, icon: <Icon name="folder" size={16} />, onSelect: () => void locate(menuVault) }] : []),
+              { label: t('Remove from list'), raw: true, icon: <Icon name="x" size={16} />, onSelect: () => void forget(menuVault) },
+              ...(menuVault.status === 'ok'
+                ? [{ kind: 'sep' as const }, { label: t('Move folder to Recycle Bin…'), raw: true, danger: true, icon: <Icon name="trash" size={16} />, onSelect: () => void trashLocal(menuVault) }]
+                : []),
+            ]}
+          />
+        </span>
       )}
-    </div>
+    </>
   )
 }

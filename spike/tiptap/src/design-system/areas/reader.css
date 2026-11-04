@@ -16,7 +16,7 @@
 .app.reading :is(.pg-add, .pg-starts) { display: none; }
 .app.reading .pg-props :is(.ds-chip-btn[data-empty], .ds-tag-x) { display: none; }
 .app.reading .pg-props .ds-chip-btn { pointer-events: none; }
-.app.reading :is(.img-handle, .cover-acts, .tag-chip button, .code-diagram, .mermaid-bar button:not(.mm-big), .img-bar > :not(.img-big):not(.sep), .img-bar .sep, .bubble) { display: none !important; }
+.app.reading :is(.img-handle, .cover-acts, .code-diagram, .mermaid-bar button:not(.mm-big), .img-bar > :not(.img-big):not(.ds-toolbar-sep), .img-bar .ds-toolbar-sep, .ds-toolbar:not(.img-bar):not(.mermaid-bar):not(.lb-bar)) { display: none !important; }
 .app.reading .code-lang { pointer-events: none; appearance: none; border-color: transparent; background: transparent; }
 
 /* progress: a thin accent line along the top */
@@ -32,8 +32,8 @@
 .reader-menu { inline-size: auto; display: inline-flex; gap: 2px; padding-inline: var(--ds-s2) var(--ds-s1); }
 .reader-menu > .ds-icon:last-child { color: var(--ds-text-3); }
 .reader-a { font: 600 var(--ds-text-small) var(--ds-font-ui); line-height: 1; }
-.reader-a--sm { font-size: 11px; }
-.reader-a--lg { font-size: 16px; }
+.reader-a--sm { font-size: var(--ds-text-caption); }
+.reader-a--lg { font-size: var(--ds-text-ui); }
 .reader-value { min-inline-size: 40px; color: var(--ds-text-3); font-size: var(--ds-text-small); text-align: center; font-variant-numeric: tabular-nums; }
 .reader-meta { padding-inline: var(--ds-s2); color: var(--ds-text-3); font-size: var(--ds-text-small); white-space: nowrap; font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) { .reader-meta, .reader-bar > .reader-sep:last-of-type { display: none; } }

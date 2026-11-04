@@ -25,6 +25,15 @@ export const RULES = {
   'hard-coded-color': { why: 'Use a design token (var(--ds-...)), not a literal color.', files: 'css', skipTokens: true, pattern: /#[0-9a-fA-F]{3,8}\b/g },
   'legacy-token': { why: 'Use the --ds-* token (mapping table in docs/design-system.md), not the legacy variable.', files: 'any',
     pattern: new RegExp(`var\\(--(?:${LEGACY_VARS.join('|')})\\s*[,)]`, 'g') },
+  // the interface reads its sizes, corners and layers from the scale; document typography (editor, content, print) keeps the reader's own
+  'type-scale': { why: 'Use a --ds-text-* size (caption 12, small 13, ui 14, section 20, heading 32), not a px font size.', files: 'css', skipTokens: true, skipDocs: true, skipLine: /sample|preview|mini|thumb|\bkbd\b|::marker/,
+    pattern: /font(?:-size)?\s*:[^;{}]*?(?<![\w./-])(?:1\d|2\d|3[0-4])(?:\.\d+)?px/g },
+  'radius-scale': { why: 'Use --ds-r-sm / --ds-r / --ds-r-lg / --ds-r-full, so the corner-radius preference reaches it.', files: 'css', skipTokens: true, skipDocs: true, skipLine: /sample|preview|mini|thumb/,
+    pattern: /border-radius\s*:\s*(?:[5-9]|[1-9]\d+)(?:\.\d+)?px/g },
+  'layer-token': { why: 'Use a layer token (--ds-z-pop, -modal, -float, -drag, -toast) for anything that floats above the page.', files: 'any', skipTokens: true,
+    pattern: /z-?[iI]ndex\s*:\s*(?:[5-9]\d|\d{3,})\b/g },
+  'legacy-class': { why: 'This class belongs to the old design. Use Dialog, Menu, IconButton, PreferenceRow or ds-toast instead.', files: 'tsx',
+    pattern: /className=["'{`][^"'}`]*?(?<![\w-])(?:overlay|modal|modal-head|modal-list|icon-btn|toast|result|sx-[a-z-]+)(?![\w-])/g },
 }
 
 const blankComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
@@ -36,6 +45,7 @@ export function scanSource(name, text) {
   if (!kind) return {}
   const designSystem = norm.startsWith('design-system/')
   const tokens = /(^|\/)(tokens|print)\.css$/.test(norm) // token files and the print palette are where literal colors belong
+  const docs = /(^|\/)(editor|content|print|reader)\.css$/.test(norm) // document typography follows the reader's settings, not the interface scale
   const lines = text.split('\n')
   // `ui-allow` skips every rule on its line and the next; `ui-allow rule-name` skips only that rule.
   const allowed = new Map()
@@ -51,8 +61,9 @@ export function scanSource(name, text) {
     if (def.onlyDesignSystem && !designSystem) continue
     if (def.except?.test(norm)) continue
     if (def.skipTokens && tokens) continue
+    if (def.skipDocs && docs) continue
     let n = 0
-    body.forEach((line, i) => { if (!(allowed.has(i) && (allowed.get(i) === null || allowed.get(i).has(rule)))) n += (line.match(def.pattern) ?? []).length })
+    body.forEach((line, i) => { if (def.skipLine?.test(line)) return; if (!(allowed.has(i) && (allowed.get(i) === null || allowed.get(i).has(rule)))) n += (line.match(def.pattern) ?? []).length })
     if (n) counts[rule] = n
   }
   return counts

@@ -1,3 +1,4 @@
+import { commandHint, commandMatches } from './shortcutCommands'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { kvGet, kvSet } from './db'
@@ -109,12 +110,18 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') return deck === null ? onClose() : setDeck(null)
+      if (commandMatches(e, 'End the session')) {
+        e.preventDefault()
+        return deck === null ? onClose() : setDeck(null)
+      }
       // on the overview, Enter starts today's session unless a control has focus
-      if (deck === null && e.key === 'Enter' && e.target === document.body && vault.due > 0) return setDeck(ALL)
+      if (deck === null && commandMatches(e, 'Start review') && e.target === document.body && vault.due > 0) return setDeck(ALL)
       if (deck === null || !card || e.target instanceof HTMLInputElement) return
-      if (!shown && (e.key === ' ' || e.key === 'Enter')) (e.preventDefault(), setShown(true))
-      else if (shown && '1234'.includes(e.key) && e.key.length === 1) rate((Number(e.key) - 1) as Grade)
+      if (!shown && commandMatches(e, 'Show the answer')) (e.preventDefault(), setShown(true))
+      else if (shown) {
+        const grade = ['Again', 'Hard', 'Good', 'Easy'].findIndex(label => commandMatches(e, label))
+        if (grade >= 0) (e.preventDefault(), rate(grade as Grade))
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -178,7 +185,7 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
                 {vault.due > 0 && (
                   <Button variant="primary" className="fc-start" onClick={() => setDeck(ALL)}>
                     {t('Start review')}
-                    <kbd className="ds-kbd">{t('Enter')}</kbd>
+                    <kbd className="ds-kbd">{commandHint('Start review')}</kbd>
                   </Button>
                 )}
                 <Stats
@@ -332,7 +339,7 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
           {!shown ? (
             <Button variant="primary" className="fc-show" onClick={() => setShown(true)}>
               {t('Show answer')}
-              <kbd className="ds-kbd">{t('Space')}</kbd>
+              <kbd className="ds-kbd">{commandHint('Show the answer')}</kbd>
             </Button>
           ) : (
             <div className="fc-grades" role="group" aria-label={t('How well did you know it?')}>
@@ -343,12 +350,12 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
                     {t(name)}
                   </span>
                   <small>{label(rec ?? FRESH, grade)}</small>
-                  <kbd className="ds-kbd">{grade + 1}</kbd>
+                  <kbd className="ds-kbd">{commandHint(['Again', 'Hard', 'Good', 'Easy'][grade])}</kbd>
                 </button>
               ))}
             </div>
           )}
-          <p className="fc-keys">{shown ? t('Press 1 to 4 to answer, Esc to go back') : t('Press Space to see the answer, Esc to go back')}</p>
+          <p className="fc-keys">{t('End the session')} <kbd className="ds-kbd">{commandHint('End the session')}</kbd></p>
         </div>
       )}
     </div>

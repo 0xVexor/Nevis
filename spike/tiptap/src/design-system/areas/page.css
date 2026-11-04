@@ -87,12 +87,6 @@
 .title-menu { position: absolute; top: 100%; inset-inline-start: 0; z-index: 30; width: 300px; }
 
 /* tags (shared with the pages table) */
-.tag-chip { --c: light-dark(oklch(0.5 0.17 var(--hue, 270)), oklch(0.82 0.12 var(--hue, 270))); display: inline-flex; align-items: center; gap: var(--ds-s2); height: var(--ds-control-sm); padding: 0 var(--ds-s3); border: 0; border-radius: 10px; cursor: var(--cursor-hand, pointer); font-size: 13px; font-weight: 600; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 18%, transparent); }
-.tag-chip::before { content: '#'; opacity: 0.55; }
-.tag-chip.static { cursor: var(--cursor-arrow, default); }
-.tag-chip.on { background: var(--ds-accent); color: var(--ds-accent-ink); box-shadow: none; }
-.tag-chip button { border: 0; background: transparent; color: inherit; opacity: 0.55; cursor: var(--cursor-hand, pointer); padding: 0 0 0 2px; font-size: 15px; line-height: 1; }
-.tag-chip button:hover { opacity: 1; }
 
 /* ───────── page side panel: slides in opposite the sidebar; design-system rows, the outline marks where you are ───────── */
 .page-drawer { position: absolute; z-index: 15; inset-block: 0; inset-inline-end: 0; inline-size: 288px; display: flex; flex-direction: column; padding: 0 var(--ds-s3); border-inline-start: 1px solid var(--ds-line); background: var(--ds-bg); transform: translateX(100%); visibility: hidden; transition: transform var(--ds-slow) var(--ds-ease), visibility 0s var(--ds-slow); }

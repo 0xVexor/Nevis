@@ -5,7 +5,7 @@ import type { Page } from './repo'
 import type { Task } from './taskData'
 import { PageIcon } from './PageIcon'
 import { ago } from './ui'
-import { Button, Icon, Row, Section, useMenu, landscapeFor, useUIMotion } from './design-system'
+import { Button, Checkbox, Disclosure, Icon, Row, Section, useMenu, landscapeFor, useUIMotion } from './design-system'
 import { locale, t } from './i18n'
 
 export interface HomeActions {
@@ -128,7 +128,7 @@ export function HomeScreen({ pages, tasks, due, now, showIcons, onCheck, onOpen,
                   <h2>{t('Continue where you left off')}</h2>
                   <button type="button" className="home-return-page" onClick={() => onOpen(last.id)} onContextMenu={event => context(event, last)}>
                     <span className="home-return-meta">{showIcons && <PageIcon page={last} />}<time>{ago(last.updatedAt)}</time></span>
-                    <b dir="auto">{title(last)}</b><span className="home-return-excerpt" dir="auto">{excerpt(last.content) || t('Empty page')}</span>
+                    <b><span dir="auto">{title(last)}</span></b><span className="home-return-excerpt"><span dir="auto">{excerpt(last.content) || t('Empty page')}</span></span>
                     <span className="home-return-open">{t('Continue writing')}<Icon name="arrow-right" className="ds-flip" size={14} /></span>
                   </button>
                 </section>}
@@ -144,9 +144,9 @@ export function HomeScreen({ pages, tasks, due, now, showIcons, onCheck, onOpen,
                         onClick={() => onOpen(page.id)} onContextMenu={(event) => context(event, page)}
                         icon={showIcons ? <span className="home-page-mark"><PageIcon page={page} /></span> : undefined}
                         trailing={<span className="home-page-end"><time dateTime={new Date(page.updatedAt).toISOString()}>{ago(page.updatedAt)}</time><Icon name="arrow-right" size={16} className="ds-flip" /></span>}>
-                        <span className="home-page-title" dir="auto">{title(page)}</span>
-                        <span className="home-page-excerpt" dir="auto">{excerpt(page.content) || (page.kind === 'board' ? t('Drawing') : t('Empty page'))}</span>
-                        {page.parentId && byId.has(page.parentId) && <span className="home-page-location" dir="auto">{title(byId.get(page.parentId)!)}</span>}
+                        <span className="home-page-title"><span dir="auto">{title(page)}</span></span>
+                        <span className="home-page-excerpt"><span dir="auto">{excerpt(page.content) || (page.kind === 'board' ? t('Drawing') : t('Empty page'))}</span></span>
+                        {page.parentId && byId.has(page.parentId) && <span className="home-page-location"><span dir="auto">{title(byId.get(page.parentId)!)}</span></span>}
                       </Row>
                     ))}
                   </div>
@@ -167,7 +167,7 @@ export function HomeScreen({ pages, tasks, due, now, showIcons, onCheck, onOpen,
                         { label: 'Open source page', icon: <Icon name="file" />, onSelect: () => onOpen(task.pageId) },
                       ], event)
                     }}>
-                      <label><input type="checkbox" className="home-task-check" checked={task.checked} onChange={event => onCheck(task, event.target.checked)} /><span className="ds-check" aria-hidden="true"><Icon name="check" size={12} /></span><span dir="auto">{task.text || t('Untitled')}</span></label>
+                      <Checkbox checked={task.checked} onChange={(next) => onCheck(task, next)}><span dir="auto">{task.text || t('Untitled')}</span></Checkbox>
                       <button type="button" className="home-task-source" onClick={() => onOpen(task.pageId)} aria-label={t('Open {page}', { page: byId.get(task.pageId)?.title || t('Untitled') })}><span dir="auto">{byId.get(task.pageId)?.title || t('Untitled')}</span></button>
                     </motion.div>
                   ))}</AnimatePresence></div> : <p className="home-note">{t('No open tasks. Checklist items from your pages appear here.')}</p>}
@@ -175,8 +175,7 @@ export function HomeScreen({ pages, tasks, due, now, showIcons, onCheck, onOpen,
                 <button type="button" className="home-review-link" onClick={onCards}>
                   <Icon name="cards" size={18} /><span><b>{t('Flashcards')}</b><small>{due === null ? t('Open flashcards') : due > 0 ? t('{n} ready to review', { n: num(due) }) : t('No cards due')}</small></span><Icon name="arrow-right" size={16} className="ds-flip" />
                 </button>
-                <details className="home-activity" open>
-                  <summary><Icon name="calendar" size={16} /><span>{t('Writing activity')}</span><Icon name="chevron-down" size={14} /></summary>
+                <Disclosure className="home-activity" open icon={<Icon name="calendar" size={16} />} title={t('Writing activity')}>
                   <div className="home-activity-content">
                     <p>{t(streak === 1 ? '1 day in a row' : '{n} days in a row', { n: num(streak) })}</p>
                     <div className="home-activity-days" role="img" aria-label={t('{n} days edited in the last 4 weeks', { n: num(activity.filter(day => day.done).length) })}>
@@ -184,7 +183,7 @@ export function HomeScreen({ pages, tasks, due, now, showIcons, onCheck, onOpen,
                     </div>
                     <small>{t('Last 4 weeks')}</small>
                   </div>
-                </details>
+                </Disclosure>
               </aside>
             </div>
           </div>

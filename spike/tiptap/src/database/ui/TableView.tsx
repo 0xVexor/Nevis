@@ -1,3 +1,4 @@
+import { commandMatches } from '../../shortcutCommands'
 // The table: virtualized rows, keyboard-first cell selection and editing, TSV + typed clipboard, resizable / reorderable /
 // freezable columns, grouping, sub-items, totals. Every change is a command; nothing here writes pages directly.
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as RKeyEvent } from 'react'
@@ -186,9 +187,14 @@ export function TableView({ svc, view, ctl }: ViewProps) {
   const virtual = !wrap && !q.groups.length && rowCount > 150
   const start = virtual ? Math.min(Math.max(0, items.length - 1), Math.max(0, Math.floor(scrollTop / rowH) - 8)) : 0
   const end = virtual ? Math.min(items.length, Math.ceil((scrollTop + viewH) / rowH) + 8) : items.length
-  // The table never scrolls vertically itself: the page does. Rows are windowed against the page's scroller.
-  const hostOf = () => scroller.current?.closest<HTMLElement>('.scroller, .dv-peek-body') ?? null
-  const tableTop = (host: HTMLElement) => scroller.current!.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop
+  // On a full database page the table scrolls inside its own frame (see areas/databases.css); embedded in a page, a peek
+  // or a widget it grows and the page scrolls. Rows are windowed against whichever of the two scrolls.
+  const selfScrolls = () => {
+    const el = scroller.current
+    return !!el && /(auto|scroll)/.test(getComputedStyle(el).overflowY)
+  }
+  const hostOf = () => (selfScrolls() ? scroller.current : (scroller.current?.closest<HTMLElement>('.scroller, .dv-peek-body') ?? null))
+  const tableTop = (host: HTMLElement) => (host === scroller.current ? 0 : scroller.current!.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop)
   const measure = useCallback(() => {
     const el = scroller.current
     const host = hostOf()
@@ -196,7 +202,8 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     const top = tableTop(host)
     setScrollTop(Math.max(0, host.scrollTop - top))
     setViewH(host.clientHeight)
-    if (q.hasMore && host.scrollTop + host.clientHeight > top + el.offsetHeight - 400) setWant((w) => w + 500)
+    const contentH = host === el ? el.scrollHeight : el.offsetHeight
+    if (q.hasMore && host.scrollTop + host.clientHeight > top + contentH - 400) setWant((w) => w + 500)
   }, [q.hasMore]) // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const host = hostOf()
@@ -362,7 +369,7 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     const cd = (e as ClipboardEvent).clipboardData
     if (!cd) return
     cd.setData('text/plain', lines.join('\n'))
-    cd.setData('application/x-noviq-cells', JSON.stringify({ sourceId: view.sourceId, props: cols.slice(selected.c1, selected.c2 + 1).map((d) => d.id), cells: typed }))
+    cd.setData('application/x-nevis-cells', JSON.stringify({ sourceId: view.sourceId, props: cols.slice(selected.c1, selected.c2 + 1).map((d) => d.id), cells: typed }))
     e.preventDefault()
     if (cut) void clearSelection()
   }
@@ -371,11 +378,11 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     if (edit || !active) return
     const cd = e.clipboardData
     const text = cd.getData('text/plain')
-    if (!text && !cd.getData('application/x-noviq-cells')) return
+    if (!text && !cd.getData('application/x-nevis-cells')) return
     e.preventDefault()
     let internal: { sourceId: Id; props: Id[]; cells: (Cell | null)[][] } | null = null
     try {
-      const raw = cd.getData('application/x-noviq-cells')
+      const raw = cd.getData('application/x-nevis-cells')
       internal = raw ? JSON.parse(raw) : null
     } catch {
       internal = null
@@ -432,7 +439,11 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     }
     if (
       rowsNeeded > 0 &&
-      !(await confirmDialog({ title: t('Create {n} new row(s)?', { n: rowsNeeded }), message: t('The pasted data is longer than the table. New rows are added at the end.'), confirmLabel: t('Create rows') }))
+      !(await confirmDialog({
+        title: t('Create {n} new row(s)?', { n: rowsNeeded }),
+        message: t('The pasted data is longer than the table. New rows are added at the end.'),
+        confirmLabel: t('Create rows'),
+      }))
     )
       return
     const cmds: { type: string; payload: Json }[] = []
@@ -458,19 +469,29 @@ export function TableView({ svc, view, ctl }: ViewProps) {
     if (e.target !== e.currentTarget) return // keys typed inside an editor belong to the editor
     if (e.nativeEvent.isComposing) return
     const mod = e.ctrlKey || e.metaKey
-    if (mod && e.code === 'KeyZ') {
+    if (commandMatches(e.nativeEvent, 'Undo database edit')) {
       e.preventDefault()
       void svc.undo().then((r) => !r.ok && r.conflicts.length && ctl.notice(t('Some fields changed since; undo was not applied.')))
       return
     }
-    if (mod && e.code === 'KeyA') {
+    if (commandMatches(e.nativeEvent, 'Select all database cells')) {
       e.preventDefault()
       setSel({ r1: 0, c1: 0, r2: rowCount - 1, c2: cols.length - 1 })
       return
     }
-    if (mod && e.code === 'KeyD') {
+    if (commandMatches(e.nativeEvent, 'Fill down')) {
       e.preventDefault()
       void fillDown()
+      return
+    }
+    if (active && commandMatches(e.nativeEvent, 'Edit database cell')) {
+      e.preventDefault()
+      begin(active.r, active.c)
+      return
+    }
+    if (active && commandMatches(e.nativeEvent, 'Clear database cells')) {
+      e.preventDefault()
+      void clearSelection()
       return
     }
     if (mod || e.altKey) return
@@ -511,21 +532,11 @@ export function TableView({ svc, view, ctl }: ViewProps) {
         moveTo(nr, nc)
         break
       }
-      case 'Enter':
-      case 'F2':
-        e.preventDefault()
-        begin(r, c)
-        break
       case ' ':
         if (cols[c]?.kind === 'checkbox') {
           e.preventDefault()
           begin(r, c)
         }
-        break
-      case 'Delete':
-      case 'Backspace':
-        e.preventDefault()
-        void clearSelection()
         break
       case 'Escape':
         setSel({ r1: r, c1: c, r2: r, c2: c })
@@ -744,7 +755,7 @@ export function TableView({ svc, view, ctl }: ViewProps) {
                 onDragStart={(e) => {
                   dragColRef.current = d.id
                   e.dataTransfer.effectAllowed = 'move'
-                  e.dataTransfer.setData('application/x-noviq-column', d.id)
+                  e.dataTransfer.setData('application/x-nevis-column', d.id)
                   e.dataTransfer.setData('text/plain', d.name)
                   window.setTimeout(() => dragColRef.current === d.id && setDragCol(d.id), 0) // after the browser took its drag image
                 }}
@@ -996,7 +1007,15 @@ export function TableView({ svc, view, ctl }: ViewProps) {
             const op = totals[d.id]
             const res = (q.totals as Record<string, unknown> | null)?.[d.id] as { value: { c: string; n?: number; v?: { start: string; end: string | null } } } | undefined
             return (
-              <button type="button" key={d.id} className="dv-tf" data-frozen={ci <= frozenIdx || undefined} data-set={op ? true : undefined} style={frozenStyle(ci)} onClick={(e) => openMenu(totalItems(d), e.currentTarget)}>
+              <button
+                type="button"
+                key={d.id}
+                className="dv-tf"
+                data-frozen={ci <= frozenIdx || undefined}
+                data-set={op ? true : undefined}
+                style={frozenStyle(ci)}
+                onClick={(e) => openMenu(totalItems(d), e.currentTarget)}
+              >
                 {op ? (
                   <>
                     <small>{aggLabel(op)}</small>
@@ -1029,7 +1048,13 @@ export function TableView({ svc, view, ctl }: ViewProps) {
         />
       )}
       {newProp && (
-        <NewPropertyPopover svc={svc} sourceId={view.sourceId!} anchor={newProp} onClose={() => setNewProp(null)} onCreated={(id) => void ctl.patch({ visibleProperties: [...cols.map((c) => c.id), id] })} />
+        <NewPropertyPopover
+          svc={svc}
+          sourceId={view.sourceId!}
+          anchor={newProp}
+          onClose={() => setNewProp(null)}
+          onCreated={(id) => void ctl.patch({ visibleProperties: [...cols.map((c) => c.id), id] })}
+        />
       )}
       {menu}
     </div>
