@@ -145,16 +145,20 @@ fn migrate_metadata(root: &Path) -> Res<()> {
     if current.exists() || !legacy.join("vault.json").is_file() {
         return Ok(());
     }
-    let _lock = match crate::vault_lock::acquire_metadata(root, LEGACY_METADATA) {
-        Ok(lock) => lock,
-        Err(_) if current.join("vault.json").is_file() => return Ok(()),
-        Err(error) => return Err(error),
-    };
-    let marker = legacy.join("vault.json");
-    if fs::symlink_metadata(&marker).is_ok_and(|m| m.is_symlink()) {
-        return Err("STORAGE:symlink".into());
+    // The lock only guards the checks. Windows cannot rename a folder while a file inside it is open, so the lock
+    // is released before the rename; a competing process that wins the rename is found by the check below it.
+    {
+        let _lock = match crate::vault_lock::acquire_metadata(root, LEGACY_METADATA) {
+            Ok(lock) => lock,
+            Err(_) if current.join("vault.json").is_file() => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        let marker = legacy.join("vault.json");
+        if fs::symlink_metadata(&marker).is_ok_and(|m| m.is_symlink()) {
+            return Err("STORAGE:symlink".into());
+        }
+        marker_id(&read_json(&marker).ok_or(VAULT_MISSING)?)?;
     }
-    marker_id(&read_json(&marker).ok_or(VAULT_MISSING)?)?;
     match fs::rename(legacy, &current) {
         Err(_) if current.join("vault.json").is_file() => Ok(()),
         result => result.map_err(err),
