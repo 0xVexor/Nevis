@@ -36,7 +36,7 @@ impl Registry {
             }
         }
         match raw.get("vault").and_then(|v| v.as_str()) {
-            Some(p) if Path::new(p).join(".noviq/vault.json").exists() => {
+            Some(p) if crate::vault::marker_path(Path::new(p)).exists() => {
                 let v = crate::vault::Vault::open(PathBuf::from(p)).ok();
                 match v {
                     Some(v) => Registry { current: Some(v.id()), vaults: vec![Entry { id: v.id(), name: v.name(), path: p.to_string() }] },
@@ -70,7 +70,7 @@ mod tests {
 
     #[test]
     fn adopts_the_old_single_vault_config() {
-        let d = std::env::temp_dir().join(format!("noviq-reg-{}", crate::vault::now_ms()));
+        let d = std::env::temp_dir().join(format!("nevis-reg-{}", crate::vault::now_ms()));
         let vault = d.join("MyVault");
         let v = crate::vault::Vault::create(vault.clone(), "Mine").unwrap();
         write_atomic(&d.join("config.json"), serde_json::json!({ "vault": vault.to_string_lossy() }).to_string().as_bytes()).unwrap();

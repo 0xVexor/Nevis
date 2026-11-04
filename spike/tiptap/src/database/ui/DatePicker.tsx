@@ -35,6 +35,8 @@ type Props = {
   todayCivil: string
   onChange: (v: DateValue | null) => void
   onClose: () => void
+  /** one day only (a form answer): no end date, no time of day */
+  single?: boolean
 }
 
 const WD = { en: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], fa: ['د', 'س', 'چ', 'پ', 'ج', 'ش', 'ی'] }
@@ -65,7 +67,7 @@ const timeOf = (iso: string, zone: string) => {
   return `${pad(p.h)}:${pad(p.mi)}`
 }
 
-export function DatePicker({ value, config, zone, weekStart, todayCivil, onChange, onClose }: Props) {
+export function DatePicker({ value, config, zone, weekStart, todayCivil, onChange, onClose, single }: Props) {
   const cal = config.displayCalendar
   const vz = value?.kind === 'datetime' ? (value.timeZone ?? zone) : zone
   const startCivil = value ? (value.kind === 'date' ? value.start : civilOf(parseIsoInstant(value.start, vz)!, vz)) : null
@@ -135,7 +137,8 @@ export function DatePicker({ value, config, zone, weekStart, todayCivil, onChang
   }
   const toggleTime = () => {
     if (!value) return
-    if (hasTime) onChange(timedToCivil(value as Extract<DateValue, { kind: 'datetime' }>, vz)) // the time of day is dropped
+    if (hasTime)
+      onChange(timedToCivil(value as Extract<DateValue, { kind: 'datetime' }>, vz)) // the time of day is dropped
     else onChange(civilToTimed(value as Extract<DateValue, { kind: 'date' }>, config.defaultZone ?? zone)) // default 09:00 local, visible in the inputs
   }
   const setTime = (which: 's' | 'e', hhmm: string) => {
@@ -186,7 +189,7 @@ export function DatePicker({ value, config, zone, weekStart, todayCivil, onChang
         ))}
       </div>
       {pickingEnd && <Hint>{t('Choose the end day.')}</Hint>}
-      {value && (
+      {value && !single && (
         <div className="dv-date-opts">
           <SwitchRow label={t('End date')} checked={isRange} onChange={toggleRange} />
           <SwitchRow label={t('Include time')} checked={hasTime} onChange={toggleTime} />

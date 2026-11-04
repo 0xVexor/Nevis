@@ -4,7 +4,7 @@ import type { Kind } from '../model/types.ts'
 import type { OptionColor } from '../props/config.ts'
 import { getDatabase, peekDatabase } from '../runtime'
 import type { DatabaseService } from '../service.ts'
-import { Icon } from '../../design-system'
+import { Icon, Notice } from '../../design-system'
 import { t } from '../../i18n'
 
 /** The database service of the open vault (null until it finished opening). Re-renders on every committed change. */
@@ -153,9 +153,7 @@ export function ViewMessage({ title, children, action, tone }: { title: string; 
 
 /** An error line under a field or in a panel. */
 export const ErrorLine = ({ children }: { children: ReactNode }) => (
-  <p className="dv-error" role="alert">
-    {children}
-  </p>
+  <Notice tone="bad" compact className="dv-error">{children}</Notice>
 )
 
 /** A quiet hint line. */

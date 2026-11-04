@@ -101,7 +101,7 @@ export async function executeWebhook(req: WebhookRequest, idempotencyKey: string
       method: req.method ?? 'POST',
       redirect: 'manual',
       signal: ctl.signal,
-      headers: { 'content-type': 'application/json', 'idempotency-key': idempotencyKey, 'user-agent': 'noviq-gateway/0.1', ...(conn?.headers ?? {}) },
+      headers: { 'content-type': 'application/json', 'idempotency-key': idempotencyKey, 'user-agent': 'nevis-gateway/0.1', ...(conn?.headers ?? {}) },
       body: JSON.stringify(req.body ?? {}),
     })
   } catch (e) {

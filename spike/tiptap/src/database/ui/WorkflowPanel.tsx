@@ -4,7 +4,7 @@ import type { Action, Cell, Definition, Filter, Id, Json, RepeatSchedule, Trigge
 import { cellToText, parseCellText } from '../props/registry.ts'
 import type { RunData } from '../workflows/engine.ts'
 import type { DatabaseService } from '../service.ts'
-import { Button, Dropdown, Field, FormField, Icon, IconButton, Panel, Popover, Segmented, Switch, SwitchRow } from '../../design-system'
+import { Button, Disclosure, Dropdown, Field, FormField, Icon, IconButton, Panel, Popover, Segmented, Switch, SwitchRow } from '../../design-system'
 import { confirmDialog } from '../../dialog'
 import { t } from '../../i18n'
 import { ErrorLine, Hint, errorText, rawOptions } from './common'
@@ -528,8 +528,7 @@ export function WorkflowPanel({
             </div>
           )}
           {(runs.length > 0 || outbox.length > 0) && (
-            <details className="dv-runs">
-              <summary>{t('Recent runs')}</summary>
+            <Disclosure className="dv-runs" title={t('Recent runs')}>
               <ul>
                 {runs.map((r) => (
                   <li key={r.runKey} data-bad={r.state === 'failed' || undefined}>
@@ -544,7 +543,7 @@ export function WorkflowPanel({
                   </li>
                 ))}
               </ul>
-            </details>
+            </Disclosure>
           )}
         </Panel>
       )}

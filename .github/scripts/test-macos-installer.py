@@ -22,7 +22,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(self.notes.read_text(), 'keep notes')
         self.temp.cleanup()
 
-    def app(self, name, identifier='com.vexor.noviq'):
+    def app(self, name, identifier='com.vexor.nevis'):
         app = self.root / 'Applications' / f'{name}.app'
         contents = app / 'Contents'
         (contents / 'MacOS').mkdir(parents=True)
@@ -39,15 +39,19 @@ class InstallerTests(unittest.TestCase):
         return subprocess.run(['bash', str(SCRIPTS / name), '', '', str(self.root)], capture_output=True)
 
     def test_replaces_legacy_bundle_and_keeps_notes(self):
-        legacy = self.app('Noviq')
-        current = self.app('Nevis')
+        legacy = self.app('Noviq', 'com.vexor.noviq')
+        current = self.app('Nevis', 'com.vexor.noviq')
         self.assertEqual(self.run_script('preinstall').returncode, 0)
+        plist = current / 'Contents/Info.plist'
+        info = plistlib.loads(plist.read_bytes())
+        info['CFBundleIdentifier'] = 'com.vexor.nevis'
+        plist.write_bytes(plistlib.dumps(info))
         self.assertEqual(self.run_script('postinstall').returncode, 0)
         self.assertFalse(legacy.exists())
         self.assertTrue(current.exists())
 
     def test_missing_replacement_keeps_legacy(self):
-        legacy = self.app('Noviq')
+        legacy = self.app('Noviq', 'com.vexor.noviq')
         self.assertNotEqual(self.run_script('postinstall').returncode, 0)
         self.assertTrue(legacy.exists())
 
@@ -71,7 +75,7 @@ class InstallerTests(unittest.TestCase):
         expanded = self.root / 'expanded'
         subprocess.run(['/usr/sbin/pkgutil', '--expand', str(package), str(expanded)], check=True, capture_output=True)
         info = (expanded / 'PackageInfo').read_text()
-        self.assertIn('com.vexor.noviq.installer', info)
+        self.assertIn('com.vexor.nevis.installer', info)
         xml = ET.fromstring(info)
         self.assertEqual(xml.attrib['relocatable'], 'false')
         self.assertEqual(list(xml.find('relocate')), [])

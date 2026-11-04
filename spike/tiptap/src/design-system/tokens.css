@@ -67,6 +67,12 @@
   --ds-s10: 40px;
 
   /* depth: borders carry most of the structure, shadows only on things that float */
+  --ds-shadow-thumb: 0 1px 2px rgb(0 0 0 / 0.25);
+  --ds-shadow-lift: 0 1px 2px rgb(0 0 0 / 0.08);
+  --ds-shadow-seg: 0 0 0 1px var(--ds-line), 0 1px 2px rgb(0 0 0 / 0.06);
+  --ds-shadow-table: 0 10px 28px -18px light-dark(rgb(30 20 100 / 0.25), rgb(0 0 0 / 0.6));
+  --ds-shadow-media: 0 6px 24px light-dark(rgb(30 20 100 / 0.12), rgb(0 0 0 / 0.4));
+  --ds-shadow-inset: inset 0 1px 0 light-dark(rgb(255 255 255 / 0.8), rgb(255 255 255 / 0.03));
   --ds-shadow-pop: 0 1px 2px rgb(0 0 0 / 0.08), 0 14px 34px -10px rgb(0 0 0 / 0.3);
 
   /* type */
@@ -95,6 +101,17 @@
   --ds-opt-purple: light-dark(oklch(0.5 0.15 300), oklch(0.8 0.1 300));
   --ds-opt-pink: light-dark(oklch(0.55 0.16 350), oklch(0.82 0.1 350));
   --ds-opt-red: light-dark(oklch(0.52 0.17 25), oklch(0.8 0.11 25));
+  /* chart series, in this fixed order and never cycled. Validated for colour-blind separation against --ds-raised in
+     both modes (lightness steps differ per slot, unlike the option colours). Slots 3–5 are under 3:1 on white, so a
+     chart always shows its labels or a legend beside the marks. A select or status axis uses its options' colours instead. */
+  --ds-chart-1: light-dark(#2a78d6, #3987e5);
+  --ds-chart-2: light-dark(#eb6834, #d95926);
+  --ds-chart-3: light-dark(#1baf7a, #199e70);
+  --ds-chart-4: light-dark(#eda100, #c98500);
+  --ds-chart-5: light-dark(#e87ba4, #d55181);
+  --ds-chart-6: light-dark(#008300, #008300);
+  --ds-chart-7: light-dark(#6250d6, #9085e9);
+  --ds-chart-8: light-dark(#e34948, #e66767);
 
   /* motion */
   --ds-ease: cubic-bezier(.22, 1, .36, 1);
@@ -103,7 +120,12 @@
   --ds-slow: 300ms;
 
   /* layers */
+  --ds-z-grip: 40;
   --ds-z-pop: 60;
   --ds-z-modal: 70;
+  /* popovers, menus, tooltips and floating toolbars: they can open from a dialog, so they sit above it */
+  --ds-z-float: 80;
+  /* drag feedback (snap previews, the ghost) stays on top while a drag lasts; small offsets keep its own order */
+  --ds-z-drag: 88;
   --ds-z-toast: 90;
 }

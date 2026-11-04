@@ -1,8 +1,8 @@
 // Chart view: the chart itself (an accessible SVG, also the export) with its settings beside it; a click on a bar opens a
 // read-only list of exactly the rows it counts. The chart never writes anything.
-import { useMemo, useState } from 'react'
-import type { Id, Json } from '../model/types.ts'
-import { chartData, chartToSvg, drilldownFilter, type ChartRequest, type ChartType, type Measure } from '../query/chart.ts'
+import { useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import type { Definition, Id, Json } from '../model/types.ts'
+import { chartData, chartToSvg, drilldownFilter, type ChartRequest, type ChartTheme, type ChartType, type Measure } from '../query/chart.ts'
 import { NONE_GROUP } from '../query/engine.ts'
 import type { RollupAggregation } from '../props/config.ts'
 import { download } from '../../backup'
@@ -34,6 +34,68 @@ const TYPES: { value: ChartType; label: string; icon: string }[] = [
   { value: 'donut', label: 'Donut', icon: 'chart-pie' },
   { value: 'number', label: 'One number', icon: 'hash' },
 ]
+
+// ── the chart's colours come from the design tokens, resolved to plain colours so the SVG export matches the screen
+
+/** Changes whenever light / dark or the accent could have changed, so the chart is drawn again in the new colours. */
+function themeSnapshot() {
+  const root = document.documentElement
+  return `${root.className}|${root.getAttribute('data-theme')}|${root.getAttribute('style')}|${matchMedia('(prefers-color-scheme: dark)').matches}`
+}
+function subscribeTheme(cb: () => void) {
+  const mo = new MutationObserver(cb)
+  mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme', 'style'] })
+  const mq = matchMedia('(prefers-color-scheme: dark)')
+  mq.addEventListener('change', cb)
+  return () => {
+    mo.disconnect()
+    mq.removeEventListener('change', cb)
+  }
+}
+
+/** Resolve CSS colour expressions (tokens, light-dark()) to #rrggbb through a probe element and a canvas. */
+function resolveColors(exprs: string[]): string[] {
+  const probe = document.createElement('span')
+  probe.style.display = 'none'
+  document.body.append(probe)
+  const g = document.createElement('canvas').getContext('2d')
+  const out = exprs.map((e) => {
+    probe.style.color = ''
+    probe.style.color = e
+    const css = getComputedStyle(probe).color
+    if (!g) return css
+    g.clearRect(0, 0, 1, 1)
+    g.fillStyle = '#000'
+    g.fillStyle = css
+    g.fillRect(0, 0, 1, 1)
+    const [r, gr, b] = g.getImageData(0, 0, 1, 1).data
+    return '#' + [r, gr, b].map((x) => x.toString(16).padStart(2, '0')).join('')
+  })
+  probe.style.fontFamily = 'var(--ds-font-ui)'
+  const font = getComputedStyle(probe).fontFamily
+  probe.remove()
+  return [...out, font]
+}
+
+const OPTION_COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red']
+function chartTheme(): { theme: ChartTheme; option: Record<string, string> } {
+  const slots = Array.from({ length: 8 }, (_, i) => `var(--ds-chart-${i + 1})`)
+  const base = ['var(--ds-raised)', 'var(--ds-text)', 'var(--ds-text-2)', 'var(--ds-line-strong)', 'var(--ds-line)']
+  const opts = OPTION_COLORS.map((c) => `var(--ds-opt-${c})`)
+  const v = resolveColors([...slots, ...base, ...opts])
+  const [surface, ink, muted, line, grid] = v.slice(8, 13)
+  const option = Object.fromEntries(OPTION_COLORS.map((c, i) => [c, v[13 + i]]))
+  return { theme: { palette: v.slice(0, 8), surface, ink, muted, line, grid, font: v[v.length - 1] }, option }
+}
+
+/** A select / status / multi-select axis keeps the colour each option has everywhere else; uncoloured options take a chart slot. */
+function optionColors(def: Definition | undefined, option: Record<string, string>): Map<string, string> {
+  const m = new Map<string, string>()
+  const opts = (def?.config as { options?: { id: Id; color?: string }[] } | undefined)?.options
+  if (!def || !['select', 'status', 'multi_select'].includes(def.kind) || !opts) return m
+  for (const o of opts) if (o.color && option[o.color]) m.set(o.id, option[o.color])
+  return m
+}
 
 export function ChartView({ svc, view, ctl }: ViewProps) {
   const cfg = ((view.configuration as { chart?: ChartCfg }).chart ?? {}) as ChartCfg
@@ -74,13 +136,41 @@ export function ChartView({ svc, view, ctl }: ViewProps) {
       return { data: null, error: e instanceof Error ? e.message : String(e) }
     }
   }, [req, svc]) // eslint-disable-line react-hooks/exhaustive-deps
-  const svg = useMemo(
-    () =>
-      result.data
-        ? chartToSvg(result.data, { title: view.name, rtl: document.documentElement.dir === 'rtl', unassignedLabel: t('No value'), xTitle: cfg.xTitle, yTitle: cfg.yTitle, width: 760, height: 380 })
-        : '',
-    [result.data, view.name, cfg.xTitle, cfg.yTitle],
-  )
+  const themeKey = useSyncExternalStore(subscribeTheme, themeSnapshot)
+  const look = useMemo(() => chartTheme(), [themeKey])
+  const catDef = cfg.categoryPropertyId ? svc.state.prop(cfg.categoryPropertyId) : undefined
+  const seriesDef = cfg.seriesPropertyId ? svc.state.prop(cfg.seriesPropertyId) : undefined
+  // Draw at the size it is shown, so its text stays at the UI size in a narrow widget too (never a scaled-down picture).
+  const [box, setBox] = useState<HTMLDivElement | null>(null)
+  const [boxW, setBoxW] = useState(0)
+  useLayoutEffect(() => {
+    if (!box) return
+    const ro = new ResizeObserver(([e]) => setBoxW(Math.floor(e.contentRect.width)))
+    ro.observe(box)
+    return () => ro.disconnect()
+  }, [box])
+  const draw = useMemo(() => {
+    const data = result.data
+    if (!data) return null
+    // with series the colour names the series, otherwise the category
+    const colors = optionColors(data.series.length ? seriesDef : catDef, look.option)
+    return (width: number, height: number) =>
+      chartToSvg(data, {
+        title: view.name,
+        rtl: document.documentElement.dir === 'rtl',
+        unassignedLabel: t('No value'),
+        xTitle: cfg.xTitle,
+        yTitle: cfg.yTitle,
+        width,
+        height,
+        theme: look.theme,
+        colorOf: (key) => colors.get(key),
+      })
+  }, [result.data, view.name, cfg.xTitle, cfg.yTitle, look, catDef, seriesDef])
+  const w = Math.max(280, boxW || 760)
+  const svg = useMemo(() => (draw ? draw(w, Math.round(Math.min(380, Math.max(220, w * 0.5)))) : ''), [draw, w])
+  // the export is always the full-size chart, whatever the size on screen
+  const exportFile = () => (draw ? draw(760, 380) : '')
   const rowsFor = useMemo(() => {
     if (!drill || !req) return []
     const f = drilldownFilter(svc.state, req, drill.cat, drill.series)
@@ -90,9 +180,9 @@ export function ChartView({ svc, view, ctl }: ViewProps) {
       return []
     }
   }, [drill, req, svc, view.sourceId, ctl.search]) // eslint-disable-line react-hooks/exhaustive-deps
-  const exportSvg = () => download(`${view.name}.svg`, new Blob([svg], { type: 'image/svg+xml' }))
+  const exportSvg = () => download(`${view.name}.svg`, new Blob([exportFile()], { type: 'image/svg+xml' }))
   const exportPng = () => {
-    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
+    const url = URL.createObjectURL(new Blob([exportFile()], { type: 'image/svg+xml' }))
     const img = new Image()
     img.onload = () => {
       const c = document.createElement('canvas')
@@ -141,6 +231,7 @@ export function ChartView({ svc, view, ctl }: ViewProps) {
                 </p>
               )}
               <div
+                ref={setBox}
                 className="dv-chart-svg"
                 dangerouslySetInnerHTML={{ __html: svg }}
                 onClick={(e) => {
@@ -165,16 +256,17 @@ export function ChartView({ svc, view, ctl }: ViewProps) {
               {rowsFor.map((id) => {
                 const row = svc.state.row(id)
                 return row ? (
-                  <button key={id} type="button" className="ds-list-row" onClick={() => nav.openRow(id, 'side')}>
-                    <span className="dv-listrow-title" dir="auto">
-                      {plainTitle(row.page.title)}
+                  <div key={id} className="ds-list-row dv-stretch">
+                    <button type="button" className="dv-stretch-hit" aria-label={plainTitle(row.page.title) || t('Untitled')} onClick={() => nav.openRow(id, 'side')} />
+                    <span className="dv-listrow-title">
+                      <span dir="auto">{plainTitle(row.page.title)}</span>
                     </span>
                     {measureProp && (
                       <span className="dv-listrow-props">
                         <CellView svc={svc} rs={ctl.rs} row={row} def={measureProp} />
                       </span>
                     )}
-                  </button>
+                  </div>
                 ) : null
               })}
             </div>
@@ -230,7 +322,12 @@ export function ChartView({ svc, view, ctl }: ViewProps) {
             </FormField>
             {measure.kind === 'agg' && (
               <FormField label={t('Calculate')}>
-                <Dropdown label={t('Calculate')} value={measure.op} options={MEASURE_OPS.map((o) => ({ value: o, label: aggKey(o) }))} onChange={(v) => set({ measure: { ...measure, op: v as never } })} />
+                <Dropdown
+                  label={t('Calculate')}
+                  value={measure.op}
+                  options={MEASURE_OPS.map((o) => ({ value: o, label: aggKey(o) }))}
+                  onChange={(v) => set({ measure: { ...measure, op: v as never } })}
+                />
               </FormField>
             )}
             {type !== 'number' && (

@@ -1,25 +1,9 @@
-/* ───────── table bubble: icon groups above the table ───────── */
-.bubble.tbl { align-items: stretch; flex-wrap: wrap; justify-content: center; gap: 0; max-width: min(92vw, 860px); padding: var(--ds-s2) var(--ds-s1); border-radius: 20px; background: color-mix(in srgb, var(--ds-raised) 94%, transparent); backdrop-filter: blur(18px) saturate(1.5); }
-.tbg { display: flex; flex-direction: column; align-items: center; gap: var(--ds-s1); padding: 2px var(--ds-s2); border-inline-end: 1px solid var(--ds-line); }
-.tbg:last-child { border-inline-end: 0; }
-.tbg-l { font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ds-text-3); line-height: 1; padding-top: 2px; }
-.tbg-b { display: flex; gap: 2px; }
-.tbb { display: grid; place-items: center; min-width: 32px; height: 32px; padding: 0 var(--ds-s1); border: 0; border-radius: 10px; background: transparent; color: var(--ds-text); cursor: var(--cursor-hand, pointer); transition: background 0.12s, color 0.12s, transform 0.15s var(--ease); }
-.tbb:hover:not(:disabled) { background: var(--ds-hover); transform: translateY(-1px); }
-.tbb.on { background: var(--ds-accent-soft); color: var(--ds-accent); box-shadow: inset 0 0 0 1px var(--ds-accent-line); }
-.tbb.danger { color: var(--ds-bad); }
-.tbb.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--ds-bad) 12%, transparent); }
-.tbb:disabled { opacity: 0.3; cursor: var(--cursor-arrow, default); }
-.tbb svg { display: block; }
-.tbb-t { font-size: 11.5px; font-weight: 700; letter-spacing: 0.02em; direction: ltr; }
-
 /* ───────── lists ───────── */
 .tiptap ul:not([data-type='taskList']) { list-style: none; padding-inline-start: 1.5em; }
 .tiptap ul:not([data-type='taskList']) > li { position: relative; }
 .tiptap ul:not([data-type='taskList']) > li::before { content: ''; position: absolute; inset-inline-start: -1.15em; top: 0.72em; width: 0.42em; height: 0.42em; border-radius: 50%; background: var(--ds-accent); box-shadow: 0 0 0 3px var(--ds-accent-soft); }
 .tiptap ul:not([data-type='taskList']) ul:not([data-type='taskList']) > li::before { width: 0.4em; height: 0.4em; border: 2px solid var(--ds-accent); background: transparent; box-shadow: none; }
 .tiptap ul:not([data-type='taskList']) ul:not([data-type='taskList']) ul:not([data-type='taskList']) > li::before { width: 0.36em; height: 0.36em; border: 0; border-radius: 2px; background: var(--ds-accent); transform: rotate(45deg); }
-.tiptap ol { padding-inline-start: 1.7em; }
 .tiptap ol > li::marker { color: var(--ds-accent); font-weight: 800; font-variant-numeric: tabular-nums; }
 .tiptap li > ul, .tiptap li > ol { margin-top: 2px; }
 
@@ -32,18 +16,12 @@
 }
 
 /* tags: a round "+" that turns into a field */
-.bubble.tbl { position: fixed; }
-
-.tag-chip { animation: pop-in 0.28s var(--spring); transition: background 0.2s, transform 0.2s var(--ease); }
-.tag-chip:hover { transform: translateY(-1px); }
-
-/* a notice right after a button or button row gets room above it */
-button + .backup-warn, .backup-acts + .backup-warn { margin-top: var(--ds-s4); }
 
 /* "link to page" picker */
 .plp { width: 300px; }
-.plp-search { display: flex; align-items: center; gap: var(--ds-s2); margin: var(--ds-s2) var(--ds-s2) var(--ds-s1); padding: 0 var(--ds-s3); height: var(--ds-control); border: 1px solid var(--ds-line); border-radius: 12px; background: var(--ds-bg); color: var(--ds-text-2); }
+.plp-search { display: flex; align-items: center; gap: var(--ds-s2); margin: var(--ds-s2) var(--ds-s2) var(--ds-s1); padding: 0 var(--ds-s3); height: var(--ds-control); border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-bg); color: var(--ds-text-2); }
 .plp-search:focus-within { border-color: var(--ds-accent); box-shadow: 0 0 0 3px var(--ds-accent-line); }
-.plp-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ds-text); font-size: 13.5px; }
+.plp-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ds-text); font-size: var(--ds-text-small); }
 .plp-list { max-height: 300px; overflow: auto; padding: var(--ds-s1) var(--ds-s2) var(--ds-s2); }
 .page-link[title] { cursor: var(--cursor-hand, pointer); }
+

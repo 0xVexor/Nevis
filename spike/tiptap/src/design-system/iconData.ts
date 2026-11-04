@@ -182,6 +182,26 @@ export const ICON_GROUPS: IconGroup[] = [
     },
   },
   {
+    id: 'tables',
+    label: 'Tables',
+    icons: {
+      'row-above': ['table row insert above', '<rect x="3.5" y="11" width="17" height="9" rx="3"/><path d="M12 3v5M9.5 5.5h5"/>'],
+      'row-below': ['table row insert below', '<rect x="3.5" y="4" width="17" height="9" rx="3"/><path d="M12 16v5M9.5 18.5h5"/>'],
+      'row-delete': ['table row remove delete', '<rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M3.5 10h17M3.5 15h17M9.5 12.5h5"/>'],
+      'col-left': ['table column insert left', '<rect x="11" y="4" width="9.5" height="16" rx="3"/><path d="M3 12h5M5.5 9.5v5"/>'],
+      'col-right': ['table column insert right', '<rect x="3.5" y="4" width="9.5" height="16" rx="3"/><path d="M16 12h5M18.5 9.5v5"/>'],
+      'col-delete': ['table column remove delete', '<rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M9 4v16M15 4v16M10.5 12h3"/>'],
+      'head-row': ['table header row', '<rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M3.5 9h17M3.5 11.5h17M12 11.5V20"/>'],
+      'head-col': ['table header column', '<rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M8.5 4v16M11 4v16M11 12h9.5"/>'],
+      'cell-merge': ['table cells merge join', '<rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M12 4v4M12 16v4M8 12h8M8 12l2-2M8 12l2 2M16 12l-2-2M16 12l-2 2"/>'],
+      'cell-split': ['table cell split divide', '<rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M12 4v16M5.5 12h3M15.5 12h3"/>'],
+      'table-delete': ['table remove delete', '<rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="m9 9 6 6M15 9l-6 6"/>'],
+      'select-all': ['select all everything', '<path d="M4 8V6.5A2.5 2.5 0 0 1 6.5 4H8M16 4h1.5A2.5 2.5 0 0 1 20 6.5V8M20 16v1.5a2.5 2.5 0 0 1-2.5 2.5H16M8 20H6.5A2.5 2.5 0 0 1 4 17.5V16M9 12h6"/>'],
+      'markdown': ['markdown md export text', '<rect x="3" y="6" width="18" height="12" rx="3"/><path d="M7 15V9l2.5 3L12 9v6M16 9v6m0 0-2-2m2 2 2-2"/>'],
+      'blocks': ['blocks add insert elements', '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><path d="M16.5 13v7M13 16.5h7"/>'],
+    },
+  },
+  {
     id: 'drawing',
     label: 'Drawing tools',
     icons: {

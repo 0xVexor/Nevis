@@ -2,12 +2,15 @@
 // preview of the form. Fill in: the form itself, submitted through the same validator the gateway uses. Drafts of unsent answers
 // live only in this browser. A hosted public link needs the gateway; without one the panel says so instead of showing a link.
 import { useEffect, useMemo, useState, type ReactElement } from 'react'
+import { civilOf, formatCivil } from '../dates.ts'
+import { cfgOf } from '../props/config.ts'
+import { DatePicker } from './DatePicker'
 import type { Definition, Id, Json } from '../model/types.ts'
 import { validateFormConfig, visibleQuestions, evaluateSubmission, type FormConfig, type Question, type Condition } from '../forms.ts'
 import { optionsOf } from '../props/config.ts'
 import { randomId } from '../model/ids.ts'
-import { Button, Checkbox, Dropdown, Field, FormField, Icon, IconButton, Notice, Segmented, SwitchRow } from '../../design-system'
-import { t } from '../../i18n'
+import { Button, Checkbox, Dropdown, Field, FormField, Icon, IconButton, Notice, Panel, Popover, Radio, Segmented, SwitchRow } from '../../design-system'
+import { locale, t } from '../../i18n'
 import { ErrorLine, Hint, KindIcon, ViewMessage, errorText, rawOptions } from './common'
 import { GatewayClient, GatewayError, buildPublication, gatewayConfig, loadLinks, saveLink, type PublicationLink } from '../gateway/client'
 import type { ViewProps } from './viewTypes'
@@ -16,6 +19,53 @@ const EMPTY: FormConfig = { questions: [], version: 0, open: false, anonymous: f
 const BLOCKED_KINDS = ['formula', 'rollup', 'button', 'created_time', 'created_by', 'last_edited_time', 'last_edited_by', 'unique_id', 'connected', 'verification', 'title2']
 const draftKey = (viewId: Id) => `not.db.formdraft.${viewId}`
 const COND_LABEL: Record<Condition['op'], string> = { equals: 'is', not_equals: 'is not', contains: 'contains', is_empty: 'is empty', is_not_empty: 'is not empty' }
+
+/** A date answer: the database's own picker (Jalali when the property shows Jalali, Persian digits), not the browser's control. */
+function DateAnswer({
+  def,
+  svc,
+  value,
+  onChange,
+  field,
+}: {
+  def: Definition
+  svc: ViewProps['svc']
+  value: Json | undefined
+  onChange: (v: Json) => void
+  field: { id: string; 'aria-invalid': boolean; 'aria-describedby'?: string }
+}) {
+  const [anchor, setAnchor] = useState<DOMRect | null>(null)
+  const cfg = cfgOf.date(def)
+  const zone = cfg.defaultZone ?? svc.zone
+  const civil = typeof value === 'string' && value ? value : null
+  return (
+    <>
+      <button type="button" {...field} className="ds-field dv-form-date" aria-haspopup="dialog" aria-expanded={!!anchor} onClick={(e) => setAnchor(e.currentTarget.getBoundingClientRect())}>
+        <Icon name="calendar" size={15} />
+        <span data-empty={!civil || undefined}>{civil ? formatCivil(civil, { calendar: cfg.displayCalendar, locale: locale() }) : t('Pick a date')}</span>
+      </button>
+      {anchor && (
+        <Popover anchor={anchor} onClose={() => setAnchor(null)}>
+          <Panel size="sm">
+            <DatePicker
+              single
+              value={civil ? { kind: 'date', start: civil, end: null } : null}
+              config={cfg}
+              zone={zone}
+              weekStart={svc.weekStart}
+              todayCivil={civilOf(svc.now(), zone)}
+              onChange={(v) => {
+                onChange(v && v.kind === 'date' ? v.start : null)
+                setAnchor(null)
+              }}
+              onClose={() => setAnchor(null)}
+            />
+          </Panel>
+        </Popover>
+      )}
+    </>
+  )
+}
 
 function Answer({ def, q, value, onChange, svc, err }: { def: Definition; q: Question; value: Json | undefined; onChange: (v: Json) => void; svc: ViewProps['svc']; err?: string }) {
   const id = 'fq-' + q.id
@@ -29,9 +79,9 @@ function Answer({ def, q, value, onChange, svc, err }: { def: Definition; q: Que
         q.inputStyle === 'radio' ? (
           <div className="dv-checks" role="radiogroup" aria-labelledby={id + '-l'}>
             {opts.map((o) => (
-              <label key={o.id} className="dv-radio">
-                <input type="radio" name={id} checked={value === o.id} onChange={() => onChange(o.id)} /> <span dir="auto">{o.name}</span>
-              </label>
+              <Radio key={o.id} name={id} checked={value === o.id} onChange={() => onChange(o.id)}>
+                <span dir="auto">{o.name}</span>
+              </Radio>
             ))}
           </div>
         ) : (
@@ -67,7 +117,7 @@ function Answer({ def, q, value, onChange, svc, err }: { def: Definition; q: Que
       input = <input {...common} dir="ltr" inputMode="decimal" value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} />
       break
     case 'date':
-      input = <input {...common} dir="ltr" type="date" value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} />
+      input = <DateAnswer def={def} svc={svc} value={value} onChange={onChange} field={{ id: common.id, 'aria-invalid': common['aria-invalid'], 'aria-describedby': common['aria-describedby'] }} />
       break
     case 'relation': {
       const targets = q.optionProjection ?? []
@@ -119,9 +169,7 @@ function Answer({ def, q, value, onChange, svc, err }: { def: Definition; q: Que
       )}
       {input}
       {err && (
-        <p id={id + '-e'} className="dv-error" role="alert">
-          {err}
-        </p>
+        <Notice id={id + '-e'} tone="bad" compact>{err}</Notice>
       )}
     </div>
   )
@@ -233,7 +281,8 @@ export function FormView({ svc, view, ctl }: ViewProps) {
   }
   const ordered = [...draft.questions].sort((a, b) => a.order - b.order)
   const setQ = (id: Id, patch: Partial<Question>) => set({ questions: draft.questions.map((q) => (q.id === id ? { ...q, ...patch } : q)) })
-  const add = (p: Definition) => set({ questions: [...draft.questions, { id: randomId(), propertyId: p.id, title: p.name, description: '', syncLabel: true, required: p.kind === 'title', order: draft.questions.length }] })
+  const add = (p: Definition) =>
+    set({ questions: [...draft.questions, { id: randomId(), propertyId: p.id, title: p.name, description: '', syncLabel: true, required: p.kind === 'title', order: draft.questions.length }] })
   const move = (i: number, d: number) => {
     const a = [...ordered]
     const j = i + d
@@ -283,7 +332,9 @@ export function FormView({ svc, view, ctl }: ViewProps) {
       {mode === 'build' ? (
         <div className="dv-form-build">
           <div className="dv-form-questions">
-            {!gatewayConfig() && <Notice>{t('A public link needs the Nevis gateway. It is not set up in this workspace, so answers can only be entered here by people who can edit this database.')}</Notice>}
+            {!gatewayConfig() && (
+              <Notice>{t('A public link needs the Nevis gateway. It is not set up in this workspace, so answers can only be entered here by people who can edit this database.')}</Notice>
+            )}
             {gatewayConfig() && <PublishPanel svc={svc} viewId={view.id} dirty={dirty} />}
             {ordered.length === 0 && <ViewMessage title={t('No questions yet')}>{t('Each question fills in one property of the new item.')}</ViewMessage>}
             <ol className="dv-qlist">
@@ -460,7 +511,14 @@ function ConditionEditor({ q, all, svc, onChange }: { q: Question; all: Question
             options={(Object.keys(COND_LABEL) as Condition['op'][]).map((o) => ({ value: o, label: COND_LABEL[o] }))}
           />
           {(c.op === 'equals' || c.op === 'not_equals' || c.op === 'contains') && (
-            <input className="ds-field dv-operand" dir="auto" aria-label={t('Value')} placeholder={t('Value')} value={(c.value as string) ?? ''} onChange={(e) => onChange({ ...c, value: e.target.value })} />
+            <input
+              className="ds-field dv-operand"
+              dir="auto"
+              aria-label={t('Value')}
+              placeholder={t('Value')}
+              value={(c.value as string) ?? ''}
+              onChange={(e) => onChange({ ...c, value: e.target.value })}
+            />
           )}
         </div>
       )}

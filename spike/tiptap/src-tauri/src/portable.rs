@@ -27,7 +27,7 @@ fn safe(p: &str) -> Res<()> {
     {
         return Err("BACKUP:unsafe_path".into());
     }
-    if p == ".noviq/vault.json"
+    if p == ".nevis/vault.json"
         || [
             "pages/",
             "files/",
@@ -103,8 +103,8 @@ fn collect(v: &Vault) -> Res<BTreeMap<String, Vec<u8>>> {
         walk(&v.root, &v.root.join(d), &mut entries, &mut total)?;
     }
     entries.insert(
-        ".noviq/vault.json".into(),
-        fs::read(v.root.join(".noviq/vault.json")).map_err(err)?,
+        ".nevis/vault.json".into(),
+        fs::read(v.root.join(".nevis/vault.json")).map_err(err)?,
     );
     Ok(entries)
 }
@@ -120,7 +120,7 @@ pub fn export(v: &Vault) -> Res<Backup> {
         })
         .collect();
     Ok(Backup {
-        format: "noviq-vault-backup".into(),
+        format: "nevis-vault-backup".into(),
         version: 2,
         name: v.name(),
         created_at: crate::vault::now_ms(),
@@ -130,18 +130,22 @@ pub fn export(v: &Vault) -> Res<Backup> {
 /// Reads and fully checks a backup: format, paths, hashes and JSON. Nothing is written. Returns its workspace name and files.
 fn verified(raw: serde_json::Value) -> Res<(String, BTreeMap<String, Vec<u8>>)> {
     let b: Backup = serde_json::from_value(raw).map_err(|_| "BACKUP:invalid_format")?;
-    if b.format != "noviq-vault-backup"
+    let legacy = b.format == "noviq-vault-backup";
+    let marker = if legacy { ".noviq/vault.json" } else { ".nevis/vault.json" };
+    if (!legacy && b.format != "nevis-vault-backup")
         || b.version != 2
-        || !b.entries.contains_key(".noviq/vault.json")
+        || !b.entries.contains_key(marker)
+        || (legacy && b.entries.contains_key(".nevis/vault.json"))
     {
         return Err("BACKUP:invalid_format".into());
     }
     let mut files = BTreeMap::new();
     let mut total = 0;
     for (p, f) in b.entries {
-        if p == ".noviq/tombstones.json" {
+        if p == ".nevis/tombstones.json" || (legacy && p == ".noviq/tombstones.json") {
             continue; // backups of earlier versions hold a list of deletions that nothing reads any more
         }
+        let p = if p == marker { ".nevis/vault.json".to_owned() } else { p };
         safe(&p)?;
         let bytes = B64.decode(f.data).map_err(|_| "BACKUP:invalid_bytes")?;
         total += bytes.len();
@@ -190,7 +194,7 @@ pub fn restore(parent: &Path, raw: serde_json::Value, name: Option<&str>) -> Res
         .unwrap_or(&original)
         .to_string();
     let id = uuid::Uuid::new_v4().to_string();
-    let stage = parent.join(format!(".noviq-restore-{id}"));
+    let stage = parent.join(format!(".nevis-restore-{id}"));
     let target = parent.join(folder_for(parent, &name));
     fs::create_dir(&stage).map_err(err)?;
     for (p, bytes) in &files {
@@ -201,7 +205,7 @@ pub fn restore(parent: &Path, raw: serde_json::Value, name: Option<&str>) -> Res
         }
     }
     write_atomic(
-        &stage.join(".noviq/vault.json"),
+        &stage.join(".nevis/vault.json"),
         &serde_json::to_vec(&json!({"format":1,"id":id,"name":name})).map_err(err)?,
     )?;
     write_atomic(
@@ -308,7 +312,7 @@ pub fn restore_merge(v: &Vault, raw: serde_json::Value) -> Res<Merged> {
 // The vault's own files, unpacked into `<parent>/<workspace name> [<id>]/`, with `backup.json` listing every file's hash and
 // what the backup holds. Only changed files are rewritten, so a folder kept in git changes by the pages that changed.
 
-const FOLDER_FORMAT: &str = "noviq-folder-backup";
+const FOLDER_FORMAT: &str = "nevis-folder-backup";
 const MANIFEST: &str = "backup.json";
 
 /// What a backup holds. `pages` includes the trashed ones and not the folders.
@@ -415,6 +419,13 @@ pub fn export_folder(v: &Vault, parent: &Path, force: bool) -> Res<FolderReport>
         entries: hashes,
     };
     write_atomic(&dir.join(MANIFEST), &serde_json::to_vec(&manifest).map_err(err)?)?;
+    if old.as_ref().is_some_and(|o| o.format == "noviq-folder-backup" && o.entries.contains_key(".noviq/vault.json")) {
+        let legacy = dir.join(".noviq");
+        if fs::symlink_metadata(&legacy).is_ok_and(|m| m.is_dir()) && fs::remove_file(legacy.join("vault.json")).is_ok() {
+            removed += 1;
+            let _ = fs::remove_dir(legacy);
+        }
+    }
     Ok(FolderReport { path: dir.to_string_lossy().into(), counts, created_at, written, removed })
 }
 
@@ -423,13 +434,19 @@ pub fn export_folder(v: &Vault, parent: &Path, force: bool) -> Res<FolderReport>
 pub fn read_folder(dir: &Path) -> Res<serde_json::Value> {
     let manifest: Manifest = serde_json::from_slice(&fs::read(dir.join(MANIFEST)).map_err(|_| "BACKUP:invalid_format")?)
         .map_err(|_| "BACKUP:invalid_format")?;
-    if manifest.format != FOLDER_FORMAT || manifest.version != 1 || !manifest.entries.contains_key(".noviq/vault.json") {
+    let legacy = manifest.format == "noviq-folder-backup";
+    let marker = if legacy { ".noviq/vault.json" } else { ".nevis/vault.json" };
+    if (!legacy && manifest.format != FOLDER_FORMAT)
+        || manifest.version != 1
+        || !manifest.entries.contains_key(marker)
+        || (legacy && manifest.entries.contains_key(".nevis/vault.json"))
+    {
         return Err("BACKUP:invalid_format".into());
     }
     let mut bytes = BTreeMap::new();
     let mut total = 0;
     for (p, sha) in &manifest.entries {
-        safe(p)?;
+        safe(if p == marker { ".nevis/vault.json" } else { p })?;
         let b = fs::read(dir.join(p)).map_err(|_| "BACKUP:missing_file")?;
         total += b.len();
         if total > MAX_SNAPSHOT || hash(&b) != *sha {
@@ -444,11 +461,12 @@ pub fn read_folder(dir: &Path) -> Res<serde_json::Value> {
         .into_iter()
         .map(|(p, b)| {
             let f = File { sha256: manifest.entries[&p].clone(), data: B64.encode(b) };
+            let p = if p == marker { ".nevis/vault.json".to_owned() } else { p };
             (p, f)
         })
         .collect();
     serde_json::to_value(Backup {
-        format: "noviq-vault-backup".into(),
+        format: "nevis-vault-backup".into(),
         version: 2,
         name: manifest.name,
         created_at: manifest.created_at,
@@ -460,6 +478,32 @@ pub fn read_folder(dir: &Path) -> Res<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upgrades_workspace_metadata_and_restores_a_legacy_backup() {
+        let parent = std::env::temp_dir().join(format!("portable-test-{}", uuid::Uuid::new_v4()));
+        let root = parent.join("Original");
+        let vault = Vault::create(root.clone(), "Original").unwrap();
+        let id = vault.id();
+        let mut backup = export(&vault).unwrap();
+        backup.format = "noviq-vault-backup".into();
+        let marker = backup.entries.remove(".nevis/vault.json").unwrap();
+        backup.entries.insert(".noviq/vault.json".into(), marker);
+        write_atomic(&root.join(".nevis/metadata-test"), b"preserved").unwrap();
+        drop(vault);
+        fs::rename(root.join(".nevis"), root.join(".noviq")).unwrap();
+
+        let upgraded = Vault::open_as(root.clone(), &id).unwrap();
+        assert_eq!(upgraded.id(), id);
+        assert_eq!(fs::read(root.join(".nevis/metadata-test")).unwrap(), b"preserved");
+        assert!(!root.join(".noviq").exists());
+
+        let restored = restore(&parent, serde_json::to_value(backup).unwrap(), Some("Restored")).unwrap();
+        assert!(restored.root.join(".nevis/vault.json").is_file());
+        assert!(!restored.root.join(".noviq").exists());
+        drop((upgraded, restored));
+        fs::remove_dir_all(parent).unwrap();
+    }
     #[test]
     fn full_backup_roundtrip_keeps_records_history_settings_and_gif() {
         let parent = std::env::temp_dir().join(format!("portable-test-{}", uuid::Uuid::new_v4()));
@@ -481,7 +525,7 @@ mod tests {
         for p in backup
             .entries
             .keys()
-            .filter(|p| *p != ".noviq/vault.json" && *p != "kv/workspace.json")
+            .filter(|p| *p != ".nevis/vault.json" && *p != "kv/workspace.json")
         {
             assert_eq!(
                 fs::read(v.root.join(p)).unwrap(),
@@ -636,14 +680,14 @@ mod tests {
     fn corrupted_bytes_and_traversal_fail_before_staging() {
         let parent = std::env::temp_dir();
         let mut b = Backup {
-            format: "noviq-vault-backup".into(),
+            format: "nevis-vault-backup".into(),
             version: 2,
             name: "test".into(),
             created_at: 0,
             entries: BTreeMap::new(),
         };
         b.entries.insert(
-            ".noviq/vault.json".into(),
+            ".nevis/vault.json".into(),
             File {
                 data: B64.encode(b"{}"),
                 sha256: "wrong".into(),

@@ -1,7 +1,7 @@
 // Map view: pins of one Place property on a pannable / zoomable Web-Mercator canvas. No tile provider and no API key ship with the
 // app: without one configured (Settings → Database) pins sit on a plain graticule. Coordinates typed by hand always work offline,
 // addresses are never looked up automatically, and at most 100 pins are drawn (the rest is counted, not hidden silently).
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Id } from '../model/types.ts'
 import { MAP_VISIBLE_LIMIT, mapModel } from '../viewLogic.ts'
 import { Button, Icon, IconButton } from '../../design-system'
@@ -31,6 +31,16 @@ const my = (lat: number) => {
   return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)
 }
 
+/** The view that shows every pin with a margin (the whole world when there are none). */
+function fitView(pins: { lat: number; lon: number }[]) {
+  if (!pins.length) return { cx: 0.5, cy: 0.5, z: 1 }
+  const xs = pins.map((p) => mx(p.lon))
+  const ys = pins.map((p) => my(p.lat))
+  const [x1, x2, y1, y2] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
+  const span = Math.max((x2 - x1) * 1.3, (y2 - y1) * 1.3 * (W / H), 1e-6)
+  return { cx: (x1 + x2) / 2, cy: (y1 + y2) / 2, z: Math.max(0, Math.min(17, Math.log2(W / 256 / span))) }
+}
+
 export function MapView({ svc, view, ctl }: ViewProps) {
   const nav = useNav()
   const placeId = (view.configuration as { placePropertyId?: Id }).placePropertyId
@@ -42,6 +52,13 @@ export function MapView({ svc, view, ctl }: ViewProps) {
   const [editRow, setEditRow] = useState<{ id: Id; rect: DOMRect } | null>(null)
   const drag = useRef<{ x: number; y: number } | null>(null)
   const tiles = loadTileConfig()
+  // open on the pins, not on the whole world (where a few nearby cities fall on one point); once per view, then the user steers
+  const fitted = useRef<string | null>(null)
+  useEffect(() => {
+    if (!model?.pins.length || fitted.current === view.id) return
+    fitted.current = view.id
+    setVp(fitView(model.pins))
+  }, [model, view.id])
   if (!def) return <ViewMessage title={t('Choose a place property')}>{t('Open View settings and pick the Place property to show.')}</ViewMessage>
   if (q.error || !model)
     return (
@@ -52,14 +69,7 @@ export function MapView({ svc, view, ctl }: ViewProps) {
   const world = 256 * 2 ** vp.z
   const toScreen = (lat: number, lon: number) => ({ x: W / 2 + (mx(lon) - vp.cx) * world, y: H / 2 + (my(lat) - vp.cy) * world })
   const zoom = (d: number) => setVp((v) => ({ ...v, z: Math.max(0, Math.min(18, v.z + d)) }))
-  const fit = () => {
-    if (!model.pins.length) return setVp({ cx: 0.5, cy: 0.5, z: 1 })
-    const xs = model.pins.map((p) => mx(p.lon))
-    const ys = model.pins.map((p) => my(p.lat))
-    const [x1, x2, y1, y2] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
-    const span = Math.max((x2 - x1) * 1.3, (y2 - y1) * 1.3 * (W / H), 1e-6)
-    setVp({ cx: (x1 + x2) / 2, cy: (y1 + y2) / 2, z: Math.max(0, Math.min(17, Math.log2(W / 256 / span))) })
-  }
+  const fit = () => setVp(fitView(model.pins))
   const tileEls = (() => {
     if (!tiles) return null
     const z = Math.max(0, Math.min(18, Math.round(vp.z)))

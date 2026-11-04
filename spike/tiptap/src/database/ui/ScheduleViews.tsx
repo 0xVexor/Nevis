@@ -20,7 +20,7 @@ import {
 } from '../dates.ts'
 import { cfgOf } from '../props/config.ts'
 import { dependencyArrows, planDateDrag, scheduleModel, type ScheduleItem } from '../viewLogic.ts'
-import { Button, Icon, IconButton, Segmented } from '../../design-system'
+import { Button, Icon, IconButton, Segmented, dirOf } from '../../design-system'
 import { locale, t } from '../../i18n'
 import { HorizontalScroll } from '../../HorizontalScroll'
 import { Hint, ViewMessage, errorText, plainTitle } from './common'
@@ -36,7 +36,21 @@ function dateProp(svc: ViewProps['svc'], view: ViewProps['view']): Definition | 
 const WEEKEND = (weekStart: number) => (weekStart === 6 ? [5] : [6, 7])
 
 /** Items that have no date yet: open one, drag it onto a day, or give it today's date. */
-function Undated({ svc, ids, onOpen, onDragStart, onDragEnd, onToday }: { svc: ViewProps['svc']; ids: Id[]; onOpen: (id: Id) => void; onDragStart?: (id: Id) => void; onDragEnd?: () => void; onToday?: (id: Id) => void }) {
+function Undated({
+  svc,
+  ids,
+  onOpen,
+  onDragStart,
+  onDragEnd,
+  onToday,
+}: {
+  svc: ViewProps['svc']
+  ids: Id[]
+  onOpen: (id: Id) => void
+  onDragStart?: (id: Id) => void
+  onDragEnd?: () => void
+  onToday?: (id: Id) => void
+}) {
   if (!ids.length) return null
   return (
     <section className="dv-tray" aria-label={t('Items without a date')}>
@@ -276,9 +290,9 @@ export function CalendarView({ svc, view, ctl }: ViewProps) {
                     onKeyDown={(ev) => ev.key === 'Enter' && nav.openRow(it.pageId, 'side')}
                   >
                     {editable && !clipS && <span className="dv-event-edge" data-side="start" onPointerDown={(ev) => startResize(ev, it, 'start')} />}
-                    <span className="dv-event-t" dir="auto">
+                    <span className="dv-event-t" dir={dirOf(it.title)}>
                       {!it.allDay && <small>{new Intl.DateTimeFormat(locale(), { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: zone }).format(it.startMs)} </small>}
-                      {plainTitle(it.title)}
+                      <span dir="auto">{plainTitle(it.title)}</span>
                     </span>
                     {editable && !clipE && <span className="dv-event-edge" data-side="end" onPointerDown={(ev) => startResize(ev, it, 'end')} />}
                   </div>
@@ -364,6 +378,17 @@ export function TimelineView({ svc, view, ctl }: ViewProps) {
     const t0 = its.length ? Math.min(...its.map((i) => i.startMs)) : startOfDayMs(today, zone)
     return { origin: Math.min(t0, startOfDayMs(today, zone)) - UNIT_MS[scale] * 4, items: its }
   }, [model?.items.length, scale, today, zone]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Open on today (a third of the way in), not on the earliest item: once per view and scale, so scrolling is left alone after.
+  const opened = useRef('')
+  useLayoutEffect(() => {
+    const el = box.current
+    const key = view.id + ':' + scale
+    if (!el || opened.current === key || !el.clientWidth) return
+    opened.current = key
+    const x = Math.max(0, (startOfDayMs(today, zone) - origin) * px - el.clientWidth / 3)
+    el.scrollLeft = getComputedStyle(el).direction === 'rtl' ? -x : x
+    setScroll({ x, w: el.clientWidth })
+  })
   if (!def || !model) return <ViewMessage title={t('Choose a date property')}>{t('Open View settings and pick the date range to show.')}</ViewMessage>
   if (q.error)
     return (
@@ -475,8 +500,8 @@ export function TimelineView({ svc, view, ctl }: ViewProps) {
         {showTable && (
           <div className="dv-tl-names" style={{ paddingTop: HEAD_H }}>
             {rows.map((it) => (
-              <button type="button" key={it.pageId} className="dv-tl-name" style={{ height: ROW_H }} onClick={() => nav.openRow(it.pageId, 'side')} dir="auto" title={it.title}>
-                {plainTitle(it.title)}
+              <button type="button" key={it.pageId} className="dv-tl-name" dir={dirOf(it.title)} style={{ height: ROW_H }} onClick={() => nav.openRow(it.pageId, 'side')} title={it.title}>
+                <span dir="auto">{plainTitle(it.title)}</span>
               </button>
             ))}
           </div>
@@ -516,6 +541,7 @@ export function TimelineView({ svc, view, ctl }: ViewProps) {
                     key={it.pageId}
                     className="dv-tl-bar"
                     data-dragging={d ? true : undefined}
+                    data-narrow={right - left < 96 || undefined}
                     style={{ top: i * ROW_H + 6, height: ROW_H - 12, insetInlineStart: left, width: Math.max(12, right - left) }}
                     role="button"
                     tabIndex={0}
@@ -525,8 +551,8 @@ export function TimelineView({ svc, view, ctl }: ViewProps) {
                     onPointerDown={(e) => startDrag(e, it, 'move')}
                   >
                     {editable && <span className="dv-event-edge" data-side="start" onPointerDown={(e) => startDrag(e, it, 'start')} />}
-                    <span className="dv-event-t" dir="auto">
-                      {plainTitle(it.title)}
+                    <span className="dv-event-t" dir={dirOf(it.title)}>
+                      <span dir="auto">{plainTitle(it.title)}</span>
                     </span>
                     {editable && <span className="dv-event-edge" data-side="end" onPointerDown={(e) => startDrag(e, it, 'end')} />}
                   </div>
@@ -546,7 +572,9 @@ export function TimelineView({ svc, view, ctl }: ViewProps) {
                   if (!f || !to) return null
                   const y1 = HEAD_H + f.y
                   const y2 = HEAD_H + to.y
-                  return <path key={i} d={`M ${f.x2} ${y1} C ${f.x2 + 20} ${y1}, ${to.x1 - 20} ${y2}, ${to.x1} ${y2}`} fill="none" stroke="currentColor" strokeWidth="1.4" markerEnd="url(#dv-tl-arrow)" />
+                  return (
+                    <path key={i} d={`M ${f.x2} ${y1} C ${f.x2 + 20} ${y1}, ${to.x1 - 20} ${y2}, ${to.x1} ${y2}`} fill="none" stroke="currentColor" strokeWidth="1.4" markerEnd="url(#dv-tl-arrow)" />
+                  )
                 })}
               </svg>
             )}
@@ -557,7 +585,11 @@ export function TimelineView({ svc, view, ctl }: ViewProps) {
         svc={svc}
         ids={model.unscheduled}
         onOpen={(id) => nav.openRow(id, 'side')}
-        onToday={editable ? (id) => void svc.tryExec([{ type: 'row.patch', payload: { pageId: id, cellChanges: { [def.id]: { kind: 'date', value: { kind: 'date', start: today, end: null } } } } }]) : undefined}
+        onToday={
+          editable
+            ? (id) => void svc.tryExec([{ type: 'row.patch', payload: { pageId: id, cellChanges: { [def.id]: { kind: 'date', value: { kind: 'date', start: today, end: null } } } } }])
+            : undefined
+        }
       />
     </div>
   )

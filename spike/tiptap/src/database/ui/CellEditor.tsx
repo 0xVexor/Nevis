@@ -10,7 +10,7 @@ import { matchKey } from '../text.ts'
 import type { Row } from '../state.ts'
 import type { DatabaseService } from '../service.ts'
 import { putFile, urlFor } from '../../attachments'
-import { Button, Field, FormField, Icon, IconButton, Panel, Popover } from '../../design-system'
+import { Button, Field, FormField, Icon, IconButton, Notice, Panel, Popover } from '../../design-system'
 import { t } from '../../i18n'
 import { Chip, ErrorLine, Hint, errorText, plainTitle } from './common'
 import { useFileNames } from './CellView'
@@ -126,9 +126,7 @@ export function InlineInput({
       {error &&
         errorPos &&
         createPortal(
-          <div id={errorId} className="dv-cell-error" role="alert" style={{ position: 'fixed', ...errorPos }}>
-            {error}
-          </div>,
+          <Notice id={errorId} className="dv-cell-error" tone="bad" compact style={{ position: 'fixed', ...errorPos }}>{error}</Notice>,
           document.body,
         )}
     </div>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { Button, Dialog } from './design-system'
 import { createRoot, type Root } from 'react-dom/client'
-import * as Ic from './icons'
 import { t } from './i18n'
 
 interface Opts {
@@ -18,44 +18,39 @@ type Result = boolean | string | null
 let root: Root | null = null
 let host: HTMLElement | null = null
 
-function Dialog({ opts, done }: { opts: Opts; done: (r: Result) => void }) {
+function QuickDialog({ opts, done }: { opts: Opts; done: (r: Result) => void }) {
   const [value, setValue] = useState(opts.input?.initial ?? '')
   const field = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    field.current?.focus()
-    field.current?.select()
-  }, [])
+  const confirm = useRef<HTMLButtonElement>(null)
+  const cancel = () => done(opts.input ? null : false)
   const ok = () => done(opts.input ? value : true)
+  // the design-system Dialog focuses its first control; here Enter answers the question, so the field or the confirm button takes focus
+  useEffect(() => {
+    const id = setTimeout(() => {
+      if (opts.input) (field.current?.focus(), field.current?.select())
+      else confirm.current?.focus()
+    })
+    return () => clearTimeout(id)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div className="overlay dlg-overlay" onMouseDown={() => done(opts.input ? null : false)}>
-      <form
-        className="modal dlg"
-        role="alertdialog"
-        aria-modal="true"
-        onMouseDown={(e) => e.stopPropagation()}
-        onSubmit={(e) => (e.preventDefault(), ok())}
-        onKeyDown={(e) => e.key === 'Escape' && (e.stopPropagation(), done(opts.input ? null : false))}
-      >
-        <div className="dlg-body">
-          <span className={'dlg-ic' + (opts.danger ? ' danger' : '')}>{opts.danger ? <Ic.Trash size={20} /> : opts.input ? <Ic.Pencil size={20} /> : <Ic.Info size={20} />}</span>
-          <div className="dlg-tx">
-            <b dir="auto">{opts.title}</b>
-            {opts.message && <p dir="auto">{opts.message}</p>}
-            {opts.input && <input ref={field} dir={opts.input.ltr ? 'ltr' : 'auto'} value={value} placeholder={opts.input.placeholder} onChange={(e) => setValue(e.target.value)} />}
-          </div>
-        </div>
-        <div className="dlg-acts">
-          {!opts.alert && (
-            <button type="button" className="dlg-cancel" onClick={() => done(opts.input ? null : false)}>
-              {t('Cancel')}
-            </button>
-          )}
-          <button type="submit" autoFocus={!opts.input} className={'primary' + (opts.danger ? ' danger' : '')}>
+    <Dialog
+      open
+      title={opts.title}
+      onClose={cancel}
+      actions={
+        <>
+          {!opts.alert && <Button onClick={cancel}>{t('Cancel')}</Button>}
+          <Button ref={confirm} type="submit" form="quick-dialog" variant={opts.danger ? 'danger' : 'primary'}>
             {opts.confirmLabel ?? (opts.alert ? t('OK') : opts.input ? t('Save') : t('Continue'))}
-          </button>
-        </div>
+          </Button>
+        </>
+      }
+    >
+      <form id="quick-dialog" className="ds-modal-body ds-stack" onSubmit={(e) => (e.preventDefault(), ok())}>
+        {opts.message && <p dir="auto">{opts.message}</p>}
+        {opts.input && <input ref={field} className="ds-field" aria-label={opts.title} dir={opts.input.ltr ? 'ltr' : 'auto'} value={value} placeholder={opts.input.placeholder} onChange={(e) => setValue(e.target.value)} />}
       </form>
-    </div>
+    </Dialog>
   )
 }
 
@@ -71,7 +66,7 @@ function show(opts: Opts): Promise<Result> {
       root!.render(null)
       resolve(r)
     }
-    root!.render(<Dialog opts={opts} done={done} />)
+    root!.render(<QuickDialog opts={opts} done={done} />)
   })
 }
 

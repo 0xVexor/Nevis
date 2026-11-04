@@ -1,4 +1,4 @@
-import { Fragment, useId, type ButtonHTMLAttributes, type CSSProperties, type ElementType, type HTMLAttributes, type InputHTMLAttributes, type MouseEvent, type ReactNode, type Ref } from 'react'
+import { Fragment, useId, type ButtonHTMLAttributes, type CSSProperties, type ElementType, type HTMLAttributes, type InputHTMLAttributes, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref } from 'react'
 import { motion } from 'motion/react'
 import { cx } from './dir'
 import { useUIMotion } from './motion'
@@ -28,11 +28,11 @@ export function Checkbox({ checked, onChange, label, disabled, className, childr
 }
 
 /** A search box: the icon, the input and a clear button once something is typed. `label` names it for assistive technology; `onEnter` runs on Enter (go to the first result). */
-export function SearchField({ value, onChange, onEnter, label, placeholder, clearLabel, autoFocus, className }: { value: string; onChange: (next: string) => void; onEnter?: () => void; label: string; placeholder?: string; clearLabel: string; autoFocus?: boolean; className?: string }) {
+export function SearchField({ value, onChange, onEnter, onKeyDown, label, placeholder, clearLabel, autoFocus, className }: { value: string; onChange: (next: string) => void; onEnter?: () => void; /** runs first; call preventDefault() to skip the field's own Escape / Enter handling (arrow keys in a result list) */ onKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void; label: string; placeholder?: string; clearLabel: string; autoFocus?: boolean; className?: string }) {
   return (
     <div className={cx('ds-search', className)}>
       <Icon name="search" size={16} />
-      <input type="search" dir="auto" autoComplete="off" value={value} placeholder={placeholder} aria-label={label} autoFocus={autoFocus} onChange={(event) => onChange(event.target.value)} onKeyDown={(event) => (event.key === 'Escape' && value ? (event.stopPropagation(), onChange('')) : event.key === 'Enter' && onEnter ? (event.preventDefault(), onEnter()) : undefined)} />
+      <input type="search" dir="auto" autoComplete="off" value={value} placeholder={placeholder} aria-label={label} autoFocus={autoFocus} onChange={(event) => onChange(event.target.value)} onKeyDown={(event) => (onKeyDown?.(event), event.defaultPrevented) ? undefined : (event.key === 'Escape' && value ? (event.stopPropagation(), onChange('')) : event.key === 'Enter' && onEnter ? (event.preventDefault(), onEnter()) : undefined)} />
       {value && (
         <button type="button" className="ds-search-clear" aria-label={clearLabel} title={clearLabel} onClick={() => onChange('')}>
           <Icon name="x" size={14} />
@@ -121,11 +121,31 @@ export function Facts({ items, className }: { items: [string, ReactNode][]; clas
 }
 
 /** One thing that needs to be seen. `warn` and `bad` always come with words and an icon. */
-export function Notice({ tone, icon, children, className }: { tone?: 'warn' | 'bad'; icon?: ReactNode; children: ReactNode; className?: string }) {
+export function Notice({ tone = 'info', icon, title, action, trailing, children, className, role, id, style, compact }: {
+  tone?: 'info' | 'ok' | 'warn' | 'bad'
+  icon?: ReactNode
+  title?: ReactNode
+  action?: ReactNode
+  trailing?: ReactNode
+  children: ReactNode
+  className?: string
+  role?: 'note' | 'status' | 'alert'
+  id?: string
+  style?: CSSProperties
+  compact?: boolean
+}) {
+  const glyph = { info: 'info', ok: 'check', warn: 'warning', bad: 'error' } as const
   return (
-    <div role={tone ? 'alert' : 'note'} className={cx('ds-notice', tone && `ds-notice--${tone}`, className)}>
-      {icon}
-      <div>{children}</div>
+    <div id={id} style={style} className={cx('ds-notice', `ds-notice--${tone}`, compact && 'ds-notice--compact', className)}>
+      <span className="ds-notice-icon" aria-hidden="true">{icon ?? <Icon name={glyph[tone]} size={16} />}</span>
+      <div className="ds-notice-body">
+        <div role={role ?? (tone === 'warn' || tone === 'bad' ? 'alert' : 'note')}>
+          {title && <strong className="ds-notice-title">{title}</strong>}
+          <div className="ds-notice-message" dir="auto">{children}</div>
+        </div>
+        {action && <div className="ds-notice-action">{action}</div>}
+      </div>
+      {trailing}
     </div>
   )
 }
@@ -211,5 +231,32 @@ export function ActionTile({ icon, label, className, type = 'button', ...rest }:
       {icon}
       <span>{label}</span>
     </button>
+  )
+}
+
+/** One choice of a group (a radio): the round mark is drawn by the system, the native input stays for keyboard and screen readers. */
+export function Radio({ checked, onChange, name, label, disabled, className, children }: { checked: boolean; onChange: () => void; name: string; label?: string; disabled?: boolean; className?: string; children?: ReactNode }) {
+  return (
+    <label className={cx('ds-radio', className)}>
+      <input type="radio" className="ds-radio-input" name={name} checked={checked} disabled={disabled} aria-label={label} onChange={onChange} />
+      <span className="ds-radio-mark" aria-hidden="true" />
+      {children}
+    </label>
+  )
+}
+
+/** A section that opens and closes (native <details>, so it works from the keyboard and in print). The caret sits at the inline end. */
+export function Disclosure({ title, icon, open, className, children }: { title: ReactNode; icon?: ReactNode; open?: boolean; className?: string; children: ReactNode }) {
+  return (
+    <details className={cx('ds-disclosure', className)} open={open}>
+      <summary>
+        {icon}
+        <span className="ds-disclosure-title" dir="auto">
+          {title}
+        </span>
+        <Icon name="chevron-down" size={14} className="ds-disclosure-caret" />
+      </summary>
+      {children}
+    </details>
   )
 }

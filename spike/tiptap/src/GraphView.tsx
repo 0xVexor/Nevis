@@ -1,3 +1,4 @@
+import { commandMatches } from './shortcutCommands'
 import { PageIcon } from './PageIcon'
 import { dirOf, Button, ChipButton, Icon, IconButton, SearchField, Stats, Tag } from './design-system'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -149,12 +150,15 @@ export function GraphView({ currentId, onOpen, onClose }: { currentId?: string; 
   const keys = useRef<{ fit: () => void; zoom: (f: number) => void }>({ fit: () => {}, zoom: () => {} })
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') return sel ? setSel(null) : onClose()
+      if (commandMatches(e, 'Close graph')) {
+        e.preventDefault()
+        return sel ? setSel(null) : onClose()
+      }
       const target = e.target as HTMLElement
-      if (e.ctrlKey || e.metaKey || e.altKey || target.isContentEditable || target.matches('input, textarea, select')) return
-      if (e.code === 'KeyF') keys.current.fit()
-      else if (e.code === 'Equal' || e.code === 'NumpadAdd') keys.current.zoom(1.3)
-      else if (e.code === 'Minus' || e.code === 'NumpadSubtract') keys.current.zoom(1 / 1.3)
+      if (target instanceof HTMLElement && (target.isContentEditable || target.matches('input, textarea, select'))) return
+      if (commandMatches(e, 'Fit graph')) (e.preventDefault(), keys.current.fit())
+      else if (commandMatches(e, 'Zoom graph in')) (e.preventDefault(), keys.current.zoom(1.3))
+      else if (commandMatches(e, 'Zoom graph out')) (e.preventDefault(), keys.current.zoom(1 / 1.3))
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)

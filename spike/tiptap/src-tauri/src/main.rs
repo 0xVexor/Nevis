@@ -43,7 +43,7 @@ fn with<T>(s: &St, f: impl FnOnce(&Vault) -> Res<T>) -> Res<T> {
         Some(v) => {
             v.ensure_exclusive()?;
             // a vault whose folder vanished while it was open is not written to: that would re-create half of it
-            if !v.root.join(".noviq/vault.json").is_file() {
+            if !v.root.join(".nevis/vault.json").is_file() {
                 return Err(VAULT_MISSING.into());
             }
             if expected.as_deref()!=Some(v.id().as_str()){return Err(VAULT_MISMATCH.into());}
@@ -55,6 +55,17 @@ fn with<T>(s: &St, f: impl FnOnce(&Vault) -> Res<T>) -> Res<T> {
 
 // Settings that belong to this device and must not travel through the vault.
 const LOCAL_KEYS: [&str; 2] = ["backupCfg", "graphLayouts"];
+
+fn migrate_app_directory(current: &Path) -> std::io::Result<()> {
+    let legacy = current.with_file_name("com.vexor.noviq");
+    if current.exists() || !legacy.is_dir() {
+        return Ok(());
+    }
+    match std::fs::rename(legacy, current) {
+        Err(_) if current.is_dir() => Ok(()),
+        result => result,
+    }
+}
 
 // ───── vaults: list, create, open, switch ─────
 
@@ -104,7 +115,7 @@ fn vault_create(s: St, parent: String, name: String) -> Res<String> {
     if !PathBuf::from(&parent).is_absolute() {
         return Err("path must be absolute".into());
     }
-    if root.join(".noviq/vault.json").exists() {
+    if vault::marker_path(&root).exists() {
         return Err("a vault already exists there".into());
     }
     let v = Vault::create(root.clone(), &name)?;
@@ -633,6 +644,14 @@ fn main() {
     if std::env::args().any(|a| a == mcp_relay::RELAY_FLAG) {
         std::process::exit(mcp_relay::run_stdio());
     }
+    // WebView2 opens its profile when Tauri creates the first window.
+    #[cfg(windows)]
+    if let Some(local_data) = std::env::var_os("LOCALAPPDATA") {
+        let profile = PathBuf::from(local_data).join("com.vexor.nevis");
+        if let Err(error) = migrate_app_directory(&profile) {
+            eprintln!("Cannot migrate the previous Nevis WebView profile: {error}");
+        }
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -642,7 +661,11 @@ fn main() {
             // NEVIS_APP_DATA (shared with the MCP relay) runs a separate copy with its own workspace list, e.g. to try first launch
             let app_data = match std::env::var_os("NEVIS_APP_DATA") {
                 Some(dir) => PathBuf::from(dir),
-                None => app.path().app_data_dir()?,
+                None => {
+                    let current = app.path().app_data_dir()?;
+                    migrate_app_directory(&current)?;
+                    current
+                },
             };
             std::fs::create_dir_all(&app_data)?;
             document_operations::configure(&app_data).map_err(std::io::Error::other)?;

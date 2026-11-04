@@ -8,7 +8,7 @@ import { DESCRIPTORS, isEmptyCell, defaultCell } from '../props/registry.ts'
 import { formatUniqueId } from '../resolver.ts'
 import type { Row } from '../state.ts'
 import type { DatabaseService } from '../service.ts'
-import { Button, Dropdown, Icon, IconButton } from '../../design-system'
+import { Button, Disclosure, Dropdown, Icon, IconButton } from '../../design-system'
 import { t } from '../../i18n'
 import { CellView, NavContext, useNav, type DbNav } from './CellView'
 import { InlineCellEditor, PopoverEditor, isInlineKind, isPopoverKind } from './CellEditor'
@@ -131,33 +131,43 @@ function Panel({ svc, row, nav }: { svc: DatabaseService; row: Row; nav: DbNav }
           ) : isEd && isInlineKind(d.kind) ? (
             <InlineCellEditor svc={svc} row={row} def={d} onClose={() => setEditing(null)} />
           ) : (
-            <button
-              type="button"
-              className="dv-prop-cell"
-              data-ro={!writable || undefined}
-              aria-label={`${d.name}: ${t('edit')}`}
-              onClick={(e) => {
-                if (!writable) {
-                  const why = whyReadOnly(d)
-                  if (why) setMsg(why)
-                  return
-                }
-                if (d.kind === 'checkbox') {
-                  void svc.tryExec([
-                    { type: 'row.patch', payload: { pageId: row.page.id, cellChanges: { [d.id]: { kind: 'checkbox', value: !(row.ext.cells[d.id]?.value as { value?: boolean } | undefined)?.value } } } },
-                  ])
-                  return
-                }
-                setEditing({ id: d.id, rect: e.currentTarget.getBoundingClientRect() })
-              }}
-            >
+            <div className="dv-prop-cell dv-stretch" data-ro={!writable || undefined}>
+              <button
+                type="button"
+                className="dv-stretch-hit"
+                aria-label={`${d.name}: ${t('edit')}`}
+                onClick={(e) => {
+                  if (!writable) {
+                    const why = whyReadOnly(d)
+                    if (why) setMsg(why)
+                    return
+                  }
+                  if (d.kind === 'checkbox') {
+                    void svc.tryExec([
+                      {
+                        type: 'row.patch',
+                        payload: { pageId: row.page.id, cellChanges: { [d.id]: { kind: 'checkbox', value: !(row.ext.cells[d.id]?.value as { value?: boolean } | undefined)?.value } } },
+                      },
+                    ])
+                    return
+                  }
+                  setEditing({ id: d.id, rect: e.currentTarget.getBoundingClientRect() })
+                }}
+              />
               <CellView svc={svc} rs={rs} row={row} def={d} />
               {isEmpty(d) && d.kind !== 'checkbox' && <span className="dv-prop-empty">{t('Empty')}</span>}
-            </button>
+            </div>
           )}
           {isEd && isPopoverKind(d.kind) && <PopoverEditor svc={svc} row={row} def={d} anchor={editing!.rect} onClose={() => setEditing(null)} />}
           {!custom && DESCRIPTORS[d.kind].cellKind && d.kind !== 'checkbox' && (
-            <button type="button" className="dv-prop-comment" data-has={n > 0 || undefined} aria-expanded={commentsFor === d.id} aria-label={t('Comments on {n}', { n: d.name })} onClick={() => setCommentsFor(commentsFor === d.id ? null : d.id)}>
+            <button
+              type="button"
+              className="dv-prop-comment"
+              data-has={n > 0 || undefined}
+              aria-expanded={commentsFor === d.id}
+              aria-label={t('Comments on {n}', { n: d.name })}
+              onClick={() => setCommentsFor(commentsFor === d.id ? null : d.id)}
+            >
               <Icon name="comment" size={14} />
               {n > 0 && <span>{n}</span>}
             </button>
@@ -211,16 +221,12 @@ function Panel({ svc, row, nav }: { svc: DatabaseService; row: Row; nav: DbNav }
             .filter((d): d is Definition => !!d && shown(d))
             .map(field)}
           {(L.sections ?? []).map((s) => (
-            <details className="dv-section" key={s.id} open={!s.collapsed}>
-              <summary>
-                <Icon name="chevron-down" size={14} className="dv-caret" />
-                <span dir="auto">{s.title}</span>
-              </summary>
+            <Disclosure className="dv-section" key={s.id} open={!s.collapsed} title={s.title}>
               {s.propertyIds
                 .map((pid) => byId.get(pid))
                 .filter((d): d is Definition => !!d && shown(d))
                 .map(field)}
-            </details>
+            </Disclosure>
           ))}
           {rest
             .map((rid) => byId.get(rid))

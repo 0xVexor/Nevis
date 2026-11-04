@@ -3,8 +3,7 @@ import type { Page } from './repo'
 import type { PageIndex } from './pageIndex'
 import { PageIcon } from './PageIcon'
 import { AnimatePresence, motion } from 'motion/react'
-import { dirOf, useUIMotion } from './design-system'
-import * as Ic from './icons'
+import { dirOf, useUIMotion, Icon } from './design-system'
 import { t } from './i18n'
 
 export interface RowProps {
@@ -43,7 +42,7 @@ export function CompactList(props: Omit<RowProps, 'page' | 'depth'> & { roots: P
       </span>
       <span className="acts">
         <button title={t('Options')} onClick={(e) => (e.stopPropagation(), props.onMenu(p.id, e.currentTarget.getBoundingClientRect()))}>
-          <Ic.Dots size={16} />
+          <Icon name="more-horizontal" size={16} />
         </button>
       </span>
     </div>
@@ -68,7 +67,7 @@ export function CompactList(props: Omit<RowProps, 'page' | 'depth'> & { roots: P
           onClick={(e) => (e.stopPropagation(), props.onToggle(p.id))}
           aria-label={t('Expand or collapse')}
         >
-          <Ic.Chevron size={14} />
+          <Icon name="chevron-right" size={14} />
         </button>
         <span className="ic">
           <PageIcon page={p} />
@@ -80,10 +79,10 @@ export function CompactList(props: Omit<RowProps, 'page' | 'depth'> & { roots: P
         {files.length > 0 && <span className="tree-count">{String(files.length).padStart(2, '0')}</span>}
         <span className="acts">
           <button title={t('Options')} onClick={(e) => (e.stopPropagation(), props.onMenu(p.id, e.currentTarget.getBoundingClientRect()))}>
-            <Ic.Dots size={16} />
+            <Icon name="more-horizontal" size={16} />
           </button>
           <button title={folder ? t('New page in folder') : t('New subpage')} onClick={(e) => (e.stopPropagation(), props.onAdd(p.id))}>
-            <Ic.Plus size={16} />
+            <Icon name="plus" size={16} />
           </button>
         </span>
       </div>,
@@ -142,7 +141,7 @@ export function TreeRow(props: RowProps) {
           onClick={(e) => (e.stopPropagation(), props.onToggle(page.id))}
           aria-label={t('Expand or collapse')}
         >
-          <Ic.Chevron size={14} />
+          <Icon name="chevron-right" size={14} />
         </button>
         <span className="ic">
           <PageIcon page={page} />
@@ -153,10 +152,10 @@ export function TreeRow(props: RowProps) {
         {count > 0 && <span className="tree-count">{String(count).padStart(2, '0')}</span>}
         <span className="acts">
           <button title={t('Options')} onClick={(e) => (e.stopPropagation(), props.onMenu(page.id, e.currentTarget.getBoundingClientRect()))}>
-            <Ic.Dots size={16} />
+            <Icon name="more-horizontal" size={16} />
           </button>
           <button title={folder ? t('New page in folder') : t('New subpage')} onClick={(e) => (e.stopPropagation(), props.onAdd(page.id))}>
-            <Ic.Plus size={16} />
+            <Icon name="plus" size={16} />
           </button>
         </span>
       </div>

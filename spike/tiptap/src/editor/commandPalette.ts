@@ -1,3 +1,4 @@
+import { commandMatches } from '../shortcutCommands'
 import type { Editor } from '@tiptap/core'
 import { Extension } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
@@ -34,7 +35,7 @@ export function openCommandPalette(editor: Editor, allowedCommands: readonly str
 
   const onKey = (e: KeyboardEvent) => {
     // the shortcut itself closes (and must not reach the editor, which would open the menu again)
-    const isShortcut = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === 'Slash' || e.key === '/')
+    const isShortcut = commandMatches(e, 'Open the “/” menu')
     if (e.key === 'Escape' || isShortcut) return void (e.preventDefault(), e.stopPropagation(), close())
     if (/^(Shift|Control|Alt|Meta|CapsLock)$/.test(e.key)) return // modifiers alone do nothing
     if (render.onKeyDown({ event: e })) return void (e.preventDefault(), e.stopPropagation()) // ↑ ↓ Enter Tab
@@ -74,7 +75,7 @@ export const CommandPalette = Extension.create<{ allowedCommands: readonly strin
         props: {
           // by physical key (`code`), so it also works with the Persian layout where "/" is a letter
           handleKeyDown: (_view, e) => {
-            if (editor.isEditable && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === 'Slash' || e.key === '/')) {
+            if (editor.isEditable && commandMatches(e, 'Open the “/” menu')) {
               e.preventDefault()
               openCommandPalette(editor, this.options.allowedCommands)
               return true

@@ -32,7 +32,13 @@ const PUNCT: Record<string, string> = {
   Backquote: '`',
   Space: 'Space',
   Enter: 'Enter',
+  NumpadEnter: 'Enter',
+  NumpadAdd: 'Numpad+',
+  NumpadSubtract: 'Numpad-',
+  Delete: 'Delete',
+  Backspace: 'Backspace',
   Tab: 'Tab',
+  Escape: 'Esc',
   ArrowLeft: '←',
   ArrowRight: '→',
   ArrowUp: '↑',
@@ -52,7 +58,7 @@ export function eventKey(e: KeyboardEvent): string | null {
 
 export function chordOf(e: KeyboardEvent): Chord | null {
   const key = eventKey(e)
-  if (!key) return null
+  if (!key || e.isComposing || e.getModifierState?.('AltGraph')) return null
   return [...(e.ctrlKey || e.metaKey ? ['Mod'] : []), ...(e.altKey ? ['Alt'] : []), ...(e.shiftKey ? ['Shift'] : []), key]
 }
 
@@ -72,6 +78,8 @@ export function pauseBindings() {
     if (!done) ((done = true), paused--)
   }
 }
+
+export const bindingsPaused = () => paused > 0
 
 export function matches(e: KeyboardEvent, id: BindingId): boolean {
   if (paused) return false

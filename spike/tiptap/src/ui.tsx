@@ -1,10 +1,10 @@
 import { CommandDialog, CommandResult } from './design-system/CommandDialog'
+import { Dialog, FormField, Icon } from './design-system'
 import { Button, IconButton } from './design-system/Button'
 import type { DocNode } from './docNode'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { normalizeFa } from './normalize'
 import type { Page } from './repo'
-import * as Ic from './icons'
 import { ICON_PREFIX, iconNode, parseIcon } from './iconSet'
 import { IconPicker } from './design-system/IconPicker'
 import { t, locale } from './i18n'
@@ -64,6 +64,8 @@ export interface PaletteCommand {
   label: string
   icon: ReactNode
   keywords?: string
+  group?: string
+  searchOnly?: boolean
   hint?: string
   run: () => void
 }
@@ -100,10 +102,10 @@ export function SearchModal({
     () =>
       words.length
         ? commands.filter((c) => {
-            const h = normalizeFa(c.label + ' ' + (c.keywords ?? ''))
+            const h = normalizeFa(c.label + ' ' + (c.keywords ?? '') + ' ' + (c.group ? t(c.group) : ''))
             return words.every((w) => h.includes(w))
           })
-        : commands,
+        : commands.filter(command => !command.searchOnly),
     [commands, words],
   )
   const recent = useMemo(() => [...pages].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6), [pages])
@@ -156,7 +158,16 @@ export function SearchModal({
       window.clearTimeout(id)
     }
   }, [cmdOnly, term, recent, search, searchEpoch])
-  const shownCmds = pagesOnly ? [] : term.trim() && !cmdOnly ? cmds.slice(0, 5) : cmds
+  const shownCmds = useMemo(() => {
+    if (pagesOnly) return []
+    const groups = new Map<string | undefined, PaletteCommand[]>()
+    for (const command of cmds) {
+      const group = groups.get(command.group) ?? []
+      group.push(command)
+      groups.set(command.group, group)
+    }
+    return [...groups.values()].flat()
+  }, [pagesOnly, cmds])
   const items = useMemo(() => [...shownCmds.map((c) => ({ cmd: c })), ...found.map((p) => ({ page: p }))] as { cmd?: PaletteCommand; page?: Page }[], [shownCmds, found])
 
   useEffect(() => {
@@ -195,7 +206,7 @@ export function SearchModal({
 
   return <CommandDialog label={t('Search')} onClose={onClose}
     header={<>
-      <span className="ds-command-search-icon"><Ic.Search size={20} /></span>
+      <span className="ds-command-search-icon"><Icon name="search" size={20} /></span>
       <div className="ds-command-input-wrap"><label htmlFor="workspace-search-query">{t('Search')}</label>
         <input id="workspace-search-query" ref={input} dir="auto" autoComplete="off" spellCheck={false} placeholder={t('Search pages or type a command.')} value={q}
           onChange={event => setQ(event.target.value)} onKeyDown={event => {
@@ -206,9 +217,9 @@ export function SearchModal({
             else if (event.key === 'Enter' && items[sel]) { event.preventDefault(); choose(items[sel]) }
           }} />
       </div>
-      {onSaveSearch && term.trim() && !cmdOnly && <IconButton label={t('Save this search')} onClick={() => { onClose(); onSaveSearch(term.trim()) }}><Ic.Star size={18} /></IconButton>}
-      {q && <IconButton label={t('Clear')} onClick={() => { setQ(''); input.current?.focus() }}><Ic.Close size={16} /></IconButton>}
-      <IconButton label={t('Close')} className="ds-command-close" onClick={onClose}><Ic.Close size={18} /></IconButton>
+      {onSaveSearch && term.trim() && !cmdOnly && <IconButton label={t('Save this search')} onClick={() => { onClose(); onSaveSearch(term.trim()) }}><Icon name="star" size={18} /></IconButton>}
+      {q && <IconButton label={t('Clear')} onClick={() => { setQ(''); input.current?.focus() }}><Icon name="x" size={16} /></IconButton>}
+      <IconButton label={t('Close')} className="ds-command-close" onClick={onClose}><Icon name="x" size={18} /></IconButton>
     </>}
     filters={<>
       <div className="ds-command-scopes" role="group" aria-label={t('Search')}>
@@ -224,22 +235,24 @@ export function SearchModal({
       <span className="ds-command-tip">{t('Type > for commands only')}</span>
     </>}>
     {!cmdOnly && term.trim() && searchState !== 'fresh' && <div className="ds-command-empty" role="status">
-      <span className="ds-command-state-icon" data-pending={searchState === 'pending' || undefined}><Ic.Search size={24} /></span>
+      <span className="ds-command-state-icon" data-pending={searchState === 'pending' || undefined}><Icon name="search" size={24} /></span>
       <b>{t(searchState === 'failed' ? 'Search is unavailable. Try again.' : 'Searching.')}</b>
       {searchState === 'failed' && <Button size="sm" onClick={() => setSearchEpoch(value => value + 1)}>{t('Try again')}</Button>}
     </div>}
     {items.length === 0 && searchState === 'fresh' && <div className="ds-command-empty" role="status">
-      <span className="ds-command-state-icon"><Ic.Search size={24} /></span>
+      <span className="ds-command-state-icon"><Icon name="search" size={24} /></span>
       <b>{t('No results found')}</b><p>{t('Try a different word, or search the content of your pages.')}</p>
       <Button size="sm" variant="ghost" onClick={() => { setQ(''); setScope('all'); input.current?.focus() }}>{t('Clear')}</Button>
     </div>}
-    {shownCmds.length > 0 && <div className="ds-command-group-label">{t('Commands')}<span>{shownCmds.length}</span></div>}
-    {shownCmds.map((command, index) => <CommandResult key={command.id} selected={index === sel} icon={command.icon} onMouseMove={() => setSel(index)} onClick={() => choose({ cmd: command })}
-      trailing={command.hint ? <kbd dir="ltr">{shortcutHint(command.hint)}</kbd> : <Ic.Arrow size={14} />}><b dir="auto">{hl(command.label)}</b></CommandResult>)}
+    {shownCmds.map((command, index) => <Fragment key={command.id}>
+      {(index === 0 || command.group !== shownCmds[index - 1]?.group) && <div className="ds-command-group-label">{t(command.group ?? 'Commands')}</div>}
+      <CommandResult selected={index === sel} icon={command.icon} onMouseMove={() => setSel(index)} onClick={() => choose({ cmd: command })}
+      trailing={command.hint ? <kbd dir="ltr">{shortcutHint(command.hint)}</kbd> : <Icon name="arrow-right" size={14} />}><b dir="auto">{hl(command.label)}</b></CommandResult>
+    </Fragment>)}
     {found.length > 0 && <div className="ds-command-group-label">{t(term.trim() ? 'Pages' : 'Recent')}<span>{found.length}</span></div>}
     {found.map((page, index) => {
       const selectedIndex = shownCmds.length + index, passage = snippet(page)
-      return <CommandResult key={page.id} selected={selectedIndex === sel} icon={iconNode(page.icon, 18, <Ic.Page size={18} />)} onMouseMove={() => setSel(selectedIndex)} onClick={() => choose({ page })} trailing={<time>{ago(page.updatedAt)}</time>}>
+      return <CommandResult key={page.id} selected={selectedIndex === sel} icon={iconNode(page.icon, 18, <Icon name="file" size={18} />)} onMouseMove={() => setSel(selectedIndex)} onClick={() => choose({ page })} trailing={<time>{ago(page.updatedAt)}</time>}>
         <b dir="auto">{hl(page.title || t('Untitled'))}</b>{passage && <small dir="auto">{hl(passage)}</small>}
       </CommandResult>
     })}
@@ -257,15 +270,13 @@ export function Toast({ msg, action, onAction, onClose }: { msg: string; action?
     return () => window.clearTimeout(t)
   }, [msg, onClose])
   return (
-    <div className="toast" role="status">
-      <span className="toast-ic">
-        <Ic.Check size={13} />
-      </span>
+    <div className="ds-toast ds-toast--app" role="status">
+      <Icon name="check" size={16} />
       <span dir="auto">{msg}</span>
       {action && (
-        <button onClick={() => (onAction?.(), onClose())} title={action + '  Ctrl+Z'}>
+        <Button size="sm" variant="ghost" onClick={() => (onAction?.(), onClose())} title={action + '  Ctrl+Z'}>
           {action}
-        </button>
+        </Button>
       )}
     </div>
   )
@@ -305,25 +316,26 @@ export function NameDialog({
   const ref = useRef<HTMLInputElement>(null)
   useEffect(() => ref.current?.select(), [])
   const submit = () => (onSubmit(value.trim()), onClose())
+  // the design-system Dialog focuses the first control, which is the name field
   return (
-    <div className="overlay" onMouseDown={onClose}>
-      <form className="modal name-dialog" onMouseDown={(e) => e.stopPropagation()} onSubmit={(e) => (e.preventDefault(), submit())} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
-        <div className="modal-head">
-          <b>{title}</b>
-        </div>
-        <label className="nd-body">
-          <span>{label}</span>
-          <input ref={ref} dir="auto" value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
-        </label>
-        <div className="nd-acts">
-          <Button type="button" onClick={onClose}>
-            {t('Cancel')}
-          </Button>
-          <Button variant="primary" type="submit">
+    <Dialog
+      open
+      title={title}
+      onClose={onClose}
+      actions={
+        <>
+          <Button onClick={onClose}>{t('Cancel')}</Button>
+          <Button variant="primary" type="submit" form="name-dialog">
             {action}
           </Button>
-        </div>
+        </>
+      }
+    >
+      <form id="name-dialog" className="ds-modal-body" onSubmit={(e) => (e.preventDefault(), submit())}>
+        <FormField label={label}>
+          <input ref={ref} className="ds-field" aria-label={label} dir="auto" value={value} onChange={(e) => setValue(e.target.value)} />
+        </FormField>
       </form>
-    </div>
+    </Dialog>
   )
 }

@@ -1,23 +1,39 @@
 import { getSettings } from './settings'
-import { SHORTCUTS, shortcutKeys } from './shortcuts'
-import { chordOf, sameChord } from './shortcutBindings'
+import { SHORTCUTS, shortcutKeys, shortcutLabel } from './shortcuts'
+import { bindingsPaused, chordOf, sameChord } from './shortcutBindings'
+
+const COMMANDS = new Map(SHORTCUTS.flatMap(group => group.items).map(item => [item.label, item]))
 
 /** Shared lookup for migrated commands. Existing study IDs stay readable so saved choices survive migration. */
 export function commandBinding(label: string) {
-  const item = SHORTCUTS.flatMap(group => group.items).find(command => command.label === label)
+  const item = COMMANDS.get(label)
   if (!item) return null
   const id = item.binding ?? 'study:' + item.label
-  const override = getSettings().shortcuts[id]
-  return { defaults: shortcutKeys(item), keys: override ? [override] : shortcutKeys(item), overridden: !!override }
+  const override = getSettings().shortcuts?.[id]
+  const defaults = shortcutKeys(item)
+  return { defaults, keys: override?.length ? [override] : defaults, overridden: !!override?.length }
 }
+export const commandHint = (label: string) => commandBinding(label)?.keys.map(keys => shortcutLabel(keys)).join(' / ') ?? ''
+
 export function commandMatches(event: KeyboardEvent, label: string, defaults = false) {
+  if (bindingsPaused() || event.defaultPrevented) return false
   const chord = chordOf(event), binding = commandBinding(label)
   return !!chord && !!binding && (defaults ? binding.defaults : binding.keys).some(keys => sameChord(keys, chord))
 }
 
 /** Editor commands that run from a physical key and follow a remapped binding (see editor/physicalShortcuts.ts). */
-export const EDITOR_COMMANDS = ['Bold', 'Italic', 'Underline', 'Heading 1', 'Heading 2', 'Heading 3', 'Link', 'Link to page', 'Insert image', 'Insert table', 'Align left', 'Center', 'Align right', 'Strikethrough', 'Inline code', 'Bulleted list', 'Numbered list', 'Checklist', 'Quote', 'Code block', 'Line break', 'Select all', 'Undo', 'Redo', 'Line direction: left-to-right', 'Line direction: right-to-left'] as const
+export const EDITOR_COMMANDS = ['Bold', 'Italic', 'Underline', 'Heading 1', 'Heading 2', 'Heading 3', 'Heading 4', 'Heading 5', 'Heading 6', 'Link', 'Link to page', 'Insert image', 'Insert table', 'Align left', 'Center', 'Align right', 'Strikethrough', 'Inline code', 'Bulleted list', 'Numbered list', 'Checklist', 'Quote', 'Code block', 'Line break', 'Select all', 'Undo', 'Redo', 'Line direction: left-to-right', 'Line direction: right-to-left'] as const
 export type EditorCommand = (typeof EDITOR_COMMANDS)[number]
 
-/** A shortcut the person can change: a named app binding or an editor command. The rest are built-in handlers with fixed keys. */
-export const isRemappable = (item: { binding?: string; label: string }) => !!item.binding || (EDITOR_COMMANDS as readonly string[]).includes(item.label)
+/** Contexts that can reuse a key without firing in the same UI. */
+export function shortcutContext(label: string) {
+  if (['Leave reader mode', 'Full screen'].includes(label)) return 'app'
+  if (['Next match', 'Previous match', 'Close find'].includes(label)) return 'find'
+  if (label === 'Start review') return 'review-overview'
+  if (['Show the answer', 'Again', 'Hard', 'Good', 'Easy', 'End the session'].includes(label)) return 'review'
+  if (['Save a formula', 'New line in a block formula', 'Save a diagram', 'Cancel editing a formula or diagram'].includes(label)) return 'formula'
+  if (['Indent code', 'Outdent code'].includes(label)) return 'code'
+  if (['Fit graph', 'Zoom graph in', 'Zoom graph out', 'Close graph'].includes(label)) return 'graph'
+  if (['Undo database edit', 'Select all database cells', 'Fill down', 'Edit database cell', 'Clear database cells'].includes(label)) return 'database'
+  return 'editor'
+}

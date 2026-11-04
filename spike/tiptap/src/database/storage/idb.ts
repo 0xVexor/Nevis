@@ -42,7 +42,7 @@ export class IdbStorage implements DbStorage {
   constructor(open: () => Promise<IDBDatabase>) {
     this.open = open
     if (typeof BroadcastChannel !== 'undefined') {
-      this.channel = new BroadcastChannel('noviq-database')
+      this.channel = new BroadcastChannel('nevis-database')
       this.channel.onmessage = (m) => this.listeners.forEach((f) => f(m.data))
       ;(this.channel as unknown as { unref?: () => void }).unref?.() // do not keep a Node process (tests) alive
     }

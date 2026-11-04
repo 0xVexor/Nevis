@@ -246,8 +246,8 @@ export function Onboarding({ services, onOpened }: { services: WorkspaceServices
               <div className="onb-list-text">
                 <b dir="auto">{v.name}</b>
                 <small><bdi dir="ltr">{v.path}</bdi></small>
-                {v.status === 'missing' && <small className="onb-warn"><Icon name="warning" size={14} />{t('Folder not found')}</small>}
-                {v.status === 'mismatch' && <small className="onb-warn"><Icon name="warning" size={14} />{t('A different vault is in this folder.')}</small>}
+                {v.status === 'missing' && <Notice tone="warn" role="note" compact>{t('Folder not found')}</Notice>}
+                {v.status === 'mismatch' && <Notice tone="warn" role="note" compact>{t('A different vault is in this folder.')}</Notice>}
               </div>
               <div className="onb-list-actions">
                 {v.status !== 'ok' && (

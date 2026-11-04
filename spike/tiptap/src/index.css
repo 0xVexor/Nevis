@@ -22,7 +22,6 @@
 @import './design-system/areas/page-meta.css';
 @import './design-system/areas/palette.css';
 @import './design-system/areas/bubbles.css';
-@import './design-system/areas/notices.css';
 @import './design-system/areas/content.css';
 @import './design-system/areas/explorer.css';
 @import './design-system/areas/databases.css';
@@ -34,9 +33,8 @@
 @import './design-system/components.css';
 @import './design-system/navigation.css';
 @import './design-system/preferences.css';
-@import './design-system/areas/surfaces.css';
 @import './design-system/home.css';
-@import './design-system/screens.css';
+
 @import './design-system/areas/templates.css';
 @import './design-system/areas/tasks.css';
 @import './design-system/areas/flashcards.css';

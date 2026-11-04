@@ -47,7 +47,7 @@ export async function inspectBackup(text: string): Promise<BackupPlan> {
   }
   const bytes = text.length
 
-  if (data?.format === TAURI_FORMAT && data.version === 2) {
+  if ((data?.format === TAURI_FORMAT || data?.format === "noviq-vault-backup") && data.version === 2) {
     const names = Object.keys(data.entries ?? {})
     if (!data.entries || typeof data.entries !== 'object' || !names.length) throw new BackupError(t('The backup records are corrupted.'))
     for (const n of names) {

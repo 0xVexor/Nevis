@@ -787,4 +787,13 @@ export const FA_DB: Record<string, string> = {
   '{n}, descending': '{n}، نزولی',
   'Duplicated with all items.': 'با همهٔ موردها تکثیر شد.',
   'Duplicated (structure only).': 'فقط ساختار تکثیر شد.',
+  'Pick a date': 'انتخاب تاریخ',
+  'Seen once':'یک بار دیده شده',
+  'Seen {n} times': '{n} بار دیده شده',
+  '1 comment': '1 نظر',
+  Wide: 'عریض',
+  Maps: 'نقشه‌ها',
+  Gateway: 'گیت‌وی',
+  'Use an HTTPS URL containing {z}, {x} and {y}.': 'یک نشانی HTTPS وارد کنید که {z}، {x} و {y} را داشته باشد.',
+  'Use HTTPS, or an HTTP localhost address.': 'از HTTPS یا یک نشانی HTTP روی localhost استفاده کنید.',
 }

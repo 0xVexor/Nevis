@@ -240,7 +240,7 @@ export function DashboardView(p: ViewProps) {
       )}
 
       {rows.map((row, rowIndex) => (
-        <div key={rowIndex} className="dv-dash-row" style={{ gridTemplateColumns: row.widgets.map((widget) => 'minmax(0, ' + (widget.span ?? 1) + 'fr)').join(' ') }}>
+        <div key={rowIndex} className="dv-dash-row" style={{ ['--dv-dash-cols' as string]: row.widgets.map((widget) => 'minmax(0, ' + (widget.span ?? 1) + 'fr)').join(' ') }}>
           {row.widgets.map((item, index) => {
             const widget = byId.get(item.viewId)
             return widget ? (

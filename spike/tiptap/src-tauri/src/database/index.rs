@@ -1,4 +1,4 @@
-//! The disposable query index (handoff §12.2): `<vault>/.noviq/index.db` tables `db_*`. Everything here is derived from the
+//! The disposable query index (handoff §12.2): `<vault>/.nevis/index.db` tables `db_*`. Everything here is derived from the
 //! canonical files and can be dropped and rebuilt at any time; the index schema version is separate from the Vault format.
 //! Numbers, dates, text and booleans are indexed in separate typed columns, so a number is never compared as a string.
 
@@ -95,7 +95,7 @@ fn hash16(v: &Value) -> String {
 }
 
 fn vault_id(root: &Path) -> String {
-    fs::read(root.join(".noviq/vault.json")).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).and_then(|v| v.get("id").and_then(Value::as_str).map(String::from)).unwrap_or_default()
+    fs::read(root.join(".nevis/vault.json")).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).and_then(|v| v.get("id").and_then(Value::as_str).map(String::from)).unwrap_or_default()
 }
 
 fn index_page(tx: &rusqlite::Transaction, vault: &str, page: &Value, title_prop: Option<&str>) -> Res<()> {

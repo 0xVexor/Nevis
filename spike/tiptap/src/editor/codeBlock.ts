@@ -1,3 +1,5 @@
+import { Plugin } from '@tiptap/pm/state'
+import { commandMatches } from '../shortcutCommands'
 import type { Editor } from '@tiptap/core'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { TextSelection } from '@tiptap/pm/state'
@@ -177,12 +179,22 @@ export const CodeBlock = CodeBlockLowlight.extend({
     const parent = (this.parent?.() ?? {}) as Record<string, (ctx: { editor: Editor }) => boolean>
     return {
       ...parent,
-      Tab: ({ editor }) => inCode(editor) && indent(editor),
-      'Shift-Tab': ({ editor }) => inCode(editor) && outdent(editor),
       // keep TipTap's own behaviours first (triple Enter / Backspace at the start leave the block)
       Enter: (ctx) => parent.Enter?.(ctx) || smartEnter(ctx.editor),
       Backspace: (ctx) => parent.Backspace?.(ctx) || smartBackspace(ctx.editor),
     }
+  },
+  addProseMirrorPlugins() {
+    const editor = this.editor
+    return [
+      ...(this.parent?.() ?? []),
+      new Plugin({ props: { handleKeyDown: (_view, event) => {
+        if (!editor.isEditable || !inCode(editor)) return false
+        if (commandMatches(event, 'Indent code')) return indent(editor)
+        if (commandMatches(event, 'Outdent code')) return outdent(editor)
+        return false
+      } } }),
+    ]
   },
   addNodeView() {
     return ({ node, editor, getPos }) => {
@@ -192,7 +204,7 @@ export const CodeBlock = CodeBlockLowlight.extend({
       const surface = createSectionDragSurface(t('Move code block'), t('Drag this area to move the whole block.'))
 
       const bar = document.createElement('div')
-      bar.className = 'code-bar'
+      bar.className = 'code-bar ds-toolbar-bare'
       bar.contentEditable = 'false'
 
       const select = document.createElement('select')
@@ -203,7 +215,7 @@ export const CodeBlock = CodeBlockLowlight.extend({
       select.hidden = true // the native list is replaced by the app's own dropdown below; the <select> stays as the data holder
       const trigger = document.createElement('button')
       trigger.type = 'button'
-      trigger.className = 'code-lang code-lang-btn'
+      trigger.className = 'code-lang-btn ds-btn ds-btn--sm ds-btn--ghost'
       trigger.setAttribute('aria-haspopup', 'listbox')
       trigger.setAttribute('aria-label', t('Programming language'))
       trigger.onmousedown = (e) => e.preventDefault()
@@ -221,7 +233,7 @@ export const CodeBlock = CodeBlockLowlight.extend({
       }
 
       const copy = document.createElement('button')
-      copy.className = 'code-copy'
+      copy.className = 'code-copy ds-btn ds-btn--sm ds-btn--ghost'
       copy.type = 'button'
       copy.textContent = t('Copy')
       let destroyed = false,
@@ -242,7 +254,7 @@ export const CodeBlock = CodeBlockLowlight.extend({
       }
       // code that is really a diagram (language "mermaid", or Mermaid source in a block with no language): offer to draw it
       const diag = document.createElement('button')
-      diag.className = 'code-copy code-diagram'
+      diag.className = 'code-copy code-diagram ds-btn ds-btn--sm ds-btn--ghost'
       diag.type = 'button'
       diag.hidden = true
       diag.textContent = t('Show as diagram')
@@ -261,7 +273,7 @@ export const CodeBlock = CodeBlockLowlight.extend({
       const alignBtns = aligns.map(([a, icon, title]) => {
         const b = document.createElement('button')
         b.type = 'button'
-        b.className = 'code-copy code-al'
+        b.className = 'code-al ds-icon-btn ds-toolbar-btn'
         b.innerHTML = icon
         b.title = title
         b.onmousedown = (e) => e.preventDefault()
@@ -291,7 +303,7 @@ export const CodeBlock = CodeBlockLowlight.extend({
           '<span class="cl-t"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
         ;(trigger.querySelector('.cl-t') as HTMLElement).textContent = select.selectedOptions[0]?.text ?? ''
         pre.style.textAlign = n.attrs.textAlign ?? ''
-        alignBtns.forEach((b, i) => b.classList.toggle('on', n.attrs.textAlign === aligns[i][0]))
+        alignBtns.forEach((b, i) => b.setAttribute('aria-pressed', String(n.attrs.textAlign === aligns[i][0])))
       }
       sync(node)
 

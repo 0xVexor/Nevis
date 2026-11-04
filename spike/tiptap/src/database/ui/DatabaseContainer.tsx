@@ -254,7 +254,7 @@ function Inner({ svc, container, fixedViewId, onOpenPage, inline }: { svc: Datab
       label: 'Copy link to view',
       icon: <Icon name="link" size={16} />,
       onSelect: () => {
-        void navigator.clipboard?.writeText(`noviq://view/${v.id}`)
+        void navigator.clipboard?.writeText(`nevis://view/${v.id}`)
         notify(t('Link copied'))
       },
     },
