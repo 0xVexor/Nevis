@@ -47,8 +47,8 @@ import { Brand } from './Brand'
 import { BrandMark } from './BrandMark'
 import { SaveStatus } from './design-system/SaveStatus'
 import { WorkspaceHeader } from './design-system/WorkspaceHeader'
-import { Dialog, Icon, IconButton, Menu, Row, dirOf, Button, useMenu, type MenuItem as MenuSpec } from './design-system'
-import { APP_TOAST, NameDialog, SearchModal, Toast, type PaletteCommand } from './ui'
+import { Dialog, Icon, IconButton, Menu, Row, dirOf, Button, useMenu, type MenuItem as MenuSpec, NameDialog, Toast } from './design-system'
+import { APP_TOAST, SearchModal, type PaletteCommand } from './ui'
 import { Popover } from './design-system/Popover'
 import { Home } from './Home'
 import { Trash } from './Trash'
@@ -57,7 +57,7 @@ import { printPage } from './print'
 import { confirmDialog } from './dialog'
 import { OPEN_PAGE, PAGES_CHANGED } from './editor/pageLink'
 import { t } from './i18n'
-import { isMac, shortcutHint } from './shortcuts'
+import { isMac, shortcutHint, shortcutLabel } from './shortcuts'
 import { CompactList, TreeRow } from './PageTree'
 
 const revealKey = isMac() ? 'Reveal in Finder' : /Windows/i.test(navigator.userAgent) ? 'Show in Explorer' : 'Show in file manager'
@@ -1468,7 +1468,7 @@ export default function App() {
 
       {naming && <NameDialog {...naming} onClose={() => setNaming(null)} />}
       <UpdateCenter />
-      {toast && <Toast msg={toast.msg} action={toast.undo ? t('Undo') : toast.action?.label} onAction={toast.undo ?? toast.action?.run} onClose={() => setToast(null)} />}
+      {toast && <Toast msg={toast.msg} action={toast.undo ? t('Undo') : toast.action?.label} onAction={toast.undo ?? toast.action?.run} actionHint={toast.undo ? shortcutLabel(['Mod', 'Z']) : undefined} onClose={() => setToast(null)} />}
 
       {searching && (
         <SearchModal

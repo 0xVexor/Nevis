@@ -19,7 +19,7 @@
 .tiptap > :first-child { margin-top: 0; }
 
 /* links */
-.tiptap a { cursor: var(--cursor-hand, pointer); transition: background 0.15s, text-decoration-color 0.15s; padding: 0; border-radius: 0; color: var(--ds-accent); text-decoration: underline; text-decoration-thickness: 1px; text-decoration-color: var(--ds-accent-line); text-underline-offset: 3px; }
+.tiptap a { cursor: var(--cursor-hand, pointer); transition: background var(--ds-fast), text-decoration-color var(--ds-fast); padding: 0; border-radius: 0; color: var(--ds-accent); text-decoration: underline; text-decoration-thickness: 1px; text-decoration-color: var(--ds-accent-line); text-underline-offset: 3px; }
 .tiptap a:hover { background: none; text-decoration-color: var(--ds-accent); }
 
 /* inline code */
@@ -44,13 +44,9 @@
 /* tables: soft frame, tinted header, quiet rows */
 .tiptap .tableWrapper { overflow-x: auto; position: relative; margin: 1em 0; padding: 0; overflow: auto; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); }
 .tiptap table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; box-shadow: var(--ds-shadow-table); border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); font-size: 0.92em; overflow: hidden; }
-.tiptap td, .tiptap th { vertical-align: top; position: relative; min-width: 60px; line-height: 1.7; transition: background 0.15s; padding: var(--ds-s2) var(--ds-s4); border-block-end: 1px solid var(--ds-line); border-inline-end: 1px solid var(--ds-line); border: 1px solid var(--ds-line); border-radius: 0 !important; }
+.tiptap td, .tiptap th { vertical-align: top; position: relative; min-width: 60px; line-height: 1.7; transition: background var(--ds-fast); padding: var(--ds-s2) var(--ds-s4); border-block-end: 1px solid var(--ds-line); border-inline-end: 1px solid var(--ds-line); border: 1px solid var(--ds-line); border-radius: 0; }
 .tiptap tr > :last-child { border-inline-end: 0; }
 .tiptap tr:last-child > * { border-bottom: 0; }
-.tiptap tr:first-child > :first-child { border-start-start-radius: calc(var(--ds-r-lg) - 1px); }
-.tiptap tr:first-child > :last-child { border-start-end-radius: calc(var(--ds-r-lg) - 1px); }
-.tiptap tr:last-child > :first-child { border-end-start-radius: calc(var(--ds-r-lg) - 1px); }
-.tiptap tr:last-child > :last-child { border-end-end-radius: calc(var(--ds-r-lg) - 1px); }
 .tiptap th { text-align: start; border-bottom-color: var(--ds-line-strong); border-block-end-color: var(--ds-line); font-weight: 600; letter-spacing: 0; background: var(--ds-sunk); }
 .tiptap tbody tr:not(:first-child):nth-child(even) > td { background: none; }
 .tiptap tbody tr:hover > td { background: color-mix(in oklab, var(--ds-accent) 5%, var(--ds-bg)); }
@@ -99,7 +95,7 @@
 .math-field { font-family: var(--ds-font-mono); font-size: 14px; line-height: 1.6; border: 1px solid var(--ds-accent); border-radius: var(--ds-r); background: var(--ds-bg); color: var(--ds-text); padding: 6px 10px; outline: none; direction: ltr; text-align: left; box-shadow: 0 0 0 3px var(--ds-accent-line); }
 .math-block .math-field { width: 100%; min-height: 44px; resize: none; display: block; overflow: hidden; }
 .math-inline .math-field { width: 220px; min-width: 80px; }
-.math-pop { margin-top: 8px; padding: 10px 14px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); text-align: center; animation: pop-in 0.15s var(--ds-ease); }
+.math-pop { margin-top: 8px; padding: 10px 14px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); text-align: center; animation: pop-in var(--ds-fast) var(--ds-ease); }
 .math-inline .math-pop { position: absolute; z-index: 40; top: 100%; inset-inline-start: 0; min-width: 220px; box-shadow: var(--ds-shadow-pop); text-align: start; }
 .math-live { min-height: 28px; overflow-x: auto; }
 .math-live.math-empty { color: var(--ds-text-3); font-size: 13px; }
@@ -110,7 +106,7 @@
 .tiptap ul[data-type='taskList'] li > div > p { margin: 1px 0; }
 .tiptap ul[data-type='taskList'] li { display: flex; gap: 10px; align-items: flex-start; }
 .tiptap ul[data-type='taskList'] li > label { user-select: none; line-height: 1; display: flex; align-items: center; height: 1.95em; margin-top: 1px; }
-.tiptap ul[data-type='taskList'] li > label input { appearance: none; -webkit-appearance: none; width: 19px; height: 19px; border: 1.5px solid var(--ds-text-3); background: var(--ds-raised) center / 13px no-repeat; cursor: var(--cursor-hand, pointer); transition: all 0.2s var(--ds-spring); margin: 0; border-radius: calc(var(--ds-r-sm) * 0.8); }
+.tiptap ul[data-type='taskList'] li > label input { appearance: none; -webkit-appearance: none; width: 19px; height: 19px; border: 1.5px solid var(--ds-text-3); background: var(--ds-raised) center / 13px no-repeat; cursor: var(--cursor-hand, pointer); transition: all var(--ds-base) var(--ds-spring); margin: 0; border-radius: calc(var(--ds-r-sm) * 0.8); }
 
 /* folded from the former override layers (surfaces.css, screens.css) */
 .tiptap blockquote::before, .tiptap blockquote::after { content: none; }
@@ -118,7 +114,6 @@
 .code-wrap > .section-drag-surface { position: absolute; inset: 0 0 auto 0; z-index: 1; block-size: var(--ds-control); inline-size: auto; }
 .callout p { margin: 0.2em 0; font-weight: 400; }
 .tiptap .tableWrapper > table { border: 0; border-radius: 0; border-collapse: collapse; background: none; overflow: visible; table-layout: fixed; margin: 0; inline-size: 100%; }
-.tiptap tr > *, .tiptap tr:first-child > *, .tiptap tr:last-child > * { border-radius: 0 !important; }
 .tiptap .tableWrapper > .section-drag-surface { position: absolute; inset-block-start: 0; inset-inline: 0; z-index: 2; block-size: 8px; inline-size: auto; }
 .tiptap .tableWrapper table tr:first-child > * { border-block-start: 0; }
 .tiptap .tableWrapper table tr:last-child > * { border-block-end: 0; }

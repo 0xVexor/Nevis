@@ -32,7 +32,7 @@
 .ds-command-dialog mark { background: var(--ds-accent-soft); color: var(--ds-accent); border-radius: var(--ds-r-sm); }
 .ds-command-empty { display: flex; flex-direction: column; align-items: center; gap: var(--ds-s3); padding: var(--ds-s10) var(--ds-s6); text-align: center; color: var(--ds-text-2); }
 .ds-command-state-icon { display: grid; place-items: center; inline-size: 56px; block-size: 56px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-side); color: var(--ds-accent); }
-.ds-command-state-icon[data-pending] { animation: ds-command-pulse 1.4s ease-in-out infinite; }
+.ds-command-state-icon[data-pending] { animation: ds-command-pulse calc(var(--ds-slow) * 4.7) ease-in-out infinite; }
 .ds-command-empty b { color: var(--ds-text); font-weight: 500; }
 .ds-command-empty p { max-inline-size: 340px; margin: 0; font-size: var(--ds-text-small); }
 .ds-command-footer { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-s4); padding: var(--ds-s3) var(--ds-s5); border-block-start: 1px solid var(--ds-line); background: var(--ds-side); color: var(--ds-text-2); font-size: var(--ds-text-caption); }

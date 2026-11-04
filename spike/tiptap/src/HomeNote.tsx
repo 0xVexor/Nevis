@@ -84,7 +84,7 @@ export function HomeNote(props: HomeNoteProps) {
     }
   }
   const editor = useEditor({
-    extensions: [StarterKit, TaskList, TaskItem.configure({ nested: true }), BlockIdentity, HeadingDir, SlashCommand.configure({ allowedCommands: NOTE_COMMANDS }), CommandPalette.configure({ allowedCommands: NOTE_COMMANDS }), Placeholder.configure({ placeholder: () => t('Start writing, or press / for commands.') })],
+    extensions: [StarterKit.configure({ dropcursor: { color: 'var(--ds-accent)', width: 2 } }), TaskList, TaskItem.configure({ nested: true }), BlockIdentity, HeadingDir, SlashCommand.configure({ allowedCommands: NOTE_COMMANDS }), CommandPalette.configure({ allowedCommands: NOTE_COMMANDS }), Placeholder.configure({ placeholder: () => t('Start writing, or press / for commands.') })],
     content: { type: 'doc', content: [{ type: 'paragraph' }] },
     autofocus: props.autoFocus && !props.bare ? 'start' : false,
     shouldRerenderOnTransaction: true,

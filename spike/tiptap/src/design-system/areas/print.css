@@ -1,4 +1,5 @@
-/* print / Save as PDF: only the page itself, on white, nothing clipped */
+/* print / Save as PDF: only the page itself, on white, nothing clipped. Every rule starts with :root:root:root so it outranks the
+   screen rule it replaces without !important. */
 @media print {
   :root:root:root {
     color-scheme: light;
@@ -6,24 +7,23 @@
     --ds-text: #111; --ds-text-2: #444; --ds-text-3: #777; --ds-hover: rgb(0 0 0 / 0.05); --ds-press: rgb(0 0 0 / 0.1); --ds-line: rgb(0 0 0 / 0.22);
     --pre-bg: #f6f6f6; --code-bg: #eee; --code-text: #b3261e;
   }
-  html, body, #root { height: auto !important; background: #fff !important; background-image: none !important; }
-  .side, .topbar, .page-drawer, .ds-toolbar, .slash-menu, .ds-toast, .ds-pop, .ds-scrim, .ds-modal-layer, .cover-acts, .code-bar, .toggle-btn, .callout-ic, .toolbar, .img-bar, .img-handle, .mermaid-bar, .drawing-actions, .lightbox { display: none !important; }
-  .app, .main, .scroller, .page-cols { display: block !important; height: auto !important; overflow: visible !important; position: static !important; width: auto !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; border: 0 !important; border-radius: 0 !important; background: #fff !important; animation: none !important; }
-  .app::before, .main::before { display: none !important; }
-  .page { max-width: none !important; padding: 0 !important; margin: 0 !important; }
-  .tiptap { min-height: 0 !important; font-size: 12pt; }
-  .tiptap pre, .tiptap pre code { white-space: pre-wrap !important; word-break: break-word; overflow: visible !important; }
-  .tiptap pre, .tiptap table, .tiptap tr, .callout, .math-block, .tiptap img { break-inside: avoid; }
-  .tiptap h1, .tiptap h2, .tiptap h3 { break-after: avoid; }
-  .toggle:not(.open) .toggle-body > :not(:first-child) { display: block !important; } /* print everything, even closed toggles */
-  .code-wrap { margin: 6px 0; }
-  .code-wrap pre { padding-top: 12px !important; }
-  a { color: inherit !important; }
+  :root:root:root, :root:root:root > body, :root:root:root #root { height: auto; background: #fff; background-image: none; }
+  :root:root:root :is(.side, .topbar, .page-drawer, .ds-toolbar, .slash-menu, .ds-toast, .ds-pop, .ds-scrim, .ds-modal-layer, .cover-acts, .code-bar, .toggle-btn, .callout-ic, .toolbar, .img-bar, .img-handle, .mermaid-bar, .drawing-actions, .lightbox) { display: none; }
+  :root:root:root :is(.app, .main, .scroller, .page-cols) { display: block; height: auto; overflow: visible; position: static; width: auto; margin: 0; padding: 0; box-shadow: none; border: 0; border-radius: 0; background: #fff; animation: none; }
+  :root:root:root .page { max-width: none; padding: 0; margin: 0; }
+  :root:root:root .tiptap { min-height: 0; font-size: 12pt; }
+  :root:root:root :is(.tiptap pre, .tiptap pre code) { white-space: pre-wrap; word-break: break-word; overflow: visible; }
+  :root:root:root :is(.tiptap pre, .tiptap table, .tiptap tr, .callout, .math-block, .tiptap img) { break-inside: avoid; }
+  :root:root:root :is(.tiptap h1, .tiptap h2, .tiptap h3) { break-after: avoid; }
+  :root:root:root .toggle:not(.open) .toggle-body > :not(:first-child) { display: block; } /* print everything, even closed toggles */
+  :root:root:root .code-wrap { margin: 6px 0; }
+  :root:root:root .code-wrap pre { padding-top: 12px; }
+  :root:root:root a { color: inherit; }
 }
 
 
 @media print {
-  .hscroll-rail { display: none; }
-  .hscroll-viewport { overflow: visible; }
-  .hscroll-content { inline-size: auto; }
+  :root:root:root .hscroll-rail { display: none; }
+  :root:root:root .hscroll-viewport { overflow: visible; }
+  :root:root:root .hscroll-content { inline-size: auto; }
 }

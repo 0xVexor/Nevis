@@ -82,7 +82,7 @@
 
 /* print: nothing that edits */
 :root[data-icons='off'] .pg-icon { display: none; }
-@media print { .pg-find-slot, .pg-add, .pg-starts, .pg-links { display: none !important; } .pg-title { font-size: 26pt !important; } }
+@media print { :root:root:root :is(.pg-find-slot, .pg-add, .pg-starts, .pg-links) { display: none; } :root:root:root .pg-title { font-size: 26pt; } }
 
 .title-menu { position: absolute; top: 100%; inset-inline-start: 0; z-index: 30; width: 300px; }
 

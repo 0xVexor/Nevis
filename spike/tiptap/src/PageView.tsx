@@ -14,7 +14,7 @@ import { contentProblem } from './editor/contentSafety'
 import { LAYOUT_CANCEL } from './editor/layout'
 import { activeGroup, validWidths } from './editor/layoutModel'
 import { getFind, scrollToMatch } from './editor/find'
-import { Button, ChipButton, Disclosure, dirOf, Icon, IconButton, Notice, PropertyList, PropertyRow, Row, Tag, useMenu, type MenuItem } from './design-system'
+import { Button, ChipButton, Disclosure, dirOf, Icon, IconButton, Notice, PropertyList, PropertyRow, Row, Tag, useMenu, type MenuItem, PageIconPicker } from './design-system'
 import { looksLikeMermaid } from './editor/mermaid'
 import { TableBubble } from './TableBubble'
 import { PageLinkPicker } from './PageLinkPicker'
@@ -29,7 +29,7 @@ import { History } from './History'
 import { normalizeFa } from './normalize'
 import { getTemplates, type Template } from './templates'
 import { OPEN_PAGE, PAGES_CHANGED } from './editor/pageLink'
-import { ago, EmojiPicker } from './ui'
+import { ago } from './ui'
 import { Popover } from './design-system/Popover'
 import { printPage } from './print'
 import { toneOf } from './PageIcon'
@@ -654,7 +654,7 @@ export function PageView({
         )}
         {picker && (
           <Popover anchor={picker} onClose={() => setPicker(null)}>
-            <EmojiPicker current={icon} onPick={(e, close = true) => (setPageIcon(e), close && setPicker(null))} onClear={() => (setPageIcon(undefined), setPicker(null))} />
+            <PageIconPicker current={icon} onPick={(e, close = true) => (setPageIcon(e), close && setPicker(null))} onClear={() => (setPageIcon(undefined), setPicker(null))} />
           </Popover>
         )}
         <div className="pg-title-row" dir={titleDir ?? dirOf(titleText)}>
@@ -902,7 +902,7 @@ export function PageView({
       )}
       {iconAt && (
         <Popover anchor={iconAt} onClose={() => (setIconAt(null), editor.commands.focus())}>
-          <EmojiPicker
+          <PageIconPicker
             onClear={() => (setIconAt(null), editor.commands.focus())}
             onPick={(ic) => {
               const g = parseIcon(ic)

@@ -18,11 +18,12 @@
 .layout-resizer::after { content: ''; position: absolute; top: 0; bottom: 0; left: 7px; width: 2px; border-radius: 2px; background: var(--ds-line); }
 .layout-group:focus-within .layout-resizer, .layout-group:hover .layout-resizer, .layout-resizer:focus-visible, .layout-resizing .layout-resizer { opacity: 1; }
 .layout-resizer:hover::after, .layout-resizer:focus-visible::after, .layout-resizing .layout-resizer::after { background: var(--ds-accent); }
-.layout-stacked > .layout-columns { grid-template-columns: minmax(0, 1fr) !important; }
+.layout-columns { grid-template-columns: var(--layout-tracks, minmax(0, 1fr)); }
+.layout-stacked > .layout-columns { grid-template-columns: minmax(0, 1fr); }
 .layout-stacked > .layout-resizers { display: none; }
 .tiptap[contenteditable='false'] .layout-resizers { display: none; }
 .layout-protection pre { max-height: 400px; overflow: auto; white-space: pre-wrap; font-size: var(--ds-text-caption); direction: ltr; }
-.layout-snap-hover-outline[hidden], .layout-snap-column-highlight[hidden], .layout-snap-picker[hidden] { display: none !important; }
+.layout-snap-hover-outline[hidden], .layout-snap-column-highlight[hidden], .layout-snap-picker[hidden] { display: none; }
 .layout-snap-picker:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
 .layout-snap-hover-outline { position: fixed; z-index: var(--ds-z-drag); pointer-events: none; box-sizing: border-box; background: var(--ds-accent-faint); border: 1px solid transparent; border-radius: var(--ds-r-sm); }
 .tiptap.layout-surface-hover, .tiptap.layout-surface-armed { cursor: var(--cursor-grab, grab); }
@@ -56,7 +57,7 @@
 .layout-export { grid-template-columns: var(--layout-tracks); }
 @media (max-width: 640px) { .layout-export { grid-template-columns: minmax(0, 1fr); } }
 @media print {
-  .layout-resizers, .ds-drag-ghost, .layout-width-warning, .ds-snap-preview, .layout-snap-source-overlay, .layout-snap-hover-outline, .layout-snap-column-highlight, .layout-snap-picker, .layout-snap-announcement, .section-drag-surface { display: none !important; }
-  .tiptap .layout-column { outline: none !important; }
+  .layout-resizers, .ds-drag-ghost, .layout-width-warning, .ds-snap-preview, .layout-snap-source-overlay, .layout-snap-hover-outline, .layout-snap-column-highlight, .layout-snap-picker, .layout-snap-announcement, .section-drag-surface { display: none; }
+  .tiptap :is(.layout-group, .layout-group:focus-within) > .layout-columns > .layout-column, .tiptap.layout-dragging .layout-column { outline: none; }
   .layout-group { break-inside: auto; }
 }
