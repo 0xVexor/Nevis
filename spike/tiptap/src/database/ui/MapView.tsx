@@ -4,11 +4,11 @@
 import { useMemo, useRef, useState } from 'react'
 import type { Id } from '../model/types.ts'
 import { MAP_VISIBLE_LIMIT, mapModel } from '../viewLogic.ts'
+import { Button, Icon, IconButton } from '../../design-system'
 import { t } from '../../i18n'
-import * as Ic from '../../icons'
 import { CellView, useNav } from './CellView'
 import { PopoverEditor } from './CellEditor'
-import { errorText, plainTitle } from './common'
+import { Hint, ViewMessage, errorText, plainTitle } from './common'
 import { useViewQuery } from './useViewQuery'
 import type { ViewProps } from './viewTypes'
 
@@ -42,21 +42,16 @@ export function MapView({ svc, view, ctl }: ViewProps) {
   const [editRow, setEditRow] = useState<{ id: Id; rect: DOMRect } | null>(null)
   const drag = useRef<{ x: number; y: number } | null>(null)
   const tiles = loadTileConfig()
-  if (!def)
-    return (
-      <div className="db-error-box">
-        <b>{t('Choose a place property')}</b>
-        <p>{t('Open View settings and pick the Place property to show.')}</p>
-      </div>
-    )
+  if (!def) return <ViewMessage title={t('Choose a place property')}>{t('Open View settings and pick the Place property to show.')}</ViewMessage>
   if (q.error || !model)
     return (
-      <div className="db-error-box" role="alert">
+      <ViewMessage tone="bad" title={t('This view cannot be shown')}>
         {q.error ? errorText(q.error.code, q.error.message) : ''}
-      </div>
+      </ViewMessage>
     )
   const world = 256 * 2 ** vp.z
   const toScreen = (lat: number, lon: number) => ({ x: W / 2 + (mx(lon) - vp.cx) * world, y: H / 2 + (my(lat) - vp.cy) * world })
+  const zoom = (d: number) => setVp((v) => ({ ...v, z: Math.max(0, Math.min(18, v.z + d)) }))
   const fit = () => {
     if (!model.pins.length) return setVp({ cx: 0.5, cy: 0.5, z: 1 })
     const xs = model.pins.map((p) => mx(p.lon))
@@ -97,137 +92,134 @@ export function MapView({ svc, view, ctl }: ViewProps) {
     const out = []
     for (let lon = -180; lon <= 180; lon += step) {
       const p = toScreen(0, lon)
-      if (p.x > -2 && p.x < W + 2) out.push(<line key={'lo' + lon} x1={p.x} x2={p.x} y1={0} y2={H} className="db-map-grid" />)
+      if (p.x > -2 && p.x < W + 2) out.push(<line key={'lo' + lon} x1={p.x} x2={p.x} y1={0} y2={H} className="dv-map-grid" />)
     }
     for (let lat = -80; lat <= 80; lat += step) {
       const p = toScreen(lat, 0)
-      if (p.y > -2 && p.y < H + 2) out.push(<line key={'la' + lat} y1={p.y} y2={p.y} x1={0} x2={W} className="db-map-grid" />)
+      if (p.y > -2 && p.y < H + 2) out.push(<line key={'la' + lat} y1={p.y} y2={p.y} x1={0} x2={W} className="dv-map-grid" />)
     }
     return out
   })()
   const sp = model.pins.find((p) => p.pageId === sel)
   const selRow = sel ? svc.state.row(sel) : undefined
   return (
-    <div className="db-map">
-      <div className="db-map-bar">
-        <button type="button" className="db-tool" onClick={fit}>
-          <Ic.Enlarge size={13} /> {t('Fit all pins')}
-        </button>
-        <button type="button" className="icon-btn" aria-label={t('Zoom in')} onClick={() => setVp({ ...vp, z: Math.min(18, vp.z + 1) })}>
-          <Ic.Plus size={14} />
-        </button>
-        <button type="button" className="icon-btn" aria-label={t('Zoom out')} onClick={() => setVp({ ...vp, z: Math.max(0, vp.z - 1) })}>
-          <span style={{ fontWeight: 700 }}>−</span>
-        </button>
-        <span className="spacer" />
-        <small>
-          {model.totalPins} {t('pins')}
-          {model.truncated > 0 ? ` — ${t('showing the first {n}', { n: MAP_VISIBLE_LIMIT })}` : ''}
-        </small>
-      </div>
-      {!tiles && <div className="db-date-hint">{t('No map provider is set up, so pins are drawn on a plain grid. You can add one in Settings → Database (a tile URL and its attribution).')}</div>}
-      <svg
-        className="db-map-canvas"
-        viewBox={`0 0 ${W} ${H}`}
-        role="img"
-        aria-label={t('Map of items')}
-        tabIndex={0}
-        onWheel={(e) => {
-          e.preventDefault()
-          setVp({ ...vp, z: Math.max(0, Math.min(18, vp.z - Math.sign(e.deltaY) * 0.5)) })
-        }}
-        onPointerDown={(e) => {
-          drag.current = { x: e.clientX, y: e.clientY }
-          ;(e.currentTarget as SVGElement).setPointerCapture(e.pointerId)
-        }}
-        onPointerMove={(e) => {
-          if (!drag.current) return
-          const sc = W / (e.currentTarget as SVGElement).getBoundingClientRect().width
-          setVp((v) => ({ ...v, cx: v.cx - ((e.clientX - drag.current!.x) * sc) / world, cy: Math.max(0.01, Math.min(0.99, v.cy - ((e.clientY - drag.current!.y) * sc) / world)) }))
-          drag.current = { x: e.clientX, y: e.clientY }
-        }}
-        onPointerUp={() => (drag.current = null)}
-        onKeyDown={(e) => {
-          const d = 40 / world
-          if (e.key === 'ArrowLeft') setVp({ ...vp, cx: vp.cx - d })
-          if (e.key === 'ArrowRight') setVp({ ...vp, cx: vp.cx + d })
-          if (e.key === 'ArrowUp') setVp({ ...vp, cy: vp.cy - d })
-          if (e.key === 'ArrowDown') setVp({ ...vp, cy: vp.cy + d })
-          if (e.key === '+') setVp({ ...vp, z: Math.min(18, vp.z + 1) })
-          if (e.key === '-') setVp({ ...vp, z: Math.max(0, vp.z - 1) })
-        }}
-      >
-        <rect width={W} height={H} className="db-map-bg" />
-        {tileEls ?? grid}
-        {model.pins.map((p) => {
-          const s = toScreen(p.lat, p.lon)
-          if (s.x < -20 || s.x > W + 20 || s.y < -20 || s.y > H + 20) return null
-          return (
-            <g
-              key={p.pageId}
-              className={'db-pin' + (sel === p.pageId ? ' on' : '')}
-              transform={`translate(${s.x},${s.y})`}
-              role="button"
-              tabIndex={0}
-              aria-label={p.title || p.name}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => setSel(p.pageId)}
-              onKeyDown={(e) => e.key === 'Enter' && setSel(p.pageId)}
-            >
-              <path d="M0 0c-6-9-9-12-9-17a9 9 0 1 1 18 0c0 5-3 8-9 17z" />
-              <circle cy={-17} r={3.5} />
-            </g>
-          )
-        })}
-      </svg>
-      {tiles && <div className="db-map-attr">{tiles.attribution}</div>}
-      {sp && selRow && (
-        <div className="db-map-card" role="dialog" aria-label={plainTitle(selRow.page.title)}>
-          <div className="db-drill-head">
-            <b dir="auto">{plainTitle(selRow.page.title)}</b>
-            <button type="button" className="icon-btn" aria-label={t('Close')} onClick={() => setSel(null)}>
-              <Ic.Close size={13} />
-            </button>
-          </div>
-          <div className="db-card-prop">
+    <div className="dv-map">
+      <header className="dv-period">
+        <h3 className="dv-period-title">
+          {t('{n} pins', { n: model.totalPins })}
+          {model.truncated > 0 && <small className="dv-hint"> · {t('showing the first {n}', { n: MAP_VISIBLE_LIMIT })}</small>}
+        </h3>
+        <span className="dv-period-end">
+          <Button size="sm" variant="ghost" icon={<Icon name="maximize" size={15} />} onClick={fit}>
+            {t('Fit all pins')}
+          </Button>
+          <IconButton label={t('Zoom in')} onClick={() => zoom(1)}>
+            <Icon name="zoom-in" size={16} />
+          </IconButton>
+          <IconButton label={t('Zoom out')} onClick={() => zoom(-1)}>
+            <Icon name="zoom-out" size={16} />
+          </IconButton>
+        </span>
+      </header>
+      {!tiles && <Hint>{t('No map provider is set up, so pins are drawn on a plain grid. You can add one in Settings → Database (a tile URL and its attribution).')}</Hint>}
+      <div className="dv-map-frame">
+        <svg
+          className="dv-map-canvas"
+          viewBox={`0 0 ${W} ${H}`}
+          role="img"
+          aria-label={t('Map of items')}
+          tabIndex={0}
+          onWheel={(e) => {
+            e.preventDefault()
+            zoom(-Math.sign(e.deltaY) * 0.5)
+          }}
+          onPointerDown={(e) => {
+            drag.current = { x: e.clientX, y: e.clientY }
+            ;(e.currentTarget as SVGElement).setPointerCapture(e.pointerId)
+          }}
+          onPointerMove={(e) => {
+            if (!drag.current) return
+            const sc = W / (e.currentTarget as SVGElement).getBoundingClientRect().width
+            setVp((v) => ({ ...v, cx: v.cx - ((e.clientX - drag.current!.x) * sc) / world, cy: Math.max(0.01, Math.min(0.99, v.cy - ((e.clientY - drag.current!.y) * sc) / world)) }))
+            drag.current = { x: e.clientX, y: e.clientY }
+          }}
+          onPointerUp={() => (drag.current = null)}
+          onKeyDown={(e) => {
+            const d = 40 / world
+            if (e.key === 'ArrowLeft') setVp({ ...vp, cx: vp.cx - d })
+            if (e.key === 'ArrowRight') setVp({ ...vp, cx: vp.cx + d })
+            if (e.key === 'ArrowUp') setVp({ ...vp, cy: vp.cy - d })
+            if (e.key === 'ArrowDown') setVp({ ...vp, cy: vp.cy + d })
+            if (e.code === 'Equal' || e.code === 'NumpadAdd') zoom(1)
+            if (e.code === 'Minus' || e.code === 'NumpadSubtract') zoom(-1)
+          }}
+        >
+          <rect width={W} height={H} className="dv-map-bg" />
+          {tileEls ?? grid}
+          {model.pins.map((p) => {
+            const s = toScreen(p.lat, p.lon)
+            if (s.x < -20 || s.x > W + 20 || s.y < -20 || s.y > H + 20) return null
+            return (
+              <g
+                key={p.pageId}
+                className="dv-pin"
+                data-on={sel === p.pageId || undefined}
+                transform={`translate(${s.x},${s.y})`}
+                role="button"
+                tabIndex={0}
+                aria-label={p.title || p.name}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => setSel(p.pageId)}
+                onKeyDown={(e) => e.key === 'Enter' && setSel(p.pageId)}
+              >
+                <path d="M0 0c-6-9-9-12-9-17a9 9 0 1 1 18 0c0 5-3 8-9 17z" />
+                <circle cy={-17} r={3.5} />
+              </g>
+            )
+          })}
+        </svg>
+        {tiles && <div className="dv-map-attr">{tiles.attribution}</div>}
+        {sp && selRow && (
+          <div className="dv-map-card" role="dialog" aria-label={plainTitle(selRow.page.title)}>
+            <header className="dv-map-card-head">
+              <b dir="auto">{plainTitle(selRow.page.title)}</b>
+              <IconButton label={t('Close')} onClick={() => setSel(null)}>
+                <Icon name="x" size={15} />
+              </IconButton>
+            </header>
             <CellView svc={svc} rs={ctl.rs} row={selRow} def={def} />
+            <div className="dv-map-card-acts">
+              <Button size="sm" variant="ghost" disabled={!ctl.canEditRows} onClick={(e) => setEditRow({ id: sel!, rect: e.currentTarget.getBoundingClientRect() })}>
+                {t('Edit location')}
+              </Button>
+              <Button size="sm" variant="primary" onClick={() => nav.openRow(sel!, 'side')}>
+                {t('Open')}
+              </Button>
+            </div>
           </div>
-          <div className="db-date-foot">
-            <button type="button" onClick={(e) => ctl.canEditRows && setEditRow({ id: sel!, rect: e.currentTarget.getBoundingClientRect() })} disabled={!ctl.canEditRows}>
-              {t('Edit location')}
-            </button>
-            <button type="button" className="primary" onClick={() => nav.openRow(sel!, 'side')}>
-              {t('Open')}
-            </button>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
       {model.unplaced.length > 0 && (
-        <div className="db-tray" aria-label={t('Items without coordinates')}>
-          <b>
-            {t('Not on the map')} <span className="db-count">{model.unplaced.length}</span>
-          </b>
-          <div className="db-tray-list">
+        <section className="dv-tray" aria-label={t('Items without coordinates')}>
+          <h3 className="dv-section-head">
+            {t('Not on the map')}
+            <span className="ds-badge">{model.unplaced.length}</span>
+          </h3>
+          <div className="dv-tray-list">
             {model.unplaced.slice(0, 60).map((id) => (
-              <span key={id} className="db-chip tray" onClick={() => nav.openRow(id, 'side')}>
-                {plainTitle(svc.state.pages.get(id)?.title)}
+              <span key={id} className="dv-tray-item">
+                <button type="button" className="dv-tray-open" dir="auto" onClick={() => nav.openRow(id, 'side')}>
+                  {plainTitle(svc.state.pages.get(id)?.title)}
+                </button>
                 {ctl.canEditRows && (
-                  <button
-                    type="button"
-                    className="db-chip-x"
-                    aria-label={t('Set the location')}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setEditRow({ id, rect: e.currentTarget.getBoundingClientRect() })
-                    }}
-                  >
-                    📍
-                  </button>
+                  <IconButton label={t('Set the location')} onClick={(e) => setEditRow({ id, rect: e.currentTarget.getBoundingClientRect() })}>
+                    <Icon name="map" size={14} />
+                  </IconButton>
                 )}
               </span>
             ))}
           </div>
-        </div>
+        </section>
       )}
       {editRow && svc.state.row(editRow.id) && <PopoverEditor svc={svc} row={svc.state.row(editRow.id)!} def={def} anchor={editRow.rect} onClose={() => setEditRow(null)} />}
     </div>

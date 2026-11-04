@@ -8,7 +8,7 @@ import { useUIMotion } from './motion'
  * on open and returns to where it was on close. For a quick yes/no or a one-line prompt use dialog.tsx (confirmDialog,
  * promptDialog); use this when the dialog has its own content.
  */
-export function Dialog({ open, title, onClose, children, actions }: { open: boolean; title: string; onClose: () => void; children?: ReactNode; actions?: ReactNode }) {
+export function Dialog({ open, title, onClose, children, actions, wide }: { open: boolean; title: string; onClose: () => void; children?: ReactNode; actions?: ReactNode; /** 760px instead of 480px, for a table or a mapping */ wide?: boolean }) {
   const box = useRef<HTMLDivElement>(null)
   const uiMotion = useUIMotion()
   const close = useRef(onClose)
@@ -42,7 +42,7 @@ export function Dialog({ open, title, onClose, children, actions }: { open: bool
         <div key="layer" className="ds-modal-layer">
           <motion.div
             ref={box}
-            className="ds-modal"
+            className={wide ? 'ds-modal ds-modal--wide' : 'ds-modal'}
             role="dialog"
             aria-modal="true"
             aria-label={title}

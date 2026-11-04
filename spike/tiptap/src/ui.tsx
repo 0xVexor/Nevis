@@ -1,7 +1,7 @@
 import { CommandDialog, CommandResult } from './design-system/CommandDialog'
 import { Button, IconButton } from './design-system/Button'
 import type { DocNode } from './docNode'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { normalizeFa } from './normalize'
 import type { Page } from './repo'
 import * as Ic from './icons'
@@ -9,127 +9,6 @@ import { ICON_PREFIX, iconNode, parseIcon } from './iconSet'
 import { IconPicker } from './design-system/IconPicker'
 import { t, locale } from './i18n'
 import { shortcutHint } from './shortcuts'
-import { Popover } from './design-system/Popover'
-
-type SelectOption = { value: string; label: string; color?: string }
-
-/** Dropdown selector (replaces the native select element): a field button that opens the shared menu, with a dot per option and a check on the current one. */
-export function Select({
-  value,
-  options,
-  onChange,
-  className,
-  title,
-  style,
-  disabled,
-  id,
-  ...aria
-}: {
-  value: string
-  options: SelectOption[]
-  onChange: (v: string) => void
-  className?: string
-  title?: string
-  style?: React.CSSProperties
-  disabled?: boolean
-  id?: string
-  'aria-label'?: string
-  'aria-invalid'?: boolean
-  'aria-describedby'?: string
-  dir?: 'auto' | 'ltr' | 'rtl'
-}) {
-  const [rect, setRect] = useState<DOMRect | null>(null)
-  const [inline, setInline] = useState(false)
-  const btn = useRef<HTMLButtonElement>(null)
-  const menu = useRef<HTMLDivElement>(null)
-  const cur = options.find((o) => o.value === value) ?? options[0]
-  const open = !!rect || inline
-  const close = () => (setRect(null), setInline(false))
-  useLayoutEffect(() => {
-    if (open) menu.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus()
-  }, [open])
-  const list = (
-    <div
-      ref={menu}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') {
-          event.preventDefault()
-          event.stopPropagation()
-          close()
-          btn.current?.focus()
-          return
-        }
-        const items = [...(menu.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])]
-        if (!items.length || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
-        event.preventDefault()
-        event.stopPropagation()
-        const index = items.indexOf(document.activeElement as HTMLButtonElement)
-        const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowDown' ? (index + 1) % items.length : (index - 1 + items.length) % items.length
-        items[next]?.focus()
-      }}
-      className="ds-menu sel-menu"
-      role="listbox"
-      style={inline ? undefined : { minWidth: Math.max(rect?.width ?? 0, 180) }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="option"
-          aria-selected={o.value === value}
-          className={'ds-menu-item' + (o.value === value ? ' on' : '')}
-          onClick={() => (onChange(o.value), close(), btn.current?.focus())}
-        >
-          <span className="ds-menu-ic">{o.color ? <i className="sel-dot" style={{ background: o.color }} /> : null}</span>
-          <span className="ds-menu-label">{o.label}</span>
-          {o.value === value && (
-            <span className="sel-check">
-              <Ic.Check size={14} />
-            </span>
-          )}
-        </button>
-      ))}
-    </div>
-  )
-  return (
-    <>
-      <button
-        ref={btn}
-        {...aria}
-        id={id}
-        disabled={disabled}
-        type="button"
-        className={'selbox ' + (className ?? '') + (open ? ' open' : '')}
-        style={style}
-        title={title}
-        aria-label={aria['aria-label'] ?? title}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onMouseDown={(e) => e.nativeEvent.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation()
-          if (open) return close()
-          // inside a popover or a dialog the list opens in place, under the field, not as a second popup over it
-          if (btn.current?.closest('.ds-pop, .modal, .db-modal-body')) setInline(true)
-          else setRect(e.currentTarget.getBoundingClientRect())
-        }}
-      >
-        {cur?.color && <i className="sel-dot" style={{ background: cur.color }} />}
-        <span className="sel-label">{cur?.label}</span>
-        <span className="sel-chev">
-          <Ic.Chevron size={12} />
-        </span>
-      </button>
-      {inline && <div className="sel-inline">{list}</div>}
-      {rect && (
-        <Popover anchor={rect} onClose={close}>
-          {list}
-        </Popover>
-      )}
-    </>
-  )
-}
 
 export const MenuItem = ({
   icon,
@@ -369,7 +248,8 @@ export function SearchModal({
 
 /** Event a screen sends to show the app's toast; with `undo`, the toast offers Undo and Ctrl+Z runs it. */
 export const APP_TOAST = 'app-toast'
-export const showToast = (msg: string, undo?: () => void) => window.dispatchEvent(new CustomEvent(APP_TOAST, { detail: { msg, undo } }))
+/** With `undo` the toast offers Undo (and Ctrl+Z runs it); `action` is any other one-click follow-up ("Show it"), without the shortcut. */
+export const showToast = (msg: string, undo?: () => void, action?: { label: string; run: () => void }) => window.dispatchEvent(new CustomEvent(APP_TOAST, { detail: { msg, undo, action } }))
 
 export function Toast({ msg, action, onAction, onClose }: { msg: string; action?: string; onAction?: () => void; onClose: () => void }) {
   useEffect(() => {

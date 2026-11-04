@@ -1,4 +1,4 @@
-import { Fragment, useId, type ButtonHTMLAttributes, type CSSProperties, type ElementType, type HTMLAttributes, type InputHTMLAttributes, type MouseEvent, type ReactNode } from 'react'
+import { Fragment, useId, type ButtonHTMLAttributes, type CSSProperties, type ElementType, type HTMLAttributes, type InputHTMLAttributes, type MouseEvent, type ReactNode, type Ref } from 'react'
 import { motion } from 'motion/react'
 import { cx } from './dir'
 import { useUIMotion } from './motion'
@@ -131,7 +131,7 @@ export function Notice({ tone, icon, children, className }: { tone?: 'warn' | 'b
 }
 
 /** A chip that is a control: a status picker, an add action. `empty` draws it dashed (nothing set yet). */
-export function ChipButton({ empty, icon, className, children, type = 'button', ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { empty?: boolean; icon?: ReactNode }) {
+export function ChipButton({ empty, icon, className, children, type = 'button', ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { empty?: boolean; icon?: ReactNode; ref?: Ref<HTMLButtonElement> }) {
   return (
     <button {...rest} type={type} className={cx('ds-chip-btn', className)} data-empty={empty || undefined}>
       {icon}

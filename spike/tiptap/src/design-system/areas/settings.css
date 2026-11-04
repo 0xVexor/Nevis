@@ -93,3 +93,5 @@
 .swatch svg { inline-size: 13px; block-size: 13px; }
 
 .swatch.default { background: var(--ds-accent); color: var(--ds-accent-ink); }
+
+.sx-note { font-size: 13px; color: var(--ds-text-2); }

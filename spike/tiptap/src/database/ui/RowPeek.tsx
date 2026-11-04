@@ -2,35 +2,32 @@
 // editor feature works here; the database properties are rendered above the body by PageView through RowProperties.
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { motion } from 'motion/react'
 import type { Id } from '../model/types.ts'
-import type { DatabaseService } from '../service.ts'
 import { repo } from '../../store'
 import { BoardView } from '../../BoardView'
 import { PageView, type SaveState } from '../../PageView'
+import { Icon, IconButton, SaveStatus, useUIMotion } from '../../design-system'
 import { t } from '../../i18n'
-import * as Ic from '../../icons'
+import { ViewMessage } from './common'
 
 export function RowPeek({
-  svc,
   pageId,
   mode,
   onClose,
   onOpenFull,
   onSwitch,
-  notify,
 }: {
-  svc: DatabaseService
   pageId: Id
   mode: 'side' | 'center'
   onClose: () => void
   onOpenFull: (id: Id) => void
   onSwitch: (m: 'side' | 'center') => void
-  onNavigate: (id: Id) => void
-  notify: (msg: string) => void
 }) {
   const page = repo.getRaw(pageId)
   const [save, setSave] = useState<SaveState>('saved')
   const [, tick] = useState(0)
+  const uiMotion = useUIMotion()
   const prev = useRef<Element | null>(null)
   const closeRef = useRef(onClose)
   useEffect(() => {
@@ -39,14 +36,14 @@ export function RowPeek({
   useEffect(() => {
     prev.current = document.activeElement
     const key = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.ds-pop, .db-modal, .slash-menu')) return
+      if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.ds-pop, .ds-modal, .slash-menu')) return
       if ((e.target as HTMLElement | null)?.closest('input, textarea, [contenteditable="true"]')) return
       closeRef.current()
     }
     document.addEventListener('keydown', key)
     return () => {
       document.removeEventListener('keydown', key)
-      ;(prev.current as HTMLElement | null)?.focus?.({ preventScroll: true }) // selection and scroll of the table behind are untouched; focus returns to it
+      ;(prev.current as HTMLElement | null)?.focus?.({ preventScroll: true }) // selection and scroll of the view behind are untouched; focus returns to it
     }
   }, [])
   useEffect(() => {
@@ -54,59 +51,55 @@ export function RowPeek({
     window.addEventListener('external-change', f)
     return () => window.removeEventListener('external-change', f)
   }, [])
-  if (!page || page.deletedAt) {
-    return createPortal(
-      <div className={'db-peek-wrap is-' + mode} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-        <div className={'db-peek is-' + mode} role="dialog" aria-modal="true" aria-label={t('Item')}>
-          <div className="db-peek-bar">
-            <button type="button" className="icon-btn" aria-label={t('Close')} onClick={onClose}>
-              <Ic.Close size={14} />
-            </button>
-          </div>
-          <div className="db-error-box">{t('This item is no longer here.')}</div>
-        </div>
-      </div>,
-      document.body,
-    )
-  }
-  void svc
-  void notify
+  const gone = !page || page.deletedAt
+  const enter = mode === 'side' ? { opacity: 0, x: document.documentElement.dir === 'rtl' ? -24 : 24 } : { opacity: 0, y: 12, scale: 0.985 }
   // portalled to <body>: inside the page, an ancestor with a transform or filter would make "fixed" relative to it and the peek would open inside the page frame
   return createPortal(
-    <div className={'db-peek-wrap is-' + mode} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={'db-peek is-' + mode} role="dialog" aria-modal="true" aria-label={page.title || t('Untitled')}>
-        <div className="db-peek-bar">
-          <button type="button" className="icon-btn" aria-label={t('Close')} title={t('Close  Esc')} onClick={onClose}>
-            <Ic.Close size={14} />
-          </button>
-          <button type="button" className="icon-btn" aria-label={t('Open as full page')} title={t('Open as full page')} onClick={() => onOpenFull(pageId)}>
-            <Ic.Enlarge size={14} />
-          </button>
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label={mode === 'side' ? t('Open in the center') : t('Open on the side')}
-            title={mode === 'side' ? t('Open in the center') : t('Open on the side')}
-            onClick={() => onSwitch(mode === 'side' ? 'center' : 'side')}
-          >
-            <Ic.Panel size={14} />
-          </button>
-          <span className="spacer" />
-          <span className={'status' + (save === 'saving' ? ' busy' : '')}>
-            <i className="dot" />
-            {save === 'saving' ? t('Saving…') : t('Saved')}
-          </span>
+    <div className="dv-peek-layer" data-mode={mode} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <motion.div
+        className="dv-peek"
+        data-mode={mode}
+        role="dialog"
+        aria-modal="true"
+        aria-label={gone ? t('Item') : page.title || t('Untitled')}
+        initial={uiMotion.reduced ? false : enter}
+        animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+        transition={uiMotion.transition}
+      >
+        <div className="dv-peek-bar">
+          <IconButton label={t('Close (Esc)')} onClick={onClose}>
+            <Icon name="x" size={16} />
+          </IconButton>
+          {!gone && (
+            <>
+              <IconButton label={t('Open as full page')} onClick={() => onOpenFull(pageId)}>
+                <Icon name="maximize" size={16} />
+              </IconButton>
+              <IconButton label={mode === 'side' ? t('Open in the center') : t('Open on the side')} onClick={() => onSwitch(mode === 'side' ? 'center' : 'side')}>
+                <Icon name={mode === 'side' ? 'minimize' : 'panel-right'} size={16} />
+              </IconButton>
+              <span className="dv-peek-status">
+                <SaveStatus state={save} label={save === 'saving' ? t('Saving…') : t('Saved')} />
+              </span>
+            </>
+          )}
         </div>
-        <div className="db-peek-body scroller">
-          <Suspense fallback={<div className="page-skeleton" aria-busy="true" />}>
-            {page.kind === 'board' ? (
-              <BoardView key={page.id} page={page} onSave={setSave} onMeta={() => tick((x) => x + 1)} />
-            ) : (
-              <PageView key={page.id} page={page} onSave={setSave} onMeta={() => tick((x) => x + 1)} onCover={() => {}} />
-            )}
-          </Suspense>
-        </div>
-      </div>
+        {gone ? (
+          <div className="dv-peek-body">
+            <ViewMessage title={t('This item is no longer here.')} />
+          </div>
+        ) : (
+          <div className="dv-peek-body scroller">
+            <Suspense fallback={<div className="page-skeleton" aria-busy="true" />}>
+              {page.kind === 'board' ? (
+                <BoardView key={page.id} page={page} onSave={setSave} onMeta={() => tick((x) => x + 1)} />
+              ) : (
+                <PageView key={page.id} page={page} onSave={setSave} onMeta={() => tick((x) => x + 1)} onCover={() => {}} />
+              )}
+            </Suspense>
+          </div>
+        )}
+      </motion.div>
     </div>,
     document.body,
   )

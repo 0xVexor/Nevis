@@ -46,8 +46,18 @@ export function Popover({ anchor, onClose, children, align = 'start' }: { anchor
       setLeaving(true)
       exit = window.setTimeout(() => close.current(), MOTION.fast * 1000)
     }
-    const down = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && dismiss()
+    // a menu opened from inside this popover (a dropdown in a panel) is a popover of its own: using it keeps this one open,
+    // and Escape or the arrow keys belong to the popover on top
+    const onTop = () => { const all = document.querySelectorAll('.ds-pop'); return all[all.length - 1] === ref.current }
+    const down = (e: MouseEvent) => {
+      const target = e.target as Element
+      if (ref.current?.contains(target)) return
+      const layer = target.closest?.('.ds-pop, .ds-modal-layer, .ds-scrim')
+      if (layer && ref.current && ref.current.compareDocumentPosition(layer) & Node.DOCUMENT_POSITION_FOLLOWING) return
+      dismiss()
+    }
     const key = (e: KeyboardEvent) => {
+      if (!onTop()) return
       if (e.key === 'Escape') return dismiss()
       // items of a closed submenu are hidden, so only what is on screen is reachable by the arrow keys
       const items = [...(ref.current?.querySelectorAll<HTMLElement>('.ds-menu-item:not(:disabled)') ?? [])].filter((item) => item.offsetParent !== null)

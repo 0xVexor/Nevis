@@ -1,14 +1,12 @@
-// "View settings": layout switch and the settings of the current layout (cards, density, grouping, date property, open mode…).
+// "View settings": the layout of the view and the settings of that layout (cards, density, grouping, date property, open mode…).
 import { useState } from 'react'
 import type { Definition, Id, Json, View, ViewType } from '../model/types.ts'
 import type { DatabaseService } from '../service.ts'
-import { Popover } from '../../design-system/Popover'
-import { Select } from '../../ui'
+import { Dropdown, FormField, Panel, Popover, Segmented, SwitchRow } from '../../design-system'
 import { t } from '../../i18n'
-import { errorText } from './common'
-import { Field, Seg, Switch } from './forms'
+import { ErrorLine, Hint, errorText, rawOptions } from './common'
 import { GroupEditor, type GroupConfig } from './ViewControls'
-import { VIEW_ICON, VIEW_LABEL } from './viewMeta'
+import { VIEW_LABEL, ViewIcon } from './viewMeta'
 import type { ViewCtl } from './viewTypes'
 
 const LAYOUTS: ViewType[] = ['table', 'board', 'list', 'gallery', 'calendar', 'timeline', 'chart', 'map', 'feed', 'form']
@@ -19,50 +17,57 @@ export function ViewSettings({ svc, view, anchor, onClose, ctl }: { svc: Databas
   const cfg = view.configuration as Record<string, Json>
   const [err, setErr] = useState<string | null>(null)
   const set = (patch: Record<string, Json>) => void ctl.patch(patch)
-  const sel = (id: string, kinds: string[], label: string, none = false) => (
-    <Field label={label}>
-      <Select
+  const pick = (id: string, kinds: string[], label: string, none = false) => (
+    <FormField label={label}>
+      <Dropdown
+        label={label}
+        placeholder={t('Choose…')}
         value={(cfg[id] as string) ?? ''}
-        options={[...(none ? [{ value: '', label: t('None') }] : []), ...propsOf(svc, view, kinds).map((p) => ({ value: p.id, label: p.name }))]}
+        options={[...(none ? [{ value: '', label: 'None' }] : []), ...rawOptions(propsOf(svc, view, kinds))]}
         onChange={(v) => set({ [id]: v || null })}
       />
-    </Field>
+    </FormField>
   )
   const setType = async (type: ViewType) => {
     const r = await svc.tryExec([{ type: 'view.set_type', payload: { viewId: view.id, type } }])
-    if (!r.ok) setErr(errorText(r.code, r.message))
+    setErr(r.ok ? null : errorText(r.code, r.message))
   }
   const sourceOk = !!view.sourceId
   const subItems = (svc.state.get('source', view.sourceId ?? '')?.settings as { subItems?: boolean } | undefined)?.subItems
+  const cardSize = (
+    <FormField label={t('Card size')}>
+      <Segmented
+        label={t('Card size')}
+        value={(cfg.cardSize as string) ?? 'medium'}
+        onChange={(v) => set({ cardSize: v })}
+        options={[
+          { value: 'small', label: t('Small') },
+          { value: 'medium', label: t('Medium') },
+          { value: 'large', label: t('Large') },
+        ]}
+      />
+    </FormField>
+  )
   return (
     <Popover anchor={anchor} onClose={onClose} align="end">
-      <div className="db-pop xwide" onClick={(e) => e.stopPropagation()}>
+      <Panel title={t('View settings')} className="dv-view-settings">
         {view.type !== 'dashboard' && (
-          <div className="db-layouts" role="radiogroup" aria-label={t('Layout')}>
-            {LAYOUTS.map((ty) => (
-              <button
-                key={ty}
-                type="button"
-                role="radio"
-                aria-checked={ty === view.type}
-                className={'db-layout' + (ty === view.type ? ' on' : '')}
-                disabled={!ctl.canSchema}
-                onClick={() => void setType(ty)}
-              >
-                {VIEW_ICON[ty]()}
-                <span>{t(VIEW_LABEL[ty])}</span>
-              </button>
-            ))}
-          </div>
+          <FormField label={t('Layout')}>
+            <div className="dv-layouts" role="radiogroup" aria-label={t('Layout')}>
+              {LAYOUTS.map((ty) => (
+                <button key={ty} type="button" role="radio" aria-checked={ty === view.type} className="dv-layout" disabled={!ctl.canSchema} onClick={() => void setType(ty)}>
+                  <ViewIcon type={ty} size={18} />
+                  <span>{t(VIEW_LABEL[ty])}</span>
+                </button>
+              ))}
+            </div>
+          </FormField>
         )}
-        {err && (
-          <div className="db-err" role="alert">
-            {err}
-          </div>
-        )}
+        {err && <ErrorLine>{err}</ErrorLine>}
         {sourceOk && view.type !== 'form' && view.type !== 'chart' && (
-          <Field label={t('Open items in')}>
-            <Seg
+          <FormField label={t('Open items in')}>
+            <Segmented
+              label={t('Open items in')}
               value={(cfg.openMode as string) ?? 'side_peek'}
               onChange={(v) => set({ openMode: v })}
               options={[
@@ -71,12 +76,13 @@ export function ViewSettings({ svc, view, anchor, onClose, ctl }: { svc: Databas
                 { value: 'full_page', label: t('Full page') },
               ]}
             />
-          </Field>
+          </FormField>
         )}
         {view.type === 'table' && (
           <>
-            <Field label={t('Row height')}>
-              <Seg
+            <FormField label={t('Row height')}>
+              <Segmented
+                label={t('Row height')}
                 value={(cfg.density as string) ?? 'compact'}
                 onChange={(v) => set({ density: v })}
                 options={[
@@ -85,70 +91,53 @@ export function ViewSettings({ svc, view, anchor, onClose, ctl }: { svc: Databas
                   { value: 'relaxed', label: t('Wrap text') },
                 ]}
               />
-            </Field>
-            <Switch label={t('Wrap long text')} on={!!cfg.wrap} onChange={(v) => set({ wrap: v })} />
-            <Field label={t('Sub-items')}>
-              <Select
+            </FormField>
+            <SwitchRow label={t('Wrap long text')} checked={!!cfg.wrap} onChange={(v) => set({ wrap: v })} />
+            <FormField label={t('Sub-items')}>
+              <Dropdown
+                label={t('Sub-items')}
                 value={(cfg.subItems as string) ?? 'flat'}
                 options={[
-                  { value: 'flat', label: t('Flat list') },
-                  { value: 'nested', label: t('Nested under parents') },
-                  { value: 'parents', label: t('Parents only') },
-                  { value: 'children', label: t('Sub-items only') },
+                  { value: 'flat', label: 'Flat list' },
+                  { value: 'nested', label: 'Nested under parents' },
+                  { value: 'parents', label: 'Parents only' },
+                  { value: 'children', label: 'Sub-items only' },
                 ]}
                 onChange={(v) => set({ subItems: v })}
               />
-            </Field>
-            {subItems === false && <div className="db-date-hint">{t('Sub-items are switched off for this source; stored links are kept.')}</div>}
+            </FormField>
+            {subItems === false && <Hint>{t('Sub-items are switched off for this source; stored links are kept.')}</Hint>}
           </>
         )}
         {view.type === 'board' && (
           <>
-            {sel('groupPropertyId', ['select', 'multi_select', 'status', 'people', 'checkbox', 'relation', 'formula'], t('Group by'))}
-            {sel('subgroupPropertyId', ['select', 'multi_select', 'status', 'people', 'checkbox', 'relation'], t('Sub-group by'), true)}
-            <Field label={t('Card size')}>
-              <Seg
-                value={(cfg.cardSize as string) ?? 'medium'}
-                onChange={(v) => set({ cardSize: v })}
-                options={[
-                  { value: 'small', label: t('Small') },
-                  { value: 'medium', label: t('Medium') },
-                  { value: 'large', label: t('Large') },
-                ]}
-              />
-            </Field>
-            <Switch label={t('Hide empty groups')} on={!!cfg.hideEmpty} onChange={(v) => set({ hideEmpty: v })} />
-            {sel('coverPropertyId', ['files'], t('Card cover'), true)}
+            {pick('groupPropertyId', ['select', 'multi_select', 'status', 'people', 'checkbox', 'relation', 'formula'], t('Group by'))}
+            {pick('subgroupPropertyId', ['select', 'multi_select', 'status', 'people', 'checkbox', 'relation'], t('Sub-group by'), true)}
+            {cardSize}
+            <SwitchRow label={t('Hide empty groups')} checked={!!cfg.hideEmpty} onChange={(v) => set({ hideEmpty: v })} />
+            {pick('coverPropertyId', ['files'], t('Card cover'), true)}
           </>
         )}
         {view.type === 'gallery' && (
           <>
-            <Field label={t('Card size')}>
-              <Seg
-                value={(cfg.cardSize as string) ?? 'medium'}
-                onChange={(v) => set({ cardSize: v })}
-                options={[
-                  { value: 'small', label: t('Small') },
-                  { value: 'medium', label: t('Medium') },
-                  { value: 'large', label: t('Large') },
-                ]}
-              />
-            </Field>
-            <Field label={t('Preview')}>
-              <Select
+            {cardSize}
+            <FormField label={t('Preview')}>
+              <Dropdown
+                label={t('Preview')}
                 value={(cfg.previewSource as string) ?? 'cover'}
                 options={[
-                  { value: 'cover', label: t('Page cover') },
-                  { value: 'content', label: t('First image in the page') },
-                  { value: 'property', label: t('A files property') },
-                  { value: 'none', label: t('None') },
+                  { value: 'cover', label: 'Page cover' },
+                  { value: 'content', label: 'First image in the page' },
+                  { value: 'property', label: 'A files property' },
+                  { value: 'none', label: 'None' },
                 ]}
                 onChange={(v) => set({ previewSource: v })}
               />
-            </Field>
-            {cfg.previewSource === 'property' && sel('coverPropertyId', ['files'], t('Files property'))}
-            <Field label={t('Image fit')}>
-              <Seg
+            </FormField>
+            {cfg.previewSource === 'property' && pick('coverPropertyId', ['files'], t('Files property'))}
+            <FormField label={t('Image fit')}>
+              <Segmented
+                label={t('Image fit')}
                 value={(cfg.fit as string) ?? 'cover'}
                 onChange={(v) => set({ fit: v })}
                 options={[
@@ -156,14 +145,15 @@ export function ViewSettings({ svc, view, anchor, onClose, ctl }: { svc: Databas
                   { value: 'contain', label: t('Fit') },
                 ]}
               />
-            </Field>
+            </FormField>
           </>
         )}
         {view.type === 'calendar' && (
           <>
-            {sel('datePropertyId', ['date', 'formula', 'created_time', 'last_edited_time'], t('Show by'))}
-            <Field label={t('Mode')}>
-              <Seg
+            {pick('datePropertyId', ['date', 'formula', 'created_time', 'last_edited_time'], t('Show by'))}
+            <FormField label={t('Mode')}>
+              <Segmented
+                label={t('Mode')}
                 value={(cfg.calendarMode as string) ?? 'month'}
                 onChange={(v) => set({ calendarMode: v })}
                 options={[
@@ -171,27 +161,29 @@ export function ViewSettings({ svc, view, anchor, onClose, ctl }: { svc: Databas
                   { value: 'week', label: t('Week') },
                 ]}
               />
-            </Field>
+            </FormField>
           </>
         )}
         {view.type === 'timeline' && (
           <>
-            {sel('datePropertyId', ['date', 'formula'], t('Range property'))}
-            <Field label={t('Scale')}>
-              <Select
+            {pick('datePropertyId', ['date', 'formula'], t('Range property'))}
+            <FormField label={t('Scale')}>
+              <Dropdown
+                label={t('Scale')}
                 value={(cfg.scale as string) ?? 'week'}
-                options={['hour', 'day', 'week', 'month', 'quarter', 'year'].map((s) => ({ value: s, label: t(s[0].toUpperCase() + s.slice(1)) }))}
+                options={['hour', 'day', 'week', 'month', 'quarter', 'year'].map((s) => ({ value: s, label: s[0].toUpperCase() + s.slice(1) }))}
                 onChange={(v) => set({ scale: v })}
               />
-            </Field>
-            <Switch label={t('Show the table')} on={cfg.showTable !== false} onChange={(v) => set({ showTable: v })} />
-            <Switch label={t('Show dependency arrows')} on={cfg.showDependencies !== false} onChange={(v) => set({ showDependencies: v })} />
+            </FormField>
+            <SwitchRow label={t('Show the table')} checked={cfg.showTable !== false} onChange={(v) => set({ showTable: v })} />
+            <SwitchRow label={t('Show dependency arrows')} checked={cfg.showDependencies !== false} onChange={(v) => set({ showDependencies: v })} />
           </>
         )}
-        {view.type === 'map' && sel('placePropertyId', ['place'], t('Place property'))}
+        {view.type === 'map' && pick('placePropertyId', ['place'], t('Place property'))}
         {view.type === 'list' && (
-          <Field label={t('Density')}>
-            <Seg
+          <FormField label={t('Density')}>
+            <Segmented
+              label={t('Density')}
               value={(cfg.density as string) ?? 'compact'}
               onChange={(v) => set({ density: v })}
               options={[
@@ -199,31 +191,24 @@ export function ViewSettings({ svc, view, anchor, onClose, ctl }: { svc: Databas
                 { value: 'normal', label: t('Comfortable') },
               ]}
             />
-          </Field>
+          </FormField>
         )}
-        {(view.type === 'list' || view.type === 'gallery') && (
-          <>
-            <div className="db-field-l">{t('Group')}</div>
-            <GroupEditor svc={svc} sourceId={view.sourceId!} group={(cfg.group as GroupConfig) ?? null} onChange={(g) => set({ group: g as Json })} />
-          </>
-        )}
-        {view.type === 'feed' && <Switch label={t('Show view and comment counts')} on={cfg.counts !== false} onChange={(v) => set({ counts: v })} />}
+        {(view.type === 'list' || view.type === 'gallery') && <GroupEditor svc={svc} sourceId={view.sourceId!} group={(cfg.group as GroupConfig) ?? null} onChange={(g) => set({ group: g as Json })} />}
+        {view.type === 'feed' && <SwitchRow label={t('Show view and comment counts')} checked={cfg.counts !== false} onChange={(v) => set({ counts: v })} />}
         {sourceOk && ctl.canSchema && (
-          <Field label={t('Default template for new items')}>
-            <Select
+          <FormField label={t('Default template for new items')}>
+            <Dropdown
+              label={t('Default template for new items')}
               value={view.defaultTemplateId ?? ''}
               options={[
-                { value: '', label: t('Source default') },
-                ...svc.state
-                  .live('template')
-                  .filter((tp) => tp.sourceId === view.sourceId)
-                  .map((tp) => ({ value: tp.id, label: tp.name })),
+                { value: '', label: 'Source default' },
+                ...rawOptions(svc.state.live('template').filter((tp) => tp.sourceId === view.sourceId)),
               ]}
               onChange={(v) => void svc.tryExec([{ type: 'view.patch', payload: { viewId: view.id, defaultTemplateId: (v || null) as Id | null } }])}
             />
-          </Field>
+          </FormField>
         )}
-      </div>
+      </Panel>
     </Popover>
   )
 }

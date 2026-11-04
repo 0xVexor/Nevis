@@ -4,18 +4,15 @@ import type { Definition, Id, Json, Kind } from '../model/types.ts'
 import { compileFormula } from '../formula/compile.ts'
 import { registryTable } from '../formula/functions.ts'
 import { previewConversion, type ConvertPlan, type ConversionReport } from '../commands/convert.ts'
-import { optionsOf, ROLLUP_AGGREGATIONS, statusConfig, type RollupAggregation } from '../props/config.ts'
+import { optionsOf, ROLLUP_AGGREGATIONS, statusConfig, type OptionColor, type RollupAggregation } from '../props/config.ts'
 import { CURRENCIES } from '../props/numberFormat.ts'
 import { DESCRIPTORS } from '../props/registry.ts'
 import { schemaFor, staticType } from '../resolver.ts'
 import type { DatabaseService } from '../service.ts'
 import { confirmDialog, promptDialog } from '../../dialog'
-import { MenuItem, MenuLabel, MenuSep, Select } from '../../ui'
-import { Popover } from '../../design-system/Popover'
+import { Button, Checkbox, ChipButton, Dialog, Dropdown, Field, FormField, Icon, IconButton, Panel, Popover, Segmented, SwitchRow, useMenu, type MenuItem } from '../../design-system'
 import { t } from '../../i18n'
-import * as Ic from '../../icons'
-import { Chip, KIND_LABEL, KindIcon, OPTION_COLOR_LIST, PICKABLE_KINDS, errorText } from './common'
-import { Field, Seg, Switch } from './forms'
+import { Chip, COLOR_LABEL, ErrorLine, Hint, KIND_GROUPS, KIND_LABEL, KindIcon, OPTION_COLOR_LIST, errorText, optionColor, rawOptions } from './common'
 
 // ───── options manager ─────
 
@@ -24,23 +21,15 @@ export function OptionsManager({ svc, def }: { svc: DatabaseService; def: Defini
   const groups = def.kind === 'status' ? statusConfig(def.config).groups : []
   const [err, setErr] = useState<string | null>(null)
   const [adding, setAdding] = useState('')
-  const [colorFor, setColorFor] = useState<{ id: Id; rect: DOMRect } | null>(null)
+  const { open, menu } = useMenu()
   const run = async (cmds: { type: string; payload: Json }[]) => {
     const r = await svc.tryExec(cmds)
     setErr(r.ok ? null : errorText(r.code, r.message))
     return r.ok
   }
-  const add = async (groupId?: Id) => {
+  const add = async () => {
     if (!adding.trim()) return
-    if (
-      await run([
-        {
-          type: 'option.upsert',
-          payload: { propertyId: def.id, name: adding.trim(), color: 'default', ...(groupId ? { statusGroupId: groupId } : def.kind === 'status' ? { statusGroupId: groups[0].id } : {}) },
-        },
-      ])
-    )
-      setAdding('')
+    if (await run([{ type: 'option.upsert', payload: { propertyId: def.id, name: adding.trim(), color: 'default', ...(def.kind === 'status' ? { statusGroupId: groups[0].id } : {}) } }])) setAdding('')
   }
   const del = async (o: { id: Id; name: string }) => {
     let replacement: Id | undefined
@@ -70,13 +59,15 @@ export function OptionsManager({ svc, def }: { svc: DatabaseService; def: Defini
     const before = dir < 0 ? target.id : opts[i + 2]?.id
     await run([{ type: 'option.upsert', payload: { propertyId: def.id, optionId: id, name: opts[i].name, ...(before ? { beforeOptionId: before } : {}) } }])
   }
+  const colors = (o: { id: Id; name: string; color: OptionColor }): MenuItem[] =>
+    OPTION_COLOR_LIST.map((c) => ({ label: COLOR_LABEL[c], swatch: optionColor(c), checked: o.color === c, onSelect: () => void run([{ type: 'option.upsert', payload: { propertyId: def.id, optionId: o.id, name: o.name, color: c } }]) }))
   return (
-    <div className="db-options">
+    <div className="dv-options">
       {opts.map((o, i) => (
-        <div className="db-opt-row" key={o.id}>
-          <button type="button" className={'db-swatch ' + 'dbc-' + o.color} aria-label={t('Color')} onClick={(e) => setColorFor({ id: o.id, rect: e.currentTarget.getBoundingClientRect() })} />
+        <div className="dv-option" key={o.id}>
+          <button type="button" className="dv-swatch" style={{ background: optionColor(o.color) }} aria-label={t('Colour of {n}', { n: o.name })} onClick={(e) => open(colors(o), e.currentTarget)} />
           <input
-            className="db-input"
+            className="ds-field dv-option-name"
             defaultValue={o.name}
             dir="auto"
             aria-label={t('Option name')}
@@ -84,61 +75,41 @@ export function OptionsManager({ svc, def }: { svc: DatabaseService; def: Defini
             onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
           />
           {def.kind === 'status' && (
-            <Select
+            <Dropdown
+              className="ds-dd-btn--sm"
+              label={t('Group')}
               value={(o as unknown as { statusGroupId: Id }).statusGroupId}
-              options={groups.map((g) => ({ value: g.id, label: g.label }))}
+              options={groups.map((g) => ({ value: g.id, label: g.label, raw: true }))}
               onChange={(g) => void run([{ type: 'option.upsert', payload: { propertyId: def.id, optionId: o.id, name: o.name, statusGroupId: g } }])}
             />
           )}
-          <button type="button" className="icon-btn" aria-label={t('Move up')} disabled={i === 0} onClick={() => void move(o.id, -1)}>
-            <Ic.Up size={12} />
-          </button>
-          <button type="button" className="icon-btn" aria-label={t('Move down')} disabled={i === opts.length - 1} onClick={() => void move(o.id, 1)}>
-            <span style={{ display: 'inline-block', transform: 'rotate(180deg)' }}>
-              <Ic.Up size={12} />
-            </span>
-          </button>
-          <button type="button" className="icon-btn" aria-label={t('Delete option')} onClick={() => void del(o)}>
-            <Ic.Trash size={12} />
-          </button>
+          <IconButton label={t('Move up')} disabled={i === 0} onClick={() => void move(o.id, -1)}>
+            <Icon name="arrow-up" size={15} />
+          </IconButton>
+          <IconButton label={t('Move down')} disabled={i === opts.length - 1} onClick={() => void move(o.id, 1)}>
+            <Icon name="arrow-down" size={15} />
+          </IconButton>
+          <IconButton label={t('Delete option')} onClick={() => void del(o)}>
+            <Icon name="trash" size={15} />
+          </IconButton>
         </div>
       ))}
-      <div className="db-opt-row">
+      <div className="dv-option">
         <input
-          className="db-input"
+          className="ds-field dv-option-name"
           placeholder={t('Add an option…')}
+          aria-label={t('Add an option…')}
           value={adding}
           dir="auto"
           onChange={(e) => setAdding(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && void add()}
         />
-        <button type="button" className="primary" onClick={() => void add()}>
+        <Button size="sm" onClick={() => void add()} disabled={!adding.trim()}>
           {t('Add')}
-        </button>
+        </Button>
       </div>
-      {err && (
-        <div className="db-err" role="alert">
-          {err}
-        </div>
-      )}
-      {colorFor && (
-        <div className="db-colors-in">
-          <div className="db-colors">
-            {OPTION_COLOR_LIST.map((c) => (
-              <button
-                key={c}
-                type="button"
-                className={'db-swatch dbc-' + c}
-                aria-label={c}
-                onClick={() => (
-                  void run([{ type: 'option.upsert', payload: { propertyId: def.id, optionId: colorFor.id, name: opts.find((o) => o.id === colorFor.id)!.name, color: c } }]),
-                  setColorFor(null)
-                )}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      {err && <ErrorLine>{err}</ErrorLine>}
+      {menu}
     </div>
   )
 }
@@ -152,39 +123,41 @@ export function FormulaEditor({ svc, sourceId, selfId, source, onChange }: { svc
   const fns = useMemo(() => registryTable(), [])
   const insert = (txt: string) => onChange(source + txt)
   return (
-    <div className="db-formula">
-      <textarea className="db-input mono" dir="ltr" rows={4} spellCheck={false} aria-label={t('Formula')} value={source} onChange={(e) => onChange(e.target.value)} placeholder={'prop("Price") * 2'} />
+    <div className="dv-formula">
+      <textarea className="ds-field dv-code" dir="ltr" rows={4} spellCheck={false} aria-label={t('Formula')} value={source} onChange={(e) => onChange(e.target.value)} placeholder={'prop("Price") * 2'} />
       {source.trim() &&
         !result.ok &&
         result.diagnostics.map((d, i) => (
-          <div key={i} className="db-err" role="alert" dir="ltr">
-            {d.code}: {d.message} {source ? `(${d.from}–${d.to})` : ''}
-          </div>
+          <ErrorLine key={i}>
+            <span dir="ltr">
+              {d.code}: {d.message} ({d.from}–{d.to})
+            </span>
+          </ErrorLine>
         ))}
       {source.trim() && result.ok && (
-        <div className="db-ok" dir="ltr">
-          ✓ {t('Result type')}: {result.resultType}
-        </div>
+        <p className="dv-ok">
+          <Icon name="check" size={14} /> {t('Result type')}: <span dir="ltr">{result.resultType}</span>
+        </p>
       )}
-      <div className="db-chips-row">
+      <div className="dv-chips" aria-label={t('Insert property')}>
         {props.map((p) => (
-          <button key={p.id} type="button" className="db-chip" onClick={() => insert(`prop(${JSON.stringify(p.name)})`)} title={t('Insert property')}>
-            <KindIcon kind={p.kind} /> {p.name}
-          </button>
+          <ChipButton key={p.id} icon={<KindIcon kind={p.kind} size={14} />} onClick={() => insert(`prop(${JSON.stringify(p.name)})`)} title={t('Insert property')}>
+            <span dir="auto">{p.name}</span>
+          </ChipButton>
         ))}
       </div>
-      <button type="button" className="db-linkbtn" onClick={() => setHelp(!help)}>
+      <Button size="sm" variant="ghost" aria-expanded={help} onClick={() => setHelp(!help)}>
         {help ? t('Hide functions') : t('Show functions')}
-      </button>
+      </Button>
       {help && (
-        <div className="db-fn-list" dir="ltr">
+        <div className="dv-fns" dir="ltr">
           {fns.map((f) => (
-            <div key={f.name}>
-              <button type="button" className="db-fn" onClick={() => insert(`${f.name}(`)}>
+            <button key={f.name} type="button" className="dv-fn" onClick={() => insert(`${f.name}(`)}>
+              <code>
                 {f.name}({f.params.join(', ')})
-              </button>
-              <small> — {f.doc}</small>
-            </div>
+              </code>
+              <small>{f.doc}</small>
+            </button>
           ))}
         </div>
       )}
@@ -216,11 +189,12 @@ export function ConfigForm({ svc, kind, sourceId, selfId, config, onChange }: { 
   switch (kind) {
     case 'number': {
       const fmt = (config.format as string) ?? 'plain'
-      const prog = config.progress as { mode: string; target: number; color: string } | undefined
+      const prog = config.progress as { mode: 'bar' | 'ring'; target: number; color: string } | undefined
       return (
         <>
-          <Field label={t('Format')}>
-            <Seg
+          <FormField label={t('Format')}>
+            <Segmented
+              label={t('Format')}
               value={fmt}
               onChange={(v) => set({ format: v })}
               options={[
@@ -230,38 +204,33 @@ export function ConfigForm({ svc, kind, sourceId, selfId, config, onChange }: { 
                 { value: 'currency', label: t('Currency') },
               ]}
             />
-          </Field>
+          </FormField>
           {fmt === 'currency' && (
-            <Field label={t('Currency')}>
-              <Select value={(config.currencyCode as string) ?? 'USD'} options={CURRENCIES.map((c) => ({ value: c, label: c }))} onChange={(v) => set({ currencyCode: v })} />
-            </Field>
+            <FormField label={t('Currency')}>
+              <Dropdown label={t('Currency')} value={(config.currencyCode as string) ?? 'USD'} options={CURRENCIES.map((c) => ({ value: c, label: c, raw: true }))} onChange={(v) => set({ currencyCode: v })} />
+            </FormField>
           )}
-          <Field label={t('Decimal places')} hint={t('Only changes how the number is shown, never the stored value.')}>
-            <input
-              className="db-input"
-              type="number"
-              min={0}
-              max={12}
-              dir="ltr"
-              value={(config.precision as number) ?? 0}
-              onChange={(e) => set({ precision: Math.max(0, Math.min(12, Number(e.target.value) || 0)) })}
-            />
-          </Field>
-          <Switch label={t('Show as progress')} on={!!prog} onChange={(on) => set({ progress: on ? { mode: 'bar', target: 100, color: 'green' } : null })} />
+          <FormField label={t('Decimal places')} hint={t('Only changes how the number is shown, never the stored value.')}>
+            <Field ltr type="number" min={0} max={12} value={(config.precision as number) ?? 0} onChange={(e) => set({ precision: Math.max(0, Math.min(12, Number(e.target.value) || 0)) })} />
+          </FormField>
+          <SwitchRow label={t('Show as progress')} checked={!!prog} onChange={(on) => set({ progress: on ? { mode: 'bar', target: 100, color: 'green' } : null })} />
           {prog && (
-            <>
-              <Seg
-                value={prog.mode}
-                onChange={(v) => set({ progress: { ...prog, mode: v } })}
-                options={[
-                  { value: 'bar', label: t('Bar') },
-                  { value: 'ring', label: t('Ring') },
-                ]}
-              />
-              <Field label={t('Full at')}>
-                <input className="db-input" type="number" dir="ltr" value={prog.target} onChange={(e) => set({ progress: { ...prog, target: Number(e.target.value) || 100 } })} />
-              </Field>
-            </>
+            <div className="dv-pair">
+              <FormField label={t('Shape')}>
+                <Segmented
+                  label={t('Shape')}
+                  value={prog.mode}
+                  onChange={(v) => set({ progress: { ...prog, mode: v } })}
+                  options={[
+                    { value: 'bar', label: t('Bar') },
+                    { value: 'ring', label: t('Ring') },
+                  ]}
+                />
+              </FormField>
+              <FormField label={t('Full at')}>
+                <Field ltr type="number" value={prog.target} onChange={(e) => set({ progress: { ...prog, target: Number(e.target.value) || 100 } })} />
+              </FormField>
+            </div>
           )}
         </>
       )
@@ -275,11 +244,12 @@ export function ConfigForm({ svc, kind, sourceId, selfId, config, onChange }: { 
       }
       const names = (config.optionNames as string) ?? ''
       return (
-        <Field label={t('Options')} hint={t('One per line. You can change them later.')}>
+        <FormField label={t('Options')} hint={t('One per line. You can change them later.')}>
           <textarea
-            className="db-input"
+            className="ds-field"
             rows={4}
             dir="auto"
+            aria-label={t('Options')}
             value={names}
             onChange={(e) =>
               set({
@@ -292,16 +262,18 @@ export function ConfigForm({ svc, kind, sourceId, selfId, config, onChange }: { 
               })
             }
           />
-        </Field>
+        </FormField>
       )
     }
     case 'date':
     case 'created_time':
-    case 'last_edited_time':
+    case 'last_edited_time': {
+      const cur = ((config.reminders as { offsetMinutes: number }[]) ?? []).map((r) => r.offsetMinutes)
       return (
         <>
-          <Field label={t('Calendar')}>
-            <Seg
+          <FormField label={t('Calendar')}>
+            <Segmented
+              label={t('Calendar')}
               value={(config.displayCalendar as string) ?? 'gregorian'}
               onChange={(v) => set({ displayCalendar: v })}
               options={[
@@ -309,82 +281,80 @@ export function ConfigForm({ svc, kind, sourceId, selfId, config, onChange }: { 
                 { value: 'jalali', label: t('Jalali') },
               ]}
             />
-          </Field>
-          <Field label={t('Time')}>
-            <Seg
+          </FormField>
+          <FormField label={t('Time')}>
+            <Segmented
+              label={t('Time')}
               value={(config.timeFormat as string) ?? '24h'}
               onChange={(v) => set({ timeFormat: v })}
               options={[
-                { value: '24h', label: '24h' },
-                { value: '12h', label: '12h' },
+                { value: '24h', label: t('24 hours') },
+                { value: '12h', label: t('12 hours') },
                 { value: 'none', label: t('Hidden') },
               ]}
             />
-          </Field>
+          </FormField>
           {kind === 'date' && (
-            <Field label={t('Reminders')} hint={t('Shown in the app (and as a system notification if you allow it) while the app is open. Dates without a time remind relative to 09:00.')}>
-              <div role="group" aria-label={t('Reminders')}>
-                {REMINDER_CHOICES.map(([min, label]) => {
-                  const cur = ((config.reminders as { offsetMinutes: number }[]) ?? []).map((r) => r.offsetMinutes)
-                  return (
-                    <label key={min} className="db-radio">
-                      <input
-                        type="checkbox"
-                        checked={cur.includes(min)}
-                        onChange={(e) => set({ reminders: (e.target.checked ? [...cur, min] : cur.filter((x) => x !== min)).sort((a, b) => a - b).map((offsetMinutes) => ({ offsetMinutes })) })}
-                      />{' '}
-                      {t(label)}
-                    </label>
-                  )
-                })}
+            <FormField label={t('Reminders')} hint={t('Shown in the app (and as a system notification if you allow it) while the app is open. Dates without a time remind relative to 09:00.')}>
+              <div className="dv-checks">
+                {REMINDER_CHOICES.map(([min, label]) => (
+                  <Checkbox
+                    key={min}
+                    checked={cur.includes(min)}
+                    onChange={(on) => set({ reminders: (on ? [...cur, min] : cur.filter((x) => x !== min)).sort((a, b) => a - b).map((offsetMinutes) => ({ offsetMinutes })) })}
+                  >
+                    {t(label)}
+                  </Checkbox>
+                ))}
               </div>
-            </Field>
+            </FormField>
           )}
         </>
       )
+    }
     case 'people':
-      return <Switch label={t('Allow several people')} on={config.multiple !== false} onChange={(v) => set({ multiple: v })} />
+      return <SwitchRow label={t('Allow several people')} checked={config.multiple !== false} onChange={(v) => set({ multiple: v })} />
     case 'files':
       return (
-        <>
-          <Field label={t('Allowed types')} hint={t('Comma separated, e.g. image/*, application/pdf. Empty allows everything.')}>
-            <input
-              className="db-input"
-              dir="ltr"
-              value={((config.allowedTypes as string[]) ?? []).join(', ')}
-              onChange={(e) =>
-                set({
-                  allowedTypes: e.target.value
-                    .split(',')
-                    .map((s) => s.trim())
-                    .filter(Boolean),
-                })
-              }
-            />
-          </Field>
-        </>
+        <FormField label={t('Allowed types')} hint={t('Comma separated, e.g. image/*, application/pdf. Empty allows everything.')}>
+          <Field
+            ltr
+            value={((config.allowedTypes as string[]) ?? []).join(', ')}
+            onChange={(e) =>
+              set({
+                allowedTypes: e.target.value
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              })
+            }
+          />
+        </FormField>
       )
     case 'relation': {
       const target = (config.targetSourceId as string) ?? svc.state.get('source', sourceId)?.id
       const self = target === sourceId
       return (
         <>
-          <Field label={t('Related to')}>
-            <Select
+          <FormField label={t('Related to')}>
+            <Dropdown
+              label={t('Related to')}
               value={target ?? ''}
-              options={sources.map((s) => ({ value: s.id, label: s.name }))}
+              options={rawOptions(sources)}
               onChange={(v) => set({ targetSourceId: v, mode: v === sourceId ? (config.mode ?? 'paired') : config.mode === 'self_symmetric' ? 'one_way' : config.mode })}
             />
-          </Field>
-          <Field label={t('Direction')}>
-            <Seg
+          </FormField>
+          <FormField label={t('Direction')}>
+            <Segmented
+              label={t('Direction')}
               value={(config.mode as string) ?? 'one_way'}
               onChange={(v) => set({ mode: v })}
               options={[{ value: 'one_way', label: t('One way') }, { value: 'paired', label: t('Two way') }, ...(self ? [{ value: 'self_symmetric', label: t('Mutual') }] : [])]}
             />
-          </Field>
-          <Field label={t('Links per item')}>
-            <Seg
+          </FormField>
+          <FormField label={t('Links per item')}>
+            <Segmented
+              label={t('Links per item')}
               value={(config.cardinality as string) ?? 'many'}
               onChange={(v) => set({ cardinality: v })}
               options={[
@@ -392,14 +362,15 @@ export function ConfigForm({ svc, kind, sourceId, selfId, config, onChange }: { 
                 { value: 'one', label: t('One') },
               ]}
             />
-          </Field>
+          </FormField>
           {config.mode === 'paired' && (
             <>
-              <Field label={t('Name of the reverse property')}>
-                <input className="db-input" dir="auto" value={(config.inverseName as string) ?? ''} onChange={(e) => set({ inverseName: e.target.value })} />
-              </Field>
-              <Field label={t('Reverse links per item')}>
-                <Seg
+              <FormField label={t('Name of the reverse property')}>
+                <Field value={(config.inverseName as string) ?? ''} onChange={(e) => set({ inverseName: e.target.value })} />
+              </FormField>
+              <FormField label={t('Reverse links per item')}>
+                <Segmented
+                  label={t('Reverse links per item')}
                   value={(config.inverseCardinality as string) ?? 'many'}
                   onChange={(v) => set({ inverseCardinality: v })}
                   options={[
@@ -407,7 +378,7 @@ export function ConfigForm({ svc, kind, sourceId, selfId, config, onChange }: { 
                     { value: 'one', label: t('One') },
                   ]}
                 />
-              </Field>
+              </FormField>
             </>
           )}
         </>
@@ -419,88 +390,84 @@ export function ConfigForm({ svc, kind, sourceId, selfId, config, onChange }: { 
       const rel = relId ? svc.state.relationOf(relId) : undefined
       const targetSource = rel ? (rel.propertyId === relId ? rel.targetSourceId : rel.sourceId) : undefined
       const tprops = targetSource ? svc.state.props(targetSource).filter((p) => p.kind !== 'rollup' && p.kind !== 'button') : []
+      if (!rels.length) return <Hint>{t('Add a relation property first.')}</Hint>
       return (
         <>
-          <Field label={t('Relation')}>
-            <Select value={relId ?? ''} options={rels.map((r) => ({ value: r.id, label: r.name }))} onChange={(v) => set({ relationPropertyId: v, targetPropertyId: '' })} />
-          </Field>
-          <Field label={t('Property')}>
-            <Select
-              value={(config.targetPropertyId as string) ?? ''}
-              options={[{ value: '', label: t('Choose…') }, ...tprops.map((p) => ({ value: p.id, label: p.name }))]}
-              onChange={(v) => set({ targetPropertyId: v })}
-            />
-          </Field>
-          <Field label={t('Calculate')}>
-            <Select
-              value={(config.aggregation as string) ?? 'count_all'}
-              options={(ROLLUP_AGGREGATIONS as string[]).map((a) => ({ value: a, label: t(AGG_LABEL[a as RollupAggregation]) }))}
-              onChange={(v) => set({ aggregation: v })}
-            />
-          </Field>
-          {rels.length === 0 && <div className="db-date-hint">{t('Add a relation property first.')}</div>}
+          <FormField label={t('Relation')}>
+            <Dropdown label={t('Relation')} value={relId ?? ''} options={rawOptions(rels)} onChange={(v) => set({ relationPropertyId: v, targetPropertyId: '' })} />
+          </FormField>
+          <FormField label={t('Property')}>
+            <Dropdown label={t('Property')} placeholder={t('Choose…')} value={(config.targetPropertyId as string) ?? ''} options={rawOptions(tprops)} onChange={(v) => set({ targetPropertyId: v })} />
+          </FormField>
+          <FormField label={t('Calculate')}>
+            <Dropdown label={t('Calculate')} value={(config.aggregation as string) ?? 'count_all'} options={(ROLLUP_AGGREGATIONS as RollupAggregation[]).map((a) => ({ value: a, label: AGG_LABEL[a] }))} onChange={(v) => set({ aggregation: v })} />
+          </FormField>
         </>
       )
     }
     case 'formula':
       return <FormulaEditor svc={svc} sourceId={sourceId} selfId={selfId} source={(config.source as string) ?? ''} onChange={(s) => set({ source: s })} />
-    case 'unique_id':
+    case 'unique_id': {
+      const mode = (config.allocationMode as string) ?? 'partitioned'
       return (
         <>
-          <Field label={t('Prefix')}>
-            <input className="db-input" dir="ltr" maxLength={12} value={(config.prefix as string) ?? ''} onChange={(e) => set({ prefix: e.target.value })} placeholder="TASK" />
-          </Field>
-          <Field
+          <FormField label={t('Prefix')}>
+            <Field ltr maxLength={12} value={(config.prefix as string) ?? ''} onChange={(e) => set({ prefix: e.target.value })} placeholder="TASK" />
+          </FormField>
+          <FormField
             label={t('Numbering')}
             hint={
-              (config.allocationMode ?? 'partitioned') === 'sequential'
+              mode === 'sequential'
                 ? t('Strictly increasing numbers (TASK-1, TASK-2…). Use this when only one device creates items, or a shared server hands out numbers.')
                 : t('Each device numbers its own items (TASK-ab12-1). No two devices ever clash, even offline. Numbers are never changed later.')
             }
           >
-            <Seg
-              value={(config.allocationMode as string) ?? 'partitioned'}
+            <Segmented
+              label={t('Numbering')}
+              value={mode}
               onChange={(v) => set({ allocationMode: v })}
               options={[
                 { value: 'partitioned', label: t('Per device (safe offline)') },
                 { value: 'sequential', label: t('Sequential') },
               ]}
             />
-          </Field>
+          </FormField>
         </>
       )
+    }
     case 'button':
       return (
         <>
-          <Field label={t('Button label')}>
-            <input className="db-input" dir="auto" value={(config.label as string) ?? ''} onChange={(e) => set({ label: e.target.value })} />
-          </Field>
-          <div className="db-date-hint">{t('After creating the button, choose what it does from its menu → Edit actions.')}</div>
+          <FormField label={t('Button label')}>
+            <Field value={(config.label as string) ?? ''} onChange={(e) => set({ label: e.target.value })} />
+          </FormField>
+          <Hint>{t('After creating the button, choose what it does from its menu → Edit actions.')}</Hint>
         </>
       )
     case 'verification':
       return (
-        <Field label={t('Verification expires')}>
-          <Select
+        <FormField label={t('Verification expires')}>
+          <Dropdown
+            label={t('Verification expires')}
             value={(config.expiryPolicy as string) ?? 'never'}
-            options={['never', '7d', '30d', '90d', '180d'].map((v) => ({ value: v, label: v === 'never' ? t('Never') : t('After {n} days', { n: v.replace('d', '') }) }))}
+            options={['never', '7d', '30d', '90d', '180d'].map((v) => ({ value: v, label: v === 'never' ? t('Never') : t('After {n} days', { n: v.replace('d', '') }), raw: true }))}
             onChange={(v) => set({ expiryPolicy: v })}
           />
-        </Field>
+        </FormField>
       )
     case 'connected':
       return (
         <>
-          <Field label={t('Service')}>
-            <Select value={(config.providerId as string) ?? 'github_pr'} options={CONNECTED_PROVIDERS.map(([value, label]) => ({ value, label }))} onChange={(v) => set({ providerId: v })} />
-          </Field>
-          <Field label={t('Connection name')} hint={t('Names a connection set up on your gateway. The secret never enters your notes.')}>
-            <input className="db-input" dir="ltr" value={(config.connectionId as string) ?? 'default'} onChange={(e) => set({ connectionId: e.target.value.trim() || 'default' })} />
-          </Field>
+          <FormField label={t('Service')}>
+            <Dropdown label={t('Service')} value={(config.providerId as string) ?? 'github_pr'} options={CONNECTED_PROVIDERS.map(([value, label]) => ({ value, label }))} onChange={(v) => set({ providerId: v })} />
+          </FormField>
+          <FormField label={t('Connection name')} hint={t('Names a connection set up on your gateway. The secret never enters your notes.')}>
+            <Field ltr value={(config.connectionId as string) ?? 'default'} onChange={(e) => set({ connectionId: e.target.value.trim() || 'default' })} />
+          </FormField>
         </>
       )
     case 'place':
-      return <div className="db-date-hint">{t('Coordinates are typed by hand and work offline. Address lookup needs a map provider; nothing is looked up automatically.')}</div>
+      return <Hint>{t('Coordinates are typed by hand and work offline. Address lookup needs a map provider; nothing is looked up automatically.')}</Hint>
     default:
       return null
   }
@@ -531,8 +498,12 @@ const AGG_LABEL: Record<RollupAggregation, string> = {
   show_unique: 'Show unique',
 }
 export const aggLabel = (a: RollupAggregation) => t(AGG_LABEL[a])
+export const aggKey = (a: RollupAggregation) => AGG_LABEL[a]
 
 // ───── create ─────
+
+/** Kinds whose settings must be chosen before the property can exist; the others are created with one click. */
+const NEEDS_SETUP: Kind[] = ['select', 'multi_select', 'status', 'relation', 'rollup', 'formula', 'button', 'connected', 'unique_id']
 
 export function NewPropertyPopover({
   svc,
@@ -554,88 +525,77 @@ export function NewPropertyPopover({
   const [config, setConfig] = useState<Cfg>({})
   const [err, setErr] = useState<string | null>(null)
   const [q, setQ] = useState('')
-  const kinds = PICKABLE_KINDS.filter((k) => t(KIND_LABEL[k]).toLowerCase().includes(q.toLowerCase()))
-  const create = async () => {
-    if (!kind) return
-    const nm = name.trim() || t(KIND_LABEL[kind])
-    let cfg: Cfg = { ...config }
-    if (kind === 'relation') cfg = { mode: 'one_way', ...cfg, targetSourceId: cfg.targetSourceId ?? sourceId }
-    const r = await svc.tryExec([{ type: 'property.create', payload: { sourceId, name: nm, kind, config: cfg, ...(beforeId ? { beforePropertyId: beforeId } : {}) } }])
+  const create = async (k = kind, cfg0 = config, nm0 = name) => {
+    if (!k) return
+    const nm = nm0.trim() || t(KIND_LABEL[k])
+    let cfg: Cfg = { ...cfg0 }
+    if (k === 'relation') cfg = { mode: 'one_way', ...cfg, targetSourceId: cfg.targetSourceId ?? sourceId }
+    const r = await svc.tryExec([{ type: 'property.create', payload: { sourceId, name: nm, kind: k, config: cfg, ...(beforeId ? { beforePropertyId: beforeId } : {}) } }])
     if (!r.ok) return setErr(errorText(r.code, r.message))
     const res = r.result as { propertyId?: Id }
-    if (kind === 'button') {
+    if (k === 'button') {
       // a button needs its workflow record; actions are edited from the column menu
-      const pid = res.propertyId!
-      await svc.tryExec([{ type: 'workflow.save', payload: { body: { sourceId, name: nm, kind: 'button', actions: [], triggers: [], triggerMode: 'any', viewScopeId: null, propertyId: pid } } }])
+      await svc.tryExec([{ type: 'workflow.save', payload: { body: { sourceId, name: nm, kind: 'button', actions: [], triggers: [], triggerMode: 'any', viewScopeId: null, propertyId: res.propertyId! } } }])
     }
     onCreated?.(res.propertyId!)
     onClose()
   }
+  const choose = (k: Kind) => {
+    const cfg: Cfg = k === 'unique_id' ? { allocationMode: 'partitioned' } : k === 'connected' ? { providerId: 'github_pr', connectionId: 'default', exposedFields: [] } : {}
+    setKind(k)
+    setName('')
+    setConfig(cfg)
+  }
+  const match = (k: Kind) => t(KIND_LABEL[k]).toLowerCase().includes(q.toLowerCase())
   return (
     <Popover anchor={anchor} onClose={onClose}>
-      <div className="db-pop wide" onClick={(e) => e.stopPropagation()}>
-        {!kind ? (
-          <>
-            <input className="db-input" autoFocus placeholder={t('Search property types…')} value={q} onChange={(e) => setQ(e.target.value)} />
-            <div className="db-types" role="listbox">
-              {kinds.map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  role="option"
-                  className="ds-menu-item"
-                  onClick={() => {
-                    setKind(k)
-                    setName('')
-                    setConfig(k === 'unique_id' ? { allocationMode: 'partitioned' } : k === 'connected' ? { providerId: 'github_pr', connectionId: 'default', exposedFields: [] } : {})
-                  }}
-                >
-                  <span className="ds-menu-ic">
-                    <KindIcon kind={k} />
-                  </span>
-                  <span className="ds-menu-label">{t(KIND_LABEL[k])}</span>
-                </button>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="db-form">
-            <div className="db-form-head">
-              <button type="button" className="icon-btn" aria-label={t('Back')} onClick={() => setKind(null)}>
-                <span style={{ display: 'inline-block', transform: 'scaleX(-1)' }}>
-                  <Ic.Chevron size={14} />
-                </span>
-              </button>
-              <KindIcon kind={kind} /> <b>{t(KIND_LABEL[kind])}</b>
-            </div>
-            <Field label={t('Name')}>
-              <input
-                className="db-input"
-                autoFocus
-                dir="auto"
-                value={name}
-                placeholder={t(KIND_LABEL[kind])}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && void create()}
-              />
-            </Field>
-            <ConfigForm svc={svc} kind={kind} sourceId={sourceId} selfId={null} config={config} onChange={setConfig} />
-            {err && (
-              <div className="db-err" role="alert">
-                {err}
-              </div>
-            )}
-            <div className="db-date-foot">
-              <button type="button" onClick={onClose}>
-                {t('Cancel')}
-              </button>
-              <button type="button" className="primary" onClick={() => void create()}>
-                {t('Create')}
-              </button>
-            </div>
+      {!kind ? (
+        <Panel title={t('New property')} className="dv-picker">
+          <Field autoFocus placeholder={t('Search property types…')} aria-label={t('Search property types…')} value={q} onChange={(e) => setQ(e.target.value)} />
+          <div className="dv-choices" role="listbox" aria-label={t('Property type')}>
+            {KIND_GROUPS.map((g) => {
+              const kinds = g.kinds.filter(match)
+              return kinds.length ? (
+                <div key={g.label} role="group" aria-label={t(g.label)}>
+                  <div className="ds-menu-head">{t(g.label)}</div>
+                  {kinds.map((k) => (
+                    <button key={k} type="button" role="option" aria-selected={false} className="ds-menu-item" onClick={() => choose(k)}>
+                      <KindIcon kind={k} />
+                      <span className="ds-menu-label">{t(KIND_LABEL[k])}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null
+            })}
           </div>
-        )}
-      </div>
+        </Panel>
+      ) : (
+        <Panel
+          title={
+            <span className="dv-panel-kind">
+              <KindIcon kind={kind} /> {t(KIND_LABEL[kind])}
+            </span>
+          }
+          onBack={() => setKind(null)}
+          footer={
+            <>
+              <Button size="sm" variant="ghost" onClick={onClose}>
+                {t('Cancel')}
+              </Button>
+              <Button size="sm" variant="primary" onClick={() => void create()}>
+                {t('Create property')}
+              </Button>
+            </>
+          }
+        >
+          <FormField label={t('Name')}>
+            <Field autoFocus value={name} placeholder={t(KIND_LABEL[kind])} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && void create()} />
+          </FormField>
+          <ConfigForm svc={svc} kind={kind} sourceId={sourceId} selfId={null} config={config} onChange={setConfig} />
+          {!NEEDS_SETUP.includes(kind) && <Hint>{t('You can change these settings later from the column menu.')}</Hint>}
+          {err && <ErrorLine>{err}</ErrorLine>}
+        </Panel>
+      )}
     </Popover>
   )
 }
@@ -684,117 +644,114 @@ export function ConvertDialog({ svc, def, onClose }: { svc: DatabaseService; def
     else setErr(errorText(r.code, r.message))
   }
   return (
-    <div className="overlay dlg-overlay" onMouseDown={onClose}>
-      <div
-        className="modal db-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('Change property type')}
-        onMouseDown={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.key === 'Escape' && onClose()}
-      >
-        <div className="modal-head">
-          <b>{t('Change “{n}” to…', { n: def.name })}</b>
-          <button className="icon-btn" aria-label={t('Close')} onClick={onClose}>
-            <Ic.Close />
-          </button>
-        </div>
-        <div className="db-modal-body">
-          <Field label={t('New type')}>
-            <Select value={to} options={CONVERT_TARGETS.filter((k) => k !== def.kind).map((k) => ({ value: k, label: t(KIND_LABEL[k]) }))} onChange={(v) => setTo(v as Kind)} />
-          </Field>
-          {def.kind === 'text' && to === 'number' && (
-            <Field label={t('Decimal separator')}>
-              <Seg
-                value={decimal}
-                onChange={setDecimal}
-                options={[
-                  { value: '.', label: '. (1.5)' },
-                  { value: ',', label: ', (1,5)' },
-                  { value: '٫', label: '٫ (۱٫۵)' },
-                ]}
-              />
-            </Field>
-          )}
-          {def.kind === 'text' && to === 'date' && (
-            <Field label={t('Date format')} hint={t('Without a format only ISO dates (2026-10-25) convert; ambiguous dates such as 01/02/03 are reported, not guessed.')}>
-              <Select
-                value={dateFmt}
-                options={[
-                  { value: '', label: 'ISO (YYYY-MM-DD)' },
-                  { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY' },
-                  { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY' },
-                  { value: 'YYYY/MM/DD', label: 'YYYY/MM/DD' },
-                  { value: 'jalali', label: t('Jalali (YYYY/MM/DD)') },
-                ]}
-                onChange={setDateFmt}
-              />
-            </Field>
-          )}
-          {def.kind === 'text' && (to === 'select' || to === 'multi_select' || to === 'status') && (
-            <>
-              <Switch label={t('Create an option for every different text')} on={create} onChange={setCreate} />
-              {to === 'multi_select' && (
-                <Field label={t('Split on')} hint={t('Commas are never split unless you choose a separator.')}>
-                  <input className="db-input" dir="ltr" value={delim} maxLength={3} onChange={(e) => setDelim(e.target.value)} placeholder="," />
-                </Field>
-              )}
-            </>
-          )}
-          {def.kind === 'multi_select' && to === 'select' && <Switch label={t('When several are selected, keep the first by option order')} on={pick} onChange={setPick} />}
-          {report && !report.supported && <div className="db-err">{report.unsupportedReason}</div>}
-          {report?.supported && (
-            <div className="db-report">
-              <div className="db-counts">
-                <span className="ok">{t('{n} convert cleanly', { n: report.counts.lossless })}</span>
-                <span className="warn">{t('{n} lose detail', { n: report.counts.lossy })}</span>
-                <span className="bad">{t('{n} cannot convert', { n: report.counts.invalid })}</span>
-              </div>
-              {report.invalid.slice(0, 5).map((e) => (
-                <div key={e.pageId} className="db-sample bad" dir="auto">
-                  “{e.before}” — {e.reason}
-                </div>
-              ))}
-              {report.samples
-                .filter((e) => e.loss !== 'invalid')
-                .slice(0, 5)
-                .map((e) => (
-                  <div key={e.pageId} className="db-sample" dir="auto">
-                    {e.before || '∅'} → {e.after || '∅'}
-                  </div>
-                ))}
-              {report.counts.invalid > 0 && (
-                <Field label={t('Cells that cannot convert')}>
-                  <Seg
-                    value={policy}
-                    onChange={setPolicy}
-                    options={[
-                      { value: 'rejectInvalid', label: t('Cancel the change') },
-                      { value: 'clearInvalid', label: t('Clear them (originals are kept in history)') },
-                    ]}
-                  />
-                </Field>
-              )}
-            </div>
-          )}
-          {err && (
-            <div className="db-err" role="alert">
-              {err}
-            </div>
-          )}
-        </div>
-        <div className="db-date-foot">
-          <button type="button" onClick={onClose}>
+    <Dialog
+      open
+      title={t('Change “{n}” to…', { n: def.name })}
+      onClose={onClose}
+      actions={
+        <>
+          <Button variant="ghost" onClick={onClose}>
             {t('Cancel')}
-          </button>
-          <button type="button" className="primary" disabled={!report?.supported || (report.counts.invalid > 0 && policy === 'rejectInvalid')} onClick={() => void go()}>
-            {t('Convert')}
-          </button>
-        </div>
+          </Button>
+          <Button variant="primary" disabled={!report?.supported || (report.counts.invalid > 0 && policy === 'rejectInvalid')} onClick={() => void go()}>
+            {t('Change type')}
+          </Button>
+        </>
+      }
+    >
+      <div className="ds-modal-body">
+        <FormField label={t('New type')}>
+          <Dropdown label={t('New type')} value={to} options={CONVERT_TARGETS.filter((k) => k !== def.kind).map((k) => ({ value: k, label: KIND_LABEL[k] }))} onChange={(v) => setTo(v)} />
+        </FormField>
+        {def.kind === 'text' && to === 'number' && (
+          <FormField label={t('Decimal separator')}>
+            <Segmented
+              label={t('Decimal separator')}
+              value={decimal}
+              onChange={setDecimal}
+              options={[
+                { value: '.', label: '1.5' },
+                { value: ',', label: '1,5' },
+                { value: '٫', label: '۱٫۵' },
+              ]}
+            />
+          </FormField>
+        )}
+        {def.kind === 'text' && to === 'date' && (
+          <FormField label={t('Date format')} hint={t('Without a format only ISO dates (2026-10-25) convert; ambiguous dates such as 01/02/03 are reported, not guessed.')}>
+            <Dropdown
+              label={t('Date format')}
+              value={dateFmt}
+              options={[
+                { value: '', label: 'ISO (YYYY-MM-DD)', raw: true },
+                { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY', raw: true },
+                { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY', raw: true },
+                { value: 'YYYY/MM/DD', label: 'YYYY/MM/DD', raw: true },
+                { value: 'jalali', label: 'Jalali (YYYY/MM/DD)' },
+              ]}
+              onChange={setDateFmt}
+            />
+          </FormField>
+        )}
+        {def.kind === 'text' && (to === 'select' || to === 'multi_select' || to === 'status') && (
+          <>
+            <SwitchRow label={t('Create an option for every different text')} checked={create} onChange={setCreate} />
+            {to === 'multi_select' && (
+              <FormField label={t('Split on')} hint={t('Commas are never split unless you choose a separator.')}>
+                <Field ltr value={delim} maxLength={3} onChange={(e) => setDelim(e.target.value)} placeholder="," />
+              </FormField>
+            )}
+          </>
+        )}
+        {def.kind === 'multi_select' && to === 'select' && <SwitchRow label={t('When several are selected, keep the first by option order')} checked={pick} onChange={setPick} />}
+        {report && !report.supported && <ErrorLine>{report.unsupportedReason}</ErrorLine>}
+        {report?.supported && (
+          <ConversionSummary report={report} policy={policy} onPolicy={setPolicy} />
+        )}
+        {err && <ErrorLine>{err}</ErrorLine>}
       </div>
+    </Dialog>
+  )
+}
+
+function ConversionSummary({ report, policy, onPolicy }: { report: ConversionReport; policy: 'rejectInvalid' | 'clearInvalid'; onPolicy: (p: 'rejectInvalid' | 'clearInvalid') => void }) {
+  return (
+    <div className="dv-report">
+      <p className="dv-report-line">
+        {t('{n} convert cleanly', { n: report.counts.lossless })} · {t('{n} lose detail', { n: report.counts.lossy })} · <b data-bad={report.counts.invalid > 0 || undefined}>{t('{n} cannot convert', { n: report.counts.invalid })}</b>
+      </p>
+      <ul className="dv-samples">
+        {report.invalid.slice(0, 5).map((e) => (
+          <li key={e.pageId} data-bad dir="auto">
+            “{e.before}” — {e.reason}
+          </li>
+        ))}
+        {report.samples
+          .filter((e) => e.loss !== 'invalid')
+          .slice(0, 5)
+          .map((e) => (
+            <li key={e.pageId} dir="auto">
+              {e.before || '∅'} → {e.after || '∅'}
+            </li>
+          ))}
+      </ul>
+      {report.counts.invalid > 0 && (
+        <FormField label={t('Cells that cannot convert')}>
+          <Segmented
+            label={t('Cells that cannot convert')}
+            value={policy}
+            onChange={onPolicy}
+            options={[
+              { value: 'rejectInvalid', label: t('Cancel the change') },
+              { value: 'clearInvalid', label: t('Clear them (originals are kept in history)') },
+            ]}
+          />
+        </FormField>
+      )}
     </div>
   )
 }
+
 function from(def: Definition, to: Kind): Json {
   if ((def.kind === 'select' || def.kind === 'multi_select') && (to === 'select' || to === 'multi_select')) return { options: optionsOf(def) } as unknown as Json
   return { options: [] }
@@ -805,11 +762,12 @@ function from(def: Definition, to: Kind): Json {
 export type ColumnActions = {
   hide?: () => void
   freeze?: () => void
+  frozen?: boolean
   sort?: (dir: 'asc' | 'desc') => void
   filter?: () => void
-  insertAfter?: (kind?: Kind) => void
 }
 
+/** Everything about one property in one panel: its name, then its actions, with its settings one step in. */
 export function PropertyMenu({
   svc,
   def,
@@ -825,15 +783,15 @@ export function PropertyMenu({
   actions: ColumnActions
   onEditActions?: (def: Definition) => void
 }) {
-  const [view, setView] = useState<'menu' | 'settings'>('menu')
+  const [step, setStep] = useState<'menu' | 'settings'>('menu')
   const [name, setName] = useState(def.name)
   const [config, setConfig] = useState<Cfg>(def.config as Cfg)
   const [convert, setConvert] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const isTitle = def.kind === 'title'
   const canSchema = svc.access().sourceCaps(svc.principalId, def.sourceId).has('edit_schema')
-  const hasSettings = !['title', 'text', 'checkbox', 'url', 'email', 'phone', 'created_by', 'last_edited_by', 'files'].includes(def.kind) || def.kind === 'files'
-  const save = async () => {
+  const hasSettings = !['title', 'text', 'checkbox', 'url', 'email', 'phone', 'created_by', 'last_edited_by'].includes(def.kind)
+  const save = async (close = true) => {
     const patch: Record<string, Json> = {}
     if (name.trim() && name.trim() !== def.name) patch.name = name.trim()
     const noOpts = Object.fromEntries(
@@ -845,16 +803,12 @@ export function PropertyMenu({
         payload: {
           propertyId: def.id,
           ...patch,
-          ...(def.kind === 'formula'
-            ? { configPatch: { source: (config.source as string) ?? '' } }
-            : DESCRIPTORS[def.kind].storage === 'derived' || def.kind === 'relation'
-              ? {}
-              : { configPatch: noOpts as Json }),
+          ...(def.kind === 'formula' ? { configPatch: { source: (config.source as string) ?? '' } } : DESCRIPTORS[def.kind].storage === 'derived' || def.kind === 'relation' ? {} : { configPatch: noOpts as Json }),
         },
       },
     ])
     if (!r.ok) return setErr(errorText(r.code, r.message))
-    onClose()
+    if (close) onClose()
   }
   const del = async () => {
     const deps = svc.state.live('property').filter((p) => (p.kind === 'formula' || p.kind === 'rollup') && JSON.stringify(p.config).includes(def.id) && p.id !== def.id)
@@ -872,74 +826,62 @@ export function PropertyMenu({
     else onClose()
   }
   if (convert) return <ConvertDialog svc={svc} def={def} onClose={() => (setConvert(false), onClose())} />
+  const item = (icon: string, label: string, run: () => void, danger?: boolean) => (
+    <button type="button" role="menuitem" className="ds-menu-item" data-danger={danger || undefined} onClick={run}>
+      <Icon name={icon} size={16} />
+      <span className="ds-menu-label">{label}</span>
+    </button>
+  )
   return (
     <Popover anchor={anchor} onClose={onClose}>
-      <div className="db-pop wide" onClick={(e) => e.stopPropagation()}>
-        {view === 'menu' ? (
-          <div className="ds-menu">
-            <div className="db-form">
-              <Field label={t('Name')}>
-                <input
-                  className="db-input"
-                  dir="auto"
-                  value={name}
-                  disabled={!canSchema}
-                  onChange={(e) => setName(e.target.value)}
-                  onBlur={() => name.trim() && name.trim() !== def.name && void save()}
-                  onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && void save()}
-                />
-              </Field>
-              <div className="db-kind-line">
-                <KindIcon kind={def.kind} /> {t(KIND_LABEL[def.kind])}
-              </div>
-            </div>
-            {err && (
-              <div className="db-err" role="alert">
-                {err}
-              </div>
-            )}
-            <MenuSep />
-            {canSchema && hasSettings && <MenuItem icon={<Ic.Settings size={14} />} label={t('Edit property')} onClick={() => setView('settings')} />}
-            {canSchema && def.kind === 'button' && onEditActions && <MenuItem icon={<Ic.Code size={14} />} label={t('Edit actions')} onClick={() => (onClose(), onEditActions(def))} />}
-            {canSchema && !isTitle && DESCRIPTORS[def.kind].storage !== 'system' && def.kind !== 'unique_id' && (
-              <MenuItem icon={<Ic.Reset size={14} />} label={t('Change type')} onClick={() => setConvert(true)} />
-            )}
-            {actions.sort && <MenuItem icon={<Ic.Up size={14} />} label={t('Sort ascending')} onClick={() => (actions.sort!('asc'), onClose())} />}
-            {actions.sort && <MenuItem icon={<Ic.UpDown size={14} />} label={t('Sort descending')} onClick={() => (actions.sort!('desc'), onClose())} />}
-            {actions.filter && DESCRIPTORS[def.kind].queryable && <MenuItem icon={<Ic.Search size={14} />} label={t('Filter')} onClick={() => (actions.filter!(), onClose())} />}
-            {actions.freeze && <MenuItem icon={<Ic.Sidebar size={14} />} label={t('Freeze up to here')} onClick={() => (actions.freeze!(), onClose())} />}
-            {actions.hide && !isTitle && <MenuItem icon={<Ic.Eye size={14} />} label={t('Hide in view')} onClick={() => (actions.hide!(), onClose())} />}
-            {canSchema && !isTitle && <MenuSep />}
-            {canSchema && !isTitle && <MenuItem icon={<Ic.Trash size={14} />} label={t('Delete property')} danger onClick={() => void del()} />}
+      {step === 'menu' ? (
+        <Panel size="sm" className="dv-colmenu">
+          <div className="dv-colmenu-name">
+            <KindIcon kind={def.kind} />
+            <Field
+              aria-label={t('Property name')}
+              value={name}
+              disabled={!canSchema}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={() => name.trim() && name.trim() !== def.name && void save(false)}
+              onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && void save()}
+            />
           </div>
-        ) : (
-          <div className="db-form">
-            <div className="db-form-head">
-              <button type="button" className="icon-btn" aria-label={t('Back')} onClick={() => setView('menu')}>
-                <span style={{ display: 'inline-block', transform: 'scaleX(-1)' }}>
-                  <Ic.Chevron size={14} />
-                </span>
-              </button>
-              <b>{def.name}</b>
-            </div>
-            <MenuLabel>{t('Settings')}</MenuLabel>
-            <ConfigForm svc={svc} kind={def.kind} sourceId={def.sourceId} selfId={def.id} config={config} onChange={setConfig} />
-            {err && (
-              <div className="db-err" role="alert">
-                {err}
-              </div>
-            )}
-            <div className="db-date-foot">
-              <button type="button" onClick={onClose}>
+          <p className="dv-hint">{t(KIND_LABEL[def.kind])}</p>
+          {err && <ErrorLine>{err}</ErrorLine>}
+          <div className="dv-colmenu-items" role="menu" aria-label={def.name}>
+            {canSchema && hasSettings && item('settings', t('Edit property'), () => setStep('settings'))}
+            {canSchema && def.kind === 'button' && onEditActions && item('pointer', t('Edit actions'), () => (onClose(), onEditActions(def)))}
+            {canSchema && !isTitle && DESCRIPTORS[def.kind].storage !== 'system' && def.kind !== 'unique_id' && item('swap', t('Change type'), () => setConvert(true))}
+            {(actions.sort || actions.filter || actions.freeze || actions.hide) && <div className="ds-menu-sep" role="separator" />}
+            {actions.sort && item('arrow-up', t('Sort ascending'), () => (actions.sort!('asc'), onClose()))}
+            {actions.sort && item('arrow-down', t('Sort descending'), () => (actions.sort!('desc'), onClose()))}
+            {actions.filter && DESCRIPTORS[def.kind].queryable && item('filter', t('Filter by this'), () => (actions.filter!(), onClose()))}
+            {actions.freeze && item('pin', actions.frozen ? t('Unfreeze columns') : t('Freeze up to here'), () => (actions.freeze!(), onClose()))}
+            {actions.hide && !isTitle && item('eye-off', t('Hide in this view'), () => (actions.hide!(), onClose()))}
+            {canSchema && !isTitle && <div className="ds-menu-sep" role="separator" />}
+            {canSchema && !isTitle && item('trash', t('Delete property'), () => void del(), true)}
+          </div>
+        </Panel>
+      ) : (
+        <Panel
+          title={def.name}
+          onBack={() => setStep('menu')}
+          footer={
+            <>
+              <Button size="sm" variant="ghost" onClick={onClose}>
                 {t('Cancel')}
-              </button>
-              <button type="button" className="primary" onClick={() => void save()}>
-                {t('Save')}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+              </Button>
+              <Button size="sm" variant="primary" onClick={() => void save()}>
+                {t('Save changes')}
+              </Button>
+            </>
+          }
+        >
+          <ConfigForm svc={svc} kind={def.kind} sourceId={def.sourceId} selfId={def.id} config={config} onChange={setConfig} />
+          {err && <ErrorLine>{err}</ErrorLine>}
+        </Panel>
+      )}
     </Popover>
   )
 }

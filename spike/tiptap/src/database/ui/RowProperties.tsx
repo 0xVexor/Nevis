@@ -1,36 +1,34 @@
-// The property panel of a database row page: pinned heading properties, sections, hide-if-empty / hidden properties, the unique ID,
-// page and property comments, and layout customization. Used in the full page, the center peek and the side peek.
-import { useMemo, useState } from 'react'
+// The database properties of a row page, in the same rows as the page's own properties (label with its icon, then the value):
+// pinned ones first, then sections, then the rest; hide-if-empty and hidden properties fold under "N more". The unique ID, page and
+// property comments, and the layout customization live here too. Used in the full page, the center peek and the side peek.
+import { useState } from 'react'
 import type { Definition, Id, Json } from '../model/types.ts'
 import type { SourceLayout } from '../commands/schema.ts'
 import { DESCRIPTORS, isEmptyCell, defaultCell } from '../props/registry.ts'
 import { formatUniqueId } from '../resolver.ts'
 import type { Row } from '../state.ts'
 import type { DatabaseService } from '../service.ts'
+import { Button, Dropdown, Icon, IconButton } from '../../design-system'
 import { t } from '../../i18n'
-import * as Ic from '../../icons'
 import { CellView, NavContext, useNav, type DbNav } from './CellView'
 import { InlineCellEditor, PopoverEditor, isInlineKind, isPopoverKind } from './CellEditor'
-import { KindIcon, errorText, plainTitle, useDb, useRepoTick } from './common'
+import { ErrorLine, KindIcon, errorText, plainTitle, useDb, useRepoTick } from './common'
 import { NewPropertyPopover, PropertyMenu } from './PropertyEditor'
 import { CommentsThread } from './Comments'
-import { Select } from '../../ui'
 
 type Vis = 'always' | 'hide_if_empty' | 'hidden'
-const defaultVis = (d: Definition): Vis => (['formula', 'rollup', 'created_time', 'created_by', 'last_edited_time', 'last_edited_by', 'unique_id'].includes(d.kind) ? 'always' : 'always')
 
 export function layoutOf(svc: DatabaseService, row: Row) {
   const src = svc.state.get('source', row.sourceId)!
   const L = (src.layout ?? {}) as SourceLayout
   const props = svc.state.props(row.sourceId).filter((p) => p.kind !== 'title' && svc.access().canReadProperty(svc.principalId, p, row))
   const order = L.order?.length ? [...L.order.filter((id) => props.some((p) => p.id === id)), ...props.map((p) => p.id).filter((id) => !L.order!.includes(id))] : props.map((p) => p.id)
-  const vis = (d: Definition): Vis => L.visibility?.[d.id] ?? defaultVis(d)
+  const vis = (d: Definition): Vis => L.visibility?.[d.id] ?? 'always'
   const isEmpty = (d: Definition) => {
     if (d.kind === 'relation') return svc.resolver().relationTargets(row, d).length === 0
-    if (DESCRIPTORS[d.kind].cellKind) return isEmptyCell(row.ext.cells[d.id]?.value ?? defaultCell(d)) || (d.kind === 'checkbox' && false)
+    if (DESCRIPTORS[d.kind].cellKind) return isEmptyCell(row.ext.cells[d.id]?.value ?? defaultCell(d))
     if (d.kind === 'button') return false
-    const q = svc.resolver().value(row, d)
-    return q.c === 'empty'
+    return svc.resolver().value(row, d).c === 'empty'
   }
   return { src, L, props, order, vis, isEmpty }
 }
@@ -58,7 +56,7 @@ function Panel({ svc, row, nav }: { svc: DatabaseService; row: Row; nav: DbNav }
   const [msg, setMsg] = useState<string | null>(null)
   const rs = svc.resolver()
   const comments = svc.state.live('comment').filter((c) => c.pageId === row.page.id && c.parentCommentId === null)
-  const countFor = (pid: Id) => comments.filter((c) => c.propertyId === pid && !c.resolved).length
+  const countFor = (pid: Id | null) => comments.filter((c) => c.propertyId === pid && !c.resolved).length
   const owner = svc.state.get('container', src.ownerContainerId)
 
   const byId = new Map(props.map((p) => [p.id, p]))
@@ -66,12 +64,11 @@ function Panel({ svc, row, nav }: { svc: DatabaseService; row: Row; nav: DbNav }
   const inSection = new Set((L.sections ?? []).flatMap((s) => s.propertyIds))
   const rest = order.filter((id) => !heading.includes(id) && !inSection.has(id))
   const shown = (d: Definition) => custom || vis(d) === 'always' || (vis(d) === 'hide_if_empty' && !isEmpty(d))
-  const hiddenOnes = [...order].map((id) => byId.get(id)!).filter((d) => d && !custom && !shown(d))
+  const hiddenOnes = order.map((id) => byId.get(id)!).filter((d) => d && !custom && !shown(d))
 
   const saveLayout = async (next: SourceLayout | null) => {
     const r = await svc.tryExec([{ type: 'source.set_layout', payload: { sourceId: src.id, layout: next as unknown as Json } }])
-    if (!r.ok) setMsg(errorText(r.code, r.message))
-    else setMsg(null)
+    setMsg(r.ok ? null : errorText(r.code, r.message))
   }
   const setVis = (id: Id, v: Vis) => void saveLayout({ ...L, visibility: { ...(L.visibility ?? {}), [id]: v } })
   const pin = (id: Id) => void saveLayout({ ...L, heading: heading.includes(id) ? heading.filter((x) => x !== id) : [...heading, id].slice(0, 15) })
@@ -83,95 +80,91 @@ function Panel({ svc, row, nav }: { svc: DatabaseService; row: Row; nav: DbNav }
     ;[n[i], n[j]] = [n[j], n[i]]
     void saveLayout({ ...L, order: n })
   }
+  const whyReadOnly = (d: Definition) =>
+    DESCRIPTORS[d.kind].storage === 'derived'
+      ? t('This value is calculated; change its inputs instead.')
+      : DESCRIPTORS[d.kind].storage === 'system' || d.kind === 'unique_id'
+        ? t('This value is set by the system.')
+        : d.kind === 'button'
+          ? null
+          : t('You can view this item but not edit it.')
 
   const field = (d: Definition) => {
     const isEd = editing?.id === d.id
-    const cell = <CellView svc={svc} rs={rs} row={row} def={d} />
     const writable = DESCRIPTORS[d.kind].writable && canEdit
+    const n = countFor(d.id)
     return (
-      <div className={'rp-row' + (isEd ? ' editing' : '')} key={d.id} data-prop={d.id}>
-        <div className="rp-label" title={t(d.name)}>
-          <KindIcon kind={d.kind} />{' '}
-          <span className="rp-name" dir="auto">
+      <div className="ds-prop dv-prop" key={d.id} data-prop={d.id} data-pinned={heading.includes(d.id) || undefined}>
+        <span className="ds-prop-label" title={d.name}>
+          <KindIcon kind={d.kind} />
+          <span className="dv-prop-name" dir="auto">
             {d.name}
           </span>
-        </div>
-        <div className="rp-value">
+        </span>
+        <div className="ds-prop-value">
           {custom ? (
-            <div className="rp-custom">
-              <Select
+            <div className="dv-prop-custom">
+              <Dropdown
+                className="ds-dd-btn--sm"
+                label={t('Show {n}', { n: d.name })}
                 value={vis(d)}
                 options={[
-                  { value: 'always', label: t('Always show') },
-                  { value: 'hide_if_empty', label: t('Hide when empty') },
-                  { value: 'hidden', label: t('Hidden') },
+                  { value: 'always', label: 'Always show' },
+                  { value: 'hide_if_empty', label: 'Hide when empty' },
+                  { value: 'hidden', label: 'Hidden' },
                 ]}
-                onChange={(v) => setVis(d.id, v as Vis)}
+                onChange={(v) => setVis(d.id, v)}
               />
-              <button type="button" className={'icon-btn' + (heading.includes(d.id) ? ' on' : '')} aria-label={t('Pin to the top')} aria-pressed={heading.includes(d.id)} onClick={() => pin(d.id)}>
-                <Ic.Star size={13} filled={heading.includes(d.id)} />
-              </button>
-              <button type="button" className="icon-btn" aria-label={t('Move up')} onClick={() => move(d.id, -1)}>
-                <Ic.Up size={13} />
-              </button>
-              <button type="button" className="icon-btn" aria-label={t('Move down')} onClick={() => move(d.id, 1)}>
-                <span style={{ display: 'inline-block', transform: 'rotate(180deg)' }}>
-                  <Ic.Up size={13} />
-                </span>
-              </button>
-              <button type="button" className="icon-btn" aria-label={t('Property settings')} onClick={(e) => setMenu({ def: d, rect: e.currentTarget.getBoundingClientRect() })}>
-                <Ic.Settings size={13} />
-              </button>
+              <IconButton className="ds-icon-btn--toggle" label={t('Pin to the top')} pressed={heading.includes(d.id)} onClick={() => pin(d.id)}>
+                <Icon name="pin" size={15} />
+              </IconButton>
+              <IconButton label={t('Move up')} onClick={() => move(d.id, -1)}>
+                <Icon name="arrow-up" size={15} />
+              </IconButton>
+              <IconButton label={t('Move down')} onClick={() => move(d.id, 1)}>
+                <Icon name="arrow-down" size={15} />
+              </IconButton>
+              <IconButton label={t('Property settings')} onClick={(e) => setMenu({ def: d, rect: e.currentTarget.getBoundingClientRect() })}>
+                <Icon name="settings" size={15} />
+              </IconButton>
             </div>
           ) : isEd && isInlineKind(d.kind) ? (
             <InlineCellEditor svc={svc} row={row} def={d} onClose={() => setEditing(null)} />
           ) : (
             <button
               type="button"
-              className={'rp-cell' + (writable ? '' : ' ro')}
+              className="dv-prop-cell"
+              data-ro={!writable || undefined}
               aria-label={`${d.name}: ${t('edit')}`}
               onClick={(e) => {
-                if (!writable)
-                  return setMsg(
-                    DESCRIPTORS[d.kind].storage === 'derived'
-                      ? t('This value is calculated; change its inputs instead.')
-                      : DESCRIPTORS[d.kind].storage === 'system' || d.kind === 'unique_id'
-                        ? t('This value is set by the system.')
-                        : d.kind === 'button'
-                          ? ''
-                          : t('You can view this item but not edit it.'),
-                  )
+                if (!writable) {
+                  const why = whyReadOnly(d)
+                  if (why) setMsg(why)
+                  return
+                }
                 if (d.kind === 'checkbox') {
                   void svc.tryExec([
-                    {
-                      type: 'row.patch',
-                      payload: { pageId: row.page.id, cellChanges: { [d.id]: { kind: 'checkbox', value: !(row.ext.cells[d.id]?.value as { value?: boolean } | undefined)?.value } } },
-                    },
+                    { type: 'row.patch', payload: { pageId: row.page.id, cellChanges: { [d.id]: { kind: 'checkbox', value: !(row.ext.cells[d.id]?.value as { value?: boolean } | undefined)?.value } } } },
                   ])
                   return
                 }
                 setEditing({ id: d.id, rect: e.currentTarget.getBoundingClientRect() })
               }}
             >
-              {cell}
-              {isEmpty(d) && d.kind !== 'checkbox' && <span className="rp-empty">{t('Empty')}</span>}
+              <CellView svc={svc} rs={rs} row={row} def={d} />
+              {isEmpty(d) && d.kind !== 'checkbox' && <span className="dv-prop-empty">{t('Empty')}</span>}
             </button>
           )}
           {isEd && isPopoverKind(d.kind) && <PopoverEditor svc={svc} row={row} def={d} anchor={editing!.rect} onClose={() => setEditing(null)} />}
+          {!custom && DESCRIPTORS[d.kind].cellKind && d.kind !== 'checkbox' && (
+            <button type="button" className="dv-prop-comment" data-has={n > 0 || undefined} aria-expanded={commentsFor === d.id} aria-label={t('Comments on {n}', { n: d.name })} onClick={() => setCommentsFor(commentsFor === d.id ? null : d.id)}>
+              <Icon name="comment" size={14} />
+              {n > 0 && <span>{n}</span>}
+            </button>
+          )}
         </div>
-        {!custom && DESCRIPTORS[d.kind].cellKind && !['checkbox'].includes(d.kind) && (
-          <button
-            type="button"
-            className={'rp-cm' + (countFor(d.id) ? ' has' : '')}
-            aria-label={t('Comments on {n}', { n: d.name })}
-            onClick={() => setCommentsFor(commentsFor === d.id ? null : d.id)}
-          >
-            <Ic.Quote size={12} />
-            {countFor(d.id) > 0 && <b>{countFor(d.id)}</b>}
-          </button>
-        )}
         {commentsFor === d.id && (
-          <div className="rp-thread">
+          <div className="dv-prop-thread">
             <CommentsThread svc={svc} pageId={row.page.id} propertyId={d.id} />
           </div>
         )}
@@ -179,86 +172,86 @@ function Panel({ svc, row, nav }: { svc: DatabaseService; row: Row; nav: DbNav }
     )
   }
 
-  const id = formatUniqueId(
-    props.find((p) => p.kind === 'unique_id') ?? ({ config: {} } as Definition),
-    props.find((p) => p.kind === 'unique_id') ? row.ext.allocatedIds[props.find((p) => p.kind === 'unique_id')!.id] : undefined,
-  )
+  const idProp = props.find((p) => p.kind === 'unique_id')
+  const id = idProp ? formatUniqueId(idProp, row.ext.allocatedIds[idProp.id]) : ''
+  const pageComments = countFor(null)
   return (
     <NavContext.Provider value={nav}>
-      <div className="rp" aria-label={t('Properties')}>
-        <div className="rp-top">
-          <span className="rp-src" title={t('Data source')}>
-            <Ic.Layers size={12} /> <span dir="auto">{plainTitle(owner?.title || src.name)}</span>{' '}
-            {owner && owner.id !== undefined && src.name && owner.title !== src.name ? <small>· {src.name}</small> : null}
+      <section className="dv-rowprops" aria-label={t('Database properties')}>
+        <header className="dv-rowprops-head">
+          <span className="dv-rowprops-src" title={t('Data source')}>
+            <Icon name="database" size={15} />
+            <span dir="auto">{plainTitle(owner?.title || src.name)}</span>
+            {owner && src.name && owner.title !== src.name && <small dir="auto">· {src.name}</small>}
           </span>
           {id && (
-            <span className="db-id" dir="ltr">
+            <span className="dv-id" dir="ltr">
               {id}
             </span>
           )}
-          <span className="spacer" />
-          {canSchema && (
-            <button type="button" className={'db-tool' + (custom ? ' on' : '')} onClick={() => setCustom(!custom)}>
-              <Ic.Settings size={13} /> {custom ? t('Done') : t('Customize layout')}
-            </button>
-          )}
-        </div>
-        {heading
-          .map((id) => byId.get(id))
-          .filter((d): d is Definition => !!d && shown(d))
-          .map(field)}
-        {(L.sections ?? []).map((s) => (
-          <details className="rp-section" key={s.id} open={!s.collapsed}>
-            <summary>{s.title}</summary>
-            {s.propertyIds
-              .map((id) => byId.get(id))
-              .filter((d): d is Definition => !!d && shown(d))
-              .map(field)}
-          </details>
-        ))}
-        {rest
-          .map((id) => byId.get(id))
-          .filter((d): d is Definition => !!d && shown(d) && !heading.includes(d.id))
-          .map(field)}
-        {hiddenOnes.length > 0 && (
-          <div className="rp-more">
-            <button type="button" className="db-linkbtn" onClick={() => setMoreOpen(!moreOpen)}>
-              {moreOpen ? t('Hide') : t('{n} more properties', { n: hiddenOnes.length })}
-            </button>
-            {moreOpen && hiddenOnes.map(field)}
+          <span className="dv-rowprops-acts">
+            <Button size="sm" variant="ghost" icon={<Icon name="comment" size={15} />} aria-expanded={commentsFor === 'page'} onClick={() => setCommentsFor(commentsFor === 'page' ? null : 'page')}>
+              {pageComments ? t('Comments · {n}', { n: pageComments }) : t('Comments')}
+            </Button>
+            {canSchema && (
+              <Button size="sm" variant={custom ? 'primary' : 'ghost'} icon={<Icon name={custom ? 'check' : 'settings'} size={15} />} onClick={() => setCustom(!custom)}>
+                {custom ? t('Done') : t('Customize layout')}
+              </Button>
+            )}
+          </span>
+        </header>
+        {commentsFor === 'page' && (
+          <div className="dv-prop-thread">
+            <CommentsThread svc={svc} pageId={row.page.id} propertyId={null} />
           </div>
+        )}
+        <div className="ds-props dv-props">
+          {heading
+            .map((hid) => byId.get(hid))
+            .filter((d): d is Definition => !!d && shown(d))
+            .map(field)}
+          {(L.sections ?? []).map((s) => (
+            <details className="dv-section" key={s.id} open={!s.collapsed}>
+              <summary>
+                <Icon name="chevron-down" size={14} className="dv-caret" />
+                <span dir="auto">{s.title}</span>
+              </summary>
+              {s.propertyIds
+                .map((pid) => byId.get(pid))
+                .filter((d): d is Definition => !!d && shown(d))
+                .map(field)}
+            </details>
+          ))}
+          {rest
+            .map((rid) => byId.get(rid))
+            .filter((d): d is Definition => !!d && shown(d) && !heading.includes(d.id))
+            .map(field)}
+          {hiddenOnes.length > 0 && moreOpen && hiddenOnes.map(field)}
+        </div>
+        {hiddenOnes.length > 0 && (
+          <Button size="sm" variant="ghost" icon={<Icon name={moreOpen ? 'chevron-up' : 'chevron-down'} size={15} />} aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>
+            {moreOpen ? t('Show fewer properties') : t('{n} more properties', { n: hiddenOnes.length })}
+          </Button>
         )}
         {custom && (
-          <div className="rp-foot">
-            <button type="button" onClick={(e) => setNewProp(e.currentTarget.getBoundingClientRect())}>
-              <Ic.Plus size={12} /> {t('New property')}
-            </button>
-            <button type="button" onClick={() => void saveLayout({ ...L, sections: [...(L.sections ?? []), { id: crypto.randomUUID(), title: t('Section'), propertyIds: [] }] })}>
+          <div className="dv-rowprops-foot">
+            <Button size="sm" icon={<Icon name="plus" size={15} />} onClick={(e) => setNewProp(e.currentTarget.getBoundingClientRect())}>
+              {t('New property')}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => void saveLayout({ ...L, sections: [...(L.sections ?? []), { id: crypto.randomUUID(), title: t('Section'), propertyIds: [] }] })}>
               {t('Add a section')}
-            </button>
-            <button type="button" className="danger" onClick={() => void saveLayout(null)}>
+            </Button>
+            <Button size="sm" variant="ghost" className="dv-danger" onClick={() => void saveLayout(null)}>
               {t('Reset layout (keeps every value)')}
-            </button>
+            </Button>
           </div>
         )}
-        {msg && (
-          <div className="db-err" role="alert">
-            {msg}
-          </div>
-        )}
-        <div className="rp-comments">
-          <button type="button" className="db-linkbtn" onClick={() => setCommentsFor(commentsFor === 'page' ? null : 'page')}>
-            <Ic.Quote size={13} /> {t('Comments')}
-            {comments.filter((c) => c.propertyId === null).length ? ` (${comments.filter((c) => c.propertyId === null).length})` : ''}
-          </button>
-          {commentsFor === 'page' && <CommentsThread svc={svc} pageId={row.page.id} propertyId={null} />}
-        </div>
+        {msg && <ErrorLine>{msg}</ErrorLine>}
         {menu && <PropertyMenu svc={svc} def={menu.def} anchor={menu.rect} onClose={() => setMenu(null)} actions={{}} />}
         {newProp && <NewPropertyPopover svc={svc} sourceId={src.id} anchor={newProp} onClose={() => setNewProp(null)} />}
-      </div>
+      </section>
     </NavContext.Provider>
   )
 }
 
 export default RowProperties
-export const _useMemo = useMemo
