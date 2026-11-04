@@ -1,14 +1,15 @@
+import type { CSSProperties } from 'react'
 import { Button } from '../design-system/Button'
 import { Icon } from '../design-system/icons'
 import { updateSettings, useSettings } from '../settings'
 import { t } from '../i18n'
 
 export const ACCENTS = [
-  { value: null, label: 'Teal', css: 'teal' },
-  { value: '#6857f0', label: 'Violet', css: 'violet' },
-  { value: '#3b6cf6', label: 'Blue', css: 'blue' },
-  { value: '#22b07d', label: 'Green', css: 'green' },
-  { value: '#ef5b4f', label: 'Coral', css: 'coral' },
+  { value: null, label: 'Teal' },
+  { value: '#6857f0', label: 'Violet' },
+  { value: '#3b6cf6', label: 'Blue' },
+  { value: '#22b07d', label: 'Green' },
+  { value: '#ef5b4f', label: 'Coral' },
 ] as const
 
 /** The accent choice shared by Settings and first launch. Writes the real accent setting. */
@@ -17,7 +18,8 @@ export function AccentSwatches() {
   return (
     <div className="prefs-swatches" role="group" aria-label={t('Accent color')}>
       {ACCENTS.map((a) => (
-        <Button key={a.label} className={'prefs-swatch tone-' + a.css} aria-label={t(a.label)} title={t(a.label)} aria-pressed={accent === a.value} onClick={() => updateSettings({ accent: a.value })}>
+        // the dot is painted with the accent it applies (teal is the default token), not a per-colour class that can go missing
+        <Button key={a.label} className="prefs-swatch" style={{ '--swatch': a.value ?? 'var(--ds-teal)' } as CSSProperties} aria-label={t(a.label)} title={t(a.label)} aria-pressed={accent === a.value} onClick={() => updateSettings({ accent: a.value })}>
           {accent === a.value && <Icon name="check" size={12} />}
         </Button>
       ))}

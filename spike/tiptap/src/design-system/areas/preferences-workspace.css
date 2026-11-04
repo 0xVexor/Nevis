@@ -4,7 +4,10 @@
 .prefs-embedded .prefs-nav-footer > :not(button) { display: none; }
 .prefs-embedded .prefs-content { padding: var(--ds-s10) clamp(var(--ds-s6), 4vw, 56px); }
 .prefs-embedded .prefs-nav-caption { display: block; }
-.prefs-embedded .prefs-main { container-type: inline-size; }
+.prefs-embedded .prefs-main { container-type: inline-size; overflow-y: auto; }
+/* inside the app the shell fills the area under the title bar exactly: the side panel stays put and only the panel content scrolls (100dvh would run past the title bar) */
+.prefs-shell.prefs-embedded { block-size: 100%; min-block-size: 0; overflow: hidden; }
+.prefs-embedded .prefs-nav { position: static; block-size: auto; align-self: stretch; }
 @container preferences (max-width: 760px) {
   .prefs-embedded .prefs-columns { grid-template-columns: minmax(0, 1fr); }
   .prefs-embedded .prefs-preview { position: static; max-inline-size: 360px; }
@@ -47,7 +50,6 @@
 .prefs-swatches { display: flex; align-items: center; gap: var(--ds-s2); }
 .prefs-swatch.ds-btn { padding: 0; min-inline-size: 0; inline-size: 22px; block-size: 22px; border-radius: var(--ds-r-full); background: var(--swatch); border: 0; color: var(--ds-white); font-size: var(--ds-text-caption); }
 .prefs-swatch[aria-pressed='true'] { outline: 1.5px solid var(--ds-text-2); outline-offset: 3px; }
-.tone-teal { --swatch: var(--ds-teal); }
 .prefs-custom-color { position: relative; display: grid; place-items: center; inline-size: 24px; block-size: 24px; border: 1px dashed var(--ds-line-strong); border-radius: var(--ds-r-full); color: var(--ds-text-3); cursor: pointer; }
 .prefs-custom-color input { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; opacity: 0; cursor: pointer; }
 .prefs-custom-color:focus-within { outline: 2px solid var(--ds-accent); outline-offset: 3px; }
