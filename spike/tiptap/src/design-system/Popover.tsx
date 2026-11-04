@@ -60,7 +60,7 @@ export function Popover({ anchor, onClose, children, align = 'start' }: { anchor
       if (!onTop()) return
       if (e.key === 'Escape') return dismiss()
       // items of a closed submenu are hidden, so only what is on screen is reachable by the arrow keys
-      const items = [...(ref.current?.querySelectorAll<HTMLElement>('.ds-menu-item:not(:disabled)') ?? [])].filter((item) => item.offsetParent !== null)
+      const items = [...(ref.current?.querySelectorAll<HTMLElement>('.ds-menu-item:not(:disabled), [data-menu-item]') ?? [])].filter((item) => item.offsetParent !== null)
       if (!items.length || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return
       e.preventDefault()
       const i = items.indexOf(document.activeElement as HTMLElement)

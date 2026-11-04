@@ -18,11 +18,9 @@
 .tb-tx--underline { font-weight: 500; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
 
 /* the table dropdown: a size grid on top of an ordinary design-system menu */
-.tb-dd { position: relative; display: inline-flex; }
-.tb-table-menu { position: absolute; z-index: var(--ds-z-pop); inset-block-start: calc(100% + var(--ds-s2)); inset-inline-start: 50%; translate: -50% 0; min-inline-size: 240px; }
-:root[dir='rtl'] .tb-table-menu { translate: 50% 0; }
 .tb-grid { display: grid; grid-template-columns: repeat(9, 18px); gap: var(--ds-s1); justify-content: center; padding: var(--ds-s2) var(--ds-s2) 0; direction: ltr; }
 .tb-grid span { block-size: 18px; border-radius: var(--ds-r-sm); background: var(--ds-sunk); outline: 1px solid var(--ds-line); outline-offset: -1px; cursor: var(--cursor-hand, pointer); }
+.tb-grid:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; border-radius: var(--ds-r-sm); }
 .tb-grid span.on { background: var(--ds-accent-soft); outline-color: var(--ds-accent-line); }
 .tb-grid-size { padding: var(--ds-s1) 0 var(--ds-s1); color: var(--ds-text-3); font-size: var(--ds-text-small); text-align: center; font-variant-numeric: tabular-nums; }
 
