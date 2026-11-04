@@ -225,7 +225,7 @@ export const extensions = [
   PhysicalShortcuts,
   BlockIdentity,
   RtlTableResize,
-  StarterKit.configure({ codeBlock: false }),
+  StarterKit.configure({ codeBlock: false, dropcursor: { color: 'var(--ds-accent)', width: 2 } }),
   CodeBlock,
   Table.configure({ resizable: true, View: DirTableView as never }),
   TableRow,

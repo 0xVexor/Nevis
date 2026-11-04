@@ -48,10 +48,6 @@
 .prefs-swatch.ds-btn { padding: 0; min-inline-size: 0; inline-size: 22px; block-size: 22px; border-radius: var(--ds-r-full); background: var(--swatch); border: 0; color: var(--ds-white); font-size: var(--ds-text-caption); }
 .prefs-swatch[aria-pressed='true'] { outline: 1.5px solid var(--ds-text-2); outline-offset: 3px; }
 .tone-teal { --swatch: var(--ds-teal); }
-.tone-violet { --swatch: var(--ds-violet); }
-.tone-blue { --swatch: var(--ds-blue); }
-.tone-green { --swatch: var(--ds-green); }
-.tone-coral { --swatch: var(--ds-danger); }
 .prefs-custom-color { position: relative; display: grid; place-items: center; inline-size: 24px; block-size: 24px; border: 1px dashed var(--ds-line-strong); border-radius: var(--ds-r-full); color: var(--ds-text-3); cursor: pointer; }
 .prefs-custom-color input { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; opacity: 0; cursor: pointer; }
 .prefs-custom-color:focus-within { outline: 2px solid var(--ds-accent); outline-offset: 3px; }

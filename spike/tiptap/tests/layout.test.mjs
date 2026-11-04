@@ -256,7 +256,7 @@ test('saved layout NodeViews initialize before editor.view is assigned', () => {
   let listening = 0, disconnected = false, observeResize
   class ElementStub {
     children = []
-    style = {}
+    style = { setProperty(name, value) { this[name] = value } }
     dataset = {}
     clientWidth = 1000
     classList = { toggle() {}, add() {}, remove() {} }
@@ -275,7 +275,7 @@ test('saved layout NodeViews initialize before editor.view is assigned', () => {
     const renderer = LayoutGroup.config.addNodeView.call({})
     const result = renderer({ node: fixture().firstChild, editor, getPos: () => 0, view: { dom: new ElementStub() } })
     assert.equal(result.contentDOM.children.length, 0)
-    assert.equal(result.contentDOM.style.gridTemplateColumns, 'minmax(0, 50fr) minmax(0, 50fr)')
+    assert.equal(result.contentDOM.style['--layout-tracks'], 'minmax(0, 50fr) minmax(0, 50fr)')
     assert.equal(listening, 1)
     observeResize()
     assert.equal(frames.length, 1, 'observer defers layout writes to the next frame')

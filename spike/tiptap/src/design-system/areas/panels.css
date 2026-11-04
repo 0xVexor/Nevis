@@ -25,7 +25,7 @@
   gap: 2px;
   block-size: var(--ds-control-sm);
 }
-.crumb-home { display: grid; place-items: center; flex: none; width: 28px; height: var(--ds-control-sm); padding: 0; border: 0; border-radius: var(--ds-r-sm); background: none; color: var(--ds-text-2); cursor: var(--cursor-hand, pointer); transition: background 0.15s, color 0.15s; }
+.crumb-home { display: grid; place-items: center; flex: none; width: 28px; height: var(--ds-control-sm); padding: 0; border: 0; border-radius: var(--ds-r-sm); background: none; color: var(--ds-text-2); cursor: var(--cursor-hand, pointer); transition: background var(--ds-fast), color var(--ds-fast); }
 .crumb-home:hover { background: var(--ds-hover); color: var(--ds-text); }
 .crumb-sep { display: grid; place-items: center; width: 14px; height: var(--ds-control-sm); padding: 0; color: var(--ds-text-3); }
 :root[dir='rtl'] .crumb-sep svg { transform: scaleX(-1); }
@@ -61,7 +61,6 @@
   background: none;
   block-size: auto;
 }
-.tb-group .icon-btn { width: 32px; height: 32px; border-radius: var(--ds-r-sm); }
 
 /* ───────── menus ───────── */
 

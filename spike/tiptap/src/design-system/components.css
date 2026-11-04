@@ -20,7 +20,7 @@
   height: var(--ds-control); padding: 0 var(--ds-s4); border-radius: var(--ds-r);
   border: 1px solid var(--ds-line); background: var(--ds-raised); color: var(--ds-text);
   font: 550 var(--ds-text-ui) /1 var(--ds-font-ui); white-space: nowrap; cursor: var(--cursor-hand, pointer);
-  transition: background var(--ds-fast), border-color var(--ds-fast), transform 0.1s;
+  transition: background var(--ds-fast), border-color var(--ds-fast), transform var(--ds-fast);
 }
 .ds-btn:hover { background: var(--ds-sunk); border-color: var(--ds-line-strong); }
 .ds-btn:active { filter: brightness(0.96); }
@@ -282,7 +282,7 @@ button.ds-tag-name:hover { text-decoration: underline; text-underline-offset: 3p
  * Markup: .ds-layout > .ds-layout-cols > (.ds-layout-col, .ds-layout-resizer)*   Grid: `Nfr 20px Nfr 20px Nfr`, one gutter per divider.
  * Columns stack by container width (560px), not viewport width. */
 .ds-layout { position: relative; margin-block: var(--ds-s6); container-type: inline-size; }
-.ds-layout-cols { display: grid; align-items: start; transition: grid-template-columns 0.28s var(--ds-ease); }
+.ds-layout-cols { display: grid; align-items: start; transition: grid-template-columns var(--ds-slow) var(--ds-ease); }
 .ds-layout[data-resizing='true'] .ds-layout-cols { transition: none; }
 .ds-layout-col {
   min-width: 0; min-height: 56px; padding: var(--ds-s1) 2px; border-radius: var(--ds-r-sm);
@@ -304,7 +304,7 @@ button.ds-tag-name:hover { text-decoration: underline; text-underline-offset: 3p
 .ds-layout-assist b { color: var(--ds-text); font-weight: 600; }
 .ds-layout-mini { width: 20px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.3; color: var(--ds-text-2); }
 /* dragging: grip beside a block, ghost under the pointer, preview of the landing zone */
-.ds-grip { position: fixed; z-index: var(--ds-z-grip); width: 24px; height: var(--ds-control-sm); display: grid; place-items: center; padding: 0; border: 1px solid var(--ds-line); border-radius: var(--ds-r-sm); background: var(--ds-raised); box-shadow: var(--ds-shadow-lift); color: var(--ds-text-2); cursor: var(--cursor-grab, grab); opacity: 0; pointer-events: none; transition: opacity 0.12s; }
+.ds-grip { position: fixed; z-index: var(--ds-z-grip); width: 24px; height: var(--ds-control-sm); display: grid; place-items: center; padding: 0; border: 1px solid var(--ds-line); border-radius: var(--ds-r-sm); background: var(--ds-raised); box-shadow: var(--ds-shadow-lift); color: var(--ds-text-2); cursor: var(--cursor-grab, grab); opacity: 0; pointer-events: none; transition: opacity var(--ds-fast); }
 .ds-grip[data-show='true'] { opacity: 1; pointer-events: auto; }
 .ds-grip:hover { background: var(--ds-hover); color: var(--ds-text); }
 .ds-dragging { opacity: 0.3; transition: opacity var(--ds-fast); }
@@ -329,7 +329,8 @@ button.ds-tag-name:hover { text-decoration: underline; text-underline-offset: 3p
 .ds-drag-ghost[hidden], .ds-snap-preview[hidden], .ds-drag-source[hidden] { display: none; }
 :root[data-motion='reduce'] .ds-snap-preview { transition: none; }
 @container (max-width: 560px) {
-  /* the column widths are an inline style set by the layout code */ .ds-layout-cols { grid-template-columns: minmax(0, 1fr) !important; }
+  /* one column: more specific than a screen's own column widths (.home-columns), so it wins */
+  .ds-layout > .ds-layout-cols { grid-template-columns: minmax(0, 1fr); }
   .ds-layout-resizer { display: none; }
   .ds-layout-col + .ds-layout-resizer + .ds-layout-col { margin-top: var(--ds-s5); }
 }
@@ -428,7 +429,7 @@ button.ds-list-row:focus-visible { outline: 2px solid var(--ds-accent); outline-
 /* Tooltip: a short label on hover or keyboard focus, centred above the control it wraps */
 .ds-tip { position: relative; display: inline-flex; }
 .ds-tip::after { content: attr(data-tip); position: absolute; inset-block-end: calc(100% + 6px); inset-inline: 0; margin-inline: auto; inline-size: max-content; max-inline-size: 240px; padding: var(--ds-s1) var(--ds-s2); border-radius: var(--ds-r-sm); background: var(--ds-text); color: var(--ds-bg); font-size: var(--ds-text-caption); line-height: 1.3; text-align: center; opacity: 0; pointer-events: none; transition: opacity var(--ds-fast); z-index: var(--ds-z-float); }
-.ds-tip:hover::after, .ds-tip:focus-within::after { opacity: 1; transition-delay: 0.35s; }
+.ds-tip:hover::after, .ds-tip:focus-within::after { opacity: 1; transition-delay: var(--ds-slow); }
 
 /* Facts: a short list of labels and values, for a summary in a dialog or a card */
 .ds-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--ds-s2) var(--ds-s6); margin: 0; padding: var(--ds-s4); border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-sunk); }

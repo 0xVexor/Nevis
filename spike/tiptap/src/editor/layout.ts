@@ -274,7 +274,7 @@ export const LayoutGroup = Node.create({
       const draw = (widths = displayWidths(cur)) => {
         if (cur.attrs.direction) dom.dir = cur.attrs.direction
         else dom.removeAttribute('dir')
-        body.style.gridTemplateColumns = widths.map((w) => `minmax(0, ${w}fr)`).join(' ')
+        body.style.setProperty('--layout-tracks', widths.map((w) => `minmax(0, ${w}fr)`).join(' '))
         dom.setAttribute('aria-label', t('Layout with {n} columns', { n: cur.childCount }))
         dom.dataset.invalidWidths = String(!validWidths(cur.attrs.widths, cur.childCount))
         const available = body.clientWidth - GAP * (cur.childCount - 1)

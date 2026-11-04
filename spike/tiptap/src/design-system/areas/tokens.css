@@ -1,25 +1,11 @@
 /*
- * Nevis design tokens — "Aurora Paper".
- * One definition per token: light-dark() picks the palette from color-scheme, and
- * color-scheme itself follows the system unless the user chose a theme (data-theme on <html>).
- * Settings only override a few variables inline on :root (--user-accent, --user-radius*, --font, --editor-*).
+ * The few shared values that are not --ds-* tokens (those live in design-system/tokens.css).
+ * Settings override some of them inline on :root: --font (the interface font), --bg-custom-light / --bg-custom-dark
+ * (a background the person chose), --editor-*.
  */
 :root {
   color-scheme: light dark;
-
-  /* shape */
-
-  /* accent: one hue, everything else is derived so a custom accent recolours the whole app */
-
-  /* surfaces */
-  --bg: light-dark(#fffefe, #0d0d15);
-
-  /* ink */
-
-  /* lines + states */
-  --dot: light-dark(rgb(70 50 180 / 0.14), rgb(255 255 255 / 0.055));
-
-  /* status */
+  --font: 'Instrument Sans', 'Vazirmatn', 'Segoe UI', Tahoma, system-ui, sans-serif;
 
   /* code */
   --code-text: light-dark(#c2378d, #ff8cc6);
@@ -37,30 +23,11 @@
   --hl-add: rgb(46 160 67 / 0.2);
   --hl-del: rgb(248 81 73 / 0.2);
 
-  /* depth */
-  --panel-shadow: 0 1px 2px light-dark(rgb(30 20 100 / 0.05), rgb(0 0 0 / 0.4)), 0 10px 32px light-dark(rgb(30 20 100 / 0.09), rgb(0 0 0 / 0.38));
-
-  /* type + motion */
-  --font: 'Vazirmatn', 'Segoe UI', Tahoma, system-ui, sans-serif;
-  --mono: 'Cascadia Mono', Consolas, 'SFMono-Regular', monospace;
-  --ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --spring: cubic-bezier(0.34, 1.4, 0.64, 1);
-  --to-end: 90deg; /* gradient direction toward the inline end; flipped for RTL below */
-
-  /* canvas: soft aurora behind the floating panels; a custom background (settings) replaces it */
-  --mesh-light:
-    radial-gradient(1000px 620px at 6% -8%, rgb(135 115 255 / 0.3), transparent 62%),
-    radial-gradient(860px 560px at 104% 8%, rgb(255 135 190 / 0.2), transparent 62%),
-    radial-gradient(900px 640px at 64% 112%, rgb(80 200 255 / 0.22), transparent 62%);
-  --mesh-dark:
-    radial-gradient(1000px 620px at 6% -8%, rgb(100 80 255 / 0.2), transparent 62%),
-    radial-gradient(860px 560px at 104% 8%, rgb(230 70 160 / 0.12), transparent 62%),
-    radial-gradient(900px 640px at 64% 112%, rgb(30 120 220 / 0.15), transparent 62%);
-  --app-bg-image: var(--bg-custom-light, var(--mesh-light));
+  /* the app background is plain unless the person chose one in Settings */
+  --app-bg-image: var(--bg-custom-light, none);
 }
-:root[dir='rtl'] { --to-end: 270deg; }
 :root[data-theme='light'] { color-scheme: light; }
-:root[data-theme='dark'] { color-scheme: dark; --app-bg-image: var(--bg-custom-dark, var(--mesh-dark)); }
+:root[data-theme='dark'] { color-scheme: dark; --app-bg-image: var(--bg-custom-dark, none); }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) { --app-bg-image: var(--bg-custom-dark, var(--mesh-dark)); }
+  :root:not([data-theme='light']) { --app-bg-image: var(--bg-custom-dark, none); }
 }

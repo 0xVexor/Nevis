@@ -16,7 +16,7 @@
 .app.reading :is(.pg-add, .pg-starts) { display: none; }
 .app.reading .pg-props :is(.ds-chip-btn[data-empty], .ds-tag-x) { display: none; }
 .app.reading .pg-props .ds-chip-btn { pointer-events: none; }
-.app.reading :is(.img-handle, .cover-acts, .code-diagram, .mermaid-bar button:not(.mm-big), .img-bar > :not(.img-big):not(.ds-toolbar-sep), .img-bar .ds-toolbar-sep, .ds-toolbar:not(.img-bar):not(.mermaid-bar):not(.lb-bar)) { display: none !important; }
+.app.reading :is(.img-handle, .cover-acts, .code-diagram, .mermaid-bar button:not(.mm-big), .img-bar > :not(.img-big):not(.ds-toolbar-sep), .img-bar .ds-toolbar-sep, .ds-toolbar:not(.img-bar):not(.mermaid-bar):not(.lb-bar)) { display: none; }
 .app.reading .code-lang { pointer-events: none; appearance: none; border-color: transparent; background: transparent; }
 
 /* progress: a thin accent line along the top */

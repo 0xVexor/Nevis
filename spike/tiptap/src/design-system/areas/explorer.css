@@ -21,10 +21,10 @@
 .fx-h { display: inline-flex; align-items: center; gap: var(--ds-s1); border: 0; background: transparent; padding: 0; color: var(--ds-text-3); font-size: var(--ds-text-small); font-weight: 550; text-align: start; cursor: var(--cursor-hand, pointer); }
 button.fx-h:hover { color: var(--ds-text); }
 
-.fx-body { flex: 1; min-height: 0; overflow: auto; padding: var(--ds-s2) 0; border-radius: var(--ds-r-lg); transition: background 0.15s; }
+.fx-body { flex: 1; min-height: 0; overflow: auto; padding: var(--ds-s2) 0; border-radius: var(--ds-r-lg); transition: background var(--ds-fast); }
 .fx-body.drop { background: var(--ds-accent-faint); outline: 2px dashed var(--ds-accent-line); outline-offset: -4px; }
 /* rows: flat, one accent for the selection, counts as outlined chips; every corner follows Settings → Corner radius */
-.fx-item { position: relative; display: grid; grid-template-columns: 22px minmax(0, 1fr) 110px 130px 180px; align-items: center; gap: var(--ds-s3); min-block-size: 48px; padding: var(--ds-s1) var(--ds-s4); border-radius: var(--ds-r); color: var(--ds-text); font-size: var(--ds-text-ui); cursor: var(--cursor-arrow, default); user-select: none; transition: background 0.12s; }
+.fx-item { position: relative; display: grid; grid-template-columns: 22px minmax(0, 1fr) 110px 130px 180px; align-items: center; gap: var(--ds-s3); min-block-size: 48px; padding: var(--ds-s1) var(--ds-s4); border-radius: var(--ds-r); color: var(--ds-text); font-size: var(--ds-text-ui); cursor: var(--cursor-arrow, default); user-select: none; transition: background var(--ds-fast); }
 .fx-item > .fx-ic { position: absolute; inset-inline-start: 50px; }
 .fx-item .fx-name { display: flex; align-items: center; gap: var(--ds-s2); unicode-bidi: isolate; text-align: start; grid-column: 2; padding-inline-start: 36px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .fx-item .fx-rename { grid-column: 2; margin-inline-start: var(--ds-s8); height: 32px; padding: 0 var(--ds-s3); border: 1px solid var(--ds-accent); border-radius: var(--ds-r-sm); background: var(--ds-bg); color: var(--ds-text); font-size: var(--ds-text-ui); outline: none; box-shadow: 0 0 0 3px var(--ds-accent-line); }
@@ -57,7 +57,7 @@ button.fx-h:hover { color: var(--ds-text); }
 @media (max-width: 900px) { .fx-head, .fx-item { grid-template-columns: minmax(0, 1fr) 110px; } .fx-head .meta, .fx-head .kind, .fx-item .kind, .fx-item .meta { display: none; } .fx-search { width: 160px; } .fx-hint { display: none; } }
 
 /* selection: checkboxes (shown on hover or once something is selected) and a rubber band */
-.fx-check { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 1.5px solid var(--ds-line-strong); border-radius: var(--ds-r-sm); background: var(--ds-raised); color: transparent; cursor: var(--cursor-hand, pointer); opacity: 0; transition: opacity 0.12s, background 0.15s, border-color 0.15s, transform 0.2s var(--spring); }
+.fx-check { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 1.5px solid var(--ds-line-strong); border-radius: var(--ds-r-sm); background: var(--ds-raised); color: transparent; cursor: var(--cursor-hand, pointer); opacity: 0; transition: opacity var(--ds-fast), background var(--ds-fast), border-color var(--ds-fast), transform var(--ds-base) var(--ds-spring); }
 .fx-item:hover .fx-check, .fx-item.sel .fx-check, .fx:has(.fx-item.sel) .fx-check { opacity: 1; }
 .fx-head .fx-check { opacity: 1; }
 .fx-check:hover { border-color: var(--ds-accent); }
