@@ -209,7 +209,6 @@ register('row.move', (cx, p: MovePlan) => {
     if (!ext.parentItemId || !moving.has(ext.parentItemId)) ext.parentItemId = null
     key = keyBetween(key, null)
     ext.sortKey = key
-    page.parentId = page.parentId // Explorer position is preserved
   }
   for (const e of plan.invalidEdges) cx.d.mut('edge', e.id).deletedAt = cx.now // archived (tombstone) so history can restore them
   bumpSchema(cx, dest.id)

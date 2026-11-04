@@ -124,9 +124,11 @@ export function FeedView({ svc, view, ctl }: ViewProps) {
   const cfg = view.configuration as { visibleProperties?: Id[]; counts?: boolean }
   const q = useViewQuery(svc, view, { search: ctl.search, personal: ctl.personal, want: 40 })
   const [more, setMore] = useState(20)
+  // bodies load lazily, keyed by the pages shown: a search that keeps the count still loads the new ones
+  const shown = q.rows.slice(0, more).map((r) => r.pageId).join(',')
   useEffect(() => {
-    void repo.ensureContent(q.rows.slice(0, more).map((r) => r.pageId)).catch(() => undefined)
-  }, [q.rows.length, more]) // bodies load lazily
+    if (shown) void repo.ensureContent(shown.split(',')).catch(() => undefined)
+  }, [shown])
   const props = (cfg.visibleProperties ?? svc.state.props(view.sourceId!).map((p) => p.id))
     .map((id) => svc.state.prop(id))
     .filter((d): d is NonNullable<typeof d> => !!d && d.kind !== 'title' && d.kind !== 'button')

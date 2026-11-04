@@ -449,9 +449,10 @@ export function GalleryView({ svc, view, ctl }: ViewProps) {
   const props = cardProps(svc, view)
   const showCover = (cfg.previewSource as string) !== 'none'
   // bodies load lazily in the desktop app; the cards of this page need them for the "first image in the page" preview
+  const previewIds = (cfg.previewSource as string) === 'content' ? q.rows.slice(0, 60).map((r) => r.pageId).join(',') : ''
   useEffect(() => {
-    if ((cfg.previewSource as string) === 'content') void repo.ensureContent(q.rows.slice(0, 60).map((r) => r.pageId)).catch(() => undefined)
-  }, [q.rows.length, cfg.previewSource]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (previewIds) void repo.ensureContent(previewIds.split(',')).catch(() => undefined)
+  }, [previewIds])
   if (q.error)
     return (
       <ViewMessage tone="bad" title={t('This view cannot be shown')}>
