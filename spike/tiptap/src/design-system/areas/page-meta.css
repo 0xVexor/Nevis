@@ -24,7 +24,10 @@
 .row.tree.folder { color: var(--ds-text); font-weight: 550; }
 .row.tree.folder .ic { color: var(--ds-text-2); }
 .tree-count { flex: none; padding-inline: var(--ds-s2); font-size: var(--ds-text-caption); font-weight: 600; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; color: var(--ds-text-3); }
-.row:hover .tree-count { display: none; }
+/* a row is as wide at rest as under the pointer: the actions float over the end of the title and the count keeps its
+   place, so a hover never widens the tree, brings the rail in and pushes the row out from under the pointer */
+.row:hover .tree-count { visibility: hidden; }
+.tree-in .row .acts { position: absolute; inset-block: 0; inset-inline-end: var(--ds-s1); align-items: center; padding-inline-start: var(--ds-s2); background: inherit; border-radius: var(--ds-r-sm); }
 .tree-kids { position: relative; margin-inline-start: var(--ds-s4); padding-inline-start: var(--ds-s2); border-inline-start: 1px solid var(--ds-line-strong);
   border-inline-start-color: transparent; }
 /* only a deep tree scrolls sideways: each title keeps at least 72px (a few letters and the ellipsis), so a normal tree
