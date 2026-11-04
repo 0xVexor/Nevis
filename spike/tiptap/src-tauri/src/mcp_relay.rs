@@ -13,11 +13,16 @@ use std::time::{Duration, Instant};
 pub const RELAY_FLAG: &str = "--mcp-stdio";
 const SERVER_KEY: &str = "nevis";
 const LAUNCH_WAIT: Duration = Duration::from_secs(25);
+const PROTOCOL: &str = "2025-11-25";
 
 // ───── files the app owns (per device, outside every vault) ─────
 
 pub fn endpoint_path(app_data: &Path) -> PathBuf {
     app_data.join("mcp").join("endpoint.json")
+}
+/// The app's last handshake answers (`initialize`, `tools/list`), so a client can connect while Nevis is closed.
+fn handshake_path(app_data: &Path) -> PathBuf {
+    app_data.join("mcp").join("handshake.json")
 }
 fn autostart_path(app_data: &Path) -> PathBuf {
     app_data.join("mcp").join("autostart.json")
@@ -73,7 +78,7 @@ fn default_app_data() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("NEVIS_APP_DATA") {
         return Some(PathBuf::from(dir));
     }
-    const ID: &str = "com.vexor.noviq";
+    const ID: &str = "com.vexor.nevis";
     if cfg!(windows) {
         std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join(ID))
     } else if cfg!(target_os = "macos") {
@@ -111,7 +116,7 @@ fn post(endpoint: &Endpoint, session: Option<&str>, body: &str) -> Result<Reply,
     let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(5)).map_err(|e| e.to_string())?;
     stream.set_read_timeout(Some(Duration::from_secs(40))).map_err(|e| e.to_string())?;
     let mut head = format!(
-        "POST /mcp HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nMCP-Protocol-Version: 2025-11-25\r\nConnection: close\r\nContent-Length: {}\r\n",
+        "POST /mcp HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nMCP-Protocol-Version: {PROTOCOL}\r\nConnection: close\r\nContent-Length: {}\r\n",
         endpoint.addr,
         endpoint.token,
         body.len()
@@ -195,6 +200,45 @@ fn offline_error(id: &Value) -> String {
     json!({"jsonrpc":"2.0","id":id,"error":{"code":-32000,"message":"Nevis is not reachable. Open Nevis, go to Settings > AI connection and turn on 'Allow AI access'."}}).to_string()
 }
 
+fn read_handshake(app_data: &Path) -> Value {
+    std::fs::read(handshake_path(app_data)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_else(|| json!({}))
+}
+fn remember_handshake(app_data: &Path, method: &str, body: &str) {
+    let Some(result) = serde_json::from_str::<Value>(body).ok().and_then(|v| v.get("result").cloned()) else { return };
+    let mut saved = read_handshake(app_data);
+    if saved.get(method) != Some(&result) {
+        saved[method] = result;
+        let _ = serde_json::to_vec(&saved).map_err(err).and_then(|b| write_atomic(&handshake_path(app_data), &b));
+    }
+}
+
+enum Offline {
+    Answer(String),
+    Quiet,
+    Launch,
+    Unavailable,
+}
+
+/// While Nevis is closed, the handshake, pings and the tool list are answered from what the app said last time, so a client
+/// starting up does not open the app. Only a real request (a tool call) opens it; so does the tool list the very first time.
+fn offline(method: &str, id: Option<&Value>, saved: &Value) -> Offline {
+    let answer = |result: Value| id.map_or(Offline::Quiet, |id| Offline::Answer(json!({"jsonrpc":"2.0","id":id,"result":result}).to_string()));
+    match method {
+        "initialize" => answer(saved.get("initialize").cloned().unwrap_or_else(
+            || json!({"protocolVersion":PROTOCOL,"serverInfo":{"name":"nevis-documents","version":"1.0.0"},"capabilities":{"tools":{"listChanged":false}}}),
+        )),
+        "ping" => answer(json!({})),
+        "tools/list" => saved.get("tools/list").cloned().map_or(Offline::Launch, answer),
+        _ if id.is_none() => Offline::Quiet,
+        "tools/call" => Offline::Launch,
+        _ => Offline::Unavailable,
+    }
+}
+
+fn send(stdout: &mut std::io::Stdout, text: &str) -> bool {
+    writeln!(stdout, "{text}").and_then(|_| stdout.flush()).is_ok()
+}
+
 /// `nevis --mcp-stdio`: newline-delimited JSON-RPC on stdin/stdout, forwarded to the live local connection.
 pub fn run_stdio() -> i32 {
     let Some(app_data) = default_app_data() else {
@@ -204,6 +248,8 @@ pub fn run_stdio() -> i32 {
     let (stdin, mut stdout) = (std::io::stdin(), std::io::stdout());
     // NEVIS_NO_LAUNCH keeps the relay from starting the app (tests, headless checks)
     let (mut session, mut launched) = (None::<String>, std::env::var_os("NEVIS_NO_LAUNCH").is_some());
+    // the client's own initialize, replayed to an app run it has not met yet (opened later, or restarted); a run is known by its token
+    let (mut hello, mut introduced) = (None::<String>, None::<String>);
     for line in stdin.lock().lines() {
         let Ok(line) = line else { break };
         // Windows PowerShell prefixes piped text with a UTF-8 byte order mark
@@ -211,24 +257,58 @@ pub fn run_stdio() -> i32 {
         if line.trim().is_empty() {
             continue;
         }
-        let id = serde_json::from_str::<Value>(&line).ok().and_then(|m| m.get("id").cloned());
-        let mut endpoint = read_endpoint(&app_data).filter(|e| reachable(&e.addr));
-        if endpoint.is_none() && !launched {
-            launched = true;
-            endpoint = launch_and_wait(&app_data);
+        let message = serde_json::from_str::<Value>(&line).ok();
+        let id = message.as_ref().and_then(|m| m.get("id").cloned());
+        let method = message.as_ref().and_then(|m| m.get("method")).and_then(Value::as_str).unwrap_or("").to_string();
+        if method == "initialize" {
+            hello = Some(line.clone());
+            introduced = None;
         }
+        let mut endpoint = read_endpoint(&app_data).filter(|e| reachable(&e.addr));
+        if endpoint.is_none() {
+            match offline(&method, id.as_ref(), &read_handshake(&app_data)) {
+                Offline::Answer(text) => {
+                    if !send(&mut stdout, &text) {
+                        break;
+                    }
+                    continue;
+                }
+                Offline::Quiet => continue,
+                Offline::Launch if !launched => {
+                    launched = true;
+                    endpoint = launch_and_wait(&app_data);
+                }
+                Offline::Launch | Offline::Unavailable => {}
+            }
+        }
+        if let (Some(e), Some(hello)) = (&endpoint, &hello) {
+            if method != "initialize" && introduced.as_deref() != Some(e.token.as_str()) {
+                if let Ok(r) = forward(e, None, hello, &RETRY_AFTER_BUSY_MS) {
+                    session = r.session;
+                }
+                let _ = forward(e, session.as_deref(), &json!({"jsonrpc":"2.0","method":"notifications/initialized"}).to_string(), &RETRY_AFTER_BUSY_MS);
+                introduced = Some(e.token.clone());
+            }
+        }
+        let token = endpoint.as_ref().map(|e| e.token.clone());
         let reply = endpoint.ok_or_else(|| "offline".to_string()).and_then(|e| forward(&e, session.as_deref(), &line, &RETRY_AFTER_BUSY_MS));
         let output = match reply {
             Ok(r) => {
                 if r.session.is_some() {
                     session = r.session;
                 }
+                if r.status < 400 && (method == "initialize" || method == "tools/list") {
+                    remember_handshake(&app_data, &method, &r.body);
+                    if method == "initialize" {
+                        introduced = token;
+                    }
+                }
                 if r.body.trim().is_empty() { id.as_ref().filter(|_| r.status >= 400).map(|id| if r.status == 429 { busy_error(id) } else { offline_error(id) }) } else { Some(r.body.trim().to_string()) }
             }
             Err(_) => id.as_ref().map(offline_error),
         };
         if let Some(text) = output {
-            if writeln!(stdout, "{text}").and_then(|_| stdout.flush()).is_err() {
+            if !send(&mut stdout, &text) {
                 break;
             }
         }
@@ -328,6 +408,25 @@ mod tests {
         assert_eq!(second.matches("[mcp_servers.nevis]").count(), 1);
         assert!(second.contains("D:\\New\\nevis.exe") && !second.contains("C:\\Nevis"));
         assert!(second.contains("[mcp_servers.other]"));
+    }
+
+    #[test]
+    fn a_closed_app_is_opened_only_by_a_tool_call() {
+        let id = json!(1);
+        let saved = json!({"initialize":{"protocolVersion":"x"},"tools/list":{"tools":[]}});
+        let answered = |o: Offline| match o {
+            Offline::Answer(text) => serde_json::from_str::<Value>(&text).unwrap()["result"].clone(),
+            _ => panic!("expected an answer"),
+        };
+        assert_eq!(answered(offline("initialize", Some(&id), &saved)), json!({"protocolVersion":"x"}));
+        assert_eq!(answered(offline("ping", Some(&id), &saved)), json!({}));
+        assert_eq!(answered(offline("tools/list", Some(&id), &saved)), json!({"tools":[]}));
+        assert!(matches!(offline("notifications/initialized", None, &saved), Offline::Quiet));
+        assert!(matches!(offline("tools/call", Some(&id), &saved), Offline::Launch));
+        assert!(matches!(offline("resources/list", Some(&id), &saved), Offline::Unavailable));
+        // never connected before: the handshake still answers, the tool list has to come from the app
+        assert_eq!(answered(offline("initialize", Some(&id), &json!({})))["protocolVersion"], PROTOCOL);
+        assert!(matches!(offline("tools/list", Some(&id), &json!({})), Offline::Launch));
     }
 
     #[test]

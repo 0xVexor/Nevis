@@ -2,10 +2,11 @@
 import { useEffect, useState } from 'react'
 import type { CommentRecord, Id } from '../model/types.ts'
 import type { DatabaseService } from '../service.ts'
+import { Button, Icon } from '../../design-system'
+import { shortcutLabel } from '../../shortcuts'
 import { t } from '../../i18n'
 import { ago } from '../../ui'
-import * as Ic from '../../icons'
-import { errorText } from './common'
+import { ErrorLine, Hint, errorText } from './common'
 
 export function CommentsThread({ svc, pageId, propertyId }: { svc: DatabaseService; pageId: Id; propertyId: Id | null }) {
   const all = svc.state.live('comment').filter((c) => c.pageId === pageId && c.propertyId === propertyId)
@@ -35,38 +36,40 @@ export function CommentsThread({ svc, pageId, propertyId }: { svc: DatabaseServi
   }
   const one = (c: CommentRecord, reply = false) => {
     const author = svc.state.get('principal', c.authorId)?.displayName ?? t('Unknown person')
+    const mine = c.authorId === svc.principalId
     return (
-      <div className={'cm' + (c.resolved ? ' resolved' : '') + (reply ? ' reply' : '')} key={c.id}>
-        <div className="cm-head">
+      <article className="dv-comment" data-resolved={c.resolved || undefined} data-reply={reply || undefined} key={c.id}>
+        <header className="dv-comment-head">
           <b dir="auto">{author}</b>
           <small>
             {ago(c.createdAt)}
             {c.editedAt ? ` · ${t('edited')}` : ''}
+            {c.resolved ? ` · ${t('resolved')}` : ''}
           </small>
-        </div>
-        <div className="cm-body" dir="auto">
+        </header>
+        <p className="dv-comment-body" dir="auto">
           {c.body.map((r) => r.text).join('')}
-        </div>
-        <div className="cm-acts">
+        </p>
+        <div className="dv-comment-acts">
           {!reply && canComment && (
-            <button type="button" onClick={() => (setReplyTo(c.id), setEditing(null))}>
+            <Button size="sm" variant="ghost" onClick={() => (setReplyTo(c.id), setEditing(null))}>
               {t('Reply')}
-            </button>
+            </Button>
           )}
-          {c.authorId === svc.principalId && (
-            <button type="button" onClick={() => (setEditing(c.id), setReplyTo(null), setDraft(c.body.map((r) => r.text).join('')))}>
+          {mine && (
+            <Button size="sm" variant="ghost" onClick={() => (setEditing(c.id), setReplyTo(null), setDraft(c.body.map((r) => r.text).join('')))}>
               {t('Edit')}
-            </button>
+            </Button>
           )}
           {!reply && canComment && (
-            <button type="button" onClick={() => void svc.tryExec([{ type: 'comment.resolve', payload: { commentId: c.id, resolved: !c.resolved } }])}>
+            <Button size="sm" variant="ghost" onClick={() => void svc.tryExec([{ type: 'comment.resolve', payload: { commentId: c.id, resolved: !c.resolved } }])}>
               {c.resolved ? t('Reopen') : t('Resolve')}
-            </button>
+            </Button>
           )}
-          {c.authorId === svc.principalId && (
-            <button type="button" className="danger" onClick={() => void svc.tryExec([{ type: 'comment.delete', payload: { commentId: c.id } }])}>
+          {mine && (
+            <Button size="sm" variant="ghost" className="dv-danger" onClick={() => void svc.tryExec([{ type: 'comment.delete', payload: { commentId: c.id } }])}>
               {t('Delete')}
-            </button>
+            </Button>
           )}
         </div>
         {!reply &&
@@ -74,25 +77,25 @@ export function CommentsThread({ svc, pageId, propertyId }: { svc: DatabaseServi
             .filter((r) => r.parentCommentId === c.id)
             .sort((a, b) => a.createdAt - b.createdAt)
             .map((r) => one(r, true))}
-      </div>
+      </article>
     )
   }
   return (
-    <div className="cm-thread">
-      {top.length === 0 && <div className="db-empty-hint">{t('No comments yet')}</div>}
+    <div className="dv-comments">
+      {top.length === 0 && <Hint>{t('No comments yet')}</Hint>}
       {top.map((c) => one(c))}
       {canComment && (
-        <div className="cm-compose">
-          {replyTo && (
-            <small>
-              {t('Replying…')}{' '}
-              <button type="button" className="db-linkbtn" onClick={() => setReplyTo(null)}>
+        <div className="dv-compose">
+          {(replyTo || editing) && (
+            <p className="dv-hint">
+              {editing ? t('Editing your comment') : t('Replying…')}{' '}
+              <Button size="sm" variant="ghost" onClick={() => (setReplyTo(null), setEditing(null), setDraft(''))}>
                 {t('Cancel')}
-              </button>
-            </small>
+              </Button>
+            </p>
           )}
           <textarea
-            className="db-input"
+            className="ds-field"
             rows={2}
             dir="auto"
             value={draft}
@@ -107,16 +110,15 @@ export function CommentsThread({ svc, pageId, propertyId }: { svc: DatabaseServi
               }
             }}
           />
-          <button type="button" className="primary" onClick={() => void send()}>
-            <Ic.Arrow size={12} /> {editing ? t('Save') : t('Send')}
-          </button>
+          <div className="dv-compose-foot">
+            <span className="dv-hint">{shortcutLabel(['Mod', 'Enter'])}</span>
+            <Button size="sm" variant="primary" icon={<Icon name="arrow-up" size={15} />} disabled={!draft.trim()} onClick={() => void send()}>
+              {editing ? t('Save') : t('Send')}
+            </Button>
+          </div>
         </div>
       )}
-      {err && (
-        <div className="db-err" role="alert">
-          {err}
-        </div>
-      )}
+      {err && <ErrorLine>{err}</ErrorLine>}
     </div>
   )
 }

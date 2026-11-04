@@ -113,7 +113,7 @@ export function createAppDocumentEnvironment(): DocumentEnvironment {
             })
             .catch(() => {})
         else if (typeof BroadcastChannel !== 'undefined')
-          for (const name of ['nevis-documents', 'noviq-database']) {
+          for (const name of ['nevis-documents', 'nevis-database', 'noviq-database']) {
             try {
               const channel = new BroadcastChannel(name)
               channel.onmessage = changed

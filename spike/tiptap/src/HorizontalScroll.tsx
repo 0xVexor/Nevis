@@ -48,10 +48,11 @@ export function HorizontalScroll({
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(measure)
     }
-    const ro = new ResizeObserver(schedule)
+    // observers already run after layout: measure there directly, so the rail never waits on a frame that may not come (a hidden window)
+    const ro = new ResizeObserver(measure)
     ro.observe(el)
     ro.observe(inner)
-    const mo = new MutationObserver(schedule)
+    const mo = new MutationObserver(() => (measure(), schedule()))
     mo.observe(inner, { childList: true, subtree: true, attributes: true, characterData: true })
     el.addEventListener('scroll', fromViewport, { passive: true })
     bar.addEventListener('scroll', fromRail, { passive: true })

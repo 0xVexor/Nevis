@@ -1,6 +1,6 @@
 import { startMcpBridge } from './mcp/bridge'
 import 'katex/dist/katex.min.css'
-import { lazy, StrictMode, Suspense } from 'react'
+import { lazy, StrictMode, Suspense, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import './settings'
@@ -10,11 +10,16 @@ import { initBackup } from './autobackup'
 import { initSearchIndex } from './searchIndex'
 import { isTauri, vaultList, vaultClose } from './db'
 import { VaultPicker } from './VaultPicker'
+import { FirstLaunch, firstNoteMark, pendingFirstNote } from './onboarding/FirstNoteStart'
+import { LandingFrame } from './onboarding/Onboarding'
 import { initPreferences } from './sharedPreferences'
 import { initInputMenu } from './inputMenu'
+import { Button, Dialog, Notice } from './design-system'
+import { DesktopFrame } from './DesktopFrame'
 
 initInputMenu()
 const root = createRoot(document.getElementById('root')!)
+const render = (content: ReactNode) => root.render(<DesktopFrame>{content}</DesktopFrame>)
 // the component gallery: development only, open /#/design-system
 const Gallery = import.meta.env.DEV ? lazy(() => import('./design-system/Gallery').then((m) => ({ default: m.Gallery }))) : null
 const showGallery = () => !!Gallery && location.hash === '#/design-system'
@@ -23,6 +28,9 @@ function start() {
   // the workspace is loaded before the first render
   const bench = import.meta.env.DEV && !isTauri ? Number(new URLSearchParams(location.search).get('bench')) : 0
   const seeded = bench > 0 ? import('./devBench').then((m) => m.seedBench(bench)) : Promise.resolve()
+  // a new workspace: keep the start flow's last frame on screen while it loads, so there is no blank moment
+  const handoff = firstNoteMark()
+  if (handoff !== null) render(<LandingFrame name={handoff} />)
   seeded
     .then(initPreferences)
     .then(initStore)
@@ -31,7 +39,7 @@ function start() {
       void repo.watch()
       initSearchIndex()
       if (isTauri) void startMcpBridge().catch(() => {})
-      root.render(
+      const app = (
         <StrictMode>
           {Gallery && showGallery() ? (
             <Suspense fallback={null}>
@@ -40,31 +48,14 @@ function start() {
           ) : (
             <App />
           )}
-        </StrictMode>,
+        </StrictMode>
       )
+      // a workspace just created by the start flow opens on its first note, then on the app
+      const firstNote = pendingFirstNote()
+      render(firstNote === null ? app : <FirstLaunch workspace={firstNote} app={app} />)
     })
     .catch((e) => {
-      root.render(
-        <div className="overlay">
-          <div className="modal acct">
-            <h2>Unable to open workspace / باز کردن فضای کاری ممکن نشد</h2>
-            <p role="alert">{String(e)}</p>
-            <p>The original files were kept. / فایل‌های اصلی حفظ شده‌اند.</p>
-            <button onClick={() => location.reload()}>Retry / تلاش دوباره</button>
-            {isTauri && (
-              <button
-                onClick={() =>
-                  void vaultClose()
-                    .then(() => location.reload())
-                    .catch(console.error)
-                }
-              >
-                Choose workspace / انتخاب فضای کاری
-              </button>
-            )}
-          </div>
-        </div>,
-      )
+      render(<StartupError error={e} kept chooseWorkspace={isTauri} />)
     })
 }
 
@@ -73,18 +64,10 @@ if (isTauri) {
   vaultList()
     .then(({ current }) => {
       if (current) return start()
-      root.render(<VaultPicker onOpened={() => window.location.reload()} />)
+      render(<VaultPicker onOpened={() => window.location.reload()} />)
     })
     .catch((e) => {
-      root.render(
-        <div className="overlay">
-          <div className="modal acct">
-            <h2>Unable to open workspace / باز کردن فضای کاری ممکن نشد</h2>
-            <p role="alert">{String(e)}</p>
-            <button onClick={() => location.reload()}>Retry / تلاش دوباره</button>
-          </div>
-        </div>,
-      )
+      render(<StartupError error={e} />)
     })
 } else {
   start()
@@ -96,4 +79,38 @@ if (isTauri) {
   document.addEventListener('contextmenu', (e) => {
     if (!e.defaultPrevented && !(e.target as HTMLElement).closest('input, textarea')) e.preventDefault()
   })
+}
+
+/** The workspace could not be opened. Shown before the app (and its language) exist, so the text is in both languages. */
+function StartupError({ error, kept, chooseWorkspace }: { error: unknown; kept?: boolean; chooseWorkspace?: boolean }) {
+  return (
+    <Dialog
+      open
+      title="Unable to open workspace / باز کردن فضای کاری ممکن نشد"
+      onClose={() => {}}
+      actions={
+        <>
+          {chooseWorkspace && (
+            <Button
+              onClick={() =>
+                void vaultClose()
+                  .then(() => location.reload())
+                  .catch(console.error)
+              }
+            >
+              Choose workspace / انتخاب فضای کاری
+            </Button>
+          )}
+          <Button variant="primary" onClick={() => location.reload()}>
+            Retry / تلاش دوباره
+          </Button>
+        </>
+      }
+    >
+      <div className="ds-modal-body">
+        <Notice tone="bad">{String(error)}</Notice>
+        {kept && <p>The original files were kept. / فایل‌های اصلی حفظ شده‌اند.</p>}
+      </div>
+    </Dialog>
+  )
 }

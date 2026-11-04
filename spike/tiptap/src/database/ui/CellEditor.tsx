@@ -1,23 +1,21 @@
-// Cell editors. Inline kinds (text-like, number) use <InlineInput>; the rest open a popover. Every edit is a `row.patch` command:
-// the value is only shown as saved once the batch is durable, a failed save keeps the draft and says why.
-import { useEffect, useLayoutEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
+// Cell editors. Inline kinds (title, number, url, email, phone) use <InlineInput>; the rest open a panel. Every edit is a
+// `row.patch` command: the value is only shown as saved once the batch is durable, a failed save keeps the draft and says why.
+import { useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Cell, Definition, Id, RichRun } from '../model/types.ts'
 import { civilOf } from '../dates.ts'
 import { cfgOf, optionsOf, OPTION_COLORS, statusConfig, type SelectOption } from '../props/config.ts'
 import { cellToText, defaultCell, parseCellText } from '../props/registry.ts'
-import { textToRuns, runsToText, matchKey } from '../text.ts'
+import { matchKey } from '../text.ts'
 import type { Row } from '../state.ts'
 import type { DatabaseService } from '../service.ts'
 import { putFile, urlFor } from '../../attachments'
-import { Popover, MenuLabel } from '../../ui'
+import { Button, Field, FormField, Icon, IconButton, Notice, Panel, Popover } from '../../design-system'
 import { t } from '../../i18n'
-import * as Ic from '../../icons'
-import { Chip, COLOR_CLASS, errorText, plainTitle } from './common'
+import { Chip, ErrorLine, Hint, errorText, plainTitle } from './common'
 import { useFileNames } from './CellView'
 import { DatePicker } from './DatePicker'
 import { RichTextEditor } from './RichText'
-import { Field } from './forms'
 
 export type Saver = (cell: Cell | null) => Promise<boolean>
 
@@ -52,7 +50,6 @@ export function InlineInput({
   error,
   onDraftChange,
   placeholder,
-  ltr,
 }: {
   initial: string
   kind: 'text' | 'number' | 'url' | 'email' | 'phone' | 'title'
@@ -62,7 +59,6 @@ export function InlineInput({
   error?: string | null
   onDraftChange?: () => void
   placeholder?: string
-  ltr?: boolean
 }) {
   const ref = useRef<HTMLInputElement>(null)
   const errorId = useId()
@@ -97,12 +93,12 @@ export function InlineInput({
     if (ok && nav) onNavigate?.(nav)
   }
   return (
-    <div className="db-inline">
+    <div className="dv-inline">
       <input
         ref={ref}
-        className={'db-input' + (error ? ' err' : '')}
+        className="dv-inline-input"
         value={v}
-        dir={ltr || kind === 'number' || kind === 'url' || kind === 'email' || kind === 'phone' ? 'ltr' : 'auto'}
+        dir={kind === 'number' || kind === 'url' || kind === 'email' || kind === 'phone' ? 'ltr' : 'auto'}
         inputMode={kind === 'number' ? 'decimal' : undefined}
         placeholder={placeholder}
         aria-invalid={!!error}
@@ -130,24 +126,10 @@ export function InlineInput({
       {error &&
         errorPos &&
         createPortal(
-          <div id={errorId} className="db-cell-error" role="alert" style={{ position: 'fixed', ...errorPos }}>
-            {error}
-          </div>,
+          <Notice id={errorId} className="dv-cell-error" tone="bad" compact style={{ position: 'fixed', ...errorPos }}>{error}</Notice>,
           document.body,
         )}
     </div>
-  )
-}
-
-// ───── popover shell ─────
-
-function Shell({ anchor, onClose, children, wide, className = '' }: { anchor: DOMRect; onClose: () => void; children: ReactNode; wide?: boolean; className?: string }) {
-  return (
-    <Popover anchor={anchor} onClose={onClose}>
-      <div className={'db-pop' + (wide ? ' wide' : '') + (className ? ' ' + className : '')} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
-        {children}
-      </div>
-    </Popover>
   )
 }
 
@@ -157,6 +139,35 @@ export interface PopProps {
   def: Definition
   anchor: DOMRect
   onClose: () => void
+}
+
+/** A search box at the top of a picker: Enter takes the first match, Escape closes. */
+function PickerSearch({ value, onChange, placeholder, onEnter, onEscape }: { value: string; onChange: (v: string) => void; placeholder: string; onEnter?: () => void; onEscape: () => void }) {
+  return (
+    <Field
+      autoFocus
+      className="dv-picker-search"
+      placeholder={placeholder}
+      aria-label={placeholder}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.nativeEvent.isComposing) return
+        if (e.key === 'Enter' && onEnter) (e.preventDefault(), onEnter())
+        if (e.key === 'Escape') onEscape()
+      }}
+    />
+  )
+}
+
+/** One choice in a picker: a check where it is chosen, the label, and nothing else. */
+function Choice({ on, onClick, children, label }: { on: boolean; onClick: () => void; children: React.ReactNode; label?: string }) {
+  return (
+    <button type="button" role="option" aria-selected={on} aria-label={label} className="ds-menu-item dv-choice" onClick={onClick}>
+      <span className="dv-choice-check">{on && <Icon name="check" size={15} />}</span>
+      <span className="ds-menu-label">{children}</span>
+    </button>
+  )
 }
 
 // ───── select / multi-select / status ─────
@@ -172,6 +183,7 @@ function SelectEditor({ svc, row, def, anchor, onClose }: PopProps) {
   const shown = opts.filter((o) => matchKey(o.name).includes(matchKey(q)))
   const exact = opts.some((o) => matchKey(o.name).trim() === matchKey(q).trim())
   const groups = def.kind === 'status' ? statusConfig(def.config).groups : []
+  const toggle = (id: Id) => (multi ? (selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]) : [id])
   const set = async (ids: Id[]) => {
     const c: Cell = multi ? { kind: 'multi_select', optionIds: ids } : def.kind === 'status' ? { kind: 'status', optionId: ids[0] } : { kind: 'select', optionId: ids[0] ?? null }
     if ((await save(c)) && !multi) onClose()
@@ -188,79 +200,58 @@ function SelectEditor({ svc, row, def, anchor, onClose }: PopProps) {
     if (r.ok && !multi) onClose()
     setQ('')
   }
+  const option = (o: SelectOption) => (
+    <Choice key={o.id} on={selected.includes(o.id)} onClick={() => void set(toggle(o.id))}>
+      <Chip color={o.color}>{o.name}</Chip>
+    </Choice>
+  )
   return (
-    <Shell anchor={anchor} onClose={onClose}>
-      <input
-        className="db-input"
-        autoFocus
-        placeholder={t('Search or create…')}
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.nativeEvent.isComposing) return
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            if (shown[0] && (exact || !canSchema || !q.trim()))
-              void set(multi ? (selected.includes(shown[0].id) ? selected.filter((x) => x !== shown[0].id) : [...selected, shown[0].id]) : [shown[0].id])
-            else if (q.trim() && canSchema) void create(q.trim())
-          }
-          if (e.key === 'Escape') onClose()
-        }}
-      />
-      <div className="db-opts" role="listbox" aria-multiselectable={multi}>
-        {!multi && def.kind === 'select' && selected.length > 0 && (
-          <button type="button" className="ds-menu-item" onClick={() => void set([])}>
-            <span className="ds-menu-label dim">{t('Clear')}</span>
-          </button>
-        )}
-        {def.kind === 'status'
-          ? groups.map((g) => {
-              const items = shown.filter((o) => (o as SelectOption & { statusGroupId?: Id }).statusGroupId === g.id)
-              return items.length ? (
-                <div key={g.id}>
-                  <MenuLabel>{g.label}</MenuLabel>
-                  {items.map((o) => (
-                    <OptionRow key={o.id} o={o} on={selected.includes(o.id)} onClick={() => void set([o.id])} />
-                  ))}
-                </div>
-              ) : null
-            })
-          : shown.map((o) => (
-              <OptionRow
-                key={o.id}
-                o={o}
-                on={selected.includes(o.id)}
-                onClick={() => void set(multi ? (selected.includes(o.id) ? selected.filter((x) => x !== o.id) : [...selected, o.id]) : [o.id])}
-              />
-            ))}
-        {q.trim() && !exact && canSchema && def.kind !== 'status' && (
-          <button type="button" className="ds-menu-item" onClick={() => void create(q.trim())}>
-            <span className="ds-menu-ic">
-              <Ic.Plus size={13} />
-            </span>
-            <span className="ds-menu-label">
-              {t('Create')} <Chip>{q.trim()}</Chip>
-            </span>
-          </button>
-        )}
-        {shown.length === 0 && !q.trim() && <div className="db-empty-hint">{t('No options yet')}</div>}
-      </div>
-      {error && (
-        <div className="db-err" role="alert">
-          {error}
+    <Popover anchor={anchor} onClose={onClose}>
+      <Panel size="sm" className="dv-picker">
+        <PickerSearch
+          value={q}
+          onChange={setQ}
+          placeholder={canSchema && def.kind !== 'status' ? t('Search or create…') : t('Search…')}
+          onEscape={onClose}
+          onEnter={() => {
+            if (shown[0] && (exact || !canSchema || !q.trim())) void set(toggle(shown[0].id))
+            else if (q.trim() && canSchema && def.kind !== 'status') void create(q.trim())
+          }}
+        />
+        <div className="dv-choices" role="listbox" aria-multiselectable={multi} aria-label={def.name}>
+          {def.kind === 'status'
+            ? groups.map((g) => {
+                const items = shown.filter((o) => (o as SelectOption & { statusGroupId?: Id }).statusGroupId === g.id)
+                return items.length ? (
+                  <div key={g.id} role="group" aria-label={g.label}>
+                    <div className="ds-menu-head">{g.label}</div>
+                    {items.map(option)}
+                  </div>
+                ) : null
+              })
+            : shown.map(option)}
+          {q.trim() && !exact && canSchema && def.kind !== 'status' && (
+            <button type="button" className="ds-menu-item dv-choice" onClick={() => void create(q.trim())}>
+              <span className="dv-choice-check">
+                <Icon name="plus" size={15} />
+              </span>
+              <span className="ds-menu-label">
+                {t('Create')} <Chip>{q.trim()}</Chip>
+              </span>
+            </button>
+          )}
+          {shown.length === 0 && !q.trim() && <Hint>{t('No options yet')}</Hint>}
         </div>
-      )}
-    </Shell>
+        {!multi && def.kind === 'select' && selected.length > 0 && (
+          <Button size="sm" variant="ghost" onClick={() => void set([])}>
+            {t('Clear')}
+          </Button>
+        )}
+        {error && <ErrorLine>{error}</ErrorLine>}
+      </Panel>
+    </Popover>
   )
 }
-const OptionRow = ({ o, on, onClick }: { o: SelectOption; on: boolean; onClick: () => void }) => (
-  <button type="button" role="option" aria-selected={on} className={'ds-menu-item' + (on ? ' on' : '')} onClick={onClick}>
-    <span className="ds-menu-ic">{on && <Ic.Check size={13} />}</span>
-    <span className="ds-menu-label">
-      <Chip color={o.color}>{o.name}</Chip>
-    </span>
-  </button>
-)
 
 // ───── date ─────
 
@@ -287,14 +278,10 @@ function DateEditor({ svc, row, def, anchor, onClose }: PopProps) {
   const zone = cfg.defaultZone ?? svc.zone
   return (
     <Popover anchor={anchor} onClose={() => void finish()}>
-      <div className="db-pop" onClick={(e) => e.stopPropagation()}>
+      <Panel size="sm">
         <DatePicker value={draft} config={cfg} zone={zone} weekStart={svc.weekStart} todayCivil={civilOf(svc.now(), zone)} onChange={setDraft} onClose={() => void finish()} />
-        {error && (
-          <div className="db-err" role="alert">
-            {error}
-          </div>
-        )}
-      </div>
+        {error && <ErrorLine>{error}</ErrorLine>}
+      </Panel>
     </Popover>
   )
 }
@@ -308,38 +295,30 @@ function PeopleEditor({ svc, row, def, anchor, onClose }: PopProps) {
   const multiple = cfgOf.people(def).multiple
   const people = svc.state.live('principal').filter((p) => p.type === 'user')
   return (
-    <Shell anchor={anchor} onClose={onClose}>
-      <div className="db-opts" role="listbox">
-        {people.map((p) => {
-          const on = sel.includes(p.id)
-          return (
-            <button
-              key={p.id}
-              type="button"
-              role="option"
-              aria-selected={on}
-              className={'ds-menu-item' + (on ? ' on' : '')}
-              onClick={async () => {
-                const next = on ? sel.filter((x) => x !== p.id) : multiple ? [...sel, p.id] : [p.id]
-                if ((await save({ kind: 'people', principalIds: next })) && !multiple) onClose()
-              }}
-            >
-              <span className="ds-menu-ic">{on && <Ic.Check size={13} />}</span>
-              <span className="ds-menu-label">
-                {p.displayName}
-                {p.isLocalOwner && <small> · {t('you')}</small>}
-              </span>
-            </button>
-          )
-        })}
-        {people.length === 0 && <div className="db-empty-hint">{t('No people are available yet')}</div>}
-      </div>
-      {error && (
-        <div className="db-err" role="alert">
-          {error}
+    <Popover anchor={anchor} onClose={onClose}>
+      <Panel size="sm" className="dv-picker">
+        <div className="dv-choices" role="listbox" aria-label={def.name}>
+          {people.map((p) => {
+            const on = sel.includes(p.id)
+            return (
+              <Choice
+                key={p.id}
+                on={on}
+                onClick={async () => {
+                  const next = on ? sel.filter((x) => x !== p.id) : multiple ? [...sel, p.id] : [p.id]
+                  if ((await save({ kind: 'people', principalIds: next })) && !multiple) onClose()
+                }}
+              >
+                <span dir="auto">{p.displayName}</span>
+                {p.isLocalOwner && <small className="ds-muted"> · {t('you')}</small>}
+              </Choice>
+            )
+          })}
+          {people.length === 0 && <Hint>{t('No people are available yet')}</Hint>}
         </div>
-      )}
-    </Shell>
+        {error && <ErrorLine>{error}</ErrorLine>}
+      </Panel>
+    </Popover>
   )
 }
 
@@ -353,10 +332,10 @@ function FileThumb({ id }: { id: Id }) {
     return () => void (live = false)
   }, [id])
   return src ? (
-    <img className="db-thumb" alt="" src={src} />
+    <img className="dv-file-thumb" alt="" src={src} />
   ) : (
-    <span className="db-thumb ph">
-      <Ic.Page size={14} />
+    <span className="dv-file-thumb">
+      <Icon name="file" size={16} />
     </span>
   )
 }
@@ -368,6 +347,7 @@ function FilesEditor({ svc, row, def, anchor, onClose }: PopProps) {
   const names = useFileNames(ids)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const input = useRef<HTMLInputElement>(null)
   const cfg = cfgOf.files(def)
   const add = async (files: FileList | null) => {
     if (!files?.length) return
@@ -402,39 +382,42 @@ function FilesEditor({ svc, row, def, anchor, onClose }: PopProps) {
     void save({ kind: 'files', attachmentIds: next })
   }
   return (
-    <Shell anchor={anchor} onClose={onClose} wide>
-      <div className="db-files">
-        {ids.map((id, i) => (
-          <div className="db-file-row" key={id}>
-            <FileThumb id={id} />
-            <span className="db-file-name" dir="auto">
-              {names.get(id) || t('File')}
-            </span>
-            <button type="button" className="icon-btn" aria-label={t('Move up')} onClick={() => move(i, -1)} disabled={i === 0}>
-              <Ic.Up size={13} />
-            </button>
-            <button type="button" className="icon-btn" aria-label={t('Remove')} onClick={() => void save({ kind: 'files', attachmentIds: ids.filter((x) => x !== id) })}>
-              <Ic.Close size={13} />
-            </button>
+    <Popover anchor={anchor} onClose={onClose}>
+      <Panel
+        title={def.name}
+        footer={
+          <>
+            <input ref={input} type="file" multiple hidden disabled={busy} onChange={(e) => void add(e.target.files)} />
+            <Button size="sm" icon={<Icon name="upload" size={15} />} disabled={busy} onClick={() => input.current?.click()}>
+              {busy ? t('Uploading…') : t('Upload files')}
+            </Button>
+          </>
+        }
+      >
+        {ids.length > 0 ? (
+          <div className="dv-files">
+            {ids.map((id, i) => (
+              <div className="dv-file" key={id}>
+                <FileThumb id={id} />
+                <span className="dv-file-name" dir="auto" title={names.get(id) || undefined}>
+                  {names.get(id) || t('File')}
+                </span>
+                <IconButton label={t('Move up')} onClick={() => move(i, -1)} disabled={i === 0}>
+                  <Icon name="arrow-up" size={15} />
+                </IconButton>
+                <IconButton label={t('Remove')} onClick={() => void save({ kind: 'files', attachmentIds: ids.filter((x) => x !== id) })}>
+                  <Icon name="x" size={15} />
+                </IconButton>
+              </div>
+            ))}
           </div>
-        ))}
-        {ids.length === 0 && <div className="db-empty-hint">{t('No files yet')}</div>}
-        <label className="db-upload">
-          <input type="file" multiple hidden disabled={busy} onChange={(e) => void add(e.target.files)} />
-          <Ic.Upload size={14} /> {busy ? t('Uploading…') : t('Upload files')}
-        </label>
-        {msg && (
-          <div className="db-err" role="alert">
-            {msg}
-          </div>
+        ) : (
+          <Hint>{t('No files yet')}</Hint>
         )}
-        {error && (
-          <div className="db-err" role="alert">
-            {error}
-          </div>
-        )}
-      </div>
-    </Shell>
+        {msg && <ErrorLine>{msg}</ErrorLine>}
+        {error && <ErrorLine>{error}</ErrorLine>}
+      </Panel>
+    </Popover>
   )
 }
 
@@ -464,45 +447,33 @@ function RelationEditor({ svc, row, def, anchor, onClose }: PopProps) {
     if (r.ok && single && type === 'relation.add') onClose()
   }
   return (
-    <Shell anchor={anchor} onClose={onClose} wide>
-      {current.length > 0 && (
-        <div className="db-rel-cur">
-          {current.map((c) => (
-            <Chip key={c.edgeId} muted={c.state !== 'live'} onRemove={() => void run('relation.remove', c.pageId)} title={c.state === 'trashed' ? t('This item is in the trash') : undefined}>
-              {c.state === 'live' ? plainTitle(rs.title(c.pageId)) : c.state === 'trashed' ? t('(deleted) {n}', { n: svc.state.pages.get(c.pageId)?.title ?? '' }) : '…'}
-            </Chip>
-          ))}
+    <Popover anchor={anchor} onClose={onClose}>
+      <Panel className="dv-picker">
+        {current.length > 0 && (
+          <div className="dv-chips">
+            {current.map((c) => (
+              <Chip key={c.edgeId} muted={c.state !== 'live'} onRemove={() => void run('relation.remove', c.pageId)} title={c.state === 'trashed' ? t('This item is in the trash') : undefined}>
+                {c.state === 'live' ? plainTitle(rs.title(c.pageId)) : c.state === 'trashed' ? t('(deleted) {n}', { n: svc.state.pages.get(c.pageId)?.title ?? '' }) : '…'}
+              </Chip>
+            ))}
+          </div>
+        )}
+        <PickerSearch value={q} onChange={setQ} placeholder={t('Search items…')} onEscape={onClose} onEnter={() => results[0] && void run(linked.has(results[0]) ? 'relation.remove' : 'relation.add', results[0], single)} />
+        <div className="dv-choices" role="listbox" aria-label={def.name}>
+          {results.map((id) => {
+            const on = linked.has(id)
+            return (
+              <Choice key={id} on={on} onClick={() => void run(on ? 'relation.remove' : 'relation.add', id, single)}>
+                <span dir="auto">{plainTitle(svc.state.pages.get(id)?.title)}</span>
+              </Choice>
+            )
+          })}
+          {results.length === 0 && <Hint>{t('Nothing found')}</Hint>}
         </div>
-      )}
-      <input className="db-input" autoFocus placeholder={t('Search items…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && onClose()} />
-      <div className="db-opts" role="listbox">
-        {results.map((id) => {
-          const on = linked.has(id)
-          return (
-            <button
-              key={id}
-              type="button"
-              role="option"
-              aria-selected={on}
-              className={'ds-menu-item' + (on ? ' on' : '')}
-              onClick={() => void run(on ? 'relation.remove' : 'relation.add', id, single)}
-            >
-              <span className="ds-menu-ic">{on && <Ic.Check size={13} />}</span>
-              <span className="ds-menu-label" dir="auto">
-                {plainTitle(svc.state.pages.get(id)?.title)}
-              </span>
-            </button>
-          )
-        })}
-        {results.length === 0 && <div className="db-empty-hint">{t('Nothing found')}</div>}
-      </div>
-      {single && <div className="db-date-hint">{t('This relation links one item; choosing another replaces it.')}</div>}
-      {err && (
-        <div className="db-err" role="alert">
-          {err}
-        </div>
-      )}
-    </Shell>
+        {single && <Hint>{t('This relation links one item; choosing another replaces it.')}</Hint>}
+        {err && <ErrorLine>{err}</ErrorLine>}
+      </Panel>
+    </Popover>
   )
 }
 
@@ -523,38 +494,38 @@ function PlaceEditor({ svc, row, def, anchor, onClose }: PopProps) {
     if (await save(empty ? null : { kind: 'place', value: { lat: la, lon: lo, name, address } })) onClose()
   }
   return (
-    <Shell anchor={anchor} onClose={() => void commit()} wide className="db-place-pop">
-      <div className="db-form db-place-form">
-        <Field label={t('Name')}>
-          <input className="db-input" value={name} onChange={(e) => setName(e.target.value)} dir="auto" />
-        </Field>
-        <Field label={t('Address')}>
-          <input className="db-input" value={address} onChange={(e) => setAddress(e.target.value)} dir="auto" />
-        </Field>
-        <div className="db-place-coordinates">
-          <Field label={t('Latitude')}>
-            <input className="db-input" dir="ltr" inputMode="decimal" value={lat} onChange={(e) => setLat(e.target.value)} />
-          </Field>
-          <Field label={t('Longitude')}>
-            <input className="db-input" dir="ltr" inputMode="decimal" value={lon} onChange={(e) => setLon(e.target.value)} />
-          </Field>
+    <Popover anchor={anchor} onClose={() => void commit()}>
+      <Panel
+        title={def.name}
+        footer={
+          <>
+            <Button size="sm" variant="ghost" onClick={onClose}>
+              {t('Cancel')}
+            </Button>
+            <Button size="sm" variant="primary" onClick={() => void commit()}>
+              {t('Save')}
+            </Button>
+          </>
+        }
+      >
+        <FormField label={t('Name')}>
+          <Field value={name} onChange={(e) => setName(e.target.value)} />
+        </FormField>
+        <FormField label={t('Address')}>
+          <Field value={address} onChange={(e) => setAddress(e.target.value)} />
+        </FormField>
+        <div className="dv-pair">
+          <FormField label={t('Latitude')}>
+            <Field ltr inputMode="decimal" value={lat} onChange={(e) => setLat(e.target.value)} />
+          </FormField>
+          <FormField label={t('Longitude')}>
+            <Field ltr inputMode="decimal" value={lon} onChange={(e) => setLon(e.target.value)} />
+          </FormField>
         </div>
-        <div className="db-date-hint db-place-hint">{t('Coordinates you type are saved on this device and work offline. Looking up an address needs a map provider (Settings → Database).')}</div>
-        {error && (
-          <div className="db-err db-place-error" role="alert">
-            {error}
-          </div>
-        )}
-        <div className="db-date-foot db-place-actions">
-          <button type="button" className="db-btn" onClick={onClose}>
-            {t('Cancel')}
-          </button>
-          <button type="button" className="db-btn primary" onClick={() => void commit()}>
-            {t('Save')}
-          </button>
-        </div>
-      </div>
-    </Shell>
+        <Hint>{t('Coordinates you type are saved on this device and work offline. Looking up an address needs a map provider (Settings → Database).')}</Hint>
+        {error && <ErrorLine>{error}</ErrorLine>}
+      </Panel>
+    </Popover>
   )
 }
 
@@ -571,68 +542,67 @@ function VerificationEditor({ svc, row, def, anchor, onClose }: PopProps) {
     if (await save({ kind: 'verification', value: { state: 'verified', verifierId: svc.principalId, verifiedAt: now, expiresAt: days ? now + days * 86400000 : null } })) onClose()
   }
   return (
-    <Shell anchor={anchor} onClose={onClose}>
-      <div className="db-form">
-        <div>{v.state === 'verified' ? t('Verified by {n}', { n: svc.state.get('principal', v.verifierId ?? '')?.displayName ?? '' }) : t('Not verified')}</div>
-        {v.expiresAt && <div className="db-date-hint">{t('Expires {d}', { d: new Date(v.expiresAt).toLocaleDateString() })}</div>}
-        <div className="db-date-foot">
-          {v.state === 'verified' && (
-            <button
-              type="button"
-              className="danger"
-              onClick={async () => {
-                if (await save({ kind: 'verification', value: { state: 'unverified', verifierId: null, verifiedAt: null, expiresAt: null } })) onClose()
-              }}
-            >
-              {t('Remove verification')}
-            </button>
-          )}
-          <button type="button" className="primary" onClick={() => void verify()}>
-            {v.state === 'verified' ? t('Verify again') : t('Verify')}
-          </button>
-        </div>
-        {error && (
-          <div className="db-err" role="alert">
-            {error}
-          </div>
-        )}
-      </div>
-    </Shell>
+    <Popover anchor={anchor} onClose={onClose}>
+      <Panel
+        size="sm"
+        title={def.name}
+        footer={
+          <>
+            {v.state === 'verified' && (
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={async () => {
+                  if (await save({ kind: 'verification', value: { state: 'unverified', verifierId: null, verifiedAt: null, expiresAt: null } })) onClose()
+                }}
+              >
+                {t('Remove verification')}
+              </Button>
+            )}
+            <Button size="sm" variant="primary" onClick={() => void verify()}>
+              {v.state === 'verified' ? t('Verify again') : t('Verify')}
+            </Button>
+          </>
+        }
+      >
+        <p className="dv-text">{v.state === 'verified' ? t('Verified by {n}', { n: svc.state.get('principal', v.verifierId ?? '')?.displayName ?? '' }) : t('Not verified')}</p>
+        {v.expiresAt && <Hint>{t('Expires {d}', { d: new Date(v.expiresAt).toLocaleDateString() })}</Hint>}
+        {error && <ErrorLine>{error}</ErrorLine>}
+      </Panel>
+    </Popover>
   )
 }
 
-// ───── rich text (popover) ─────
+// ───── rich text ─────
 
 function TextEditorPop({ svc, row, def, anchor, onClose }: PopProps) {
   const { save, error } = useSaver(svc, row, def)
   const cur = row.ext.cells[def.id]?.value
   const runs: RichRun[] = cur?.kind === 'text' ? cur.runs : []
   return (
-    <Shell anchor={anchor} onClose={onClose} wide>
-      <RichTextEditor
-        runs={runs}
-        pages={() =>
-          svc.state.pages
-            .all()
-            .filter((p) => p.deletedAt === null && p.kind !== 'folder')
-            .map((p) => ({ id: p.id, title: p.title }))
-        }
-        onCommit={async (next) => {
-          if (JSON.stringify(next) === JSON.stringify(runs)) return onClose()
-          if (await save({ kind: 'text', runs: next })) onClose()
-        }}
-        onCancel={onClose}
-      />
-      {error && (
-        <div className="db-err" role="alert">
-          {error}
-        </div>
-      )}
-    </Shell>
+    <Popover anchor={anchor} onClose={onClose}>
+      <Panel size="lg">
+        <RichTextEditor
+          runs={runs}
+          pages={() =>
+            svc.state.pages
+              .all()
+              .filter((p) => p.deletedAt === null && p.kind !== 'folder')
+              .map((p) => ({ id: p.id, title: p.title }))
+          }
+          onCommit={async (next) => {
+            if (JSON.stringify(next) === JSON.stringify(runs)) return onClose()
+            if (await save({ kind: 'text', runs: next })) onClose()
+          }}
+          onCancel={onClose}
+        />
+        {error && <ErrorLine>{error}</ErrorLine>}
+      </Panel>
+    </Popover>
   )
 }
 
-/** The popover editor for kinds that have one; null for kinds edited inline or read-only. */
+/** The panel editor for kinds that have one; null for kinds edited inline or read-only. */
 export function PopoverEditor(p: PopProps) {
   switch (p.def.kind) {
     case 'select':
@@ -718,5 +688,3 @@ export function InlineCellEditor({
     />
   )
 }
-
-export { textToRuns, runsToText, COLOR_CLASS }

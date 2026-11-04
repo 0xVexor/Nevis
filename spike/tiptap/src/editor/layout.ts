@@ -1,3 +1,4 @@
+import { commandMatches } from '../shortcutCommands'
 import { Node, Extension, mergeAttributes, type Command } from '@tiptap/core'
 import { Fragment, Slice } from '@tiptap/pm/model'
 import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state'
@@ -499,6 +500,26 @@ export const LayoutSafety = Extension.create({
   priority: 1100,
   addProseMirrorPlugins() {
     const editor = this.editor
+    const snap = (mode: 'left' | 'right') => {
+      const editor = this.editor
+      if (!editor.isEditable || editor.view.composing || insideTable(editor.state)) return false
+      const range = blockRange(editor.state)
+      if (!range) return true
+      editor.view.dom.dispatchEvent(new CustomEvent('layout-snap-pick', { detail: { range, doc: editor.state.doc, mode } }))
+      return true
+    }
+    const actions = {
+      'Snap content left': () => snap('left'),
+      'Snap content right': () => snap('right'),
+      'Move block up': () => this.editor.commands.shiftLayoutBlock(-1),
+      'Move block down': () => this.editor.commands.shiftLayoutBlock(1),
+      'Add full-width text after layout': () => this.editor.commands.addAfterLayout(),
+      'Move to…': () => {
+        if (!this.editor.isEditable) return false
+        this.editor.view.dom.dispatchEvent(new Event('layout-move-menu'))
+        return true
+      },
+    }
     return [
       new Plugin({
         key: new PluginKey('layoutSafety'),
@@ -531,6 +552,8 @@ export const LayoutSafety = Extension.create({
             if (!view.editable) return false
             if (e.isComposing || view.composing) return false
             if (typeof HTMLElement !== 'undefined' && e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable="false"]')) return false
+            const action = Object.entries(actions).find(([label]) => commandMatches(e, label))
+            if (action?.[1]()) return true
             const selected = view.state.selection
             if ((e.key === 'Backspace' || e.key === 'Delete') && selected instanceof NodeSelection && selected.node.type.name === GROUP) {
               const { doc } = view.state
@@ -633,28 +656,7 @@ export const LayoutSafety = Extension.create({
       }),
     ]
   },
-  addKeyboardShortcuts() {
-    const snap = (mode: 'left' | 'right') => {
-      const editor = this.editor
-      if (!editor.isEditable || editor.view.composing || insideTable(editor.state)) return false
-      const range = blockRange(editor.state)
-      if (!range) return true
-      editor.view.dom.dispatchEvent(new CustomEvent('layout-snap-pick', { detail: { range, doc: editor.state.doc, mode } }))
-      return true
-    }
-    return {
-      'Mod-Alt-ArrowLeft': () => snap('left'),
-      'Mod-Alt-ArrowRight': () => snap('right'),
-      'Mod-Alt-ArrowUp': () => this.editor.commands.shiftLayoutBlock(-1),
-      'Mod-Alt-ArrowDown': () => this.editor.commands.shiftLayoutBlock(1),
-      'Mod-Alt-Enter': () => this.editor.commands.addAfterLayout(),
-      'Mod-Alt-m': () => {
-        if (!this.editor.isEditable) return false
-        this.editor.view.dom.dispatchEvent(new Event('layout-move-menu'))
-        return true
-      },
-    }
-  },
+
 })
 
 export { activeGroup, blockRange, groupColumns, NodeSelection }

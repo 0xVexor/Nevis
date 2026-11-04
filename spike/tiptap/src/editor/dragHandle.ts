@@ -5,13 +5,17 @@ import type { EditorView } from '@tiptap/pm/view'
 import { COLUMN, GROUP, GAP, ancestor, blockRange, flow, type BlockRange } from './layoutModel'
 import { LAYOUT_CANCEL } from './layout'
 import { directionalSnapTarget, fitsSnapColumns, outsideSnapTarget, planSnap, snapKey, snapTransaction, verticalSnapTarget, type SnapContext, type SnapFailure, type SnapPlan } from './snapModel'
-import { chooseSnapDestination, containsSnapPoint, hitsSnapDestination, snapContext, snapDestinations, type SnapDestination } from './snapTargets'
+import { chooseSnapDestination, hitsSnapDestination, snapContext, snapDestinations, type SnapDestination } from './snapTargets'
 import { t } from '../i18n'
 import { hoveredSnapBlock, snapBlockAtElement } from './snapHover'
 import { isSectionDragSurface } from './snapSurface'
 import { setLayoutInteraction } from './layoutInteraction'
+import { DS_ICONS } from '../design-system/iconData'
 
 const MIME = 'application/x-nevis-block-move'
+/** Pointer travel across the page, in pixels, before a drag may put blocks side by side. */
+const SIDEWAYS = 32
+const icon = (name: string) => `<svg class="ds-icon" viewBox="0 0 24 24" aria-hidden="true">${DS_ICONS[name]?.[1] ?? ''}</svg>`
 let pickerSequence = 0
 export const SNAP_PICK = 'layout-snap-pick'
 export interface SnapPickRequest {
@@ -20,7 +24,7 @@ export interface SnapPickRequest {
   mode: 'pick' | 'up' | 'down' | 'left' | 'right' | 'outside-before' | 'outside-after'
 }
 
-/** Both the chooser and the full-size ghost show the same planned extraction result. */
+/** Taking content out of a layout: the preview shows the moved block and the columns left behind. */
 function snapMiniature(columns?: SnapPlan['columns'], extraction?: SnapPlan['extraction']) {
   const miniature = document.createElement('div')
   miniature.className = 'layout-snap-miniature'
@@ -61,8 +65,10 @@ export const DragHandle = Extension.create({
         view(view) {
           const host = view.dom.parentElement
           if (!host) return {}
+          // The landing preview. Direction is fixed so the column order can be drawn as the page shows it.
           const overlay = document.createElement('div')
-          overlay.className = 'layout-snap-overlay'
+          overlay.className = 'ds-snap-preview'
+          overlay.dir = 'ltr'
           overlay.setAttribute('aria-hidden', 'true')
           const sourceOverlay = document.createElement('div')
           sourceOverlay.className = 'layout-snap-source-overlay'
@@ -75,14 +81,27 @@ export const DragHandle = Extension.create({
           columnHighlight.className = 'layout-snap-column-highlight'
           columnHighlight.setAttribute('aria-hidden', 'true')
           columnHighlight.hidden = true
-          const tray = document.createElement('div')
-          tray.className = 'layout-snap-tray'
-          tray.dir = 'ltr'
-          tray.setAttribute('aria-hidden', 'true')
-          tray.hidden = true
+          // The ghost under the pointer: what is moving, and what releasing here will do.
           const preview = document.createElement('div')
-          preview.className = 'layout-drag-preview'
+          preview.className = 'ds-drag-ghost'
           preview.setAttribute('aria-hidden', 'true')
+          const previewTitle = document.createElement('div')
+          previewTitle.className = 'ds-drag-ghost-title'
+          previewTitle.dir = 'auto'
+          const previewAction = document.createElement('div')
+          previewAction.className = 'ds-drag-ghost-action'
+          preview.append(previewTitle, previewAction)
+          let previewSignature = ''
+          const setAction = (text: string, state: 'ready' | 'idle' | 'blocked', glyph = '') => {
+            const signature = `${state}:${glyph}:${text}`
+            if (signature === previewSignature) return
+            previewSignature = signature
+            preview.dataset.state = state
+            const label = document.createElement('span')
+            label.textContent = text
+            previewAction.innerHTML = glyph ? icon(glyph) : ''
+            previewAction.append(label)
+          }
           const announcement = document.createElement('div')
           announcement.className = 'layout-snap-announcement'
           announcement.setAttribute('role', 'status')
@@ -103,13 +122,13 @@ export const DragHandle = Extension.create({
           picker.setAttribute('aria-describedby', `${hint.id} ${choice.id}`)
           const cancelButton = document.createElement('button')
           cancelButton.type = 'button'
-          cancelButton.className = 'ghost-btn'
+          cancelButton.className = 'ds-btn ds-btn--sm ds-btn--ghost'
           cancelButton.textContent = t('Cancel')
           picker.append(hint, choice, cancelButton)
           overlay.hidden = true
           preview.hidden = true
           picker.hidden = true
-          document.body.append(overlay, sourceOverlay, hoverOutline, columnHighlight, tray, preview, announcement, picker)
+          document.body.append(overlay, sourceOverlay, hoverOutline, columnHighlight, preview, announcement, picker)
           // The one place a text block is picked up. Text and the blank space around it always select text.
           const grip = document.createElement('button')
           grip.type = 'button'
@@ -162,18 +181,6 @@ export const DragHandle = Extension.create({
           let cache = new Map<string, { error?: SnapFailure; columns?: SnapPlan['columns']; extraction?: SnapPlan['extraction'] }>()
           let keyboardChoice: string | null = null
           let lastPaint = ''
-          let trayOwner = ''
-          let traySlots: string[] = []
-          let trayPendingOwner = '',
-            trayPendingAt = 0
-          let trayAnchor = { x: 0, y: 0 }
-          const hideTray = () => {
-            tray.hidden = true
-            trayOwner = ''
-            traySlots = []
-            trayPendingOwner = ''
-            trayPendingAt = 0
-          }
           let geometry: SnapDestination[] | null = null
           let locatedGeometry: SnapDestination[] | null = null
           let locatedX = NaN,
@@ -182,10 +189,7 @@ export const DragHandle = Extension.create({
           const geometryChanged = () => {
             geometry = null
           }
-          const geometryObserver = new ResizeObserver(() => {
-            geometryChanged()
-            hideTray()
-          })
+          const geometryObserver = new ResizeObserver(geometryChanged)
           const setChoice = (message: string) => {
             if (choice.textContent !== message) choice.textContent = message
           }
@@ -253,9 +257,9 @@ export const DragHandle = Extension.create({
             preview.hidden = true
             picker.hidden = true
             columnHighlight.hidden = true
-            hideTray()
             overlay.replaceChildren()
             lastPaint = ''
+            previewSignature = ''
             target = null
             cursor = null
             keyboardChoice = null
@@ -326,7 +330,7 @@ export const DragHandle = Extension.create({
                 if (dom instanceof HTMLElement) {
                   const r = dom.getBoundingClientRect(),
                     outline = document.createElement('div')
-                  outline.className = 'layout-snap-source-outline'
+                  outline.className = 'ds-drag-source'
                   outline.style.left = `${r.left}px`
                   outline.style.top = `${r.top}px`
                   outline.style.width = `${r.width}px`
@@ -342,33 +346,39 @@ export const DragHandle = Extension.create({
           const paint = (destination: SnapDestination | null) => {
             if (target && target.key !== destination?.key) delete target.plan
             target = destination
-            Array.from(tray.children).forEach((cell) =>
-              cell.classList.toggle('layout-snap-tray-active', !!destination && !destination.error && (cell as HTMLElement).dataset.snapKey === destination.key),
-            )
             if (!destination || destination.error || !destination.plan) {
               overlay.hidden = true
               columnHighlight.hidden = true
               lastPaint = ''
+              const blocked = destination?.error === 'max-columns' || destination?.error === 'insufficient-width'
               const message =
                 destination?.error === 'max-columns'
                   ? t('A layout can have up to three columns.')
                   : destination?.error === 'insufficient-width'
                     ? t('There is not enough room for these columns.')
-                    : t('Choose a destination')
+                    : session?.mode === 'pick'
+                      ? t('Choose a destination')
+                      : t('Release to leave it where it was')
               if (session?.mode === 'pick') setChoice(message)
-              else if (session?.mode === 'drag') preview.textContent = message
+              else if (session?.mode === 'drag') setAction(message, blocked ? 'blocked' : 'idle')
               return
             }
             const { rect, plan } = destination
+            // Between blocks a plain line is enough. A box is drawn only when the shape of the page changes:
+            // new or reordered columns, or content taken out of a layout.
+            const line = destination.kind === 'line' || (destination.kind === 'full-width' && !plan.extraction)
             const signature = `${destination.key}:${rect.left}:${rect.top}:${rect.width}:${rect.height}:${plan.columns?.widths.join(',')}`
             if (signature !== lastPaint) {
               lastPaint = signature
-              overlay.classList.toggle('layout-snap-line', destination.kind === 'line')
+              const top = line && destination.kind === 'full-width' ? rect.top - 1.5 : rect.top
+              const height = line ? (destination.kind === 'line' ? rect.height : 3) : rect.height
+              overlay.dataset.line = String(line)
+              overlay.dataset.cols = String(!line)
               overlay.style.left = `${rect.left}px`
-              overlay.style.top = `${rect.top}px`
+              overlay.style.top = `${top}px`
               overlay.style.width = `${rect.width}px`
-              overlay.style.height = `${rect.height}px`
-              if (plan.columns || destination.kind === 'full-width') {
+              overlay.style.height = `${height}px`
+              if (!line) {
                 const widths = plan.columns ? (plan.columns.rtl ? [...plan.columns.widths].reverse() : plan.columns.widths) : [100]
                 const active = plan.columns ? (plan.columns.rtl ? widths.length - 1 - plan.columns.active : plan.columns.active) : 0
                 overlay.style.gridTemplateColumns = widths.map((w) => `minmax(0, ${w}fr)`).join(' ')
@@ -377,7 +387,8 @@ export const DragHandle = Extension.create({
                   overlay.replaceChildren(...widths.map(() => document.createElement('div')))
                 }
                 Array.from(overlay.children).forEach((column, i) => {
-                  column.className = 'layout-snap-column' + (i === active ? ' layout-snap-active' : '')
+                  column.className = 'ds-snap-col'
+                  ;(column as HTMLElement).dataset.active = String(i === active)
                   column.textContent = destination.kind === 'full-width' ? t('Full width') : ''
                   if (destination.kind === 'full-width' && plan.extraction) column.prepend(snapMiniature(undefined, plan.extraction))
                 })
@@ -388,7 +399,7 @@ export const DragHandle = Extension.create({
               }
             }
             overlay.hidden = false
-            clipToEditor(overlay, rect, destination.kind === 'full-width')
+            clipToEditor(overlay, { ...rect, top: rect.top - 2, height: rect.height + 4 }, destination.kind === 'full-width')
             const column = destination.columnRect
             columnHighlight.hidden = !column
             if (column) {
@@ -398,144 +409,25 @@ export const DragHandle = Extension.create({
               columnHighlight.style.height = `${column.height}px`
               clipToEditor(columnHighlight, column)
             }
-            const label = plan.columns
-              ? t(plan.columns.action === 'reorder' ? 'Move column · {destination}' : 'New column · {destination}', { destination: destination.label })
-              : column
-                ? t('Inside this column · {destination}', { destination: destination.label })
-                : destination.label
-            if (session?.mode === 'pick') setChoice(label)
-            else if (plan.columns) {
-              const target = destination.target
-              const group = target.kind === 'column-gap' ? view.state.doc.nodeAt(target.groupPos) : null
-              const side =
-                target.kind === 'pair'
-                  ? t(target.side === 'left' ? 'Left' : 'Right')
-                  : target.kind === 'column-gap'
-                    ? t(target.visualGap === 0 ? 'Left' : target.visualGap === group?.childCount ? 'Right' : 'Between')
-                    : ''
-              preview.textContent = t(plan.columns.action === 'reorder' ? 'Move column · {side}' : 'New column · {side}', { side })
-            } else preview.textContent = column ? t('Move into this column') : destination.label
-          }
-          const showTray = (all: SnapDestination[], x: number, y: number, preferred?: SnapDestination | null) => {
-            if (session?.mode !== 'drag' || !pointer?.started) {
-              hideTray()
+            if (session?.mode === 'pick') {
+              setChoice(
+                plan.columns
+                  ? t(plan.columns.action === 'reorder' ? 'Move column · {destination}' : 'New column · {destination}', { destination: destination.label })
+                  : column
+                    ? t('Inside this column · {destination}', { destination: destination.label })
+                    : destination.label,
+              )
               return
             }
-            const current = tray.getBoundingClientRect()
-            // Keep the chooser still while the pointer approaches it; do not chase the pointer.
-            if (!tray.hidden && containsSnapPoint(current, x, y, 24)) return
-            const sourceGroup = ancestor(view.state.doc.resolve(session.range.from), GROUP)
-            const leaving = sourceGroup && preferred?.target.kind === 'insert' && (preferred.target.pos === sourceGroup.pos || preferred.target.pos === sourceGroup.pos + sourceGroup.node.nodeSize)
-            const group = leaving
-              ? all.find((destination) => destination.target.kind === 'column-gap' && destination.target.groupPos === sourceGroup.pos)
-              : all.find(
-                  (destination) =>
-                    destination.target.kind === 'column-gap' &&
-                    y >= destination.rect.top &&
-                    y <= destination.rect.top + destination.rect.height &&
-                    x >= destination.rect.left - 28 &&
-                    x <= destination.rect.left + destination.rect.width + 28,
-                )
-            const pair = group ? undefined : all.find((destination) => destination.target.kind === 'pair' && containsSnapPoint(destination.rect, x, y))
-            // Stacked layouts have no horizontal seams, but extraction must still have a chooser.
-            const sourceDOM = sourceGroup && view.nodeDOM(sourceGroup.pos)
-            const inSourceGroup = sourceDOM instanceof HTMLElement && containsSnapPoint(sourceDOM.getBoundingClientRect(), x, y)
-            const groupPos = group?.target.kind === 'column-gap' ? group.target.groupPos : sourceGroup && (leaving || inSourceGroup) ? sourceGroup.pos : null
-            const blockPos = pair?.target.kind === 'pair' ? pair.target.targetFrom : null
-            const owner = groupPos != null ? `${leaving ? 'exit' : 'group'}:${groupPos}` : blockPos != null ? `block:${blockPos}` : ''
-            const horizontal =
-              groupPos != null
-                ? all
-                    .filter((destination) => destination.target.kind === 'column-gap' && destination.target.groupPos === groupPos)
-                    .sort((a, b) => (a.target.kind === 'column-gap' && b.target.kind === 'column-gap' ? a.target.visualGap - b.target.visualGap : 0))
-                : blockPos != null
-                  ? all
-                      .filter((destination) => destination.target.kind === 'pair' && destination.target.targetFrom === blockPos)
-                      .sort((a, b) => Number(a.target.kind === 'pair' && a.target.side === 'right') - Number(b.target.kind === 'pair' && b.target.side === 'right'))
-                  : []
-            const options = horizontal.map((destination, index) => ({
-              destination,
-              vertical: false,
-              label: index === 0 ? t('Left') : index === horizontal.length - 1 ? t('Right') : horizontal.length === 3 ? t('Between') : `${index} · ${index + 1}`,
-            }))
-            // The same chooser offers above/below for entering AND leaving a layout.
-            const anchorPos = groupPos ?? blockPos
-            const anchorNode = anchorPos != null ? view.state.doc.nodeAt(anchorPos) : null
-            if (anchorPos != null && anchorNode) {
-              for (const [index, pos] of [anchorPos, anchorPos + anchorNode.nodeSize].entries()) {
-                const destination = all.find((candidate) => candidate.target.kind === 'insert' && candidate.target.pos === pos)
-                if (destination) options.push({ destination, vertical: true, label: t(index === 0 ? 'Above' : 'Below') })
-              }
-            }
-            // A no-op is not a choice. Show only outcomes the planner can actually commit.
-            const slots = options.filter(({ destination }) => !validate(destination).error)
-            if (!slots.length) {
-              hideTray()
-              return
-            }
-            const horizontalCount = slots.filter((slot) => !slot.vertical).length
-            if (owner === trayOwner && !tray.hidden) return
-            if (owner !== trayPendingOwner) {
-              tray.hidden = true
-              traySlots = []
-              trayOwner = ''
-              trayPendingOwner = owner
-              trayPendingAt = performance.now()
-              trayAnchor = { x, y }
-            }
-            // Passing over rows should not repeatedly spawn menus. The chooser settles once per owner.
-            if (performance.now() - trayPendingAt < 120) return
-            trayOwner = owner
-            traySlots = slots.map(({ destination }) => destination.key)
-            tray.replaceChildren()
-            const hasExits = slots.some((slot) => slot.vertical)
-            tray.classList.toggle('layout-snap-tray-with-exits', hasExits)
-            tray.style.gridTemplateColumns = hasExits ? `repeat(${Math.max(1, horizontalCount) * 2}, minmax(0, 1fr))` : ''
-            slots.forEach(({ destination, vertical, label: caption }) => {
-              const cell = document.createElement('div')
-              cell.className = 'layout-snap-tray-slot'
-              cell.dataset.snapKey = destination.key
-              cell.setAttribute('aria-label', destination.label)
-              if (hasExits) cell.style.gridColumn = `span ${vertical ? Math.max(1, horizontalCount) : 2}`
-              const result = cache.get(destination.key)
-              const miniature = snapMiniature(result?.columns, result?.extraction)
-              const label = document.createElement('span')
-              label.dir = 'auto'
-              label.textContent = caption
-              cell.append(miniature, label)
-              tray.append(cell)
-            })
-            const area = view.dom.closest<HTMLElement>('.scroller')?.getBoundingClientRect() ?? view.dom.getBoundingClientRect()
-            const toolbar = view.dom.closest('.page')?.querySelector<HTMLElement>('.toolbar')?.getBoundingClientRect()
-            const width = Math.min(Math.max(208, horizontalCount * 72 + 8), area.width - 24, innerWidth - 24)
-            const topEdge = Math.max(8, area.top + 8, (toolbar?.bottom ?? 0) + 8)
-            tray.style.width = `${width}px`
-            tray.style.left = `${Math.max(area.left + 12, Math.min(trayAnchor.x - width / 2, area.right - width - 12))}px`
-            tray.hidden = false
-            const height = tray.offsetHeight
-            // the chooser opens centred on the pointer, so the choice is already under it
-            const top = trayAnchor.y - height / 2
-            tray.style.top = `${Math.max(topEdge, Math.min(top, area.bottom - height - 8))}px`
-          }
-          const trayDestination = (all: SnapDestination[], x: number, y: number) => {
-            if (tray.hidden || !containsSnapPoint(tray.getBoundingClientRect(), x, y)) return null
-            let index = -1,
-              nearest = Infinity
-            Array.from(tray.children).forEach((cell, i) => {
-              const r = cell.getBoundingClientRect(),
-                distance = containsSnapPoint(r, x, y) ? -1 : Math.hypot(x - r.left - r.width / 2, y - r.top - r.height / 2)
-              if (distance < nearest) {
-                nearest = distance
-                index = i
-              }
-            })
-            const destination = all.find((candidate) => candidate.key === traySlots[index])
-            if (!destination) {
-              hideTray()
-              return null
-            }
-            Array.from(tray.children).forEach((node, i) => node.classList.toggle('layout-snap-tray-active', i === index))
-            return validate(destination, true)
+            // Say the outcome in plain words; the preview shows where.
+            if (plan.columns)
+              setAction(
+                t(plan.columns.action === 'reorder' ? 'Move this column here' : plan.columns.action === 'pair' ? 'Place side by side' : 'Add as a new column'),
+                'ready',
+                plan.columns.widths.length >= 3 ? 'columns-3' : 'columns',
+              )
+            else if (plan.extraction) setAction(t('Take out of the columns'), 'ready', 'arrow-up-right')
+            else setAction(column ? t('Move into this column') : t('Move here'), 'ready', 'move')
           }
           const pullOutDestination = (all: SnapDestination[], x: number, y: number): SnapDestination | null => {
             if (!session || session.mode !== 'drag' || !pointer?.started) return null
@@ -574,16 +466,10 @@ export const DragHandle = Extension.create({
               return
             }
             const all = destinations()
-            const chosen = trayDestination(all, x, y)
-            if (chosen) {
-              paint(chosen)
-              return
-            }
             const pulled = pullOutDestination(all, x, y)
             if (pulled) {
               const hit = document.elementFromPoint(x, y)
-              if (hit && (view.dom.contains(hit) || tray.contains(hit))) {
-                showTray(all, x, y, pulled)
+              if (hit && view.dom.contains(hit)) {
                 paint(validate(pulled, true))
                 return
               }
@@ -603,7 +489,6 @@ export const DragHandle = Extension.create({
               y <= editor.bottom + 24
             const edge = group && view.dom.contains(group)
             if (!within && !edge && !margin) {
-              if (tray.hidden || !containsSnapPoint(tray.getBoundingClientRect(), x, y, 24)) hideTray()
               paint(null)
               return
             }
@@ -611,8 +496,10 @@ export const DragHandle = Extension.create({
             for (const destination of all) {
               if (hitsSnapDestination(destination, x, y, 8)) validate(destination)
             }
-            const selected = chooseSnapDestination(all, x, y, target)
-            showTray(all, x, y, selected)
+            // Columns form only once the pointer has moved sideways. Dragging straight up or down, even along
+            // the edge of the text, always reorders.
+            const sideways = !pointer?.started || Math.abs(x - pointer.x) >= SIDEWAYS
+            const selected = chooseSnapDestination(all, x, y, target, sideways)
             paint(selected ? validate(selected, true) : null)
           }
           const locate = (x: number, y: number) => {
@@ -901,10 +788,11 @@ export const DragHandle = Extension.create({
               pointer.started = true
               suppressSurfaceClick = true
               start(range, 'drag', selectionBefore)
-              preview.textContent =
+              previewTitle.textContent =
                 range.nodes.length === 1
-                  ? range.nodes[0].textContent.slice(0, 90) || t(range.nodes[0].type.name === GROUP ? 'Move layout' : 'Move block')
+                  ? range.nodes[0].textContent.trim().replace(/\s+/g, ' ').slice(0, 90) || t(range.nodes[0].type.name === GROUP ? 'Move layout' : 'Move block')
                   : t('Moving {n} blocks', { n: range.nodes.length })
+              setAction(t('Release to leave it where it was'), 'idle')
             }
             e.preventDefault()
             cursor = { x: e.clientX, y: e.clientY }
@@ -1060,7 +948,7 @@ export const DragHandle = Extension.create({
             if (cursor) {
               if (session.mode === 'drag') {
                 const sc = view.dom.closest<HTMLElement>('.scroller')
-                if (sc && (tray.hidden || !containsSnapPoint(tray.getBoundingClientRect(), cursor.x, cursor.y, 12))) {
+                if (sc) {
                   const r = sc.getBoundingClientRect(),
                     edge = 48
                   if (cursor.x >= r.left && cursor.x <= r.right) {
@@ -1072,13 +960,12 @@ export const DragHandle = Extension.create({
                     }
                   }
                 }
-                preview.hidden = !tray.hidden && containsSnapPoint(tray.getBoundingClientRect(), cursor.x, cursor.y)
+                preview.hidden = false
                 preview.style.left = `${Math.max(8, Math.min(cursor.x + 16, innerWidth - Math.min(preview.offsetWidth, 280) - 8))}px`
                 preview.style.top = `${Math.max(8, Math.min(cursor.y + 16, innerHeight - preview.offsetHeight - 8))}px`
               }
-              // Stationary pointers need no repeated DOM hit-testing or planning. The delayed
-              // chooser still gets one update when it settles; scroll/resize invalidates geometry.
-              if (!geometry || geometry !== locatedGeometry || cursor.x !== locatedX || cursor.y !== locatedY || (tray.hidden && !!trayPendingOwner && performance.now() - trayPendingAt >= 120)) {
+              // Stationary pointers need no repeated DOM hit-testing or planning; scroll/resize invalidates geometry.
+              if (!geometry || geometry !== locatedGeometry || cursor.x !== locatedX || cursor.y !== locatedY) {
                 const point = cursor
                 locate(point.x, point.y)
                 if (session) {
@@ -1113,7 +1000,6 @@ export const DragHandle = Extension.create({
           }
           const repositionHover = () => {
             geometryChanged()
-            hideTray()
             if (session || pointer || hoverOutline.hidden) return
             if (hoverModality === 'pointer' && hoverPoint) scheduleHover()
             else hide()
@@ -1200,7 +1086,6 @@ export const DragHandle = Extension.create({
               sourceOverlay.remove()
               hoverOutline.remove()
               columnHighlight.remove()
-              tray.remove()
               preview.remove()
               announcement.remove()
               picker.remove()

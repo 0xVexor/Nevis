@@ -29,16 +29,16 @@ jobs:
         id: channel
         shell: bash
         run: |
+          if [[ "$GITHUB_REF_TYPE" != tag ]]; then
+            echo 'prerelease=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" == *-* ]]; then
             git merge-base --is-ancestor HEAD origin/dev
             echo 'prerelease=true' >> "$GITHUB_OUTPUT"
             echo 'target=dev' >> "$GITHUB_OUTPUT"
             ALLOW_PRERELEASE=1 node .github/scripts/release-version.cjs
           else
-            if [[ "$GITHUB_REF_TYPE" != tag && "$GITHUB_REF" != refs/heads/main ]]; then
-              echo 'Stable installer builds must use main or a final release tag on main.' >&2
-              exit 1
-            fi
             git merge-base --is-ancestor HEAD origin/main
             echo 'prerelease=false' >> "$GITHUB_OUTPUT"
             echo 'target=main' >> "$GITHUB_OUTPUT"
@@ -85,11 +85,17 @@ jobs:
       - run: npm ci
         working-directory: spike/tiptap
       - name: Configure signed updates
+        if: github.ref_type == 'tag'
         env:
           NEVIS_UPDATER_PUBLIC_KEY: ${{ vars.NEVIS_UPDATER_PUBLIC_KEY }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: node .github/scripts/updater-config.cjs
+      - name: Build preview installers
+        if: github.ref_type != 'tag'
+        working-directory: spike/tiptap
+        run: npm run tauri -- build ${{ matrix.args }}
       - uses: tauri-apps/tauri-action@v0
+        if: github.ref_type == 'tag'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -103,6 +109,25 @@ jobs:
           prerelease: ${{ needs.release-source.outputs.prerelease == 'true' }}
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
+      - name: Verify Windows install and uninstall
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $bundle = 'spike/tiptap/src-tauri/target/release/bundle/nsis'
+          $installers = @(Get-ChildItem -LiteralPath $bundle -Filter 'Nevis_*-setup.exe' -File)
+          if ($installers.Count -ne 1) { throw "Expected one Nevis setup executable in $bundle." }
+          $destination = Join-Path $env:RUNNER_TEMP 'Nevis installer test'
+          $setup = Start-Process -FilePath $installers[0].FullName -ArgumentList "/S /D=$destination" -PassThru -Wait -WindowStyle Hidden
+          if ($setup.ExitCode -ne 0) { throw "Nevis setup exited with $($setup.ExitCode)." }
+          $app = Join-Path $destination 'nevis.exe'
+          $uninstall = Join-Path $destination 'uninstall.exe'
+          if (!(Test-Path -LiteralPath $app -PathType Leaf) -or !(Test-Path -LiteralPath $uninstall -PathType Leaf)) {
+            throw 'Setup did not install both Nevis and its uninstaller.'
+          }
+          $removal = Start-Process -FilePath $uninstall -ArgumentList '/S' -PassThru -Wait -WindowStyle Hidden
+          if ($removal.ExitCode -ne 0 -or (Test-Path -LiteralPath $app) -or (Test-Path -LiteralPath $uninstall)) {
+            throw "Nevis uninstall did not complete. Exit code $($removal.ExitCode)."
+          }
       - name: Verify macOS installer scripts
         if: matrix.os == 'macos-latest'
         run: python3 .github/scripts/test-macos-installer.py

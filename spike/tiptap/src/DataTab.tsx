@@ -3,13 +3,11 @@ import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { backupNow, backupStatus, chooseBackupFolder, grantAccess, setAutomatic } from './autobackup'
 import { BackupError, readFolder, restoreBackup } from './backup'
 import { isTauri } from './db'
-import { Button, Dialog, Facts, Field, Icon, Notice, Section, Switch } from './design-system'
+import { Button, Dialog, Facts, Field, Icon, Notice, PreferenceGroup, PreferenceRow, Section, Switch } from './design-system'
 import { locale, t } from './i18n'
-import * as Ic from './icons'
-import { pickDirectory, pickFiles } from './io'
+import { droppedFiles, pickDirectory, pickFiles } from './io'
 import { reviewImport, runImport, type ImportOutcome, type ImportReview } from './importPlan'
 import type { PageRepo } from './repo'
-import { Card, Row } from './SettingsParts'
 
 export interface DataApi {
   repo: PageRepo
@@ -91,7 +89,7 @@ export function DataTab({ api }: { api: DataApi }) {
   const drop = (e: DragEvent) => {
     e.preventDefault()
     setOver(false)
-    void look([...e.dataTransfer.files])
+    void droppedFiles(e.dataTransfer).then(look, () => setPhase({ step: 'error', message: t('The file could not be read.') }))
   }
 
   const go = async () => {
@@ -114,14 +112,14 @@ export function DataTab({ api }: { api: DataApi }) {
 
   return (
     <>
-      <Card title={t('Import or restore')} hint={t('Bring in Markdown files, an Obsidian folder, a zip you exported, or a full backup.')}>
-        <div className="sx-drop" data-over={over} onDragOver={(e) => (e.preventDefault(), setOver(true))} onDragLeave={() => setOver(false)} onDrop={drop}>
-          <span className="sx-drop-ic">
-            <Ic.Upload size={22} />
+      <PreferenceGroup title={t('Import or restore')} hint={t('Bring in Markdown files, an Obsidian folder, a zip you exported, or a full backup.')}>
+        <div className="prefs-drop" data-over={over} onDragOver={(e) => (e.preventDefault(), setOver(true))} onDragLeave={() => setOver(false)} onDrop={drop}>
+          <span className="prefs-drop-ic">
+            <Icon name="upload" size={22} />
           </span>
           <b>{t('Drop files here')}</b>
-          <small>{t('Markdown, zip or a backup file. Nothing is changed until you confirm.')}</small>
-          <span className="sx-drop-btns">
+          <small>{t('Markdown, an Obsidian folder, zip or a backup file. Nothing is changed until you confirm.')}</small>
+          <span className="prefs-drop-btns">
             <Button size="sm" disabled={reading} onClick={chooseFiles}>
               {t('Choose files…')}
             </Button>
@@ -135,25 +133,25 @@ export function DataTab({ api }: { api: DataApi }) {
             )}
           </span>
         </div>
-      </Card>
+      </PreferenceGroup>
 
       <BackupCard api={api} />
 
-      <Card title={t('Export to read or move')} hint={t('A zip of Markdown files and images, for reading or for other apps. It is not a backup: databases, history and settings are not in it.')}>
-        <Row label={t('Markdown zip')} hint={t('You can import it back above.')}>
-          <Button size="sm" icon={<Ic.Download size={15} />} onClick={api.exportAll}>
+      <PreferenceGroup title={t('Export to read or move')} hint={t('A zip of Markdown files and images, for reading or for other apps. It is not a backup: databases, history and settings are not in it.')}>
+        <PreferenceRow label={t('Markdown zip')} hint={t('You can import it back above.')}>
+          <Button size="sm" icon={<Icon name="download" size={15} />} onClick={api.exportAll}>
             {t('Export')}
           </Button>
-        </Row>
-      </Card>
+        </PreferenceRow>
+      </PreferenceGroup>
 
-      <Card title={t('Workspaces')}>
-        <Row label={t('Workspaces')} hint={t('Switch or create a workspace')}>
+      <PreferenceGroup title={t('Workspaces')}>
+        <PreferenceRow label={t('Workspaces')} hint={t('Switch or create a workspace')}>
           <Button size="sm" onClick={api.workspaces}>
             {t('Open')}
           </Button>
-        </Row>
-      </Card>
+        </PreferenceRow>
+      </PreferenceGroup>
 
       <ImportDialog phase={phase} api={api} go={go} close={() => setPhase(null)} where={where} setWhere={setWhere} />
     </>
@@ -193,7 +191,7 @@ function ImportDialog({ phase, api, go, close, where, setWhere }: { phase: Phase
         <span className="ds-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
           <i style={{ inlineSize: (pct ?? 100) + '%' }} />
         </span>
-        <p className="sx-note">{pct === undefined ? t('Please keep this window open.') : t('{done} of {total} pages', { done: num(phase.done), total: num(phase.total) })}</p>
+        <p className="prefs-note">{pct === undefined ? t('Please keep this window open.') : t('{done} of {total} pages', { done: num(phase.done), total: num(phase.total) })}</p>
       </Dialog>
     )
   }
@@ -366,14 +364,14 @@ function BackupCard({ api }: { api: DataApi }) {
   const c = st.counts
 
   return (
-    <Card title={t('Backup')} hint={t('A copy of everything: pages, folders, images, databases, settings and history. Restore it above.')}>
+    <PreferenceGroup title={t('Backup')} hint={t('A copy of everything: pages, folders, images, databases, settings and history. Restore it above.')}>
       {!st.supported ? (
         <Notice tone="warn" icon={warn}>
           {t('This browser does not support folder selection. Use Edge or Chrome; until then, manual “Full backup” still works.')}
         </Notice>
       ) : (
         <>
-          <Row label={t('Backup folder')} hint={st.ready ? undefined : t('Choose where backups are kept.')}>
+          <PreferenceRow label={t('Backup folder')} hint={st.ready ? undefined : t('Choose where backups are kept.')}>
             {st.folder && <span dir="auto">{st.folder}</span>}
             <Button size="sm" variant={st.ready ? undefined : 'primary'} disabled={busy} onClick={() => run(chooseBackupFolder)}>
               {st.ready ? t('Change folder') : t('Choose folder')}
@@ -383,10 +381,10 @@ function BackupCard({ api }: { api: DataApi }) {
                 {t('Grant access')}
               </Button>
             )}
-          </Row>
+          </PreferenceRow>
           {st.ready && (
             <>
-              <Row
+              <PreferenceRow
                 label={t('Last backup')}
                 hint={c ? t('{pages} pages, {folders} folders, {files} images and files', { pages: num(c.pages - c.trashed), folders: num(c.folders), files: num(c.files) }) : undefined}
               >
@@ -394,10 +392,10 @@ function BackupCard({ api }: { api: DataApi }) {
                 <Button size="sm" variant="primary" disabled={busy} onClick={() => run(() => backupNow())}>
                   {t('Back up now')}
                 </Button>
-              </Row>
-              <Row label={t('Automatic')} hint={t('Backs up as you work and when you leave.')}>
+              </PreferenceRow>
+              <PreferenceRow label={t('Automatic')} hint={t('Backs up as you work and when you leave.')}>
                 <Switch label={t('Automatic')} checked={st.enabled} disabled={busy} onChange={(on) => run(() => setAutomatic(on))} />
-              </Row>
+              </PreferenceRow>
             </>
           )}
           {st.blocked && (
@@ -420,11 +418,11 @@ function BackupCard({ api }: { api: DataApi }) {
           )}
         </>
       )}
-      <Row label={t('Backup as one file')} hint={t('The same backup in a single file, to keep or move.')}>
-        <Button size="sm" icon={<Ic.Download size={15} />} onClick={api.backup}>
+      <PreferenceRow label={t('Backup as one file')} hint={t('The same backup in a single file, to keep or move.')}>
+        <Button size="sm" icon={<Icon name="download" size={15} />} onClick={api.backup}>
           {t('Back up')}
         </Button>
-      </Row>
-    </Card>
+      </PreferenceRow>
+    </PreferenceGroup>
   )
 }

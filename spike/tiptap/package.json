@@ -29,7 +29,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test:document-mcp": "npm run -s build:documents && node --test ../../db/test-document-mcp.mjs",
-    "test:document-tables": "npm run -s build:documents && node --test ../../db/test-document-tables.mjs"
+    "test:document-tables": "npm run -s build:documents && node --test ../../db/test-document-tables.mjs",
+    "dev:settings": "vite --config vite.settings.config.ts",
+    "build:settings": "tsc -p tsconfig.app.json --noEmit --incremental false && vite build --config vite.settings.config.ts"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",
@@ -66,6 +68,7 @@
     "lowlight": "^3.3.0",
     "marked": "^18.1.1",
     "mermaid": "^12.2.0",
+    "motion": "^12.43.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

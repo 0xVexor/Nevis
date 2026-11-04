@@ -147,7 +147,7 @@ fn local_dir(root: &Path) -> Res<Option<PathBuf>> {
     if fs::canonicalize(base).map_err(err)?.starts_with(fs::canonicalize(root).map_err(err)?) {
         return Err("Document operation records must be outside the vault".into());
     }
-    let marker = read(&root.join(".noviq/vault.json"))?.ok_or("Missing vault identity")?;
+    let marker = read(&root.join(".nevis/vault.json"))?.ok_or("Missing vault identity")?;
     let id = marker["id"].as_str().filter(|s| !s.is_empty()).ok_or("Missing vault identity")?;
     // Vault identity survives a folder move. Local records never travel with that folder.
     Ok(Some(base.join(format!("{:x}", Sha256::digest(id.as_bytes())))))

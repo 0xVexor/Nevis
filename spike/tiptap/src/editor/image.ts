@@ -52,11 +52,12 @@ export const AttImage = Image.extend({
 
       // ── toolbar ──
       const bar = document.createElement('div')
-      bar.className = 'img-bar'
+      bar.className = 'img-bar ds-toolbar'
       bar.contentEditable = 'false'
       const btn = (label: string, title: string, fn: () => void) => {
         const b = document.createElement('button')
         b.type = 'button'
+        b.className = 'ds-icon-btn ds-toolbar-btn' + (label.startsWith('<svg') ? '' : ' ds-toolbar-btn--text')
         setLabel(b, label)
         b.title = title
         b.onmousedown = (e) => e.preventDefault()
@@ -80,7 +81,7 @@ export const AttImage = Image.extend({
         const pos = getPos()
         if (pos != null) editor.view.dispatch(editor.state.tr.delete(pos, pos + cur.nodeSize))
       })
-      const sep = () => Object.assign(document.createElement('span'), { className: 'sep' })
+      const sep = () => Object.assign(document.createElement('span'), { className: 'ds-toolbar-sep' })
       bar.append(...sizeBtns, reset, sep(), ...alignBtns, sep(), big, del)
 
       // ── resize handle (inline-end bottom corner) ──

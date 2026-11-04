@@ -1,18 +1,16 @@
 // Import / export / backup of one database: CSV import wizard (explicit mapping, nothing guessed), CSV / Markdown export of the
-// current view, native bundle backup and validated restore, schema or full duplicate.
-import { useMemo, useRef, useState } from 'react'
+// current view, native bundle backup and validated restore, schema or full duplicate. The container puts the items in its More menu.
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Container, Id, Json, View } from '../model/types.ts'
 import { buildBundle, validateBundle, type Bundle } from '../backup2.ts'
 import { exportCsv, exportMarkdown, parseCsv, planImport, worldOf, type ColumnMap, type ImportOptions } from '../csv.ts'
 import { DESCRIPTORS } from '../props/registry.ts'
 import type { DatabaseService } from '../service.ts'
 import { download } from '../../backup'
-import { Popover, MenuItem, MenuLabel, MenuSep, Select } from '../../ui'
-import { confirmDialog, promptDialog } from '../../dialog'
+import { Button, Dialog, Dropdown, Facts, Field, FormField, Icon, Segmented, SwitchRow, type MenuItem } from '../../design-system'
+import { confirmDialog } from '../../dialog'
 import { t } from '../../i18n'
-import * as Ic from '../../icons'
-import { errorText } from './common'
-import { Field, Seg, Switch } from './forms'
+import { ErrorLine, Hint, errorText } from './common'
 
 const slug = (s: string) =>
   s
@@ -20,73 +18,79 @@ const slug = (s: string) =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 40) || 'database'
 
-export function ImportExportMenu({
+/** Menu items for import, export, backup and duplicate, plus the hidden file inputs and dialogs they open. */
+export function useImportExport({
   svc,
   container,
   source,
   view,
-  anchor,
-  onClose,
   notify,
   canSchema,
 }: {
   svc: DatabaseService
   container: Container
-  source: Id
+  source: Id | null
   view: View
-  anchor: DOMRect
-  onClose: () => void
   notify: (m: string) => void
   canSchema: boolean
-}) {
+}): { items: MenuItem[]; ui: ReactNode } {
   const [wizard, setWizard] = useState<{ data: string[][]; name: string } | null>(null)
   const [restore, setRestore] = useState<Bundle | null>(null)
   const csvInput = useRef<HTMLInputElement>(null)
   const bundleInput = useRef<HTMLInputElement>(null)
   const name = slug(container.title)
-  const personal = (() => {
-    try {
-      return JSON.parse(localStorage.getItem('db.personal.' + view.id) ?? 'null') as { filter?: never; sorts?: never } | null
-    } catch {
-      return null
-    }
-  })()
-  const query = { filter: personal?.filter !== undefined ? personal.filter : view.filter, sorts: personal?.sorts ?? view.sorts }
   const exportAs = (kind: 'csv' | 'md', safe: boolean) => {
+    if (!source) return
+    const personal = (() => {
+      try {
+        return JSON.parse(localStorage.getItem('db.personal.' + view.id) ?? 'null') as { filter?: never; sorts?: never } | null
+      } catch {
+        return null
+      }
+    })()
+    const query = { filter: personal?.filter !== undefined ? personal.filter : view.filter, sorts: personal?.sorts ?? view.sorts }
     const o = { sourceId: source, principalId: svc.principalId, now: svc.nowIso(), zone: svc.zone, query, safe, propertyIds: (view.configuration as { visibleProperties?: Id[] }).visibleProperties }
     if (kind === 'csv') download(`${name}.csv`, new Blob([exportCsv(svc.state, o)], { type: 'text/csv;charset=utf-8' }))
     else download(`${name}.md`, new Blob([exportMarkdown(svc.state, o)], { type: 'text/markdown;charset=utf-8' }))
-    onClose()
-  }
-  const exportBundle = () => {
-    download(`${name}.nevis-database.json`, new Blob([JSON.stringify(buildBundle(svc.state))], { type: 'application/json' }))
-    onClose()
   }
   const duplicate = async (withRows: boolean) => {
-    onClose()
     const r = await svc.tryExec([{ type: 'database.duplicate', payload: { containerId: container.id, withRows } }])
     notify(r.ok ? t(withRows ? 'Duplicated with all items.' : 'Duplicated (structure only).') : errorText(r.code, r.message))
   }
-  return (
+  const hasRows = !!source
+  const items: MenuItem[] = [
+    { label: 'Import CSV…', icon: <Icon name="upload" size={16} />, disabled: !hasRows, onSelect: () => csvInput.current?.click() },
+    {
+      label: 'Export this view',
+      icon: <Icon name="download" size={16} />,
+      items: [
+        { label: 'CSV (safe for spreadsheets)', disabled: !hasRows, onSelect: () => exportAs('csv', true) },
+        { label: 'CSV (raw values)', disabled: !hasRows, onSelect: () => exportAs('csv', false) },
+        { label: 'Markdown table', disabled: !hasRows, onSelect: () => exportAs('md', true) },
+        { kind: 'sep' },
+        { label: 'Print', icon: <Icon name="printer" size={16} />, onSelect: () => window.setTimeout(() => window.print(), 50) },
+      ],
+    },
+    {
+      label: 'Backup',
+      icon: <Icon name="save" size={16} />,
+      items: [
+        { label: 'Export the whole database (restorable)', onSelect: () => download(`${name}.nevis-database.json`, new Blob([JSON.stringify(buildBundle(svc.state))], { type: 'application/json' })) },
+        { label: 'Restore from a database backup…', disabled: !canSchema, onSelect: () => bundleInput.current?.click() },
+      ],
+    },
+    {
+      label: 'Duplicate database',
+      icon: <Icon name="copy" size={16} />,
+      disabled: !canSchema,
+      items: [
+        { label: 'Duplicate with all items', disabled: !canSchema, onSelect: () => void duplicate(true) },
+        { label: 'Duplicate structure only', disabled: !canSchema, onSelect: () => void duplicate(false) },
+      ],
+    },
+  ]
+  const ui = (
     <>
-      <Popover anchor={anchor} onClose={onClose} align="end">
-        <div className="ds-menu">
-          <MenuLabel>{t('Import')}</MenuLabel>
-          <MenuItem icon={<Ic.Upload size={14} />} label={t('Import CSV…')} onClick={() => csvInput.current?.click()} />
-          <MenuLabel>{t('Export this view')}</MenuLabel>
-          <MenuItem icon={<Ic.Download size={14} />} label={t('CSV (safe for spreadsheets)')} onClick={() => exportAs('csv', true)} />
-          <MenuItem icon={<Ic.Download size={14} />} label={t('CSV (raw values)')} onClick={() => exportAs('csv', false)} />
-          <MenuItem icon={<Ic.Markdown size={14} />} label={t('Markdown table')} onClick={() => exportAs('md', true)} />
-          <MenuItem icon={<Ic.Print size={14} />} label={t('Print')} onClick={() => (onClose(), window.setTimeout(() => window.print(), 50))} />
-          <MenuSep />
-          <MenuLabel>{t('Backup')}</MenuLabel>
-          <MenuItem icon={<Ic.Archive size={14} />} label={t('Export the whole database (restorable)')} onClick={exportBundle} />
-          <MenuItem icon={<Ic.Reset size={14} />} label={t('Restore from a database backup…')} disabled={!canSchema} onClick={() => bundleInput.current?.click()} />
-          <MenuSep />
-          <MenuItem icon={<Ic.Copy size={14} />} label={t('Duplicate with all items')} disabled={!canSchema} onClick={() => void duplicate(true)} />
-          <MenuItem icon={<Ic.Copy size={14} />} label={t('Duplicate structure only')} disabled={!canSchema} onClick={() => void duplicate(false)} />
-        </div>
-      </Popover>
       <input
         ref={csvInput}
         type="file"
@@ -122,23 +126,26 @@ export function ImportExportMenu({
           }
         }}
       />
-      {wizard && <CsvWizard svc={svc} source={source} data={wizard.data} fileName={wizard.name} onClose={() => (setWizard(null), onClose())} notify={notify} />}
-      {restore && <RestoreDialog svc={svc} bundle={restore} onClose={() => (setRestore(null), onClose())} notify={notify} />}
+      {wizard && source && <CsvWizard svc={svc} source={source} data={wizard.data} fileName={wizard.name} onClose={() => setWizard(null)} notify={notify} />}
+      {restore && <RestoreDialog svc={svc} bundle={restore} onClose={() => setRestore(null)} notify={notify} />}
     </>
   )
+  return { items, ui }
 }
 
 // ───── CSV wizard ─────
 
 function CsvWizard({ svc, source, data, fileName, onClose, notify }: { svc: DatabaseService; source: Id; data: string[][]; fileName: string; onClose: () => void; notify: (m: string) => void }) {
   const props = svc.state.props(source).filter((p) => p.kind === 'title' || DESCRIPTORS[p.kind].writable || p.kind === 'relation')
+  // the title is imported through its own target, not as a property id
+  const targetOf = (p: (typeof props)[number]): ColumnMap['target'] => (p.kind === 'title' ? 'title' : p.id)
   const cols = Math.max(0, ...data.map((r) => r.length))
   const [hasHeader, setHasHeader] = useState(true)
   const header = hasHeader ? (data[0] ?? []) : []
   const guess = (i: number): ColumnMap['target'] => {
     const h = (header[i] ?? '').trim().toLowerCase()
     const hit = props.find((p) => p.name.trim().toLowerCase() === h)
-    return hit ? hit.id : i === 0 && !header.length ? 'title' : 'skip'
+    return hit ? targetOf(hit) : i === 0 && !header.length ? 'title' : 'skip'
   }
   const [map, setMap] = useState<ColumnMap['target'][]>(() => Array.from({ length: cols }, (_, i) => guess(i)))
   const [decimal, setDecimal] = useState('.')
@@ -183,51 +190,60 @@ function CsvWizard({ svc, source, data, fileName, onClose, notify }: { svc: Data
     } else setErr(errorText(r.code, r.message))
   }
   return (
-    <div className="overlay dlg-overlay" onMouseDown={onClose}>
-      <div className="modal db-modal wide" role="dialog" aria-modal="true" aria-label={t('Import CSV')} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
-        <div className="modal-head">
-          <b>{t('Import “{n}”', { n: fileName })}</b>
-          <button className="icon-btn" aria-label={t('Close')} onClick={onClose}>
-            <Ic.Close />
-          </button>
-        </div>
-        <div className="db-modal-body">
-          <Switch
-            label={t('The first row contains column names')}
-            on={hasHeader}
-            onChange={(v) => {
-              setHasHeader(v)
-              setMap(Array.from({ length: cols }, () => 'skip'))
-            }}
-          />
-          <div className="db-map">
-            {Array.from({ length: cols }, (_, i) => (
-              <div className="db-map-row" key={i}>
-                <span className="db-map-col" dir="auto">
-                  {header[i] || t('Column {n}', { n: i + 1 })}
-                  <small dir="auto">
-                    {body
-                      .slice(0, 2)
-                      .map((r) => r[i])
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </small>
-                </span>
-                <Ic.Arrow size={12} />
-                <Select
+    <Dialog
+      open
+      wide
+      title={t('Import “{n}”', { n: fileName })}
+      onClose={onClose}
+      actions={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            {t('Cancel')}
+          </Button>
+          <Button variant="primary" disabled={busy || (plan.problems.length > 0 && !skipInvalid) || !plan.rows.length} onClick={() => void go()}>
+            {busy ? t('Importing…') : t('Import {n} rows', { n: plan.rows.length })}
+          </Button>
+        </>
+      }
+    >
+      <div className="ds-modal-body">
+        <SwitchRow
+          label={t('The first row contains column names')}
+          checked={hasHeader}
+          onChange={(v) => {
+            setHasHeader(v)
+            setMap(Array.from({ length: cols }, () => 'skip'))
+          }}
+        />
+        <div className="dv-mapping" role="table" aria-label={t('Columns')}>
+          {Array.from({ length: cols }, (_, i) => (
+            <div className="dv-mapping-row" role="row" key={i}>
+              <span className="dv-mapping-col" role="cell">
+                <b dir="auto">{header[i] || t('Column {n}', { n: i + 1 })}</b>
+                <small dir="auto">
+                  {body
+                    .slice(0, 2)
+                    .map((r) => r[i])
+                    .filter(Boolean)
+                    .join(' · ')}
+                </small>
+              </span>
+              <Icon name="arrow-right" size={16} className="ds-flip" />
+              <span role="cell">
+                <Dropdown
+                  label={t('Import into')}
                   value={String(map[i])}
-                  options={[
-                    { value: 'skip', label: t('Skip this column') },
-                    ...(upsert ? [{ value: 'page_id', label: t('Item id (update existing)') }] : []),
-                    ...props.map((p) => ({ value: p.id, label: p.name })),
-                  ]}
+                  options={[{ value: 'skip', label: 'Skip this column' }, ...(upsert ? [{ value: 'page_id', label: 'Item id (update existing)' }] : []), ...props.map((p) => ({ value: String(targetOf(p)), label: p.name, raw: true }))]}
                   onChange={(v) => setMap(map.map((m, j) => (j === i ? v : m)))}
                 />
-              </div>
-            ))}
-          </div>
-          <Field label={t('Decimal separator')}>
-            <Seg
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="dv-pair">
+          <FormField label={t('Decimal separator')}>
+            <Segmented
+              label={t('Decimal separator')}
               value={decimal}
               onChange={setDecimal}
               options={[
@@ -236,42 +252,39 @@ function CsvWizard({ svc, source, data, fileName, onClose, notify }: { svc: Data
                 { value: '٫', label: '۱٫۵' },
               ]}
             />
-          </Field>
-          <Field label={t('List separator')} hint={t('Needed for several values in one cell. Commas are never split unless you type one here.')}>
-            <input className="db-input sm" dir="ltr" value={delim} maxLength={3} onChange={(e) => setDelim(e.target.value)} />
-          </Field>
-          <Switch label={t('Create missing select options')} on={createOptions} onChange={setCreateOptions} />
-          <Switch label={t('Skip cells that cannot be read (report them)')} on={skipInvalid} onChange={setSkipInvalid} />
-          <Switch label={t('Update existing items that have the same id (advanced)')} on={upsert} onChange={setUpsert} />
-          <div className="db-report">
-            <div className="db-counts">
-              <span className="ok">{t('{n} rows will be added', { n: plan.rows.length })}</span>
-              {plan.problems.length > 0 && <span className="bad">{t('{n} problems', { n: plan.problems.length })}</span>}
-            </div>
-            {plan.problems.slice(0, 6).map((p, i) => (
-              <div key={i} className="db-sample bad" dir="auto">
-                {p.row ? t('Row {r}, column {c}: ', { r: p.row, c: p.column + 1 }) : ''}
-                {p.message}
-              </div>
-            ))}
-          </div>
-          <div className="db-date-hint">{t('Import adds rows. Formulas, rollups and permissions are never read from a CSV file.')}</div>
-          {err && (
-            <div className="db-err" role="alert">
-              {err}
-            </div>
+          </FormField>
+          <FormField label={t('List separator')} hint={t('Needed for several values in one cell. Commas are never split unless you type one here.')}>
+            <Field ltr value={delim} maxLength={3} onChange={(e) => setDelim(e.target.value)} />
+          </FormField>
+        </div>
+        <SwitchRow label={t('Create missing select options')} checked={createOptions} onChange={setCreateOptions} />
+        <SwitchRow label={t('Skip cells that cannot be read (report them)')} checked={skipInvalid} onChange={setSkipInvalid} />
+        <SwitchRow label={t('Update existing items that have the same id (advanced)')} checked={upsert} onChange={setUpsert} />
+        <div className="dv-report">
+          <p className="dv-report-line">
+            {t('{n} rows will be added', { n: plan.rows.length })}
+            {plan.problems.length > 0 && (
+              <>
+                {' · '}
+                <b data-bad>{t('{n} problems', { n: plan.problems.length })}</b>
+              </>
+            )}
+          </p>
+          {plan.problems.length > 0 && (
+            <ul className="dv-samples">
+              {plan.problems.slice(0, 6).map((p, i) => (
+                <li key={i} data-bad dir="auto">
+                  {p.row ? t('Row {r}, column {c}: ', { r: p.row, c: p.column + 1 }) : ''}
+                  {p.message}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
-        <div className="db-date-foot">
-          <button type="button" onClick={onClose}>
-            {t('Cancel')}
-          </button>
-          <button type="button" className="primary" disabled={busy || (plan.problems.length > 0 && !skipInvalid) || !plan.rows.length} onClick={() => void go()}>
-            {busy ? t('Importing…') : t('Import')}
-          </button>
-        </div>
+        <Hint>{t('Import adds rows. Formulas, rollups and permissions are never read from a CSV file.')}</Hint>
+        {err && <ErrorLine>{err}</ErrorLine>}
       </div>
-    </div>
+    </Dialog>
   )
 }
 
@@ -281,7 +294,6 @@ function RestoreDialog({ svc, bundle, onClose, notify }: { svc: DatabaseService;
   const [mode, setMode] = useState<'replace' | 'merge'>('merge')
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const counts = bundle.counts
   const go = async () => {
     if (
       mode === 'replace' &&
@@ -304,55 +316,40 @@ function RestoreDialog({ svc, bundle, onClose, notify }: { svc: DatabaseService;
     } else setErr(errorText(r.code, r.message))
   }
   return (
-    <div className="overlay dlg-overlay" onMouseDown={onClose}>
-      <div className="modal db-modal" role="dialog" aria-modal="true" aria-label={t('Restore')} onMouseDown={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <b>{t('Restore a database backup')}</b>
-          <button className="icon-btn" aria-label={t('Close')} onClick={onClose}>
-            <Ic.Close />
-          </button>
-        </div>
-        <div className="db-modal-body">
-          <p>{t('Backup of {d}', { d: new Date(bundle.createdAt).toLocaleString() })}</p>
-          <ul className="db-counts-list">
-            {Object.entries(counts).map(([k, n]) => (
-              <li key={k}>
-                {k}: {n}
-              </li>
-            ))}
-          </ul>
-          <Field label={t('How')}>
-            <Seg
-              value={mode}
-              onChange={setMode}
-              options={[
-                { value: 'merge', label: t('Add next to what exists') },
-                { value: 'replace', label: t('Replace') },
-              ]}
-            />
-          </Field>
-          <div className="db-date-hint">
-            {mode === 'merge'
-              ? t('Everything is added with new ids; nothing existing changes.')
-              : t('Pages and files are restored with the page backup; this restores the database definitions, views and links.')}
-          </div>
-          {err && (
-            <div className="db-err" role="alert">
-              {err}
-            </div>
-          )}
-        </div>
-        <div className="db-date-foot">
-          <button type="button" onClick={onClose}>
+    <Dialog
+      open
+      title={t('Restore a database backup')}
+      onClose={onClose}
+      actions={
+        <>
+          <Button variant="ghost" onClick={onClose}>
             {t('Cancel')}
-          </button>
-          <button type="button" className={'primary' + (mode === 'replace' ? ' danger' : '')} disabled={busy} onClick={() => void go()}>
+          </Button>
+          <Button variant={mode === 'replace' ? 'danger' : 'primary'} disabled={busy} onClick={() => void go()}>
             {t('Restore')}
-          </button>
-        </div>
+          </Button>
+        </>
+      }
+    >
+      <div className="ds-modal-body">
+        <p className="dv-text">{t('Backup of {d}', { d: new Date(bundle.createdAt).toLocaleString() })}</p>
+        <Facts items={Object.entries(bundle.counts).map(([k, n]) => [k, String(n)] as [string, string])} />
+        <FormField label={t('How')}>
+          <Segmented
+            label={t('How')}
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: 'merge', label: t('Add next to what exists') },
+              { value: 'replace', label: t('Replace') },
+            ]}
+          />
+        </FormField>
+        <Hint>
+          {mode === 'merge' ? t('Everything is added with new ids; nothing existing changes.') : t('Pages and files are restored with the page backup; this restores the database definitions, views and links.')}
+        </Hint>
+        {err && <ErrorLine>{err}</ErrorLine>}
       </div>
-    </div>
+    </Dialog>
   )
 }
-
-export { promptDialog }

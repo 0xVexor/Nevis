@@ -6,7 +6,7 @@ import { RECORD_KINDS } from './model/types.ts'
 import { hash } from './model/json.ts'
 import type { DbState } from './state.ts'
 
-export const BUNDLE_FORMAT = 'noviq-database-bundle'
+export const BUNDLE_FORMAT = 'nevis-database-bundle'
 export const BUNDLE_VERSION = 2
 
 export type Bundle = {
@@ -75,7 +75,7 @@ export function validateBundle(b: unknown, opts: { pageIds?: Set<Id> } = {}): Bu
   const err = (code: string, detail: string, kind?: string, id?: Id) => p.push({ code, detail, kind, id, severity: 'error' })
   if (!b || typeof b !== 'object') return [{ code: 'FORMAT', detail: 'not an object', severity: 'error' }]
   const x = b as Bundle
-  if (x.format !== BUNDLE_FORMAT) return [{ code: 'FORMAT', detail: 'not a Nevis database bundle', severity: 'error' }]
+  if (x.format !== BUNDLE_FORMAT && x.format !== "noviq-database-bundle") return [{ code: 'FORMAT', detail: 'not a Nevis database bundle', severity: 'error' }]
   if (x.version !== BUNDLE_VERSION) return [{ code: 'VERSION', detail: `unsupported bundle version ${String(x.version)}`, severity: 'error' }]
   if (!x.records || typeof x.records !== 'object') return [{ code: 'FORMAT', detail: 'records missing', severity: 'error' }]
   const ids = new Map<RecordKind, Set<Id>>()

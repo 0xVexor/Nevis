@@ -1,4 +1,5 @@
-import { Node, Extension, InputRule, mergeAttributes, type CommandProps, type Editor, type NodeViewRendererProps, type RawCommands } from '@tiptap/core'
+import { commandMatches } from '../shortcutCommands'
+import { Node, Extension, InputRule, mergeAttributes, type CommandProps, type NodeViewRendererProps, type RawCommands } from '@tiptap/core'
 import type { Node as PMNode, Schema } from '@tiptap/pm/model'
 import { NodeSelection, Plugin, PluginKey, Selection, type EditorState, type Transaction } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
@@ -118,9 +119,13 @@ function makeView(display: boolean) {
       }
       field.onkeydown = (e) => {
         e.stopPropagation()
-        if (e.key === 'Escape') (e.preventDefault(), finish(null))
-        else if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) (e.preventDefault(), finish(field.value))
-        else if (e.key === 'Enter' && !display) e.preventDefault() // Shift+Enter: a new line only exists in block formulas
+        if (commandMatches(e, 'Cancel editing a formula or diagram')) (e.preventDefault(), finish(null))
+        else if (commandMatches(e, 'Save a formula') || (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey)) (e.preventDefault(), finish(field.value))
+        else if (display && commandMatches(e, 'New line in a block formula')) {
+          e.preventDefault()
+          field.setRangeText('\n', field.selectionStart ?? 0, field.selectionEnd ?? 0, 'end')
+          field.dispatchEvent(new Event('input'))
+        } else if (e.key === 'Enter') e.preventDefault()
       }
       field.onblur = () => finish(field.value)
       field.focus()
@@ -231,10 +236,11 @@ function convertBlock(tr: Transaction, pos: number, schema: Schema) {
 /** A formula typed as plain `$x^2$` stays text while you are on that line; it becomes a real formula as soon as the cursor leaves the paragraph, the editor loses focus, or you run "convert formulas". */
 export const MathAuto = Extension.create({
   name: 'mathAuto',
-  addKeyboardShortcuts() {
-    return {
+  addProseMirrorPlugins() {
+    const editor = this.editor
+    const commands = {
       // Enter on a selected formula edits it
-      Enter: ({ editor }: { editor: Editor }) => {
+      'Edit the selected formula': () => {
         const sel = editor.state.selection
         if (!(sel instanceof NodeSelection) || !['mathInline', 'mathBlock'].includes(sel.node.type.name)) return false
         const dom = editor.view.nodeDOM(sel.from) as EditDom | null
@@ -242,7 +248,7 @@ export const MathAuto = Extension.create({
         return !!dom?.__edit
       },
       // Ctrl+Shift+M: on an empty line a block formula, on selected text a formula made of it, otherwise an empty inline formula
-      'Mod-Shift-m': ({ editor }: { editor: Editor }) => {
+      'New formula (empty line: block; selected text or elsewhere: inline)': () => {
         const { selection: sel, doc } = editor.state
         const $from = sel.$from
         if (sel.empty && $from.parent.type.name === 'paragraph' && $from.parent.content.size === 0) {
@@ -268,16 +274,12 @@ export const MathAuto = Extension.create({
           .run()
       },
     }
-  },
-  addCommands() {
-    return {
-      convertFormulas:
-        () =>
-        ({ tr, dispatch }: CommandProps) => (dispatch?.(tr.setMeta(autoKey, 'all')), true),
-    } as unknown as Partial<RawCommands>
-  },
-  addProseMirrorPlugins() {
     return [
+      new Plugin({ props: { handleKeyDown: (_view, event) => {
+        if (!editor.isEditable) return false
+        const action = Object.entries(commands).find(([label]) => commandMatches(event, label))
+        return action?.[1]() ?? false
+      } } }),
       new Plugin({
         key: autoKey,
         props: { handleDOMEvents: { blur: (view: EditorView) => (view.dispatch(view.state.tr.setMeta(autoKey, 'all')), false) } },
@@ -315,6 +317,13 @@ export const MathAuto = Extension.create({
         },
       }),
     ]
+  },
+  addCommands() {
+    return {
+      convertFormulas:
+        () =>
+        ({ tr, dispatch }: CommandProps) => (dispatch?.(tr.setMeta(autoKey, 'all')), true),
+    } as unknown as Partial<RawCommands>
   },
 })
 

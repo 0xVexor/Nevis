@@ -126,7 +126,7 @@
 
 ```
 MyVault/
-  .noviq/vault.json            نسخه‌ی قالب Vault
+  .nevis/vault.json            نسخه‌ی قالب Vault
   pages/<id>.json              هر صفحه یا پوشه یک فایل (سند TipTap + متادیتا)
   files/ab/<sha256>            پیوست‌ها (نام‌گذاری بر پایه‌ی هش؛ هیچ‌وقت conflict ندارند)
   history/<pageId>/<ts>.json   نسخه‌های قبلی صفحه (تا ۴۰ تا)

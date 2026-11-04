@@ -1,4 +1,4 @@
-import { FileIcon } from './design-system'
+import { Button, FileIcon, Icon, IconButton, Menu, SearchField, type MenuItem as MenuSpec } from './design-system'
 import { setPreference } from './preferenceEvents'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { repo } from './store'
@@ -6,8 +6,7 @@ import type { Page } from './repo'
 import { normalizeFa } from './normalize'
 import { wordCount } from './meta'
 import { PageIcon } from './PageIcon'
-import { MenuItem, MenuSep, Popover, ago } from './ui'
-import * as Ic from './icons'
+import { ago } from './ui'
 import { t } from './i18n'
 
 type SortKey = 'name' | 'modified' | 'kind'
@@ -96,7 +95,7 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
   const subCount = (p: Page) => (p.kind === 'folder' ? 0 : kids(p.id).length) // pages can hold subpages too
   // folders and pages with subpages are entered; a page with subpages is opened itself with Ctrl (double-click / Enter) or from the menu
   const open = (p: Page, asPage = false) => (p.kind === 'folder' || (subCount(p) && !asPage) ? go(p.id) : onOpen(p.id))
-  const target = () => items.filter((p) => sel.has(p.id))
+  const targets = () => items.filter((p) => sel.has(p.id))
 
   // the mouse's side buttons (back / forward) and Alt+←/→ move through the folders you visited, like a file manager
   const nav = useRef({ back, forward })
@@ -346,7 +345,7 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
         <span className="fx-t">{p.title || t('Untitled')}</span>
         {subCount(p) > 0 && (
           <span className="fx-subs" title={t('{n} subpages', { n: subCount(p) })}>
-            <Ic.Folders size={12} />
+            <Icon name="folder" size={12} />
             {subCount(p)}
           </span>
         )}
@@ -385,7 +384,7 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
           onClick={(e) => toggleOne(e, p)}
           onDoubleClick={(e) => e.stopPropagation()}
         >
-          <Ic.Check size={13} />
+          <Icon name="check" size={14} />
         </button>
         <span className={'fx-ic' + (folder ? ' folder' : '')}>{folder ? <FileIcon kind="folder" size={mode === 'grid' ? 44 : 26} /> : <PageIcon page={p} />}</span>
         {cell(p)}
@@ -403,21 +402,38 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
 
   const menuTarget = menu?.id ? byId.get(menu.id) : undefined
   const ids = [...sel]
+  const targetIds = () => targets().map((p) => p.id)
+  /** The context menu, built when it opens: for a page or folder, or for the empty area. */
+  const buildMenu = (): MenuSpec[] => {
+    const items: MenuSpec[] = []
+    if (menuTarget) {
+      if (subCount(menuTarget) > 0) {
+        items.push({ label: 'Show subpages', icon: <Icon name="folder" />, hint: 'Enter', onSelect: () => go(menuTarget.id) })
+        items.push({ label: 'Open page', icon: <Icon name="file" />, hint: 'Ctrl Enter', onSelect: () => open(menuTarget, true) })
+      } else items.push({ label: 'Open', icon: <Icon name="file" />, hint: 'Enter', onSelect: () => open(menuTarget) })
+      items.push({ label: 'Rename', icon: <Icon name="pencil" />, hint: 'F2', onSelect: () => startRename(menuTarget.id) }, { kind: 'sep' })
+      items.push({ label: 'Cut', icon: <Icon name="scissors" />, hint: 'Ctrl X', onSelect: () => doCut(targetIds()) })
+      items.push({ label: 'Copy', icon: <Icon name="copy" />, hint: 'Ctrl C', onSelect: () => doCopy(targetIds()) })
+    }
+    items.push({ label: 'Paste', icon: <Icon name="clipboard" />, hint: 'Ctrl V', disabled: !clip, onSelect: paste })
+    if (menuTarget) items.push({ label: 'Duplicate', icon: <Icon name="copy" />, hint: 'Ctrl D', onSelect: () => duplicate(targetIds()) })
+    items.push({ kind: 'sep' }, { label: 'New page', icon: <Icon name="plus" />, onSelect: () => create('page') }, { label: 'New folder', icon: <Icon name="folder" />, onSelect: () => create('folder') })
+    if (menuTarget) items.push({ kind: 'sep' }, { label: 'Delete', icon: <Icon name="trash" />, danger: true, hint: 'Del', onSelect: () => remove(targetIds()) })
+    return items
+  }
   return (
     <div className="fx" ref={box} tabIndex={0} onKeyDown={onKey}>
       <header className="fx-bar">
         <div className="fx-nav">
-          <button className="icon-btn" title={t('Back')} disabled={!hist.back.length} onClick={back}>
-            <span className="fx-flip">
-              <Ic.Chevron size={16} />
-            </span>
-          </button>
-          <button className="icon-btn" title={t('Forward')} disabled={!hist.fwd.length} onClick={forward}>
-            <Ic.Chevron size={16} />
-          </button>
-          <button className="icon-btn" title={t('Up one level  Backspace')} disabled={!cwd} onClick={up}>
-            <Ic.Up size={16} />
-          </button>
+          <IconButton label={t('Back')} disabled={!hist.back.length} onClick={back}>
+            <Icon name="chevron-left" className="ds-flip" />
+          </IconButton>
+          <IconButton label={t('Forward')} disabled={!hist.fwd.length} onClick={forward}>
+            <Icon name="chevron-right" className="ds-flip" />
+          </IconButton>
+          <IconButton label={t('Up one level  Backspace')} disabled={!cwd} onClick={up}>
+            <Icon name="arrow-up" />
+          </IconButton>
         </div>
         <nav className="fx-path" aria-label={t('Path')}>
           <button
@@ -427,13 +443,13 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
             onDragLeave={() => setDropOn(null)}
             onDrop={(e) => dropTo(e, null)}
           >
-            <Ic.Layers size={14} />
+            <Icon name="vault" size={16} />
             {t('Vault')}
           </button>
           {path.map((p) => (
             <span key={p.id} className="fx-crumb">
               <span className="fx-sep">
-                <Ic.Chevron size={12} />
+                <Icon name="chevron-right" size={14} className="ds-flip" />
               </span>
               <button
                 className={'fx-seg' + (dropOn === 'p' + p.id ? ' drop' : '')}
@@ -448,72 +464,60 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
             </span>
           ))}
         </nav>
-        <label className="fx-search">
-          <Ic.Search size={15} />
-          <input value={q} dir="auto" placeholder={t('Search in all folders…')} onChange={(e) => setQ(e.target.value)} />
-        </label>
-        <div className="fx-view" role="group" aria-label={t('View')}>
-          <button className={mode === 'list' ? 'on' : ''} title={t('List')} onClick={() => setMode('list')}>
-            <Ic.List size={16} />
+        <SearchField className="fx-search" value={q} onChange={setQ} label={t('Search in all folders…')} placeholder={t('Search in all folders…')} clearLabel={t('Clear')} />
+        <div className="ds-seg" role="group" aria-label={t('View')}>
+          <button type="button" aria-pressed={mode === 'list'} title={t('List')} onClick={() => setMode('list')}>
+            <Icon name="list" size={16} />
           </button>
-          <button className={mode === 'grid' ? 'on' : ''} title={t('Icons')} onClick={() => setMode('grid')}>
-            <Ic.Blocks size={16} />
+          <button type="button" aria-pressed={mode === 'grid'} title={t('Icons')} onClick={() => setMode('grid')}>
+            <Icon name="gallery" size={16} />
           </button>
         </div>
       </header>
 
       <div className="fx-actions">
-        <button onClick={() => create('page')}>
-          <Ic.Plus size={15} />
+        <Button variant="primary" size="sm" icon={<Icon name="plus" size={16} />} onClick={() => create('page')}>
           {t('New page')}
-        </button>
-        <button onClick={() => create('folder')}>
-          <Ic.Folders size={15} />
+        </Button>
+        <Button size="sm" icon={<Icon name="folder" size={16} />} onClick={() => create('folder')}>
           {t('New folder')}
-        </button>
-        <button disabled={!items.length} onClick={toggleAll}>
-          <Ic.Check size={15} />
+        </Button>
+        <span className="fx-div" />
+        <Button variant="ghost" size="sm" icon={<Icon name="check" size={16} />} disabled={!items.length} onClick={toggleAll}>
           {allSelected ? t('Deselect all') : t('Select all')}
-        </button>
-        <span className="fx-div" />
-        <button disabled={!ids.length} onClick={() => doCut(ids)}>
-          <Ic.Cut size={15} />
+        </Button>
+        <Button variant="ghost" size="sm" icon={<Icon name="scissors" size={16} />} disabled={!ids.length} onClick={() => doCut(ids)}>
           {t('Cut')}
-        </button>
-        <button disabled={!ids.length} onClick={() => doCopy(ids)}>
-          <Ic.Copy size={15} />
+        </Button>
+        <Button variant="ghost" size="sm" icon={<Icon name="copy" size={16} />} disabled={!ids.length} onClick={() => doCopy(ids)}>
           {t('Copy')}
-        </button>
-        <button disabled={!clip} onClick={paste}>
-          <Ic.Paste size={15} />
+        </Button>
+        <Button variant="ghost" size="sm" icon={<Icon name="clipboard" size={16} />} disabled={!clip} onClick={paste}>
           {t('Paste')}
-          {clip && <em>{clip.ids.length}</em>}
-        </button>
+          {clip && <span className="ds-badge">{clip.ids.length}</span>}
+        </Button>
         <span className="fx-div" />
-        <button disabled={ids.length !== 1} onClick={() => startRename(ids[0])}>
-          <Ic.Pencil size={15} />
+        <Button variant="ghost" size="sm" icon={<Icon name="pencil" size={16} />} disabled={ids.length !== 1} onClick={() => startRename(ids[0])}>
           {t('Rename')}
-        </button>
-        <button disabled={!ids.length} onClick={() => duplicate(ids)}>
-          <Ic.Copy size={15} />
+        </Button>
+        <Button variant="ghost" size="sm" icon={<Icon name="copy" size={16} />} disabled={!ids.length} onClick={() => duplicate(ids)}>
           {t('Duplicate')}
-        </button>
-        <button className="danger" disabled={!ids.length} onClick={() => remove(ids)}>
-          <Ic.Trash size={15} />
+        </Button>
+        <Button variant="danger" size="sm" icon={<Icon name="trash" size={16} />} disabled={!ids.length} onClick={() => remove(ids)}>
           {t('Delete')}
-        </button>
+        </Button>
       </div>
 
       {mode === 'list' && (
         <div className="fx-head">
           <button type="button" className={'fx-check' + (allSelected ? ' on' : sel.size ? ' some' : '')} role="checkbox" aria-checked={allSelected} aria-label={t('Select all')} onClick={toggleAll}>
-            <Ic.Check size={13} />
+            <Icon name="check" size={14} />
           </button>
           <button className="fx-h name" onClick={() => sortBy('name')}>
             {t('Name')}
             {sort.key === 'name' && (
               <span className={'sort-arrow ' + (sort.dir === 1 ? 'asc' : 'desc')}>
-                <Ic.Chevron size={11} />
+                <Icon name="chevron-down" size={12} />
               </span>
             )}
           </button>
@@ -521,7 +525,7 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
             {t('Type')}
             {sort.key === 'kind' && (
               <span className={'sort-arrow ' + (sort.dir === 1 ? 'asc' : 'desc')}>
-                <Ic.Chevron size={11} />
+                <Icon name="chevron-down" size={12} />
               </span>
             )}
           </button>
@@ -530,7 +534,7 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
             {nq ? t('Location') : t('Modified')}
             {sort.key === 'modified' && (
               <span className={'sort-arrow ' + (sort.dir === 1 ? 'asc' : 'desc')}>
-                <Ic.Chevron size={11} />
+                <Icon name="chevron-down" size={12} />
               </span>
             )}
           </button>
@@ -553,10 +557,8 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
       >
         {items.map(row)}
         {items.length === 0 && (
-          <div className="fx-empty">
-            <span className="fc2-art">
-              <Ic.Folders size={30} />
-            </span>
+          <div className="ds-empty fx-empty">
+            <Icon name="folder" size={28} />
             <b>{nq ? t('No results found') : t('This folder is empty')}</b>
             {!nq && <small>{t('Create a page or folder, or drag items here.')}</small>}
           </div>
@@ -572,26 +574,7 @@ export function Explorer({ pages, onOpen, onChange, onToast }: { pages: Page[]; 
         <span className="fx-hint">{t('Del delete · F2 rename · Ctrl+C/X/V · drag to move')}</span>
       </footer>
 
-      {menu && (
-        <Popover anchor={menu.rect} onClose={() => setMenu(null)}>
-          <div className="ds-menu">
-            {menuTarget && subCount(menuTarget) > 0 && <MenuItem icon={<Ic.Folders />} label={t('Show subpages')} hint="Enter" onClick={() => (setMenu(null), go(menuTarget.id))} />}
-            {menuTarget && subCount(menuTarget) > 0 && <MenuItem icon={<Ic.Open />} label={t('Open page')} hint="Ctrl Enter" onClick={() => (setMenu(null), open(menuTarget, true))} />}
-            {menuTarget && !subCount(menuTarget) && <MenuItem icon={<Ic.Open />} label={t('Open')} hint="Enter" onClick={() => (setMenu(null), open(menuTarget))} />}
-            {menuTarget && <MenuItem icon={<Ic.Pencil />} label={t('Rename')} hint="F2" onClick={() => (setMenu(null), startRename(menuTarget.id))} />}
-            {menuTarget && <MenuSep />}
-            {menuTarget && <MenuItem icon={<Ic.Cut />} label={t('Cut')} hint="Ctrl X" onClick={() => (setMenu(null), doCut(target().map((p) => p.id)))} />}
-            {menuTarget && <MenuItem icon={<Ic.Copy />} label={t('Copy')} hint="Ctrl C" onClick={() => (setMenu(null), doCopy(target().map((p) => p.id)))} />}
-            <MenuItem icon={<Ic.Paste />} label={t('Paste')} hint="Ctrl V" disabled={!clip} onClick={() => (setMenu(null), paste())} />
-            {menuTarget && <MenuItem icon={<Ic.Copy />} label={t('Duplicate')} hint="Ctrl D" onClick={() => (setMenu(null), duplicate(target().map((p) => p.id)))} />}
-            <MenuSep />
-            <MenuItem icon={<Ic.Plus />} label={t('New page')} onClick={() => (setMenu(null), create('page'))} />
-            <MenuItem icon={<Ic.Folders />} label={t('New folder')} onClick={() => (setMenu(null), create('folder'))} />
-            {menuTarget && <MenuSep />}
-            {menuTarget && <MenuItem danger icon={<Ic.Trash />} label={t('Delete')} hint="Del" onClick={() => (setMenu(null), remove(target().map((p) => p.id)))} />}
-          </div>
-        </Popover>
-      )}
+      {menu && <Menu anchor={menu.rect} items={buildMenu()} onClose={() => setMenu(null)} />}
     </div>
   )
 }

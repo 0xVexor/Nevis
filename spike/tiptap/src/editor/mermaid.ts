@@ -1,3 +1,4 @@
+import { commandMatches } from '../shortcutCommands'
 import { Node, InputRule, mergeAttributes } from '@tiptap/core'
 import { createSectionDragSurface } from './snapSurface'
 import { t as tr } from '../i18n'
@@ -142,9 +143,10 @@ export const MermaidBlock = Node.create({
       const view = document.createElement('div')
       view.className = 'mermaid-view'
       const bar = document.createElement('div')
-      bar.className = 'mermaid-bar'
+      bar.className = 'mermaid-bar ds-toolbar'
       const edit = document.createElement('button')
       edit.type = 'button'
+      edit.className = 'ds-btn ds-btn--sm ds-btn--ghost'
       edit.textContent = tr('Edit code')
 
       // enlarge: opens the zoom/pan viewer with the current picture
@@ -152,7 +154,7 @@ export const MermaidBlock = Node.create({
       big.type = 'button'
       big.textContent = `⤢ ${tr('Enlarge')}`
       big.hidden = true
-      big.className = 'mm-big'
+      big.className = 'mm-big ds-btn ds-btn--sm ds-btn--ghost'
       big.onclick = () => {
         const svg = view.querySelector('svg')
         if (svg) openLightbox({ svg: svg.outerHTML, alt: tr('Diagram') })
@@ -161,6 +163,7 @@ export const MermaidBlock = Node.create({
       // convert to code: the same text as an ordinary code block (it can be turned back with "Show as diagram")
       const toCode = document.createElement('button')
       toCode.type = 'button'
+      toCode.className = 'ds-btn ds-btn--sm ds-btn--ghost'
       toCode.textContent = `</> ${tr('Convert to code')}`
       toCode.onclick = () => {
         const pos = getPos()
@@ -266,8 +269,8 @@ export const MermaidBlock = Node.create({
         }
         ta.onkeydown = (e) => {
           e.stopPropagation()
-          if (e.key === 'Escape') (e.preventDefault(), (done = true), commit(null))
-          else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) (e.preventDefault(), (done = true), commit(ta.value))
+          if (commandMatches(e, 'Cancel editing a formula or diagram')) (e.preventDefault(), (done = true), commit(null))
+          else if (commandMatches(e, 'Save a diagram')) (e.preventDefault(), (done = true), commit(ta.value))
           else if (e.key === 'Tab') {
             e.preventDefault()
             ta.setRangeText('  ', ta.selectionStart, ta.selectionEnd, 'end')

@@ -1,5 +1,5 @@
 {
-  "name": "noviq-test-tools",
+  "name": "nevis-test-tools",
   "private": true,
   "type": "module",
   "description": "Test-only dependencies, kept apart from the app's package.json",
