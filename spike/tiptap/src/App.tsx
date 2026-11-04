@@ -878,7 +878,7 @@ export default function App() {
               <Icon name="cards" />
             </span>
             <span className="ntitle">{t('Flashcards')}</span>
-            {dueCards > 0 && <span className="badge">{dueCards}</span>}
+            {dueCards > 0 && <span className="ds-badge">{dueCards}</span>}
           </button>
 
           <button aria-label={t('Databases')}
@@ -1037,7 +1037,7 @@ export default function App() {
               <Icon name="trash" />
             </span>
             <span className="ntitle">{t('Trash')}</span>
-            {trashed.length > 0 && <span className="badge">{trashed.length}</span>}
+            {trashed.length > 0 && <span className="ds-badge">{trashed.length}</span>}
           </button>
           <div className="ds-split side-new">
             <Button variant="primary" aria-label={t('New page')} onClick={() => add(null)}>

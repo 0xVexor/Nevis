@@ -48,7 +48,7 @@ All tokens are `--ds-*`, defined once with `light-dark()`. Never write a raw col
 | Shape | `--ds-r-sm` 7 · `--ds-r` 10 · `--ds-r-lg` 14 · `--ds-r-full` | small controls · controls and cards · large cards and menus · pills |
 | Space | `--ds-s1` … `--ds-s10` | multiples of 4 |
 | Type | `--ds-font-ui` `--ds-font-serif` `--ds-font-mono` | Instrument Sans + Vazirmatn · Newsreader (greeting only) · code |
-| Motion | `--ds-ease` `--ds-fast` 120ms `--ds-base` 220ms `--ds-slow` 300ms | hover · menus · page change |
+| Motion | `--ds-ease` `--ds-fast` 120ms `--ds-base` 220ms `--ds-slow` 300ms `--ds-spring` | hover · menus · page change · a small overshoot for a check or an icon that pops in |
 
 Type scale: Display 46/1.08 serif · Page title 40/1.15 · Heading 1 30 · Heading 2 20 · Body 14/1.5 · Editor 17/1.8 · Caption 12.5. Sentence case everywhere. No ALL CAPS labels.
 
@@ -196,7 +196,7 @@ After changing `iconData.ts`, `backgrounds.ts` or `fileKinds.ts`, regenerate the
 
 ## Where the styles live
 
-`src/index.css` imports, in order: the fonts, `design-system/areas/tokens.css` (the few shared tokens that are not `--ds-*`: fonts, motion, code colors), the area stylesheets (`areas/base`, `shell`, `page`, `editor`, `overlays`, `views`, `settings`, `panels`, `page-meta`, `palette`, `bubbles`, `notices`, `content`, `explorer`, `databases`, `scrollbars`, `updates`, `layout`), then `tokens.css`, `components.css`, `areas/surfaces.css` (the flat sidebar, buttons and popovers), `home.css`, `screens.css` and `areas/print.css`. Order matters: later files win.
+`src/index.css` imports, in order: the fonts, `design-system/areas/tokens.css` (the few shared values that are not `--ds-*`: the interface font `--font`, a background chosen in Settings, code colours; the old aliases such as `--mono`, `--ease`, `--spring`, `--panel-shadow` and the aurora `--mesh-*` gradients are gone), the area stylesheets (`areas/base`, `shell`, `page`, `editor`, `overlays`, `views`, `settings`, `panels`, `page-meta`, `palette`, `bubbles`, `notices`, `content`, `explorer`, `databases`, `scrollbars`, `updates`, `layout`), then `tokens.css`, `components.css`, `areas/surfaces.css` (the flat sidebar, buttons and popovers), `home.css`, `screens.css` and `areas/print.css`. Order matters: later files win.
 
 Every color, radius and shadow in those files is a `--ds-*` token. Settings writes `--user-accent`, `--user-radius`, `--user-radius-sm`, `--user-radius-lg` and `--font`; the design system reads them. The five hue tokens (`--ds-violet`, `--ds-blue`, `--ds-green`, `--ds-orange`, `--ds-pink`) and `--ds-white` replace the literals that used to be repeated.
 
@@ -206,7 +206,7 @@ Screens that still style their own controls (tabs, row actions, toolbar items) d
 
 - **Scope:** these changes cover what the UI migration touched: Settings, shell and sidebar, Home, page frame, onboarding, search, shared controls, and every screen below, the database included.
 - **Spacing:** padding, margin and gap in interface CSS sit on the 4px scale and use `--ds-s1…s10`. Document content (`editor.css`, `content.css`, `print.css`) is excluded so the reader's own settings keep working. Controls use `--ds-control` (36px) or `--ds-control-sm` (28px); icon buttons are 32px.
-- **One icon button:** `.icon-btn` shares the `.ds-icon-btn` rules; migrated screens use `IconButton`.
+- **One icon button:** every icon-only button is `IconButton` (`ds-icon-btn`); the old `.icon-btn` alias is gone.
 - **Independence:** `Popover` lives in `design-system/Popover.tsx`. The design system takes its text from `design-system/text.ts`; the app registers its translator once in `i18n.ts`. `npm run check:ui` fails if a design-system file imports app code (`iconSet` and `textDirection` are pure data helpers).
 - **Motion:** `design-system/motion.ts` holds the durations, easing and spring (`MOTION`, `useUIMotion`), which honour system and app Reduce motion. `Dialog` fades and rises in and out and keeps Tab inside; `Popover` plays a short exit when closed by Escape or an outside click; `Tabs` glide the underline; the sidebar tree opens and closes its children; Settings panels ease in on a category change; Home tasks leave and re-flow when ticked off. Hover and press states stay in CSS.
 - **Shortcuts:** Settings lists which shortcuts can be changed (app bindings and editor commands) and marks the rest *Built in*; a fixed shortcut shows no Change button.
@@ -235,3 +235,4 @@ Screens that still style their own controls (tabs, row actions, toolbar items) d
 - **Timeline** opens on today, a third of the way in, once per view and scale; a bar too short for its name shows the name just past its end. **Map** opens on its pins. A **form** date answer uses the database’s `DatePicker` (Jalali and Persian digits when the property is set so), one day only.
 - **Settings → Database** uses `PreferenceGroup`, `PreferenceRow`, `FormField` and `Facts` like the rest of Settings. The Graph's database link toggles are `ChipButton`s like its tag filters.
 - **Removed:** `areas/database.css`, `database-grid.css`, `database-layout.css`, the database rules in `screens.css`, `views.css` and `editor.css`, `database/ui/forms.tsx`, `Select` in `ui.tsx` (every pick is a `Dropdown`), the old `dbc-*` colour classes (now `--ds-opt-*`) and the Persian strings nothing used. The shared horizontal scroller (`hscroll-*`) moved to `scrollbars.css`, the compact page list to `shell.css`.
+- **Cleanup on dev (2026-11):** the hidden decorative layers (dot grid behind the app, sheen on the New page button, accent wash at the top of the page) and the unused `.new-page` rules are deleted; a quote is an accent bar and a divider a hairline, with no gradients. `editor.css` and `content.css` no longer style the same document elements twice: the 31 rules both had are one rule in `content.css`, with the same result. Controls inside the document (task checkbox, toggle, inline math, page links, language and math pickers, lightbox) take their corners from `--ds-r-*`. `--ds-font-mono` falls back to Cascadia Mono and Consolas, so code looks the same while JetBrains Mono is not loaded. The sidebar counts are `ds-badge`. `MenuItem`, `MenuLabel` and `MenuSep` in `ui.tsx` had no callers and are removed. The remaining `!important` rules override inline styles the editor sets from JavaScript, or are print-only.

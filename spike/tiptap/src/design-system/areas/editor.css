@@ -2,47 +2,25 @@
 
 /* ───────── editor text ───────── */
 .ec { position: relative; }
-.tiptap { outline: none; line-height: 1.8; font-size: var(--editor-size, 16px); color: var(--editor-color, inherit); min-height: 50vh; }
 /* Auto direction only: an explicit dir (set via /rtl, /ltr) must win, plaintext would ignore it. */
 .tiptap p:not([dir]), .tiptap h1:not([dir]), .tiptap h2:not([dir]), .tiptap h3:not([dir]) { unicode-bidi: plaintext; }
 .tiptap [data-dir] { text-align: start; }
-.tiptap p { margin: 4px 0; }
-.tiptap h1, .tiptap h2, .tiptap h3 { font-weight: 800; letter-spacing: -0.015em; line-height: 1.3; margin: 1.1em 0 0.25em; }
-.tiptap h1 { font-size: 1.95em; margin-top: 1.5em; }
-.tiptap h2 { font-size: 1.55em; margin-top: 1.3em; }
-.tiptap h3 { font-size: 1.25em; }
 .tiptap p.is-empty::before, .tiptap h1.is-empty::before { content: attr(data-placeholder); float: inline-start; height: 0; pointer-events: none; color: var(--ds-text-3); }
-.tiptap a { color: var(--ds-accent); text-decoration: underline; text-decoration-color: var(--ds-accent-line); text-decoration-thickness: 2px; text-underline-offset: 4px; cursor: var(--cursor-hand, pointer); transition: text-decoration-color 0.15s; }
-.tiptap a:hover { text-decoration-color: var(--ds-accent); }
-.tiptap strong { font-weight: 700; }
-.tiptap mark { background: color-mix(in srgb, var(--ds-warn) 35%, transparent); color: inherit; border-radius: 4px; padding: 0 2px; }
-.tiptap blockquote { margin: 10px 0; padding: 6px 18px; border-inline-start: 4px solid transparent; border-image: linear-gradient(var(--ds-accent), var(--ds-accent)) 1; background: linear-gradient(var(--to-end), var(--ds-accent-faint), transparent); border-radius: 0 var(--ds-r) var(--ds-r) 0; color: var(--ds-text-2); }
-:root[dir='rtl'] .tiptap blockquote { border-radius: var(--ds-r) 0 0 var(--ds-r); }
 .tiptap ul, .tiptap ol { margin: 2px 0; padding-inline: 1.6em; }
 .tiptap li::marker { color: var(--ds-text-3); font-weight: 400; }
 .tiptap li > p { margin: 1px 0; }
 .tiptap ul[data-type='taskList'] { list-style: none; padding-inline: 0.2em; }
-.tiptap ul[data-type='taskList'] li { display: flex; gap: 10px; align-items: flex-start; }
-.tiptap ul[data-type='taskList'] li > label { margin-top: 0.45em; user-select: none; line-height: 1; }
-.tiptap ul[data-type='taskList'] li > label input { appearance: none; -webkit-appearance: none; width: 19px; height: 19px; margin: 0; border: 1.5px solid var(--ds-text-3); border-radius: 6px; background: var(--ds-raised) center / 13px no-repeat; cursor: var(--cursor-hand, pointer); transition: all 0.2s var(--spring); }
 .tiptap ul[data-type='taskList'] li > label input:hover { border-color: var(--ds-accent); }
 .tiptap ul[data-type='taskList'] li > label input:checked { background-color: var(--ds-accent); background-image: var(--ds-accent), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E"); background-size: cover, 13px; background-repeat: no-repeat; background-position: center; border-color: transparent; transform: scale(1.06); }
 .tiptap ul[data-type='taskList'] li > div { flex: 1; }
 .tiptap ul[data-type='taskList'] li[data-checked='true'] > div { text-decoration: line-through; text-decoration-color: var(--ds-text-3); color: var(--ds-text-2); }
-.tiptap code { font-family: var(--mono); font-size: 0.85em; color: var(--code-text); background: var(--code-bg); padding: 0.18em 0.45em; border-radius: 6px; direction: ltr; unicode-bidi: isolate; }
 /* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
-.tiptap pre { direction: ltr; text-align: left; background: var(--pre-bg); border: 1px solid var(--ds-line); color: var(--ds-text); padding: 18px 22px; border-radius: var(--ds-r-lg); overflow: auto; margin: 10px 0; font-family: var(--mono); font-size: 13.5px; line-height: 1.65; box-shadow: var(--ds-shadow-inset); }
 .tiptap pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
-.tiptap hr { border: 0; height: 2px; margin: 22px 0; background: linear-gradient(var(--to-end), transparent, var(--ds-line-strong), transparent); }
 .tiptap img { max-width: 100%; height: auto; border-radius: var(--ds-r); display: block; margin: 8px 0; }
 .tiptap img.ProseMirror-selectednode { outline: 2px solid var(--ds-accent); }
 .ProseMirror-dropcursor { background: var(--ds-accent) !important; }
 
 /* tables */
-.tiptap .tableWrapper { overflow-x: auto; margin: 10px 0; }
-.tiptap table { border-collapse: collapse; width: 100%; table-layout: fixed; }
-.tiptap td, .tiptap th { border: 1px solid var(--ds-line-strong); padding: 8px 12px; vertical-align: top; position: relative; min-width: 60px; }
-.tiptap th { background: var(--ds-accent-soft); font-weight: 700; text-align: start; }
 .tiptap td > p, .tiptap th > p { margin: 0; }
 .tiptap .selectedCell::after { content: ''; position: absolute; inset: 0; background: var(--ds-accent-soft); pointer-events: none; }
 .tiptap .column-resize-handle { position: absolute; inset-inline-end: -2px; top: 0; bottom: 0; width: 4px; background: var(--ds-accent); pointer-events: none; }
@@ -78,19 +56,14 @@
 /* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
 
 /* code blocks with a language bar */
-.code-wrap { position: relative; margin: 10px 0; }
 .code-wrap pre { margin: 0; padding-top: 38px; }
 /* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
 
 /* callout / toggle / math / mermaid */
-.callout { display: flex; gap: 12px; align-items: flex-start; margin: 10px 0; padding: 16px 18px; border: 1px solid var(--ds-accent-line); border-radius: var(--ds-r-lg); background: var(--ds-accent-soft); position: relative; }
-.callout-ic { border: 0; background: transparent; font-size: 22px; line-height: 1.5; padding: 0; cursor: var(--cursor-hand, pointer); flex: none; transition: transform var(--ds-base) var(--spring); }
 .callout-ic:hover { background: color-mix(in oklab, var(--ds-accent) 12%, transparent); transform: none; }
 .callout-body { flex: 1; min-width: 0; }
 .callout-body > :first-child { margin-block-start: 0; }
 .callout-body > :last-child { margin-block-end: 0; }
-.toggle { display: flex; gap: 2px; align-items: flex-start; margin: 3px 0; }
-.toggle-btn { width: 26px; height: 28px; border: 0; background: transparent; color: var(--ds-text-2); border-radius: 8px; display: grid; place-items: center; cursor: var(--cursor-hand, pointer); padding: 0; flex: none; margin-top: 3px; }
 .toggle-btn:hover { color: var(--ds-accent); background: var(--ds-hover); }
 .toggle-btn svg { transition: transform var(--ds-base) var(--ds-ease); }
 :root[dir='rtl'] .toggle-btn svg { transform: scaleX(-1); }
@@ -98,16 +71,12 @@
 .toggle-body { flex: 1; min-width: 0; }
 .toggle:not(.open) .toggle-body > :not(:first-child) { display: none; }
 .toggle-body > :nth-child(n + 2) { margin-inline-start: 4px; }
-.math-inline { display: inline-block; padding: 0 3px; border-radius: 6px; cursor: var(--cursor-hand, pointer); unicode-bidi: isolate; }
+.math-inline { display: inline-block; padding: 0 3px; border-radius: var(--ds-r-sm); cursor: var(--cursor-hand, pointer); unicode-bidi: isolate; }
 .math-inline:hover, .math-block:hover { background: var(--ds-hover); }
-.math-block { display: block; text-align: center; padding: 10px; margin: 8px 0; border-radius: var(--ds-r); cursor: var(--cursor-hand, pointer); overflow-x: auto; }
 .math-empty { color: var(--ds-text-3); font-size: 14px; }
 /* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
-.math-field { font-family: var(--mono); font-size: 14px; border: 1px solid var(--ds-accent); border-radius: 8px; background: var(--ds-bg); color: var(--ds-text); padding: 5px 9px; outline: none; direction: ltr; text-align: left; box-shadow: 0 0 0 3px var(--ds-accent-line); }
-.math-inline .math-field { width: 220px; }
-.math-block .math-field { width: 100%; resize: vertical; }
 .ProseMirror-selectednode.math-inline, .ProseMirror-selectednode.math-block, .ProseMirror-selectednode.mermaid-block, .ProseMirror-selectednode.page-link { outline: 2px solid var(--ds-accent); }
-.page-link { display: inline-flex; align-items: baseline; gap: 5px; padding: 0 8px; border-radius: 8px; background: var(--ds-accent-soft); color: var(--ds-accent); text-decoration: none; cursor: var(--cursor-hand, pointer); line-height: 1.55; font-weight: 600; transition: background 0.15s; }
+.page-link { display: inline-flex; align-items: baseline; gap: 5px; padding: 0 8px; border-radius: var(--ds-r); background: var(--ds-accent-soft); color: var(--ds-accent); text-decoration: none; cursor: var(--cursor-hand, pointer); line-height: 1.55; font-weight: 600; transition: background 0.15s; }
 .page-link:hover { background: var(--ds-accent-line); }
 .page-link.missing { color: var(--ds-text-3); background: var(--ds-hover); text-decoration: line-through; cursor: var(--cursor-arrow, default); font-weight: 400; }
 .page-link-ic { font-size: 0.95em; }
@@ -116,13 +85,13 @@
 .mermaid-view { padding: 14px; text-align: center; overflow-x: auto; cursor: var(--cursor-hand, pointer); }
 .mermaid-view svg { max-width: 100%; height: auto; }
 .mermaid-view.empty { color: var(--ds-text-3); font-size: 14px; padding: 28px; }
-.mermaid-view.error, .mermaid-edit .error { color: var(--ds-bad); font-size: 13px; font-family: var(--mono); white-space: pre-wrap; text-align: start; }
+.mermaid-view.error, .mermaid-edit .error { color: var(--ds-bad); font-size: 13px; font-family: var(--ds-font-mono); white-space: pre-wrap; text-align: start; }
 .mermaid-bar { position: absolute; top: 8px; inset-inline-end: 8px; opacity: 0; transition: opacity var(--ds-fast); z-index: 2; flex-wrap: nowrap; direction: inherit; }
 .mermaid-block:hover .mermaid-bar, .mermaid-block.editing .mermaid-bar { opacity: 1; }
 .mermaid-block.editing .mermaid-bar { display: none; }
 .mermaid-edit { border-top: 1px solid var(--ds-line); padding: 12px; }
 /* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
-.mermaid-src { width: 100%; font-family: var(--mono); font-size: 13px; line-height: 1.6; border: 1px solid var(--ds-accent); border-radius: 10px; background: var(--ds-bg); color: var(--ds-text); padding: 10px 12px; outline: none; resize: vertical; direction: ltr; text-align: left; box-shadow: 0 0 0 3px var(--ds-accent-line); }
+.mermaid-src { width: 100%; font-family: var(--ds-font-mono); font-size: 13px; line-height: 1.6; border: 1px solid var(--ds-accent); border-radius: var(--ds-r); background: var(--ds-bg); color: var(--ds-text); padding: 10px 12px; outline: none; resize: vertical; direction: ltr; text-align: left; box-shadow: 0 0 0 3px var(--ds-accent-line); }
 .mermaid-hint { color: var(--ds-text-3); font-size: 12px; margin-top: 6px; }
 
 /* drawings (Excalidraw) */
@@ -134,7 +103,7 @@
 .drawing-view.empty { color: var(--ds-text-3); font-size: 14px; padding: 28px; }
 .drawing-actions { position: absolute; top: 8px; inset-inline-end: 8px; display: flex; gap: 6px; opacity: 0; transition: opacity var(--ds-fast); z-index: 2; }
 .drawing-block:hover .drawing-actions { opacity: 1; }
-.drawing-actions button { border: 1px solid var(--ds-line); background: var(--ds-raised); color: var(--ds-text-2); border-radius: 9px; padding: 3px 12px; font-size: 12px; cursor: var(--cursor-hand, pointer); }
+.drawing-actions button { border: 1px solid var(--ds-line); background: var(--ds-raised); color: var(--ds-text-2); border-radius: var(--ds-r); padding: 3px 12px; font-size: 12px; cursor: var(--cursor-hand, pointer); }
 .drawing-actions button:hover { color: var(--ds-accent); background: var(--ds-raised); }
 .app.reading .drawing-actions .dr-edit { display: none; }
 .drawing-modal { position: fixed; inset: 0; z-index: var(--ds-z-modal); display: flex; flex-direction: column; background: var(--ds-bg); animation: fade-in 0.2s; }
@@ -146,7 +115,6 @@
 /* images */
 .tiptap .img-fig { position: relative; display: block; margin: 10px 0; max-width: 100%; width: fit-content; }
 .tiptap .img-fig.sized { width: auto; }
-.tiptap .img-fig img { display: block; max-width: 100%; height: auto; margin: 0; border-radius: var(--ds-r); cursor: var(--cursor-zoom, zoom-in); box-shadow: var(--ds-shadow-media); }
 .tiptap .img-fig.sized img { width: 100%; }
 .tiptap .img-fig[data-align='center'] { margin-inline: auto; }
 .tiptap .img-fig[data-align='end'] { margin-inline-start: auto; margin-inline-end: 0; }
@@ -158,7 +126,7 @@
 .tiptap .img-fig.ProseMirror-selectednode img { outline: 2px solid var(--ds-accent); }
 .img-bar { position: absolute; top: 8px; inset-inline-start: 8px; opacity: 0; pointer-events: none; transition: opacity var(--ds-fast); z-index: 3; flex-wrap: nowrap; }
 .img-fig:hover .img-bar, .img-fig.ProseMirror-selectednode .img-bar { opacity: 1; pointer-events: auto; }
-.img-handle { position: absolute; bottom: 8px; inset-inline-end: 8px; width: 16px; height: 16px; border-radius: 6px; background: var(--ds-accent); border: 2px solid var(--ds-white); cursor: var(--cursor-nwse, nwse-resize); opacity: 0; transition: opacity var(--ds-fast); z-index: 3; touch-action: none; box-shadow: 0 2px 8px var(--ds-accent-line); }
+.img-handle { position: absolute; bottom: 8px; inset-inline-end: 8px; width: 16px; height: 16px; border-radius: var(--ds-r-sm); background: var(--ds-accent); border: 2px solid var(--ds-white); cursor: var(--cursor-nwse, nwse-resize); opacity: 0; transition: opacity var(--ds-fast); z-index: 3; touch-action: none; box-shadow: 0 2px 8px var(--ds-accent-line); }
 [dir='rtl'] .img-handle, .img-fig:dir(rtl) .img-handle { cursor: var(--cursor-nesw, nesw-resize); }
 .img-fig:hover .img-handle, .img-fig.ProseMirror-selectednode .img-handle { opacity: 1; }
 
@@ -169,7 +137,7 @@
 /* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
 .lb-content { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
 .lb-content img { display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
-.lb-content.paper { background: var(--ds-bg, var(--ds-white)); color: var(--ds-text); border-radius: 16px; padding: 28px; box-sizing: border-box; }
+.lb-content.paper { background: var(--ds-bg, var(--ds-white)); color: var(--ds-text); border-radius: var(--ds-r-lg); padding: 28px; box-sizing: border-box; }
 .lb-content.paper svg { display: block; }
 /* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
 .lb-bar { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); flex-wrap: nowrap; max-inline-size: none; }

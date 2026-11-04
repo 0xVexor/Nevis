@@ -57,7 +57,7 @@ button.fx-h:hover { color: var(--ds-text); }
 @media (max-width: 900px) { .fx-head, .fx-item { grid-template-columns: minmax(0, 1fr) 110px; } .fx-head .meta, .fx-head .kind, .fx-item .kind, .fx-item .meta { display: none; } .fx-search { width: 160px; } .fx-hint { display: none; } }
 
 /* selection: checkboxes (shown on hover or once something is selected) and a rubber band */
-.fx-check { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 1.5px solid var(--ds-line-strong); border-radius: var(--ds-r-sm); background: var(--ds-raised); color: transparent; cursor: var(--cursor-hand, pointer); opacity: 0; transition: opacity 0.12s, background 0.15s, border-color 0.15s, transform 0.2s var(--spring); }
+.fx-check { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 1.5px solid var(--ds-line-strong); border-radius: var(--ds-r-sm); background: var(--ds-raised); color: transparent; cursor: var(--cursor-hand, pointer); opacity: 0; transition: opacity 0.12s, background 0.15s, border-color 0.15s, transform 0.2s var(--ds-spring); }
 .fx-item:hover .fx-check, .fx-item.sel .fx-check, .fx:has(.fx-item.sel) .fx-check { opacity: 1; }
 .fx-head .fx-check { opacity: 1; }
 .fx-check:hover { border-color: var(--ds-accent); }

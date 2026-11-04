@@ -10,44 +10,6 @@ import { IconPicker } from './design-system/IconPicker'
 import { t, locale } from './i18n'
 import { shortcutHint } from './shortcuts'
 
-export const MenuItem = ({
-  icon,
-  label,
-  onClick,
-  danger,
-  hint,
-  desc,
-  disabled,
-}: {
-  icon?: ReactNode
-  label: string
-  onClick: () => void
-  danger?: boolean
-  hint?: string
-  desc?: string
-  disabled?: boolean
-}) => (
-  <button className="ds-menu-item" data-danger={danger || undefined} onClick={onClick} disabled={disabled}>
-    <span className="ds-menu-ic">{icon}</span>
-    {desc ? (
-      <span className="ds-menu-label">
-        <b>{label}</b>
-        <small>{desc}</small>
-      </span>
-    ) : (
-      <span className="ds-menu-label">{label}</span>
-    )}
-    {hint && (
-      <span className="ds-menu-hint" dir="ltr">
-        {shortcutHint(hint)}
-      </span>
-    )}
-  </button>
-)
-
-/** Small caption that groups the items below it. */
-export const MenuLabel = ({ children }: { children: ReactNode }) => <div className="ds-menu-head">{children}</div>
-export const MenuSep = () => <div className="ds-menu-sep" />
 
 
 /** Page icon picker: search, a colour row and a grid of simple outline glyphs (stored as `i:name` or `i:name@#colour`). Pages that already have an emoji keep showing it. */

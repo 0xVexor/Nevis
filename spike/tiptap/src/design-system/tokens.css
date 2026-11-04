@@ -78,7 +78,7 @@
   /* type */
   --ds-font-ui: 'Instrument Sans', 'Vazirmatn', system-ui, sans-serif;
   --ds-font-serif: 'Newsreader', 'Vazirmatn', Georgia, serif;
-  --ds-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --ds-font-mono: 'JetBrains Mono', 'Cascadia Mono', Consolas, 'SFMono-Regular', ui-monospace, monospace;
 
   --ds-control: 36px;
   --ds-control-sm: 28px;
@@ -118,6 +118,7 @@
   --ds-fast: 120ms;
   --ds-base: 220ms;
   --ds-slow: 300ms;
+  --ds-spring: cubic-bezier(0.34, 1.4, 0.64, 1); /* a small overshoot for a check or an icon that pops in */
 
   /* layers */
   --ds-z-grip: 40;
