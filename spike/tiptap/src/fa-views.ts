@@ -1,7 +1,8 @@
 /** Copy for the Tasks, Flashcards, Templates and Pages table screens. */
 export const FA_VIEWS: Record<string, string> = {
   // Workspace panels
-  'Vault browser': 'مرور مخزن',
+  'Resize navigation rail': 'تغییر اندازهٔ نوار ناوبری',
+  'Open Settings': 'باز کردن تنظیمات',
   'Workspace navigation': 'ناوبری فضای کاری',
   'Show side panel': 'نمایش پنل کناری',
   'Hide side panel': 'پنهان کردن پنل کناری',

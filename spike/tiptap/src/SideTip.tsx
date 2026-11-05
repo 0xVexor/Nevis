@@ -17,16 +17,15 @@ export function SideTip() {
       setTip(null)
     }
     const over = (e: PointerEvent) => {
-      if (document.documentElement.dataset.side !== 'icons' && !window.matchMedia('(max-width: 760px)').matches) return
       const el = (e.target as Element | null)?.closest?.(TARGET)
-      const side = el?.closest('.side')
+      const side = el?.closest('.side[data-icons]')
       if (!el || !side || el === target) return
       hide()
       const text = el.querySelector('.ntitle')?.textContent?.trim() || el.getAttribute('aria-label') || (el as HTMLElement).title || ''
       if (!text) return
       target = el
       timer = window.setTimeout(() => {
-        if (!el.isConnected) return
+        if (!el.isConnected || !side.hasAttribute('data-icons')) return
         const r = el.getBoundingClientRect()
         const s = side.getBoundingClientRect()
         const rtl = getComputedStyle(side).direction === 'rtl'

@@ -24,6 +24,7 @@ export const SHORTCUTS: ShortcutGroup[] = [
     items: [
       bound('Search pages and commands', 'search', ['Mod', 'K']),
       bound('Open or close the sidebar', 'sidebar', ['Mod', 'B'], ['Alt', '1']),
+      sc('Open Settings', ['Mod', ',']),
       bound('Reader mode', 'reader', ['Mod', '.']),
       sc('Leave reader mode', ['Esc']),
       sc('Full screen', ['F11']),

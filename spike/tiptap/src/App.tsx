@@ -47,6 +47,7 @@ import { Brand } from './Brand'
 import { BrandMark } from './BrandMark'
 import { SaveStatus } from './design-system/SaveStatus'
 import { WorkspaceHeader } from './design-system/WorkspaceHeader'
+import { ResizeHandle } from './design-system/ResizeHandle'
 import { Dialog, Icon, IconButton, Menu, Row, dirOf, Button, useMenu, type MenuItem as MenuSpec, NameDialog, Toast } from './design-system'
 import { APP_TOAST, SearchModal, type PaletteCommand } from './ui'
 import { Popover } from './design-system/Popover'
@@ -82,8 +83,10 @@ const put = (k: string, v: unknown) => {
 
 const SIDE_MIN = 160
 const SIDE_MAX = 600
+const RAIL_MIN = 148
+const RAIL_MAX = 320
 type Panel = 'vault' | 'tasks' | 'settings'
-const PANEL_TITLES = { vault: 'Vault browser', tasks: 'Tasks', settings: 'Settings' } as const
+const PANEL_TITLES = { vault: 'Navigation', tasks: 'Tasks', settings: 'Settings' } as const
 const NARROW_WORKSPACE = '(max-width: 760px)'
 const BIG_TREE = 150 // pages from which the sidebar tree starts collapsed
 
@@ -193,10 +196,13 @@ export default function App() {
   const toggleContext = useCallback(() => setContextOpen(!sideOpen), [setContextOpen, sideOpen])
   const hideContext = () => {
     setContextOpen(false)
-    panelToggle.current?.focus()
+    requestAnimationFrame(() => panelToggle.current?.focus())
   }
   const [sideW, setSideW] = useState<number | null>(() => store<number | null>('not.sideW', null)) // null: the width of the chosen sidebar style
-  const [sideDrag, setSideDrag] = useState(false)
+  const [railWidth, setRailWidth] = useState<number | null>(() => store('not.navWidth', null))
+  const [railPeek, setRailPeek] = useState(false)
+  const [railPinned, setRailPinned] = useState(false)
+  useEffect(() => put('not.navWidth', railWidth), [railWidth])
   useEffect(() => put('not.sideW', sideW), [sideW])
   const [searching, setSearching] = useState(false)
   const [writingCatalog, setWritingCatalog] = useState<typeof import('./editor/slash').editorSearchItems>()
@@ -327,7 +333,7 @@ export default function App() {
     const escape = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.key !== 'Escape' || document.querySelector('.ds-pop, [role="dialog"]')) return
       setOverlayPanel(null)
-      panelToggle.current?.focus()
+      requestAnimationFrame(() => panelToggle.current?.focus())
     }
     window.addEventListener('keydown', escape)
     return () => window.removeEventListener('keydown', escape)
@@ -465,7 +471,12 @@ export default function App() {
     return () => window.removeEventListener('open-search', open)
   }, [])
   const trashed = repo.trash()
-  const closeOverlays = () => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false))
+  const closeOverlays = useCallback(() => {
+    setCardsOpen(false)
+    setTplOpen(false)
+    setGraphOpen(false)
+    setTableOpen(false)
+  }, [])
   // Flashcards and Templates are pages: going to another page or view (search, links, the sidebar) leaves them
   useEffect(() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false)), [view, currentId])
   const addFromTemplate = (id: string) => {
@@ -616,10 +627,20 @@ export default function App() {
           : t('{pages} pages and {files} files restored', { pages: r.pages, files: r.files }),
       })
   }, [])
-  const openSettings = (tab?: SettingsTab) => {
+  const openSettings = useCallback((tab?: SettingsTab) => {
+    closeOverlays()
     setSettingsTab(tab)
     setView('settings')
-  }
+  }, [closeOverlays, setView])
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if (event.repeat || !commandMatches(event, 'Open Settings')) return
+      event.preventDefault()
+      openSettings()
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [openSettings])
   const openData = () => openSettings('data')
   const doExportAll = async () => {
     try {
@@ -795,7 +816,7 @@ export default function App() {
     ...[{ id: 'data-folder', label: t('Workspaces…'), icon: <Icon name="folder" size={16} />, keywords: 'vault switch workspace پوشه داده', run: () => setFolderOpen(true) }],
     { id: 'auto-backup', label: t('Automatic backup to folder…'), icon: <Icon name="save" size={16} />, keywords: 'پشتیبان خودکار', run: openData },
     { id: 'check-updates', label: t('Check for updates'), icon: <Icon name="download" size={16} />, keywords: 'update version beta release upgrade به‌روزرسانی نسخه', run: () => void updates.check(true) },
-    { id: 'settings', label: t('Settings'), icon: <Icon name="settings" size={16} />, keywords: 'preferences تنظیمات', run: () => openSettings() },
+    { id: 'settings', label: t('Settings'), hint: commandHint('Open Settings'), icon: <Icon name="settings" size={16} />, keywords: 'preferences تنظیمات', run: () => openSettings() },
     // every page of the settings, one command each: "Settings › Shortcuts", "Settings › Data & backup"…
     ...SETTINGS_TABS.map((x) => ({ id: 'settings-' + x.id, label: t('Settings') + ' › ' + t(x.label), icon: x.icon, keywords: x.id + ' ' + x.hint + ' ' + t(x.hint), run: () => openSettings(x.id) })),
   ] satisfies PaletteCommand[]).map(command => {
@@ -829,6 +850,19 @@ export default function App() {
     if (!reveal) return
     treePanel.current?.querySelector<HTMLElement>(`[data-tree-page="${CSS.escape(reveal.id)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [reveal])
+  const iconsOnly = settings.sidebar === 'icons' || narrow
+  const railExpanded = iconsOnly && (railPeek || railPinned || !!newMenu)
+  const railToggleLabel = t(railPinned ? 'Unpin sidebar' : 'Pin sidebar')
+  const railPanelLabel = t(sideOpen ? 'Hide side panel' : 'Show side panel') + '  ' + commandHint('Open or close the sidebar')
+  const sidePanelButton = panel && (
+    <IconButton ref={panelToggle} label={railPanelLabel} aria-expanded={sideOpen} aria-controls="workspace-context" onClick={() => {
+      toggleContext()
+      requestAnimationFrame(() => panelToggle.current?.focus())
+    }}>
+      <Icon name="panel-left" size={17} className="ds-flip" />
+    </IconButton>
+  )
+  const defaultRailWidth = settings.sidebar === 'compact' ? 148 : 176
   const preferencesOpen = view === 'settings'
   const rowProps = { index, currentId: current?.id ?? '', collapsed, onToggle: toggle, onOpen: setCurrentId, onAdd: add, onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }), onMove: move }
 
@@ -838,9 +872,34 @@ export default function App() {
       className={'app' + (reader && view === 'page' && current ? ' reading' : '')}
       style={cssVars({ '--page-w': pageW + 'px', '--r-scale': readerCfg.scale, '--r-width': readerCfg.width + 'px' })}
     >
-      <nav className="side" aria-label={t('Workspace navigation')}>
+      <nav
+        className="side"
+        aria-label={t('Workspace navigation')}
+        data-icons={iconsOnly && !railExpanded ? '' : undefined}
+        data-expanded={railExpanded ? '' : undefined}
+        style={railWidth ? cssVars({ '--nav-user-width': railWidth + 'px' }) : undefined}
+        onPointerLeave={() => setRailPeek(false)}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setRailPeek(false)
+        }}
+      >
+        {!narrow && (!iconsOnly || railExpanded) && (
+          <ResizeHandle label={t('Resize navigation rail')} width={railWidth ?? defaultRailWidth} min={RAIL_MIN} max={RAIL_MAX} onResize={setRailWidth} />
+        )}
         <div className="ws">
-          <WorkspaceHeader mark={<BrandMark />} name={<Brand />} />
+          <WorkspaceHeader
+            mark={<BrandMark />}
+            name={<Brand />}
+            revealLabel={railToggleLabel}
+            expanded={!iconsOnly || railExpanded}
+            pressed={iconsOnly ? railPinned : undefined}
+            onReveal={iconsOnly ? () => setRailPeek(true) : undefined}
+            onActivate={() => {
+              setRailPinned(!railPinned)
+              setRailPeek(!railPinned)
+            }}
+            action={!sideOpen && sidePanelButton}
+          />
         </div>
         <div className="side-scroll">
           <button aria-label={t('Search')} className="row plain search-row" onClick={() => setSearching(true)}>
@@ -974,7 +1033,7 @@ export default function App() {
           {narrow && sideOpen && <div className="context-backdrop" aria-hidden="true" onClick={hideContext} />}
           <aside
             id="workspace-context"
-            className={'context-panel' + (sideDrag ? ' resizing' : '')}
+            className="context-panel"
             aria-label={t(PANEL_TITLES[panel])}
             hidden={!sideOpen}
             style={sideW ? cssVars({ '--side-w': sideW + 'px' }) : undefined}
@@ -988,48 +1047,11 @@ export default function App() {
             }
           >
             {!narrow && (
-              <div
-                className="side-grip"
-                role="separator"
-                aria-orientation="vertical"
-                aria-label={t('Resize side panel')}
-                title={t('Drag to resize, double-click to reset')}
-                tabIndex={0}
-                aria-valuemin={SIDE_MIN}
-                aria-valuemax={SIDE_MAX}
-                aria-valuenow={sideW ?? 264}
-                onKeyDown={(event) => {
-                  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-                  event.preventDefault()
-                  const rtl = getComputedStyle(event.currentTarget).direction === 'rtl'
-                  const grow = (event.key === 'ArrowRight') !== rtl
-                  setSideW((width) => Math.min(SIDE_MAX, Math.max(SIDE_MIN, (width ?? 264) + (grow ? 16 : -16))))
-                }}
-                onDoubleClick={() => setSideW(null)}
-                onPointerDown={(e) => {
-                  const aside = e.currentTarget.parentElement!
-                  const rtl = getComputedStyle(aside).direction === 'rtl'
-                  const edge = rtl ? aside.getBoundingClientRect().right : aside.getBoundingClientRect().left
-                  e.currentTarget.setPointerCapture(e.pointerId)
-                  setSideDrag(true)
-                  const move = (ev: PointerEvent) => setSideW(Math.round(Math.min(SIDE_MAX, Math.max(SIDE_MIN, rtl ? edge - ev.clientX : ev.clientX - edge))))
-                  const up = () => {
-                    setSideDrag(false)
-                    window.removeEventListener('pointermove', move)
-                    window.removeEventListener('pointerup', up)
-                    window.removeEventListener('pointercancel', up)
-                  }
-                  window.addEventListener('pointermove', move)
-                  window.addEventListener('pointerup', up)
-                  window.addEventListener('pointercancel', up)
-                }}
-              />
+              <ResizeHandle label={t('Resize side panel')} width={sideW ?? 264} min={SIDE_MIN} max={SIDE_MAX} onResize={setSideW} />
             )}
             <header className="context-heading">
               <h2>{t(PANEL_TITLES[panel])}</h2>
-              <IconButton label={t('Hide side panel')} onClick={hideContext}>
-                <Icon name="panel-left" className="ds-flip" />
-              </IconButton>
+              {sideOpen && sidePanelButton}
             </header>
             <div className="side-scroll" ref={setPanelHost}>
               {panel === 'vault' && sideOpen && (
@@ -1165,11 +1187,6 @@ export default function App() {
 
       <main ref={mainRef} className={'main' + (panelOpen && !reader && view === 'page' && current ? ' drawer-open' : '')}>
         <header className="topbar">
-          {panel && (
-            <IconButton ref={panelToggle} label={t(sideOpen ? 'Hide side panel' : 'Show side panel') + '  ' + commandHint('Open or close the sidebar')} aria-expanded={sideOpen} aria-controls="workspace-context" onClick={toggleContext}>
-              <Icon name="panel-left" size={17} className="ds-flip" />
-            </IconButton>
-          )}
           <div className="nav-hist">
             <IconButton label={t('Back  Alt+←')} disabled={hpos.current <= 0} onClick={() => goHist(-1)}>
               <Icon name="arrow-left" size={17} className="ds-flip" />
@@ -1303,12 +1320,12 @@ export default function App() {
                     <Icon name="chevron-right" size={13} />
                   </span>
                   {c.kind === 'folder' ? (
-                    <span className="crumb-folder" dir="auto">
+                    <span className="crumb-folder" dir="auto" title={c.title || t('Folder')}>
                       <Icon name="folder" size={14} />
                       <span>{c.title || t('Folder')}</span>
                     </span>
                   ) : (
-                    <button onClick={() => setCurrentId(c.id)} dir="auto">
+                    <button onClick={() => setCurrentId(c.id)} dir="auto" title={c.title || t('Untitled')}>
                       <span className="ic">{iconNode(c.icon, 14)}</span>
                       <span className="crumb-t">{c.title || t('Untitled')}</span>
                     </button>

@@ -34,7 +34,7 @@ export type EditorCommand = (typeof EDITOR_COMMANDS)[number]
 
 /** Contexts that can reuse a key without firing in the same UI. */
 export function shortcutContext(label: string) {
-  if (['Leave reader mode', 'Full screen'].includes(label)) return 'app'
+  if (['Leave reader mode', 'Full screen', 'Open Settings'].includes(label)) return 'app'
   if (['Next match', 'Previous match', 'Close find'].includes(label)) return 'find'
   if (label === 'Start review') return 'review-overview'
   if (['Show the answer', 'Again', 'Hard', 'Good', 'Easy', 'End the session'].includes(label)) return 'review'

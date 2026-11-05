@@ -52,8 +52,8 @@
 .wscard-tx b { font-size: var(--ds-text-small); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wscard-tx small { font-size: var(--ds-text-caption); font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ds-text-3); }
 .wscard-chev { display: grid; place-items: center; color: var(--ds-text-3); }
-:root[data-side='icons'] .side .wscard { padding: var(--ds-s2); justify-content: center; }
-:root[data-side='icons'] .side .wscard-tx, :root[data-side='icons'] .side .wscard-chev { display: none; }
+.side[data-icons] .wscard { padding: var(--ds-s2); justify-content: center; }
+.side[data-icons] .wscard-tx, .side[data-icons] .wscard-chev { display: none; }
 .wsd-body { overflow: auto; padding: var(--ds-s4) var(--ds-s6) var(--ds-s6); }
 .wsd-tx { display: flex; flex-direction: column; gap: 1px; flex: 1; min-inline-size: 0; }
 .wsd-tx b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; font-size: var(--ds-text-ui); font-weight: 600; }
