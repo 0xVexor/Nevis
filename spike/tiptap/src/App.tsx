@@ -792,6 +792,11 @@ export default function App() {
   const revealSidebar = () => {
     if (!sidePreviewSuppressed.current) setSidePeek(true)
   }
+  const closeSidebar = () => {
+    setSidePinned(false)
+    setSidePeek(false)
+    setSideOpen(false)
+  }
   const toggleSidebarPin = () => {
     if (settings.sidebar !== 'icons') return
     const pinned = !sidePinned
@@ -835,8 +840,8 @@ export default function App() {
           }}
         />
         <div className="ws">
-          <WorkspaceHeader mark={<BrandMark />} name={<Brand />} revealLabel={t(sidePinned ? 'Unpin sidebar' : sideExpanded ? 'Pin sidebar' : 'Open sidebar')} expanded={settings.sidebar !== 'icons' || sideExpanded} pressed={settings.sidebar === 'icons' ? sidePinned : undefined} onReveal={revealSidebar} onActivate={toggleSidebarPin} action={
-            <IconButton label={t('Close sidebar') + '  ' + bindingHint('sidebar')} onClick={() => { setSidePinned(false); setSidePeek(false); setSideOpen(false) }}>
+          <WorkspaceHeader mark={<BrandMark />} name={<Brand />} revealLabel={t(sidePinned ? 'Unpin sidebar' : sideExpanded ? 'Pin sidebar' : 'Open sidebar')} expanded={settings.sidebar !== 'icons' || sideExpanded} pressed={settings.sidebar === 'icons' ? sidePinned : undefined} onReveal={revealSidebar} onActivate={toggleSidebarPin} action={settings.sidebar === 'icons' ? undefined :
+            <IconButton label={t('Close sidebar') + '  ' + bindingHint('sidebar')} onClick={closeSidebar}>
               <Icon name="panel-left" />
             </IconButton>
           } />
@@ -1067,8 +1072,8 @@ export default function App() {
 
       <main ref={mainRef} className={'main' + (panelOpen && !reader && view === 'page' && current ? ' drawer-open' : '')}>
         <header className="topbar">
-          {!sideOpen && !preferencesOpen && (
-            <IconButton label={t('Open sidebar') + '  ' + bindingHint('sidebar')} onClick={() => setSideOpen(true)}>
+          {(!sideOpen || settings.sidebar === 'icons') && !preferencesOpen && (
+            <IconButton label={t(sideOpen ? 'Close sidebar' : 'Open sidebar') + '  ' + bindingHint('sidebar')} onClick={() => (sideOpen ? closeSidebar() : setSideOpen(true))}>
               <Icon name="panel-left" size={17} />
             </IconButton>
           )}
