@@ -303,6 +303,11 @@ fn mcp_reply(s: St, window: tauri::WebviewWindow, request_id: String, revision: 
 // ───── pages ─────
 
 #[tauri::command]
+fn pages_search_stamp(s: St) -> Res<Option<String>> {
+    with(&s, |v| v.pages_search_stamp())
+}
+
+#[tauri::command]
 fn pages_all(s: St) -> Res<Vec<Value>> {
     with(&s, |v| v.pages_all())
 }
@@ -694,7 +699,7 @@ fn main() {
             vault_backup_save, vault_backup_folder_save, vault_backup_folder_read, vault_backup_export, vault_backup_restore, vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
             db_recover, db_load_all, db_commit, db_get_operation, db_history, db_undo_load, db_undo_save, db_runtime_get, db_runtime_set, db_runtime_delete,
             db_runtime_keys, db_index_rebuild, db_index_candidates, db_index_count,
-            vault_stamp, pages_all, pages_save, document_operation_list, document_operation_find, document_operation_commit, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list, page_path, page_reveal,
+            vault_stamp, pages_search_stamp, pages_all, pages_save, document_operation_list, document_operation_find, document_operation_commit, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list, page_path, page_reveal,
             index_state, index_update, index_search
         ])
         .run(tauri::generate_context!())

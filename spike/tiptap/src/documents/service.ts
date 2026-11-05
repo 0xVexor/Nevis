@@ -17,7 +17,9 @@ import type { DocumentReadGrant, DocumentReadRuntime } from './reader.ts'
 import type { DocumentEnvironment, DocumentStorage, DocumentHost, StoredDocumentVersion } from './ports.ts'
 import { canonicalSnapshot, ManagedLexicalIndex, rankedSearchPages, SearchIndexUnavailable } from './searchLifecycle.ts'
 import { LexicalSearchError, PortableLexicalIndex } from './lexicalSearch.ts'
-import type { SearchIndexRuntime } from './searchLifecycle.ts'
+import type { PreparedSearch, SearchIndexRuntime } from './searchLifecycle.ts'
+
+type SearchSnapshot = PreparedSearch & { pages: Page[]; generation: number }
 
 const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] }
 // a board is a page whose whole content is one drawing block (ids of its scene + picture files), so files, search, history and backup need nothing special
@@ -306,9 +308,18 @@ export class DocumentService implements PageRepo {
   private readonly searchIndex: ManagedLexicalIndex
   private readonly searchRuntime: SearchIndexRuntime
   private searchGeneration = 0
+  private searchRefresh: Promise<SearchSnapshot> | null = null
+  private searchCache: { stamp: string; snapshot: SearchSnapshot } | null = null
+
   private invalidateSearch() {
     this.searchGeneration++
+    this.searchCache = null
     this.searchIndex.invalidate()
+    try {
+      this.host.emit('search-state', 'pending')
+    } catch {
+      // Search observers cannot fail a durable write.
+    }
   }
   get vaultHandle() {
     return this.storage.vaultHandle
@@ -336,7 +347,7 @@ export class DocumentService implements PageRepo {
     this.storage = environment.storage
     this.host = environment.host
     this.searchRuntime = environment.search ?? {}
-    this.searchIndex = new ManagedLexicalIndex(this.searchRuntime, (state) => this.host.emit('search-state', state))
+    this.searchIndex = new ManagedLexicalIndex(this.searchRuntime)
     this.seed = seed
   }
 
@@ -619,17 +630,43 @@ export class DocumentService implements PageRepo {
   searchStatus() {
     return this.searchIndex.status()
   }
-  async refreshSearchIndex() {
-    try {
+  refreshSearchIndex(): Promise<SearchSnapshot> {
+    this.searchRefresh ??= this.preparePersistedSearch().finally(() => {
+      this.searchRefresh = null
+    })
+    return this.searchRefresh
+  }
+  private async preparePersistedSearch(): Promise<SearchSnapshot> {
+    // Retry if a save or conflict merge changes the source while reading it.
+    for (let attempt = 0; attempt < 3; attempt++) {
       await this.queue
       const generation = this.searchGeneration
-      const pages = (await this.storage.load()).filter((page) => page.deletedAt === null && page.kind !== 'folder')
-      if (generation !== this.searchGeneration) return { state: 'pending' as const, index: null, pages: [] as Page[], generation }
-      const snapshot = canonicalSnapshot([...pages].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)))
-      return { ...(await this.searchIndex.prepare(pages, snapshot)), pages, generation }
-    } catch {
-      return { ...this.searchIndex.failed(), pages: [] as Page[], generation: this.searchGeneration }
+      try {
+        const stamp = (await this.storage.searchStamp?.()) ?? null
+        if (generation !== this.searchGeneration) continue
+        if (stamp !== null && stamp === this.searchCache?.stamp) return this.searchCache.snapshot
+        this.searchCache = null
+
+        const pages = (await this.storage.load()).filter((page) => page.deletedAt === null && page.kind !== 'folder')
+        if (stamp !== null && stamp !== (await this.storage.searchStamp?.())) continue
+        if (generation !== this.searchGeneration) continue
+
+        const key = stamp === null ? canonicalSnapshot([...pages].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) : `stamp:${stamp}`
+        const prepared = await this.searchIndex.prepare(pages, key)
+        if (stamp !== null && stamp !== (await this.storage.searchStamp?.())) continue
+        if (generation !== this.searchGeneration) continue
+
+        const snapshot = { ...prepared, pages, generation }
+        if (stamp !== null && snapshot.state === 'fresh') this.searchCache = { stamp, snapshot }
+        return snapshot
+      } catch {
+        if (generation !== this.searchGeneration) continue
+        this.searchCache = null
+        return { ...this.searchIndex.failed(), pages: [], generation }
+      }
     }
+    this.searchIndex.invalidate()
+    return { state: 'pending', index: null, pages: [], generation: this.searchGeneration }
   }
   async searchPersisted(query: string): Promise<(Page & { searchPassage: string })[]> {
     if (!query.trim()) return []
