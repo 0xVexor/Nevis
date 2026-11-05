@@ -64,10 +64,10 @@ export function SearchModal({
   useEffect(() => {
     const refreshed = (event: Event) => {
       const state = (event as CustomEvent<string>).detail
-      if (state === 'fresh') setSearchEpoch((value) => value + 1)
-      else if (term.trim() && !cmdOnly && (state === 'pending' || state === 'failed')) {
+      if (state === 'pending' && term.trim() && !cmdOnly) {
         setFound([])
-        setSearchState(state)
+        setSearchState('pending')
+        setSearchEpoch((value) => value + 1)
       }
     }
     window.addEventListener('search-state', refreshed)

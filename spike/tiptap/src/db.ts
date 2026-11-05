@@ -147,6 +147,7 @@ export interface VaultEntry {
 }
 
 export const vaultStamp = () => invoke<string>('vault_stamp')
+export const pagesSearchStamp = () => invoke<string | null>('pages_search_stamp')
 export const vaultList = () => invoke<{ vaults: VaultEntry[]; current: string | null }>('vault_list')
 export const vaultInfo = () => invoke<{ id: string; name: string; path: string }>('vault_info')
 export const vaultCreate = (parent: string, name: string) => invoke<string>('vault_create', { parent, name })

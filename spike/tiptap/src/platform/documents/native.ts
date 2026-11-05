@@ -16,6 +16,7 @@ export interface NativeDocumentBridge {
     preconditions?: { expectedVaultId: string; expectedPages?: DocumentWrite['expectedPages']; expectedAll?: Page[] },
   ): Promise<void>
   stamp(): Promise<string>
+  searchStamp?(): Promise<string | null>
   listVersions(pageId: string): Promise<DocumentVersion[]>
   addVersion(version: DocumentVersion): Promise<void>
   deleteVersions(pageId: string): Promise<void>
@@ -72,6 +73,10 @@ export class NativeDocumentStorage implements DocumentStorage {
   }
   stamp() {
     return this.run(() => this.bridge.stamp())
+  }
+  searchStamp() {
+    const stamp = this.bridge.searchStamp
+    return stamp ? this.run(() => stamp()) : Promise.resolve(null)
   }
   listVersions(pageId: string) {
     return this.run(() => this.bridge.listVersions(pageId))

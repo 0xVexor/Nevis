@@ -7,7 +7,6 @@ import './settings'
 import App from './App.tsx'
 import { initStore, repo } from './store'
 import { initBackup } from './autobackup'
-import { initSearchIndex } from './searchIndex'
 import { isTauri, vaultList, vaultClose } from './db'
 import { VaultPicker } from './VaultPicker'
 import { FirstLaunch, firstNoteMark, pendingFirstNote } from './onboarding/FirstNoteStart'
@@ -37,7 +36,6 @@ function start() {
     .then(() => {
       void initBackup()
       void repo.watch()
-      initSearchIndex()
       if (isTauri) void startMcpBridge().catch(() => {})
       const app = (
         <StrictMode>

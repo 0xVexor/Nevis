@@ -466,6 +466,37 @@ impl Vault {
         Ok(kept)
     }
 
+    /// Covers individual page files and sync conflict copies without reading page bodies.
+    #[cfg(unix)]
+    pub fn pages_search_stamp(&self) -> Res<Option<String>> {
+        use std::hash::{DefaultHasher, Hash, Hasher};
+        use std::os::unix::fs::MetadataExt;
+
+        let _guard = commit_lock(&self.root)?;
+        let mut files = Vec::new();
+        for entry in fs::read_dir(self.pages_dir()).map_err(err)? {
+            let path = entry.map_err(err)?.path();
+            if path.extension().is_none_or(|ext| ext != "json") {
+                continue;
+            }
+            // Follow links just as pages_all does. ctime detects writes even when a
+            // sync tool restores the file's original modification time.
+            let meta = fs::metadata(&path).map_err(err)?;
+            let version = (meta.dev(), meta.ino(), meta.len(), meta.mtime(), meta.mtime_nsec(), meta.ctime(), meta.ctime_nsec());
+            files.push((path, version));
+        }
+        files.sort_unstable();
+        let mut hash = DefaultHasher::new();
+        files.hash(&mut hash);
+        Ok(Some(format!("{:016x}", hash.finish())))
+    }
+
+    #[cfg(not(unix))]
+    pub fn pages_search_stamp(&self) -> Res<Option<String>> {
+        // Keep body validation where the filesystem change time is unavailable.
+        Ok(None)
+    }
+
     /// Cheap fingerprint of the pages folder, to notice changes made by the sync tool.
     pub fn stamp(&self) -> String {
         let (mut n, mut newest, mut size) = (0u64, 0u128, 0u64);
@@ -609,6 +640,30 @@ mod tests {
 
     fn page(id: &str, title: &str, at: i64) -> Value {
         json!({ "id": id, "title": title, "content": { "type": "doc", "content": [] }, "updatedAt": at, "deletedAt": null })
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn search_stamp_tracks_each_page_even_when_size_and_mtime_are_preserved() {
+        let v = Vault::create(tmp("search-stamp"), "T").unwrap();
+        v.save_pages(&[page(A, "old", 100)], &[], false).unwrap();
+        let path = v.page_path(A).unwrap();
+        let original_mtime = fs::metadata(&path).unwrap().modified().unwrap();
+        let original = v.pages_search_stamp().unwrap();
+        assert_eq!(original, v.pages_search_stamp().unwrap());
+
+        let old = fs::read_to_string(&path).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        fs::write(&path, old.replace("old", "new")).unwrap();
+        fs::File::open(&path).unwrap().set_modified(original_mtime).unwrap();
+        assert_eq!(fs::metadata(&path).unwrap().len(), old.len() as u64);
+        assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), original_mtime);
+        let edited = v.pages_search_stamp().unwrap();
+        assert_ne!(original, edited);
+
+        fs::write(v.pages_dir().join(format!("{A} (conflicted copy).json")), old).unwrap();
+        assert_ne!(edited, v.pages_search_stamp().unwrap());
+        fs::remove_dir_all(&v.root).unwrap();
     }
 
     #[test]
