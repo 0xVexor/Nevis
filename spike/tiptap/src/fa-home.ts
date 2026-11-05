@@ -1,9 +1,11 @@
+import { HOME_LINES } from './homeLines'
+
 /** Copy for the shared-foundation Home migration. */
 export const FA_HOME: Record<string, string> = {
   'Your first note': 'اولین یادداشت شما',
   'Meeting notes': 'یادداشت جلسه',
   'Lecture': 'یادداشت درس',
-  'An idea, a plan, a few words. Start here.': 'یک ایده، یک برنامه، چند خط یادداشت. از همین‌جا شروع کنید.',
+  ...Object.fromEntries(HOME_LINES),
   'Other ways to start': 'راه‌های دیگر برای شروع',
   'Start with a little structure': 'شروع با یک الگو',
   'Choose a template and make it yours.': 'یک الگو انتخاب کنید و متناسب با کارتان تغییرش دهید.',

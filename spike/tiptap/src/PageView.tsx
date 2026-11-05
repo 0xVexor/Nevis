@@ -37,6 +37,7 @@ import { Glyph, isGlyph, parseIcon } from './iconSet'
 import { TEMPLATE_GLYPH } from './TemplateGallery'
 import { iconNode } from './iconSet'
 import { Toolbar } from './Toolbar'
+import { useTextZoom } from './editor/textZoom'
 import { t } from './i18n'
 import { bindingHint, matches } from './shortcutBindings'
 import { lazy, Suspense } from 'react'
@@ -187,6 +188,9 @@ export function PageView({
   useEffect(() => {
     if (editor) editor.storage.currentPageId = page.id
   }, [editor, page.id])
+
+  const pageRef = useRef<HTMLDivElement>(null)
+  useTextZoom(pageRef)
 
   // right-click inside the text: clipboard, formatting and page actions (the browser's own menu is switched off in the desktop app)
   const { open: openMenu, menu } = useMenu()
@@ -575,7 +579,7 @@ export function PageView({
   })()
 
   return (
-    <div className={'page' + (findOpen ? ' finding' : '')}>
+    <div ref={pageRef} className={'page' + (findOpen ? ' finding' : '')}>
       {findOpen && (
         <div className="pg-find-slot">
           <div className="pg-find" role="search">

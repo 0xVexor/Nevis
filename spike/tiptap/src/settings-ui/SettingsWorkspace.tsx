@@ -14,6 +14,7 @@ import { SettingRow, SettingGroup, Range, Choice, Toggle } from './parts'
 import { SidebarStylePicker } from './SidebarPreview'
 import { LivePreview } from './WorkspacePreview'
 import { AccentSwatches } from './AccentSwatches'
+import { TEXT_SIZE_MAX, TEXT_SIZE_MIN } from '../editor/textZoom'
 
 export type Category = 'appearance' | 'editor' | 'language' | 'general' | 'data' | 'database' | 'connections' | 'shortcuts' | 'about'
 const categories: { id: Category; label: string; icon: string; description: string }[] = [
@@ -47,7 +48,7 @@ export function EditorSettings() {
   return <SettingGroup title={l('Typography')}>
     <SettingRow label={l('Persian & Arabic font')}><Dropdown label={l('Persian & Arabic font')} value={s.font} options={FONTS.filter(f => f.group !== 'english').map(f => ({ value: f.id, label: f.label }))} onChange={font => updateSettings({ font })} /></SettingRow>
     <SettingRow label={l('English font')}><Dropdown label={l('English font')} value={s.fontEn ?? 'default'} options={[{ value: 'default', label: 'Instrument Sans' }, ...FONTS.filter(f => f.group !== 'persian').map(f => ({ value: f.id, label: f.label }))]} onChange={font => updateSettings({ fontEn: font === 'default' ? null : font as Settings['font'] })} /></SettingRow>
-    <SettingRow label={l('Text size')} hint={l('Editor text stays independent of interface sizing.')}><Range label={l('Text size')} value={s.fontSize} min={13} max={22} onChange={fontSize => updateSettings({ fontSize })} /></SettingRow>
+    <SettingRow label={l('Text size')} hint={l('Editor text stays independent of interface sizing.')}><Range label={l('Text size')} value={s.fontSize} min={TEXT_SIZE_MIN} max={TEXT_SIZE_MAX} onChange={fontSize => updateSettings({ fontSize })} /></SettingRow>
   </SettingGroup>
 }
 export function LanguageSettings() {

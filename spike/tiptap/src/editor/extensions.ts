@@ -20,7 +20,7 @@ import { FlowArrows } from './flowArrows'
 import { DragHandle } from './dragHandle'
 import { LayoutGroup, LayoutColumn, LayoutSafety } from './layout'
 import { MarkdownPaste } from './markdownPaste'
-import { MarkdownTab } from './markdownTab'
+import { MarkdownTab, TabStaysInEditor } from './markdownTab'
 import { MathAuto, MathBlock, MathInline } from './math'
 import { Callout, Toggle } from './blocks'
 import { PageLink, PageLinkSuggest } from './pageLink'
@@ -241,6 +241,7 @@ export const extensions = [
   ImageFiles,
   MarkdownPaste,
   MarkdownTab,
+  TabStaysInEditor,
   Callout,
   Toggle,
   MathInline,
