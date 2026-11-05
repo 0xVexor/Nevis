@@ -1124,7 +1124,6 @@ export default function App() {
             {!overlayOpen && view === 'home' && (
               <span className="crumb">
                 <span className="crumb-cur">
-                  <Icon name="panel-left" size={14} />
                   {t('Home')}
                 </span>
               </span>
