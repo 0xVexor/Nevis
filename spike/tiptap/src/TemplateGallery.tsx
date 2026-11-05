@@ -4,6 +4,7 @@ import { getTemplates } from './templates'
 import { Glyph } from './iconSet'
 import { Button, Icon, Screen, useUIMotion } from './design-system'
 import { t } from './i18n'
+import { deckTemplates } from './decks/templates'
 
 /** Glyph shown for each built-in template (new pages get it as their icon). */
 export const TEMPLATE_GLYPH: Record<string, string> = { lecture: 'graduation', chapter: 'book', exercise: 'target', meeting: 'users', todo: 'list' }
@@ -55,12 +56,26 @@ interface Choice {
   /** the new page's suggested title */
   pageTitle?: string
   blocks?: Block[]
+  deck?: (typeof deckTemplates)[number]
 }
 
 /** An empty line where the person will write. */
 const Line = ({ width = 60 }: { width?: number }) => <span className="tpl-line" style={{ inlineSize: width + '%' }} />
 
 function Paper({ choice }: { choice: Choice }) {
+  if (choice.deck)
+    return (
+      <div className="tpl-deck-preview">
+        {choice.deck.sections.map((section, index) => (
+          <div className="tpl-deck-sheet" key={section} style={{ aspectRatio: `${choice.deck!.size.width} / ${choice.deck!.size.height}` }}>
+            <b dir="auto">{t(section)}</b>
+            <small>
+              {index + 1} / {choice.deck!.sections.length}
+            </small>
+          </div>
+        ))}
+      </div>
+    )
   if (choice.id === DATABASE_TEMPLATE) {
     const cols = [t('Name'), t('Status'), t('Date')]
     return (
@@ -98,11 +113,7 @@ function Paper({ choice }: { choice: Choice }) {
       <p className="tpl-paper-title" dir="auto" data-empty={!choice.pageTitle?.trim() || undefined}>
         {choice.pageTitle?.trim() || t('Untitled')}
       </p>
-      {!choice.blocks?.length ? (
-        <p className="tpl-paper-hint">{t('Start writing, or press / for blocks')}</p>
-      ) : (
-        choice.blocks.map((b, i) => <PaperBlock key={i} block={b} />)
-      )}
+      {!choice.blocks?.length ? <p className="tpl-paper-hint">{t('Start writing, or press / for blocks')}</p> : choice.blocks.map((b, i) => <PaperBlock key={i} block={b} />)}
     </>
   )
 }
@@ -184,7 +195,7 @@ function PaperBlock({ block: b }: { block: Block }) {
  * Templates as a page: the choices on one side, a preview of the page the chosen one creates on the other.
  * Arrow keys move through the list, Enter (or a double click) creates, Escape leaves.
  */
-export function Templates({ onPick, onClose }: { onPick: (id: string) => void; onClose: () => void }) {
+export function Templates({ onPick, onClose, startWithDecks = false }: { onPick: (id: string) => void; onClose: () => void; startWithDecks?: boolean }) {
   const motionOf = useUIMotion()
   const { empty, templates } = useMemo(() => {
     const empty: Choice[] = [
@@ -203,8 +214,9 @@ export function Templates({ onPick, onClose }: { onPick: (id: string) => void; o
     }))
     return { empty, templates }
   }, [])
-  const all = useMemo(() => [...empty, ...templates], [empty, templates])
-  const [current, setCurrent] = useState(all[0].id)
+  const decks: Choice[] = deckTemplates.map((deck) => ({ id: deck.id, title: t(deck.title), hint: t(deck.hint), icon: <Icon name="layers" />, action: t('Create deck'), deck }))
+  const all = [...empty, ...decks, ...templates]
+  const [current, setCurrent] = useState(startWithDecks ? decks[0].id : all[0].id)
   const chosen = all.find((c) => c.id === current) ?? all[0]
   const list = useRef<HTMLDivElement>(null)
 
@@ -254,6 +266,12 @@ export function Templates({ onPick, onClose }: { onPick: (id: string) => void; o
               {t('Start empty')}
             </h2>
             {empty.map(option)}
+          </div>
+          <div role="group" aria-labelledby="tpl-decks">
+            <h2 id="tpl-decks" className="tpl-group">
+              {t('Deck templates')}
+            </h2>
+            {decks.map(option)}
           </div>
           <div role="group" aria-labelledby="tpl-ready">
             <h2 id="tpl-ready" className="tpl-group">

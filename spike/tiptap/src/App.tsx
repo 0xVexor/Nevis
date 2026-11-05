@@ -15,6 +15,9 @@ import { SideTip } from './SideTip'
 import { removeInlineDrawing, type DrawingInfo } from './drawingData'
 import { BoardView } from './BoardView'
 import { DeckView } from './decks/DeckView'
+import { Decks } from './decks/Decks'
+import { deckFromTemplate, deckTemplates } from './decks/templates'
+import { encodeDeck } from './decks/storage'
 const DatabasePage = lazy(() => import('./database/ui/DatabasePage').then((m) => ({ default: m.DatabasePage })))
 import { warmDrawing } from './editor/excalidraw'
 import { CoverBanner, CoverPicker } from './Cover'
@@ -94,7 +97,7 @@ const BIG_TREE = 150 // pages from which the sidebar tree starts collapsed
 export default function App() {
   const [pages, setPages] = useState<Page[]>(() => repo.list())
   const [currentId, setCurrentIdRaw] = useState<string>(() => localStorage.getItem('not.current') || repo.pagesOnly()[0]?.id || '')
-  const [view, setViewRaw] = useState<'home' | 'page' | 'settings' | 'tasks' | 'drawings' | 'databases' | 'files' | 'trash'>('home')
+  const [view, setViewRaw] = useState<'home' | 'page' | 'settings' | 'tasks' | 'drawings' | 'decks' | 'databases' | 'files' | 'trash'>('home')
   // back / forward through the places visited (pages and views), each remembering how far it was scrolled
   const hist = useRef<{ view: string; id: string; scroll: number }[]>([])
   const hpos = useRef(-1)
@@ -485,6 +488,14 @@ export default function App() {
     setTplOpen(false)
     if (id === BOARD_TEMPLATE) return add(null, 'board')
     if (id === DATABASE_TEMPLATE) return addDatabase(null)
+    const template = deckTemplates.find((item) => item.id === id)
+    if (template) {
+      const page = repo.create(null, 'deck')
+      repo.update(page.id, { title: t(template.title), content: encodeDeck(deckFromTemplate(template, t, () => crypto.randomUUID())) }, { history: false })
+      refresh()
+      setCurrentId(page.id)
+      return
+    }
     const p = repo.create(null, id === 'todo' ? 'todo' : 'page')
     const tp = getTemplates().find((x) => x.id === id)
     if (tp) {
@@ -797,6 +808,7 @@ export default function App() {
     { id: 'tasks', label: t('Tasks'), icon: <Icon name="checklist" size={16} />, keywords: 'tasks todo checklist کارها وظایف چک لیست', run: () => (closeOverlays(), setView('tasks')) },
     { id: 'databases', label: t('Databases'), icon: <Icon name="table" size={16} />, keywords: 'databases tables projects all database پایگاه داده دیتابیس پروژه جدول', run: () => (closeOverlays(), setView('databases')) },
     { id: 'drawings', label: t('Drawings'), icon: <Icon name="pencil" size={16} />, keywords: 'drawings boards whiteboard sketch canvas excalidraw نقاشی بوم طراحی ترسیم', run: () => (closeOverlays(), setView('drawings')) },
+    { id: 'decks', label: t('Slide decks'), icon: <Icon name="layers" size={16} />, keywords: 'deck slides presentation ارائه اسلاید', run: () => (closeOverlays(), setView('decks')) },
     { id: 'cards', label: t('Flashcards'), icon: <Icon name="cards" size={16} />, keywords: 'review srs فلش‌کارت', run: () => (closeOverlays(), setCardsOpen(true)) },
     { id: 'trash', label: t('Trash'), icon: <Icon name="trash" size={16} />, keywords: 'deleted سطل', run: () => (closeOverlays(), setView('trash')) },
     {
@@ -833,7 +845,7 @@ export default function App() {
         ? 'Create'
         : ['import', 'restore', 'export-all', 'backup', 'data-folder', 'auto-backup'].includes(id)
           ? 'Data & backup'
-          : ['home', 'templates', 'table', 'graph', 'files', 'tasks', 'databases', 'drawings', 'cards', 'trash'].includes(id)
+          : ['home', 'templates', 'table', 'graph', 'files', 'tasks', 'databases', 'drawings', 'decks', 'cards', 'trash'].includes(id)
             ? 'Workspace'
             : 'Page actions'
     return { ...command, group }
@@ -967,6 +979,10 @@ export default function App() {
             <span className="ntitle">{t('Drawings')}</span>
           </button>
 
+          <button aria-label={t('Slide decks')} className={'row plain' + (view === 'decks' && !overlayOpen ? ' cur' : '')} onClick={() => (closeOverlays(), setView('decks'))}>
+            <span className="ic"><Icon name="layers" /></span>
+            <span className="ntitle">{t('Slide decks')}</span>
+          </button>
           <button aria-label={t('Graph')} className={'row plain' + (graphOpen ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setTableOpen(false), setGraphOpen(true))}>
             <span className="ic">
               <Icon name="graph" />
@@ -1277,6 +1293,9 @@ export default function App() {
                 </span>
               </span>
             )}
+            {!overlayOpen && view === 'decks' && (
+              <span className="crumb"><span className="crumb-cur"><Icon name="layers" size={14} />{t('Slide decks')}</span></span>
+            )}
             {!overlayOpen && view === 'drawings' && (
               <span className="crumb">
                 <span className="crumb-cur">
@@ -1382,7 +1401,7 @@ export default function App() {
           ) : tableOpen ? (
             <PagesTable pages={pages} onOpen={setCurrentId} onStatus={setStatus} onClose={() => setTableOpen(false)} />
           ) : tplOpen ? (
-            <Templates onPick={addFromTemplate} onClose={() => setTplOpen(false)} />
+            <Templates onPick={addFromTemplate} onClose={() => setTplOpen(false)} startWithDecks={view === 'decks'} />
           ) : cardsOpen ? (
             <Flashcards
               pageId={view === 'page' ? current?.id : undefined}
@@ -1411,6 +1430,8 @@ export default function App() {
             <Tasks panelHost={panelHost} index={index} onOpen={setCurrentId} onNewList={() => add(null, 'todo')} />
           ) : view === 'databases' ? (
             <Databases onOpen={setCurrentId} onNew={() => addDatabase(null)} onDelete={del} />
+          ) : view === 'decks' ? (
+            <Decks pages={pages} onOpen={setCurrentId} onNew={() => add(null, 'deck')} onTemplates={() => setTplOpen(true)} />
           ) : view === 'drawings' ? (
             <Drawings onOpen={setCurrentId} onNew={() => add(null, 'board')} onDelete={delDrawing} />
           ) : view === 'settings' ? (

@@ -8,6 +8,22 @@ export interface Slide {
 export interface Deck {
   readonly size: { readonly width: number; readonly height: number }
   readonly slides: readonly Slide[]
+  readonly accent?: string
+  readonly components?: readonly DeckComponent[]
+}
+
+export interface DeckComponent {
+  readonly id: string
+  readonly name: string
+  readonly emphasis: boolean
+}
+
+export const defaultDeckAccent = '#087f74'
+export const calloutComponent: DeckComponent = { id: 'callout', name: 'Callout', emphasis: true }
+
+export function deckStyle(deck: Deck): Record<string, string> {
+  const colors = Object.fromEntries([calloutComponent, ...(deck.components ?? [])].map(({ id, emphasis }) => [`--deck-component-${id}`, emphasis ? 'var(--deck-accent)' : 'var(--ds-line)']))
+  return { '--deck-accent': deck.accent ?? defaultDeckAccent, ...colors }
 }
 
 export function createPortraitDeck(createId: () => string): Deck {

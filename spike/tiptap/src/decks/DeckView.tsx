@@ -1,23 +1,39 @@
-import { useEffect, useRef, useState } from 'react'
-import { EditorContent, getSchema, useEditor } from '@tiptap/react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { EditorContent, generateHTML, getSchema, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Button } from '../design-system'
+import { promptDialog } from '../dialog'
 import type { DocNode } from '../docNode'
 import { contentProblem } from '../editor/contentSafety'
 import { CodeBlock } from '../editor/codeBlock'
 import { HeadingDir } from '../editor/headingDir'
+import { LayoutColumn, LayoutGroup, LayoutSafety } from '../editor/layout'
 import { t } from '../i18n'
 import type { Page } from '../repo'
 import { repo } from '../store'
-import { addSlide, moveSlide } from './model'
+import { addSlide, calloutComponent, deckStyle, defaultDeckAccent, moveSlide } from './model'
 import type { Deck } from './model'
 import { decodeDeck, encodeDeck } from './storage'
+import { printDeck } from './printDeck'
+import { DeckComponentNode } from './componentNode'
 import './decks.css'
 
-const extensions = [StarterKit.configure({ codeBlock: false }), CodeBlock, HeadingDir]
+const extensions = [StarterKit.configure({ codeBlock: false }), CodeBlock, HeadingDir, LayoutGroup, LayoutColumn, LayoutSafety, DeckComponentNode]
 const schema = getSchema(extensions)
 
-function SlideEditor({ content, readOnly, onEdit }: { content: DocNode; readOnly: boolean; onEdit: (previous: DocNode, next: DocNode) => boolean }) {
+function SlideEditor({
+  deck,
+  content,
+  readOnly,
+  onEdit,
+  onLibraryChange,
+}: {
+  deck: Deck
+  content: DocNode
+  readOnly: boolean
+  onEdit: (previous: DocNode, next: DocNode) => boolean
+  onLibraryChange: (change: (deck: Deck) => Deck) => boolean
+}) {
   const displayed = useRef(content)
   const editor = useEditor({
     extensions,
@@ -39,7 +55,83 @@ function SlideEditor({ content, readOnly, onEdit }: { content: DocNode; readOnly
     }
   }, [content, editor, readOnly])
 
-  return <EditorContent className="deck-slide-content" editor={editor} />
+  return (
+    <>
+      {!readOnly && editor && (
+        <div className="deck-actions" role="group" aria-label={t('Slide layout')}>
+          {[1, 2, 3].map((count) => (
+            <Button
+              key={count}
+              size="sm"
+              onClick={() => {
+                if (editor.commands.setLayoutColumns(count)) editor.commands.focus()
+                else if (count > 1) editor.chain().focus().insertLayout(count).run()
+              }}
+            >
+              {count === 1 ? t('Stack columns') : t('{n} columns', { n: count })}
+            </Button>
+          ))}
+          <Button size="sm" onClick={() => editor.chain().focus().toggleCodeBlock().run()}>
+            {t('Code block')}
+          </Button>
+          {[calloutComponent, ...(deck.components ?? [])].map(({ id, name }) => (
+            <Button
+              key={id}
+              size="sm"
+              onClick={() =>
+                editor
+                  .chain()
+                  .focus()
+                  .insertContent({ type: 'deckComponent', attrs: { componentId: id }, content: [{ type: 'paragraph' }] })
+                  .run()
+              }
+            >
+              {id === calloutComponent.id ? t(name) : name}
+            </Button>
+          ))}
+          <Button
+            size="sm"
+            onClick={() => {
+              if (editor.isActive('deckComponent')) {
+                const variant = editor.getAttributes('deckComponent').variant === 'compact' ? 'regular' : 'compact'
+                editor.chain().focus().updateAttributes('deckComponent', { variant }).run()
+              }
+            }}
+          >
+            {t('Switch component variant')}
+          </Button>
+          <Button
+            size="sm"
+            disabled={(deck.components?.length ?? 0) >= 50}
+            onClick={async () => {
+              const name = (await promptDialog({ title: t('New component'), message: t('Component name') }))?.trim().slice(0, 80)
+              if (name) onLibraryChange((current) => ({ ...current, components: [...(current.components ?? []), { id: crypto.randomUUID(), name, emphasis: true }] }))
+            }}
+          >
+            {t('New component')}
+          </Button>
+          {deck.components?.map(({ id, name, emphasis }) => (
+            <Button
+              key={id}
+              size="sm"
+              aria-pressed={emphasis}
+              onClick={() =>
+                onLibraryChange((current) => ({
+                  ...current,
+                  components: current.components?.map((component) => (component.id === id ? { ...component, emphasis: !component.emphasis } : component)),
+                }))
+              }
+            >
+              {t('Use accent for {name}', { name })}
+            </Button>
+          ))}
+        </div>
+      )}
+      <div className="deck-slide" style={{ aspectRatio: `${deck.size.width} / ${deck.size.height}`, ...deckStyle(deck) } as CSSProperties}>
+        <EditorContent className="deck-slide-content" editor={editor} />
+      </div>
+    </>
+  )
 }
 
 export function DeckView({ page, readOnly, onChange, onError }: { page: Page; readOnly: boolean; onChange: () => void; onError: (message: string) => void }) {
@@ -79,6 +171,17 @@ export function DeckView({ page, readOnly, onChange, onError }: { page: Page; re
     <section className="deck-view" aria-label={page.title || t('Untitled deck')}>
       <h1 dir="auto">{page.title || t('Untitled deck')}</h1>
       <div className="deck-actions" role="group" aria-label={t('Slides')}>
+        <Button
+          size="sm"
+          onClick={() =>
+            void printDeck(page.title, deck, (content) => {
+              if (contentProblem(content, schema)) throw new Error('Unsupported slide content')
+              return generateHTML(content, extensions)
+            }).catch((error) => onError(error instanceof RangeError ? t('Slide {n} does not fit on a PDF page.', { n: Number(error.message) }) : t('Could not print the deck.')))
+          }
+        >
+          {t('Print deck / Save as PDF')}
+        </Button>
         {deck.slides.map(({ id }, i) => (
           <Button key={id} size="sm" variant={i === index ? 'primary' : 'default'} aria-pressed={i === index} onClick={() => setSelected(id)}>
             {t('Slide {n}', { n: i + 1 })}
@@ -86,6 +189,9 @@ export function DeckView({ page, readOnly, onChange, onError }: { page: Page; re
         ))}
         {!readOnly && (
           <>
+            <label className="deck-accent">
+              {t('Deck accent')} <input type="color" value={deck.accent ?? defaultDeckAccent} onChange={(event) => update((current) => ({ ...current, accent: event.target.value }))} />
+            </label>
             <Button
               size="sm"
               onClick={() =>
@@ -107,23 +213,23 @@ export function DeckView({ page, readOnly, onChange, onError }: { page: Page; re
           </>
         )}
       </div>
-      <div className="deck-slide" style={{ aspectRatio: `${deck.size.width} / ${deck.size.height}` }}>
-        {issue ? (
-          <p role="alert">{t(issue)}</p>
-        ) : (
-          <SlideEditor
-            key={slide.id}
-            content={slide.content}
-            readOnly={readOnly}
-            onEdit={(previous, content) =>
-              update((current) => {
-                if (current.slides.find(({ id }) => id === slide.id)?.content !== previous) throw new Error('Slide content changed')
-                return { ...current, slides: current.slides.map((item) => (item.id === slide.id ? { ...item, content } : item)) }
-              })
-            }
-          />
-        )}
-      </div>
+      {issue ? (
+        <p role="alert">{t(issue)}</p>
+      ) : (
+        <SlideEditor
+          key={slide.id}
+          deck={deck}
+          content={slide.content}
+          readOnly={readOnly}
+          onLibraryChange={update}
+          onEdit={(previous, content) =>
+            update((current) => {
+              if (current.slides.find(({ id }) => id === slide.id)?.content !== previous) throw new Error('Slide content changed')
+              return { ...current, slides: current.slides.map((item) => (item.id === slide.id ? { ...item, content } : item)) }
+            })
+          }
+        />
+      )}
     </section>
   )
 }
