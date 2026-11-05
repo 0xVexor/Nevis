@@ -14,6 +14,7 @@ import { Databases } from './Databases'
 import { SideTip } from './SideTip'
 import { removeInlineDrawing, type DrawingInfo } from './drawingData'
 import { BoardView } from './BoardView'
+import { DeckView } from './decks/DeckView'
 const DatabasePage = lazy(() => import('./database/ui/DatabasePage').then((m) => ({ default: m.DatabasePage })))
 import { warmDrawing } from './editor/excalidraw'
 import { CoverBanner, CoverPicker } from './Cover'
@@ -458,9 +459,10 @@ export default function App() {
       })
       .catch((e) => setToast({ msg: String(e?.message ?? e) }))
   }
-  const add = (parentId: string | null, kind?: 'board' | 'todo') => {
+  const add = (parentId: string | null, kind?: 'board' | 'todo' | 'deck') => {
     const p = repo.create(parentId, kind)
     if (kind === 'todo') repo.update(p.id, { title: t('To-do list') }, { history: false })
+    if (kind === 'deck') repo.update(p.id, { title: t('Untitled deck') }, { history: false })
     if (parentId) expand(parentId)
     refresh()
     setCurrentId(p.id)
@@ -714,6 +716,7 @@ export default function App() {
   const writingCommandsAvailable = current && view === 'page' && !overlayOpen && !reader && (!current.kind || current.kind === 'todo')
   const commands: PaletteCommand[] = ([
     { id: 'new-page', label: t('New page'), icon: <Icon name="file" size={16} />, keywords: 'create add صفحه جدید', run: () => add(null) },
+    { id: 'new-deck', label: t('New deck'), icon: <Icon name="blocks" size={16} />, keywords: 'create presentation slides ارائه اسلاید', run: () => add(null, 'deck') },
     { id: 'templates', label: t('Templates'), icon: <Icon name="blocks" size={16} />, keywords: 'template قالب تمپلیت', run: () => (closeOverlays(), setTplOpen(true)) },
     { id: 'new-folder', label: t('New folder'), icon: <Icon name="folder" size={16} />, keywords: 'create add پوشه', run: () => addFolder(null) },
     {
@@ -752,8 +755,10 @@ export default function App() {
             keywords: 'versions restore earlier تاریخچه نسخه',
             run: () => window.setTimeout(() => window.dispatchEvent(new Event('open-history')), 0),
           },
-          { id: 'export-md', label: t('Export Markdown'), icon: <Icon name="markdown" size={16} />, keywords: 'download خروجی', run: () => exportMd(current.id) },
-          { id: 'print', label: t('Print / PDF'), icon: <Icon name="file-pdf" size={16} />, keywords: 'pdf print چاپ', run: () => printPage(current.title) },
+          ...(current.kind === 'deck' ? [] : [
+            { id: 'export-md', label: t('Export Markdown'), icon: <Icon name="markdown" size={16} />, keywords: 'download خروجی', run: () => exportMd(current.id) },
+            { id: 'print', label: t('Print / PDF'), icon: <Icon name="file-pdf" size={16} />, keywords: 'pdf print چاپ', run: () => printPage(current.title) },
+          ]),
         ]
       : []),
     ...(writingCommandsAvailable ? EDITOR_COMMANDS.filter(label => !['Heading 1', 'Heading 2', 'Heading 3', 'Link to page', 'Bulleted list', 'Numbered list', 'Checklist', 'Quote', 'Code block'].includes(label)).map(label => ({
@@ -780,10 +785,10 @@ export default function App() {
       { id: 'duplicate-page', label: t('Duplicate'), icon: <Icon name="copy" size={16} />, keywords: 'duplicate page copy', run: () => duplicate(current.id) },
       { id: 'delete-page', label: t('Delete'), icon: <Icon name="trash" size={16} />, keywords: 'delete move page to trash', run: () => del(current.id) },
       { id: 'move-page', label: t('Move to folder'), icon: <Icon name="folder" size={16} />, keywords: 'move page folder', run: () => setMovingId(current.id) },
-      { id: 'page-panel', label: t('Page side panel (quick actions & navigation)'), icon: <Icon name="panel-left" size={16} />, keywords: 'page panel outline backlinks', run: () => setPanelOpen(open => !open) },
-      ...shareItems(current).flatMap((item, index) => 'onSelect' in item && item.onSelect && item.label !== 'Markdown file' && item.label !== 'PDF or print' && item.label !== 'Export the whole workspace'
+      ...(current.kind === 'deck' ? [] : [{ id: 'page-panel', label: t('Page side panel (quick actions & navigation)'), icon: <Icon name="panel-left" size={16} />, keywords: 'page panel outline backlinks', run: () => setPanelOpen(open => !open) }]),
+      ...(current.kind === 'deck' ? [] : shareItems(current).flatMap((item, index) => 'onSelect' in item && item.onSelect && item.label !== 'Markdown file' && item.label !== 'PDF or print' && item.label !== 'Export the whole workspace'
         ? [{ id: 'share-' + index, label: t(item.label), keywords: item.label, icon: item.icon ?? <Icon name="share" size={16} />, run: () => item.onSelect?.() }]
-        : []),
+        : [])),
     ] : []),
     { id: 'home', label: t('Home'), icon: <Icon name="home" size={16} />, keywords: 'dashboard خانه', run: () => (closeOverlays(), setView('home')) },
     { id: 'table', label: t('All pages'), icon: <Icon name="table" size={16} />, keywords: 'database جدول', run: () => (closeOverlays(), setTableOpen(true)) },
@@ -1016,6 +1021,7 @@ export default function App() {
                 { label: t('New page'), icon: <Icon name="file" size={16} />, onSelect: () => add(null) },
                 { label: t('New folder'), icon: <Icon name="folder" size={16} />, onSelect: () => addFolder(null) },
                 { label: t('New board'), icon: <Icon name="pencil" size={16} />, onSelect: () => add(null, 'board') },
+                { label: t('New deck'), icon: <Icon name="blocks" size={16} />, onSelect: () => add(null, 'deck') },
                 { label: t('New database'), icon: <Icon name="table" size={16} />, onSelect: () => addDatabase(null) },
                 { label: t('New to-do list'), icon: <Icon name="checklist" size={16} />, onSelect: () => add(null, 'todo') },
               ]}
@@ -1336,16 +1342,18 @@ export default function App() {
           </nav>
           {crumbsMenu}
           <span className="spacer" />
-          {current && view === 'page' && <SaveStatus state={save} label={save === 'saving' ? t('Saving…') : t('All changes saved')} />}
+          {current && current.kind !== 'deck' && view === 'page' && <SaveStatus state={save} label={save === 'saving' ? t('Saving…') : t('All changes saved')} />}
           <div className="tb-group">
             {current && view === 'page' && (
               <>
                 <IconButton label={t('Reader mode') + '  ' + bindingHint('reader')} onClick={() => setReader(true)}>
                   <Icon name="book" size={17} />
                 </IconButton>
-                <IconButton label={t('Page side panel (quick actions & navigation)')} pressed={panelOpen} onClick={() => setPanelOpen((o) => !o)}>
-                  <Icon name="panel-right" size={17} />
-                </IconButton>
+                {current.kind !== 'deck' && (
+                  <IconButton label={t('Page side panel (quick actions & navigation)')} pressed={panelOpen} onClick={() => setPanelOpen((o) => !o)}>
+                    <Icon name="panel-right" size={17} />
+                  </IconButton>
+                )}
               </>
             )}
             <IconButton label={(fullScreen ? t('Exit full screen') : t('Full screen')) + '  ' + commandHint('Full screen')} pressed={fullScreen} className="ds-icon-btn--toggle topbar-fullscreen" onClick={() => void toggleFullScreen()}>
@@ -1360,7 +1368,7 @@ export default function App() {
               <Icon name="star" size={18} />
             </IconButton>
           )}
-          {current && view === 'page' && (
+          {current && current.kind !== 'deck' && view === 'page' && (
             <Button variant="primary" size="sm" className="share-btn" title={t('Share & export')} icon={<Icon name="share" size={16} />} aria-haspopup="menu" onClick={(e) => openShare(shareItems(current), e.currentTarget)}>
               <span className="share-btn-label">{t('Share')}</span>
             </Button>
@@ -1419,6 +1427,8 @@ export default function App() {
             </Suspense>
           ) : current?.kind === 'board' ? (
             <BoardView key={current.id} page={current} onSave={setSave} onMeta={refresh} onBack={() => (closeOverlays(), setView('drawings'))} readOnly={reader} />
+          ) : current?.kind === 'deck' ? (
+            <DeckView key={current.id} page={current} readOnly={reader} onChange={refresh} onError={(msg) => setToast({ msg })} />
           ) : current ? (
             <>
               <div className={'page-cols' + (current.cover ? ' has-cover' : '')}>
@@ -1446,7 +1456,7 @@ export default function App() {
             </div>
           )}
         </div>
-        {view === 'page' && current && (
+        {view === 'page' && current && current.kind !== 'deck' && (
           <PagePanel
             open={panelOpen && !reader}
             page={current}
@@ -1505,6 +1515,7 @@ export default function App() {
             { label: t('New page'), icon: <Icon name="plus" size={16} />, onSelect: () => add(null) },
             { label: t('New folder'), icon: <Icon name="folder-plus" size={16} />, onSelect: () => addFolder(null) },
             { label: t('New board'), icon: <Icon name="pencil" size={16} />, onSelect: () => add(null, 'board') },
+            { label: t('New deck'), icon: <Icon name="blocks" size={16} />, onSelect: () => add(null, 'deck') },
             { label: t('New database'), icon: <Icon name="table" size={16} />, onSelect: () => addDatabase(null) },
             { label: t('New to-do list'), icon: <Icon name="checklist" size={16} />, onSelect: () => add(null, 'todo') },
             { label: t('New from template…'), icon: <Icon name="blocks" size={16} />, onSelect: () => setTplOpen(true) },

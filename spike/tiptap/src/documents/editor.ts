@@ -135,7 +135,7 @@ export class DocumentEditor {
     }
     this.authorize(input.documentId)
     const before = rows.find((page) => page.id === input.documentId && page.deletedAt === null)
-    if (!before) fail('NOT_FOUND')
+    if (!before || before.kind === 'deck') fail('NOT_FOUND')
     const links = new Set<string>()
     const check = () => {
       this.authorize(input.documentId)
@@ -315,7 +315,7 @@ export class DocumentEditor {
     }
     check()
     const before = rows.find((page) => page.id === input.documentId && page.deletedAt === null)
-    if (!before) fail('NOT_FOUND')
+    if (!before || before.kind === 'deck') fail('NOT_FOUND')
     if (input.patch.cover?.kind === 'image' && !canUseDocumentResource(rows, this.grant.canRead, 'attachment', input.patch.cover.file)) fail('ACCESS_DENIED')
     const after = applyMetadata(before, input.patch)
     let committed

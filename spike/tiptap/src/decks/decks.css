@@ -1,0 +1,26 @@
+.deck-view {
+  max-inline-size: 64rem;
+  margin-inline: auto;
+  padding: 1.5rem;
+}
+
+.deck-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block-end: 1rem;
+}
+
+.deck-slide {
+  inline-size: min(100%, 36rem);
+  margin-inline: auto;
+  box-sizing: border-box;
+  padding: clamp(1rem, 5%, 3rem);
+  border: 1px solid var(--ds-line);
+  background: var(--ds-raised);
+  overflow: auto;
+}
+
+.deck-slide-content .tiptap {
+  min-block-size: 6rem;
+}

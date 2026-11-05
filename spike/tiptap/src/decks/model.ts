@@ -10,13 +10,15 @@ export interface Deck {
   readonly slides: readonly Slide[]
 }
 
-export function createPortraitDeck(): Deck {
-  return addSlide({ size: { width: 1080, height: 1350 }, slides: [] })
+export function createPortraitDeck(createId: () => string): Deck {
+  return addSlide({ size: { width: 1080, height: 1350 }, slides: [] }, createId)
 }
 
-export function addSlide(deck: Deck): Deck {
+export function addSlide(deck: Deck, createId: () => string): Deck {
+  const id = createId()
+  if (!id || deck.slides.some((slide) => slide.id === id)) throw new Error('Slide ID must be unique within the deck')
   const slide: Slide = {
-    id: crypto.randomUUID(),
+    id,
     content: { type: 'doc', content: [{ type: 'paragraph' }] },
   }
   return { ...deck, slides: [...deck.slides, slide] }

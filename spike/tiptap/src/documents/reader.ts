@@ -207,6 +207,7 @@ export class DocumentReader {
       if (seen.has(page.id)) return
       seen.add(page.id)
       if (
+        page.kind !== 'deck' &&
         (!input.kinds || input.kinds.includes(page.kind ?? 'page')) &&
         (!input.tags || input.tags.every((tag) => page.tags?.includes(tag))) &&
         (input.favorite === undefined || page.favorite === input.favorite)
@@ -269,7 +270,7 @@ export class DocumentReader {
     if (input.expectedRevision !== undefined && !id(input.expectedRevision)) fail('INVALID_ARGUMENT')
     const page = (await this.load()).find((row) => row.id === input.documentId && (this.source.includeDeleted || row.deletedAt === null))
     this.authorize(input.documentId)
-    if (!page) fail('NOT_FOUND')
+    if (!page || page.kind === 'deck') fail('NOT_FOUND')
     const revision = await this.revision(page)
     this.authorize(input.documentId)
     // Cursor staleness wins over an optional old revision precondition.
@@ -392,6 +393,7 @@ export class DocumentReader {
       (page) =>
         page.deletedAt === null &&
         page.kind !== 'folder' &&
+        page.kind !== 'deck' &&
         this.grant.canRead(page.id) &&
         (!input.documentIds || input.documentIds.includes(page.id)) &&
         (!input.tags || input.tags.every((tag) => page.tags?.includes(tag))),
