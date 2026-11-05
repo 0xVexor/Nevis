@@ -10,7 +10,7 @@
 .pt th:nth-child(1) { inline-size: 32%; }
 .pt .pt-col-path { inline-size: 18%; }
 .pt .pt-col-tags { inline-size: 26%; }
-.pt th:nth-child(4) { inline-size: 136px; }
+.pt th:nth-child(4) { inline-size: 168px; } /* fits the widest status chip (In progress) with the cell padding */
 .pt .pt-col-words { inline-size: 80px; }
 .pt th:nth-child(6) { inline-size: 136px; }
 
@@ -38,6 +38,8 @@
 .pt-tag-list .ds-tag { flex: 0 1 auto; min-inline-size: 56px; }
 .pt-tag-more { flex: none; block-size: 22px; padding-inline: var(--ds-s2); font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; }
 .pt td { overflow: hidden; }
+.pt td .ds-chip-btn { max-inline-size: 100%; }
+.pt td .ds-chip-btn > span { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pt-num { color: var(--ds-text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pt td.pt-none { block-size: auto; cursor: default; }
 .pt tbody tr:has(.pt-none):hover td { background: none; }
