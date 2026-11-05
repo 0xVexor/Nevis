@@ -79,6 +79,8 @@
 .row:active { background: var(--ds-press); }
 .row.cur, .row.plain.cur { background: var(--ds-accent-soft); color: var(--ds-accent); font-weight: 550; }
 .row.cur::before { content: none; }
+.row.tree.sel:not(.cur) { background: var(--ds-accent-soft); color: var(--ds-accent); }
+.row.tree.sel:not(.cur) :is(.ic, .twisty, .tree-count, .pg-ic.tile) { color: var(--ds-accent); } /* picked with one click, opened with a double-click */
 .row.cur .ic, .row.cur .twisty { color: var(--ds-accent); }
 .row.plain { width: 100%; min-block-size: var(--ds-control); gap: var(--ds-s2); border: 0; background: transparent; text-align: start; padding-inline: var(--ds-s2); }
 .row.plain:hover { background: var(--ds-hover); }
