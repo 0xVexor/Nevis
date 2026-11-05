@@ -88,6 +88,9 @@
 .mermaid-bar { position: absolute; top: 8px; inset-inline-end: 8px; opacity: 0; transition: opacity var(--ds-fast); z-index: 2; flex-wrap: nowrap; direction: inherit; }
 .mermaid-block:hover .mermaid-bar, .mermaid-block.editing .mermaid-bar { opacity: 1; }
 .mermaid-block.editing .mermaid-bar { display: none; }
+/* an error or an empty diagram is only a line tall: the actions get their own row above it instead of floating over the text */
+.mermaid-block:has(> .mermaid-view:is(.error, .empty)) > .mermaid-bar { position: static; display: flex; inline-size: fit-content; margin: var(--ds-s2) var(--ds-s2) 0; margin-inline-start: auto; opacity: 1; }
+.app.reading .mermaid-block:has(> .mermaid-view:is(.error, .empty)) > .mermaid-bar { display: none; }
 .mermaid-edit { border-top: 1px solid var(--ds-line); padding: 12px; }
 /* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
 .mermaid-src { width: 100%; font-family: var(--ds-font-mono); font-size: 13px; line-height: 1.6; border: 1px solid var(--ds-accent); border-radius: var(--ds-r); background: var(--ds-bg); color: var(--ds-text); padding: 10px 12px; outline: none; resize: vertical; direction: ltr; text-align: left; box-shadow: 0 0 0 3px var(--ds-accent-line); }

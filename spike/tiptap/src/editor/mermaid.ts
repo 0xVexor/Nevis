@@ -67,7 +67,9 @@ export function renderDiagram(code: string): Promise<Rendered> {
   return out
 }
 
-const views = new Set<() => void>()
+const views = new Set<(force?: boolean) => Promise<void> | void>()
+/** Draws every diagram on the page now, even those far off screen, in the current theme (used before printing). */
+export const drawAllDiagrams = () => Promise.all([...views].map((v) => v(true))).then(() => {})
 const themeKey = () => `${document.documentElement.dataset.theme ?? ''}|${getComputedStyle(document.body).colorScheme}`
 let lastTheme = themeKey()
 // diagrams carry the theme in their SVG, so they are redrawn when the theme changes (not on every other style change)
@@ -205,9 +207,12 @@ export const MermaidBlock = Node.create({
         if (editing) return
         if (!near) return void (stale = true)
         stale = false
-        void paint(cur.attrs.code)
+        return paint(cur.attrs.code)
       }
-      const redraw = () => draw()
+      const redraw = (force?: boolean) => {
+        if (force) near = true
+        return draw()
+      }
       views.add(redraw)
       let reported = false
       visible.set(dom, (on) => {

@@ -3,7 +3,8 @@ import { cssVars } from './cssVars'
 import { setPreference } from './preferenceEvents'
 import { UpdateCenter } from './UpdateUI'
 import { bindingHint, matches } from './shortcutBindings'
-import { Suspense, lazy, useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
+import type { EditorView } from '@tiptap/pm/view'
 import { repo, gcFiles, TRASH_DAYS } from './store'
 import type { Cover, Page, PageStatus } from './repo'
 import { SETTINGS_TABS, SettingsView, type SettingsTab } from './SettingsPage'
@@ -266,7 +267,37 @@ export default function App() {
   const [blankMenu, setBlankMenu] = useState<DOMRect | null>(null) // right-click on empty sidebar space
   const [menu, setMenu] = useState<{ id: string; rect: DOMRect } | null>(null)
   const [movingId, setMovingId] = useState<string | null>(null)
-  const [reader, setReader] = useState(false)
+  const [reader, setReaderState] = useState(false)
+  // Reader mode changes the text size and width, so the page reflows: note what is at the top of the view before switching and bring
+  // that same spot back afterwards, instead of landing somewhere else in the page.
+  const readerPlace = useRef<{ pos: number; off: number } | null>(null)
+  const setReader = useCallback((next: boolean | ((open: boolean) => boolean)) => {
+    const sc = document.querySelector<HTMLElement>('.main .scroller')
+    const pm = sc?.querySelector<HTMLElement & { editor?: { view: EditorView } }>('.ProseMirror')
+    const ev = pm?.editor?.view
+    readerPlace.current = null
+    if (sc && pm && ev) {
+      const top = Math.max(sc.getBoundingClientRect().top, pm.getBoundingClientRect().top) + 4
+      const box = pm.getBoundingClientRect()
+      const hit = ev.posAtCoords({ left: box.left + Math.min(40, box.width / 2), top })
+      if (hit) readerPlace.current = { pos: hit.pos, off: ev.coordsAtPos(hit.pos).top - sc.getBoundingClientRect().top }
+    }
+    setReaderState(next)
+  }, [])
+  useLayoutEffect(() => {
+    const place = readerPlace.current
+    if (!place) return
+    const restore = () => {
+      const sc = document.querySelector<HTMLElement>('.main .scroller')
+      const ev = sc?.querySelector<HTMLElement & { editor?: { view: EditorView } }>('.ProseMirror')?.editor?.view
+      if (!sc || !ev || place.pos > ev.state.doc.content.size) return
+      sc.scrollTop += ev.coordsAtPos(place.pos).top - sc.getBoundingClientRect().top - place.off
+    }
+    restore()
+    const frame = requestAnimationFrame(restore) // once more after the new text size has settled
+    readerPlace.current = null
+    return () => cancelAnimationFrame(frame)
+  }, [reader])
   const { open: openCrumbs, menu: crumbsMenu } = useMenu()
   // full screen for the whole app, from any view: the desktop window itself, or the browser's full screen
   const [fullScreen, setFullScreen] = useState(false)
@@ -297,8 +328,6 @@ export default function App() {
   }, [toggleFullScreen])
   const [readerCfg, setReaderCfg] = useState<ReaderCfg>(loadReaderCfg)
   const [pageW, setPageW] = useState<number>(() => Number(localStorage.getItem('not.page.width')) || PAGE_W.def)
-  const readerRef = useRef(reader)
-  readerRef.current = reader
   const settings = useSettings()
   const refresh = useCallback(() => setPages(repo.list()), [])
   useEffect(() => {
@@ -424,18 +453,12 @@ export default function App() {
       if (wider || matches(e, 'narrowerColumn')) {
         e.preventDefault()
         const d = wider ? PAGE_W.step : -PAGE_W.step
-        if (readerRef.current)
-          setReaderCfg((c) => {
-            const n = { ...c, width: Math.min(1400, Math.max(480, c.width + d)) }
-            setPreference('not.reader.cfg', JSON.stringify(n))
-            return n
-          })
-        else
-          setPageW((w) => {
-            const n = Math.min(PAGE_W.max, Math.max(PAGE_W.min, w + d))
-            setPreference('not.page.width', String(n))
-            return n
-          })
+        // one width for edit and reader mode alike
+        setPageW((w) => {
+          const n = Math.min(PAGE_W.max, Math.max(PAGE_W.min, w + d))
+          setPreference('not.page.width', String(n))
+          return n
+        })
       }
       if (matches(e, 'reader')) (e.preventDefault(), setReader((r) => !r)) // physical key: works with the Persian layout
       if (commandMatches(e, 'Leave reader mode') && !document.querySelector('.lightbox, .palette-overlay')) setReader(false)
@@ -846,6 +869,7 @@ export default function App() {
   const menuPage = menu ? pages.find((p) => p.id === menu.id) : undefined
 
   const treePanel = useRef<HTMLDivElement>(null)
+  const [treeSelected, setTreeSelected] = useState<string | null>(null)
   const [reveal, setReveal] = useState<{ id: string } | null>(null)
   const revealActiveNote = () => {
     if (!current || view !== 'page' || current.database) return
@@ -856,6 +880,21 @@ export default function App() {
     setShut((previous) => ({ ...previous, pages: false }))
     setReveal({ id: current.id })
   }
+  const revealShortcut = useRef<() => void>(() => {})
+  revealShortcut.current = () => {
+    if (!current || view !== 'page' || current.database) return
+    if (!sideOpen) setContextOpen(true) // the note is shown in the panel, so bring the panel back first
+    revealActiveNote()
+  }
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if (event.repeat || !commandMatches(event, 'Reveal active note')) return
+      event.preventDefault()
+      revealShortcut.current()
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [])
   useEffect(() => {
     if (!reveal) return
     treePanel.current?.querySelector<HTMLElement>(`[data-tree-page="${CSS.escape(reveal.id)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
@@ -875,13 +914,13 @@ export default function App() {
   )
   const defaultRailWidth = settings.sidebar === 'compact' ? 148 : 176
   const preferencesOpen = view === 'settings'
-  const rowProps = { index, currentId: current?.id ?? '', collapsed, onToggle: toggle, onOpen: setCurrentId, onAdd: add, onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }), onMove: move }
+  const rowProps = { index, currentId: current?.id ?? '', selectedId: treeSelected, onSelect: setTreeSelected, collapsed, onToggle: toggle, onOpen: setCurrentId, onAdd: add, onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }), onMove: move }
 
   return (
     <div
       data-preferences={preferencesOpen ? '' : undefined}
       className={'app' + (reader && view === 'page' && current ? ' reading' : '')}
-      style={cssVars({ '--page-w': pageW + 'px', '--r-scale': readerCfg.scale, '--r-width': readerCfg.width + 'px' })}
+      style={cssVars({ '--page-w': pageW + 'px', '--r-scale': readerCfg.scale })}
     >
       <nav
         className="side"
@@ -1147,7 +1186,7 @@ export default function App() {
                         </IconButton>
                       </>
                     )}
-                    <IconButton label={t('Reveal active note')} disabled={view !== 'page' || !current || !!current.database} onClick={revealActiveNote}>
+                    <IconButton label={t('Reveal active note') + '  ' + commandHint('Reveal active note')} disabled={view !== 'page' || !current || !!current.database} onClick={revealActiveNote}>
                       <Icon name="target" size={15} />
                     </IconButton>
                   </div>
@@ -1370,7 +1409,7 @@ export default function App() {
           )}
         </header>
 
-        {reader && view === 'page' && current && <ReaderBar cfg={readerCfg} onCfg={(c) => (setReaderCfg(c), setPreference('not.reader.cfg', JSON.stringify(c)))} onExit={() => setReader(false)} />}
+        {reader && view === 'page' && current && <ReaderBar cfg={readerCfg} onCfg={(c) => (setReaderCfg(c), setPreference('not.reader.cfg', JSON.stringify(c)))} width={pageW} onWidth={(w) => (setPageW(w), setPreference('not.page.width', String(w)))} onExit={() => setReader(false)} />}
         <div className="scroller">
           {graphOpen ? (
             <GraphView currentId={current?.id} onOpen={setCurrentId} onClose={() => setGraphOpen(false)} />

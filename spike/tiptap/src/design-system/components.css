@@ -15,6 +15,8 @@
 }
 
 /* ───── buttons: one primary action per view ───── */
+/* the buttons set their own display, so the hidden attribute needs saying again */
+:is(.ds-btn, .ds-icon-btn)[hidden] { display: none; }
 .ds-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--ds-s2);
   height: var(--ds-control); padding: 0 var(--ds-s4); border-radius: var(--ds-r);

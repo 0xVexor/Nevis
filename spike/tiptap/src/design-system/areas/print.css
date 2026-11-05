@@ -1,15 +1,21 @@
 /* print / Save as PDF: only the page itself, on white, nothing clipped. Every rule starts with :root:root:root so it outranks the
    screen rule it replaces without !important. */
+/* Printing switches the app to the light theme first (print.ts), so the design-system colours are the real light ones; here the paper
+   is made white and everything that is app rather than document is left out: navigation, panels, the window bar, toolbars, handles,
+   and the page's own properties. What remains is the title and the content, set like a document. */
+@page { size: A4; margin: 18mm 16mm; }
 @media print {
   :root:root:root {
     color-scheme: light;
-    --ds-bg: #fff; --ds-side: #fff; --ds-sunk: #fff; --ds-raised: #fff; --app-bg-image: none;
-    --ds-text: #111; --ds-text-2: #444; --ds-text-3: #777; --ds-hover: rgb(0 0 0 / 0.05); --ds-press: rgb(0 0 0 / 0.1); --ds-line: rgb(0 0 0 / 0.22);
+    --ds-bg: #fff; --ds-side: #fff; --ds-raised: #fff; --app-bg-image: none;
     --pre-bg: #f6f6f6; --code-bg: #eee; --code-text: #b3261e;
   }
   :root:root:root, :root:root:root > body, :root:root:root #root { height: auto; background: #fff; background-image: none; }
-  :root:root:root :is(.side, .topbar, .page-drawer, .ds-toolbar, .slash-menu, .ds-toast, .ds-pop, .ds-scrim, .ds-modal-layer, .cover-acts, .code-bar, .toggle-btn, .callout-ic, .toolbar, .img-bar, .img-handle, .mermaid-bar, .drawing-actions, .lightbox) { display: none; }
-  :root:root:root :is(.app, .main, .scroller, .page-cols) { display: block; height: auto; overflow: visible; position: static; width: auto; margin: 0; padding: 0; box-shadow: none; border: 0; border-radius: 0; background: #fff; animation: none; }
+  :root:root:root :is(.side, .context-panel, .context-backdrop, .ds-window-bar, .topbar, .page-drawer, .ds-toolbar, .slash-menu, .ds-toast, .ds-pop, .ds-scrim, .ds-modal-layer, .cover-acts, .code-bar, .toggle-btn, .callout-ic, .toolbar, .img-bar, .img-handle, .mermaid-bar, .drawing-actions, .lightbox, .ds-grip, .section-drag-surface, .layout-snap-hover-outline, .table-col-guide, .column-resize-handle, .pg-add, .pg-props) { display: none; }
+  :root:root:root :is(.desktop-frame, .desktop-content, .app, .main, .scroller, .page-cols) { display: block; height: auto; block-size: auto; overflow: visible; position: static; width: auto; margin: 0; padding: 0; box-shadow: none; border: 0; border-radius: 0; background: #fff; animation: none; }
+  :root:root:root .tiptap table { box-shadow: none; }
+  :root:root:root :is(.tiptap .tableWrapper, .mermaid-block, .code-wrap) { overflow: visible; }
+  :root:root:root .mermaid-view svg { max-width: 100%; height: auto; }
   :root:root:root .page { max-width: none; padding: 0; margin: 0; }
   :root:root:root .tiptap { min-height: 0; font-size: 12pt; }
   :root:root:root :is(.tiptap pre, .tiptap pre code) { white-space: pre-wrap; word-break: break-word; overflow: visible; }

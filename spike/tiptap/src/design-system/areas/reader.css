@@ -7,7 +7,8 @@
 .app.reading .main::before { display: none; }
 .app.reading .scroller { padding: var(--ds-s10) var(--ds-s4) 120px; background: var(--ds-bg); }
 .app.reading .page-cols { display: block; max-inline-size: none; padding: 0; }
-.app.reading .page { max-inline-size: var(--r-width, 760px); margin: 0 auto; padding: 0 0 var(--ds-s10); border: 0; background: none; font-size: calc(17px * var(--r-scale, 1)); line-height: 1.9; }
+/* the same width and side padding as in edit mode, so switching modes keeps the text column exactly as wide */
+.app.reading .page { max-inline-size: var(--page-w, 1400px); margin: 0 auto; padding: 0 44px var(--ds-s10); border: 0; background: none; font-size: calc(17px * var(--r-scale, 1)); line-height: 1.9; }
 .app.reading .page .tiptap { font-size: inherit; line-height: inherit; caret-color: transparent; cursor: auto; }
 .app.reading .page .tiptap p { margin: 0.7em 0; }
 .app.reading .cover { margin-block-end: var(--ds-s6); }

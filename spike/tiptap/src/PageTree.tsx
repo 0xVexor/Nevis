@@ -11,6 +11,9 @@ export interface RowProps {
   depth: number
   index: PageIndex
   currentId: string
+  /** the row a single click picked; a double-click opens the page */
+  selectedId: string | null
+  onSelect: (id: string) => void
   collapsed: Set<string>
   onToggle: (id: string) => void
   onOpen: (id: string) => void
@@ -31,8 +34,9 @@ export function CompactList(props: Omit<RowProps, 'page' | 'depth'> & { roots: P
       key={p.id}
       data-tree-page={p.id}
       dir={dirOf(label(p))}
-      className={'row tree cmp-file' + (p.id === currentId ? ' cur' : '')}
-      onClick={() => props.onOpen(p.id)}
+      className={'row tree cmp-file' + (p.id === currentId ? ' cur' : '') + (p.id === props.selectedId ? ' sel' : '')}
+      onClick={() => props.onSelect(p.id)}
+      onDoubleClick={() => props.onOpen(p.id)}
       onContextMenu={(e) => (e.preventDefault(), e.stopPropagation(), props.onMenu(p.id, new DOMRect(e.clientX, e.clientY, 0, 0)))}
     >
       <span className="ic">
@@ -59,8 +63,9 @@ export function CompactList(props: Omit<RowProps, 'page' | 'depth'> & { roots: P
         key={p.id}
         data-tree-page={p.id}
         dir={dirOf(label(p))}
-        className={'row tree cmp-head' + (folder ? ' folder' : '') + (p.id === currentId ? ' cur' : '')}
-        onClick={() => (folder ? props.onToggle(p.id) : props.onOpen(p.id))}
+        className={'row tree cmp-head' + (folder ? ' folder' : '') + (p.id === currentId ? ' cur' : '') + (p.id === props.selectedId ? ' sel' : '')}
+        onClick={() => (folder ? props.onToggle(p.id) : props.onSelect(p.id))}
+        onDoubleClick={() => !folder && props.onOpen(p.id)}
         onContextMenu={(e) => (e.preventDefault(), e.stopPropagation(), props.onMenu(p.id, new DOMRect(e.clientX, e.clientY, 0, 0)))}
       >
         <button
@@ -109,11 +114,13 @@ export function TreeRow(props: RowProps) {
   return (
     <>
       <div
-        className={'row tree' + (folder ? ' folder' : '') + (leaf ? ' leaf' : '') + (page.id === currentId ? ' cur' : '') + (zone ? ' drop-' + zone : '')}
+        className={'row tree' + (folder ? ' folder' : '') + (leaf ? ' leaf' : '') + (page.id === currentId ? ' cur' : '') + (page.id === props.selectedId ? ' sel' : '') + (zone ? ' drop-' + zone : '')}
         data-tree-page={page.id}
         dir={dirOf(page.title)}
         draggable
-        onClick={() => (folder ? props.onToggle(page.id) : props.onOpen(page.id))}
+        // one click picks a page, a double-click opens it; a folder opens and closes with one click
+        onClick={() => (folder ? props.onToggle(page.id) : props.onSelect(page.id))}
+        onDoubleClick={() => !folder && props.onOpen(page.id)}
         onContextMenu={(e) => (e.preventDefault(), e.stopPropagation(), props.onMenu(page.id, new DOMRect(e.clientX, e.clientY, 0, 0)))}
         onDragStart={(e) => {
           e.dataTransfer.setData('application/x-page', page.id)

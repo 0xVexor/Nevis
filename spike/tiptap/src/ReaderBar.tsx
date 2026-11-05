@@ -3,19 +3,21 @@ import { Icon, IconButton, useMenu, type MenuItem } from './design-system'
 import { bindingHint } from './shortcutBindings'
 import { t } from './i18n'
 
-export type ReaderCfg = { scale: number; width: number }
-const READER_DEFAULT: ReaderCfg = { scale: 1, width: 760 }
-/** Reading widths offered in the menu; a width saved by the older slider still reads fine and shows as "Custom". */
+/** Reader mode keeps only its text size; the page width is the one the page has in edit mode too, so switching never resizes it. */
+export type ReaderCfg = { scale: number }
+const READER_DEFAULT: ReaderCfg = { scale: 1 }
+/** Page widths offered in the menu; any other width (set with Alt+= / Alt+-) shows with none of them checked. */
 const WIDTHS = [
-  { label: 'Narrow', width: 600 },
-  { label: 'Comfortable', width: 760 },
-  { label: 'Wide', width: 960 },
+  { label: 'Narrow', width: 640 },
+  { label: 'Comfortable', width: 800 },
+  { label: 'Wide', width: 1040 },
   { label: 'Full width', width: 1400 },
 ]
 
 export function loadReaderCfg(): ReaderCfg {
   try {
-    return { ...READER_DEFAULT, ...JSON.parse(localStorage.getItem('not.reader.cfg') || '{}') }
+    const saved = JSON.parse(localStorage.getItem('not.reader.cfg') || '{}') as Partial<ReaderCfg>
+    return { scale: typeof saved.scale === 'number' ? saved.scale : READER_DEFAULT.scale }
   } catch {
     return READER_DEFAULT
   }
@@ -25,7 +27,7 @@ export function loadReaderCfg(): ReaderCfg {
  * Reader mode chrome: a thin progress line at the top and one quiet strip at the bottom, the same strip as the formatting bar
  * (design-system icon buttons; contents and page width are menus; where you are, as plain text).
  */
-export function ReaderBar({ cfg, onCfg, onExit }: { cfg: ReaderCfg; onCfg: (c: ReaderCfg) => void; onExit: () => void }) {
+export function ReaderBar({ cfg, onCfg, width, onWidth, onExit }: { cfg: ReaderCfg; onCfg: (c: ReaderCfg) => void; width: number; onWidth: (width: number) => void; onExit: () => void }) {
   const [pct, setPct] = useState(0)
   const [mins, setMins] = useState(0)
   const { open, menu } = useMenu()
@@ -49,7 +51,7 @@ export function ReaderBar({ cfg, onCfg, onExit }: { cfg: ReaderCfg; onCfg: (c: R
     if (!heads.length) return [{ kind: 'head', label: 'No headings in this page' }]
     return heads.map((h) => ({ label: ' '.repeat(h.level - 1) + h.text, raw: true, onSelect: () => h.el.scrollIntoView({ block: 'start', behavior: 'smooth' }) }))
   }
-  const widths = (): MenuItem[] => WIDTHS.map((w) => ({ label: w.label, checked: cfg.width === w.width, onSelect: () => set({ width: w.width }) }))
+  const widths = (): MenuItem[] => WIDTHS.map((w) => ({ label: w.label, checked: width === w.width, onSelect: () => onWidth(w.width) }))
   const set = (patch: Partial<ReaderCfg>) => onCfg({ ...cfg, ...patch })
   const step = (d: number) => set({ scale: Math.min(1.8, Math.max(0.8, Math.round((cfg.scale + d) * 10) / 10)) })
 

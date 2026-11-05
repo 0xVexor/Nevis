@@ -92,7 +92,7 @@ function harness(direction = 'ltr', doc = initial()) {
     })
   })
   const document = new Surface()
-  Object.assign(document, { body, createElement: () => new Element(), elementFromPoint: () => hit, querySelectorAll: () => [],
+  Object.assign(document, { body, documentElement: { dir: direction, dataset: {} }, createElement: () => new Element(), elementFromPoint: () => hit, querySelectorAll: () => [],
     caretRangeFromPoint: () => null, createRange: () => ({ selectNodeContents() {}, getClientRects: () => [] }) })
   root.ownerDocument = document
   const frames = new Map(); let frameId = 0
@@ -279,7 +279,7 @@ test('pressing on text or blank space inside a block never picks the block up', 
   } finally { h.cleanup() }
 })
 
-test('the grip appears next to the hovered block on the side its text starts from', () => {
+test("the grip appears next to the hovered block on the app's side: left, right when the whole app is right-to-left", () => {
   for (const [direction, expected] of [['ltr', (r) => r.left - 24 - 12], ['rtl', (r) => r.right + 12]]) {
     const h = harness(direction)
     try {
