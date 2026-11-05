@@ -200,11 +200,16 @@ export const DragHandle = Extension.create({
               if (!destroyed) announcement.textContent = message
             }, 0)
           }
+          // the first visible line of the page: below the app's top bar (the scroller's edge) and the sticky formatting toolbar
+          const visibleTop = () => {
+            const scroller = view.dom.closest<HTMLElement>('.scroller')?.getBoundingClientRect()
+            const toolbar = view.dom.closest('.page')?.querySelector<HTMLElement>('.toolbar')?.getBoundingClientRect()
+            return Math.max(0, scroller?.top ?? 0, toolbar?.bottom ?? 0)
+          }
           const clipToEditor = (element: HTMLElement, r: { left: number; top: number; width: number; height: number }, insertion = false) => {
             const scroller = view.dom.closest<HTMLElement>('.scroller')?.getBoundingClientRect()
             const editorRect = view.dom.getBoundingClientRect()
-            const toolbar = view.dom.closest('.page')?.querySelector<HTMLElement>('.toolbar')?.getBoundingClientRect()
-            const top = Math.max(0, scroller?.top ?? 0, insertion ? Math.min(editorRect.top, r.top) : editorRect.top, toolbar?.bottom ?? 0)
+            const top = Math.max(visibleTop(), insertion ? Math.min(editorRect.top, r.top) : editorRect.top)
             const bottom = Math.min(innerHeight, scroller?.bottom ?? innerHeight, insertion ? Math.max(editorRect.bottom, r.top + r.height) : editorRect.bottom)
             const left = Math.max(0, scroller?.left ?? 0, editorRect.left)
             const right = Math.min(innerWidth, scroller?.right ?? innerWidth, editorRect.right)
@@ -609,12 +614,16 @@ export const DragHandle = Extension.create({
             if (!(dom instanceof HTMLElement)) return
             clearTimeout(gripTimer)
             const r = dom.getBoundingClientRect()
-            const rtl = getComputedStyle(dom).direction === 'rtl'
+            // the side follows the app's own language, not the block's: left, or right when the whole app is in Persian
+            const rtl = document.documentElement.dir === 'rtl'
             const width = 24,
               gap = 12 // clear of the block, so the grip never sits on its text or bullet
             const x = Math.min(Math.max(rtl ? r.right + gap : r.left - width - gap, 2), innerWidth - width - 2)
+            // never over the top bar or the formatting toolbar: it slides down with a block that scrolled under them, and goes once the block has
+            const top = visibleTop()
+            if (r.bottom < top + width) return hideGrip()
             grip.style.left = `${x}px`
-            grip.style.top = `${Math.max(r.top, 0) + 2}px`
+            grip.style.top = `${Math.max(r.top, top) + 2}px`
             grip.dataset.show = 'true'
             gripPos = start
           }
