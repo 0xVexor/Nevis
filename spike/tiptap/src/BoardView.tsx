@@ -58,7 +58,9 @@ export function BoardView({ page, onSave, onMeta, onBack, readOnly = false }: { 
 
   useEffect(() => {
     let live = true
-    void loadScene(page.content?.content?.[0]?.attrs?.scene ?? '').then((s) => {
+    // the live copy: the parent may still hold the page as it was before this board was last saved
+    const content = repo.get(page.id)?.content ?? page.content
+    void loadScene(typeof content === 'object' ? (content?.content?.[0]?.attrs?.scene ?? '') : '').then((s) => {
       if (!live) return
       saved.current = signature(s?.elements ?? [])
       setInitial(s)

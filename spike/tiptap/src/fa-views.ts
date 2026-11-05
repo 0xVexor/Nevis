@@ -91,6 +91,7 @@ export const FA_VIEWS: Record<string, string> = {
   'Move the canvas': 'جابه‌جایی بوم',
   Rectangle: 'مستطیل',
   Diamond: 'لوزی',
+  Triangle: 'مثلث',
   Ellipse: 'بیضی',
   Arrow: 'پیکان',
   Draw: 'قلم',

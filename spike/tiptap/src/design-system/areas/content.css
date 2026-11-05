@@ -1,7 +1,7 @@
 /* ═════════ page content, redesigned from zero: type, quotes, code, tables, rules ═════════
    (the toolbar, the "/" menu and the table/image bars have their own files) */
 
-.tiptap { outline: none; font-size: var(--editor-size, 16px); color: var(--editor-color, inherit); min-height: 50vh; font-feature-settings: 'kern', 'liga'; line-height: 1.8; text-wrap: auto; }
+.tiptap { tab-size: 4; outline: none; font-size: var(--editor-size, 16px); color: var(--editor-color, inherit); min-height: 50vh; font-feature-settings: 'kern', 'liga'; line-height: 1.8; text-wrap: auto; }
 .tiptap p { margin: 0.45em 0; }
 .tiptap strong { font-weight: 650; }
 .tiptap em { font-style: italic; }

@@ -1,5 +1,5 @@
 /* ───────── frame: two floating panels over the aurora canvas ───────── */
-.app { position: relative; display: flex; height: 100vh; padding: 0; gap: 0; overflow: hidden; isolation: isolate;
+.app { position: relative; display: flex; height: 100vh; padding: 0; gap: 0; overflow: clip; isolation: isolate;
   background: transparent; }
 
 /* ───────── sidebar dock ───────── */
@@ -66,7 +66,7 @@
 
 
 /* ───────── main sheet ───────── */
-.main { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--ds-bg); border: 0; border-radius: 0; overflow: hidden; transition: padding-inline-end var(--ds-base) var(--ds-ease); }
+.main { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--ds-bg); border: 0; border-radius: 0; overflow: clip; transition: padding-inline-end var(--ds-base) var(--ds-ease); }
 .main > * { position: relative; z-index: 1; }
 .scroller { flex: 1; overflow: auto; animation: fade-in var(--ds-slow) var(--ds-ease); }
 

@@ -1085,7 +1085,6 @@ export const FA: Record<string, string> = {
   "Note title": "عنوان یادداشت",
   "Retry": "تلاش دوباره",
   "New note": "یادداشت جدید",
-  "An idea, a plan, a few words. Start here.": "یک ایده، یک برنامه، چند کلمه. از اینجا شروع کن.",
   "Your first note": "اولین یادداشتت",
   "Other ways to start": "راه‌های دیگر شروع",
   "Start with a little structure": "با کمی ساختار شروع کن",

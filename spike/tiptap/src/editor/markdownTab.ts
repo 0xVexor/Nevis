@@ -43,3 +43,24 @@ export const MarkdownTab = Extension.create({
     } })]
   },
 })
+
+/**
+ * Tab never sends the focus out of the page while writing. Lists, tables and the marker rule above answer first
+ * (indent, next cell, turn into a block); anywhere else Tab types a tab and Shift+Tab does nothing.
+ */
+export const TabStaysInEditor = Extension.create({
+  name: 'tabStaysInEditor',
+  priority: 1, // after every other Tab handler
+  addKeyboardShortcuts() {
+    const editor = this.editor
+    return {
+      Tab: () => {
+        if (!editor.isEditable) return false // reading: Tab moves between links and controls as usual
+        const { $from } = editor.state.selection
+        for (let d = $from.depth; d > 0; d--) if (BLOCKED.includes($from.node(d).type.name) && $from.node(d).type.name !== 'codeBlock') return true
+        return $from.parent.isTextblock ? editor.commands.insertContent('\t') : true
+      },
+      'Shift-Tab': () => editor.isEditable,
+    }
+  },
+})

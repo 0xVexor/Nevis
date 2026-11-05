@@ -7,6 +7,7 @@ import { PageIcon } from './PageIcon'
 import { ago } from './ui'
 import { Button, Checkbox, Disclosure, Icon, Row, Section, useMenu, landscapeFor, useUIMotion } from './design-system'
 import { locale, t } from './i18n'
+import { HOME_LINES } from './homeLines'
 
 export interface HomeActions {
   onOpen: (id: string) => void
@@ -61,6 +62,9 @@ export function HomeScreen({ pages, tasks, due, now, showIcons, onCheck, onOpen,
   const scenery = useMemo(() => landscapeFor(hour), [hour])
   const showScene = !firstVisit && documents.length > 0
   const greeting = hour < 5 || hour >= 22 ? 'Good night' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+  // a new line, at random, each time the part of the day changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const line = useMemo(() => HOME_LINES[Math.floor(Math.random() * HOME_LINES.length)][0], [greeting])
   const date = new Intl.DateTimeFormat(locale(), { weekday: 'long', month: 'long', day: 'numeric' }).format(now)
   const title = (page: Page) => page.title || t('Untitled')
   const context = (event: MouseEvent, page: Page) => {
@@ -88,7 +92,7 @@ export function HomeScreen({ pages, tasks, due, now, showIcons, onCheck, onOpen,
   return (
     <div className="home" data-empty={firstVisit}>
       <header className={'home-header' + (showScene ? ' home-header--scene' : '')} data-tone={showScene ? (scenery.dark ? 'dark' : 'light') : undefined} data-phase={showScene ? scenery.phase : undefined} style={showScene ? { backgroundImage: scenery.css } : undefined}>
-        <div><div className="home-welcome-line"><h1>{t(greeting)}</h1><time dateTime={new Date(now).toISOString()}>{date}</time></div><p className="home-welcome-text">{t('An idea, a plan, a few words. Start here.')}</p></div>
+        <div><div className="home-welcome-line"><h1>{t(greeting)}</h1><time dateTime={new Date(now).toISOString()}>{date}</time></div><p className="home-welcome-text">{t(line)}</p></div>
         {!firstVisit && <Button variant="primary" icon={<Icon name="plus" />} onClick={onNew}>{t('New page')}</Button>}
       </header>
       {firstVisit ? (

@@ -209,6 +209,7 @@ export const ICON_GROUPS: IconGroup[] = [
       hand: ['hand pan move grab canvas', '<path d="M8 12V5.500a1.500 1.500 0 0 1 3 0V11M11 10V4a1.500 1.500 0 0 1 3 0v6M14 10V5.500a1.500 1.500 0 0 1 3 0V13M8 11.500V9.500a1.500 1.500 0 0 0-3 0V14a7 7 0 0 0 7 7h1a6 6 0 0 0 6-6v-4.500a1.500 1.500 0 0 0-3 0"/>'],
       square: ['rectangle box shape', '<rect x="4" y="4" width="16" height="16" rx="2.500"/>'],
       rhombus: ['diamond decision shape', '<path d="M12 3 21 12 12 21 3 12z"/>'],
+      triangle: ['triangle shape', '<path d="M12 4 21 20H3z"/>'],
       circle: ['ellipse oval round shape', '<circle cx="12" cy="12" r="8.500"/>'],
       'arrow-tool': ['arrow connector line pointing', '<path d="M5 19 19 5M10 5h9v9"/>'],
       line: ['line straight segment', '<path d="M5 19 19 5"/>'],
