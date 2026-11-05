@@ -100,12 +100,22 @@ function indent(editor: Editor) {
   const base = $from.start()
   let tr = state.tr
   if (!text.slice(a, b).includes('\n')) {
-    const col = a - lineStart(text, a)
-    tr = tr.insertText(' '.repeat(INDENT.length - (col % INDENT.length)), $from.pos, $to.pos) // jump to the next 4-column stop
+    tr = tr.insertText(INDENT, $from.pos, $to.pos) // always four spaces, wherever the caret is
   } else {
     for (const s of touchedLineStarts(text, a, b).reverse()) tr = tr.insertText(INDENT, base + s)
   }
   view.dispatch(tr.scrollIntoView())
+  return true
+}
+
+/** Ctrl+A inside a code block selects that block's text; once it is all selected, the next Ctrl+A selects the page. */
+export function selectCodeBlock(editor: Editor) {
+  const { $from, $to } = editor.state.selection
+  if (!inCode(editor)) return false
+  const start = $from.start()
+  const end = $from.end()
+  if ($from.pos === start && $to.pos === end) return false
+  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, start, end)))
   return true
 }
 
