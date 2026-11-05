@@ -82,6 +82,9 @@ const put = (k: string, v: unknown) => {
 
 const SIDE_MIN = 160
 const SIDE_MAX = 600
+type Panel = 'vault' | 'tasks' | 'settings'
+const PANEL_TITLES = { vault: 'Vault browser', tasks: 'Tasks', settings: 'Settings' } as const
+const NARROW_WORKSPACE = '(max-width: 760px)'
 const BIG_TREE = 150 // pages from which the sidebar tree starts collapsed
 
 export default function App() {
@@ -161,18 +164,33 @@ export default function App() {
   })
   const [shut, setShut] = useState<{ favs: boolean; pages: boolean; tags: boolean; saved: boolean }>({ favs: false, pages: false, tags: false, saved: false })
   const [save, setSave] = useState<SaveState>('saved')
-  const [sidePeek, setSidePeek] = useState(false)
-  const [sidePinned, setSidePinned] = useState(false)
-  const sidebarRef = useRef<HTMLElement>(null)
-  const sidePreviewSuppressed = useRef(false)
-  const [sideOpen, setSideOpen] = useState<boolean>(() => store('not.side', true))
+  const [panelVisibility, setPanelVisibility] = useState(() => store<Record<Panel, boolean>>('not.contextPanels', { vault: store('not.side', true), tasks: true, settings: true }))
+  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW_WORKSPACE).matches)
+  const [overlayPanel, setOverlayPanel] = useState<Panel | null>(null)
+  const [panelHost, setPanelHost] = useState<HTMLDivElement | null>(null)
+  const panelToggle = useRef<HTMLButtonElement>(null)
+  const panel: Panel | null = view === 'home' || view === 'page' ? 'vault' : view === 'tasks' || view === 'settings' ? view : null
+  const sideOpen = panel !== null && (narrow ? overlayPanel === panel : panelVisibility[panel])
+  const setContextOpen = useCallback(
+    (open: boolean) => {
+      if (!panel) return
+      if (narrow) setOverlayPanel(open ? panel : null)
+      else setPanelVisibility((visibility) => ({ ...visibility, [panel]: open }))
+    },
+    [narrow, panel],
+  )
+  const toggleContext = useCallback(() => setContextOpen(!sideOpen), [setContextOpen, sideOpen])
+  const hideContext = () => {
+    setContextOpen(false)
+    panelToggle.current?.focus()
+  }
   const [sideW, setSideW] = useState<number | null>(() => store<number | null>('not.sideW', null)) // null: the width of the chosen sidebar style
   const [sideDrag, setSideDrag] = useState(false)
   useEffect(() => put('not.sideW', sideW), [sideW])
   const [searching, setSearching] = useState(false)
   const [writingCatalog, setWritingCatalog] = useState<typeof import('./editor/slash').editorSearchItems>()
   useEffect(() => {
-    if (searching && !writingCatalog) void import('./editor/slash').then(module => setWritingCatalog(() => module.editorSearchItems))
+    if (searching && !writingCatalog) void import('./editor/slash').then((module) => setWritingCatalog(() => module.editorSearchItems))
   }, [searching, writingCatalog])
   const [searchInit, setSearchInit] = useState('') // query to start the search with (a saved search)
   const [tagFilter, setTagFilter] = useState<string | null>(null) // sidebar: show only pages with this tag
@@ -181,8 +199,10 @@ export default function App() {
     const pick = (e: Event) => {
       setTagFilter(normalizeFa((e as CustomEvent<string>).detail))
       setShut((x) => ({ ...x, tags: false }))
+      setPanelVisibility((visibility) => (visibility.vault ? visibility : { ...visibility, vault: true }))
+      if (window.matchMedia(NARROW_WORKSPACE).matches) setOverlayPanel('vault')
       // the list sits low in the sidebar: bring it into view once it has rendered
-      window.setTimeout(() => document.querySelector('.side .tagres')?.scrollIntoView({ block: 'nearest' }), 60)
+      window.setTimeout(() => document.querySelector('.context-panel .tagres')?.scrollIntoView({ block: 'nearest' }), 60)
     }
     window.addEventListener(PICK_TAG, pick)
     return () => window.removeEventListener(PICK_TAG, pick)
@@ -256,28 +276,6 @@ export default function App() {
   const readerRef = useRef(reader)
   readerRef.current = reader
   const settings = useSettings()
-  useEffect(() => {
-    if (!sidePinned) return
-    const dismiss = (event: PointerEvent) => {
-      const sidebar = sidebarRef.current
-      // Menus/dialogs live in portals. Finish their interaction before dismissing the sidebar.
-      const inOverlay = event.composedPath().some(node => node instanceof Element && node.matches('.ds-pop, [role="dialog"]'))
-      if (sidebar && event.target instanceof Node && !sidebar.contains(event.target) && !inOverlay) {
-        setSidePinned(false)
-        setSidePeek(false)
-      }
-    }
-    document.addEventListener('pointerdown', dismiss, true)
-    return () => document.removeEventListener('pointerdown', dismiss, true)
-  }, [sidePinned])
-  useEffect(() => {
-    if (settings.sidebar !== 'icons' || !sideOpen || view === 'settings') {
-      sidePreviewSuppressed.current = false
-      setSidePinned(false)
-      setSidePeek(false)
-    }
-  }, [settings.sidebar, sideOpen, view])
-
   const refresh = useCallback(() => setPages(repo.list()), [])
   useEffect(() => {
     const on = (e: Event) => {
@@ -292,7 +290,8 @@ export default function App() {
   useEffect(() => {
     if (current) setPreference('not.current', current.id)
   }, [current])
-  useEffect(() => put('not.side', sideOpen), [sideOpen])
+  useEffect(() => put('not.contextPanels', panelVisibility), [panelVisibility])
+  useEffect(() => setOverlayPanel(null), [panel])
   // views lay themselves out by the width of the main panel (window minus sidebar), not the window: data-main on .app is lg / md / sm / xs
   const mainWatch = useRef<ResizeObserver>(undefined)
   const mainRef = useCallback((main: HTMLElement | null) => {
@@ -306,14 +305,25 @@ export default function App() {
     ro.observe(main)
     mainWatch.current = ro
   }, [])
-  // a narrow window has no room for the sidebar beside the page: it starts out of the way (the sidebar shortcut or the button brings it back)
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 760px)')
-    if (mq.matches) setSideOpen(false)
-    const on = (e: MediaQueryListEvent) => e.matches && setSideOpen(false)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
+    const query = window.matchMedia(NARROW_WORKSPACE)
+    const change = (event: MediaQueryListEvent) => {
+      setNarrow(event.matches)
+      setOverlayPanel(null)
+    }
+    query.addEventListener('change', change)
+    return () => query.removeEventListener('change', change)
   }, [])
+  useEffect(() => {
+    if (!narrow || !sideOpen) return
+    const escape = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.key !== 'Escape' || document.querySelector('.ds-pop, [role="dialog"]')) return
+      setOverlayPanel(null)
+      panelToggle.current?.focus()
+    }
+    window.addEventListener('keydown', escape)
+    return () => window.removeEventListener('keydown', escape)
+  }, [narrow, sideOpen])
   useEffect(() => put('not.panel.v2', panelOpen), [panelOpen])
   // tools opened from the page panel (it talks to us through window events, so it needs no extra props)
   useEffect(() => {
@@ -373,8 +383,18 @@ export default function App() {
     return () => window.removeEventListener('keydown', key)
   }, [toast])
   useEffect(() => {
+    if (!panel) return
+    const key = (event: KeyboardEvent) => {
+      if (matches(event, 'sidebar')) {
+        event.preventDefault()
+        toggleContext()
+      }
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [panel, toggleContext])
+  useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (matches(e, 'sidebar')) (e.preventDefault(), setSideOpen((s) => !s))
       // Alt + = / Alt + -: wider / narrower text column (in reader mode: the reader page)
       const wider = matches(e, 'widerColumn')
       if (wider || matches(e, 'narrowerColumn')) {
@@ -754,14 +774,14 @@ export default function App() {
       keywords: 'theme dark light تم',
       run: () => updateSettings({ theme: dark ? 'light' : 'dark' }),
     },
-    {
+    ...(panel ? [{
       id: 'sidebar',
-      label: sideOpen ? t('Close sidebar') : t('Open sidebar'),
+      label: sideOpen ? t('Hide side panel') : t('Show side panel'),
       icon: <Icon name="panel-left" size={16} />,
       keywords: 'side panel نوار کناری',
       hint: bindingHint('sidebar'),
-      run: () => setSideOpen((o) => !o),
-    },
+      run: toggleContext,
+    }] : []),
     { id: 'import', label: t('Import or restore…'), icon: <Icon name="upload" size={16} />, keywords: 'وارد کردن بازیابی markdown obsidian restore zip', run: openData },
     { id: 'restore', label: t('Restore from backup'), icon: <Icon name="upload" size={16} />, keywords: 'backup restore desktop workspace بازیابی پشتیبان بکاپ', run: openData },
     { id: 'export-all', label: t('Export all pages (zip with Markdown & images)'), icon: <Icon name="download" size={16} />, keywords: 'zip', run: doExportAll },
@@ -788,61 +808,34 @@ export default function App() {
   })
   const menuPage = menu ? pages.find((p) => p.id === menu.id) : undefined
 
-  const sideExpanded = settings.sidebar === 'icons' && (sidePeek || sidePinned || newMenu !== null) && sideOpen
-  const revealSidebar = () => {
-    if (!sidePreviewSuppressed.current) setSidePeek(true)
+  const treePanel = useRef<HTMLDivElement>(null)
+  const [reveal, setReveal] = useState<{ id: string } | null>(null)
+  const revealActiveNote = () => {
+    if (!current || view !== 'page' || current.database) return
+    const byId = new Map(pages.map((page) => [page.id, page]))
+    const ancestors = new Set<string>()
+    for (let id = current.parentId; id && !ancestors.has(id); id = byId.get(id)?.parentId ?? null) ancestors.add(id)
+    setCollapsed((previous) => new Set([...previous].filter((id) => !ancestors.has(id))))
+    setShut((previous) => ({ ...previous, pages: false }))
+    setReveal({ id: current.id })
   }
-  const toggleSidebarPin = () => {
-    if (settings.sidebar !== 'icons') return
-    const pinned = !sidePinned
-    // Shrinking the panel can fire pointer-enter again; honor an explicit unpin until the pointer leaves.
-    sidePreviewSuppressed.current = !pinned
-    setSidePinned(pinned)
-    setSidePeek(pinned)
-  }
-  const preferencesOpen = view === 'settings' && !overlayOpen
+  useEffect(() => {
+    if (!reveal) return
+    treePanel.current?.querySelector<HTMLElement>(`[data-tree-page="${CSS.escape(reveal.id)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [reveal])
+  const preferencesOpen = view === 'settings'
   const rowProps = { index, currentId: current?.id ?? '', collapsed, onToggle: toggle, onOpen: setCurrentId, onAdd: add, onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }), onMove: move }
 
   return (
-    <div data-preferences={preferencesOpen ? '' : undefined} className={'app' + (reader && view === 'page' && current ? ' reading' : '')} style={cssVars({ '--page-w': pageW + 'px', '--r-scale': readerCfg.scale, '--r-width': readerCfg.width + 'px' })}>
-      <aside
-        ref={sidebarRef}
-        data-expanded={sideExpanded ? '' : undefined}
-        data-pinned={sidePinned ? '' : undefined}
-        onPointerLeave={() => { sidePreviewSuppressed.current = false; setSidePeek(false) }}
-        onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setSidePeek(false) }}
-        className={'side' + (sideOpen ? '' : ' closed') + (sideDrag ? ' resizing' : '')}
-        style={sideW ? cssVars({ '--side-w': sideW + 'px' }) : undefined}
-        onContextMenu={(e) => (e.preventDefault(), setBlankMenu(new DOMRect(e.clientX, e.clientY, 0, 0)))}
-      >
-        <div
-          className="side-grip"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label={t('Resize sidebar')}
-          title={t('Drag to resize, double-click to reset')}
-          onDoubleClick={() => setSideW(null)}
-          onPointerDown={(e) => {
-            const aside = e.currentTarget.parentElement!
-            const rtl = getComputedStyle(aside).direction === 'rtl'
-            const edge = rtl ? aside.getBoundingClientRect().right : aside.getBoundingClientRect().left
-            e.currentTarget.setPointerCapture(e.pointerId)
-            setSideDrag(true)
-            const move = (ev: PointerEvent) => setSideW(Math.round(Math.min(SIDE_MAX, Math.max(SIDE_MIN, rtl ? edge - ev.clientX : ev.clientX - edge))))
-            const up = () => (setSideDrag(false), window.removeEventListener('pointermove', move), window.removeEventListener('pointerup', up))
-            window.addEventListener('pointermove', move)
-            window.addEventListener('pointerup', up)
-          }}
-        />
+    <div
+      data-preferences={preferencesOpen ? '' : undefined}
+      className={'app' + (reader && view === 'page' && current ? ' reading' : '')}
+      style={cssVars({ '--page-w': pageW + 'px', '--r-scale': readerCfg.scale, '--r-width': readerCfg.width + 'px' })}
+    >
+      <nav className="side" aria-label={t('Workspace navigation')}>
         <div className="ws">
-          <WorkspaceHeader mark={<BrandMark />} name={<Brand />} revealLabel={t(sidePinned ? 'Unpin sidebar' : sideExpanded ? 'Pin sidebar' : 'Open sidebar')} expanded={settings.sidebar !== 'icons' || sideExpanded} pressed={settings.sidebar === 'icons' ? sidePinned : undefined} onReveal={revealSidebar} onActivate={toggleSidebarPin} action={
-            <IconButton label={t('Close sidebar') + '  ' + bindingHint('sidebar')} onClick={() => { setSidePinned(false); setSidePeek(false); setSideOpen(false) }}>
-              <Icon name="panel-left" />
-            </IconButton>
-          } />
+          <WorkspaceHeader mark={<BrandMark />} name={<Brand />} />
         </div>
-        <div className="side-workspace"><WorkspaceCard onOpen={() => setFolderOpen(true)} /></div>
-
         <div className="side-scroll">
           <button aria-label={t('Search')} className="row plain search-row" onClick={() => setSearching(true)}>
             <span className="ic">
@@ -859,7 +852,7 @@ export default function App() {
             <span className="ntitle">{t('Home')}</span>
           </button>
 
-          <button aria-label={t('Templates')} className={"row plain" + (tplOpen ? " cur" : "")} onClick={() => (setCardsOpen(false), setGraphOpen(false), setTableOpen(false), setTplOpen(true))}>
+          <button aria-label={t('Templates')} className={'row plain' + (tplOpen ? ' cur' : '')} onClick={() => (setCardsOpen(false), setGraphOpen(false), setTableOpen(false), setTplOpen(true))}>
             <span className="ic">
               <Icon name="templates" />
             </span>
@@ -873,7 +866,11 @@ export default function App() {
             <span className="ntitle">{t('Tasks')}</span>
           </button>
 
-          <button aria-label={t('Flashcards')} className={"row plain" + (cardsOpen && !tplOpen && !graphOpen && !tableOpen ? " cur" : "")} onClick={() => (setTplOpen(false), setGraphOpen(false), setTableOpen(false), setCardsOpen(true))}>
+          <button
+            aria-label={t('Flashcards')}
+            className={'row plain' + (cardsOpen && !tplOpen && !graphOpen && !tableOpen ? ' cur' : '')}
+            onClick={() => (setTplOpen(false), setGraphOpen(false), setTableOpen(false), setCardsOpen(true))}
+          >
             <span className="ic">
               <Icon name="cards" />
             </span>
@@ -881,17 +878,15 @@ export default function App() {
             {dueCards > 0 && <span className="ds-badge">{dueCards}</span>}
           </button>
 
-          <button aria-label={t('Databases')}
-            className={'row plain' + (view === 'databases' && !overlayOpen ? ' cur' : '')}
-            onClick={() => (closeOverlays(), setView('databases'))}
-          >
+          <button aria-label={t('Databases')} className={'row plain' + (view === 'databases' && !overlayOpen ? ' cur' : '')} onClick={() => (closeOverlays(), setView('databases'))}>
             <span className="ic">
               <Icon name="database" />
             </span>
             <span className="ntitle">{t('Databases')}</span>
           </button>
 
-          <button aria-label={t('Drawings')}
+          <button
+            aria-label={t('Drawings')}
             className={'row plain' + (view === 'drawings' && !overlayOpen ? ' cur' : '')}
             onPointerEnter={warmDrawing}
             onClick={() => (closeOverlays(), setView('drawings'))}
@@ -902,124 +897,22 @@ export default function App() {
             <span className="ntitle">{t('Drawings')}</span>
           </button>
 
-          <button aria-label={t('Graph')} className={"row plain" + (graphOpen ? " cur" : "")} onClick={() => (setCardsOpen(false), setTplOpen(false), setTableOpen(false), setGraphOpen(true))}>
+          <button aria-label={t('Graph')} className={'row plain' + (graphOpen ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setTableOpen(false), setGraphOpen(true))}>
             <span className="ic">
               <Icon name="graph" />
             </span>
             <span className="ntitle">{t('Graph')}</span>
           </button>
 
-          <button aria-label={t('All pages')} className={"row plain" + (tableOpen ? " cur" : "")} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(true))}>
+          <button aria-label={t('All pages')} className={'row plain' + (tableOpen ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(true))}>
             <span className="ic">
               <Icon name="table" />
             </span>
             <span className="ntitle">{t('All pages')}</span>
           </button>
-
-          <div className="side-collections">
-          {(favs.length > 0 || dragPage) && (
-            <div className={favs.length === 0 ? 'fav-float' : undefined}>
-              <div
-                className={'fav-zone' + (favOver ? ' over' : '')}
-                onDragOver={(e) => {
-                  if (e.dataTransfer.types.includes('application/x-page')) (e.preventDefault(), setFavOver(true))
-                }}
-                onDragLeave={(e) => {
-                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setFavOver(false)
-                }}
-                onDrop={(e) => {
-                  const id = e.dataTransfer.getData('application/x-page')
-                  setFavOver(false)
-                  if (id && !repo.get(id)?.favorite) (e.preventDefault(), fav(id))
-                }}
-              >
-                <button className={'section' + (shut.favs ? ' shut' : '')} onClick={() => setShut((s) => ({ ...s, favs: !s.favs }))}>
-                  {t('Favorites')}
-                  <Icon name="chevron-right" size={13} />
-                </button>
-                {!shut.favs &&
-                  favs.map((p) => (
-                    <div key={p.id} dir={dirOf(p.title)} className={'row' + (p.id === current?.id ? ' cur' : '')} style={{ paddingInlineStart: 24 }} onClick={() => setCurrentId(p.id)}>
-                      <span className="ic">
-                        <PageIcon page={p} />
-                      </span>
-                      <span className="ntitle" dir="auto">
-                        {p.title || t('Untitled')}
-                      </span>
-                    </div>
-                  ))}
-                {favs.length === 0 && <div className="empty-note">{t('Drop a page here to pin it')}</div>}
-              </div>
-            </div>
-          )}
-
-          {saved.length > 0 && (
-            <>
-              <button className={'section' + (shut.saved ? ' shut' : '')} onClick={() => setShut((s) => ({ ...s, saved: !s.saved }))}>
-                {t('Saved searches')}
-                <Icon name="chevron-right" size={13} />
-              </button>
-              {!shut.saved &&
-                saved.map((s) => (
-                  <div key={s.id} className="row saved-row" style={{ paddingInlineStart: 24 }} title={s.query} onClick={() => (setSearchInit(s.query), setSearching(true))}>
-                    <span className="ic">
-                      <Icon name="search" size={15} />
-                    </span>
-                    <span className="ntitle" dir="auto">
-                      {s.name}
-                    </span>
-                    <span className="acts">
-                      <button title={t('Delete')} onClick={(e) => (e.stopPropagation(), saveSaved(saved.filter((x) => x.id !== s.id)))}>
-                        <Icon name="x" size={14} />
-                      </button>
-                    </span>
-                  </div>
-                ))}
-            </>
-          )}
-
-          {
-            <button className={'section' + (shut.pages ? ' shut' : '')} onClick={() => setShut((s) => ({ ...s, pages: !s.pages }))}>
-              {t('Pages')}
-              <Icon name="chevron-right" size={13} />
-            </button>
-          }
-          {!shut.pages && settings.pagesView === 'compact' && (
-            <HorizontalScroll className="tree-scroll" label={t('Pages')} followVisibleBottom>
-              <div className="tree-in cmp-list">
-                <CompactList {...rowProps} roots={roots} />
-              </div>
-            </HorizontalScroll>
-          )}
-          {!shut.pages && settings.pagesView !== 'compact' && (
-            <HorizontalScroll className="tree-scroll" label={t('Pages')} followVisibleBottom>
-              <div className="tree-in">
-                {roots.map((p) => (
-                  <TreeRow key={p.id} {...rowProps} page={p} depth={0} />
-                ))}
-              </div>
-            </HorizontalScroll>
-          )}
-          {!shut.pages && roots.length === 0 && <div className="empty-note">{t('No pages yet')}</div>}
-
-          {tagList.length > 0 && (
-            <SidebarTags
-              tags={tagList}
-              active={tagFilter}
-              onPick={setTagFilter}
-              shut={!!shut.tags}
-              onToggle={() => setShut((x) => ({ ...x, tags: !x.tags }))}
-              pages={taggedPages}
-              currentId={current?.id}
-              onOpen={setCurrentId}
-            />
-          )}
-          </div>
         </div>
-
         <SideTip />
         <div className="side-foot">
-
           <button aria-label={t('Settings')} className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => (closeOverlays(), setView('settings'))}>
             <span className="ic">
               <Icon name="settings" />
@@ -1061,15 +954,212 @@ export default function App() {
               ]}
             />
           )}
+          <div className="side-workspace">
+            <WorkspaceCard onOpen={() => setFolderOpen(true)} />
+          </div>
           <div className="side-credit">{t('Created by')} Vexor</div>
         </div>
-      </aside>
+      </nav>
+
+      {panel && (
+        <>
+          {narrow && sideOpen && <div className="context-backdrop" aria-hidden="true" onClick={hideContext} />}
+          <aside
+            id="workspace-context"
+            className={'context-panel' + (sideDrag ? ' resizing' : '')}
+            aria-label={t(PANEL_TITLES[panel])}
+            hidden={!sideOpen}
+            style={sideW ? cssVars({ '--side-w': sideW + 'px' }) : undefined}
+            onContextMenu={
+              panel === 'vault'
+                ? (event) => {
+                    event.preventDefault()
+                    setBlankMenu(new DOMRect(event.clientX, event.clientY, 0, 0))
+                  }
+                : undefined
+            }
+          >
+            {!narrow && (
+              <div
+                className="side-grip"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label={t('Resize side panel')}
+                title={t('Drag to resize, double-click to reset')}
+                tabIndex={0}
+                aria-valuemin={SIDE_MIN}
+                aria-valuemax={SIDE_MAX}
+                aria-valuenow={sideW ?? 264}
+                onKeyDown={(event) => {
+                  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+                  event.preventDefault()
+                  const rtl = getComputedStyle(event.currentTarget).direction === 'rtl'
+                  const grow = (event.key === 'ArrowRight') !== rtl
+                  setSideW((width) => Math.min(SIDE_MAX, Math.max(SIDE_MIN, (width ?? 264) + (grow ? 16 : -16))))
+                }}
+                onDoubleClick={() => setSideW(null)}
+                onPointerDown={(e) => {
+                  const aside = e.currentTarget.parentElement!
+                  const rtl = getComputedStyle(aside).direction === 'rtl'
+                  const edge = rtl ? aside.getBoundingClientRect().right : aside.getBoundingClientRect().left
+                  e.currentTarget.setPointerCapture(e.pointerId)
+                  setSideDrag(true)
+                  const move = (ev: PointerEvent) => setSideW(Math.round(Math.min(SIDE_MAX, Math.max(SIDE_MIN, rtl ? edge - ev.clientX : ev.clientX - edge))))
+                  const up = () => {
+                    setSideDrag(false)
+                    window.removeEventListener('pointermove', move)
+                    window.removeEventListener('pointerup', up)
+                    window.removeEventListener('pointercancel', up)
+                  }
+                  window.addEventListener('pointermove', move)
+                  window.addEventListener('pointerup', up)
+                  window.addEventListener('pointercancel', up)
+                }}
+              />
+            )}
+            <header className="context-heading">
+              <h2>{t(PANEL_TITLES[panel])}</h2>
+              <IconButton label={t('Hide side panel')} onClick={hideContext}>
+                <Icon name="panel-left" className="ds-flip" />
+              </IconButton>
+            </header>
+            <div className="side-scroll" ref={setPanelHost}>
+              {panel === 'vault' && sideOpen && (
+                <div className="side-collections" ref={treePanel}>
+                  {(favs.length > 0 || dragPage) && (
+                    <div className={favs.length === 0 ? 'fav-float' : undefined}>
+                      <div
+                        className={'fav-zone' + (favOver ? ' over' : '')}
+                        onDragOver={(e) => {
+                          if (e.dataTransfer.types.includes('application/x-page')) (e.preventDefault(), setFavOver(true))
+                        }}
+                        onDragLeave={(e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget as Node)) setFavOver(false)
+                        }}
+                        onDrop={(e) => {
+                          const id = e.dataTransfer.getData('application/x-page')
+                          setFavOver(false)
+                          if (id && !repo.get(id)?.favorite) (e.preventDefault(), fav(id))
+                        }}
+                      >
+                        <button className={'section' + (shut.favs ? ' shut' : '')} onClick={() => setShut((s) => ({ ...s, favs: !s.favs }))}>
+                          {t('Favorites')}
+                          <Icon name="chevron-right" size={13} />
+                        </button>
+                        {!shut.favs &&
+                          favs.map((p) => (
+                            <div key={p.id} dir={dirOf(p.title)} className={'row' + (p.id === current?.id ? ' cur' : '')} style={{ paddingInlineStart: 24 }} onClick={() => setCurrentId(p.id)}>
+                              <span className="ic">
+                                <PageIcon page={p} />
+                              </span>
+                              <span className="ntitle" dir="auto">
+                                {p.title || t('Untitled')}
+                              </span>
+                            </div>
+                          ))}
+                        {favs.length === 0 && <div className="empty-note">{t('Drop a page here to pin it')}</div>}
+                      </div>
+                    </div>
+                  )}
+
+                  {saved.length > 0 && (
+                    <>
+                      <button className={'section' + (shut.saved ? ' shut' : '')} onClick={() => setShut((s) => ({ ...s, saved: !s.saved }))}>
+                        {t('Saved searches')}
+                        <Icon name="chevron-right" size={13} />
+                      </button>
+                      {!shut.saved &&
+                        saved.map((s) => (
+                          <div key={s.id} className="row saved-row" style={{ paddingInlineStart: 24 }} title={s.query} onClick={() => (setSearchInit(s.query), setSearching(true))}>
+                            <span className="ic">
+                              <Icon name="search" size={15} />
+                            </span>
+                            <span className="ntitle" dir="auto">
+                              {s.name}
+                            </span>
+                            <span className="acts">
+                              <button title={t('Delete')} onClick={(e) => (e.stopPropagation(), saveSaved(saved.filter((x) => x.id !== s.id)))}>
+                                <Icon name="x" size={14} />
+                              </button>
+                            </span>
+                          </div>
+                        ))}
+                    </>
+                  )}
+
+                  <div className="tree-heading">
+                    <button className={'section' + (shut.pages ? ' shut' : '')} aria-expanded={!shut.pages} onClick={() => setShut((s) => ({ ...s, pages: !s.pages }))}>
+                      {t('Pages')}
+                      <Icon name="chevron-right" size={13} />
+                    </button>
+                    {settings.pagesView !== 'compact' && (
+                      <>
+                        <IconButton
+                          label={t('Expand all folders')}
+                          onClick={() => {
+                            setCollapsed(new Set())
+                            setShut((previous) => ({ ...previous, pages: false }))
+                          }}
+                        >
+                          <Icon name="plus" size={15} />
+                        </IconButton>
+                        <IconButton
+                          label={t('Collapse all folders')}
+                          onClick={() => {
+                            setCollapsed(new Set(pages.filter((page) => !page.database && (page.kind === 'folder' || index.kids.has(page.id))).map((page) => page.id)))
+                            setShut((previous) => ({ ...previous, pages: false }))
+                          }}
+                        >
+                          <Icon name="minus" size={15} />
+                        </IconButton>
+                      </>
+                    )}
+                    <IconButton label={t('Reveal active note')} disabled={view !== 'page' || !current || !!current.database} onClick={revealActiveNote}>
+                      <Icon name="target" size={15} />
+                    </IconButton>
+                  </div>
+                  {!shut.pages && settings.pagesView === 'compact' && (
+                    <HorizontalScroll className="tree-scroll" label={t('Pages')} followVisibleBottom>
+                      <div className="tree-in cmp-list">
+                        <CompactList {...rowProps} roots={roots} />
+                      </div>
+                    </HorizontalScroll>
+                  )}
+                  {!shut.pages && settings.pagesView !== 'compact' && (
+                    <HorizontalScroll className="tree-scroll" label={t('Pages')} followVisibleBottom>
+                      <div className="tree-in">
+                        {roots.map((p) => (
+                          <TreeRow key={p.id} {...rowProps} page={p} depth={0} />
+                        ))}
+                      </div>
+                    </HorizontalScroll>
+                  )}
+                  {!shut.pages && roots.length === 0 && <div className="empty-note">{t('No pages yet')}</div>}
+
+                  {tagList.length > 0 && (
+                    <SidebarTags
+                      tags={tagList}
+                      active={tagFilter}
+                      onPick={setTagFilter}
+                      shut={!!shut.tags}
+                      onToggle={() => setShut((x) => ({ ...x, tags: !x.tags }))}
+                      pages={taggedPages}
+                      currentId={current?.id}
+                      onOpen={setCurrentId}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          </aside>
+        </>
+      )}
 
       <main ref={mainRef} className={'main' + (panelOpen && !reader && view === 'page' && current ? ' drawer-open' : '')}>
         <header className="topbar">
-          {!sideOpen && !preferencesOpen && (
-            <IconButton label={t('Open sidebar') + '  ' + bindingHint('sidebar')} onClick={() => setSideOpen(true)}>
-              <Icon name="panel-left" size={17} />
+          {panel && (
+            <IconButton ref={panelToggle} label={t(sideOpen ? 'Hide side panel' : 'Show side panel') + '  ' + bindingHint('sidebar')} aria-expanded={sideOpen} aria-controls="workspace-context" onClick={toggleContext}>
+              <Icon name="panel-left" size={17} className="ds-flip" />
             </IconButton>
           )}
           <div className="nav-hist">
@@ -1285,7 +1375,7 @@ export default function App() {
           ) : view === 'trash' ? (
             <Trash items={trashed} days={TRASH_DAYS} onRestore={restore} onPurge={purge} onEmpty={emptyTrash} />
           ) : view === 'tasks' ? (
-            <Tasks onOpen={setCurrentId} onNewList={() => add(null, 'todo')} />
+            <Tasks panelHost={panelHost} index={index} onOpen={setCurrentId} onNewList={() => add(null, 'todo')} />
           ) : view === 'databases' ? (
             <Databases onOpen={setCurrentId} onNew={() => addDatabase(null)} onDelete={del} />
           ) : view === 'drawings' ? (
@@ -1293,6 +1383,7 @@ export default function App() {
           ) : view === 'settings' ? (
             <SettingsView
               key={settingsTab ?? 'settings'}
+              panelHost={panelHost}
               initialTab={settingsTab}
               onLeave={() => setView('home')}
               data={{ repo, refresh, toast: (msg) => setToast({ msg }), open: setCurrentId, exportAll: doExportAll, backup: doBackup, workspaces: () => setFolderOpen(true) }}

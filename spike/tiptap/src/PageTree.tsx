@@ -29,6 +29,7 @@ export function CompactList(props: Omit<RowProps, 'page' | 'depth'> & { roots: P
   const file = (p: Page) => (
     <div
       key={p.id}
+      data-tree-page={p.id}
       dir={dirOf(label(p))}
       className={'row tree cmp-file' + (p.id === currentId ? ' cur' : '')}
       onClick={() => props.onOpen(p.id)}
@@ -56,6 +57,7 @@ export function CompactList(props: Omit<RowProps, 'page' | 'depth'> & { roots: P
     out.push(
       <div
         key={p.id}
+        data-tree-page={p.id}
         dir={dirOf(label(p))}
         className={'row tree cmp-head' + (folder ? ' folder' : '') + (p.id === currentId ? ' cur' : '')}
         onClick={() => (folder ? props.onToggle(p.id) : props.onOpen(p.id))}
@@ -66,6 +68,7 @@ export function CompactList(props: Omit<RowProps, 'page' | 'depth'> & { roots: P
           style={{ visibility: files.length ? 'visible' : 'hidden' }}
           onClick={(e) => (e.stopPropagation(), props.onToggle(p.id))}
           aria-label={t('Expand or collapse')}
+          aria-expanded={open}
         >
           <Icon name="chevron-right" size={14} />
         </button>
@@ -107,6 +110,7 @@ export function TreeRow(props: RowProps) {
     <>
       <div
         className={'row tree' + (folder ? ' folder' : '') + (leaf ? ' leaf' : '') + (page.id === currentId ? ' cur' : '') + (zone ? ' drop-' + zone : '')}
+        data-tree-page={page.id}
         dir={dirOf(page.title)}
         draggable
         onClick={() => (folder ? props.onToggle(page.id) : props.onOpen(page.id))}
@@ -140,6 +144,7 @@ export function TreeRow(props: RowProps) {
           style={{ visibility: kids.length || folder ? 'visible' : 'hidden' }}
           onClick={(e) => (e.stopPropagation(), props.onToggle(page.id))}
           aria-label={t('Expand or collapse')}
+          aria-expanded={open}
         >
           <Icon name="chevron-right" size={14} />
         </button>

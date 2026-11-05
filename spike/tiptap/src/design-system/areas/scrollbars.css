@@ -66,5 +66,3 @@
 .tree-scroll.hscroll { overflow: visible; padding-block-end: 0; }
 .tree-scroll .hscroll-rail { background: var(--ds-sunk); }
 /* collapsed to icons there is nothing to scroll; expanded (hover, focus, pinned by the logo) the rail comes back */
-:root[data-side='icons'] .side:not([data-expanded]) .tree-scroll .hscroll-rail { display: none; }
-:root[data-side='icons'] .side:not([data-expanded]) .tree-scroll .hscroll-viewport { overflow: visible; }

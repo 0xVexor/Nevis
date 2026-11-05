@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { motion } from 'motion/react'
 import { useUIMotion } from '../design-system/motion'
 import { WorkspaceHeader } from '../design-system/WorkspaceHeader'
@@ -65,6 +66,7 @@ export function GeneralSettings() {
 export interface WorkspaceProps {
   onLeave?: () => void
   embedded?: boolean
+  panelHost?: HTMLElement | null
   initialCategory?: Category
   panels?: Partial<Record<Category, ReactNode>>
   appearanceExtras?: ReactNode
@@ -72,19 +74,21 @@ export interface WorkspaceProps {
   context?: (category: Category) => ReactNode
   onReset?: () => void
 }
-export function SettingsWorkspace({ embedded = false, initialCategory = 'appearance', panels = {}, appearanceExtras, editorExtras, context, onReset, onLeave }: WorkspaceProps) {
+export function SettingsWorkspace({ embedded = false, panelHost, initialCategory = 'appearance', panels = {}, appearanceExtras, editorExtras, context, onReset, onLeave }: WorkspaceProps) {
   const motionOf = useUIMotion(), [category, setCategory] = useState<Category>(initialCategory), [reset, setReset] = useState(false)
   const s = useSettings(), l = useLabels(), current = categories.find(c => c.id === category)!
   const Main = embedded ? 'div' : 'main'
+  const navigation = <nav className="prefs-categories" aria-label={l('Settings')}>{categories.map(c => <Button key={c.id} className="prefs-nav-button" variant="ghost" aria-current={category === c.id ? 'page' : undefined} onClick={() => { setCategory(c.id); setReset(false); if (embedded) document.querySelector('.prefs-embedded .prefs-main')?.scrollTo(0, 0); else window.scrollTo(0, 0) }} icon={<Icon name={c.icon} />}><span>{l(c.label)}</span></Button>)}</nav>
   return <div className={"prefs-shell" + (embedded ? " prefs-embedded" : "")}>
-    <aside className="prefs-nav">
+    {panelHost && createPortal(navigation, panelHost)}
+    {panelHost === undefined && <aside className="prefs-nav">
       <div className="prefs-brand"><WorkspaceHeader mark={<BrandMark />} name={<Brand />} /></div>
       
       <div className="prefs-workspace"><span className="prefs-workspace-icon"><Icon name="layers" /></span><div><b>{l('Personal space')}</b><small>{l('Local workspace')}</small></div></div>
       <div className="prefs-nav-caption">{l('Preferences')}</div>
-      <nav aria-label={l('Settings')}>{categories.map(c => <Button key={c.id} className="prefs-nav-button" variant="ghost" aria-current={category === c.id ? 'page' : undefined} onClick={() => { setCategory(c.id); setReset(false); if (embedded) document.querySelector('.scroller')?.scrollTo(0, 0); else window.scrollTo(0, 0) }} icon={<Icon name={c.icon} />}><span>{l(c.label)}</span></Button>)}</nav>
+      {navigation}
       <div className="prefs-nav-footer">{onLeave && <Button className="prefs-nav-button prefs-back" variant="ghost" icon={<Icon name="arrow-left" className="ds-flip" />} onClick={onLeave}><span>{l('Back to workspace')}</span></Button>}<span className="prefs-prefs-tag">{l(embedded ? 'Settings' : 'Design study')}</span><p>{l(embedded ? 'Make the appearance and editor your own.' : 'A preview of the new shared UI direction.')}</p>{!embedded && <small>{l('Preview settings stay separate from your app.')}</small>}</div>
-    </aside>
+    </aside>}
     <Main className="prefs-main">
       <header className="prefs-top"><span>{l('Workspace')}<span>/</span>{l('Settings')}</span><SaveStatus state="saved" label={l('Saved locally')} /></header>
       <div className="prefs-content">

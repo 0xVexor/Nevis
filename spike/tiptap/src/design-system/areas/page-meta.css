@@ -35,9 +35,6 @@
 .tree-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: var(--ds-s1); }
 .tree-in { width: max-content; min-width: 100%; }
 .tree-in .row.tree .ntitle { flex: 1 1 0; width: 0; min-width: 72px; }
-:root[data-side='icons'] .side:not([data-expanded]) .tree-scroll { overflow: visible; padding-bottom: 0; }
-:root[data-side='icons'] .side:not([data-expanded]) .tree-in { width: auto; min-width: 0; }
-:root[data-side='icons'] .side:not([data-expanded]) .tree-in .row.tree .ntitle { min-width: 0; }
 .row.tree.leaf { min-height: var(--ds-control); font-weight: 450; }
 /* a page without sub-pages keeps its icon; the empty twisty keeps its place so its title lines up with its siblings */
 .row.tree.leaf .twisty { visibility: hidden; }
@@ -55,8 +52,8 @@
 .wscard-tx b { font-size: var(--ds-text-small); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wscard-tx small { font-size: var(--ds-text-caption); font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ds-text-3); }
 .wscard-chev { display: grid; place-items: center; color: var(--ds-text-3); }
-:root[data-side='icons'] .side:not([data-expanded]) .wscard { padding: var(--ds-s2); justify-content: center; }
-:root[data-side='icons'] .side:not([data-expanded]) .wscard-tx, :root[data-side='icons'] .side:not([data-expanded]) .wscard-chev { display: none; }
+:root[data-side='icons'] .side .wscard { padding: var(--ds-s2); justify-content: center; }
+:root[data-side='icons'] .side .wscard-tx, :root[data-side='icons'] .side .wscard-chev { display: none; }
 .wsd-body { overflow: auto; padding: var(--ds-s4) var(--ds-s6) var(--ds-s6); }
 .wsd-tx { display: flex; flex-direction: column; gap: 1px; flex: 1; min-inline-size: 0; }
 .wsd-tx b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; font-size: var(--ds-text-ui); font-weight: 600; }
@@ -79,12 +76,9 @@
 .row.cmp-head .ntitle, .row.cmp-file .ntitle { min-width: 0; }
 /* the same horizontal scroll as the tree: long names keep their width instead of being cut */
 .tree-in.cmp-list .row.cmp-head .ntitle, .tree-in.cmp-list .row.cmp-file .ntitle { flex: 1 1 0; width: 0; min-width: 72px; }
-:root[data-side='icons'] .side:not([data-expanded]) .tree-in.cmp-list .row.cmp-head .ntitle, :root[data-side='icons'] .side:not([data-expanded]) .tree-in.cmp-list .row.cmp-file .ntitle { min-width: 0; }
 .row.cmp-head.cur { background: transparent; color: var(--ds-accent); }
 .row.cmp-head.cur::before { display: none; }
 .row.cmp-file.cur::before { inset-inline-start: 18px; top: 8px; bottom: 8px; }
-:root[data-side='icons'] .side:not([data-expanded]) .row.cmp-file { padding-inline-start: 0; }
-:root[data-side='icons'] .side:not([data-expanded]) .cmp-path { display: none; }
 
 /* folded from the former override layers (surfaces.css, screens.css) */
 .tagchip { border: 0; border-radius: var(--ds-r-full); box-shadow: none; transition: background var(--ds-fast), color var(--ds-fast); --c: light-dark(oklch(0.5 0.15 var(--hue, 270)), oklch(0.82 0.1 var(--hue, 270))); block-size: 22px; padding-inline: var(--ds-s2); gap: var(--ds-s1); background: color-mix(in oklab, var(--c) 13%, var(--ds-bg)); color: var(--c); font: 500 var(--ds-text-caption) var(--ds-font-ui); }

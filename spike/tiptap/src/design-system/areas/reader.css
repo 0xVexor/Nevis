@@ -1,7 +1,7 @@
 /* ───────── Reader mode: the page alone on the plain background, a thin progress line, one quiet toolbar ───────── */
 
 /* everything that frames or edits the page steps away */
-.app.reading :is(.side, .topbar, .page-drawer, .toolbar, .wscard) { display: none; }
+.app.reading :is(.side, .context-panel, .context-backdrop, .topbar, .page-drawer, .toolbar, .wscard) { display: none; }
 .app.reading { padding: 0; }
 .app.reading .main { border: 0; border-radius: 0; box-shadow: none; background: var(--ds-bg); }
 .app.reading .main::before { display: none; }
