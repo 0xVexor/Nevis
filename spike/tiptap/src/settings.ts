@@ -48,7 +48,7 @@ export const DEFAULTS: Settings = {
   fontEn: null,
   fontSize: 16,
   textColor: null,
-  sidebar: 'default',
+  sidebar: 'icons',
   pagesView: 'tree',
   sideGlass: 0,
   mainGlass: 0,

@@ -200,8 +200,18 @@ export default function App() {
   }
   const [sideW, setSideW] = useState<number | null>(() => store<number | null>('not.sideW', null)) // null: the width of the chosen sidebar style
   const [railWidth, setRailWidth] = useState<number | null>(() => store('not.navWidth', null))
-  const [railPeek, setRailPeek] = useState(false)
-  const [railPinned, setRailPinned] = useState(false)
+  const [railPinned, setRailPinned] = useState(false) // icon-only rail opened from the logo
+  const sideNav = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (!railPinned) return
+    // an opened icon rail lies over the page: a click anywhere else folds it back
+    const down = (event: PointerEvent) => {
+      const inOverlay = event.composedPath().some((node) => node instanceof Element && node.matches('.ds-pop, [role="dialog"]'))
+      if (!inOverlay && event.target instanceof Node && !sideNav.current?.contains(event.target)) setRailPinned(false)
+    }
+    document.addEventListener('pointerdown', down, true)
+    return () => document.removeEventListener('pointerdown', down, true)
+  }, [railPinned])
   useEffect(() => put('not.navWidth', railWidth), [railWidth])
   useEffect(() => put('not.sideW', sideW), [sideW])
   const [searching, setSearching] = useState(false)
@@ -851,7 +861,8 @@ export default function App() {
     treePanel.current?.querySelector<HTMLElement>(`[data-tree-page="${CSS.escape(reveal.id)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [reveal])
   const iconsOnly = settings.sidebar === 'icons' || narrow
-  const railExpanded = iconsOnly && (railPeek || railPinned || !!newMenu)
+  // only the logo opens the icon rail; hovering or using an item (New, Search…) works from the icons as they are
+  const railExpanded = iconsOnly && railPinned
   const railToggleLabel = t(railPinned ? 'Unpin sidebar' : 'Pin sidebar')
   const railPanelLabel = t(sideOpen ? 'Hide side panel' : 'Show side panel') + '  ' + commandHint('Open or close the sidebar')
   const sidePanelButton = panel && (
@@ -877,11 +888,8 @@ export default function App() {
         aria-label={t('Workspace navigation')}
         data-icons={iconsOnly && !railExpanded ? '' : undefined}
         data-expanded={railExpanded ? '' : undefined}
+        ref={sideNav}
         style={railWidth ? cssVars({ '--nav-user-width': railWidth + 'px' }) : undefined}
-        onPointerLeave={() => setRailPeek(false)}
-        onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget)) setRailPeek(false)
-        }}
       >
         {!narrow && (!iconsOnly || railExpanded) && (
           <ResizeHandle label={t('Resize navigation rail')} width={railWidth ?? defaultRailWidth} min={RAIL_MIN} max={RAIL_MAX} onResize={setRailWidth} />
@@ -893,11 +901,7 @@ export default function App() {
             revealLabel={railToggleLabel}
             expanded={!iconsOnly || railExpanded}
             pressed={iconsOnly ? railPinned : undefined}
-            onReveal={iconsOnly ? () => setRailPeek(true) : undefined}
-            onActivate={() => {
-              setRailPinned(!railPinned)
-              setRailPeek(!railPinned)
-            }}
+            onActivate={iconsOnly ? () => setRailPinned(!railPinned) : undefined}
             action={!sideOpen && sidePanelButton}
           />
         </div>
