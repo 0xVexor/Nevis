@@ -27,7 +27,7 @@ import { PageLink, PageLinkSuggest } from './pageLink'
 import { t } from '../i18n'
 import { createSectionDragSurface } from './snapSurface'
 import { BlockIdentity } from './blockIdentity'
-import { RtlTableResize } from './rtlTableResize'
+import { TableColumnResize } from './tableResize'
 
 type TableViewLike = { dom: HTMLElement; table: HTMLTableElement; update: (n: PMNode) => boolean }
 const BaseTableView = Table.options.View as unknown as new (...args: unknown[]) => TableViewLike
@@ -45,6 +45,8 @@ function DirTableView(node: PMNode, ...rest: unknown[]) {
     // width and position belong to the wrapper <div class="tableWrapper"> around the table
     const wrap = view.dom as HTMLElement
     wrap.style.width = n.attrs.tableWidth ? `${n.attrs.tableWidth}%` : ''
+    // resized columns give the table a fixed pixel width: the frame then hugs the table (or, with a chosen width, the table fills it)
+    wrap.toggleAttribute('data-fixed-cols', !!view.table.style.width)
     if (n.attrs.tableAlign) wrap.dataset.align = n.attrs.tableAlign
     else delete wrap.dataset.align
   }
@@ -224,10 +226,11 @@ const Direction = Extension.create({
 export const extensions = [
   PhysicalShortcuts,
   BlockIdentity,
-  RtlTableResize,
+  TableColumnResize,
   StarterKit.configure({ codeBlock: false, dropcursor: { color: 'var(--ds-accent)', width: 2 } }),
   CodeBlock,
-  Table.configure({ resizable: true, View: DirTableView as never }),
+  // `resizable` keeps the stock view (colgroup widths); TableColumnResize does the dragging, so the stock grab zone is minimal
+  Table.configure({ resizable: true, handleWidth: 1, cellMinWidth: 56, View: DirTableView as never }),
   TableRow,
   TableHeader,
   TableCell,

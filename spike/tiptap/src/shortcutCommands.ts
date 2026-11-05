@@ -29,7 +29,7 @@ export function matchesSidebarShortcut(event: KeyboardEvent) {
 }
 
 /** Editor commands that run from a physical key and follow a remapped binding (see editor/physicalShortcuts.ts). */
-export const EDITOR_COMMANDS = ['Bold', 'Italic', 'Underline', 'Heading 1', 'Heading 2', 'Heading 3', 'Heading 4', 'Heading 5', 'Heading 6', 'Link', 'Link to page', 'Insert image', 'Insert table', 'Align left', 'Center', 'Align right', 'Strikethrough', 'Inline code', 'Bulleted list', 'Numbered list', 'Checklist', 'Quote', 'Code block', 'Line break', 'Select all', 'Undo', 'Redo', 'Line direction: left-to-right', 'Line direction: right-to-left'] as const
+export const EDITOR_COMMANDS = ['Bold', 'Italic', 'Underline', 'Heading 1', 'Heading 2', 'Heading 3', 'Heading 4', 'Heading 5', 'Heading 6', 'Link', 'Link to page', 'Insert image', 'Insert table', 'Align left', 'Center', 'Align right', 'Strikethrough', 'Inline code', 'Bulleted list', 'Numbered list', 'Checklist', 'Quote', 'Code block', 'Line break', 'Select all', 'Expand selection', 'Undo', 'Redo', 'Line direction: left-to-right', 'Line direction: right-to-left'] as const
 export type EditorCommand = (typeof EDITOR_COMMANDS)[number]
 
 /** Contexts that can reuse a key without firing in the same UI. */

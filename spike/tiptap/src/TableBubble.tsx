@@ -51,7 +51,7 @@ export function TableBubble({ editor }: { editor: Editor }) {
   useEffect(() => {
     const down = (e: PointerEvent) => {
       const el = e.target as Element | null
-      if (el?.closest?.('.bubble.tbl')) return
+      if (el?.closest?.('.table-bubble')) return // a click on the toolbar itself keeps it open
       setArmed(!!el?.closest?.('.tiptap table'))
     }
     document.addEventListener('pointerdown', down, true)
@@ -66,7 +66,7 @@ export function TableBubble({ editor }: { editor: Editor }) {
   if (!open) return null
   const run = (fn: (c: ChainedCommands) => ChainedCommands) => fn(editor.chain().focus()).run()
   return createPortal(
-    <Toolbar ref={box} label={t('Table')} style={{ position: 'fixed', zIndex: 'var(--ds-z-float)' }} onMouseDown={(e) => e.preventDefault()}>
+    <Toolbar ref={box} className="table-bubble" label={t('Table')} style={{ position: 'fixed', zIndex: 'var(--ds-z-float)' }} onMouseDown={(e) => e.preventDefault()}>
       <Group label={t('Row')}>
         <B icon={<Icon name="row-above" size={16} />} title={t('Insert row above')} onClick={() => run((c) => c.addRowBefore())} />
         <B icon={<Icon name="row-below" size={16} />} title={t('Insert row below')} onClick={() => run((c) => c.addRowAfter())} />

@@ -67,6 +67,7 @@ export const SHORTCUTS: ShortcutGroup[] = [
       sc('Add full-width text after layout', ['Mod', 'Alt', 'Enter']),
       sc('Line break', ['Shift', 'Enter']),
       sc('Select all', ['Mod', 'A']),
+      sc('Expand selection', ['Mod', 'W']),
       sc('Undo', ['Mod', 'Z']),
       { ...sc('Redo', ['Mod', 'Y'], ['Mod', 'Shift', 'Z']), macKeys: [['Mod', 'Shift', 'Z']] },
     ],

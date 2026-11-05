@@ -410,6 +410,7 @@ export const FA: Record<string, string> = {
   Paste: 'چسباندن',
   'Paste as plain text': 'چسباندن به‌صورت متن ساده',
   'Select all': 'انتخاب همه',
+  'Expand selection': 'گسترش انتخاب (کلمه، جمله، پاراگراف)',
   Redo: 'ازنو',
   'Choose where to create the vault': 'محل ساخت Vault را انتخاب کنید',
   'Choose a vault folder': 'پوشه‌ی Vault را انتخاب کنید',
