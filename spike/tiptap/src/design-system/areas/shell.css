@@ -24,7 +24,6 @@
   margin-inline-end: calc(var(--nav-width) - var(--rail-expanded-width));
   box-shadow: var(--ds-shadow-pop);
 }
-.side[data-icons] .ds-workspace-header { flex-direction: column; justify-content: center; gap: var(--ds-s1); }
 :is(.side, .context-panel):has(> .side-grip:active) { user-select: none; }
 .context-panel {
   inline-size: min(var(--side-w, 264px), 42vw);
@@ -132,11 +131,21 @@
 /* ───────── appearance switches (settings → data-attributes on <html>) ───────── */
 :root[data-side='compact'] .row { min-height: var(--ds-control-sm); font-size: var(--ds-text-small); }
 :root[data-side='compact'] .section { margin-top: var(--ds-s3); }
-.side[data-icons] { padding-inline: var(--ds-s3); }
-.side[data-icons] :is(.side-credit, .ds-workspace-name, .ntitle, .row kbd, .ds-badge) { display: none; }
-.side[data-icons] .row { justify-content: center; padding-inline: 0; }
-.side[data-icons] .search-row { border-color: transparent; background: transparent; }
-.side[data-icons] .side-new { padding-inline: 0; }
+/* icon rail: one geometry folded or open, so every icon stays where it is; opening only widens the rail and fades the labels in */
+.side[data-rail] {
+  --rail-inner: calc(var(--nav-width) - 2 * var(--ds-s3));
+  padding-inline: var(--ds-s3);
+  transition: inline-size var(--ds-base) var(--ds-ease), margin-inline-end var(--ds-base) var(--ds-ease), box-shadow var(--ds-base) var(--ds-ease);
+}
+.side[data-rail] .ds-workspace-mark { margin-inline-start: calc((var(--rail-inner) - var(--ds-control)) / 2); }
+.side[data-rail] :is(.row.plain, .row.plain.search-row) { justify-content: flex-start; padding-inline: calc((var(--rail-inner) - 24px) / 2); }
+.side[data-rail] .row.plain.search-row { block-size: var(--ds-control); border-color: transparent; background: transparent; }
+.side[data-rail] .side-new { inline-size: 100%; justify-content: flex-start; padding-inline: calc((var(--rail-inner) - 16px) / 2); }
+.side[data-rail] :is(.side-scroll, .side-foot) { overflow-x: hidden; }
+.side[data-rail] .side-credit { overflow: hidden; white-space: nowrap; text-align: start; }
+.side[data-rail] :is(.ntitle, .ds-workspace-name, .wscard-tx, .side-credit) { transition: opacity var(--ds-base) var(--ds-ease); }
+.side[data-icons] :is(.ntitle, .ds-workspace-name, .wscard-tx, .side-credit) { opacity: 0; }
+.side[data-icons] :is(.row kbd, .ds-badge, .wscard-chev) { display: none; }
 /* compact: tighter indent so deep trees keep room for titles */
 :root[data-side='compact'] .tree-kids { margin-inline-start: var(--ds-s3); padding-inline-start: var(--ds-s1); }
 :root[data-side='compact'] .row.tree { gap: 2px; }

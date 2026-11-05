@@ -886,6 +886,7 @@ export default function App() {
       <nav
         className="side"
         aria-label={t('Workspace navigation')}
+        data-rail={iconsOnly ? '' : undefined}
         data-icons={iconsOnly && !railExpanded ? '' : undefined}
         data-expanded={railExpanded ? '' : undefined}
         ref={sideNav}
@@ -902,7 +903,6 @@ export default function App() {
             expanded={!iconsOnly || railExpanded}
             pressed={iconsOnly ? railPinned : undefined}
             onActivate={iconsOnly ? () => setRailPinned(!railPinned) : undefined}
-            action={!sideOpen && sidePanelButton}
           />
         </div>
         <div className="side-scroll">
@@ -1055,7 +1055,6 @@ export default function App() {
             )}
             <header className="context-heading">
               <h2>{t(PANEL_TITLES[panel])}</h2>
-              {sideOpen && sidePanelButton}
             </header>
             <div className="side-scroll" ref={setPanelHost}>
               {panel === 'vault' && sideOpen && (
@@ -1191,6 +1190,7 @@ export default function App() {
 
       <main ref={mainRef} className={'main' + (panelOpen && !reader && view === 'page' && current ? ' drawer-open' : '')}>
         <header className="topbar">
+          {sidePanelButton}
           <div className="nav-hist">
             <IconButton label={t('Back  Alt+←')} disabled={hpos.current <= 0} onClick={() => goHist(-1)}>
               <Icon name="arrow-left" size={17} className="ds-flip" />
