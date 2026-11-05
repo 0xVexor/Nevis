@@ -2,6 +2,7 @@ import { Extension, type Editor } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
 import { commandBinding, commandMatches, type EditorCommand } from '../shortcutCommands'
 import { selectCodeBlock } from './codeBlock'
+import { expandSelection } from './expandSelection'
 import { pickImages } from './image'
 import { editLink } from './linkPrompt'
 import { linkSelection } from './slash'
@@ -33,6 +34,7 @@ export function editorShortcutActions(editor: Editor): Record<EditorCommand, () 
     'Code block': () => editor.commands.toggleCodeBlock(),
     'Line break': () => editor.commands.setHardBreak(),
     'Select all': () => selectCodeBlock(editor) || editor.commands.selectAll(),
+    'Expand selection': () => expandSelection(editor),
     Undo: () => editor.commands.undo(),
     Redo: () => editor.commands.redo(),
     'Line direction: left-to-right': () => editor.commands.setDirection('ltr'),
