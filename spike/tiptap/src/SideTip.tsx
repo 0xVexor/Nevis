@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-const TARGET = '.row, .side-new button'
+const TARGET = '.row, button.side-new'
 const DELAY = 220
 
 /** Icons-only sidebar: a label that opens beside the hovered entry, since its own text is hidden. */

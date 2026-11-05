@@ -169,7 +169,18 @@ export default function App() {
   const [overlayPanel, setOverlayPanel] = useState<Panel | null>(null)
   const [panelHost, setPanelHost] = useState<HTMLDivElement | null>(null)
   const panelToggle = useRef<HTMLButtonElement>(null)
-  const panel: Panel | null = view === 'home' || view === 'page' ? 'vault' : view === 'tasks' || view === 'settings' ? view : null
+  const [cardsOpen, setCardsOpen] = useState(false)
+  const [tplOpen, setTplOpen] = useState(false)
+  const [graphOpen, setGraphOpen] = useState(false)
+  const [tableOpen, setTableOpen] = useState(false)
+  const overlayOpen = cardsOpen || tplOpen || graphOpen || tableOpen
+  const panel: Panel | null = overlayOpen
+    ? null
+    : view === 'home' || view === 'page'
+      ? 'vault'
+      : view === 'tasks' || view === 'settings'
+        ? view
+        : null
   const sideOpen = panel !== null && (narrow ? overlayPanel === panel : panelVisibility[panel])
   const setContextOpen = useCallback(
     (open: boolean) => {
@@ -233,11 +244,8 @@ export default function App() {
   }, [view])
   const [folderOpen, setFolderOpen] = useState(false)
   const [toast, setToast] = useState<{ msg: string; undo?: () => void; action?: { label: string; run: () => void } } | null>(null)
-  const [tableOpen, setTableOpen] = useState(false)
-  const [graphOpen, setGraphOpen] = useState(false)
   const [dueCards, setDueCards] = useState(0)
   useEffect(() => watchDueCards(setDueCards, isTauri), [])
-  const [cardsOpen, setCardsOpen] = useState(false)
   const { open: openShare, menu: shareMenu } = useMenu()
   const [blankMenu, setBlankMenu] = useState<DOMRect | null>(null) // right-click on empty sidebar space
   const [menu, setMenu] = useState<{ id: string; rect: DOMRect } | null>(null)
@@ -456,9 +464,7 @@ export default function App() {
     window.addEventListener('open-search', open)
     return () => window.removeEventListener('open-search', open)
   }, [])
-  const [tplOpen, setTplOpen] = useState(false)
   const trashed = repo.trash()
-  const overlayOpen = cardsOpen || tplOpen || graphOpen || tableOpen
   const closeOverlays = () => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false))
   // Flashcards and Templates are pages: going to another page or view (search, links, the sidebar) leaves them
   useEffect(() => (setCardsOpen(false), setTplOpen(false), setGraphOpen(false), setTableOpen(false)), [view, currentId])
@@ -932,15 +938,17 @@ export default function App() {
             <span className="ntitle">{t('Trash')}</span>
             {trashed.length > 0 && <span className="ds-badge">{trashed.length}</span>}
           </button>
-          <div className="ds-split side-new">
-            <Button variant="primary" aria-label={t('New page')} onClick={() => add(null)}>
-              <Icon name="plus" size={16} />
-              <span className="ntitle">{t('New page')}</span>
-            </Button>
-            <Button variant="primary" aria-label={t('More')} aria-expanded={!!newMenu} onClick={(e) => setNewMenu(newMenu ? null : e.currentTarget.parentElement!.getBoundingClientRect())}>
-              <Icon name="chevron-right" size={14} />
-            </Button>
-          </div>
+          <Button
+            variant="primary"
+            className="side-new"
+            aria-label={t('New')}
+            aria-haspopup="menu"
+            aria-expanded={!!newMenu}
+            onClick={(event) => setNewMenu(newMenu ? null : event.currentTarget.getBoundingClientRect())}
+          >
+            <Icon name="plus" size={16} />
+            <span className="ntitle">{t('New')}</span>
+          </Button>
           {newMenu && (
             <Menu
               anchor={newMenu}
