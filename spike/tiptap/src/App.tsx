@@ -17,7 +17,8 @@ import { BoardView } from './BoardView'
 import { DeckView } from './decks/DeckView'
 import { Decks } from './decks/Decks'
 import { deckFromTemplate, deckTemplates } from './decks/templates'
-import { encodeDeck } from './decks/storage'
+import { deckThemeForAppearance } from './appearancePresets'
+import { decodeDeck, encodeDeck } from './decks/storage'
 const DatabasePage = lazy(() => import('./database/ui/DatabasePage').then((m) => ({ default: m.DatabasePage })))
 import { warmDrawing } from './editor/excalidraw'
 import { CoverBanner, CoverPicker } from './Cover'
@@ -462,10 +463,14 @@ export default function App() {
       })
       .catch((e) => setToast({ msg: String(e?.message ?? e) }))
   }
+  const deckAppearance = () => ({ theme: deckThemeForAppearance(settings.appearancePreset, isDark(settings)), ...(settings.accent ? { accent: settings.accent } : {}) })
   const add = (parentId: string | null, kind?: 'board' | 'todo' | 'deck') => {
     const p = repo.create(parentId, kind)
     if (kind === 'todo') repo.update(p.id, { title: t('To-do list') }, { history: false })
-    if (kind === 'deck') repo.update(p.id, { title: t('Untitled deck') }, { history: false })
+    if (kind === 'deck') {
+      const deck = decodeDeck(p.content)
+      if (deck) repo.update(p.id, { title: t('Untitled deck'), content: encodeDeck({ ...deck, ...deckAppearance() }) }, { history: false })
+    }
     if (parentId) expand(parentId)
     refresh()
     setCurrentId(p.id)
@@ -491,7 +496,7 @@ export default function App() {
     const template = deckTemplates.find((item) => item.id === id)
     if (template) {
       const page = repo.create(null, 'deck')
-      repo.update(page.id, { title: t(template.title), content: encodeDeck(deckFromTemplate(template, t, () => crypto.randomUUID())) }, { history: false })
+      repo.update(page.id, { title: t(template.title), content: encodeDeck(deckFromTemplate(template, t, () => crypto.randomUUID(), deckAppearance())) }, { history: false })
       refresh()
       setCurrentId(page.id)
       return

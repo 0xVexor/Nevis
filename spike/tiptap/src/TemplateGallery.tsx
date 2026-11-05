@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type CSSProperties, type ReactNode } from 'react'
 import { motion } from 'motion/react'
 import { getTemplates } from './templates'
 import { Glyph } from './iconSet'
 import { Button, Icon, Screen, useUIMotion } from './design-system'
 import { t } from './i18n'
-import { deckTemplates } from './decks/templates'
+import { deckStyle } from './decks/model'
+import { renderSlide } from './decks/slideRendering'
+import { deckFromTemplate, deckTemplates } from './decks/templates'
 
 /** Glyph shown for each built-in template (new pages get it as their icon). */
 export const TEMPLATE_GLYPH: Record<string, string> = { lecture: 'graduation', chapter: 'book', exercise: 'target', meeting: 'users', todo: 'list' }
@@ -63,19 +65,20 @@ interface Choice {
 const Line = ({ width = 60 }: { width?: number }) => <span className="tpl-line" style={{ inlineSize: width + '%' }} />
 
 function Paper({ choice }: { choice: Choice }) {
-  if (choice.deck)
+  if (choice.deck) {
+    let number = 0
+    const deck = deckFromTemplate(choice.deck, t, () => String(++number))
     return (
       <div className="tpl-deck-preview">
-        {choice.deck.sections.map((section, index) => (
-          <div className="tpl-deck-sheet" key={section} style={{ aspectRatio: `${choice.deck!.size.width} / ${choice.deck!.size.height}` }}>
-            <b dir="auto">{t(section)}</b>
-            <small>
-              {index + 1} / {choice.deck!.sections.length}
-            </small>
+        {deck.slides.map((slide, index) => (
+          <div className="tpl-deck-sheet" key={slide.id} style={{ aspectRatio: `${deck.size.width} / ${deck.size.height}`, ...deckStyle(deck, slide) } as CSSProperties}>
+            <div className="deck-slide-content tiptap" dir="auto" dangerouslySetInnerHTML={{ __html: renderSlide(slide.content) }} />
+            <small>{index + 1} / {deck.slides.length}</small>
           </div>
         ))}
       </div>
     )
+  }
   if (choice.id === DATABASE_TEMPLATE) {
     const cols = [t('Name'), t('Status'), t('Date')]
     return (

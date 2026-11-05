@@ -1,14 +1,17 @@
 import type { DocNode } from '../docNode.ts'
+import { syntaxColors, themeColors, type DeckTheme } from '../appearancePresets.ts'
 
 export interface Slide {
   readonly id: string
   readonly content: DocNode
+  readonly tone?: 'dark'
 }
 
 export interface Deck {
   readonly size: { readonly width: number; readonly height: number }
   readonly slides: readonly Slide[]
   readonly accent?: string
+  readonly theme?: DeckTheme
   readonly components?: readonly DeckComponent[]
 }
 
@@ -21,9 +24,21 @@ export interface DeckComponent {
 export const defaultDeckAccent = '#087f74'
 export const calloutComponent: DeckComponent = { id: 'callout', name: 'Callout', emphasis: true }
 
-export function deckStyle(deck: Deck): Record<string, string> {
-  const colors = Object.fromEntries([calloutComponent, ...(deck.components ?? [])].map(({ id, emphasis }) => [`--deck-component-${id}`, emphasis ? 'var(--deck-accent)' : 'var(--ds-line)']))
-  return { '--deck-accent': deck.accent ?? defaultDeckAccent, ...colors }
+export function deckStyle(deck: Deck, slide?: Slide): Record<string, string> {
+  const theme = deck.theme ?? 'calm-light'
+  const colors = themeColors(slide?.tone === 'dark' ? (theme.startsWith('forest-') ? 'forest-dark' : 'calm-dark') : theme)
+  const components = Object.fromEntries([calloutComponent, ...(deck.components ?? [])].map(({ id, emphasis }) => [`--deck-component-${id}`, emphasis ? 'var(--deck-accent)' : 'var(--deck-border)']))
+  return {
+    '--deck-accent': deck.accent ?? colors.accent,
+    '--deck-paper': colors.paper,
+    '--deck-ink': colors.ink,
+    '--deck-border': colors.border,
+    '--deck-callout': colors.callout,
+    '--deck-code-paper': colors.code.paper,
+    '--deck-code-ink': colors.code.ink,
+    ...syntaxColors(colors.code),
+    ...components,
+  }
 }
 
 export function createPortraitDeck(createId: () => string): Deck {

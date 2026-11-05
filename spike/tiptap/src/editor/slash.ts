@@ -19,6 +19,8 @@ interface Item {
   icon: string
   keywords: string
   disabled?: boolean
+  check?: boolean
+  literalTitle?: boolean
   vars?: Record<string, string> // fills {placeholders} in title/desc; values are translated too
   run: (chain: ChainedCommands, editor: Editor) => ChainedCommands
 }
@@ -145,7 +147,7 @@ const rank = (item: Item) => {
 
 const shown = (i: Item) => {
   const vars = i.vars && Object.fromEntries(Object.entries(i.vars).map(([k, v]) => [k, t(v)]))
-  return { ...i, group: GROUP_LABELS[Math.floor(rank(i) / 100)], title: t(i.title, vars), desc: t(i.desc, vars) }
+  return { ...i, group: GROUP_LABELS[Math.floor(rank(i) / 100)], title: i.literalTitle ? i.title : t(i.title, vars), desc: t(i.desc, vars) }
 }
 
 function filter(query: string, list: Item[] = ITEMS): Item[] {
@@ -170,7 +172,7 @@ export const INSERTS = new Set(['Icon', 'Table', 'Divider', 'Image', 'Image from
  * What the Ctrl+/ palette offers: everything of the slash menu, and with text selected also actions on it
  * (wrap in a callout / toggle, turn Mermaid text into a diagram) listed first.
  */
-export function paletteItems(query: string, editor: Editor): Item[] {
+export function paletteItems(query: string, editor: Editor, extraCommands?: ExtraCommands, allowedCommands: readonly string[] | null = null): Item[] {
   const sel = editor.state.selection
   let list = ITEMS
   if (!sel.empty) {
@@ -193,10 +195,11 @@ export function paletteItems(query: string, editor: Editor): Item[] {
     // the plain Callout / Toggle entries would insert empty boxes; with a selection the wrapping versions replace them
     list = [...onSelection, ...ITEMS.filter((i) => i.title !== 'Callout' && i.title !== 'Toggle')]
   }
-  return filter(query, list)
+  return filter(query, [...list.filter(item => !allowedCommands || allowedCommands.includes(item.title)), ...(extraCommands?.(editor) ?? [])])
 }
 
-export const SlashCommand = Extension.create<{ allowedCommands: readonly string[] | null }>({
+export type ExtraCommands = (editor: Editor) => Item[]
+export const SlashCommand = Extension.create<{ allowedCommands: readonly string[] | null; extraCommands?: ExtraCommands }>({
   name: 'slashCommand',
   addOptions() {
     return { allowedCommands: null }
@@ -207,16 +210,19 @@ export const SlashCommand = Extension.create<{ allowedCommands: readonly string[
         editor: this.editor,
         pluginKey: new PluginKey('slashSuggest'),
         // a "/" typed in code (`a / b`, paths, comments) is just a slash
-        allow: ({ state }: { state: EditorState }) => {
+        allow: ({ state, editor }: { state: EditorState; editor: Editor }) => {
           const $from = state.selection.$from
-          return $from.parent.type.name !== 'codeBlock' && !$from.marks().some((m) => m.type.name === 'code')
+          return editor.isEditable && $from.parent.type.name !== 'codeBlock' && !$from.marks().some((m) => m.type.name === 'code')
         },
         char: '/',
         startOfLine: false,
         allowSpaces: false,
-        items: ({ query }: { query: string }) => filter(query).filter(item => !this.options.allowedCommands || this.options.allowedCommands.includes(item.title)),
+        items: ({ query, editor }) => filter(query, [
+          ...ITEMS.filter(item => !this.options.allowedCommands || this.options.allowedCommands.includes(item.title)),
+          ...(this.options.extraCommands?.(editor) ?? []),
+        ]),
         command: ({ editor, range, props }: { editor: Editor; range: Range; props: Item }) => {
-          if (props.disabled) return
+          if (props.disabled || ((props.check || this.options.extraCommands) && !props.run(editor.can().chain().deleteRange(range), editor).run())) return
           props.run(editor.chain().focus().deleteRange(range), editor).run()
         },
         render: menuRender<Item>({ label: t('Blocks'), view: shown, preview: previewOf }),

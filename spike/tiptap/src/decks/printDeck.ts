@@ -6,7 +6,6 @@ export async function printDeck(title: string, deck: Deck, render: (content: Doc
   if (document.querySelector('.deck-print')) return
   const print = document.createElement('section')
   print.className = 'deck-print'
-  for (const [name, value] of Object.entries(deckStyle(deck))) print.style.setProperty(name, value)
   const { width, height } = deck.size
   // Use a conventional physical page height and retain the deck's exact aspect ratio.
   const pageHeight = 8
@@ -16,6 +15,7 @@ export async function printDeck(title: string, deck: Deck, render: (content: Doc
   for (const slide of deck.slides) {
     const page = document.createElement('article')
     page.className = 'deck-print-slide deck-slide-content tiptap'
+    for (const [name, value] of Object.entries(deckStyle(deck, slide))) page.style.setProperty(name, value)
     page.dir = 'auto'
     page.innerHTML = render(slide.content)
     print.append(page)

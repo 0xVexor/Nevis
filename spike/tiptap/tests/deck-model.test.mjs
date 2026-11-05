@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { randomUUID } from 'node:crypto'
-import { addSlide, createPortraitDeck, moveSlide } from '../src/decks/model.ts'
+import { addSlide, createPortraitDeck, deckStyle, moveSlide } from '../src/decks/model.ts'
 import { deckFromTemplate, deckTemplates } from '../src/decks/templates.ts'
 import { decodeDeck, encodeDeck } from '../src/decks/storage.ts'
 
@@ -26,7 +26,7 @@ test('templates create independent decks and keep their accent, components, and 
   for (const template of deckTemplates) {
     const first = deckFromTemplate(template, (value) => value, randomUUID)
     const second = deckFromTemplate(template, (value) => value, randomUUID)
-    assert.equal(first.slides.length, 3)
+    assert.equal(first.slides.length, template.sections.length)
     assert.ok(first.slides.every((slide) => second.slides.every(({ id }) => id !== slide.id)))
     const customized = { ...first, accent: '#49621e', components: [{ id: randomUUID(), name: 'Finding', emphasis: true }] }
     assert.deepEqual(decodeDeck(encodeDeck(customized)), customized)
@@ -38,4 +38,14 @@ test('previously saved decks without styling data still open', () => {
   const saved = encodeDeck(deck)
   saved.attrs.format = 1
   assert.deepEqual(decodeDeck(saved), deck)
+})
+
+test('Forest & Lime saves distinct cover and teaching colors', () => {
+  const deck = deckFromTemplate(deckTemplates[0], (value) => value, randomUUID)
+  const reopened = decodeDeck(encodeDeck(deck))
+  assert.deepEqual(reopened, deck)
+  assert.equal(deckStyle(reopened, reopened.slides[0])['--deck-paper'], '#183a30')
+  assert.equal(deckStyle(reopened, reopened.slides[0])['--deck-accent'], '#c7e875')
+  assert.equal(deckStyle(reopened, reopened.slides[1])['--deck-paper'], '#f1f4ec')
+  assert.equal(deckStyle(reopened, reopened.slides[1])['--deck-accent'], '#49621e')
 })

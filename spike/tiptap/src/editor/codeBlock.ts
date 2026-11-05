@@ -13,6 +13,23 @@ import { createSectionDragSurface } from './snapSurface'
 
 const lowlight = createLowlight(common)
 
+export function highlightCodeElement(element: Element) {
+  const language = [...element.classList].find((item) => item.startsWith('language-'))?.slice(9)
+  const source = element.textContent ?? ''
+  const result = language && lowlight.registered(language) ? lowlight.highlight(language, source) : lowlight.highlightAuto(source)
+  type Token = (typeof result.children)[number]
+  const render = (token: Token): Node => {
+    if (token.type === 'text') return document.createTextNode(token.value)
+    if (token.type !== 'element') return document.createTextNode('')
+    const span = document.createElement('span')
+    const classes = token.properties.className
+    if (Array.isArray(classes)) span.className = classes.join(' ')
+    span.append(...token.children.map(render))
+    return span
+  }
+  element.replaceChildren(...result.children.map(render))
+}
+
 /** Languages offered in the picker and the slash menu (all ship with lowlight's `common` set). */
 export const LANGS: { id: string; name: string; alias: string }[] = [
   { id: 'java', name: 'Java', alias: '' },

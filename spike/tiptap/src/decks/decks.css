@@ -16,14 +16,24 @@
   margin-inline: auto;
   box-sizing: border-box;
   padding: clamp(1rem, 5%, 3rem);
-  border: 1px solid var(--ds-line);
-  background: var(--ds-raised);
+  border: 1px solid var(--deck-border);
+  background: var(--deck-paper);
+  color: var(--deck-ink);
   overflow: auto;
 }
 
-.deck-slide-content .tiptap {
-  min-block-size: 6rem;
+.deck-slide-content.tiptap, .deck-slide-content .tiptap {
+  color: var(--deck-ink);
+  font-family: 'Instrument Sans', Vazirmatn, sans-serif;
 }
+.deck-slide-content .tiptap { min-block-size: 6rem; }
+.deck-slide-content pre {
+  background: var(--deck-code-paper);
+  color: var(--deck-code-ink);
+  border-color: var(--deck-border);
+}
+.deck-slide-content .code-bar { color: var(--deck-code-ink); }
+.deck-component { background: var(--deck-callout); }
 
 .deck-slide-content :is(h1, h2, h3) { color: var(--deck-accent); }
 .deck-accent { display: inline-flex; align-items: center; gap: var(--ds-s2); }
@@ -31,8 +41,8 @@
 .deck-component[data-variant='compact'] { padding-block: var(--ds-s1); }
 
 .deck-print { position: fixed; inset-inline-start: 0; inset-block-start: 0; visibility: hidden; pointer-events: none; }
-.deck-print-slide { box-sizing: border-box; padding: 0.5in; overflow: hidden; break-inside: avoid; }
-.deck-print .layout-export { grid-template-columns: var(--layout-tracks); }
+.deck-print-slide { box-sizing: border-box; padding: 0.5in; background: var(--deck-paper); overflow: hidden; break-inside: avoid; }
+.tpl-deck-sheet .layout-export, .deck-print .layout-export { grid-template-columns: var(--layout-tracks); }
 .deck-print pre { direction: ltr; }
 
 @media print {
@@ -52,8 +62,15 @@
   flex-direction: column;
   justify-content: space-between;
   padding: var(--ds-s2);
-  border: 1px solid var(--ds-line);
-  background: var(--ds-raised);
+  border: 1px solid var(--deck-border);
+  background: var(--deck-paper);
+  color: var(--deck-ink);
   overflow-wrap: anywhere;
   font-size: var(--ds-text-small);
 }
+
+.tpl-deck-sheet { min-inline-size: 0; overflow: hidden; }
+.tpl-deck-sheet .deck-slide-content { font-size: 0.6rem; }
+.tpl-deck-sheet .deck-slide-content :is(h1, h2, h3) { font-size: 0.8rem; }
+.tpl-deck-sheet .deck-slide-content pre { font-size: inherit; padding: var(--ds-s1); }
+.tpl-deck-sheet .layout-export { gap: var(--ds-s1); }
