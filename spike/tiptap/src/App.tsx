@@ -1,4 +1,4 @@
-import { commandHint, commandMatches, EDITOR_COMMANDS } from './shortcutCommands'
+import { commandHint, commandMatches, EDITOR_COMMANDS, matchesSidebarShortcut } from './shortcutCommands'
 import { cssVars } from './cssVars'
 import { setPreference } from './preferenceEvents'
 import { UpdateCenter } from './UpdateUI'
@@ -393,7 +393,7 @@ export default function App() {
   useEffect(() => {
     if (!panel) return
     const key = (event: KeyboardEvent) => {
-      if (matches(event, 'sidebar')) {
+      if (matchesSidebarShortcut(event)) {
         event.preventDefault()
         toggleContext()
       }
@@ -785,7 +785,7 @@ export default function App() {
       label: sideOpen ? t('Hide side panel') : t('Show side panel'),
       icon: <Icon name="panel-left" size={16} />,
       keywords: 'side panel نوار کناری',
-      hint: bindingHint('sidebar'),
+      hint: commandHint('Open or close the sidebar'),
       run: toggleContext,
     }] : []),
     { id: 'import', label: t('Import or restore…'), icon: <Icon name="upload" size={16} />, keywords: 'وارد کردن بازیابی markdown obsidian restore zip', run: openData },
@@ -1166,7 +1166,7 @@ export default function App() {
       <main ref={mainRef} className={'main' + (panelOpen && !reader && view === 'page' && current ? ' drawer-open' : '')}>
         <header className="topbar">
           {panel && (
-            <IconButton ref={panelToggle} label={t(sideOpen ? 'Hide side panel' : 'Show side panel') + '  ' + bindingHint('sidebar')} aria-expanded={sideOpen} aria-controls="workspace-context" onClick={toggleContext}>
+            <IconButton ref={panelToggle} label={t(sideOpen ? 'Hide side panel' : 'Show side panel') + '  ' + commandHint('Open or close the sidebar')} aria-expanded={sideOpen} aria-controls="workspace-context" onClick={toggleContext}>
               <Icon name="panel-left" size={17} className="ds-flip" />
             </IconButton>
           )}

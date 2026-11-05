@@ -21,6 +21,13 @@ export function commandMatches(event: KeyboardEvent, label: string, defaults = f
   return !!chord && !!binding && (defaults ? binding.defaults : binding.keys).some(keys => sameChord(keys, chord))
 }
 
+export function matchesSidebarShortcut(event: KeyboardEvent) {
+  if (event.repeat || !commandMatches(event, 'Open or close the sidebar')) return false
+  const target = event.target as HTMLElement | null
+  // Mod+B belongs to Bold while editing. Alt+1 can still toggle the panel from the editor.
+  return !sameChord(chordOf(event) ?? [], ['Mod', 'B']) || !target?.closest?.('input, textarea, [contenteditable]:not([contenteditable="false"])')
+}
+
 /** Editor commands that run from a physical key and follow a remapped binding (see editor/physicalShortcuts.ts). */
 export const EDITOR_COMMANDS = ['Bold', 'Italic', 'Underline', 'Heading 1', 'Heading 2', 'Heading 3', 'Heading 4', 'Heading 5', 'Heading 6', 'Link', 'Link to page', 'Insert image', 'Insert table', 'Align left', 'Center', 'Align right', 'Strikethrough', 'Inline code', 'Bulleted list', 'Numbered list', 'Checklist', 'Quote', 'Code block', 'Line break', 'Select all', 'Undo', 'Redo', 'Line direction: left-to-right', 'Line direction: right-to-left'] as const
 export type EditorCommand = (typeof EDITOR_COMMANDS)[number]
