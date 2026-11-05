@@ -81,7 +81,7 @@
 
 /* code language dropdown */
 .code-bar select.code-lang { display: none; }
-.lang-pop { z-index: var(--ds-z-float); width: 240px; padding: 0; border-radius: var(--ds-r-lg); overflow: hidden; direction: ltr; text-align: start; }
+.lang-pop { position: fixed; inset-block-start: 0; inset-inline-start: 0; z-index: var(--ds-z-float); width: 240px; padding: 0; border-radius: var(--ds-r-lg); overflow: hidden; direction: ltr; text-align: start; }
 .lang-head { padding: 8px 8px 4px; }
 .lang-search { width: 100%; height: 34px; padding: 0 12px; border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-bg); color: var(--ds-text); font-size: 13px; outline: none; }
 .lang-search:focus { border-color: var(--ds-accent); box-shadow: 0 0 0 3px var(--ds-accent-line); }
