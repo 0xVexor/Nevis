@@ -42,6 +42,8 @@ export interface DocumentStorage {
   addVersion(version: DocumentVersion): Promise<void>
   deleteVersions(pageId: string): Promise<void>
   stamp?(): Promise<string>
+  /** Changes with any persisted search source change. Null requires checking page bodies. */
+  searchStamp?(): Promise<string | null>
   /** Local-only snapshots. Commit atomically with the page, or recover before any later writer. */
   listOperations?(scopeId: string, documentId: string): Promise<DocumentOperationSummary[]>
   findOperation?(scopeId: string, operationId: string): Promise<DocumentOperationRecord | null>

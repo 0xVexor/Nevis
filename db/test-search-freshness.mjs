@@ -22,6 +22,46 @@ function setup(search = {}) {
   return { service, storage, events, reader, host }
 }
 
+test('search builds on demand and shares one durable page load across overlapping and unchanged queries', async () => {
+  let builds = 0, loads = 0
+  const h = setup({ build: pages => { builds++; return new PortableLexicalIndex(pages) } })
+  const load = h.storage.load.bind(h.storage)
+  h.storage.load = () => { loads++; return load() }
+  h.storage.searchStamp = () => h.storage.stamp()
+
+  await h.service.init()
+  const startupLoads = loads
+  assert.deepEqual(await h.service.searchPersisted('   '), [])
+  assert.equal(builds, 0)
+  assert.equal(loads, startupLoads)
+
+  const results = await Promise.all(Array.from({ length: 8 }, () => h.service.searchPersisted('initial')))
+  assert.ok(results.every(pages => pages.length === 1))
+  for (let query = 0; query < 8; query++) assert.equal((await h.service.searchPersisted('initial')).length, 1)
+  assert.equal(loads, startupLoads + 1)
+  assert.equal(builds, 1)
+
+  await h.storage.save(write([page('updated')]))
+  assert.equal((await h.service.searchPersisted('updated')).length, 1)
+  assert.equal((await h.service.searchPersisted('initial')).length, 0)
+  assert.equal(loads, startupLoads + 2)
+  assert.equal(builds, 2)
+})
+
+test('a persisted edit during indexing cannot publish a stale search snapshot', async () => {
+  let builds = 0
+  const h = setup({ async build(pages) {
+    if (++builds === 1) await h.storage.save(write([page('updated')]))
+    return new PortableLexicalIndex(pages)
+  } })
+  h.storage.searchStamp = () => h.storage.stamp()
+  await h.service.init()
+
+  assert.equal((await h.service.searchPersisted('updated')).length, 1)
+  assert.equal((await h.service.searchPersisted('initial')).length, 0)
+  assert.equal(builds, 2)
+})
+
 test('save/reload/adopt/restore/startup reconcile same-timestamp edits and remove deleted notes from UI/scoped search', async () => {
   let builds = 0
   const h = setup({ build: pages => { builds++; return new PortableLexicalIndex(pages) } })

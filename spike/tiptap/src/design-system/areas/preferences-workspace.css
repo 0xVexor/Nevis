@@ -1,5 +1,5 @@
 .prefs-shell { display: flex; min-block-size: 100dvh; }
-.app[data-preferences] > .side, .app[data-preferences] .topbar { display: none; }
+.app[data-preferences] .prefs-top { display: none; }
 .prefs-embedded { display: flex; min-block-size: 0; container: preferences / inline-size; font: 400 var(--ds-text-ui)/1.5 var(--ds-font-ui); }
 .prefs-embedded .prefs-nav-footer > :not(button) { display: none; }
 .prefs-embedded .prefs-content { padding: var(--ds-s10) clamp(var(--ds-s6), 4vw, 56px); }
@@ -22,13 +22,13 @@
 .prefs-workspace b { font-weight: 500; font-size: var(--ds-text-small); }
 .prefs-workspace small { display: block; font-size: var(--ds-text-caption); color: var(--ds-text-3); }
 .prefs-nav-caption { padding-inline: var(--ds-s2); color: var(--ds-text-3); font-size: var(--ds-text-caption); margin-block-end: calc(-1 * var(--ds-s4)); }
-.prefs-nav nav { display: flex; flex-direction: column; min-block-size: 0; gap: var(--ds-s1); overflow-y: auto; padding: var(--ds-s1); margin: calc(-1 * var(--ds-s1)); }
-.prefs-nav .prefs-nav-button { flex: none; inline-size: 100%; min-inline-size: 0; block-size: auto; min-block-size: var(--ds-control); justify-content: start; gap: var(--ds-s3); padding: var(--ds-s2); border: 0; background: transparent; color: var(--ds-text-2); white-space: normal; text-align: start; line-height: 1.4; }
+:is(.prefs-nav nav, .context-panel .prefs-categories) { display: flex; flex-direction: column; min-block-size: 0; gap: var(--ds-s1); overflow-y: auto; padding: var(--ds-s1); margin: calc(-1 * var(--ds-s1)); }
+:is(.prefs-nav, .context-panel) .prefs-nav-button { flex: none; inline-size: 100%; min-inline-size: 0; block-size: auto; min-block-size: var(--ds-control); justify-content: start; gap: var(--ds-s3); padding: var(--ds-s2); border: 0; background: transparent; color: var(--ds-text-2); white-space: normal; text-align: start; line-height: 1.4; }
 .prefs-nav-button > span { flex: 1; min-inline-size: 0; overflow-wrap: anywhere; }
 .prefs-nav-button > .ds-icon { flex: none; }
-.prefs-nav .prefs-nav-button:hover { background: var(--ds-hover); }
-.prefs-nav .prefs-nav-button[aria-current='page'] { background: var(--ds-accent-soft); color: var(--ds-accent); }
-.prefs-nav .prefs-nav-button:active { background: var(--ds-press); }
+:is(.prefs-nav, .context-panel) .prefs-nav-button:hover { background: var(--ds-hover); }
+:is(.prefs-nav, .context-panel) .prefs-nav-button[aria-current='page'] { background: var(--ds-accent-soft); color: var(--ds-accent); }
+:is(.prefs-nav, .context-panel) .prefs-nav-button:active { background: var(--ds-press); }
 .prefs-nav-footer { margin-block-start: auto; padding-block: var(--ds-s2); color: var(--ds-text-3); font-size: var(--ds-text-caption); }
 .prefs-nav-footer p { margin-block: var(--ds-s3) var(--ds-s2); color: var(--ds-text-2); }
 .prefs-prefs-tag { display: inline-flex; padding: 2px var(--ds-s2); border: 1px solid var(--ds-line-strong); border-radius: var(--ds-r-sm); }

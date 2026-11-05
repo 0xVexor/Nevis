@@ -1,15 +1,22 @@
+import { createPortal } from 'react-dom'
+import type { PageIndex } from './pageIndex'
+import { buildTaskProjects } from './taskProjects'
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { repo } from './store'
 import { PageIcon } from './PageIcon'
 import type { Page } from './repo'
-import { Button, Checkbox, Icon, IconButton, Screen, dirOf, useUIMotion } from './design-system'
+import { Button, Checkbox, Icon, IconButton, Screen, useUIMotion } from './design-system'
 import { allTasks, loadInbox, saveInbox, setChecked, type InboxTask, type Task } from './taskData'
 import { showToast } from './ui'
 import { t, locale } from './i18n'
 
 /** What the right-hand pane shows: everything, the inbox, or the tasks of one page. */
-type Source = 'all' | 'inbox' | string
+type Source = { kind: 'all' | 'inbox' } | { kind: 'page' | 'project'; id: string }
+
+const ALL_TASKS: Source = { kind: 'all' }
+const sameSource = (a: Source, b: Source) => a.kind === b.kind && (!('id' in a) || ('id' in b && a.id === b.id))
+type Status = 'active' | 'done' | 'all'
 
 /** How long a ticked task stays among the open ones, so the tick is seen before the row moves to Completed. */
 const SETTLE_MS = 700
@@ -32,10 +39,11 @@ interface Item {
  * your to-do lists, the pages that have checklists) with what is still open; on the other the chosen source's open
  * tasks, and its completed ones folded away underneath. Ticking a box here changes the page itself.
  */
-export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onNewList: () => void }) {
+export function Tasks({ panelHost, index, onOpen, onNewList }: { panelHost: HTMLElement | null; index: PageIndex; onOpen: (id: string) => void; onNewList: () => void }) {
   const motionOf = useUIMotion()
   const [tick, setTick] = useState(0)
-  const [source, setSource] = useState<Source>('all')
+  const [source, setSource] = useState<Source>(ALL_TASKS)
+  const [status, setStatus] = useState<Status>('all')
   const [showDone, setShowDone] = useState(false)
   const [draft, setDraft] = useState('')
   const [inbox, setInbox] = useState<InboxTask[]>([])
@@ -80,20 +88,38 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
       const p = repo.get(x.pageId)
       if (p) pages.set(p.id, p)
     }
-    const count = (id: string) => tasks.filter((x) => x.pageId === id && !x.checked).length
-    const all = [...pages.values()].map((page) => ({ page, open: count(page.id) }))
+    const counts = new Map<string, number>()
+    for (const task of tasks) if (!task.checked) counts.set(task.pageId, (counts.get(task.pageId) ?? 0) + 1)
+    const all = [...pages.values()].map((page) => ({ page, open: counts.get(page.id) ?? 0 }))
     return { lists: all.filter((s) => s.page.kind === 'todo'), pages: all.filter((s) => s.page.kind !== 'todo') }
   }, [tasks])
-  // a page that was deleted or emptied while chosen falls back to everything
-  const current: Source = source === 'all' || source === 'inbox' || [...sources.lists, ...sources.pages].some((s) => s.page.id === source) ? source : 'all'
-
-  const shown = items.filter((x) => (current === 'all' ? true : current === 'inbox' ? !!x.inbox : x.page?.id === current))
+  const { projects, projectByPage } = useMemo(() => buildTaskProjects(index, tasks), [index, tasks])
+  // A removed source falls back to the workspace view.
+  const project = source.kind === 'project' ? projects.find(({ folder }) => folder.id === source.id) : undefined
+  const page = source.kind === 'page' ? [...sources.lists, ...sources.pages].find(({ page }) => page.id === source.id)?.page : undefined
+  const current = (source.kind === 'project' && !project) || (source.kind === 'page' && !page) ? ALL_TASKS : source
+  const aggregate = current.kind === 'all' || current.kind === 'project'
+  const shown = items.filter((item) => {
+    switch (current.kind) {
+      case 'all':
+        return true
+      case 'inbox':
+        return !!item.inbox
+      case 'page':
+        return item.page?.id === current.id
+      case 'project':
+        return !!item.page && projectByPage.get(item.page.id) === current.id
+    }
+  })
   const open = shown.filter((x) => !x.checked || settling.includes(x.key))
   const done = shown.filter((x) => x.checked && !settling.includes(x.key))
   const total = shown.length
   const pct = total ? Math.round((shown.filter((x) => x.checked).length / total) * 100) : 0
-  const page = current !== 'all' && current !== 'inbox' ? repo.get(current) : undefined
-  const canAdd = current === 'all' || current === 'inbox'
+  const canAdd = current.kind === 'all' || current.kind === 'inbox'
+  const pickSource = (next: Source) => {
+    setSource(next)
+    setShowDone(false)
+  }
 
   const toggle = (x: Item, next: boolean) => {
     if (next) {
@@ -116,7 +142,7 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
       key={x.key}
       className="ds-list-row tk-row"
       data-done={x.checked || undefined}
-      style={{ '--depth': current === 'all' ? 0 : x.depth } as CSSProperties}
+      style={{ '--depth': aggregate ? 0 : x.depth } as CSSProperties}
       layout={motionOf.reduced ? false : 'position'}
       initial={motionOf.reduced ? false : { opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: 'auto' }}
@@ -145,8 +171,8 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
           </span>
         </Checkbox>
       )}
-      {current === 'all' && (
-        <button type="button" className="tk-from" dir="auto" onClick={() => setSource(x.page ? x.page.id : 'inbox')} title={t('Show only this list')}>
+      {aggregate && (
+        <button type="button" className="tk-from" dir="auto" onClick={() => pickSource(x.page ? { kind: 'page', id: x.page.id } : { kind: 'inbox' })} title={t('Show only this list')}>
           {x.page ? x.page.title || t('Untitled') : t('Inbox')}
         </button>
       )}
@@ -154,7 +180,7 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
   )
 
   const sourceButton = (id: Source, icon: ReactNode, name: string, count: number) => (
-    <button key={id} type="button" className="tk-source" aria-current={current === id || undefined} dir={dirOf(name)} onClick={() => (setSource(id), setShowDone(false))}>
+    <button key={'id' in id ? id.kind + ':' + id.id : id.kind} type="button" className="tk-source" aria-current={sameSource(current, id) || undefined} onClick={() => pickSource(id)}>
       <span className="tk-source-ic">{icon}</span>
       <span className="tk-source-name" dir="auto">
         {name}
@@ -163,30 +189,40 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
     </button>
   )
 
-  const title = current === 'all' ? t('All tasks') : current === 'inbox' ? t('Inbox') : page?.title || t('Untitled')
+  const title = current.kind === 'all' ? t('All tasks') : current.kind === 'inbox' ? t('Inbox') : project?.folder.title || page?.title || t('Untitled')
   const allOpen = items.filter((x) => !x.checked).length
+
+  const sourcesNav = (
+    <nav className="tk-sources" aria-label={t('Task lists')}>
+      {sourceButton(ALL_TASKS, <Icon name="checklist" size={17} />, t('All tasks'), allOpen)}
+      {sourceButton({ kind: 'inbox' }, <Icon name="inbox" size={17} />, t('Inbox'), inbox.filter((x) => !x.checked).length)}
+      {projects.length > 0 && (
+        <>
+          <h2 className="tk-sources-title">{t('Projects')}</h2>
+          {projects.map(({ folder, open }) => sourceButton({ kind: 'project', id: folder.id }, <PageIcon page={folder} />, folder.title || t('Untitled folder'), open))}
+        </>
+      )}
+      <h2 className="tk-sources-title">{t('Lists')}</h2>
+      {sources.lists.map((s) => sourceButton({ kind: 'page', id: s.page.id }, <PageIcon page={s.page} />, s.page.title || t('Untitled'), s.open))}
+      <button type="button" className="tk-source tk-source-new" onClick={onNewList}>
+        <span className="tk-source-ic">
+          <Icon name="plus" size={16} />
+        </span>
+        <span className="tk-source-name">{t('New list')}</span>
+      </button>
+      {sources.pages.length > 0 && (
+        <>
+          <h2 className="tk-sources-title">{t('In pages')}</h2>
+          {sources.pages.map((s) => sourceButton({ kind: 'page', id: s.page.id }, <PageIcon page={s.page} />, s.page.title || t('Untitled'), s.open))}
+        </>
+      )}
+    </nav>
+  )
 
   return (
     <Screen width="wide" title={t('Tasks')} description={allOpen ? t('{n} open across your pages and inbox', { n: num(allOpen) }) : t('Checklist items from all your pages appear here.')}>
       <div className="tk">
-        <nav className="tk-sources" aria-label={t('Task lists')}>
-          {sourceButton('all', <Icon name="checklist" size={17} />, t('All tasks'), allOpen)}
-          {sourceButton('inbox', <Icon name="inbox" size={17} />, t('Inbox'), inbox.filter((x) => !x.checked).length)}
-          <h2 className="tk-sources-title">{t('Lists')}</h2>
-          {sources.lists.map((s) => sourceButton(s.page.id, <PageIcon page={s.page} />, s.page.title || t('Untitled'), s.open))}
-          <button type="button" className="tk-source tk-source-new" onClick={onNewList}>
-            <span className="tk-source-ic">
-              <Icon name="plus" size={16} />
-            </span>
-            <span className="tk-source-name">{t('New list')}</span>
-          </button>
-          {sources.pages.length > 0 && (
-            <>
-              <h2 className="tk-sources-title">{t('In pages')}</h2>
-              {sources.pages.map((s) => sourceButton(s.page.id, <PageIcon page={s.page} />, s.page.title || t('Untitled'), s.open))}
-            </>
-          )}
-        </nav>
+        {panelHost && createPortal(sourcesNav, panelHost)}
 
         <section className="tk-main" aria-labelledby="tk-title">
           <header className="tk-main-head">
@@ -216,25 +252,37 @@ export function Tasks({ onOpen, onNewList }: { onOpen: (id: string) => void; onN
             </form>
           )}
 
-          {open.length > 0 ? (
-            <div className="ds-list ds-list--framed tk-list">
-              <AnimatePresence initial={false}>{open.map(row)}</AnimatePresence>
-            </div>
-          ) : (
-            <div className="ds-empty ds-empty--framed">
-              <Icon name={total ? 'check-circle' : 'checklist'} />
-              <b>{total ? t('All caught up') : t('No tasks here yet')}</b>
-              <span>
-                {total
-                  ? t('Every task here is done')
-                  : canAdd
-                    ? t('Type one above, or add a checklist to any page with /todo')
-                    : t('Open the page and add a checklist with /todo')}
-              </span>
-            </div>
-          )}
+          <div className="tk-status" role="group" aria-label={t('Task status')}>
+            {(['active', 'done', 'all'] as const).map((value) => (
+              <Button key={value} size="sm" variant="ghost" aria-pressed={status === value} onClick={() => setStatus(value)}>
+                {t(value === 'active' ? 'Active' : value === 'done' ? 'Done' : 'All')}
+              </Button>
+            ))}
+          </div>
+          {status !== 'done' &&
+            (open.length > 0 ? (
+              <div className="ds-list ds-list--framed tk-list">
+                <AnimatePresence initial={false}>{open.map(row)}</AnimatePresence>
+              </div>
+            ) : (
+              <div className="ds-empty ds-empty--framed">
+                <Icon name={total ? 'check-circle' : 'checklist'} />
+                <b>{total ? t('All caught up') : t('No tasks here yet')}</b>
+                <span>{total ? t('Every task here is done') : canAdd ? t('Type one above, or add a checklist to any page with /todo') : t('Open the page and add a checklist with /todo')}</span>
+              </div>
+            ))}
+          {status === 'done' &&
+            (done.length ? (
+              <div className="ds-list ds-list--framed tk-list">
+                <AnimatePresence initial={false}>{done.map(row)}</AnimatePresence>
+              </div>
+            ) : (
+              <div className="ds-empty ds-empty--framed">
+                <b>{t('No completed tasks')}</b>
+              </div>
+            ))}
 
-          {done.length > 0 && (
+          {status === 'all' && done.length > 0 && (
             <div className="tk-done">
               <button type="button" className="tk-done-toggle" aria-expanded={showDone} onClick={() => setShowDone((v) => !v)}>
                 <Icon name="chevron-right" size={15} className="tk-done-chev ds-flip" />

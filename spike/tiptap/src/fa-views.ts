@@ -1,6 +1,20 @@
 /** Copy for the Tasks, Flashcards, Templates and Pages table screens. */
 export const FA_VIEWS: Record<string, string> = {
+  // Workspace panels
+  'Resize navigation rail': 'تغییر اندازهٔ نوار ناوبری',
+  'Open Settings': 'باز کردن تنظیمات',
+  'Workspace navigation': 'ناوبری فضای کاری',
+  'Show side panel': 'نمایش پنل کناری',
+  'Hide side panel': 'پنهان کردن پنل کناری',
+  'Resize side panel': 'تغییر اندازهٔ پنل کناری',
+  'Expand all folders': 'باز کردن همهٔ پوشه‌ها',
+  'Collapse all folders': 'بستن همهٔ پوشه‌ها',
+  'Reveal active note': 'نمایش یادداشت فعال در درخت',
   // Tasks
+  Projects: 'پروژه‌ها',
+  'Task status': 'وضعیت کار',
+  Active: 'باز',
+  'No completed tasks': 'کار انجام‌شده‌ای وجود ندارد',
   Task: 'کار',
   'Show only this list': 'فقط همین فهرست',
   'All tasks': 'همهٔ کارها',

@@ -1,8 +1,7 @@
-/* ───── Tasks: the sources on one side, the chosen one's tasks on the other ───── */
-.tk { display: grid; grid-template-columns: minmax(200px, 248px) minmax(0, 1fr); gap: var(--ds-s8); align-items: start; }
+/* ───── Tasks ───── */
 
 /* sources: all, inbox, your lists, pages with checklists; open counts as outlined circles */
-.tk-sources { position: sticky; inset-block-start: var(--ds-s4); display: flex; flex-direction: column; gap: 2px; }
+.tk-sources { display: flex; flex-direction: column; gap: 2px; }
 .tk-sources-title { margin: var(--ds-s5) 0 var(--ds-s1); padding-inline: var(--ds-s3); color: var(--ds-text-3); font-size: var(--ds-text-caption); font-weight: 550; }
 .tk-source { display: flex; align-items: center; gap: var(--ds-s3); inline-size: 100%; min-block-size: var(--ds-control); padding: 0 var(--ds-s3); border: 0; border-radius: var(--ds-r); background: none; color: var(--ds-text-2); font: inherit; text-align: start; cursor: var(--cursor-hand, pointer); transition: background var(--ds-fast), color var(--ds-fast); }
 .tk-source:hover { background: var(--ds-hover); color: var(--ds-text); }
@@ -59,11 +58,5 @@
 .tk-done-body > .tk-list { margin-block-start: var(--ds-s2); }
 
 
-/* narrow: the sources become one scrolling row above the tasks */
-@container (max-width: 720px) {
-  .tk { grid-template-columns: minmax(0, 1fr); gap: var(--ds-s5); }
-  .tk-sources { position: static; flex-direction: row; overflow-x: auto; padding-block-end: var(--ds-s1); }
-  .tk-sources-title { display: none; }
-  .tk-source { flex: none; inline-size: auto; max-inline-size: 220px; }
-  .tk-from { display: none; }
-}
+.tk-status { display: flex; gap: var(--ds-s1); margin-block: var(--ds-s3); }
+.tk-status [aria-pressed='true'] { color: var(--ds-accent); background: var(--ds-accent-soft); }

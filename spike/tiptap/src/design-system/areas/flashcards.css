@@ -3,10 +3,10 @@
 
 /* today's session: a deck on the table with its top card showing, and what starting it means */
 .fc-today { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); align-items: center; gap: var(--ds-s10); padding: var(--ds-s8); border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); }
-.fc-stack { position: relative; display: grid; aspect-ratio: 4 / 3; }
-.fc-stack-card { position: relative; grid-area: 1 / 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--ds-s2); padding: var(--ds-s5); border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-bg); text-align: center; }
-.fc-stack-card:nth-child(1) { transform: translate(10px, 12px) rotate(4deg); background: var(--ds-sunk); }
-.fc-stack-card:nth-child(2) { transform: translate(5px, 6px) rotate(2deg); }
+.fc-stack { position: relative; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); inline-size: 100%; min-inline-size: 0; aspect-ratio: 4 / 3; }
+.fc-stack-card { position: relative; grid-area: 1 / 1; min-inline-size: 0; min-block-size: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--ds-s2); padding: var(--ds-s5); border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-bg); text-align: center; }
+.fc-stack-card:nth-child(1) { transform: translateY(10px) rotate(3deg); background: var(--ds-sunk); }
+.fc-stack-card:nth-child(2) { transform: translateY(5px) rotate(1.5deg); }
 .fc-stack-top { z-index: 1; border-color: var(--ds-line-strong); transition: transform var(--ds-slow) var(--ds-ease); }
 .fc-today:hover .fc-stack-top { transform: translateY(-3px) rotate(-1deg); }
 .fc-stack-top small { max-inline-size: 100%; overflow: hidden; color: var(--ds-text-3); font-size: var(--ds-text-caption); text-overflow: ellipsis; white-space: nowrap; }
@@ -18,7 +18,7 @@
 .fc-start { gap: var(--ds-s3); margin-block-start: var(--ds-s5); block-size: 44px; padding-inline: var(--ds-s6); font-size: var(--ds-text-ui); }
 .fc-start .ds-kbd { border-color: color-mix(in oklab, var(--ds-accent-ink) 45%, transparent); color: var(--ds-accent-ink); }
 .fc-facts { margin-block-start: var(--ds-s6); padding-block-start: var(--ds-s4); border-block-start: 1px solid var(--ds-line); }
-@container (max-width: 640px) { .fc-today { grid-template-columns: minmax(0, 1fr); gap: var(--ds-s6); padding: var(--ds-s5); } .fc-stack { max-inline-size: 260px; } }
+@container (max-width: 640px) { .fc-today { grid-template-columns: minmax(0, 1fr); gap: var(--ds-s6); padding: var(--ds-s5); } .fc-stack { max-inline-size: 260px; justify-self: center; } }
 @media (hover: none) { .fc-start .ds-kbd { display: none; } }
 @media (prefers-reduced-motion: reduce) { .fc-today:hover .fc-stack-top { transform: none; } }
 :root[data-motion='reduce'] .fc-today:hover .fc-stack-top { transform: none; }
