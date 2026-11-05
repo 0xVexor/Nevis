@@ -7,7 +7,8 @@
 /* Top-bar content; shell geometry and counters live in shell.css. */
 .crumbs {
   display: flex;
-  min-width: 0;
+  flex: 0 1 auto;
+  min-inline-size: 0;
   overflow: hidden;
   align-items: center;
   padding: 0;
@@ -27,17 +28,17 @@
 }
 .crumb-home { display: grid; place-items: center; flex: none; width: 28px; height: var(--ds-control-sm); padding: 0; border: 0; border-radius: var(--ds-r-sm); background: none; color: var(--ds-text-2); cursor: var(--cursor-hand, pointer); transition: background var(--ds-fast), color var(--ds-fast); }
 .crumb-home:hover { background: var(--ds-hover); color: var(--ds-text); }
-.crumb-sep { display: grid; place-items: center; width: 14px; height: var(--ds-control-sm); padding: 0; color: var(--ds-text-3); }
+.crumb-sep { display: grid; flex: none; place-items: center; width: 14px; height: var(--ds-control-sm); padding: 0; color: var(--ds-text-3); }
 :root[dir='rtl'] .crumb-sep svg { transform: scaleX(-1); }
-.crumb button, .crumb-folder, .crumb-cur { display: inline-flex; align-items: center; gap: var(--ds-s2); height: var(--ds-control-sm); padding: 0 var(--ds-s2); border: 0; border-radius: var(--ds-r-sm); background: transparent; color: var(--ds-text-2); font-size: var(--ds-text-small); line-height: 1; max-width: 200px; box-shadow: none; }
+.crumb button, .crumb-folder, .crumb-cur { display: inline-flex; align-items: center; gap: var(--ds-s2); height: var(--ds-control-sm); padding: 0 var(--ds-s2); border: 0; border-radius: var(--ds-r-sm); background: transparent; color: var(--ds-text-2); font-size: var(--ds-text-small); line-height: 1; min-inline-size: 0; max-inline-size: 200px; overflow: hidden; white-space: nowrap; box-shadow: none; }
 .crumb button { cursor: var(--cursor-hand, pointer); }
 .crumb button:hover { background: var(--ds-hover); color: var(--ds-text); }
 .crumb button .ic, .crumb-folder svg, .crumb-cur svg { display: grid; place-items: center; flex: none; }
-.crumb .crumb-t, .crumb-folder > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumb .crumb-t, .crumb-folder > span { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* ancestors shrink before the current page does; the hidden middle ones sit behind "…" */
-.crumb { flex: 0 1 auto; }
-/* the current page keeps its whole name; only a name wider than half the window is shortened */
-.crumb.last { flex: 0 0 auto; max-inline-size: 50vw; }
+.crumb { flex: 0 2 auto; overflow: hidden; }
+/* Keep the current page wider than its ancestors when the bar gets crowded. */
+.crumb.last { flex: 0 1 auto; }
 .crumb.last button { max-inline-size: 100%; }
 .crumb-more { flex: none; }
 .crumb-more button { padding-inline: var(--ds-s2); color: var(--ds-text-3); letter-spacing: 0.1em; }
@@ -53,6 +54,7 @@
 }
 .tb-group {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 2px;
   padding: 0;

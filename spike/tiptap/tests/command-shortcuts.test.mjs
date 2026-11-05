@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { commandMatches } from '../src/shortcutCommands.ts'
+import { commandMatches, matchesSidebarShortcut } from '../src/shortcutCommands.ts'
 import { pauseBindings } from '../src/shortcutBindings.ts'
 
 test('editor and review shortcuts use physical keys and pause during recording', () => {
@@ -15,6 +15,19 @@ test('editor and review shortcuts use physical keys and pause during recording',
     resume()
   }
   assert.equal(commandMatches(bold, 'Bold'), true)
+})
+
+test('panel shortcut supports both platforms and leaves Bold to the editor', () => {
+  const physicalB = { code: 'KeyB', key: 'ب' }
+  const windows = { ...physicalB, ctrlKey: true }
+  const mac = { ...physicalB, metaKey: true }
+  const editing = { closest: () => ({}) }
+  assert.equal(matchesSidebarShortcut(windows), true)
+  assert.equal(matchesSidebarShortcut(mac), true)
+  assert.equal(matchesSidebarShortcut({ ...mac, target: editing }), false)
+  assert.equal(matchesSidebarShortcut({ ...mac, defaultPrevented: true }), false)
+  assert.equal(matchesSidebarShortcut({ ...mac, repeat: true }), false)
+  assert.equal(matchesSidebarShortcut({ code: 'Digit1', key: '1', altKey: true, target: editing }), true)
 })
 
 test('the editor command catalog starts with writing and keeps code languages searchable', async () => {
