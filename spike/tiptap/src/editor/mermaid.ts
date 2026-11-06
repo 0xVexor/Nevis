@@ -14,10 +14,10 @@ let theme = ''
 let seq = 0
 
 /** Loaded on first use only (the library is large); re-initialised when the light/dark theme changes. */
-async function mermaid(): Promise<Mermaid> {
+async function mermaid(dark?: boolean): Promise<Mermaid> {
   lib ??= import('mermaid').then((m) => m.default)
   const m = await lib
-  const dark = getComputedStyle(document.body).colorScheme.includes('dark') || document.documentElement.dataset.theme === 'dark'
+  dark ??= getComputedStyle(document.body).colorScheme.includes('dark') || document.documentElement.dataset.theme === 'dark'
   const want = dark ? 'dark' : 'default'
   if (theme !== want) {
     m.initialize({ startOnLoad: false, theme: want, securityLevel: 'strict', fontFamily: 'inherit' })
@@ -43,10 +43,10 @@ const remember = (key: string, r: Rendered) => {
   if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value!)
 }
 
-export function renderDiagram(code: string): Promise<Rendered> {
+export function renderDiagram(code: string, dark?: boolean): Promise<Rendered> {
   const text = cleanMermaid(code)
   const run = async (): Promise<Rendered> => {
-    const m = await mermaid()
+    const m = await mermaid(dark)
     const key = `${theme}\n${text}`
     const hit = cache.get(key)
     if (hit) return hit

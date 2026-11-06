@@ -9,6 +9,8 @@ import { getDatabase } from '../database/runtime'
 import { createDocumentReadRuntime } from '../platform/documentEnvironment'
 import { McpDocumentSession } from '../documents/mcp'
 import type { McpConnection, McpPolicy } from '../documents/mcp'
+import { slideContentProblem } from '../decks/slideRendering'
+import { deckPdfAvailable, printDeck } from '../decks/printDeck'
 
 export interface McpStatus {
   writesAvailable: boolean
@@ -73,6 +75,11 @@ export async function startMcpBridge() {
   const expectedVaultId = (await vaultInfo()).id,
     owner = crypto.randomUUID(),
     runtime = createDocumentReadRuntime()
+  const exportDeckPdf = await deckPdfAvailable().catch(() => false) ? async (title: string, deck: import('../decks/model').Deck) => {
+    const file = await printDeck(title, deck, true)
+    if (!file) throw { code: 'PERSISTENCE_FAILED' }
+    return file
+  } : undefined
   let alive = true
   const sessions = new Map<string, McpDocumentSession>(),
     cancelled = new Set<string>()
@@ -103,7 +110,7 @@ export async function startMcpBridge() {
         let session = sessions.get(connection.revision)
         if (!session) {
           close()
-          session = new McpDocumentSession(repo, connection, runtime, () => alive && !storageFrozen(), connection.writesAvailable === true, markdownToNodes, databaseTools, createIconCatalog())
+          session = new McpDocumentSession(repo, connection, runtime, () => alive && !storageFrozen(), connection.writesAvailable === true, markdownToNodes, databaseTools, createIconCatalog(), slideContentProblem, exportDeckPdf)
           sessions.set(connection.revision, session)
         }
         let result

@@ -16,6 +16,7 @@ export const forestLight = { paper: '#f1f4ec', ink: '#183a30', accent: '#49621e'
 export const forestDark = { paper: '#183a30', ink: '#f1f4ec', accent: '#c7e875', border: '#526b5f', callout: '#24483c' }
 
 const forestCode = { paper: '#183a30', ink: '#f1f4ec', keyword: '#e1efa9', string: '#f1d28a', type: '#b0dcc4', comment: '#b3c5b9' }
+const forestDarkCode = { ...forestCode, paper: '#102b23' }
 const calmCode = { paper: '#202429', ink: '#e9eee9', keyword: '#d2c4ff', string: '#f1d28a', type: '#99d9ca', comment: '#b6bfc1' }
 const palettes = {
   'calm-light': { paper: '#fcfcfb', ink: '#222923', accent: '#087f74', border: '#e4e7e2', callout: '#e0efeb' },
@@ -30,7 +31,7 @@ export function deckThemeForAppearance(preset: AppearancePreset, dark: boolean):
 }
 
 export function themeColors(theme: DeckTheme) {
-  return { ...palettes[theme], code: theme.startsWith('forest-') ? forestCode : calmCode }
+  return { ...palettes[theme], code: theme === 'forest-dark' ? forestDarkCode : theme === 'forest-light' ? forestCode : calmCode }
 }
 
 export function syntaxColors(code: ReturnType<typeof themeColors>['code']): Record<string, string> {

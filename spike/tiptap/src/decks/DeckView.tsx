@@ -12,11 +12,12 @@ import type { Deck, Slide } from './model'
 import { decodeDeck, encodeDeck } from './storage'
 import { printDeck } from './printDeck'
 import { SlashCommand } from '../editor/slash'
+import { ImageFiles } from '../editor/image'
 import { CommandPalette, closeCommandPalette, openCommandPalette } from '../editor/commandPalette'
 import { slideActions, slideCommands } from './slideCommands'
 import './decks.css'
 
-import { renderSlide, slideContentProblem, slideExtensions } from './slideRendering'
+import { slideContentProblem, slideExtensions } from './slideRendering'
 
 function SlideEditor({
   pageId,
@@ -40,7 +41,7 @@ function SlideEditor({
     [pageId],
   )
   const editingExtensions = useMemo(
-    () => [...slideExtensions, SlashCommand.configure({ allowedCommands: slideCommands, extraCommands: extra }), CommandPalette.configure({ allowedCommands: slideCommands, extraCommands: extra })],
+    () => [...slideExtensions, ImageFiles, SlashCommand.configure({ allowedCommands: slideCommands, extraCommands: extra }), CommandPalette.configure({ allowedCommands: slideCommands, extraCommands: extra })],
     [extra],
   )
   const editor = useEditor({
@@ -151,7 +152,7 @@ export function DeckView({ page, readOnly, onChange, onError }: { page: Page; re
         <Button
           size="sm"
           onClick={() =>
-            void printDeck(page.title, deck, renderSlide).catch((error) =>
+            void printDeck(page.title, deck).catch((error) =>
               onError(error instanceof RangeError ? t('Slide {n} does not fit on a PDF page.', { n: Number(error.message) }) : t('Could not print the deck.')),
             )
           }

@@ -315,7 +315,8 @@ export const CodeBlock = CodeBlockLowlight.extend({
         // while no language is chosen, show what the detector currently sees
         const seen = id ? null : detectLanguage(n.textContent)
         auto.text = seen ? `${t('Auto-detect')} · ${t(nameOf(seen))}` : t('Auto-detect')
-        diag.hidden = !(n.attrs.language === 'mermaid' || looksLikeMermaid(n.textContent))
+        diag.hidden = !editor.schema.nodes.mermaid || !(n.attrs.language === 'mermaid' || looksLikeMermaid(n.textContent))
+        dom.toggleAttribute('data-compact', n.attrs.slideStyle === 'compact')
         trigger.innerHTML =
           '<span class="cl-t"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
         ;(trigger.querySelector('.cl-t') as HTMLElement).textContent = select.selectedOptions[0]?.text ?? ''

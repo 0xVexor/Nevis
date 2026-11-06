@@ -1,5 +1,123 @@
 {
   "tools": {
+    "export_deck_pdf": {
+      "input": {
+        "documentId": "d1",
+        "expectedRevision": "r1"
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "documentId": "d1",
+          "revision": "r1",
+          "path": "/tmp/nevis-deck-example.pdf",
+          "pages": 1
+        }
+      }
+    },
+    "list_decks": {
+      "input": {},
+      "output": {
+        "ok": true,
+        "result": {
+          "decks": [
+            {
+              "documentId": "d1",
+              "revision": "r1",
+              "title": "Technical slides",
+              "slideIds": [
+                "s1"
+              ]
+            }
+          ],
+          "nextAfterId": null
+        }
+      }
+    },
+    "read_deck": {
+      "input": {
+        "documentId": "d1",
+        "slideId": "s1"
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "documentId": "d1",
+          "revision": "r1",
+          "title": "Technical slides",
+          "slideIds": [
+            "s1"
+          ],
+          "slide": {
+            "slideId": "s1",
+            "structured": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "create_deck": {
+      "input": {
+        "operationId": "deck-create",
+        "parentId": null,
+        "title": "Technical slides",
+        "slides": [
+          {
+            "markdown": "# Cover"
+          }
+        ]
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "documentId": "d1",
+          "revision": "r1",
+          "receipt": {
+            "operationId": "op1",
+            "documentId": "d1",
+            "beforeRevision": null,
+            "afterRevision": "r1",
+            "committedAt": 1793059200000,
+            "undoExpiresAt": 1793664000000
+          },
+          "replayed": false
+        }
+      }
+    },
+    "edit_deck": {
+      "input": {
+        "documentId": "d1",
+        "expectedRevision": "r1",
+        "operationId": "deck-edit",
+        "change": {
+          "kind": "replace_slide",
+          "slideId": "s1",
+          "markdown": "# New title"
+        }
+      },
+      "output": {
+        "ok": true,
+        "result": {
+          "documentId": "d1",
+          "revision": "r2",
+          "receipt": {
+            "operationId": "op2",
+            "documentId": "d1",
+            "beforeRevision": "r1",
+            "afterRevision": "r2",
+            "committedAt": 1793059200000,
+            "undoExpiresAt": 1793664000000
+          },
+          "replayed": false
+        }
+      }
+    },
     "list_documents": {
       "input": {
         "parentId": null,

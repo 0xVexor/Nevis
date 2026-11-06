@@ -24,9 +24,13 @@ export interface DeckComponent {
 export const defaultDeckAccent = '#087f74'
 export const calloutComponent: DeckComponent = { id: 'callout', name: 'Callout', emphasis: true }
 
-export function deckStyle(deck: Deck, slide?: Slide): Record<string, string> {
+export function slideTheme(deck: Deck, slide?: Slide): DeckTheme {
   const theme = deck.theme ?? 'calm-light'
-  const colors = themeColors(slide?.tone === 'dark' ? (theme.startsWith('forest-') ? 'forest-dark' : 'calm-dark') : theme)
+  return slide?.tone === 'dark' ? (theme.startsWith('forest-') ? 'forest-dark' : 'calm-dark') : theme
+}
+
+export function deckStyle(deck: Deck, slide?: Slide): Record<string, string> {
+  const colors = themeColors(slideTheme(deck, slide))
   const components = Object.fromEntries([calloutComponent, ...(deck.components ?? [])].map(({ id, emphasis }) => [`--deck-component-${id}`, emphasis ? 'var(--deck-accent)' : 'var(--deck-border)']))
   return {
     '--deck-accent': deck.accent ?? colors.accent,
