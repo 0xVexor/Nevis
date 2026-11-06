@@ -15,6 +15,20 @@ const NONE = { reduced: true, transition: INSTANT, spring: INSTANT } as const
 /** True when the system or the app's own Reduce motion setting asks for no animation. For event handlers; components use useUIMotion. */
 export const prefersReducedMotion = () => document.documentElement.dataset.motion === 'reduce' || matchMedia('(prefers-reduced-motion: reduce)').matches
 
+/** A CSS time in milliseconds. The build minifies 300ms to .3s, so the unit is read, not assumed. */
+export const cssMs = (value: string) => {
+  const match = /^\s*(-?[\d.]+)(ms|s)?\s*$/i.exec(value)
+  if (!match) return NaN
+  const n = parseFloat(match[1])
+  return match[2]?.toLowerCase() === 's' ? n * 1000 : n
+}
+
+/** A motion token (--ds-fast, --ds-base, --ds-slow) in milliseconds, for animations started from script. */
+export const motionMs = (token: string, fallback: number) => {
+  const ms = cssMs(getComputedStyle(document.documentElement).getPropertyValue(token))
+  return Number.isFinite(ms) ? ms : fallback
+}
+
 /** Transitions that honour the system setting and the app's Reduce motion preference. The returned objects are shared constants. */
 export function useUIMotion() {
   const system = useReducedMotion()

@@ -11,7 +11,7 @@ import { hoveredSnapBlock, snapBlockAtElement } from './snapHover'
 import { isSectionDragSurface } from './snapSurface'
 import { setLayoutInteraction } from './layoutInteraction'
 import { DS_ICONS } from '../design-system/iconData'
-import { prefersReducedMotion } from '../design-system/motion'
+import { motionMs, prefersReducedMotion } from '../design-system/motion'
 import type { Node as PMNode } from '@tiptap/pm/model'
 
 const MIME = 'application/x-nevis-block-move'
@@ -21,8 +21,7 @@ const ROOM = 12
 const EDGE_RAMP = 350
 /** How far into the text, in pixels, the pointer must be before a drag may put blocks side by side; the margin reorders. */
 const TEXT_INSET = 6
-/** A motion token in milliseconds, and the easing token, for animations started from script. */
-const motionMs = (token: string, fallback: number) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(token)) || fallback
+/** The easing token, for animations started from script. */
 const motionEase = () => getComputedStyle(document.documentElement).getPropertyValue('--ds-ease').trim() || 'ease-out'
 /** No animation: the Reduce motion settings, or a host without media queries (the tests' document), where nothing is drawn anyway. */
 const stillMotion = () => typeof matchMedia !== 'function' || prefersReducedMotion()

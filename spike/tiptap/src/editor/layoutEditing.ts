@@ -21,7 +21,8 @@ export function editAcrossColumns(state: EditorState, replacement?: string | Sli
     run = null
   }
   state.doc.forEach((node, pos) => {
-    if (node.type.name === GROUP) {
+    // A layout the selection takes in whole (select all, say) goes with it, rather than leaving its empty columns behind.
+    if (node.type.name === GROUP && !(from <= pos && to >= pos + node.nodeSize)) {
       flush()
       node.forEach((col, offset) => {
         const start = pos + 2 + offset,
@@ -64,8 +65,11 @@ export function editAcrossColumns(state: EditorState, replacement?: string | Sli
     }
     let at = tr.mapping.map(focusFlow, -1) + focusOffset
     at = Math.max(0, Math.min(at, tr.doc.content.size))
+    // Deleting everything leaves the empty paragraph a new page starts with: the caret, and any typing, go into it.
+    const blank = tr.doc.nodeAt(at)
+    if (tr.doc.resolve(at).depth === 0 && blank?.type.name === 'paragraph' && !blank.content.size) at++
     // Replacing a root block must not insert the replacement into an unrelated following group.
-    if ((replacement != null || split) && tr.doc.resolve(at).depth === 0) {
+    else if ((replacement != null || split) && tr.doc.resolve(at).depth === 0) {
       tr.insert(at, state.schema.nodes.paragraph.create())
       at++
     }

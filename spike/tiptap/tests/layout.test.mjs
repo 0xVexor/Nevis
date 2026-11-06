@@ -6,7 +6,7 @@ import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table
 import Image from '@tiptap/extension-image'
 import { Callout, Toggle } from '../src/editor/blocks.ts'
 import StarterKit from '@tiptap/starter-kit'
-import { NodeSelection, TextSelection, EditorState } from '@tiptap/pm/state'
+import { AllSelection, NodeSelection, TextSelection, EditorState } from '@tiptap/pm/state'
 import { history, undo, redo, undoDepth } from '@tiptap/pm/history'
 import { Fragment } from '@tiptap/pm/model'
 import { LayoutGroup, LayoutColumn, LayoutSafety } from '../src/editor/layout.ts'
@@ -397,4 +397,24 @@ test('thirty independent groups retain every block through repeated structural e
   assert.ok(layoutStructureValid(h.state.doc))
   h.state.doc.check()
   t.diagnostic(`Structural edits on 30 groups: ${(performance.now() - started).toFixed(1)} ms; no formal performance budget is claimed.`)
+})
+
+test('deleting a selection that takes in whole layouts removes them instead of leaving empty columns', () => {
+  let state = EditorState.create({ schema, doc: fixture() })
+  state = state.apply(state.tr.setSelection(new AllSelection(state.doc)))
+  let tr = editAcrossColumns(state)
+  assert.ok(tr)
+  let next = state.apply(tr)
+  assert.equal(next.doc.childCount, 1)
+  assert.equal(next.doc.firstChild.type.name, 'paragraph')
+  assert.equal(next.doc.textContent, '')
+  next = state.apply(editAcrossColumns(state, 'x'))
+  assert.equal(next.doc.childCount, 1)
+  assert.equal(next.doc.textContent, 'x')
+  // from inside the full-width text to the end: the last layout goes, the text before the selection stays
+  state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, position(state.doc, 'FULL') + 3, state.doc.content.size)))
+  next = state.apply(editAcrossColumns(state))
+  assert.equal(next.doc.childCount, 3)
+  assert.equal(next.doc.lastChild.textContent, 'FU')
+  next.doc.check()
 })
