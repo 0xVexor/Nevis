@@ -25,7 +25,9 @@
 .layout-protection pre { max-height: 400px; overflow: auto; white-space: pre-wrap; font-size: var(--ds-text-caption); direction: ltr; }
 .layout-snap-hover-outline[hidden], .layout-snap-column-highlight[hidden], .layout-snap-picker[hidden] { display: none; }
 .layout-snap-picker:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
-.layout-snap-hover-outline { position: fixed; z-index: var(--ds-z-drag); pointer-events: none; box-sizing: border-box; background: var(--ds-accent-faint); border: 1px solid transparent; border-radius: var(--ds-r-sm); }
+/* the block the grip belongs to: tinted only while the pointer is on the grip or a block's drag strip, or while grabbing */
+.layout-snap-hover-outline { position: fixed; z-index: var(--ds-z-drag); pointer-events: none; box-sizing: border-box; background: transparent; border: 1px solid transparent; border-radius: var(--ds-r-sm); transition: background var(--ds-fast) var(--ds-ease); }
+.layout-snap-hover-outline[data-strong] { background: var(--ds-accent-faint); }
 .tiptap.layout-surface-hover, .tiptap.layout-surface-armed { cursor: var(--cursor-grab, grab); }
 .tiptap.layout-dragging { cursor: var(--cursor-grabbing, grabbing); user-select: none; }
 .layout-snap-column-highlight { position: fixed; z-index: calc(var(--ds-z-drag) + 1); pointer-events: none; box-sizing: border-box; border: 1px solid var(--ds-accent-line); border-radius: var(--ds-r-sm); background: var(--ds-accent-faint); }

@@ -65,6 +65,8 @@ export const DragHandle = Extension.create({
         view(view) {
           const host = view.dom.parentElement
           if (!host) return {}
+          // the hover follows the pointer over the whole page, margins included: the grip stands in the margin beside the text
+          const area: HTMLElement = view.dom.closest<HTMLElement>('.scroller') ?? host
           // The landing preview. Direction is fixed so the column order can be drawn as the page shows it.
           const overlay = document.createElement('div')
           overlay.className = 'ds-snap-preview'
@@ -225,10 +227,19 @@ export const DragHandle = Extension.create({
             clearTimeout(gripTimer)
             if (!overGrip) gripTimer = window.setTimeout(hideGrip, 220)
           }
+          // The outline marks the block the grip belongs to. It is drawn faintly only while it matters: the pointer on the grip, on a
+          // block's own drag strip, or grabbing. Moving over text leaves the page calm.
+          const markOutline = (on: boolean) => {
+            if (on) hoverOutline.dataset.strong = ''
+            else delete hoverOutline.dataset.strong
+          }
           const hide = () => {
             cancelAnimationFrame(hoverFrame)
             hoverFrame = 0
+            // leaving the page for the grip (it lives outside it) keeps the block it belongs to marked
+            if (overGrip && gripPos >= 0 && !session) return
             hoverOutline.hidden = true
+            markOutline(false)
             pos = -1
             hoverPoint = null
             view.dom.classList.remove('layout-surface-hover')
@@ -279,6 +290,7 @@ export const DragHandle = Extension.create({
             view.dom.classList.remove('layout-dragging', 'layout-snap-picking', 'layout-surface-hover')
             setLayoutInteraction(view.dom, 'idle')
             hoverOutline.hidden = true
+            markOutline(false)
             pos = -1
             hoverPoint = null
             if (message && wasActive) announce(message)
@@ -619,11 +631,20 @@ export const DragHandle = Extension.create({
             const width = 24,
               gap = 12 // clear of the block, so the grip never sits on its text or bullet
             const x = Math.min(Math.max(rtl ? r.right + gap : r.left - width - gap, 2), innerWidth - width - 2)
+            // level with the block's first line of text (a heading's line is taller than a paragraph's); other blocks at their top
+            const height = grip.offsetHeight || 28
+            let first = r.top + 2
+            if (/^(P|H[1-6]|BLOCKQUOTE|UL|OL)$/.test(dom.tagName)) {
+              const line = dom.tagName === 'UL' || dom.tagName === 'OL' ? (dom.querySelector('p') ?? dom) : dom
+              const cs = getComputedStyle(line)
+              const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 16) * 1.6
+              first = line.getBoundingClientRect().top + (parseFloat(cs.paddingTop) || 0) + (lineHeight - height) / 2
+            }
             // never over the top bar or the formatting toolbar: it slides down with a block that scrolled under them, and goes once the block has
             const top = visibleTop()
             if (r.bottom < top + width) return hideGrip()
             grip.style.left = `${x}px`
-            grip.style.top = `${Math.max(r.top, top) + 2}px`
+            grip.style.top = `${Math.max(first, top + 2)}px`
             grip.dataset.show = 'true'
             gripPos = start
           }
@@ -640,6 +661,7 @@ export const DragHandle = Extension.create({
             const hit = document.elementFromPoint(hoverPoint.x, hoverPoint.y)
             // Only a block's own drag surface (table, code, drawing...) is draggable here; text and blank space select.
             const draggable = !!hit?.closest('[data-layout-drag-surface]')
+            markOutline(draggable || overGrip)
             view.dom.classList.toggle('layout-surface-hover', draggable)
             setLayoutInteraction(view.dom, draggable ? 'hover' : 'idle')
           }
@@ -649,7 +671,9 @@ export const DragHandle = Extension.create({
           const onMove = (e: MouseEvent) => {
             if (!view.editable || view.composing || session || pointer || view.dom.querySelector('.layout-resizing')) return
             hoverModality = 'pointer'
-            if (!isSectionDragSurface(e.target)) {
+            // Every block shows its grip, whatever sits inside it (a link, a table cell, a checkbox): which block is under the
+            // pointer is decided by geometry. Only a popup or a control outside the text hides it.
+            if (e.target instanceof Element && !view.dom.contains(e.target) && e.target.closest('button, input, textarea, select, .ds-pop, .toolbar, .ds-toolbar')) {
               hide()
               return
             }
@@ -729,6 +753,7 @@ export const DragHandle = Extension.create({
             cancelAnimationFrame(hoverFrame)
             hoverFrame = 0
             positionHover(source)
+            markOutline(true)
             view.dom.classList.add('layout-surface-armed')
             try {
               view.dom.setPointerCapture(e.pointerId)
@@ -758,6 +783,7 @@ export const DragHandle = Extension.create({
             cancelAnimationFrame(hoverFrame)
             hoverFrame = 0
             positionHover(source)
+            markOutline(true)
             view.dom.classList.add('layout-surface-armed')
             try {
               grip.setPointerCapture(e.pointerId)
@@ -768,16 +794,17 @@ export const DragHandle = Extension.create({
           const gripEnter = () => {
             overGrip = true
             clearTimeout(gripTimer)
+            if (gripPos >= 0 && !session) (positionHover(gripPos), markOutline(true))
           }
           const gripLeave = () => {
             overGrip = false
-            if (!pointer && !session) scheduleGripHide()
+            if (!pointer && !session) (markOutline(false), scheduleGripHide())
           }
           grip.addEventListener('pointerdown', gripDown)
           grip.addEventListener('pointerenter', gripEnter)
           grip.addEventListener('pointerleave', gripLeave)
           const move = (e: PointerEvent) => {
-            if (!session && !pointer && e.target instanceof Node && !host.contains(e.target)) hide()
+            if (!session && !pointer && e.target instanceof Node && !area.contains(e.target) && !grip.contains(e.target)) hide()
             if (session?.mode === 'pick' && e.isPrimary) {
               if (picker.contains(e.target as globalThis.Node)) return
               keyboardChoice = null
@@ -1009,12 +1036,12 @@ export const DragHandle = Extension.create({
           }
           const repositionHover = () => {
             geometryChanged()
-            if (session || pointer || hoverOutline.hidden) return
+            if (session || pointer || (hoverOutline.hidden && gripPos < 0)) return
             if (hoverModality === 'pointer' && hoverPoint) scheduleHover()
             else hide()
           }
-          host.addEventListener('mousemove', onMove)
-          host.addEventListener('mouseleave', hide)
+          area.addEventListener('mousemove', onMove)
+          area.addEventListener('mouseleave', hide)
           host.addEventListener('focusin', onFocus)
           view.dom.addEventListener('pointerdown', surfaceDown, true)
           view.dom.addEventListener('layout-section-menu', sectionMenu)
@@ -1061,8 +1088,8 @@ export const DragHandle = Extension.create({
               clearTimeout(menuClickTimer)
               clearTimeout(announcementTimer)
               cancelAnimationFrame(hoverFrame)
-              host.removeEventListener('mousemove', onMove)
-              host.removeEventListener('mouseleave', hide)
+              area.removeEventListener('mousemove', onMove)
+              area.removeEventListener('mouseleave', hide)
               host.removeEventListener('focusin', onFocus)
               view.dom.removeEventListener('pointerdown', surfaceDown, true)
               view.dom.removeEventListener('layout-section-menu', sectionMenu)
