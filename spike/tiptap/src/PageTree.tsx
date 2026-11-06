@@ -18,7 +18,8 @@ export interface RowProps {
   openOnClick: boolean
   collapsed: Set<string>
   onToggle: (id: string) => void
-  onOpen: (id: string) => void
+  /** focus: move the keys to the opened page (Enter, a double-click); a single-click open leaves them in the tree, like a preview */
+  onOpen: (id: string, focus?: boolean) => void
   onAdd: (parentId: string) => void
   onMenu: (id: string, rect: DOMRect) => void
   onMove: (id: string, parentId: string | null, beforeId: string | null) => void
@@ -40,7 +41,7 @@ function rowBehaviour(props: Omit<RowProps, 'page' | 'depth'>, page: Page, box: 
     'aria-expanded': box ? open : undefined,
     'aria-level': level,
     onClick: () => (props.openOnClick && !folder ? (props.onSelect(page.id), props.onOpen(page.id)) : props.onSelect(page.id)),
-    onDoubleClick: () => (folder ? props.onToggle(page.id) : props.onOpen(page.id)),
+    onDoubleClick: () => (folder ? props.onToggle(page.id) : props.onOpen(page.id, true)),
     onContextMenu: (e: MouseEvent) => (e.preventDefault(), e.stopPropagation(), props.onSelect(page.id), props.onMenu(page.id, new DOMRect(e.clientX, e.clientY, 0, 0))),
   } as const
 }
@@ -50,12 +51,22 @@ function rowBehaviour(props: Omit<RowProps, 'page' | 'depth'>, page: Page, box: 
  * ↑ ↓ move, → opens a folder or steps into it, ← closes it or steps out to its parent, Home / End, Enter opens, the menu key
  * (or Shift+F10) opens the row's menu, and typing finds the next row whose title contains the letters typed (Esc clears).
  */
-export function TreeFrame({ label, compact = false, selectedId, onSelect, onOpen, onToggle, onMenu, isOpenBox, parentOf, className, children }: {
+export function TreeFrame({
+  label,
+  selectedId,
+  onSelect,
+  onOpen,
+  onToggle,
+  onMenu,
+  isOpenBox,
+  parentOf,
+  className,
+  children,
+}: {
   label: string
-  compact?: boolean
   selectedId: string | null
   onSelect: (id: string) => void
-  onOpen: (id: string) => void
+  onOpen: (id: string, focus?: boolean) => void
   onToggle: (id: string) => void
   onMenu: (id: string, rect: DOMRect) => void
   /** null: not a folder or a page with subpages; otherwise whether it is open */
@@ -65,10 +76,14 @@ export function TreeFrame({ label, compact = false, selectedId, onSelect, onOpen
   children: ReactNode
 }) {
   const frame = useRef<HTMLDivElement>(null)
-  const [query, setShownQuery] = useState('')
+  const [search, setSearch] = useState({ query: '', found: true })
+  const query = search.query
   // the letters typed so far live in a ref too: keys can arrive faster than React re-renders
   const typed = useRef('')
-  const setQuery = (q: string) => ((typed.current = q), setShownQuery(q))
+  const setQuery = (q: string, found = true) => {
+    typed.current = q
+    setSearch({ query: q, found })
+  }
   const idle = useRef(0)
   const rows = () => [...(frame.current?.querySelectorAll<HTMLElement>('[data-tree-page]') ?? [])]
   const rowOf = (id: string | null) => (id ? rows().find((r) => r.dataset.treePage === id) : undefined)
@@ -120,13 +135,13 @@ export function TreeFrame({ label, compact = false, selectedId, onSelect, onOpen
         const into = (e.key === 'ArrowRight') !== (getComputedStyle(frame.current!).direction === 'rtl')
         const open = isOpenBox(id)
         if (into) return open === false ? onToggle(id) : open ? go(all[at + 1]) : undefined
-        if (open && !compact) return onToggle(id)
+        if (open) return onToggle(id)
         return go(rowOf(parentOf(id)))
       }
       case 'Enter':
         if (!id) return
         take()
-        return all[at].classList.contains('folder') ? onToggle(id) : onOpen(id)
+        return all[at].classList.contains('folder') ? onToggle(id) : onOpen(id, true)
       case 'ContextMenu':
         if (!id) return
         take()
@@ -142,14 +157,17 @@ export function TreeFrame({ label, compact = false, selectedId, onSelect, onOpen
       case 'Backspace':
         if (!typed.current) return
         take()
-        setQuery(typed.current.slice(0, -1))
+        {
+          const shorter = typed.current.slice(0, -1)
+          setQuery(shorter, !shorter || !!find(shorter, 0))
+        }
         return clearSoon()
     }
     if (e.key.length === 1 && (e.key !== ' ' || typed.current)) {
       take()
       const next = typed.current + e.key
       const hit = find(next, Math.max(0, at)) // stay on the current row while it still matches
-      setQuery(next)
+      setQuery(next, !!hit)
       clearSoon()
       if (hit) go(hit)
     }
@@ -172,7 +190,7 @@ export function TreeFrame({ label, compact = false, selectedId, onSelect, onOpen
       }}
     >
       {query && (
-        <div className={'tree-search' + (find(query, 0) ? '' : ' none')} aria-live="polite">
+        <div className={'tree-search' + (search.found ? '' : ' none')} aria-live="polite">
           <Icon name="search" size={13} />
           <span dir="auto">{query}</span>
         </div>
@@ -268,7 +286,9 @@ export function TreeRow(props: RowProps) {
   return (
     <>
       <div
-        className={'row tree' + (folder ? ' folder' : '') + (leaf ? ' leaf' : '') + (page.id === currentId ? ' cur' : '') + (page.id === props.selectedId ? ' sel' : '') + (zone ? ' drop-' + zone : '')}
+        className={
+          'row tree' + (folder ? ' folder' : '') + (leaf ? ' leaf' : '') + (page.id === currentId ? ' cur' : '') + (page.id === props.selectedId ? ' sel' : '') + (zone ? ' drop-' + zone : '')
+        }
         data-tree-page={page.id}
         dir={dirOf(page.title)}
         draggable

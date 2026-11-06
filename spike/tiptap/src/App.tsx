@@ -197,8 +197,79 @@ export default function App() {
   const toggleContext = useCallback(() => setContextOpen(!sideOpen), [setContextOpen, sideOpen])
   const hideContext = () => {
     setContextOpen(false)
-    requestAnimationFrame(() => panelToggle.current?.focus())
+    requestAnimationFrame(() => restoreFocusRef.current())
   }
+  // The keyboard shortcut moves focus with the panel: opening it puts the keys in the panel (the tree, or the current item of a
+  // list), closing it gives them back to where they were, the text cursor included.
+  const returnFocus = useRef<Element | null>(null)
+  const focusPanel = () => {
+    const aside = document.getElementById('workspace-context')
+    if (!aside || aside.hidden) return
+    const target =
+      aside.querySelector<HTMLElement>('.tree-in') ??
+      aside.querySelector<HTMLElement>('.side-scroll [aria-current]:not([disabled])') ??
+      aside.querySelector<HTMLElement>('.side-scroll button:not([disabled])')
+    target?.focus()
+  }
+  // the open page's text, once it is on screen: where the keys go after opening a page from the tree or closing the panel
+  const focusPage = () => {
+    const page = document.querySelector<HTMLElement & { editor?: { commands: { focus: () => boolean } } }>('.main .page .ProseMirror')
+    if (!page?.editor) return false
+    page.editor.commands.focus()
+    return true
+  }
+  const openPageFromTree = (id: string, focus = false) => {
+    setCurrentId(id)
+    // after the new page has rendered; a page with no text editor (a board, a database) leaves focus where it is
+    if (focus) requestAnimationFrame(() => requestAnimationFrame(() => void focusPage()))
+  }
+  const restoreFocus = () => {
+    const back = returnFocus.current
+    returnFocus.current = null
+    if (focusPage()) return // a page is open: its text gets the keys, even if another page had them before the panel opened
+    // no page (Tasks, Settings…): back to what had the keys before, else the button that brings the panel back
+    if (back instanceof HTMLElement && back.isConnected && back.getClientRects().length) {
+      const editor = (back.closest('.ProseMirror') as (HTMLElement & { editor?: { commands: { focus: () => boolean } } }) | null)?.editor
+      if (editor) editor.commands.focus()
+      else back.focus()
+      return
+    }
+    panelToggle.current?.focus()
+  }
+  const toggleContextFromKeys = () => {
+    const aside = document.getElementById('workspace-context')
+    if (sideOpen) {
+      setContextOpen(false)
+      requestAnimationFrame(restoreFocus)
+      return
+    }
+    returnFocus.current = aside?.contains(document.activeElement) ? null : document.activeElement
+    setContextOpen(true)
+    requestAnimationFrame(() => requestAnimationFrame(focusPanel)) // once the panel is drawn
+  }
+  const restoreFocusRef = useRef(restoreFocus)
+  restoreFocusRef.current = restoreFocus
+  const toggleKeys = useRef(toggleContextFromKeys)
+  toggleKeys.current = toggleContextFromKeys
+  // ↑ ↓ (and Home / End) walk a panel's list of buttons, such as the task lists or the settings categories; the page tree has its own
+  // keys. A native listener: those lists are portals rendered by their own screens, so React would not bubble their keys up to the panel.
+  useEffect(() => {
+    const aside = document.getElementById('workspace-context')
+    if (!aside || !sideOpen) return
+    const arrows = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+      const from = event.target as HTMLElement
+      if (from.closest('.tree-in, input, textarea, [contenteditable="true"]') || !from.closest('.side-scroll')) return
+      const items = [...aside.querySelectorAll<HTMLElement>('.side-scroll button:not([disabled])')].filter((b) => !b.closest('.tree-in, .acts') && b.getClientRects().length)
+      const at = items.indexOf(from)
+      if (at < 0) return
+      event.preventDefault()
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : Math.min(items.length - 1, Math.max(0, at + (event.key === 'ArrowDown' ? 1 : -1)))
+      items[next]?.focus()
+    }
+    aside.addEventListener('keydown', arrows)
+    return () => aside.removeEventListener('keydown', arrows)
+  }, [sideOpen, panel])
   const [sideW, setSideW] = useState<number | null>(() => store<number | null>('not.sideW', null)) // null: the width of the chosen sidebar style
   const [railWidth, setRailWidth] = useState<number | null>(() => store('not.navWidth', null))
   const [railPinned, setRailPinned] = useState(false) // icon-only rail opened from the logo
@@ -392,7 +463,7 @@ export default function App() {
       window.removeEventListener('open-table', table)
       window.removeEventListener('open-cards', cards)
     }
-  }, [])
+  }, [setReader])
   useEffect(() => {
     const open = (e: Event) => setCurrentId((e as CustomEvent<string>).detail)
     const changed = () => refresh()
@@ -441,12 +512,12 @@ export default function App() {
     const key = (event: KeyboardEvent) => {
       if (matchesSidebarShortcut(event)) {
         event.preventDefault()
-        toggleContext()
+        toggleKeys.current()
       }
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [panel, toggleContext])
+  }, [panel])
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       // Alt + = / Alt + -: wider / narrower text column (in reader mode: the reader page)
@@ -466,7 +537,7 @@ export default function App() {
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [])
+  }, [setReader])
   // Ctrl/Cmd+K opens search from anywhere in the app: capture phase (the editor cannot swallow it) and the physical key
   // (so it also works with the Persian keyboard layout, where e.key is not “k”)
   useEffect(() => {
@@ -931,7 +1002,7 @@ export default function App() {
     label: t('Pages'),
     selectedId: treeSelected,
     onSelect: setTreeSelected,
-    onOpen: setCurrentId,
+    onOpen: openPageFromTree,
     onToggle: toggle,
     onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }),
     isOpenBox: (id: string) => {
@@ -940,7 +1011,7 @@ export default function App() {
     },
     parentOf: (id: string) => repo.get(id)?.parentId ?? null,
   }
-  const rowProps = { index, currentId: current?.id ?? '', selectedId: treeSelected, onSelect: setTreeSelected, openOnClick: settings.treeSingleClick, collapsed, onToggle: toggle, onOpen: setCurrentId, onAdd: add, onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }), onMove: move }
+  const rowProps = { index, currentId: current?.id ?? '', selectedId: treeSelected, onSelect: setTreeSelected, openOnClick: settings.treeSingleClick, collapsed, onToggle: toggle, onOpen: openPageFromTree, onAdd: add, onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }), onMove: move }
 
   return (
     <div
@@ -1120,22 +1191,19 @@ export default function App() {
             )}
             <header className="context-heading">
               <h2>{t(PANEL_TITLES[panel])}</h2>
-              <div className="context-tools" role="toolbar" aria-label={t('Panel tools')}>
+              <div className="context-tools" role="group" aria-label={t('Panel tools')}>
                 {panel === 'vault' && (
                   <>
                     <IconButton label={t('Select opened page') + '  ' + commandHint('Reveal active note')} disabled={view !== 'page' || !current || !!current.database} onClick={revealActiveNote}>
                       <Icon name="target" size={15} />
                     </IconButton>
-                    {settings.pagesView !== 'compact' && (
-                      <>
-                        <IconButton label={t('Expand all')} onClick={() => (setCollapsed(new Set()), setShut((s) => ({ ...s, pages: false })))}>
-                          <Icon name="chevrons-up-down" size={15} />
-                        </IconButton>
-                        <IconButton label={t('Collapse all')} onClick={() => setCollapsed(new Set(pages.filter((page) => !page.database && (page.kind === 'folder' || index.kids.has(page.id))).map((page) => page.id)))}>
-                          <Icon name="chevrons-down-up" size={15} />
-                        </IconButton>
-                      </>
-                    )}
+                    {/* both views: the tree opens and closes folders, the compact list shows or hides each folder's pages */}
+                    <IconButton label={t('Expand all')} onClick={() => (setCollapsed(new Set()), setShut((s) => ({ ...s, pages: false })))}>
+                      <Icon name="chevrons-up-down" size={15} />
+                    </IconButton>
+                    <IconButton label={t('Collapse all')} onClick={() => setCollapsed(new Set(pages.filter((page) => !page.database && (page.kind === 'folder' || index.kids.has(page.id))).map((page) => page.id)))}>
+                      <Icon name="chevrons-down-up" size={15} />
+                    </IconButton>
                     <IconButton
                       label={t('Options')}
                       aria-haspopup="menu"
@@ -1162,7 +1230,7 @@ export default function App() {
                     <Icon name="plus" size={15} />
                   </IconButton>
                 )}
-                <IconButton label={t('Hide')} onClick={hideContext}>
+                <IconButton label={t('Hide side panel') + '  ' + commandHint('Open or close the sidebar')} onClick={hideContext}>
                   <Icon name="minus" size={15} />
                 </IconButton>
               </div>
@@ -1243,7 +1311,7 @@ export default function App() {
                   )}
                   {!pagesShut && settings.pagesView === 'compact' && (
                     <HorizontalScroll className="tree-scroll" label={t('Pages')} followVisibleBottom>
-                      <TreeFrame className="cmp-list" compact {...treeFrameProps}>
+                      <TreeFrame className="cmp-list" {...treeFrameProps}>
                         <CompactList {...rowProps} roots={roots} />
                       </TreeFrame>
                     </HorizontalScroll>
