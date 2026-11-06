@@ -14,7 +14,6 @@ export const FA_VIEWS: Record<string, string> = {
   'Always select opened page': 'همیشه صفحهٔ باز را در درخت انتخاب کن',
   'Open with a single click': 'باز کردن با یک کلیک',
   'View as': 'نمایش به‌صورت',
-  Hide: 'پنهان کردن',
   'Reveal active note': 'نمایش یادداشت فعال در درخت',
   // Tasks
   Projects: 'پروژه‌ها',

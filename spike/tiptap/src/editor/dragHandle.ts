@@ -794,11 +794,17 @@ export const DragHandle = Extension.create({
           const gripEnter = () => {
             overGrip = true
             clearTimeout(gripTimer)
-            if (gripPos >= 0 && !session) (positionHover(gripPos), markOutline(true))
+            if (gripPos >= 0 && !session) {
+              positionHover(gripPos)
+              markOutline(true)
+            }
           }
           const gripLeave = () => {
             overGrip = false
-            if (!pointer && !session) (markOutline(false), scheduleGripHide())
+            if (!pointer && !session) {
+              markOutline(false)
+              scheduleGripHide()
+            }
           }
           grip.addEventListener('pointerdown', gripDown)
           grip.addEventListener('pointerenter', gripEnter)
