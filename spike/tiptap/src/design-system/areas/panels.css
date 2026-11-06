@@ -34,7 +34,7 @@
 .crumb button { cursor: var(--cursor-hand, pointer); }
 .crumb button:hover { background: var(--ds-hover); color: var(--ds-text); }
 .crumb button .ic, .crumb-folder svg, .crumb-cur svg { display: grid; place-items: center; flex: none; }
-.crumb .crumb-t, .crumb-folder > span { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumb .crumb-t, .crumb-folder > span { min-inline-size: 0; overflow: hidden; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; } /* a full line box: Persian letters reach below the baseline, and a box of one em cuts them */
 /* ancestors shrink before the current page does; the hidden middle ones sit behind "…" */
 .crumb { flex: 0 2 auto; overflow: hidden; }
 /* Keep the current page wider than its ancestors when the bar gets crowded. */

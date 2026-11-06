@@ -50,7 +50,7 @@
 .wscard-ic { display: grid; place-items: center; flex: none; width: 30px; height: var(--ds-control-sm); border-radius: var(--ds-r); background: var(--ds-accent-soft); color: var(--ds-accent); box-shadow: none; }
 .wscard-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .wscard-tx b { font-size: var(--ds-text-small); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wscard-tx small { font-size: var(--ds-text-caption); font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ds-text-3); }
+.wscard-tx small { overflow: hidden; font-size: var(--ds-text-caption); font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ds-text-3); text-overflow: ellipsis; white-space: nowrap; } /* one line at any width, so the card, and the rail above it, keeps its height when the rail folds */
 .wscard-chev { display: grid; place-items: center; color: var(--ds-text-3); }
 .wsd-body { overflow: auto; padding: var(--ds-s4) var(--ds-s6) var(--ds-s6); }
 .wsd-tx { display: flex; flex-direction: column; gap: 1px; flex: 1; min-inline-size: 0; }

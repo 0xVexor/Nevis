@@ -7,6 +7,7 @@ import { history, undo, undoDepth } from '@tiptap/pm/history'
 import { LayoutGroup, LayoutColumn } from '../src/editor/layout.ts'
 import { DragHandle } from '../src/editor/dragHandle.ts'
 import { groupColumns } from '../src/editor/layoutModel.ts'
+import { chooseSnapDestination, within } from '../src/editor/snapTargets.ts'
 
 const schema = getSchema([StarterKit, LayoutGroup, LayoutColumn])
 const paragraph = (value) => schema.nodes.paragraph.create(null, schema.text(value))
@@ -299,4 +300,40 @@ test('the grip is hidden while a block is being moved', () => {
     assert.equal(h.grip.dataset.show, 'false')
     h.end(h.source(1, 1))
   } finally { h.cleanup() }
+})
+
+test('the margin beside the text reorders; blocks go side by side only over the text', () => {
+  const columnsBeside = (h) => {
+    let count = 0
+    h.doc.forEach((node) => { if (node.textContent.includes('A1')) count = node.childCount })
+    return count
+  }
+  // The text starts at x=100 and the drag starts at x=120: 95 and 105 are the margin; 130 is just inside the text, on the side
+  // the drag came from, which the old rule (32px of sideways travel) could not reach.
+  for (const [x, expected] of [[95, 2], [105, 2], [130, 3], [200, 3]]) {
+    const h = harness()
+    try {
+      h.begin(h.source(1, 0)); h.move(h.source(0, 0), x, 120); h.end(h.source(0, 0), x, 120)
+      assert.equal(columnsBeside(h), expected, `released at x=${x}`)
+    } finally { h.cleanup() }
+  }
+})
+
+test('a side-by-side choice holds while the pointer drifts back a little toward the middle, then gives way', () => {
+  const rect = { left: 0, top: 0, width: 900, height: 40 }
+  const beside = { key: 'beside', target: { kind: 'pair', targetFrom: 0, side: 'right' }, label: '', hit: { left: 600, top: 0, width: 200, height: 40 }, rect, priority: 3, kind: 'columns' }
+  const between = { key: 'between', target: { kind: 'insert', pos: 0 }, label: '', hit: rect, rect, priority: 1, kind: 'full-width' }
+  const all = [beside, between]
+  assert.equal(chooseSnapDestination(all, 620, 20, null)?.key, 'beside')
+  assert.equal(chooseSnapDestination(all, 585, 20, null)?.key, 'between', 'outside the zone, nothing held')
+  assert.equal(chooseSnapDestination(all, 585, 20, beside)?.key, 'beside', 'held within the hold distance')
+  assert.equal(chooseSnapDestination(all, 560, 20, beside)?.key, 'between', 'past the hold distance it reorders')
+  assert.equal(chooseSnapDestination(all, 585, 20, beside, false)?.key, 'between', 'never held where columns are not allowed')
+})
+
+test('a preview grown around a short block stays on the page beside the first and last blocks', () => {
+  const page = { top: 100, bottom: 400 }
+  assert.deepEqual(within({ top: 90, height: 56 }, page), { top: 100, height: 56 })
+  assert.deepEqual(within({ top: 370, height: 56 }, page), { top: 344, height: 56 })
+  assert.deepEqual(within({ top: 200, height: 56 }, page), { top: 200, height: 56 })
 })

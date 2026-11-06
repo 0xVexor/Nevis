@@ -11,12 +11,24 @@ import { hoveredSnapBlock, snapBlockAtElement } from './snapHover'
 import { isSectionDragSurface } from './snapSurface'
 import { setLayoutInteraction } from './layoutInteraction'
 import { DS_ICONS } from '../design-system/iconData'
+import { prefersReducedMotion } from '../design-system/motion'
+import type { Node as PMNode } from '@tiptap/pm/model'
 
 const MIME = 'application/x-nevis-block-move'
-/** Pointer travel across the page, in pixels, before a drag may put blocks side by side. */
-const SIDEWAYS = 32
+/** The gap, in pixels, that opens between two blocks where a dragged block will land. */
+const ROOM = 12
+/** How long, in ms, the auto-scroll at the page edges takes to reach full speed. */
+const EDGE_RAMP = 350
+/** How far into the text, in pixels, the pointer must be before a drag may put blocks side by side; the margin reorders. */
+const TEXT_INSET = 6
+/** A motion token in milliseconds, and the easing token, for animations started from script. */
+const motionMs = (token: string, fallback: number) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(token)) || fallback
+const motionEase = () => getComputedStyle(document.documentElement).getPropertyValue('--ds-ease').trim() || 'ease-out'
+/** No animation: the Reduce motion settings, or a host without media queries (the tests' document), where nothing is drawn anyway. */
+const stillMotion = () => typeof matchMedia !== 'function' || prefersReducedMotion()
 const icon = (name: string) => `<svg class="ds-icon" viewBox="0 0 24 24" aria-hidden="true">${DS_ICONS[name]?.[1] ?? ''}</svg>`
 let pickerSequence = 0
+let roomHosts = 0
 export const SNAP_PICK = 'layout-snap-pick'
 export interface SnapPickRequest {
   range: BlockRange
@@ -183,11 +195,80 @@ export const DragHandle = Extension.create({
           let cache = new Map<string, { error?: SnapFailure; columns?: SnapPlan['columns']; extraction?: SnapPlan['extraction'] }>()
           let keyboardChoice: string | null = null
           let lastPaint = ''
+          let lastShape = '' // 'line' or 'box': the preview fades in when it changes from one to the other
+          // Making room: the blocks below the place a dragged block will land slide down by ROOM, so a gap opens for it. It is
+          // drawn by a stylesheet on the editor's children, not on the blocks themselves, which the editor redraws as it likes.
+          const roomHost = String(++roomHosts)
+          const roomStyle = document.createElement('style')
+          let roomAt = -1,
+            roomRule = ''
+          const writeRoom = (sliding: boolean) => {
+            const host = `.ProseMirror[data-snap-room="${roomHost}"]`
+            const slide = sliding && roomParents.size ? `${[...roomParents].map((parent) => `${host} ${parent}> *`).join(', ')} { transition: transform var(--ds-fast) var(--ds-ease); }\n` : ''
+            roomStyle.textContent = slide + (roomRule ? `${host} ${roomRule} { transform: translateY(${ROOM}px); }` : '')
+          }
+          // the containers whose blocks have slid during this drag: they keep the transition, so their blocks slide back too
+          const roomParents = new Set<string>()
+          const setRoom = (at: number) => {
+            if (at === roomAt) return
+            // the block's place as a chain of child positions from the editor down, so a gap opens inside a column as well
+            let steps: number[] | null = null
+            const dom = at >= 0 && !stillMotion() ? view.nodeDOM(at) : null
+            if (dom instanceof HTMLElement && dom !== view.dom && view.dom.contains(dom)) {
+              steps = []
+              for (let el: HTMLElement | null = dom; el && el !== view.dom; el = el.parentElement) steps.unshift(Array.prototype.indexOf.call(el.parentElement?.children ?? [], el) + 1)
+            }
+            roomAt = steps ? at : -1
+            const parent = steps
+              ? steps
+                  .slice(0, -1)
+                  .map((n) => `> :nth-child(${n}) `)
+                  .join('')
+              : ''
+            if (steps) roomParents.add(parent)
+            roomRule = steps ? `${parent}> :nth-child(n + ${steps[steps.length - 1]})` : ''
+            if (roomAt >= 0 && !roomStyle.isConnected) {
+              view.dom.dataset.snapRoom = roomHost
+              document.head.append(roomStyle)
+            }
+            if (roomStyle.isConnected) writeRoom(true)
+          }
+          // instant: at the drop, where the document is about to change under the blocks; otherwise they slide back
+          const clearRoom = (instant: boolean) => {
+            if (!roomStyle.isConnected) return
+            roomAt = -1
+            roomRule = ''
+            writeRoom(!instant)
+            const remove = () => {
+              if (roomAt >= 0) return // a new drag has opened a gap again
+              roomParents.clear()
+              roomStyle.remove()
+              delete view.dom.dataset.snapRoom
+            }
+            if (instant) remove()
+            else window.setTimeout(remove, motionMs('--ds-fast', 120) + 80)
+          }
+          // measured where the blocks stand, not where the gap has slid them
+          const withoutRoom = (measure: () => void) => {
+            const rule = roomRule
+            if (!rule) return measure()
+            roomRule = ''
+            writeRoom(false)
+            try {
+              measure()
+            } finally {
+              roomRule = rule
+              writeRoom(false)
+              void view.dom.offsetHeight
+              writeRoom(true)
+            }
+          }
           let geometry: SnapDestination[] | null = null
           let locatedGeometry: SnapDestination[] | null = null
           let locatedX = NaN,
             locatedY = NaN,
-            lastTickAt = 0
+            lastTickAt = 0,
+            edgeSince = 0 // when the pointer entered the scrolling band at the top or bottom; 0 outside it
           const geometryChanged = () => {
             geometry = null
           }
@@ -208,11 +289,12 @@ export const DragHandle = Extension.create({
             const toolbar = view.dom.closest('.page')?.querySelector<HTMLElement>('.toolbar')?.getBoundingClientRect()
             return Math.max(0, scroller?.top ?? 0, toolbar?.bottom ?? 0)
           }
-          const clipToEditor = (element: HTMLElement, r: { left: number; top: number; width: number; height: number }, insertion = false) => {
+          // slack lets a box's own border (drawn on its edge) show where the box meets the top or bottom of the text
+          const clipToEditor = (element: HTMLElement, r: { left: number; top: number; width: number; height: number }, insertion = false, slack = 0) => {
             const scroller = view.dom.closest<HTMLElement>('.scroller')?.getBoundingClientRect()
             const editorRect = view.dom.getBoundingClientRect()
-            const top = Math.max(visibleTop(), insertion ? Math.min(editorRect.top, r.top) : editorRect.top)
-            const bottom = Math.min(innerHeight, scroller?.bottom ?? innerHeight, insertion ? Math.max(editorRect.bottom, r.top + r.height) : editorRect.bottom)
+            const top = Math.max(visibleTop(), (insertion ? Math.min(editorRect.top, r.top) : editorRect.top) - slack)
+            const bottom = Math.min(innerHeight, scroller?.bottom ?? innerHeight, (insertion ? Math.max(editorRect.bottom, r.top + r.height) : editorRect.bottom) + slack)
             const left = Math.max(0, scroller?.left ?? 0, editorRect.left)
             const right = Math.min(innerWidth, scroller?.right ?? innerWidth, editorRect.right)
             element.style.clipPath = `inset(${Math.max(0, top - r.top)}px ${Math.max(0, r.left + r.width - right)}px ${Math.max(0, r.top + r.height - bottom)}px ${Math.max(0, left - r.left)}px)`
@@ -260,6 +342,25 @@ export const DragHandle = Extension.create({
               }
             }
           }
+          const returnCard = (from: number) => {
+            const dom = view.nodeDOM(from)
+            const to = dom instanceof HTMLElement ? dom.getBoundingClientRect() : null
+            const card = preview.getBoundingClientRect()
+            if (stillMotion() || !to || !to.width || !card.width) return
+            const copy = preview.cloneNode(true) as HTMLElement
+            copy.setAttribute('aria-hidden', 'true')
+            document.body.append(copy)
+            copy
+              .animate(
+                [
+                  { transform: 'none', opacity: 1 },
+                  { transform: `translate(${to.left - card.left}px, ${to.top - card.top}px)`, opacity: 0 },
+                ],
+                { duration: motionMs('--ds-base', 220), easing: motionEase() },
+              )
+              .finished.catch(() => undefined)
+              .finally(() => copy.remove())
+          }
           const cancel = (restoreFocus = false, message = '', restoreSelection = true) => {
             const previous = session
             const wasActive = !!session
@@ -270,11 +371,16 @@ export const DragHandle = Extension.create({
             cancelAnimationFrame(hoverFrame)
             hoverFrame = 0
             overlay.hidden = true
+            clearRoom(false)
+            // a drag that ends without a move sends its card back to the block, so it is clear that nothing changed
+            // (only while the page is the one the drag began on: after a change the old position may be another block)
+            if (previous?.mode === 'drag' && restoreSelection && !preview.hidden && previous.doc === view.state.doc) returnCard(previous.range.from)
             preview.hidden = true
             picker.hidden = true
             columnHighlight.hidden = true
             overlay.replaceChildren()
             lastPaint = ''
+            lastShape = ''
             previewSignature = ''
             target = null
             cursor = null
@@ -286,6 +392,7 @@ export const DragHandle = Extension.create({
             locatedX = NaN
             locatedY = NaN
             lastTickAt = 0
+            edgeSince = 0
             sourceOverlay.replaceChildren()
             view.dom.classList.remove('layout-dragging', 'layout-snap-picking', 'layout-surface-hover')
             setLayoutInteraction(view.dom, 'idle')
@@ -339,32 +446,39 @@ export const DragHandle = Extension.create({
           const destinations = () => {
             if (!session) return []
             if (!geometry) {
-              geometry = snapDestinations(view, session.range)
-              sourceOverlay.replaceChildren()
-              let at = session.range.from
-              for (const node of session.range.nodes) {
-                const dom = view.nodeDOM(at)
-                if (dom instanceof HTMLElement) {
-                  const r = dom.getBoundingClientRect(),
-                    outline = document.createElement('div')
-                  outline.className = 'ds-drag-source'
-                  outline.style.left = `${r.left}px`
-                  outline.style.top = `${r.top}px`
-                  outline.style.width = `${r.width}px`
-                  outline.style.height = `${r.height}px`
-                  sourceOverlay.append(outline)
+              const range = session.range
+              withoutRoom(() => {
+                geometry = snapDestinations(view, range)
+                sourceOverlay.replaceChildren()
+                let at = range.from
+                for (const node of range.nodes) {
+                  const dom = view.nodeDOM(at)
+                  if (dom instanceof HTMLElement) {
+                    const r = dom.getBoundingClientRect(),
+                      outline = document.createElement('div')
+                    outline.className = 'ds-drag-source'
+                    outline.style.left = `${r.left}px`
+                    outline.style.top = `${r.top}px`
+                    outline.style.width = `${r.width}px`
+                    outline.style.height = `${r.height}px`
+                    sourceOverlay.append(outline)
+                  }
+                  at += node.nodeSize
                 }
-                at += node.nodeSize
-              }
-              clipToEditor(sourceOverlay, { left: 0, top: 0, width: innerWidth, height: innerHeight })
+                clipToEditor(sourceOverlay, { left: 0, top: 0, width: innerWidth, height: innerHeight })
+              })
             }
-            return geometry
+            return geometry ?? [] // set inside withoutRoom, which the type checker cannot follow
           }
           const paint = (destination: SnapDestination | null) => {
             if (target && target.key !== destination?.key) delete target.plan
             target = destination
+            // a plain move between blocks, on the page or inside a column, opens a gap; columns and taking out of a layout do not
+            const plain = destination && !destination.error && destination.plan && (destination.kind === 'line' || (destination.kind === 'full-width' && !destination.plan.extraction))
+            setRoom(plain && destination.target.kind === 'insert' ? destination.target.pos : -1)
             if (!destination || destination.error || !destination.plan) {
               overlay.hidden = true
+              lastShape = ''
               columnHighlight.hidden = true
               lastPaint = ''
               const blocked = destination?.error === 'max-columns' || destination?.error === 'insufficient-width'
@@ -384,10 +498,17 @@ export const DragHandle = Extension.create({
             // Between blocks a plain line is enough. A box is drawn only when the shape of the page changes:
             // new or reordered columns, or content taken out of a layout.
             const line = destination.kind === 'line' || (destination.kind === 'full-width' && !plan.extraction)
-            const signature = `${destination.key}:${rect.left}:${rect.top}:${rect.width}:${rect.height}:${plan.columns?.widths.join(',')}`
+            const signature = `${destination.key}:${rect.left}:${rect.top}:${rect.width}:${rect.height}:${plan.columns?.widths.join(',')}:${roomAt}`
             if (signature !== lastPaint) {
               lastPaint = signature
-              const top = line && destination.kind === 'full-width' ? rect.top - 1.5 : rect.top
+              // in an opened gap the line sits in its middle
+              const top = (line && destination.kind === 'full-width' ? rect.top - 1.5 : rect.top) + (line && roomAt >= 0 ? ROOM / 2 : 0)
+              const shape = line ? 'line' : 'box'
+              if (shape !== lastShape) {
+                // a line becoming a box of columns (or back) fades in rather than jumping
+                if (!stillMotion()) overlay.animate([{ opacity: 0 }, { opacity: 1 }], { duration: motionMs('--ds-fast', 120), easing: motionEase() })
+                lastShape = shape
+              }
               const height = line ? (destination.kind === 'line' ? rect.height : 3) : rect.height
               overlay.dataset.line = String(line)
               overlay.dataset.cols = String(!line)
@@ -416,7 +537,7 @@ export const DragHandle = Extension.create({
               }
             }
             overlay.hidden = false
-            clipToEditor(overlay, { ...rect, top: rect.top - 2, height: rect.height + 4 }, destination.kind === 'full-width')
+            clipToEditor(overlay, rect, destination.kind === 'full-width', 3)
             const column = destination.columnRect
             columnHighlight.hidden = !column
             if (column) {
@@ -513,9 +634,10 @@ export const DragHandle = Extension.create({
             for (const destination of all) {
               if (hitsSnapDestination(destination, x, y, 8)) validate(destination)
             }
-            // Columns form only once the pointer has moved sideways. Dragging straight up or down, even along
-            // the edge of the text, always reorders.
-            const sideways = !pointer?.started || Math.abs(x - pointer.x) >= SIDEWAYS
+            // Columns form only over the text itself. The margin, where the grip is, is the lane for reordering: dragging
+            // straight up or down from the grip always reorders. Counting the distance from where the drag began instead
+            // made the near side hard to reach, since dropping beside a block on the grip's side means going back there.
+            const sideways = !pointer?.started || (x >= editor.left + TEXT_INSET && x <= editor.right - TEXT_INSET)
             const selected = chooseSnapDestination(all, x, y, target, sideways)
             paint(selected ? validate(selected, true) : null)
           }
@@ -533,11 +655,49 @@ export const DragHandle = Extension.create({
             if (!result.plan || (result.plan.columns && !fitsSnapColumns(target.rect.width, result.plan.columns.widths))) return false
             const tr = snapTransaction(view.state, result.plan)
             if (!tr) return false
+            clearRoom(true)
+            const from = sourceRect()
+            const moved = session!.range.nodes[0]
             cancel(false, '', false)
             view.dispatch(tr)
             view.focus()
+            if (from && moved) settle(moved, from)
             announce(t('Content moved. Undo to restore its previous position.'))
             return true
+          }
+          // Where the block stands before the drop: the move is drawn from there.
+          const sourceRect = () => {
+            const dom = view.nodeDOM(session!.range.from)
+            const r = dom instanceof HTMLElement ? dom.getBoundingClientRect() : null
+            return r && r.width > 0 ? r : null
+          }
+          // The drop slides the block from where it stood into its new place, so the eye follows the move instead of losing it in a jump.
+          const settle = (moved: PMNode, from: DOMRect) => {
+            if (stillMotion()) return
+            let landed: HTMLElement | null = null
+            view.state.doc.descendants((node, at) => {
+              if (landed) return false
+              if (node !== moved) return true
+              const dom = view.nodeDOM(at)
+              if (dom instanceof HTMLElement) landed = dom
+              return false
+            })
+            const el = landed as HTMLElement | null
+            const to = el?.getBoundingClientRect()
+            if (!el || !to || !to.width) return
+            const dx = from.left - to.left,
+              dy = from.top - to.top
+            if (Math.abs(dx) < 2 && Math.abs(dy) < 2) return
+            el.animate(
+              [
+                { transform: `translate(${dx}px, ${dy}px)`, opacity: 0.6 },
+                { transform: 'none', opacity: 1 },
+              ],
+              {
+                duration: motionMs('--ds-slow', 300), // a longer way than a hover change: the slow step of the scale
+                easing: motionEase(),
+              },
+            )
           }
           const commit = () => {
             try {
@@ -809,6 +969,13 @@ export const DragHandle = Extension.create({
           grip.addEventListener('pointerdown', gripDown)
           grip.addEventListener('pointerenter', gripEnter)
           grip.addEventListener('pointerleave', gripLeave)
+          // The card that follows the pointer is placed on every move rather than on the next frame, close by, so it stays in hand.
+          const placeCard = () => {
+            if (!cursor || session?.mode !== 'drag') return
+            preview.hidden = false
+            preview.style.left = `${Math.max(8, Math.min(cursor.x + 10, innerWidth - Math.min(preview.offsetWidth, 280) - 8))}px`
+            preview.style.top = `${Math.max(8, Math.min(cursor.y + 10, innerHeight - preview.offsetHeight - 8))}px`
+          }
           const move = (e: PointerEvent) => {
             if (!session && !pointer && e.target instanceof Node && !area.contains(e.target) && !grip.contains(e.target)) hide()
             if (session?.mode === 'pick' && e.isPrimary) {
@@ -838,6 +1005,7 @@ export const DragHandle = Extension.create({
             }
             e.preventDefault()
             cursor = { x: e.clientX, y: e.clientY }
+            placeCard()
           }
           const up = (e: Pick<PointerEvent, 'pointerId' | 'clientX' | 'clientY' | 'preventDefault'>) => {
             if (!pointer || e.pointerId !== pointer.id) return
@@ -992,9 +1160,16 @@ export const DragHandle = Extension.create({
                 const sc = view.dom.closest<HTMLElement>('.scroller')
                 if (sc) {
                   const r = sc.getBoundingClientRect(),
-                    edge = 48
+                    edge = 56,
+                    top = Math.max(r.top, visibleTop())
                   if (cursor.x >= r.left && cursor.x <= r.right) {
-                    const speed = cursor.y < r.top + edge ? -Math.min(12, (r.top + edge - cursor.y) / 4) : cursor.y > r.bottom - edge ? Math.min(12, (cursor.y - r.bottom + edge) / 4) : 0
+                    // Near the top or bottom the page scrolls, gently at first: faster the deeper the pointer is in the band
+                    // (a curve, not a step) and building up over the first EDGE_RAMP ms, so a brief pass does not throw the page.
+                    const depth = cursor.y < top + edge ? (cursor.y - top - edge) / edge : cursor.y > r.bottom - edge ? (cursor.y - r.bottom + edge) / edge : 0
+                    if (!depth) edgeSince = 0
+                    else if (!edgeSince) edgeSince = now
+                    const ramp = edgeSince ? Math.min(1, (now - edgeSince) / EDGE_RAMP) : 0
+                    const speed = Math.sign(depth) * 16 * Math.min(1, Math.abs(depth)) ** 2 * ramp
                     if (speed) {
                       const before = sc.scrollTop
                       sc.scrollTop += (speed * elapsed) / (1000 / 60)
@@ -1002,9 +1177,7 @@ export const DragHandle = Extension.create({
                     }
                   }
                 }
-                preview.hidden = false
-                preview.style.left = `${Math.max(8, Math.min(cursor.x + 16, innerWidth - Math.min(preview.offsetWidth, 280) - 8))}px`
-                preview.style.top = `${Math.max(8, Math.min(cursor.y + 16, innerHeight - preview.offsetHeight - 8))}px`
+                placeCard()
               }
               // Stationary pointers need no repeated DOM hit-testing or planning; scroll/resize invalidates geometry.
               if (!geometry || geometry !== locatedGeometry || cursor.x !== locatedX || cursor.y !== locatedY) {
