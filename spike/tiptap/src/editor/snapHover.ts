@@ -1,6 +1,7 @@
 import type { EditorView } from '@tiptap/pm/view'
 import { COLUMN, GROUP, flow } from './layoutModel'
 
+const GAP_SLACK = 14 // px above and below a block that still count as that block
 const contains = (r: DOMRect, x: number, y: number) => r.width > 0 && r.height > 0 && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
 
 /** Resolve a NodeView's outer block, including chrome outside its contentDOM. */
@@ -35,6 +36,9 @@ export function snapBlockAtElement(view: EditorView, element: Element): number |
 export function hoveredSnapBlock(view: EditorView, x: number, y: number, previous: number): number | null {
   const editor = view.dom.getBoundingClientRect()
   if (x < editor.left - 52 || x > editor.right + 52 || y < editor.top - 8 || y > editor.bottom + 8) return null
+  // In the page margin beside the text (where the grip stands) the row is still the block level with the pointer: look at the
+  // editor's own edge on that line, so moving out to the grip never loses the block.
+  x = Math.max(editor.left + 1, Math.min(editor.right - 1, x))
   const hitElement = view.dom.ownerDocument.elementFromPoint(x, y)
   // A popup, toolbar or empty space outside the editor cannot own a block hover.
   if (!hitElement || !view.dom.contains(hitElement)) return null
@@ -69,7 +73,14 @@ export function hoveredSnapBlock(view: EditorView, x: number, y: number, previou
       const r = dom.getBoundingClientRect()
       if (contains(r, x, y) && !nearest) nearest = { pos, dom }
     })
-  if (!nearest) return null
+  if (!nearest) {
+    // the thin space between two blocks keeps the block just left, instead of flickering off and on again
+    if (old instanceof HTMLElement && view.state.doc.nodeAt(previous)?.type.name !== GROUP) {
+      const r = old.getBoundingClientRect()
+      if (r.width > 0 && x >= r.left && x <= r.right && y >= r.top - GAP_SLACK && y <= r.bottom + GAP_SLACK) return previous
+    }
+    return null
+  }
   const root: { pos: number; dom: HTMLElement } = nearest
   const node = view.state.doc.nodeAt(root.pos)!
   if (node.type.name !== GROUP) return root.pos

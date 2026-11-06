@@ -25,6 +25,8 @@ export interface Settings {
   textColor: string | null // editor text colour, null = theme text colour
   sidebar: SidebarStyle
   pagesView: PagesView
+  treeAutoReveal: boolean // the page tree selects and scrolls to whatever page is opened, from anywhere
+  treeSingleClick: boolean // a click on a page in the tree opens it (otherwise a click selects and a double-click opens)
   sideGlass: number // 0-100: how see-through (and blurred) the sidebar is
   mainGlass: number // 0-100: the same for the main panel
   bgStrength: number // 50-200 (%): how strongly the background colours glow
@@ -50,6 +52,8 @@ export const DEFAULTS: Settings = {
   textColor: null,
   sidebar: 'icons',
   pagesView: 'tree',
+  treeAutoReveal: true,
+  treeSingleClick: false,
   sideGlass: 0,
   mainGlass: 0,
   bgStrength: 100,

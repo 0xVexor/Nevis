@@ -33,10 +33,22 @@
 .context-panel[hidden] { display: none; }
 .context-heading, .tree-heading { display: flex; align-items: center; gap: var(--ds-s1); }
 .context-heading { flex: none; margin-block-end: var(--ds-s3); }
-.context-heading h2 { flex: 1; margin: 0; padding-inline-start: var(--ds-s2); font-size: var(--ds-text-section); }
+.context-heading h2 { flex: 1; min-inline-size: 0; margin: 0; padding-inline-start: var(--ds-s2); overflow: hidden; font-size: var(--ds-text-section); text-overflow: ellipsis; white-space: nowrap; }
+/* the panel's own tools, IntelliJ style: select opened page, expand all, collapse all, options, hide */
+.context-tools { display: flex; flex: none; align-items: center; gap: 2px; }
+.context-tools .ds-icon-btn { inline-size: var(--ds-control-sm); block-size: var(--ds-control-sm); color: var(--ds-text-3); }
+.context-tools .ds-icon-btn:hover:not(:disabled) { color: var(--ds-text); }
 .tree-heading { margin-block: var(--ds-s4) var(--ds-s1); }
 .tree-heading .section { flex: 1; min-inline-size: 0; margin: 0; }
-.tree-heading .ds-icon-btn { flex: none; inline-size: 27px; block-size: 27px; }
+/* the tree takes the keyboard: the focused row shows a ring, the frame itself none */
+.tree-in:focus { outline: none; }
+.tree-in .row.tree:focus { outline: none; }
+.tree-in .row.tree:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: -2px; }
+/* quick search: typing in the tree shows what is being looked for; red when nothing matches */
+.tree-search { position: sticky; inset-block-start: 0; z-index: 3; display: flex; align-items: center; gap: var(--ds-s1); inline-size: fit-content; max-inline-size: 100%; margin-block-end: 2px; padding: 2px var(--ds-s2); border: 1px solid var(--ds-accent-line); border-radius: var(--ds-r-sm); background: var(--ds-raised); color: var(--ds-text); font-size: var(--ds-text-small); box-shadow: var(--ds-shadow-pop); }
+.tree-search .ds-icon { color: var(--ds-accent); }
+.tree-search.none { border-color: var(--ds-bad); color: var(--ds-bad); }
+.tree-search.none .ds-icon { color: var(--ds-bad); }
 .context-panel > .side-scroll { min-block-size: 0; }
 .context-backdrop { position: absolute; inset: 0; z-index: 9; background: var(--ds-scrim, rgb(0 0 0 / 30%)); }
 @media (max-width: 760px) {
@@ -79,6 +91,8 @@
 .row:active { background: var(--ds-press); }
 .row.cur, .row.plain.cur { background: var(--ds-accent-soft); color: var(--ds-accent); font-weight: 550; }
 .row.cur::before { content: none; }
+/* the tree, IntelliJ style: the selection is the one filled row; the open page, when it is not the selection, is marked by its colour */
+.row.tree.cur:not(.sel) { background: transparent; }
 .row.tree.sel:not(.cur) { background: var(--ds-accent-soft); color: var(--ds-accent); }
 .row.tree.sel:not(.cur) :is(.ic, .twisty, .tree-count, .pg-ic.tile) { color: var(--ds-accent); } /* picked with one click, opened with a double-click */
 .row.cur .ic, .row.cur .twisty { color: var(--ds-accent); }

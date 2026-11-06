@@ -60,7 +60,7 @@ import { confirmDialog } from './dialog'
 import { OPEN_PAGE, PAGES_CHANGED } from './editor/pageLink'
 import { t } from './i18n'
 import { isMac, shortcutHint, shortcutLabel } from './shortcuts'
-import { CompactList, TreeRow } from './PageTree'
+import { CompactList, TreeFrame, TreeRow } from './PageTree'
 
 const revealKey = isMac() ? 'Reveal in Finder' : /Windows/i.test(navigator.userAgent) ? 'Show in Explorer' : 'Show in file manager'
 
@@ -87,7 +87,7 @@ const SIDE_MAX = 600
 const RAIL_MIN = 148
 const RAIL_MAX = 320
 type Panel = 'vault' | 'tasks' | 'settings'
-const PANEL_TITLES = { vault: 'Navigation', tasks: 'Tasks', settings: 'Settings' } as const
+const PANEL_TITLES = { vault: 'Pages', tasks: 'Tasks', settings: 'Settings' } as const
 const NARROW_WORKSPACE = '(max-width: 760px)'
 const BIG_TREE = 150 // pages from which the sidebar tree starts collapsed
 
@@ -299,6 +299,7 @@ export default function App() {
     return () => cancelAnimationFrame(frame)
   }, [reader])
   const { open: openCrumbs, menu: crumbsMenu } = useMenu()
+  const { open: openPanelMenu, menu: panelMenu } = useMenu()
   // full screen for the whole app, from any view: the desktop window itself, or the browser's full screen
   const [fullScreen, setFullScreen] = useState(false)
   const toggleFullScreen = useCallback(async () => {
@@ -871,15 +872,25 @@ export default function App() {
   const treePanel = useRef<HTMLDivElement>(null)
   const [treeSelected, setTreeSelected] = useState<string | null>(null)
   const [reveal, setReveal] = useState<{ id: string } | null>(null)
+  // show a page in the tree: open the folders above it, select it and scroll to it
+  const revealPage = (page: Page) => {
+    const byId = new Map(pages.map((p) => [p.id, p]))
+    const ancestors = new Set<string>()
+    for (let id = page.parentId; id && !ancestors.has(id); id = byId.get(id)?.parentId ?? null) ancestors.add(id)
+    setCollapsed((previous) => (ancestors.size && [...previous].some((id) => ancestors.has(id)) ? new Set([...previous].filter((id) => !ancestors.has(id))) : previous))
+    setShut((previous) => (previous.pages ? { ...previous, pages: false } : previous))
+    setTreeSelected(page.id)
+    setReveal({ id: page.id })
+  }
   const revealActiveNote = () => {
     if (!current || view !== 'page' || current.database) return
-    const byId = new Map(pages.map((page) => [page.id, page]))
-    const ancestors = new Set<string>()
-    for (let id = current.parentId; id && !ancestors.has(id); id = byId.get(id)?.parentId ?? null) ancestors.add(id)
-    setCollapsed((previous) => new Set([...previous].filter((id) => !ancestors.has(id))))
-    setShut((previous) => ({ ...previous, pages: false }))
-    setReveal({ id: current.id })
+    revealPage(current)
   }
+  // "Always select opened page": whatever opens a page (search, a link, Home, back and forward), the tree follows
+  useEffect(() => {
+    if (settings.treeAutoReveal && view === 'page' && current && !current.database) revealPage(current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id, view, settings.treeAutoReveal])
   const revealShortcut = useRef<() => void>(() => {})
   revealShortcut.current = () => {
     if (!current || view !== 'page' || current.database) return
@@ -914,7 +925,22 @@ export default function App() {
   )
   const defaultRailWidth = settings.sidebar === 'compact' ? 148 : 176
   const preferencesOpen = view === 'settings'
-  const rowProps = { index, currentId: current?.id ?? '', selectedId: treeSelected, onSelect: setTreeSelected, collapsed, onToggle: toggle, onOpen: setCurrentId, onAdd: add, onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }), onMove: move }
+  // the Pages fold only exists while other sections sit above the tree; without them the tree is always shown
+  const pagesShut = shut.pages && (favs.length > 0 || saved.length > 0)
+  const treeFrameProps = {
+    label: t('Pages'),
+    selectedId: treeSelected,
+    onSelect: setTreeSelected,
+    onOpen: setCurrentId,
+    onToggle: toggle,
+    onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }),
+    isOpenBox: (id: string) => {
+      const page = repo.get(id)
+      return page && (page.kind === 'folder' || index.kids.has(id)) ? !collapsed.has(id) : null
+    },
+    parentOf: (id: string) => repo.get(id)?.parentId ?? null,
+  }
+  const rowProps = { index, currentId: current?.id ?? '', selectedId: treeSelected, onSelect: setTreeSelected, openOnClick: settings.treeSingleClick, collapsed, onToggle: toggle, onOpen: setCurrentId, onAdd: add, onMenu: (id: string, rect: DOMRect) => setMenu({ id, rect }), onMove: move }
 
   return (
     <div
@@ -1094,7 +1120,54 @@ export default function App() {
             )}
             <header className="context-heading">
               <h2>{t(PANEL_TITLES[panel])}</h2>
+              <div className="context-tools" role="toolbar" aria-label={t('Panel tools')}>
+                {panel === 'vault' && (
+                  <>
+                    <IconButton label={t('Select opened page') + '  ' + commandHint('Reveal active note')} disabled={view !== 'page' || !current || !!current.database} onClick={revealActiveNote}>
+                      <Icon name="target" size={15} />
+                    </IconButton>
+                    {settings.pagesView !== 'compact' && (
+                      <>
+                        <IconButton label={t('Expand all')} onClick={() => (setCollapsed(new Set()), setShut((s) => ({ ...s, pages: false })))}>
+                          <Icon name="chevrons-up-down" size={15} />
+                        </IconButton>
+                        <IconButton label={t('Collapse all')} onClick={() => setCollapsed(new Set(pages.filter((page) => !page.database && (page.kind === 'folder' || index.kids.has(page.id))).map((page) => page.id)))}>
+                          <Icon name="chevrons-down-up" size={15} />
+                        </IconButton>
+                      </>
+                    )}
+                    <IconButton
+                      label={t('Options')}
+                      aria-haspopup="menu"
+                      onClick={(event) =>
+                        openPanelMenu(
+                          [
+                            { label: 'Always select opened page', checked: settings.treeAutoReveal, onSelect: () => updateSettings({ treeAutoReveal: !settings.treeAutoReveal }) },
+                            { label: 'Open with a single click', checked: settings.treeSingleClick, onSelect: () => updateSettings({ treeSingleClick: !settings.treeSingleClick }) },
+                            { kind: 'sep' },
+                            { kind: 'head', label: 'View as' },
+                            { label: 'Tree', checked: settings.pagesView !== 'compact', onSelect: () => updateSettings({ pagesView: 'tree' }) },
+                            { label: 'Compact', checked: settings.pagesView === 'compact', onSelect: () => updateSettings({ pagesView: 'compact' }) },
+                          ],
+                          event.currentTarget,
+                        )
+                      }
+                    >
+                      <Icon name="more-vertical" size={15} />
+                    </IconButton>
+                  </>
+                )}
+                {panel === 'tasks' && (
+                  <IconButton label={t('New list')} onClick={() => add(null, 'todo')}>
+                    <Icon name="plus" size={15} />
+                  </IconButton>
+                )}
+                <IconButton label={t('Hide')} onClick={hideContext}>
+                  <Icon name="minus" size={15} />
+                </IconButton>
+              </div>
             </header>
+            {panelMenu}
             <div className="side-scroll" ref={setPanelHost}>
               {panel === 'vault' && sideOpen && (
                 <div className="side-collections" ref={treePanel}>
@@ -1159,54 +1232,32 @@ export default function App() {
                     </>
                   )}
 
-                  <div className="tree-heading">
-                    <button className={'section' + (shut.pages ? ' shut' : '')} aria-expanded={!shut.pages} onClick={() => setShut((s) => ({ ...s, pages: !s.pages }))}>
-                      {t('Pages')}
-                      <Icon name="chevron-right" size={13} />
-                    </button>
-                    {settings.pagesView !== 'compact' && (
-                      <>
-                        <IconButton
-                          label={t('Expand all folders')}
-                          onClick={() => {
-                            setCollapsed(new Set())
-                            setShut((previous) => ({ ...previous, pages: false }))
-                          }}
-                        >
-                          <Icon name="plus" size={15} />
-                        </IconButton>
-                        <IconButton
-                          label={t('Collapse all folders')}
-                          onClick={() => {
-                            setCollapsed(new Set(pages.filter((page) => !page.database && (page.kind === 'folder' || index.kids.has(page.id))).map((page) => page.id)))
-                            setShut((previous) => ({ ...previous, pages: false }))
-                          }}
-                        >
-                          <Icon name="minus" size={15} />
-                        </IconButton>
-                      </>
-                    )}
-                    <IconButton label={t('Reveal active note') + '  ' + commandHint('Reveal active note')} disabled={view !== 'page' || !current || !!current.database} onClick={revealActiveNote}>
-                      <Icon name="target" size={15} />
-                    </IconButton>
-                  </div>
-                  {!shut.pages && settings.pagesView === 'compact' && (
+                  {/* the panel is titled Pages already: its own fold is needed only when Favorites or Saved searches sit above it */}
+                  {(favs.length > 0 || saved.length > 0) && (
+                    <div className="tree-heading">
+                      <button className={'section' + (shut.pages ? ' shut' : '')} aria-expanded={!shut.pages} onClick={() => setShut((s) => ({ ...s, pages: !s.pages }))}>
+                        {t('Pages')}
+                        <Icon name="chevron-right" size={13} />
+                      </button>
+                    </div>
+                  )}
+                  {!pagesShut && settings.pagesView === 'compact' && (
                     <HorizontalScroll className="tree-scroll" label={t('Pages')} followVisibleBottom>
-                      <div className="tree-in cmp-list">
+                      <TreeFrame className="cmp-list" compact {...treeFrameProps}>
                         <CompactList {...rowProps} roots={roots} />
-                      </div>
+                      </TreeFrame>
                     </HorizontalScroll>
                   )}
-                  {!shut.pages && settings.pagesView !== 'compact' && (
+                  {!pagesShut && settings.pagesView !== 'compact' && (
                     <HorizontalScroll className="tree-scroll" label={t('Pages')} followVisibleBottom>
-                      <div className="tree-in">
+                      <TreeFrame {...treeFrameProps}>
                         {roots.map((p) => (
                           <TreeRow key={p.id} {...rowProps} page={p} depth={0} />
                         ))}
-                      </div>
+                      </TreeFrame>
                     </HorizontalScroll>
                   )}
-                  {!shut.pages && roots.length === 0 && <div className="empty-note">{t('No pages yet')}</div>}
+                  {!pagesShut && roots.length === 0 && <div className="empty-note">{t('No pages yet')}</div>}
 
                   {tagList.length > 0 && (
                     <SidebarTags
