@@ -8,11 +8,33 @@ export interface Slide {
 }
 
 export interface Deck {
-  readonly size: { readonly width: number; readonly height: number }
+  readonly size: DeckSize
   readonly slides: readonly Slide[]
   readonly accent?: string
   readonly theme?: DeckTheme
   readonly components?: readonly DeckComponent[]
+}
+
+export interface DeckSize {
+  readonly width: number
+  readonly height: number
+}
+
+export const deckSizePresets = [
+  { label: 'Portrait 4:5', width: 1080, height: 1350 },
+  { label: 'Square 1:1', width: 1080, height: 1080 },
+  { label: 'Wide 16:9', width: 1920, height: 1080 },
+  { label: 'Tall 9:16', width: 1080, height: 1920 },
+] as const
+
+export function validDeckSize({ width, height }: DeckSize): boolean {
+  return [width, height].every((side) => Number.isSafeInteger(side) && side >= 240 && side <= 8192) &&
+    width * 2 >= height && height * 2 >= width
+}
+
+export function resizeDeck(deck: Deck, size: DeckSize): Deck {
+  if (!validDeckSize(size)) throw new RangeError('Unsupported slide size')
+  return { ...deck, size: { width: size.width, height: size.height } }
 }
 
 export interface DeckComponent {
@@ -46,7 +68,8 @@ export function deckStyle(deck: Deck, slide?: Slide): Record<string, string> {
 }
 
 export function createPortraitDeck(createId: () => string): Deck {
-  return addSlide({ size: { width: 1080, height: 1350 }, slides: [] }, createId)
+  const { width, height } = deckSizePresets[0]
+  return addSlide({ size: { width, height }, slides: [] }, createId)
 }
 
 export function addSlide(deck: Deck, createId: () => string): Deck {

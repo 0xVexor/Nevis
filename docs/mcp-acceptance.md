@@ -114,7 +114,7 @@ Use `list_decks` to find permitted decks and `read_deck` to get a saved revision
 
 `create_deck` takes a title and one Markdown body per slide. Each slide can contain a Mermaid fence or an attached image. To upload an image, reference it as `![Alt text](upload:picture)` and supply a matching `temporaryId` in that slide's `assets`. To reuse a permitted attachment, reference it with `att:<sha256>`.
 
-`edit_deck` can replace one slide's body, insert a slide, or move a slide. Use the saved revision from `read_deck` as `expectedRevision` and a fresh `operationId`. Deck writes use the same scope, retry receipts, and revision checks as note writes.
+`edit_deck` can replace one slide's body, insert a slide, move a slide, or resize the deck with `{ "kind": "set_size", "size": { "width": 1920, "height": 1080 } }`. All slides use the same saved size, which determines the PDF aspect ratio. Use the saved revision from `read_deck` as `expectedRevision` and a fresh `operationId`. Deck writes use the same scope, retry receipts, and revision checks as note writes.
 
 `export_deck_pdf` takes a deck ID and its saved revision. The macOS desktop app returns the path of a local PDF without opening a print dialog. Keep the app open while the request runs. Move the file out of the system temporary directory to keep a permanent copy.
 

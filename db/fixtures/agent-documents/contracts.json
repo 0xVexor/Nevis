@@ -25,6 +25,7 @@
               "documentId": "d1",
               "revision": "r1",
               "title": "Technical slides",
+              "size": { "width": 1080, "height": 1350 },
               "slideIds": [
                 "s1"
               ]
@@ -45,6 +46,7 @@
           "documentId": "d1",
           "revision": "r1",
           "title": "Technical slides",
+          "size": { "width": 1080, "height": 1350 },
           "slideIds": [
             "s1"
           ],

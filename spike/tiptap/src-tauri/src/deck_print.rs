@@ -128,7 +128,11 @@ mod mac {
             return;
         }
         let info = NSPrintInfo::init(NSPrintInfo::alloc());
-        info.setOrientation(NSPaperOrientation::Portrait);
+        info.setOrientation(if width > height {
+            NSPaperOrientation::Landscape
+        } else {
+            NSPaperOrientation::Portrait
+        });
         info.setPaperSize(NSSize::new(width, height));
         info.setTopMargin(0.0);
         info.setBottomMargin(0.0);

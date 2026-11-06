@@ -38,6 +38,7 @@ test('deck MCP creates, reads and edits slides through scoped revision-gated com
     policy, writesReleased: true, deckContentCheck: () => null,
     exportDeckPdf: async (_title, deck) => {
       assert.equal(deck.slides.length, 2)
+      assert.deepEqual(deck.size, { width: 1920, height: 1080 })
       return '/tmp/technical-slides.pdf'
     },
     markdown: (text) => text === 'diagram and picture' ? [
@@ -71,8 +72,16 @@ test('deck MCP creates, reads and edits slides through scoped revision-gated com
   assert.equal((await h.call('edit_deck', replace)).ok, true)
   const replaced = await h.call('read_deck', { documentId, slideId: first })
   assert.equal(replaced.result.slide.structured.content[0].content[0].text, 'New cover')
+  const resize = { documentId, expectedRevision: replaced.result.revision, operationId: 'deck-resize', change: { kind: 'set_size', size: { width: 1920, height: 1080 } } }
+  assert.equal((await h.call('edit_deck', { ...resize, change: { kind: 'set_size', size: { width: 4000, height: 1000 } } })).error.code, 'INVALID_ARGUMENT')
+  const resized = await h.call('edit_deck', resize)
+  assert.equal(resized.ok, true, JSON.stringify(resized))
+  const reopened = await h.call('read_deck', { documentId, slideId: first })
+  assert.deepEqual(reopened.result.size, resize.change.size)
+  assert.deepEqual(reopened.result.slide, replaced.result.slide)
+  assert.deepEqual(reopened.result.slideIds, replaced.result.slideIds)
   assert.equal((await h.call('export_deck_pdf', { documentId, expectedRevision: revision })).error.code, 'REVISION_CONFLICT')
-  const pdf = await h.call('export_deck_pdf', { documentId, expectedRevision: replaced.result.revision })
+  const pdf = await h.call('export_deck_pdf', { documentId, expectedRevision: resized.result.revision })
   assert.equal(pdf.result.path, '/tmp/technical-slides.pdf')
 })
 

@@ -3,6 +3,7 @@ import { ASSET_LIMIT, decodeDocumentAsset } from '../documents/assets.ts'
 import type { EditNode, EditPlannerRuntime } from '../documents/editPlanner.ts'
 import { prepareCreatedPage } from '../documents/mutations.ts'
 import type { DocNode } from '../docNode.ts'
+import type { DeckSize } from './model.ts'
 
 export type DeckSlideInput = { blocks: EditNode[]; assets?: AssetUpload[] }
 export type DeckContentCheck = (content: DocNode) => string | null
@@ -11,6 +12,7 @@ export type DeckChange =
   | ({ kind: 'insert_slide'; beforeSlideId: string | null } & DeckSlideInput)
   | ({ kind: 'replace_slide'; slideId: string } & DeckSlideInput)
   | { kind: 'move_slide'; slideId: string; beforeSlideId: string | null }
+  | { kind: 'set_size'; size: DeckSize }
 export type EditDeckInput = { documentId: string; expectedRevision: string; operationId: string; change: DeckChange }
 
 export async function prepareDeckSlide(input: DeckSlideInput, id: string, operationId: string, runtime: EditPlannerRuntime, check: DeckContentCheck) {

@@ -19,7 +19,7 @@ import type { CreateDocumentInput, UpdateDocumentMetadataInput } from './mutatio
 import { creationPosition } from './hierarchy.ts'
 import type { CreationPosition } from './hierarchy.ts'
 import { isBlockId } from './blockIdentity.ts'
-import { addSlide, createPortraitDeck, moveSlide } from '../decks/model.ts'
+import { addSlide, createPortraitDeck, moveSlide, resizeDeck, validDeckSize } from '../decks/model.ts'
 import { decodeDeck, encodeDeck } from '../decks/storage.ts'
 import { prepareDeckSlide, uniqueDeckAssets } from '../decks/authoring.ts'
 import type { CreateDeckInput, DeckContentCheck, EditDeckInput } from '../decks/authoring.ts'
@@ -261,7 +261,10 @@ export class DocumentEditor {
     let next = deck
     let assets: DocumentAsset[] = []
     if (change.kind === 'move_slide') next = moveSlide(deck, change.slideId, change.beforeSlideId)
-    else {
+    else if (change.kind === 'set_size') {
+      if (!validDeckSize(change.size)) fail('INVALID_ARGUMENT', 'size')
+      next = resizeDeck(deck, change.size)
+    } else {
       const prepared = await prepareDeckSlide(change, before.id, input.operationId, {
         digest: this.digest,
         digestBytes: this.digestBytes,

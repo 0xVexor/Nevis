@@ -7,10 +7,11 @@ import type { DocNode } from '../docNode'
 import { t } from '../i18n'
 import type { Page } from '../repo'
 import { repo } from '../store'
-import { addSlide, deckStyle, moveSlide } from './model'
+import { addSlide, deckStyle, moveSlide, resizeDeck } from './model'
 import type { Deck, Slide } from './model'
 import { decodeDeck, encodeDeck } from './storage'
 import { printDeck } from './printDeck'
+import { DeckSizeDialog } from './DeckSizeDialog'
 import { SlashCommand } from '../editor/slash'
 import { ImageFiles } from '../editor/image'
 import { CommandPalette, closeCommandPalette, openCommandPalette } from '../editor/commandPalette'
@@ -114,6 +115,7 @@ function SlideEditor({
 
 export function DeckView({ page, readOnly, onChange, onError }: { page: Page; readOnly: boolean; onChange: () => void; onError: (message: string) => void }) {
   const [selected, setSelected] = useState<string>()
+  const [sizing, setSizing] = useState(false)
   const deck = decodeDeck(page.content)
   if (!deck) return <p className="deck-view">{t('This deck contains unsupported or damaged content.')}</p>
   const index = Math.max(
@@ -166,6 +168,9 @@ export function DeckView({ page, readOnly, onChange, onError }: { page: Page; re
         ))}
         {!readOnly && (
           <>
+            <Button size="sm" aria-haspopup="dialog" onClick={() => setSizing(true)}>
+              {t('Slide size')} <bdi>{deck.size.width} × {deck.size.height}</bdi>
+            </Button>
             <Dropdown
               label="Deck theme"
               value={deck.theme ?? 'calm-light'}
@@ -196,6 +201,16 @@ export function DeckView({ page, readOnly, onChange, onError }: { page: Page; re
           </>
         )}
       </div>
+      {sizing && !readOnly && (
+        <DeckSizeDialog
+          key={page.id}
+          size={deck.size}
+          onClose={() => setSizing(false)}
+          onApply={(size) => {
+            if (update((current) => resizeDeck(current, size))) setSizing(false)
+          }}
+        />
+      )}
       {issue ? (
         <p role="alert">{t(issue)}</p>
       ) : (

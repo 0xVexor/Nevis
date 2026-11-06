@@ -46,10 +46,10 @@ const reads = new Set<DocumentToolName>([
 ])
 const descriptions: Record<DocumentToolName, string> = {
   list_decks: 'List permitted slide decks, including each deck revision and its ordered slide IDs. Use nextAfterId as afterId for the next page.',
-  read_deck: 'Read the ordered slide IDs and revision of a deck. Include slideId to read the editable blocks of that slide.',
+  read_deck: 'Read the size, ordered slide IDs and revision of a deck. Include slideId to read the editable blocks of that slide.',
   export_deck_pdf: 'Save the exact saved revision of a permitted deck to a new local PDF and return its path. Use read_deck first. Direct export requires the macOS desktop app.',
   create_deck: 'Create an editable portrait deck from an array of slides, each with markdown. Use Markdown headings, code fences and mermaid fences. For images use ![alt](att:HASH) from a permitted page or ![alt](upload:NAME) with a matching temporaryId in that slide’s assets. Use a fresh operationId.',
-  edit_deck: 'Change a deck using the latest expectedRevision and a fresh operationId. Use change.kind replace_slide to replace one slide from markdown, insert_slide to insert one (beforeSlideId null appends), or move_slide to reorder an existing slide. Other slides retain their content. Images use the same syntax as create_deck.',
+  edit_deck: 'Change a deck using the latest expectedRevision and a fresh operationId. Use change.kind replace_slide to replace one slide from markdown, insert_slide to insert one (beforeSlideId null appends), or move_slide to reorder an existing slide. Use set_size with size {width,height} to resize every slide without changing their content. Each side must be an integer from 240 to 8192 and at most twice the other. Images use the same syntax as create_deck.',
   get_editor_capabilities:
     'Call this first before writing. Returns every node and mark the Nevis editor supports, with attribute schemas, nesting rules and a ready-to-use JSON example for each (tables, callouts, toggles, formulas, Mermaid, columns, images, drawings, page links). Use those examples as the exact shape of block content in create_document and edit_document.',
   list_documents:
@@ -383,7 +383,7 @@ export class McpDocumentSession {
   private async describeDeck(page: Page) {
     const deck = decodeDeck(page.content)
     if (!deck) throw { code: 'UNSUPPORTED_CONTENT' }
-    return { documentId: page.id, title: page.title.slice(0, 512), revision: await documentRevision(page, this.runtime.digest), slideIds: deck.slides.map(({ id }) => id) }
+    return { documentId: page.id, title: page.title.slice(0, 512), revision: await documentRevision(page, this.runtime.digest), slideIds: deck.slides.map(({ id }) => id), size: deck.size }
   }
   private async handle(message: unknown): Promise<unknown> {
     if (
