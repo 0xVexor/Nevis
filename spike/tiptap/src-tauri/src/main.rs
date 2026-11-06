@@ -4,6 +4,7 @@
 //! through the commands below (spike/tiptap/src/db.ts and attachments.ts); in a plain browser the same UI falls back to IndexedDB.
 
 mod database;
+mod deck_print;
 mod document_operations;
 mod mcp;
 mod mcp_relay;
@@ -694,6 +695,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            deck_print::print_deck, deck_print::deck_pdf_available,
             mcp_ready, mcp_status, mcp_enable, mcp_disable, mcp_autostart, mcp_setup_info, mcp_install_client, mcp_credential, mcp_reply,
             updates::updates_check, updates::updates_download, updates::updates_install,
             vault_backup_save, vault_backup_folder_save, vault_backup_folder_read, vault_backup_export, vault_backup_restore, vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,

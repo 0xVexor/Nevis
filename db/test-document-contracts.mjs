@@ -14,8 +14,7 @@ const validate = (tool, side, data) => {
   assert.equal(check(data), true, JSON.stringify(check.errors))
 }
 
-test('all twenty-one production contracts compile and have request/success fixtures', () => {
-  assert.equal(Object.keys(validators).length, 21)
+test('all production contracts compile and have request/success fixtures', () => {
   assert.deepEqual(Object.keys(examples.tools).sort(), Object.keys(validators).sort())
   for (const [name, example] of Object.entries(examples.tools)) {
     validate(name, 'input', example.input)
@@ -37,7 +36,7 @@ test('reject scope injection, unknown fields, missing revisions and invalid budg
       assert.equal(validators[name].input({ ...examples.tools[name].input, [field]: 'forged' }), false)
     }
   }
-  for (const name of ['edit_document', 'update_document_metadata', 'undo_document_edit']) {
+  for (const name of ['edit_deck', 'edit_document', 'update_document_metadata', 'undo_document_edit']) {
     const { expectedRevision, ...missing } = examples.tools[name].input
     assert.equal(validators[name].input(missing), false)
   }

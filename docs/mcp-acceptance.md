@@ -108,4 +108,14 @@ The native MCP credential test verifies that enabling/copying/rotating/revoking 
 | Database embeds | Authorized existing container references; database row/schema commands are separate |
 | History, retry receipts, revision checks and undo | Shared mutation pipeline for authored content |
 
+### Slide decks
+
+Use `list_decks` to find permitted decks and `read_deck` to get a saved revision and ordered slide IDs. Pass a slide ID to read that slide's editable blocks.
+
+`create_deck` takes a title and one Markdown body per slide. Each slide can contain a Mermaid fence or an attached image. To upload an image, reference it as `![Alt text](upload:picture)` and supply a matching `temporaryId` in that slide's `assets`. To reuse a permitted attachment, reference it with `att:<sha256>`.
+
+`edit_deck` can replace one slide's body, insert a slide, move a slide, or resize the deck with `{ "kind": "set_size", "size": { "width": 1920, "height": 1080 } }`. All slides use the same saved size, which determines the PDF aspect ratio. Use the saved revision from `read_deck` as `expectedRevision` and a fresh `operationId`. Deck writes use the same scope, retry receipts, and revision checks as note writes.
+
+`export_deck_pdf` takes a deck ID and its saved revision. The macOS desktop app returns the path of a local PDF without opening a print dialog. Keep the app open while the request runs. Move the file out of the system temporary directory to keep a permanent copy.
+
 Editor gestures, selection state, dialogs and keyboard shortcuts are UI interactions rather than persisted document features. Theme/account configuration and database schema/row management are not advertised as MCP document editing operations. The upload limit is intentionally bounded by the existing request budget; larger resources require the application attachment workflow.

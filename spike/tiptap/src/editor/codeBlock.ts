@@ -13,6 +13,23 @@ import { createSectionDragSurface } from './snapSurface'
 
 const lowlight = createLowlight(common)
 
+export function highlightCodeElement(element: Element) {
+  const language = [...element.classList].find((item) => item.startsWith('language-'))?.slice(9)
+  const source = element.textContent ?? ''
+  const result = language && lowlight.registered(language) ? lowlight.highlight(language, source) : lowlight.highlightAuto(source)
+  type Token = (typeof result.children)[number]
+  const render = (token: Token): Node => {
+    if (token.type === 'text') return document.createTextNode(token.value)
+    if (token.type !== 'element') return document.createTextNode('')
+    const span = document.createElement('span')
+    const classes = token.properties.className
+    if (Array.isArray(classes)) span.className = classes.join(' ')
+    span.append(...token.children.map(render))
+    return span
+  }
+  element.replaceChildren(...result.children.map(render))
+}
+
 /** Languages offered in the picker and the slash menu (all ship with lowlight's `common` set). */
 export const LANGS: { id: string; name: string; alias: string }[] = [
   { id: 'java', name: 'Java', alias: '' },
@@ -308,7 +325,8 @@ export const CodeBlock = CodeBlockLowlight.extend({
         // while no language is chosen, show what the detector currently sees
         const seen = id ? null : detectLanguage(n.textContent)
         auto.text = seen ? `${t('Auto-detect')} · ${t(nameOf(seen))}` : t('Auto-detect')
-        diag.hidden = !(n.attrs.language === 'mermaid' || looksLikeMermaid(n.textContent))
+        diag.hidden = !editor.schema.nodes.mermaid || !(n.attrs.language === 'mermaid' || looksLikeMermaid(n.textContent))
+        dom.toggleAttribute('data-compact', n.attrs.slideStyle === 'compact')
         trigger.innerHTML =
           '<span class="cl-t"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
         ;(trigger.querySelector('.cl-t') as HTMLElement).textContent = select.selectedOptions[0]?.text ?? ''

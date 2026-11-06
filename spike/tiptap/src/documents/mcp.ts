@@ -5,7 +5,10 @@ import { documentToolContracts, ERROR_CODES, LIMITS } from './contracts.ts'
 import type { DocumentToolName, Schema } from './contracts.ts'
 import type { DatabaseToolHost } from './databaseHost.ts'
 import type { IconCatalog } from './iconHost.ts'
-import { canonicalDocumentValue } from './revision.ts'
+import { canonicalDocumentValue, documentRevision } from './revision.ts'
+import { decodeDeck } from '../decks/storage.ts'
+import type { Deck } from '../decks/model.ts'
+import type { DeckContentCheck } from '../decks/authoring.ts'
 import type { DocumentService } from './service.ts'
 import type { DocumentReadRuntime } from './reader.ts'
 import type { Page } from './model.ts'
@@ -26,6 +29,9 @@ export interface McpConnection {
   policy: McpPolicy
 }
 const reads = new Set<DocumentToolName>([
+  'list_decks',
+  'read_deck',
+  'export_deck_pdf',
   'get_editor_capabilities',
   'list_documents',
   'search_documents',
@@ -39,6 +45,11 @@ const reads = new Set<DocumentToolName>([
   'query_database_rows',
 ])
 const descriptions: Record<DocumentToolName, string> = {
+  list_decks: 'List permitted slide decks, including each deck revision and its ordered slide IDs. Use nextAfterId as afterId for the next page.',
+  read_deck: 'Read the size, ordered slide IDs and revision of a deck. Include slideId to read the editable blocks of that slide.',
+  export_deck_pdf: 'Save the exact saved revision of a permitted deck to a new local PDF and return its path. Use read_deck first. Direct export requires the macOS desktop app.',
+  create_deck: 'Create an editable portrait deck from an array of slides, each with markdown. Use Markdown headings, code fences and mermaid fences. For images use ![alt](att:HASH) from a permitted page or ![alt](upload:NAME) with a matching temporaryId in that slide’s assets. Use a fresh operationId.',
+  edit_deck: 'Change a deck using the latest expectedRevision and a fresh operationId. Use change.kind replace_slide to replace one slide from markdown, insert_slide to insert one (beforeSlideId null appends), or move_slide to reorder an existing slide. Use set_size with size {width,height} to resize every slide without changing their content. Each side must be an integer from 240 to 8192 and at most twice the other. Images use the same syntax as create_deck.',
   get_editor_capabilities:
     'Call this first before writing. Returns every node and mark the Nevis editor supports, with attribute schemas, nesting rules and a ready-to-use JSON example for each (tables, callouts, toggles, formulas, Mermaid, columns, images, drawings, page links). Use those examples as the exact shape of block content in create_document and edit_document.',
   list_documents:
@@ -80,6 +91,11 @@ const descriptions: Record<DocumentToolName, string> = {
     'Undo one earlier edit made through this connection while it is still retained. Give the undoOperationId of that edit (see get_document_history or the receipt), the current revision and a fresh operationId. Use mode preview first. It fails with REVISION_CONFLICT if the document changed after that edit.',
 }
 const titles: Record<DocumentToolName, string> = {
+  list_decks: 'List slide decks',
+  read_deck: 'Read a slide deck',
+  export_deck_pdf: 'Export a deck PDF',
+  create_deck: 'Create a slide deck',
+  edit_deck: 'Edit a slide deck',
   get_editor_capabilities: 'Editor capabilities',
   list_documents: 'List documents',
   search_documents: 'Search documents',
@@ -271,6 +287,8 @@ export class McpDocumentSession {
   private readonly markdown?: MarkdownConverter
   private readonly databases?: DatabaseToolHost
   private readonly icons?: IconCatalog
+  private readonly deckContentCheck?: DeckContentCheck
+  private readonly exportDeckPdf?: (title: string, deck: Deck) => Promise<string>
   private iconCatalog(): IconCatalog {
     if (!this.icons) throw { code: 'CAPABILITY_UNAVAILABLE' }
     return this.icons
@@ -285,10 +303,14 @@ export class McpDocumentSession {
     markdown?: MarkdownConverter,
     databases?: DatabaseToolHost,
     icons?: IconCatalog,
+    deckContentCheck?: DeckContentCheck,
+    exportDeckPdf?: (title: string, deck: Deck) => Promise<string>,
   ) {
     this.markdown = markdown
     this.databases = databases
     this.icons = icons
+    this.deckContentCheck = deckContentCheck
+    this.exportDeckPdf = exportDeckPdf
     this.service = service
     this.connection = JSON.parse(JSON.stringify(connection))
     this.runtime = runtime
@@ -350,6 +372,19 @@ export class McpDocumentSession {
   private async refresh() {
     this.scope.observe(await this.service.persistedPages())
   }
+  private deckSlide(input: { markdown: string; assets?: unknown }) {
+    if (!this.markdown) throw { code: 'CAPABILITY_UNAVAILABLE' }
+    try {
+      return { blocks: this.markdown(input.markdown).map(cleanNode), ...(input.assets ? { assets: input.assets as import('./assets.ts').AssetUpload[] } : {}) }
+    } catch {
+      throw { code: 'INVALID_ARGUMENT', field: 'markdown' }
+    }
+  }
+  private async describeDeck(page: Page) {
+    const deck = decodeDeck(page.content)
+    if (!deck) throw { code: 'UNSUPPORTED_CONTENT' }
+    return { documentId: page.id, title: page.title.slice(0, 512), revision: await documentRevision(page, this.runtime.digest), slideIds: deck.slides.map(({ id }) => id), size: deck.size }
+  }
   private async handle(message: unknown): Promise<unknown> {
     if (
       !object(message) ||
@@ -372,10 +407,10 @@ export class McpDocumentSession {
         serverInfo: { name: 'nevis-documents', version: '1.0.0' },
         capabilities: { tools: { listChanged: false } },
         instructions: [
-          'Nevis notes (Persian/English, right-to-left aware). Only documents the user permitted are visible; the app must stay open.',
-          'Workflow: search_documents or list_documents to find a documentId, read_document (outline first, then the section or blocks you need), then edit.',
+          'Nevis notes and slide decks (Persian/English, right-to-left aware). Only documents the user permitted are visible; the app must stay open.',
+          'Workflow: use list_documents and read_document for notes, or list_decks and read_deck for slide decks.',
           this.connection.policy.allowWrites && this.writesAvailable
-            ? 'Before writing call get_editor_capabilities once and copy the example shapes. Every write needs the revision you last read (expectedRevision) and a fresh operationId; preview, then apply. Never edit from memory of an older read: on REVISION_CONFLICT read again and redo the change. If a call times out or the connection drops, repeat it with the same operationId and payload; you get the original result and nothing is applied twice. Edits are undoable with undo_document_edit.'
+            ? 'Call get_editor_capabilities for note block shapes. Use a fresh operationId for a document or deck write and the latest expectedRevision when editing. Preview note edits before applying. On REVISION_CONFLICT read again and redo the change. If a write times out, repeat it with the same operationId and payload to get its receipt without applying it twice.'
             : 'This connection is read-only; create, edit, metadata and undo calls are refused.',
           'Errors carry a code and retryable flag. EDITOR_BUSY and APP_UNAVAILABLE mean wait (details.retryAfterMs) and retry; ACCESS_DENIED means the document is outside the permitted scope; do not retry it. Keep Persian text as written; do not transliterate, change digits or add direction marks.',
         ].join(' '),
@@ -399,9 +434,9 @@ export class McpDocumentSession {
           inputSchema: contract.inputSchema,
           outputSchema: { type: 'object', ...contract.outputSchema },
           annotations: {
-            readOnlyHint: reads.has(name as DocumentToolName),
-            destructiveHint: !reads.has(name as DocumentToolName) && !['create_document', 'create_database', 'add_database_rows', 'add_database_property', 'restore_database_rows'].includes(name),
-            idempotentHint: true,
+            readOnlyHint: reads.has(name as DocumentToolName) && name !== 'export_deck_pdf',
+            destructiveHint: !reads.has(name as DocumentToolName) && !['create_document', 'create_deck', 'create_database', 'add_database_rows', 'add_database_property', 'restore_database_rows'].includes(name),
+            idempotentHint: name !== 'export_deck_pdf',
             openWorldHint: false,
           },
         })),
@@ -434,6 +469,52 @@ export class McpDocumentSession {
       if (!this.live()) throw { code: 'APP_UNAVAILABLE' }
       if (!reads.has(name) && (!this.connection.policy.allowWrites || !this.writesAvailable)) throw { code: this.connection.policy.allowWrites ? 'CAPABILITY_UNAVAILABLE' : 'ACCESS_DENIED' }
       const handlers = {
+        list_decks: async () => {
+          const limit = input.limit ?? 5
+          const pages = (await this.service.persistedPages()).filter((page) =>
+            page.kind === 'deck' && page.deletedAt === null && this.scope.canRead(page.id) && (!input.afterId || page.id > input.afterId),
+          ).sort((a, b) => a.id < b.id ? -1 : a.id === b.id ? 0 : 1)
+          const decks = await Promise.all(pages.slice(0, limit).map((page) => this.describeDeck(page)))
+          return { decks, nextAfterId: pages.length > limit ? decks.at(-1)!.documentId : null }
+        },
+        read_deck: async () => {
+          if (!this.scope.canRead(input.documentId)) throw { code: 'NOT_FOUND' }
+          const page = (await this.service.persistedPages()).find((page) => page.id === input.documentId && page.deletedAt === null && page.kind === 'deck')
+          if (!page) throw { code: 'NOT_FOUND' }
+          const slide = decodeDeck(page.content)?.slides.find(({ id }) => id === input.slideId)
+          if (input.slideId && !slide) throw { code: 'INVALID_TARGET' }
+          return { ...await this.describeDeck(page), slide: slide ? { slideId: slide.id, structured: { type: 'doc', content: slide.content.content ?? [] } } : null }
+        },
+        export_deck_pdf: async () => {
+          if (!this.exportDeckPdf) throw { code: 'CAPABILITY_UNAVAILABLE' }
+          if (!this.scope.canRead(input.documentId)) throw { code: 'NOT_FOUND' }
+          const page = (await this.service.persistedPages()).find((page) => page.id === input.documentId && page.deletedAt === null && page.kind === 'deck')
+          if (!page) throw { code: 'NOT_FOUND' }
+          const revision = await documentRevision(page, this.runtime.digest)
+          if (revision !== input.expectedRevision) throw { code: 'REVISION_CONFLICT' }
+          const deck = decodeDeck(page.content)
+          if (!deck) throw { code: 'UNSUPPORTED_CONTENT' }
+          if (!this.live()) throw { code: 'APP_UNAVAILABLE' }
+          let path
+          try {
+            path = await this.exportDeckPdf(page.title, deck)
+          } catch (error) {
+            if (object(error) && ERROR_CODES.includes(error.code)) throw error
+            throw { code: 'PERSISTENCE_FAILED' }
+          }
+          return { documentId: page.id, revision, path, pages: deck.slides.length }
+        },
+        create_deck: async () => {
+          if (!this.deckContentCheck) throw { code: 'CAPABILITY_UNAVAILABLE' }
+          const { documentId, revision, receipt, replayed } = await this.editor.createDeck({ ...input, slides: input.slides.map((slide: { markdown: string; assets?: unknown }) => this.deckSlide(slide)) }, this.deckContentCheck)
+          return { documentId, revision, receipt, replayed }
+        },
+        edit_deck: async () => {
+          if (!this.deckContentCheck) throw { code: 'CAPABILITY_UNAVAILABLE' }
+          const { markdown, assets, ...change } = input.change
+          const { documentId, revision, receipt, replayed } = await this.editor.editDeck({ ...input, change: markdown === undefined ? change : { ...change, ...this.deckSlide({ markdown, assets }) } }, this.deckContentCheck)
+          return { documentId, revision, receipt, replayed }
+        },
         get_editor_capabilities: () => editorCapabilities(),
         list_documents: () => this.reader.listDocuments(input),
         search_documents: () => this.reader.searchDocuments(input),

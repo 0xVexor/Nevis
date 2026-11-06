@@ -6,7 +6,7 @@ import type { DocumentHistoryInput, UndoDocumentInput } from './history.ts'
 import { failEdit as fail, translateEdit as translate } from './editErrors.ts'
 export { DocumentEditError } from './editErrors.ts'
 import { cloneDocumentValue } from './clone.ts'
-import { canonicalDocumentValue } from './revision.ts'
+import { canonicalDocumentValue, documentRevision } from './revision.ts'
 import { planDocumentEdit, validateEditRequest } from './editPlanner.ts'
 import type { EditDocumentInput } from './editPlanner.ts'
 import type { DocumentAccessContext } from './contracts.ts'
@@ -18,6 +18,11 @@ import { applyMetadata, metadataEvidence, prepareCreatedPage, validateCreate, va
 import type { CreateDocumentInput, UpdateDocumentMetadataInput } from './mutations.ts'
 import { creationPosition } from './hierarchy.ts'
 import type { CreationPosition } from './hierarchy.ts'
+import { isBlockId } from './blockIdentity.ts'
+import { addSlide, createPortraitDeck, moveSlide, resizeDeck, validDeckSize } from '../decks/model.ts'
+import { decodeDeck, encodeDeck } from '../decks/storage.ts'
+import { prepareDeckSlide, uniqueDeckAssets } from '../decks/authoring.ts'
+import type { CreateDeckInput, DeckContentCheck, EditDeckInput } from '../decks/authoring.ts'
 
 export interface DocumentEditGrant {
   admission?(): DocumentAdmission
@@ -135,7 +140,7 @@ export class DocumentEditor {
     }
     this.authorize(input.documentId)
     const before = rows.find((page) => page.id === input.documentId && page.deletedAt === null)
-    if (!before) fail('NOT_FOUND')
+    if (!before || before.kind === 'deck') fail('NOT_FOUND')
     const links = new Set<string>()
     const check = () => {
       this.authorize(input.documentId)
@@ -200,20 +205,112 @@ export class DocumentEditor {
       translate(error, 'INVALID_ARGUMENT')
     }
     input = cloneDocumentValue(input)
+    return this.createPage(input.parentId, input.operationId,
+      { tool: 'create_document', parentId: input.parentId, kind: input.kind, metadata: input.metadata, content: input.content, ...(input.assets ? { assets: input.assets } : {}) },
+      (id, sort, runtime) => prepareCreatedPage(input, id, sort, runtime),
+    )
+  }
+
+  async createDeck(input: CreateDeckInput, checkContent: DeckContentCheck) {
+    if (!isBlockId(input.operationId)) fail('INVALID_ARGUMENT', 'operationId')
+    return this.createPage(input.parentId, input.operationId, { tool: 'create_deck', ...input }, async (id, sort, runtime) => {
+      const first = createPortraitDeck(() => this.source.createId())
+      const slides = []
+      const assets: DocumentAsset[] = []
+      for (const [index, spec] of input.slides.entries()) {
+        const slideId = index === 0 ? first.slides[0].id : this.source.createId()
+        const slide = await prepareDeckSlide(spec, id, input.operationId, runtime, checkContent)
+        slides.push({ id: slideId, content: slide.content })
+        assets.push(...slide.assets)
+      }
+      const content = encodeDeck({ ...first, slides, theme: 'calm-light' })
+      if (!decodeDeck(content)) fail('INVALID_ARGUMENT')
+      return {
+        after: { id, parentId: input.parentId, kind: 'deck', title: input.title, tags: [], favorite: false, sort, updatedAt: 0, deletedAt: null, content },
+        affected: [],
+        assets: uniqueDeckAssets(assets),
+      }
+    })
+  }
+
+  async editDeck(input: EditDeckInput, checkContent: DeckContentCheck) {
+    if (!isBlockId(input.operationId)) fail('INVALID_ARGUMENT', 'operationId')
+    const check = () => this.authorize(input.documentId)
+    check()
+    const request: DocumentOperationRequest = {
+      scopeId: this.context.grantId,
+      operationId: input.operationId,
+      kind: 'edit',
+      documentId: input.documentId,
+      expectedRevision: input.expectedRevision,
+      payload: { tool: 'edit_deck', change: input.change },
+    }
+    const prior = await this.source.lookup(request)
+    check()
+    if (prior) return (await this.result(prior, true)).saved
+    const rows = await this.source.load()
+    check()
+    const before = rows.find((page) => page.id === input.documentId && page.deletedAt === null && page.kind === 'deck')
+    if (!before) fail('NOT_FOUND')
+    if (await documentRevision(before, this.digest) !== input.expectedRevision) fail('REVISION_CONFLICT')
+    const deck = decodeDeck(before.content)
+    if (!deck) fail('UNSUPPORTED_CONTENT')
+    const change = input.change
+    if ('slideId' in change && !deck.slides.some(({ id }) => id === change.slideId)) fail('INVALID_TARGET')
+    if ('beforeSlideId' in change && change.beforeSlideId !== null && !deck.slides.some(({ id }) => id === change.beforeSlideId)) fail('INVALID_TARGET')
+    let next = deck
+    let assets: DocumentAsset[] = []
+    if (change.kind === 'move_slide') next = moveSlide(deck, change.slideId, change.beforeSlideId)
+    else if (change.kind === 'set_size') {
+      if (!validDeckSize(change.size)) fail('INVALID_ARGUMENT', 'size')
+      next = resizeDeck(deck, change.size)
+    } else {
+      const prepared = await prepareDeckSlide(change, before.id, input.operationId, {
+        digest: this.digest,
+        digestBytes: this.digestBytes,
+        canLink: this.grant.canRead,
+        canUseResource: (kind, id) => canUseDocumentResource(rows, this.grant.canRead, kind, id),
+      }, checkContent)
+      assets = prepared.assets
+      if (change.kind === 'insert_slide') {
+        if (deck.slides.length >= 100) fail('LIMIT_EXCEEDED')
+        const id = this.source.createId()
+        next = moveSlide(addSlide(deck, () => id), id, change.beforeSlideId)
+        next = { ...next, slides: next.slides.map((slide) => slide.id === id ? { ...slide, content: prepared.content } : slide) }
+      } else next = { ...deck, slides: deck.slides.map((slide) => slide.id === change.slideId ? { ...slide, content: prepared.content } : slide) }
+    }
+    const after = { ...before, content: encodeDeck(next) }
+    let committed
+    try {
+      committed = await this.source.commit(request, before, after, check, (page, receipt) => savedEditEvidence(page, receipt, []), undefined, false, assets)
+    } catch (error) {
+      const replay = await this.racedReplay(request, error)
+      if (replay) return (await this.result(replay, true)).saved
+      translate(error, 'PERSISTENCE_FAILED')
+    }
+    return (await this.result(committed.receipt, committed.replayed)).saved
+  }
+
+  private async createPage(
+    parentId: string | null,
+    operationId: string,
+    payload: DocumentOperationRequest['payload'],
+    prepare: (id: string, sort: number, runtime: import('./editPlanner.ts').EditPlannerRuntime) => ReturnType<typeof prepareCreatedPage>,
+  ) {
     const links = new Set<string>()
     const check = () => {
       this.authorize()
-      if (!this.grant.canCreate?.(input.parentId) || (input.parentId !== null && (!this.grant.canRead(input.parentId) || !this.grant.canWrite(input.parentId)))) fail('ACCESS_DENIED')
+      if (!this.grant.canCreate?.(parentId) || (parentId !== null && (!this.grant.canRead(parentId) || !this.grant.canWrite(parentId)))) fail('ACCESS_DENIED')
       for (const id of links) if (!this.grant.canRead(id)) fail('ACCESS_DENIED')
     }
     check()
     const request: DocumentOperationRequest = {
       scopeId: this.context.grantId,
-      operationId: input.operationId,
+      operationId,
       kind: 'create',
       documentId: null,
       expectedRevision: null,
-      payload: { tool: 'create_document', parentId: input.parentId, kind: input.kind, metadata: input.metadata, content: input.content, ...(input.assets ? { assets: input.assets } : {}) },
+      payload,
     }
     let prior
     try {
@@ -239,8 +336,8 @@ export class DocumentEditor {
     if (!id) fail('CAPABILITY_UNAVAILABLE')
     let position, planned
     try {
-      position = creationPosition(rows, input.parentId)
-      planned = await prepareCreatedPage(input, id, position.sort, {
+      position = creationPosition(rows, parentId)
+      planned = await prepare(id, position.sort, {
         digest: this.digest,
         digestBytes: this.digestBytes,
         canLink: (id) => {
@@ -315,7 +412,7 @@ export class DocumentEditor {
     }
     check()
     const before = rows.find((page) => page.id === input.documentId && page.deletedAt === null)
-    if (!before) fail('NOT_FOUND')
+    if (!before || before.kind === 'deck') fail('NOT_FOUND')
     if (input.patch.cover?.kind === 'image' && !canUseDocumentResource(rows, this.grant.canRead, 'attachment', input.patch.cover.file)) fail('ACCESS_DENIED')
     const after = applyMetadata(before, input.patch)
     let committed

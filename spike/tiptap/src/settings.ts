@@ -1,5 +1,6 @@
 import { setPreference } from './preferenceEvents'
 import { composeFonts } from './fontStack'
+import { appearancePresets, deckThemeForAppearance, syntaxColors, themeColors, type AppearancePreset } from './appearancePresets'
 // Appearance settings. Everything is applied as CSS variables on <html> (see docs/design-language.md),
 // so no component needs to know about them. Persisted in localStorage (small, per device).
 import { useSyncExternalStore } from 'react'
@@ -16,6 +17,7 @@ export interface Settings {
   lang: Lang // UI language; English by default
   dir: LayoutDir // layout direction of the whole UI (sidebar side, lists, panels)
   theme: Theme
+  appearancePreset: AppearancePreset
   accent: string | null // null = the theme's own default
   bg: Background
   radius: number // px of --user-radius; the small/large steps derive from it
@@ -43,6 +45,7 @@ export const DEFAULTS: Settings = {
   lang: 'en',
   dir: 'auto',
   theme: 'light',
+  appearancePreset: 'calm',
   accent: null,
   bg: { kind: 'default' },
   radius: 10,
@@ -251,6 +254,7 @@ function load(): Settings {
   const old = saved as { glass?: boolean }
   if (old.glass && saved.sideGlass === undefined) saved.sideGlass = 60 // the old on/off switch became a slider
   const merged: Settings = { ...DEFAULTS, ...Object.fromEntries(Object.entries(saved).filter(([key]) => key in DEFAULTS)) }
+  if (!appearancePresets.some(({ id }) => id === merged.appearancePreset)) merged.appearancePreset = DEFAULTS.appearancePreset
   // before there were two pickers, an English face in `font` styled everything: it becomes the English face, Persian letters use the default
   if (saved.fontEn === undefined && FONTS.find((x) => x.id === merged.font)?.group === 'english') return { ...merged, fontEn: merged.font, font: DEFAULTS.font }
   return merged
@@ -366,8 +370,15 @@ export function apply(s: Settings = state) {
   root.dir = s.dir === 'auto' ? (s.lang === 'fa' ? 'rtl' : 'ltr') : s.dir
 
   const set = (k: string, v: string | null) => (v === null ? root.style.removeProperty(k) : root.style.setProperty(k, v))
+  const colors = themeColors(deckThemeForAppearance(s.appearancePreset, isDark(s)))
+  const themed = s.appearancePreset === 'forest-lime'
+  for (const [key, value] of Object.entries({
+    '--ds-bg': colors.paper, '--ds-raised': colors.paper, '--ds-side': colors.callout, '--ds-sunk': colors.callout,
+    '--ds-text': colors.ink, '--ds-line': colors.border, '--pre-bg': colors.code.paper, '--appearance-code-ink': colors.code.ink,
+    '--appearance-callout': colors.callout, ...syntaxColors(colors.code),
+  })) set(key, themed ? value : null)
   // the design system (src/design-system) derives every colour from this one value; null falls back to its own default
-  set('--user-accent', s.accent)
+  set('--user-accent', s.accent ?? (themed ? colors.accent : null))
   set('--ds-accent-ink', s.accent ? onAccent(s.accent) : null)
   // the mouse pointer: one minimal look for every state (white body, ink edge), independent of the accent
   const cur = cursors()

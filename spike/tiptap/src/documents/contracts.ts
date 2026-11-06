@@ -164,11 +164,31 @@ function tool(input: Schema, result: Schema) {
   return Object.freeze({ inputSchema: schema(input), outputSchema: schema(union(obj({ ok: literal(true), result }), error)) })
 }
 const write = { documentId: id, expectedRevision: revision, operationId: id }
+const slideBody = { markdown: str(LIMITS.textChars, 0), assets }
+const deckSize = obj({ width: integer(1, Number.MAX_SAFE_INTEGER), height: integer(1, Number.MAX_SAFE_INTEGER) })
+const deckSummary = { ...docRef, title: str(512, 0), slideIds: array(id, LIMITS.maxNodes), size: deckSize }
+const deckWriteResult = obj({ ...docRef, receipt, replayed: bool })
 
 const dbRow = obj({ title: str(1024, 0), values: { type: 'object' } }, [])
 const dbProperty = obj({ propertyId: id, name: str(512, 0), kind: str(32), options: array(obj({ optionId: id, name: str(512, 0) }), 200) }, ['propertyId', 'name', 'kind'])
 
 export const documentToolContracts = Object.freeze({
+  list_decks: tool(obj({ limit: integer(1, 50), afterId: id }, []), obj({ decks: array(obj(deckSummary), 50), nextAfterId: nullable(id) })),
+  read_deck: tool(obj({ documentId: id, slideId: id }, ['documentId']), obj({
+    ...deckSummary,
+    slide: nullable(obj({ slideId: id, structured: content })),
+  })),
+  export_deck_pdf: tool(obj({ documentId: id, expectedRevision: revision }), obj({ ...docRef, path: str(4096), pages: integer(1, LIMITS.maxNodes) })),
+  create_deck: tool(obj({ operationId: id, parentId: nullable(id), title: str(512), slides: array(obj(slideBody, ['markdown']), 30, 1) }), deckWriteResult),
+  edit_deck: tool(obj({
+    ...write,
+    change: union(
+      obj({ kind: literal('replace_slide'), slideId: id, ...slideBody }, ['kind', 'slideId', 'markdown']),
+      obj({ kind: literal('insert_slide'), beforeSlideId: nullable(id), ...slideBody }, ['kind', 'beforeSlideId', 'markdown']),
+      obj({ kind: literal('move_slide'), slideId: id, beforeSlideId: nullable(id) }),
+      obj({ kind: literal('set_size'), size: deckSize }),
+    ),
+  }), deckWriteResult),
   get_editor_capabilities: tool(
     empty,
     obj({

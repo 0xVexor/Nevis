@@ -1,4 +1,6 @@
 import type { DocNode } from '../docNode'
+import { createPortraitDeck } from '../decks/model.ts'
+import { decodeDeck, encodeDeck } from '../decks/storage.ts'
 import type { DocumentAsset } from './assets.ts'
 import type { DocumentAdmission } from './admission.ts'
 import { canonicalDocumentValue, documentRevision } from './revision.ts'
@@ -690,11 +692,11 @@ export class DocumentService implements PageRepo {
     const page: Page = {
       id: this.host.createId(),
       parentId,
-      ...(kind === 'folder' || kind === 'board' || kind === 'todo' ? { kind } : {}),
+      ...(kind === 'page' ? {} : { kind }),
       title: '',
       favorite: false,
       sort: sibs.length ? Math.max(...sibs.map((s) => s.sort)) + 1 : 0,
-      content: identifyBlocks(kind === 'board' ? EMPTY_BOARD : kind === 'todo' ? EMPTY_TODO : EMPTY_DOC).content,
+      content: kind === 'deck' ? encodeDeck(createPortraitDeck(() => this.host.createId())) : identifyBlocks(kind === 'board' ? EMPTY_BOARD : kind === 'todo' ? EMPTY_TODO : EMPTY_DOC).content,
       updatedAt: this.host.now(),
       deletedAt: null,
     }
@@ -707,8 +709,14 @@ export class DocumentService implements PageRepo {
     this.assertWritable()
     const p = this.pages.find((x) => x.id === id)
     if (!p) return
-    if (patch.content !== undefined && identityVersion(p.content) > BLOCK_IDENTITY_VERSION) throw new Error('Unsupported block identity version')
-    if (patch.content !== undefined) patch = { ...patch, content: identifyBlocks(patch.content, opts?.copyContent ? () => this.host.createId() : undefined).content }
+    if (patch.content !== undefined) {
+      if (p.kind === 'deck') {
+        if (!decodeDeck(p.content) || !decodeDeck(patch.content)) throw new Error('Unsupported deck content')
+      } else {
+        if (identityVersion(p.content) > BLOCK_IDENTITY_VERSION) throw new Error('Unsupported block identity version')
+        patch = { ...patch, content: identifyBlocks(patch.content, opts?.copyContent ? () => this.host.createId() : undefined).content }
+      }
+    }
     if (patch.content !== undefined && opts?.history !== false) this.snapshot(p)
     Object.assign(p, patch, { updatedAt: this.host.now() })
     if (p.database)

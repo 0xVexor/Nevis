@@ -10,14 +10,14 @@ import { documentToolContracts } from '../spike/tiptap/src/documents/contracts.t
 const digest = async text => createHash('sha256').update(text).digest('hex')
 const body = text => ({ type: 'doc', attrs: { blockIdentityVersion: 1 }, content: [{ type: 'paragraph', attrs: { blockId: 'p1' }, content: [{ type: 'text', text }] }] })
 const page = (id, parentId = null) => ({ id, parentId, title: id, tags: [], favorite: false, sort: 0, updatedAt: 1, deletedAt: null, content: body(`فارسی saved ${id}`) })
-export async function fixture({ policy = { wholeVault: true, rootIds: [], excludedIds: ['private'], allowWrites: false }, writesReleased = false, markdown, icons } = {}) {
+export async function fixture({ policy = { wholeVault: true, rootIds: [], excludedIds: ['private'], allowWrites: false }, writesReleased = false, markdown, icons, deckContentCheck, exportDeckPdf } = {}) {
   let active = true, now = 100, sequence = 0
-  const storage = new MemoryDocumentStorage('fixed', [page('outer'), page('root', 'outer'), page('note', 'root'), page('private', 'root'), page('secret', 'private')])
+  const storage = new MemoryDocumentStorage('fixed', [page('outer'), page('root', 'outer'), page('note', 'root'), page('private', 'root'), page('secret', 'private')], digest)
   const host = { now: () => now, createId: () => `generated-${++sequence}`, defer: () => () => {}, emit() {}, report() {}}
   const service = new DocumentService({ storage, host }); await service.init()
-  const runtime = { now: () => now, cursorId: randomUUID, digest }
+  const runtime = { now: () => now, cursorId: randomUUID, digest, digestBytes: digest }
   const connection = { vaultId: 'vault', grantId: 'grant', revision: 'revision', policy }
-  const session = new McpDocumentSession(service, connection, runtime, () => active, writesReleased, markdown, undefined, icons)
+  const session = new McpDocumentSession(service, connection, runtime, () => active, writesReleased, markdown, undefined, icons, deckContentCheck, exportDeckPdf)
   const dispatch = message => session.dispatch(message, { id: randomUUID(), expiresAt: now + 1000, active: () => active })
   let id = 0
   const rpc = (method, params) => dispatch({ jsonrpc: '2.0', id: ++id, method, ...(params === undefined ? {} : { params }) })
@@ -31,6 +31,59 @@ export async function fixture({ policy = { wholeVault: true, rootIds: [], exclud
   }
   return { service, storage, session, connection, dispatch, rpc, initialize, call, revoke: () => { active = false }, expire: () => { now += 2000 } }
 }
+
+test('deck MCP creates, reads and edits slides through scoped revision-gated commits', async () => {
+  const policy = { wholeVault: false, rootIds: ['root'], excludedIds: ['private'], allowWrites: true }
+  const h = await fixture({
+    policy, writesReleased: true, deckContentCheck: () => null,
+    exportDeckPdf: async (_title, deck) => {
+      assert.equal(deck.slides.length, 2)
+      assert.deepEqual(deck.size, { width: 1920, height: 1080 })
+      return '/tmp/technical-slides.pdf'
+    },
+    markdown: (text) => text === 'diagram and picture' ? [
+      { type: 'mermaid', attrs: { code: 'flowchart LR\n  A --> B' } },
+      { type: 'image', attrs: { src: 'upload:picture', alt: 'Sample' } },
+    ] : body(text).content.map(({ attrs, ...node }) => node),
+  })
+  await h.initialize()
+  const input = { operationId: 'deck-create', parentId: 'root', title: 'Technical slides', slides: [
+    { markdown: 'Cover' },
+    { markdown: 'diagram and picture', assets: [{ temporaryId: 'picture', mimeType: 'image/png', name: 'sample.png', data: 'iVBORw0KGgo=' }] },
+  ] }
+  assert.equal((await h.call('create_deck', { ...input, parentId: 'private' })).error.code, 'ACCESS_DENIED')
+  const create = await h.call('create_deck', input)
+  assert.equal(create.ok, true, JSON.stringify(create))
+  const { documentId, revision } = create.result
+  assert.equal((await h.call('create_deck', input)).result.documentId, documentId)
+  const list = await h.call('list_decks')
+  assert.deepEqual(list.result.decks.map((deck) => deck.documentId), [documentId])
+  const [first, second] = list.result.decks[0].slideIds
+  const diagram = await h.call('read_deck', { documentId, slideId: second })
+  assert.deepEqual(diagram.result.slide.structured.content.map((node) => node.type), ['mermaid', 'image'])
+  assert.match(diagram.result.slide.structured.content[1].attrs.src, /^att:[a-f0-9]{64}$/)
+  const edit = { documentId, expectedRevision: revision, operationId: 'deck-move', change: { kind: 'move_slide', slideId: second, beforeSlideId: first } }
+  assert.equal((await h.call('edit_deck', edit)).ok, true)
+  assert.equal((await h.call('edit_deck', edit)).result.replayed, true)
+  assert.equal((await h.call('edit_deck', { ...edit, operationId: 'deck-stale' })).error.code, 'REVISION_CONFLICT')
+  const moved = await h.call('read_deck', { documentId })
+  assert.deepEqual(moved.result.slideIds, [second, first])
+  const replace = { documentId, expectedRevision: moved.result.revision, operationId: 'deck-replace', change: { kind: 'replace_slide', slideId: first, markdown: 'New cover' } }
+  assert.equal((await h.call('edit_deck', replace)).ok, true)
+  const replaced = await h.call('read_deck', { documentId, slideId: first })
+  assert.equal(replaced.result.slide.structured.content[0].content[0].text, 'New cover')
+  const resize = { documentId, expectedRevision: replaced.result.revision, operationId: 'deck-resize', change: { kind: 'set_size', size: { width: 1920, height: 1080 } } }
+  assert.equal((await h.call('edit_deck', { ...resize, change: { kind: 'set_size', size: { width: 4000, height: 1000 } } })).error.code, 'INVALID_ARGUMENT')
+  const resized = await h.call('edit_deck', resize)
+  assert.equal(resized.ok, true, JSON.stringify(resized))
+  const reopened = await h.call('read_deck', { documentId, slideId: first })
+  assert.deepEqual(reopened.result.size, resize.change.size)
+  assert.deepEqual(reopened.result.slide, replaced.result.slide)
+  assert.deepEqual(reopened.result.slideIds, replaced.result.slideIds)
+  assert.equal((await h.call('export_deck_pdf', { documentId, expectedRevision: revision })).error.code, 'REVISION_CONFLICT')
+  const pdf = await h.call('export_deck_pdf', { documentId, expectedRevision: resized.result.revision })
+  assert.equal(pdf.result.path, '/tmp/technical-slides.pdf')
+})
 
 test('scopes inherit exclusions, hide missing/cyclic ancestry and preserve selected roots', () => {
   const policy = { wholeVault: false, rootIds: ['root'], excludedIds: ['private'], allowWrites: true }

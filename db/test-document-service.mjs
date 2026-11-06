@@ -7,7 +7,9 @@ import { identifyBlocks } from '../spike/tiptap/src/documents/blockIdentity.ts'
 import { IndexedDbDocumentStorage } from '../spike/tiptap/src/platform/documents/indexedDb.ts'
 import { NativeDocumentStorage } from '../spike/tiptap/src/platform/documents/native.ts'
 import { canonicalDocumentValue, documentRevision } from '../spike/tiptap/src/documents/revision.ts'
-import { createHash } from 'node:crypto'
+import { addSlide, moveSlide } from '../spike/tiptap/src/decks/model.ts'
+import { decodeDeck, encodeDeck } from '../spike/tiptap/src/decks/storage.ts'
+import { createHash, randomUUID } from 'node:crypto'
 import './tests/tools/node_modules/fake-indexeddb/auto/index.mjs'
 
 const fixtures = JSON.parse(readFileSync(new URL('./fixtures/agent-documents/pages.json', import.meta.url), 'utf8'))
@@ -38,6 +40,32 @@ function openDb(name = `document-contract-${++databaseNumber}`) {
   })
 }
 const write = (upserts, replaceAll = false) => ({ upserts, removed: [], replaceAll, baseVersions: {} })
+
+test('a portrait deck reopens from the vault with its slide content and order intact', async () => {
+  const storage = new IndexedDbDocumentStorage('deck-vault', openDb())
+  const service = new DocumentService({ storage, host: host() })
+  await service.init()
+  const page = service.create(null, 'deck')
+  const deck = addSlide(decodeDeck(page.content), randomUUID)
+  const [first, second] = deck.slides
+  second.content.content[0].content = [{ type: 'text', text: 'آشنایی با OpenAPI' }]
+  const reordered = moveSlide(deck, second.id, first.id)
+  service.update(page.id, { title: 'OpenAPI', content: encodeDeck(reordered) })
+  assert.throws(() => service.update(page.id, { content: { type: 'doc', content: [] } }), /Unsupported deck content/)
+  await service.flushBeforeUpdate()
+
+  const reopened = new DocumentService({ storage, host: host() })
+  await reopened.init()
+  assert.equal(reopened.get(page.id).kind, 'deck')
+  assert.equal(reopened.get(page.id).title, 'OpenAPI')
+  assert.deepEqual(decodeDeck(reopened.get(page.id).content), reordered)
+
+  const reader = reopened.reader({ context: { vaultHandle: 'deck-vault', grantId: 'grant', grantRevision: '1' }, isActive: () => true, canRead: () => true }, {
+    now: Date.now, cursorId: randomUUID, digest: async value => createHash('sha256').update(value).digest('hex'),
+  })
+  assert.deepEqual((await reader.listDocuments()).documents, [])
+  await assert.rejects(reader.readDocument({ documentId: page.id, target: { kind: 'full' }, format: 'structured' }), { code: 'NOT_FOUND' })
+})
 
 test('document revisions cover content and metadata and ignore object key order', async () => {
   const digest = async value => createHash('sha256').update(value).digest('hex')

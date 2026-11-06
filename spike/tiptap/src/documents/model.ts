@@ -1,5 +1,5 @@
 import type { PageRecordMeta } from '../database/model/types.ts'
-export type PageKind = 'page' | 'folder' | 'board' | 'todo'
+export type PageKind = 'page' | 'folder' | 'board' | 'todo' | 'deck'
 export type PageStatus = 'todo' | 'doing' | 'done'
 export type Cover = { kind: 'gradient'; id: string } | { kind: 'image'; file: string } // image = content-addressed attachment id
 
