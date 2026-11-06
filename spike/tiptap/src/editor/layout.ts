@@ -573,6 +573,11 @@ export const LayoutSafety = Extension.create({
                 })
               return true
             }
+            // A layout whose columns are all empty has nothing to keep: Backspace or Delete in it takes it away.
+            if ((e.key === 'Backspace' || e.key === 'Delete') && selected.empty) {
+              const group = groupAt(view.state)
+              if (group && flattenGroup(group.node).every((n) => n.type.name === 'paragraph' && n.content.size === 0)) return editor.commands.deleteLayout(group.pos)
+            }
             if (crossesColumns(view.state)) {
               if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Enter') {
                 const tr = editAcrossColumns(view.state, undefined, e.key === 'Enter')
@@ -656,7 +661,6 @@ export const LayoutSafety = Extension.create({
       }),
     ]
   },
-
 })
 
 export { activeGroup, blockRange, groupColumns, NodeSelection }

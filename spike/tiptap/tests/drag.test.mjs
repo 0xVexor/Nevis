@@ -8,6 +8,7 @@ import { LayoutGroup, LayoutColumn } from '../src/editor/layout.ts'
 import { DragHandle } from '../src/editor/dragHandle.ts'
 import { groupColumns } from '../src/editor/layoutModel.ts'
 import { chooseSnapDestination, within } from '../src/editor/snapTargets.ts'
+import { cssMs } from '../src/design-system/motion.ts'
 
 const schema = getSchema([StarterKit, LayoutGroup, LayoutColumn])
 const paragraph = (value) => schema.nodes.paragraph.create(null, schema.text(value))
@@ -336,4 +337,12 @@ test('a preview grown around a short block stays on the page beside the first an
   assert.deepEqual(within({ top: 90, height: 56 }, page), { top: 100, height: 56 })
   assert.deepEqual(within({ top: 370, height: 56 }, page), { top: 344, height: 56 })
   assert.deepEqual(within({ top: 200, height: 56 }, page), { top: 200, height: 56 })
+})
+
+test('motion tokens read the same whether the build writes them in ms or s', () => {
+  assert.equal(cssMs('300ms'), 300)
+  assert.equal(cssMs(' .3s'), 300)
+  assert.equal(cssMs('0.12s'), 120)
+  assert.equal(cssMs('0s'), 0)
+  assert.ok(Number.isNaN(cssMs('')))
 })

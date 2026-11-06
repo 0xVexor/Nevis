@@ -6,6 +6,7 @@ import { LandingFrame } from './Onboarding'
 import { useSettings } from '../settings'
 import type { DocNode } from '../docNode'
 import { locale, t } from '../i18n'
+import { motionMs } from '../design-system/motion'
 
 const p = (): DocNode => ({ type: 'paragraph' })
 const h = (text: string): DocNode => ({ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text }] })
@@ -82,7 +83,7 @@ export function FirstNote({ workspace, arrive, onChange, onPersist, onDirty, onR
       const end = to && to.width
         ? `translate(${to.left + to.width / 2 - (from.left + from.width / 2)}px, ${to.top + to.height / 2 - (from.top + from.height / 2)}px) scale(${to.width / from.width}, ${Math.max(to.height / from.height, 0.02)})`
         : 'scale(.96)'
-      const duration = (parseFloat(css.getPropertyValue('--ds-slow')) || 300) * 1.6
+      const duration = motionMs('--ds-slow', 300) * 1.6
       await el.animate([{ transform: 'none', opacity: 1 }, { transform: end, opacity: 0 }], { duration, easing: css.getPropertyValue('--ds-ease').trim() || 'ease', fill: 'forwards' }).finished.catch(() => undefined)
     }
     onFinish(pageId)
