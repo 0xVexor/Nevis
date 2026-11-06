@@ -87,7 +87,7 @@ const put = (k: string, v: unknown) => {
   }
 }
 
-const SIDE_MIN = 160
+const SIDE_MIN = 240 // room for the panel's whole title beside its tools
 const SIDE_MAX = 600
 const RAIL_MIN = 148
 const RAIL_MAX = 320
@@ -275,7 +275,10 @@ export default function App() {
     aside.addEventListener('keydown', arrows)
     return () => aside.removeEventListener('keydown', arrows)
   }, [sideOpen, panel])
-  const [sideW, setSideW] = useState<number | null>(() => store<number | null>('not.sideW', null)) // null: the width of the chosen sidebar style
+  const [sideW, setSideW] = useState<number | null>(() => {
+    const saved = store<number | null>('not.sideW', null)
+    return saved === null ? null : Math.min(SIDE_MAX, Math.max(SIDE_MIN, saved))
+  }) // null: the width of the chosen sidebar style
   const [railWidth, setRailWidth] = useState<number | null>(() => store('not.navWidth', null))
   const [railPinned, setRailPinned] = useState(false) // icon-only rail opened from the logo
   const sideNav = useRef<HTMLElement>(null)
@@ -1257,9 +1260,6 @@ export default function App() {
                     <Icon name="plus" size={15} />
                   </IconButton>
                 )}
-                <IconButton label={t('Hide side panel') + '  ' + commandHint('Open or close the sidebar')} onClick={hideContext}>
-                  <Icon name="minus" size={15} />
-                </IconButton>
               </div>
             </header>
             {panelMenu}

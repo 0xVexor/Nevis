@@ -3,7 +3,7 @@
 /* Printing switches the app to the light theme first (print.ts), so the design-system colours are the real light ones; here the paper
    is made white and everything that is app rather than document is left out: navigation, panels, the window bar, toolbars, handles,
    and the page's own properties. What remains is the title and the content, set like a document. */
-@page { size: A4; margin: 18mm 16mm; }
+@page { size: A4; margin: 26mm 16mm 20mm; } /* the head and foot (print.ts) sit in the top and bottom margins */
 @media print {
   :root:root:root {
     color-scheme: light;

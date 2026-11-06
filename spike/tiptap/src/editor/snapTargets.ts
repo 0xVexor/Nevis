@@ -51,12 +51,17 @@ function domRect(view: EditorView, pos: number): DOMRect | null {
 const rect = (r: DOMRect): SnapRect => ({ left: r.left, top: r.top, width: r.width, height: r.height })
 /** The page margin beside the text, where the grip sits. */
 const GUTTER = 52
-/** How far into a block (or column) its side-by-side zone reaches. */
-const sideZone = (width: number) => Math.max(48, Math.min(150, width * 0.22))
+/** How far into a block (or column) its side-by-side zone reaches: 35% from each side, so either side is a large target and
+ *  the pointer need not go near the edge. The middle 30% and the margins reorder. */
+const sideZone = (width: number) => Math.max(56, Math.min(360, width * 0.35))
+/** How far a side-by-side choice holds when the pointer drifts back toward the middle of the block. */
+const COLUMNS_HOLD = 28
 /** A one- or two-line block still gets side targets you can hit, and a preview you can read: at least this tall, centred on it. */
 const MIN_TARGET = 44,
   MIN_PREVIEW = 56
 const atLeast = (top: number, height: number, min: number) => (height >= min ? { top, height } : { top: top + height / 2 - min / 2, height: min })
+/** A preview grown to MIN_PREVIEW around a short block stays on the page: beside the first or last block it grows inward. */
+export const within = (box: { top: number; height: number }, bounds: Pick<DOMRect, 'top' | 'bottom'>) => ({ top: Math.max(bounds.top, Math.min(box.top, bounds.bottom - box.height)), height: box.height })
 export const containsSnapPoint = (r: SnapRect, x: number, y: number, extra = 0) => x >= r.left - extra && x <= r.left + r.width + extra && y >= r.top - extra && y <= r.top + r.height + extra
 export const hitsSnapDestination = (destination: SnapDestination, x: number, y: number, extra = 0) =>
   containsSnapPoint(destination.hit, x, y, extra) || !!destination.escapeAreas?.some((r) => containsSnapPoint(r, x, y, extra))
@@ -157,7 +162,7 @@ export function snapDestinations(view: EditorView, source?: BlockRange): SnapDes
             target: { kind: 'pair', targetFrom: pos, side },
             label: t(side === 'left' ? 'Left of {content}' : 'Right of {content}', { content: label }),
             hit: { left: side === 'left' ? r.left : r.right - edge, top: band.top, width: edge, height: band.height },
-            rect: { left: bounds.left, ...atLeast(r.top, r.height, MIN_PREVIEW), width: bounds.width },
+            rect: { left: bounds.left, ...within(atLeast(r.top, r.height, MIN_PREVIEW), bounds), width: bounds.width },
             priority: 3,
             kind: 'columns',
           })
@@ -216,7 +221,7 @@ export function snapDestinations(view: EditorView, source?: BlockRange): SnapDes
                 : t('Between columns {a} and {b} of {content}', { a: gap, b: gap + 1, content: label }),
           hit: { left: sibling ? sibling.left - 12 : outer.left, top: inner.top, width: sibling ? sibling.width + 24 : outer.width, height: inner.height },
           pointerDisabled: reordering && !sibling,
-          rect: { left: groupBounds.left, ...atLeast(groupBounds.top, groupBounds.height, MIN_PREVIEW), width: groupBounds.width },
+          rect: { left: groupBounds.left, ...within(atLeast(groupBounds.top, groupBounds.height, MIN_PREVIEW), bounds), width: groupBounds.width },
           priority: 3,
           kind: 'columns',
         })
@@ -289,11 +294,15 @@ export function chooseSnapDestination(destinations: SnapDestination[], x: number
   const retained = previous && destinations.find((dest) => dest.key === previous.key && !dest.error && allowed(dest))
   // Crossing from a column interior into an insertion seam is an explicit change of intent.
   // The previous choice holds while the pointer is still on it, unless it is now clearly nearer another one (8px of slack).
+  // Side by side holds further: once a block is beside another, the pointer may drift back toward the middle by COLUMNS_HOLD
+  // before it reorders again, so the preview does not flicker between the two on the zone's edge. Leaving by height is unchanged.
+  const holding =
+    retained?.kind === 'columns' && (!hit || hit.kind !== 'columns') && containsSnapPoint({ ...retained.hit, left: retained.hit.left - COLUMNS_HOLD, width: retained.hit.width + COLUMNS_HOLD * 2 }, x, y, 3)
   if (
     retained &&
-    (!hit || retained.kind === hit.kind) &&
-    hitsSnapDestination(retained, x, y, 3) &&
-    (!hit || (priority(hit) <= priority(retained) && distance(hit) + 8 >= distance(retained)))
+    (holding || !hit || retained.kind === hit.kind) &&
+    (holding || hitsSnapDestination(retained, x, y, 3)) &&
+    (!hit || (priority(hit) <= priority(retained) && (holding || distance(hit) + 8 >= distance(retained))))
   )
     return retained
   return hit ?? null

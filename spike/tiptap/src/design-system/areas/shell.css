@@ -33,8 +33,8 @@
 .context-panel[hidden] { display: none; }
 .context-heading, .tree-heading { display: flex; align-items: center; gap: var(--ds-s1); }
 .context-heading { flex: none; margin-block-end: var(--ds-s3); }
-.context-heading h2 { flex: 1; min-inline-size: 0; margin: 0; padding-inline-start: var(--ds-s2); overflow: hidden; font-size: var(--ds-text-section); text-overflow: ellipsis; white-space: nowrap; }
-/* the panel's own tools, IntelliJ style: select opened page, expand all, collapse all, options, hide */
+.context-heading h2 { flex: 1 0 auto; margin: 0; padding-inline-start: var(--ds-s2); font-size: var(--ds-text-section); white-space: nowrap; } /* the title is never cut: the panel's narrowest width leaves it room */
+/* the panel's own tools, IntelliJ style: select opened page, expand all, collapse all, options (the panel closes from its toggle in the top bar) */
 .context-tools { display: flex; flex: none; align-items: center; gap: 2px; }
 .context-tools .ds-icon-btn { inline-size: var(--ds-control-sm); block-size: var(--ds-control-sm); color: var(--ds-text-3); }
 .context-tools .ds-icon-btn:hover:not(:disabled) { color: var(--ds-text); }
@@ -210,6 +210,10 @@
 :is(.side, .context-panel) .row:hover :is(.ic, .twisty, .tree-count) { color: var(--ds-accent); }
 .context-panel .row:hover .pg-ic.tile { color: var(--ds-accent); }
 .context-panel .row:hover .pg-ic.emoji { filter: none; opacity: 1; }
+/* the tree keeps its accent for the selection: a row under the pointer is only greyed, so one row is ever filled in the accent */
+.context-panel .row.tree:hover:not(.sel) { background: var(--ds-hover); }
+.context-panel .row.tree:hover:not(.sel, .cur) { color: var(--ds-text); }
+.context-panel .row.tree:hover:not(.sel, .cur) :is(.ic, .twisty, .tree-count, .pg-ic.tile) { color: var(--ds-text-2); }
 .context-panel .row.cur .pg-ic.tile { color: var(--ds-accent); }
 .side .row:hover kbd { border-color: var(--ds-accent-line); color: var(--ds-accent); }
 .fav-zone { margin-inline: calc(-1 * var(--ds-s1)); padding-inline: var(--ds-s1); border-radius: var(--ds-r); outline: 1.5px dashed transparent; outline-offset: -2px; transition: outline-color var(--ds-fast), background var(--ds-fast); }
