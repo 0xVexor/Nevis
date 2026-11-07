@@ -1,6 +1,6 @@
 import { setPreference } from './preferenceEvents'
 import { composeFonts } from './fontStack'
-import { appearancePresets, deckThemeForAppearance, syntaxColors, themeColors, type AppearancePreset } from './appearancePresets'
+import { workspaceAppearance, appearancePresets, deckThemeForAppearance, syntaxColors, themeColors, type AppearancePreset } from './appearancePresets'
 // Appearance settings. Everything is applied as CSS variables on <html> (see docs/design-language.md),
 // so no component needs to know about them. Persisted in localStorage (small, per device).
 import { useSyncExternalStore } from 'react'
@@ -370,8 +370,9 @@ export function apply(s: Settings = state) {
   root.dir = s.dir === 'auto' ? (s.lang === 'fa' ? 'rtl' : 'ltr') : s.dir
 
   const set = (k: string, v: string | null) => (v === null ? root.style.removeProperty(k) : root.style.setProperty(k, v))
-  const colors = themeColors(deckThemeForAppearance(s.appearancePreset, isDark(s)))
-  const themed = s.appearancePreset === 'forest-lime'
+  const preset = workspaceAppearance(s.appearancePreset)
+  const colors = themeColors(deckThemeForAppearance(preset, isDark(s)))
+  const themed = preset === 'forest-lime'
   for (const [key, value] of Object.entries({
     '--ds-bg': colors.paper, '--ds-raised': colors.paper, '--ds-side': colors.callout, '--ds-sunk': colors.callout,
     '--ds-text': colors.ink, '--ds-line': colors.border, '--pre-bg': colors.code.paper, '--appearance-code-ink': colors.code.ink,

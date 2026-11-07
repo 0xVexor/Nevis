@@ -5,6 +5,7 @@
 
 mod database;
 mod deck_print;
+mod release_features;
 mod document_operations;
 mod mcp;
 mod mcp_relay;

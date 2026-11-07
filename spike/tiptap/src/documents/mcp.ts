@@ -1,3 +1,4 @@
+import { SLIDES_ENABLED, DECK_TOOLS } from '../releaseFeatures.ts'
 /* oxlint-disable typescript/no-explicit-any -- the MCP layer validates untrusted JSON-RPC input and JSON-Schema documents; every value is checked at runtime before use */
 import { editorCapabilities } from './editorProfile.ts'
 import { documentLinks, documentResources, undoResources } from './admission.ts'
@@ -287,6 +288,7 @@ export class McpDocumentSession {
   private readonly markdown?: MarkdownConverter
   private readonly databases?: DatabaseToolHost
   private readonly icons?: IconCatalog
+  private readonly slidesEnabled: boolean
   private readonly deckContentCheck?: DeckContentCheck
   private readonly exportDeckPdf?: (title: string, deck: Deck) => Promise<string>
   private iconCatalog(): IconCatalog {
@@ -305,7 +307,9 @@ export class McpDocumentSession {
     icons?: IconCatalog,
     deckContentCheck?: DeckContentCheck,
     exportDeckPdf?: (title: string, deck: Deck) => Promise<string>,
+    slidesEnabled = SLIDES_ENABLED,
   ) {
+    this.slidesEnabled = slidesEnabled
     this.markdown = markdown
     this.databases = databases
     this.icons = icons
@@ -407,10 +411,10 @@ export class McpDocumentSession {
         serverInfo: { name: 'nevis-documents', version: '1.0.0' },
         capabilities: { tools: { listChanged: false } },
         instructions: [
-          'Nevis notes and slide decks (Persian/English, right-to-left aware). Only documents the user permitted are visible; the app must stay open.',
-          'Workflow: use list_documents and read_document for notes, or list_decks and read_deck for slide decks.',
+          this.slidesEnabled ? 'Nevis notes and slide decks (Persian/English, right-to-left aware). Only documents the user permitted are visible; the app must stay open.' : 'Nevis notes (Persian/English, right-to-left aware). Only permitted documents are visible; the app must stay open.',
+          this.slidesEnabled ? 'Workflow: use list_documents and read_document for notes, or list_decks and read_deck for slide decks.' : 'Workflow: use list_documents and read_document for notes.',
           this.connection.policy.allowWrites && this.writesAvailable
-            ? 'Call get_editor_capabilities for note block shapes. Use a fresh operationId for a document or deck write and the latest expectedRevision when editing. Preview note edits before applying. On REVISION_CONFLICT read again and redo the change. If a write times out, repeat it with the same operationId and payload to get its receipt without applying it twice.'
+            ? 'Call get_editor_capabilities for note block shapes. Use a fresh operationId for a document write and the latest expectedRevision when editing. Preview note edits before applying. On REVISION_CONFLICT read again and redo the change. If a write times out, repeat it with the same operationId and payload to get its receipt without applying it twice.'
             : 'This connection is read-only; create, edit, metadata and undo calls are refused.',
           'Errors carry a code and retryable flag. EDITOR_BUSY and APP_UNAVAILABLE mean wait (details.retryAfterMs) and retry; ACCESS_DENIED means the document is outside the permitted scope; do not retry it. Keep Persian text as written; do not transliterate, change digits or add direction marks.',
         ].join(' '),
@@ -427,7 +431,7 @@ export class McpDocumentSession {
       return rpcError(id, -32602, 'Invalid list parameters')
     if (message.method === 'tools/list')
       return response({
-        tools: Object.entries(documentToolContracts).map(([name, contract]) => ({
+        tools: Object.entries(documentToolContracts).filter(([name]) => this.slidesEnabled || !DECK_TOOLS.has(name)).map(([name, contract]) => ({
           name,
           title: titles[name as DocumentToolName],
           description: descriptions[name as DocumentToolName],
@@ -445,6 +449,7 @@ export class McpDocumentSession {
     const params = message.params
     if (!object(params) || typeof params.name !== 'string' || !Object.hasOwn(documentToolContracts, params.name) || Object.keys(params).some((key) => !['name', 'arguments', '_meta'].includes(key)))
       return rpcError(id, -32602, 'Unknown tool or invalid parameters')
+    if (!this.slidesEnabled && DECK_TOOLS.has(params.name)) return rpcError(id, -32602, 'Tool unavailable in this release')
     const name = params.name as DocumentToolName,
       contract = documentToolContracts[name]
     let input = params.arguments ?? {}

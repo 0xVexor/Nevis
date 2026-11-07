@@ -26,4 +26,12 @@ if (process.env.REQUIRE_VERSION_INCREASE === '1') {
   const different = nextParts.findIndex((n, i) => n !== oldParts[i]);
   requireThat(different >= 0 && nextParts[different] > oldParts[different], 'A release into main must increase the stable version.');
 }
+
+if (version === '1.1.0') {
+  const features = JSON.parse(fs.readFileSync(root + 'release-features.json', 'utf8'));
+  requireThat(features.appearancePresets === false, 'Nevis 1.1.0 must keep named appearance presets disabled.');
+  requireThat(features.slides === false, 'Nevis 1.1.0 must keep slides disabled.');
+  requireThat(!fs.existsSync(root + 'src-tauri/src/server_auth.rs') && !fs.existsSync(root + 'src/cloud/AccountSettings.tsx'), 'Desktop server login must remain outside Nevis 1.1.0.');
+  requireThat(fs.existsSync(root + 'src/decks/model.ts') && fs.existsSync(root + 'src-tauri/src/deck_print.rs'), 'Disable slides without removing their implementation.');
+}
 console.log('Nevis ' + version + ': release metadata is consistent.');

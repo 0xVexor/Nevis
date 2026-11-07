@@ -1,3 +1,4 @@
+import { APPEARANCE_PRESETS_ENABLED } from './releaseFeatures.ts'
 export const appearancePresets = [
   { id: 'calm', label: 'Calm' },
   { id: 'forest-lime', label: 'Forest & Lime' },
@@ -46,4 +47,9 @@ export function syntaxColors(code: ReturnType<typeof themeColors>['code']): Reco
     '--hl-meta': code.keyword,
     '--hl-punc': code.ink,
   }
+}
+
+// Retain a beta user's saved choice while rendering the stable release baseline.
+export function workspaceAppearance(preset: AppearancePreset): AppearancePreset {
+  return APPEARANCE_PRESETS_ENABLED ? preset : 'calm'
 }
