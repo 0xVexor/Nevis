@@ -1,3 +1,4 @@
+import { SLIDES_ENABLED, requireSlides } from '../releaseFeatures'
 import { invoke } from '@tauri-apps/api/core'
 import { isTauri } from '../db'
 import type { Deck } from './model'
@@ -7,9 +8,10 @@ import { prepareSlideMedia, renderSlide } from './slideRendering'
 let cleanupPrevious: (() => void) | undefined
 let preparing = false
 
-export const deckPdfAvailable = () => isTauri ? invoke<boolean>('deck_pdf_available') : Promise.resolve(false)
+export const deckPdfAvailable = () => SLIDES_ENABLED && isTauri ? invoke<boolean>('deck_pdf_available') : Promise.resolve(false)
 
 export async function printDeck(title: string, deck: Deck, save = false): Promise<string | null> {
+  requireSlides()
   if (preparing) throw new Error('Deck print is already in progress')
   preparing = true
   cleanupPrevious?.()

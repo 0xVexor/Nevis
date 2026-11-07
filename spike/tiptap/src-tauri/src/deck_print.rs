@@ -2,7 +2,7 @@ use crate::Res;
 
 #[tauri::command]
 pub fn deck_pdf_available() -> bool {
-    cfg!(target_os = "macos")
+    crate::release_features::slides_enabled() && cfg!(target_os = "macos")
 }
 
 #[tauri::command]
@@ -14,6 +14,7 @@ pub async fn print_deck(
     save: bool,
     pages: usize,
 ) -> Res<Option<String>> {
+    if !crate::release_features::slides_enabled() { return Err("Slides are disabled in this release.".into()); }
     if pages == 0
         || ![width, height]
             .into_iter()

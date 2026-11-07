@@ -1,3 +1,4 @@
+import { SLIDES_ENABLED } from './releaseFeatures'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type CSSProperties, type ReactNode } from 'react'
 import { motion } from 'motion/react'
 import { getTemplates } from './templates'
@@ -217,9 +218,9 @@ export function Templates({ onPick, onClose, startWithDecks = false }: { onPick:
     }))
     return { empty, templates }
   }, [])
-  const decks: Choice[] = deckTemplates.map((deck) => ({ id: deck.id, title: t(deck.title), hint: t(deck.hint), icon: <Icon name="layers" />, action: t('Create deck'), deck }))
+  const decks: Choice[] = (SLIDES_ENABLED ? deckTemplates : []).map((deck) => ({ id: deck.id, title: t(deck.title), hint: t(deck.hint), icon: <Icon name="layers" />, action: t('Create deck'), deck }))
   const all = [...empty, ...decks, ...templates]
-  const [current, setCurrent] = useState(startWithDecks ? decks[0].id : all[0].id)
+  const [current, setCurrent] = useState(startWithDecks && decks.length ? decks[0].id : all[0].id)
   const chosen = all.find((c) => c.id === current) ?? all[0]
   const list = useRef<HTMLDivElement>(null)
 
@@ -270,12 +271,12 @@ export function Templates({ onPick, onClose, startWithDecks = false }: { onPick:
             </h2>
             {empty.map(option)}
           </div>
-          <div role="group" aria-labelledby="tpl-decks">
+          {SLIDES_ENABLED && (<div role="group" aria-labelledby="tpl-decks">
             <h2 id="tpl-decks" className="tpl-group">
               {t('Deck templates')}
             </h2>
             {decks.map(option)}
-          </div>
+          </div>)}
           <div role="group" aria-labelledby="tpl-ready">
             <h2 id="tpl-ready" className="tpl-group">
               {t('Ready-made pages')}
