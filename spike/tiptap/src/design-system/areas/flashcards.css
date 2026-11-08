@@ -1,0 +1,99 @@
+/* ───── Flashcards: today's session, the decks, the last two weeks; then one card at a time ───── */
+.fc-section { margin-block-start: var(--ds-s8); }
+
+/* today's session: a deck on the table with its top card showing, and what starting it means */
+.fc-today { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); align-items: center; gap: var(--ds-s10); padding: var(--ds-s8); border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); }
+.fc-stack { position: relative; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); inline-size: 100%; min-inline-size: 0; aspect-ratio: 4 / 3; }
+.fc-stack-card { position: relative; grid-area: 1 / 1; min-inline-size: 0; min-block-size: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--ds-s2); padding: var(--ds-s5); border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-bg); text-align: center; }
+.fc-stack-card:nth-child(1) { transform: translateY(10px) rotate(3deg); background: var(--ds-sunk); }
+.fc-stack-card:nth-child(2) { transform: translateY(5px) rotate(1.5deg); }
+.fc-stack-top { z-index: 1; border-color: var(--ds-line-strong); transition: transform var(--ds-slow) var(--ds-ease); }
+.fc-today:hover .fc-stack-top { transform: translateY(-3px) rotate(-1deg); }
+.fc-stack-top small { max-inline-size: 100%; overflow: hidden; color: var(--ds-text-3); font-size: var(--ds-text-caption); text-overflow: ellipsis; white-space: nowrap; }
+.fc-stack-top b { display: -webkit-box; overflow: hidden; overflow-wrap: anywhere; color: var(--ds-text); font-size: var(--ds-text-section); font-weight: 600; line-height: 1.35; -webkit-line-clamp: 3; -webkit-box-orient: vertical; text-wrap: balance; }
+.fc-stack[data-empty] .fc-stack-top { color: var(--ds-ok); }
+.fc-today-text { min-inline-size: 0; }
+.fc-today-text h2 { margin: 0; font-size: var(--ds-text-section); font-weight: 600; letter-spacing: -0.015em; text-wrap: balance; }
+.fc-today-text > p { margin: var(--ds-s2) 0 0; max-inline-size: 46ch; color: var(--ds-text-2); }
+.fc-start { gap: var(--ds-s3); margin-block-start: var(--ds-s5); block-size: 44px; padding-inline: var(--ds-s6); font-size: var(--ds-text-ui); }
+.fc-start .ds-kbd { border-color: color-mix(in oklab, var(--ds-accent-ink) 45%, transparent); color: var(--ds-accent-ink); }
+.fc-facts { margin-block-start: var(--ds-s6); padding-block-start: var(--ds-s4); border-block-start: 1px solid var(--ds-line); }
+@container (max-width: 640px) { .fc-today { grid-template-columns: minmax(0, 1fr); gap: var(--ds-s6); padding: var(--ds-s5); } .fc-stack { max-inline-size: 260px; justify-self: center; } }
+@media (hover: none) { .fc-start .ds-kbd { display: none; } }
+@media (prefers-reduced-motion: reduce) { .fc-today:hover .fc-stack-top { transform: none; } }
+:root[data-motion='reduce'] .fc-today:hover .fc-stack-top { transform: none; }
+.fc-section h2 { margin: 0 0 var(--ds-s3); font-size: var(--ds-text-ui); font-weight: 600; }
+
+/* a deck: icon, name, how much is learned, what is due, review */
+.fc-deck { gap: var(--ds-s4); min-block-size: 64px; }
+.fc-deck-ic { display: grid; place-items: center; flex: none; inline-size: 36px; block-size: 36px; border: 1px solid var(--ds-line); border-radius: var(--ds-r); color: var(--ds-text-2); font-size: var(--ds-text-section); }
+.fc-deck-ic svg { inline-size: 18px; block-size: 18px; }
+.fc-deck .ds-list-main b { font-weight: 550; }
+.fc-meter { flex: none; inline-size: 96px; }
+.fc-due { flex: none; min-inline-size: 64px; color: var(--ds-accent); font-size: var(--ds-text-small); font-weight: 550; font-variant-numeric: tabular-nums; text-align: end; }
+.fc-due[data-zero] { color: var(--ds-text-3); font-weight: 400; }
+@container (max-width: 560px) { .fc-meter { display: none; } }
+
+/* the last 14 days: one cell per day, deeper accent for more reviews; hover or focus names it in the heading */
+.fc-chart-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--ds-s2); }
+.fc-chart-head h2 { margin-block-end: var(--ds-s3); }
+.fc-chart-head > span { color: var(--ds-text-2); font-size: var(--ds-text-small); font-variant-numeric: tabular-nums; }
+.fc-days { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: var(--ds-s1); }
+.fc-day { --level: 0; block-size: 32px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-sm); background: color-mix(in oklab, var(--ds-accent) calc(var(--level) * 100%), var(--ds-raised)); cursor: var(--cursor-arrow, default); transition: transform var(--ds-fast) var(--ds-ease); }
+.fc-day[data-today] { border-color: var(--ds-accent); }
+.fc-day[data-on] { transform: translateY(-2px); border-color: var(--ds-accent); }
+.fc-day:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.fc-days-axis { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: var(--ds-s1); margin-block-start: var(--ds-s1); color: var(--ds-text-3); font-size: var(--ds-text-caption); text-align: center; }
+
+/* reviewing: a quiet top bar, the card, then the answers */
+.fc-review { display: flex; flex-direction: column; inline-size: 100%; max-inline-size: 720px; block-size: 100%; min-block-size: 0; margin-inline: auto; padding: var(--ds-s6) var(--ds-s8); }
+.fc-top { display: flex; align-items: center; gap: var(--ds-s3); }
+.fc-top-title { flex: 1; min-inline-size: 0; overflow: hidden; color: var(--ds-text-2); font-weight: 500; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.fc-top-count { flex: none; min-inline-size: 72px; color: var(--ds-text-3); font-size: var(--ds-text-small); font-variant-numeric: tabular-nums; text-align: end; }
+.fc-top-progress { margin-block: var(--ds-s3) 0; }
+.fc-top-progress > i { transition: inline-size var(--ds-slow) var(--ds-ease); }
+.fc-stage { display: flex; flex: 1; flex-direction: column; justify-content: center; gap: var(--ds-s5); min-block-size: 0; padding-block: var(--ds-s6) 0; }
+.fc-card { display: flex; flex: 0 1 auto; flex-direction: column; align-items: center; justify-content: safe center; gap: var(--ds-s4); min-block-size: min(300px, 100%); overflow: hidden; padding: var(--ds-s10) var(--ds-s8); border: 1px solid var(--ds-line); border-radius: calc(var(--ds-r-lg) + 4px); background: var(--ds-raised); text-align: center; }
+.fc-source { display: inline-flex; align-items: center; gap: var(--ds-s1); max-inline-size: 100%; padding: var(--ds-s1) var(--ds-s2); border: 0; border-radius: var(--ds-r-sm); background: none; color: var(--ds-text-3); font: inherit; font-size: var(--ds-text-caption); cursor: var(--cursor-hand, pointer); }
+.fc-source:hover { background: var(--ds-hover); color: var(--ds-accent); }
+.fc-source:focus-visible { outline: 2px solid var(--ds-accent); }
+/* a long word or link wraps instead of pushing the card wider; a long question gets smaller and reads from the line start */
+.fc-q { margin: 0; max-inline-size: 30ch; color: var(--ds-text); font-size: var(--ds-text-heading); font-weight: 600; line-height: 1.3; letter-spacing: -0.015em; text-wrap: balance; overflow-wrap: anywhere; }
+.fc-q[data-long] { align-self: stretch; max-inline-size: none; font-size: var(--ds-text-section); line-height: 1.45; letter-spacing: 0; text-align: start; text-wrap: pretty; }
+.fc-card > :not(.fc-a-wrap) { flex: none; }
+.fc-card:has(.fc-q[data-long]) { padding-block: var(--ds-s6); }
+.fc-a-wrap { display: flex; flex: 0 1 auto; flex-direction: column; inline-size: 100%; min-block-size: 0; overflow: hidden; }
+/* the answer reads like text (from the line start, at a readable width) and scrolls inside the card, so the answers below stay on screen */
+.fc-a { max-inline-size: 62ch; min-block-size: 0; margin: var(--ds-s2) auto 0; padding-block-start: var(--ds-s5); overflow-y: auto; overscroll-behavior: contain; border-block-start: 1px solid var(--ds-line); color: var(--ds-text-2); font-size: var(--ds-text-section); line-height: 1.6; text-align: start; overflow-wrap: anywhere; }
+/* the answer borrows the editor's content styles, not its writing-area height */
+.fc-a.tiptap { min-block-size: 0; padding-inline: 0; padding-block-end: 0; }
+/* a short one-line answer stays centred under the question */
+.fc-a:not(:has(> :nth-child(2))) { text-align: center; }
+.fc-a > :first-child { margin-block-start: 0; }
+.fc-a > :last-child { margin-block-end: 0; }
+
+.fc-show { align-self: center; gap: var(--ds-s3); min-inline-size: 240px; block-size: 44px; font-size: var(--ds-text-ui); }
+.fc-show .ds-kbd { border-color: color-mix(in oklab, var(--ds-accent-ink) 45%, transparent); color: var(--ds-accent-ink); }
+.fc-grades { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--ds-s2); }
+.fc-grade { --tone: var(--ds-accent); position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: var(--ds-s3) var(--ds-s2); border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); color: var(--ds-text); font: inherit; cursor: var(--cursor-hand, pointer); transition: border-color var(--ds-fast), background var(--ds-fast); }
+.fc-grade[data-tone='bad'] { --tone: var(--ds-bad); }
+.fc-grade[data-tone='warn'] { --tone: var(--ds-warn); }
+.fc-grade[data-tone='ok'] { --tone: var(--ds-ok); }
+.fc-grade:hover { border-color: var(--tone); background: color-mix(in oklab, var(--tone) 8%, var(--ds-raised)); }
+.fc-grade:active { background: color-mix(in oklab, var(--tone) 14%, var(--ds-raised)); }
+.fc-grade:focus-visible { outline: 2px solid var(--tone); outline-offset: 2px; }
+.fc-grade-name { display: inline-flex; align-items: center; gap: var(--ds-s2); font-weight: 600; }
+.fc-grade-name > i { inline-size: 8px; block-size: 8px; border-radius: 50%; background: var(--tone); }
+.fc-grade small { color: var(--ds-text-3); font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; }
+.fc-grade .ds-kbd { position: absolute; inset-block-start: var(--ds-s2); inset-inline-end: var(--ds-s2); min-inline-size: 18px; block-size: 18px; font-size: 11px; }
+.fc-keys { margin: 0; color: var(--ds-text-3); font-size: var(--ds-text-caption); text-align: center; }
+.fc-done { flex: 1; justify-content: center; }
+.fc-done > span { max-inline-size: 46ch; }
+@media (max-width: 640px) {
+  .fc-review { padding-inline: var(--ds-s4); }
+  .fc-card { min-block-size: 240px; padding: var(--ds-s8) var(--ds-s5); }
+  .fc-q { font-size: var(--ds-text-section); }
+  .fc-grades { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fc-grade .ds-kbd { display: none; }
+}
+@media (hover: none) { .fc-keys, .fc-show .ds-kbd { display: none; } }

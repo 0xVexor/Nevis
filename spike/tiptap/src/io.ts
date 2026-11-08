@@ -1,5 +1,5 @@
-import { Editor } from '@tiptap/core'
-import { extensions } from './editor/extensions'
+import type { DocNode } from './docNode'
+import { htmlToDoc } from './editor/htmlToDoc'
 import { markdownToHtml } from './editor/markdownPaste'
 import { toMarkdown } from './markdown'
 import { allFiles, putFile } from './attachments'
@@ -10,14 +10,8 @@ import { makeZip, type ZipEntry } from './zip'
 import type { Page, PageStatus } from './repo'
 import { t } from './i18n'
 
-
-/** HTML -> ProseMirror JSON using the real schema, without mounting anything. */
-function htmlToDoc(html: string): any {
-  const ed = new Editor({ extensions, content: html })
-  const json = ed.getJSON()
-  ed.destroy()
-  return json
-}
+/** Markdown -> top-level editor block nodes, for tools that write documents from plain text. */
+export const markdownToNodes = (md: string): DocNode[] => htmlToDoc(markdownToHtml(md)).content ?? []
 
 /** Opens a native file picker and resolves with the chosen files ([] if cancelled). */
 export function pickFiles(accept: string, multiple = false): Promise<File[]> {
@@ -44,6 +38,41 @@ export function pickDirectory(): Promise<File[]> {
   })
 }
 
+/**
+ * What was dropped, as files. A dropped folder comes through `dataTransfer.files` as one empty entry, so folders are
+ * walked here and every file below gets the same `webkitRelativePath` the folder picker gives (`Vault/dir/Note.md`).
+ * Must be called inside the drop event: the entries are only readable until it returns.
+ */
+export function droppedFiles(dt: DataTransfer): Promise<File[]> {
+  const entries = [...dt.items].map((i) => i.webkitGetAsEntry?.()).filter((e): e is FileSystemEntry => !!e)
+  if (!entries.some((e) => e.isDirectory)) return Promise.resolve([...dt.files])
+  const fileOf = (e: FileSystemFileEntry) => new Promise<File>((res, rej) => e.file(res, rej))
+  const childrenOf = async (d: FileSystemDirectoryEntry) => {
+    const reader = d.createReader()
+    const all: FileSystemEntry[] = []
+    // readEntries hands out at most ~100 entries per call
+    for (;;) {
+      const batch = await new Promise<FileSystemEntry[]>((res, rej) => reader.readEntries(res, rej))
+      if (!batch.length) return all
+      all.push(...batch)
+    }
+  }
+  const walk = async (e: FileSystemEntry, path: string, out: File[]) => {
+    if (e.isFile) {
+      const f = await fileOf(e as FileSystemFileEntry)
+      Object.defineProperty(f, 'webkitRelativePath', { value: path })
+      out.push(f)
+    } else if (e.isDirectory) {
+      for (const c of await childrenOf(e as FileSystemDirectoryEntry)) await walk(c, `${path}/${c.name}`, out)
+    }
+  }
+  return (async () => {
+    const out: File[] = []
+    for (const e of entries) await walk(e, e.name, out)
+    return out
+  })()
+}
+
 // ───────────── Markdown parsing helpers ─────────────
 
 interface Meta {
@@ -53,16 +82,30 @@ interface Meta {
   aliases: string[]
 }
 
-const unquote = (s?: string) => (s ?? '').trim().replace(/^["']|["']$/g, '').trim()
+const unquote = (s?: string) =>
+  (s ?? '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .trim()
 
 /** `key: [a, b]`, `key: a, b` and the block form (`key:` followed by `- a` lines). */
 function yamlList(yaml: string, key: string): string[] {
   const m = yaml.match(new RegExp(`^${key}:[ \\t]*(.*)$`, 'm'))
   if (!m) return []
   const inline = m[1].trim()
-  if (inline) return inline.replace(/^\[|\]$/g, '').split(/[,،]/).map(unquote).filter(Boolean)
+  if (inline)
+    return inline
+      .replace(/^\[|\]$/g, '')
+      .split(/[,،]/)
+      .map(unquote)
+      .filter(Boolean)
   const block = yaml.slice(m.index! + m[0].length).match(/^(?:\r?\n[ \t]*-[ \t]+.+)+/)
-  return block ? block[0].split(/\r?\n/).map((l) => unquote(l.replace(/^[ \t]*-[ \t]+/, ''))).filter(Boolean) : []
+  return block
+    ? block[0]
+        .split(/\r?\n/)
+        .map((l) => unquote(l.replace(/^[ \t]*-[ \t]+/, '')))
+        .filter(Boolean)
+    : []
 }
 
 function parseFrontMatter(text: string): { meta: Meta; body: string } {
@@ -130,15 +173,15 @@ async function fromObsidian(md: string, embed: (name: string) => Promise<string 
 }
 
 /** `[[Title]]` text -> pageLink nodes when a page with that title exists. */
-function linkify(node: any, titles: Map<string, string>): any {
+function linkify(node: DocNode, titles: Map<string, string>): DocNode {
   if (!node.content) return node
-  const out: any[] = []
+  const out: DocNode[] = []
   for (const c of node.content) {
-    if (c.type !== 'text' || !c.text.includes('[[')) {
+    if (c.type !== 'text' || !c.text?.includes('[[')) {
       out.push(linkify(c, titles))
       continue
     }
-    let rest: string = c.text
+    let rest = c.text ?? ''
     for (let m = rest.match(/\[\[([^\]]+)\]\]/); m; m = rest.match(/\[\[([^\]]+)\]\]/)) {
       const id = titles.get(normalizeFa(m[1]).trim())
       const before = rest.slice(0, m.index!)
@@ -153,10 +196,10 @@ function linkify(node: any, titles: Map<string, string>): any {
     if (rest) out.push({ ...c, text: rest })
   }
   // adjacent plain text from unresolved links may be split: merge for tidiness
-  const merged: any[] = []
+  const merged: DocNode[] = []
   for (const n of out) {
     const last = merged[merged.length - 1]
-    if (last?.type === 'text' && n.type === 'text' && JSON.stringify(last.marks) === JSON.stringify(n.marks)) last.text += n.text
+    if (last?.type === 'text' && n.type === 'text' && JSON.stringify(last.marks) === JSON.stringify(n.marks)) last.text = (last.text ?? '') + (n.text ?? '')
     else merged.push(n)
   }
   return { ...node, content: merged }
@@ -170,7 +213,7 @@ const titleMap = (extra: [string, string][] = []) => {
 }
 
 /** Markdown (already in our dialect) -> ProseMirror doc; `img` may rewrite image sources (stored files, data: URIs). */
-async function markdownToDoc(md: string, img: (src: string) => Promise<string | null>): Promise<any> {
+async function markdownToDoc(md: string, img: (src: string) => Promise<string | null>): Promise<DocNode> {
   const dom = new DOMParser().parseFromString(markdownToHtml(md), 'text/html')
   for (const el of Array.from(dom.querySelectorAll('img'))) {
     const src = el.getAttribute('src') ?? ''
@@ -181,24 +224,27 @@ async function markdownToDoc(md: string, img: (src: string) => Promise<string | 
   return htmlToDoc(dom.body.innerHTML)
 }
 
-const dataUriImage = async (src: string) =>
-  src.startsWith('data:') ? putFile(await (await fetch(src)).blob(), '') : null
+const dataUriImage = async (src: string) => (src.startsWith('data:') ? putFile(await (await fetch(src)).blob(), '') : null)
 
 /** Imports .md files as new top-level pages (title/tags/status from the front matter, `[[links]]` resolved). */
-export async function importMarkdown(files: File[]): Promise<Page[]> {
+export async function importMarkdown(files: File[], onError?: (name: string, error: unknown) => void): Promise<Page[]> {
   const created: Page[] = []
   for (const f of files) {
-    const { meta, body } = parseFrontMatter(await f.text())
-    let title = meta.title ?? f.name.replace(/\.(md|markdown|txt)$/i, '')
-    let md = body
-    const h1 = md.match(/^\s*#\s+(.+?)\s*#*\s*(\r?\n|$)/)
-    if (h1 && !meta.title) {
-      title = h1[1]
-      md = md.slice(h1[0].length)
+    try {
+      const { meta, body } = parseFrontMatter(await f.text())
+      let title = meta.title ?? f.name.replace(/\.(md|markdown|txt)$/i, '')
+      let md = body
+      const h1 = md.match(/^\s*#\s+(.+?)\s*#*\s*(\r?\n|$)/)
+      if (h1 && !meta.title) {
+        title = h1[1]
+        md = md.slice(h1[0].length)
+      }
+      const page = repo.create(null)
+      repo.update(page.id, { title, ...(meta.tags.length ? { tags: meta.tags } : {}), ...(meta.status ? { status: meta.status } : {}), content: await markdownToDoc(md, dataUriImage) })
+      created.push(page)
+    } catch (e) {
+      onError?.(f.name, e)
     }
-    const page = repo.create(null)
-    repo.update(page.id, { title, ...(meta.tags.length ? { tags: meta.tags } : {}), ...(meta.status ? { status: meta.status } : {}), content: await markdownToDoc(md, dataUriImage) })
-    created.push(page)
   }
   // second pass: now that every title exists, resolve [[links]] (also to pre-existing pages)
   const titles = titleMap()
@@ -226,12 +272,10 @@ interface VaultResult {
  * `![[image.png]]` embeds become stored images, front-matter and `#inline` tags become tags.
  * `.obsidian`, `.trash` and every other dot-folder are ignored.
  */
-export async function importVault(files: File[], onProgress?: (done: number, total: number) => void): Promise<VaultResult> {
+export async function importVault(files: File[], onProgress?: (done: number, total: number) => void, onError?: (name: string, error: unknown) => void): Promise<VaultResult> {
   const withPath = files.map((f) => ({ f, parts: (f.webkitRelativePath || f.name).split('/') }))
   const vault = withPath[0]?.parts.length > 1 ? withPath[0].parts[0] : 'Vault'
-  const inVault = withPath
-    .map(({ f, parts }) => ({ f, path: parts.length > 1 ? parts.slice(1) : parts }))
-    .filter((x) => !x.path.some((seg) => seg.startsWith('.')))
+  const inVault = withPath.map(({ f, parts }) => ({ f, path: parts.length > 1 ? parts.slice(1) : parts })).filter((x) => !x.path.some((seg) => seg.startsWith('.')))
 
   const notes = inVault.filter((x) => /\.md$/i.test(x.path.at(-1)!)).sort((a, b) => a.path.join('/').localeCompare(b.path.join('/'), 'fa', { numeric: true }))
   const images = new Map<string, File>() // by lower-cased relative path and by file name
@@ -240,7 +284,14 @@ export async function importVault(files: File[], onProgress?: (done: number, tot
     images.set(lower(x.path.join('/')), x.f)
     if (!images.has(lower(x.path.at(-1)!))) images.set(lower(x.path.at(-1)!), x.f)
   }
-  const result: VaultResult = { vault, pages: 0, folders: 1, images: 0, tags: 0, skipped: inVault.length - notes.length - new Set(inVault.filter((x) => IMAGE.test(x.path.at(-1)!)).map((x) => x.f)).size }
+  const result: VaultResult = {
+    vault,
+    pages: 0,
+    folders: 1,
+    images: 0,
+    tags: 0,
+    skipped: inVault.length - notes.length - new Set(inVault.filter((x) => IMAGE.test(x.path.at(-1)!)).map((x) => x.f)).size,
+  }
 
   // work in slices of ~12 ms and then let the UI draw, so a big vault imports quickly and the app stays responsive meanwhile
   let sliceAt = performance.now()
@@ -268,7 +319,7 @@ export async function importVault(files: File[], onProgress?: (done: number, tot
   const stored = new Map<File, string>()
   const storeImage = async (f: File) => {
     let id = stored.get(f)
-    if (!id) (id = await putFile(f, f.name), stored.set(f, id), result.images++)
+    if (!id) ((id = await putFile(f, f.name)), stored.set(f, id), result.images++)
     return id
   }
   const aliasOf: [string, string][] = []
@@ -276,35 +327,39 @@ export async function importVault(files: File[], onProgress?: (done: number, tot
 
   for (let i = 0; i < notes.length; i++) {
     const { f, path } = notes[i]
-    const dir = path.slice(0, -1)
-    const { meta, body } = parseFrontMatter(await f.text())
-    const title = meta.title ?? path.at(-1)!.replace(/\.md$/i, '')
-    // Obsidian shows the file name as the title; a first line "# Same Title" would just repeat it
-    let md = body.replace(new RegExp(`^\\s*#\\s+${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\r?\\n`), '')
-    let tags = meta.tags
-    for (const t of inlineTags(md)) tags = addTag(tags, t)
-    md = await fromObsidian(md, async (name) => {
-      const f2 = images.get(lower(name)) ?? images.get(lower([...dir, name].join('/')))
-      return f2 ? storeImage(f2) : null
-    })
-    const doc = await markdownToDoc(md, async (src) => {
-      if (src.startsWith('data:')) return dataUriImage(src)
-      if (/^[a-z][a-z0-9+.-]*:/i.test(src)) return null // http(s):, mailto:… stay as they are
-      let rel = src
-      try {
-        rel = decodeURIComponent(src)
-      } catch {
-        /* keep as written */
-      }
-      const f2 = images.get(lower([...dir, rel].join('/')).replace(/[^/]+\/\.\.\//g, '')) ?? images.get(lower(rel)) ?? images.get(lower(rel.split('/').pop()!))
-      return f2 ? storeImage(f2) : null
-    })
-    const page = repo.create(folderFor(dir))
-    repo.update(page.id, { title, content: doc, ...(tags.length ? { tags } : {}), ...(meta.status ? { status: meta.status } : {}) })
-    for (const a of meta.aliases) aliasOf.push([a, page.id])
-    made.push(page)
-    result.pages++
-    result.tags += tags.length
+    try {
+      const dir = path.slice(0, -1)
+      const { meta, body } = parseFrontMatter(await f.text())
+      const title = meta.title ?? path.at(-1)!.replace(/\.md$/i, '')
+      // Obsidian shows the file name as the title; a first line "# Same Title" would just repeat it
+      let md = body.replace(new RegExp(`^\\s*#\\s+${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\r?\\n`), '')
+      let tags = meta.tags
+      for (const t of inlineTags(md)) tags = addTag(tags, t)
+      md = await fromObsidian(md, async (name) => {
+        const f2 = images.get(lower(name)) ?? images.get(lower([...dir, name].join('/')))
+        return f2 ? storeImage(f2) : null
+      })
+      const doc = await markdownToDoc(md, async (src) => {
+        if (src.startsWith('data:')) return dataUriImage(src)
+        if (/^[a-z][a-z0-9+.-]*:/i.test(src)) return null // http(s):, mailto:… stay as they are
+        let rel = src
+        try {
+          rel = decodeURIComponent(src)
+        } catch {
+          /* keep as written */
+        }
+        const f2 = images.get(lower([...dir, rel].join('/')).replace(/[^/]+\/\.\.\//g, '')) ?? images.get(lower(rel)) ?? images.get(lower(rel.split('/').pop()!))
+        return f2 ? storeImage(f2) : null
+      })
+      const page = repo.create(folderFor(dir))
+      repo.update(page.id, { title, content: doc, ...(tags.length ? { tags } : {}), ...(meta.status ? { status: meta.status } : {}) })
+      for (const a of meta.aliases) aliasOf.push([a, page.id])
+      made.push(page)
+      result.pages++
+      result.tags += tags.length
+    } catch (e) {
+      onError?.(path.join('/'), e)
+    }
     onProgress?.(i + 1, notes.length)
     await breathe()
   }
@@ -323,7 +378,12 @@ export async function importVault(files: File[], onProgress?: (done: number, tot
 // ───────────── export ─────────────
 
 const safeName = (s: string) =>
-  (s.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, 80)) || t('Untitled')
+  s
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/, '')
+    .slice(0, 80) || t('Untitled')
 const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/svg+xml': 'svg' }
 
 export interface MarkdownTree {

@@ -6,7 +6,7 @@ import { RECORD_KINDS } from './model/types.ts'
 import { hash } from './model/json.ts'
 import type { DbState } from './state.ts'
 
-export const BUNDLE_FORMAT = 'noviq-database-bundle'
+export const BUNDLE_FORMAT = 'nevis-database-bundle'
 export const BUNDLE_VERSION = 2
 
 export type Bundle = {
@@ -35,21 +35,38 @@ export function buildBundle(state: DbState, opts: { createdAt?: string; history?
     hashes[kind] = hash(list)
   }
   const b: Bundle = {
-    format: BUNDLE_FORMAT, version: BUNDLE_VERSION, createdAt: opts.createdAt ?? new Date().toISOString(), vaultId: state.vaultId, records,
-    ...(opts.history ? { history: opts.history } : {}), counts, hashes, manifestHash: hash(hashes),
+    format: BUNDLE_FORMAT,
+    version: BUNDLE_VERSION,
+    createdAt: opts.createdAt ?? new Date().toISOString(),
+    vaultId: state.vaultId,
+    records,
+    ...(opts.history ? { history: opts.history } : {}),
+    counts,
+    hashes,
+    manifestHash: hash(hashes),
   }
   return b
 }
 
 const REF_FIELDS: Record<string, [RecordKind, string][]> = {
   property: [['source', 'sourceId']],
-  source: [['container', 'ownerContainerId'], ['property', 'titlePropertyId']],
+  source: [
+    ['container', 'ownerContainerId'],
+    ['property', 'titlePropertyId'],
+  ],
   view: [['container', 'containerId']],
-  relation: [['property', 'propertyId'], ['source', 'sourceId'], ['source', 'targetSourceId']],
+  relation: [
+    ['property', 'propertyId'],
+    ['source', 'sourceId'],
+    ['source', 'targetSourceId'],
+  ],
   edge: [['relation', 'definitionId']],
   template: [['source', 'sourceId']],
   workflow: [['source', 'sourceId']],
-  allocator: [['source', 'sourceId'], ['property', 'propertyId']],
+  allocator: [
+    ['source', 'sourceId'],
+    ['property', 'propertyId'],
+  ],
 }
 
 /** Validate the whole bundle: structure, duplicate ids, hashes, references. Nothing is applied by this function. */
@@ -58,16 +75,22 @@ export function validateBundle(b: unknown, opts: { pageIds?: Set<Id> } = {}): Bu
   const err = (code: string, detail: string, kind?: string, id?: Id) => p.push({ code, detail, kind, id, severity: 'error' })
   if (!b || typeof b !== 'object') return [{ code: 'FORMAT', detail: 'not an object', severity: 'error' }]
   const x = b as Bundle
-  if (x.format !== BUNDLE_FORMAT) return [{ code: 'FORMAT', detail: 'not a Nevis database bundle', severity: 'error' }]
+  if (x.format !== BUNDLE_FORMAT && x.format !== "noviq-database-bundle") return [{ code: 'FORMAT', detail: 'not a Nevis database bundle', severity: 'error' }]
   if (x.version !== BUNDLE_VERSION) return [{ code: 'VERSION', detail: `unsupported bundle version ${String(x.version)}`, severity: 'error' }]
   if (!x.records || typeof x.records !== 'object') return [{ code: 'FORMAT', detail: 'records missing', severity: 'error' }]
   const ids = new Map<RecordKind, Set<Id>>()
   for (const kind of RECORD_KINDS) ids.set(kind, new Set())
   for (const kind of RECORD_KINDS) {
     const list = x.records[kind] ?? []
-    if (!Array.isArray(list)) { err('FORMAT', `${kind} is not a list`, kind); continue }
+    if (!Array.isArray(list)) {
+      err('FORMAT', `${kind} is not a list`, kind)
+      continue
+    }
     for (const r of list as unknown as Record<string, unknown>[]) {
-      if (!r || typeof r.id !== 'string' || !r.id) { err('FORMAT', 'record without id', kind); continue }
+      if (!r || typeof r.id !== 'string' || !r.id) {
+        err('FORMAT', 'record without id', kind)
+        continue
+      }
       if (r.format !== 1) err('FORMAT', `record format ${String(r.format)} is not supported`, kind, r.id)
       if (ids.get(kind)!.has(r.id)) err('DUPLICATE', `duplicate ${kind} id`, kind, r.id)
       ids.get(kind)!.add(r.id)

@@ -1,0 +1,13 @@
+/* The component gallery (development only). Layout for the page itself; the components keep their own styles. */
+.gallery { max-inline-size: 1200px; margin-inline: auto; padding: var(--ds-s6) clamp(var(--ds-s4), 3vw, var(--ds-s10)) 64px; background: var(--ds-bg); color: var(--ds-text); min-block-size: 100vh; }
+.gallery > header { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-s4); margin-block-end: var(--ds-s2); }
+.gallery h1 { margin: 0; font-size: var(--ds-text-section); font-weight: 600; }
+.gallery-panes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-s6); }
+.gallery-pane { padding: var(--ds-s1) var(--ds-s5) var(--ds-s5); border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); }
+.gallery-pane h2:first-child { margin: var(--ds-s4) 0 0; font-size: var(--ds-text-small); color: var(--ds-text-3); letter-spacing: 0.08em; }
+.gallery-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-s2); }
+.gallery-card { display: grid; gap: var(--ds-s1); padding: var(--ds-s2) var(--ds-s3); }
+.gallery-scenes { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--ds-s3); }
+.gallery-scene { display: flex; align-items: flex-end; min-block-size: 110px; padding: var(--ds-s2) var(--ds-s2); border: 1px solid var(--ds-line); border-radius: var(--ds-r); background-size: 100% 100%; background-repeat: no-repeat; font-size: var(--ds-text-caption); font-weight: 500; color: white; text-shadow: 0 1px 2px rgb(0 0 0 / 0.45); }
+@media (max-width: 900px) { .gallery-panes { grid-template-columns: minmax(0, 1fr); } }
+.gallery-static { position: static; animation: none; }

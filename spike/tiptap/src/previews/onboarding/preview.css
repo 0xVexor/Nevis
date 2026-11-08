@@ -1,0 +1,1 @@
+.onb-preview-done { display: grid; place-content: center; justify-items: center; gap: var(--ds-s4); min-block-size: 100vh; background: var(--ds-bg); color: var(--ds-text-2); font-family: var(--ds-font-ui); }

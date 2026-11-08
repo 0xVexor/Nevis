@@ -5,8 +5,8 @@ import type { Commit, Id, Json, RecordKind } from '../model/types.ts'
 import { DbError } from '../model/errors.ts'
 import type { AnyRecord } from '../state.ts'
 import type { BatchWrite, DbStorage, LoadedDatabase, UndoGroup } from './types.ts'
+import { canonicalDocumentValue } from '../../documents/revision.ts'
 
-export const DB_STORES = ['db_records', 'db_history', 'db_ops', 'db_meta', 'db_runtime'] as const
 export const DB_SCHEMA_VERSION = 2 // not.db v1 = pages/versions/kv, v2 adds the database stores
 
 /** Called from the app's `onupgradeneeded`. Creating missing stores only: existing page data is never touched. */
@@ -24,7 +24,7 @@ const done = (tx: IDBTransaction) =>
     tx.onerror = () => reject(tx.error)
     tx.onabort = () => reject(tx.error ?? new Error('transaction aborted'))
   })
-const wrap = <T,>(req: IDBRequest<T>) =>
+const wrap = <T>(req: IDBRequest<T>) =>
   new Promise<T>((resolve, reject) => {
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error)
@@ -42,7 +42,7 @@ export class IdbStorage implements DbStorage {
   constructor(open: () => Promise<IDBDatabase>) {
     this.open = open
     if (typeof BroadcastChannel !== 'undefined') {
-      this.channel = new BroadcastChannel('noviq-database')
+      this.channel = new BroadcastChannel('nevis-database')
       this.channel.onmessage = (m) => this.listeners.forEach((f) => f(m.data))
       ;(this.channel as unknown as { unref?: () => void }).unref?.() // do not keep a Node process (tests) alive
     }
@@ -82,15 +82,22 @@ export class IdbStorage implements DbStorage {
       // refuse a stale writer (another tab): compare against what is stored *inside* the transaction
       for (const w of batch.records) {
         const cur = (await wrap(rec.get(`${w.kind}/${w.id}`))) as { revision?: number } | undefined
-        if ((cur?.revision ?? 0) !== w.baseRevision) throw new DbError('REVISION_CONFLICT', `${w.kind}/${w.id} was changed by another tab`, { recordKind: w.kind, id: w.id, expected: w.baseRevision, current: cur?.revision ?? 0 })
+        if ((cur?.revision ?? 0) !== w.baseRevision)
+          throw new DbError('REVISION_CONFLICT', `${w.kind}/${w.id} was changed by another tab`, { recordKind: w.kind, id: w.id, expected: w.baseRevision, current: cur?.revision ?? 0 })
       }
       for (const w of batch.pages) {
         const cur = (await wrap(pages.get(w.id))) as { recordMeta?: { revision?: number } } | undefined
-        if (cur && (cur.recordMeta?.revision ?? 0) !== w.baseRevision) throw new DbError('REVISION_CONFLICT', `page/${w.id} was changed by another tab`, { recordKind: 'page', id: w.id, expected: w.baseRevision, current: cur.recordMeta?.revision ?? 0 })
+        if (Object.hasOwn(w, 'before') && canonicalDocumentValue(cur ?? null) !== canonicalDocumentValue(w.before))
+          throw new DbError('REVISION_CONFLICT', `page/${w.id} was changed by another tab`, { recordKind: 'page', id: w.id })
+        if (cur && (cur.recordMeta?.revision ?? 0) !== w.baseRevision)
+          throw new DbError('REVISION_CONFLICT', `page/${w.id} was changed by another tab`, { recordKind: 'page', id: w.id, expected: w.baseRevision, current: cur.recordMeta?.revision ?? 0 })
       }
-      for (const w of batch.records) (w.after ? rec.put(w.after, `${w.kind}/${w.id}`) : rec.delete(`${w.kind}/${w.id}`))
+      for (const w of batch.records) w.after ? rec.put(w.after, `${w.kind}/${w.id}`) : rec.delete(`${w.kind}/${w.id}`)
       for (const w of batch.pages) {
-        if (!w.after) { pages.delete(w.id); continue }
+        if (!w.after) {
+          pages.delete(w.id)
+          continue
+        }
         // a post-image without a body (lazy loading) must never wipe the stored body
         const cur = (await wrap(pages.get(w.id))) as { content?: unknown } | undefined
         pages.put(w.after.content === undefined || w.after.content === null ? { ...w.after, ...(cur?.content != null ? { content: cur.content } : {}) } : w.after)
@@ -156,7 +163,12 @@ export class IdbStorage implements DbStorage {
   async history(kind: string, id: Id): Promise<{ revision: number; body: Json }[]> {
     const d = await this.open()
     const prefix = `${kind}/${id}/`
-    const rows = (await wrap(d.transaction('db_history').objectStore('db_history').getAll(IDBKeyRange.bound(prefix, prefix + '￿')))) as { revision: number; body: Json }[]
+    const rows = (await wrap(
+      d
+        .transaction('db_history')
+        .objectStore('db_history')
+        .getAll(IDBKeyRange.bound(prefix, prefix + '￿')),
+    )) as { revision: number; body: Json }[]
     return rows.sort((a, b) => b.revision - a.revision)
   }
 
@@ -164,11 +176,22 @@ export class IdbStorage implements DbStorage {
   runtime() {
     const open = this.open
     return {
-      async get(key: string) { return wrap((await open()).transaction('db_runtime').objectStore('db_runtime').get(key)) as Promise<Json | undefined> },
-      async set(key: string, value: Json) { const tx = (await open()).transaction('db_runtime', 'readwrite'); tx.objectStore('db_runtime').put(value, key); await done(tx) },
-      async delete(key: string) { const tx = (await open()).transaction('db_runtime', 'readwrite'); tx.objectStore('db_runtime').delete(key); await done(tx) },
-      async keys(prefix: string) { return ((await wrap((await open()).transaction('db_runtime').objectStore('db_runtime').getAllKeys())) as string[]).filter((k) => k.startsWith(prefix)) },
+      async get(key: string) {
+        return wrap((await open()).transaction('db_runtime').objectStore('db_runtime').get(key)) as Promise<Json | undefined>
+      },
+      async set(key: string, value: Json) {
+        const tx = (await open()).transaction('db_runtime', 'readwrite')
+        tx.objectStore('db_runtime').put(value, key)
+        await done(tx)
+      },
+      async delete(key: string) {
+        const tx = (await open()).transaction('db_runtime', 'readwrite')
+        tx.objectStore('db_runtime').delete(key)
+        await done(tx)
+      },
+      async keys(prefix: string) {
+        return ((await wrap((await open()).transaction('db_runtime').objectStore('db_runtime').getAllKeys())) as string[]).filter((k) => k.startsWith(prefix))
+      },
     }
   }
 }
-

@@ -8,13 +8,16 @@ dist-ssr/
 # Rust / Tauri
 src-tauri/target/
 src-tauri/gen/
+tauri.updater.conf.json
 
 # test databases
 db/*.db
 db/*.db-wal
 db/*.db-shm
 
-# the zip of the sync server made for uploading to a host
-/noviq-sync-server.zip
+# Local test installers and checksum reports
+/artifacts/
 
-/nevis-sync-server.zip
+# Claude Code local files (the shared launch.json stays)
+.claude/*
+!.claude/launch.json

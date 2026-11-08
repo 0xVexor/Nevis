@@ -14,9 +14,33 @@ const looksLikeMarkdown = (t: string) => BLOCK_MD.test(t) || INLINE_MD.test(t)
 const attr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 const CALLOUT_ICONS = ['💡', '⚠️', '❗', '✅', 'ℹ️', '🔥', '📌']
 const ALERTS: Record<string, string> = {
-  NOTE: 'ℹ️', INFO: 'ℹ️', ABSTRACT: '📋', SUMMARY: '📋', TLDR: '📋', TODO: '☑️', TIP: '💡', HINT: '💡', IMPORTANT: '❗', SUCCESS: '✅', CHECK: '✅', DONE: '✅',
-  QUESTION: '❓', HELP: '❓', FAQ: '❓', WARNING: '⚠️', CAUTION: '🔥', ATTENTION: '⚠️', FAILURE: '❌', FAIL: '❌', MISSING: '❌', DANGER: '🔥', ERROR: '🔥',
-  BUG: '🐞', EXAMPLE: '📌', QUOTE: '💬', CITE: '💬',
+  NOTE: 'ℹ️',
+  INFO: 'ℹ️',
+  ABSTRACT: '📋',
+  SUMMARY: '📋',
+  TLDR: '📋',
+  TODO: '☑️',
+  TIP: '💡',
+  HINT: '💡',
+  IMPORTANT: '❗',
+  SUCCESS: '✅',
+  CHECK: '✅',
+  DONE: '✅',
+  QUESTION: '❓',
+  HELP: '❓',
+  FAQ: '❓',
+  WARNING: '⚠️',
+  CAUTION: '🔥',
+  ATTENTION: '⚠️',
+  FAILURE: '❌',
+  FAIL: '❌',
+  MISSING: '❌',
+  DANGER: '🔥',
+  ERROR: '🔥',
+  BUG: '🐞',
+  EXAMPLE: '📌',
+  QUOTE: '💬',
+  CITE: '💬',
 }
 
 /** `$$..$$` and `$..$` outside code spans/fences -> placeholders the editor's math nodes parse. */
@@ -64,15 +88,20 @@ export function markdownToHtml(md: string): string {
     // strip the marker from the first text node
     const w = doc.createTreeWalker(first, NodeFilter.SHOW_TEXT)
     const n = w.nextNode()
-    if (n) n.textContent = (n.textContent ?? '').trimStart().replace(alert ? /^\[!\w+\][+-]?[ \t]*/ : emoji, '').trimStart()
+    if (n)
+      n.textContent = (n.textContent ?? '')
+        .trimStart()
+        .replace(alert ? /^\[!\w+\][+-]?[ \t]*/ : emoji, '')
+        .trimStart()
     const c = doc.createElement('div')
     c.setAttribute('data-type', 'callout')
     c.setAttribute('data-emoji', emoji)
     c.append(...Array.from(q.childNodes))
     q.replaceWith(c)
   })
-  doc.querySelectorAll('li > input[type="checkbox"]').forEach((box) => {
-    const li = box.parentElement!
+  // a task item is `li > input`, or `li > p > input` when the list is loose (blank lines between items)
+  doc.querySelectorAll('li input[type="checkbox"]').forEach((box) => {
+    const li = box.closest('li')!
     li.setAttribute('data-type', 'taskItem')
     li.setAttribute('data-checked', (box as HTMLInputElement).checked ? 'true' : 'false')
     li.parentElement?.setAttribute('data-type', 'taskList')
@@ -114,7 +143,11 @@ export const MarkdownPaste = Extension.create({
             const raw = cd.getData('text/plain')
             // raw Mermaid text (no fences) -> one diagram block instead of a pile of paragraphs
             if (!cd.getData('text/html') && !inCode && looksLikeMermaid(raw)) {
-              editor.chain().focus().insertContent({ type: 'mermaid', attrs: { code: raw.trim() } }).run()
+              editor
+                .chain()
+                .focus()
+                .insertContent({ type: 'mermaid', attrs: { code: raw.trim() } })
+                .run()
               return true
             }
             if (cd.getData('text/html')) return false // real rich content: let ProseMirror handle it

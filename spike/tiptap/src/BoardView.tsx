@@ -1,26 +1,30 @@
 // A Board page: the whole page is one drawing (Excalidraw), saved automatically.
 // The page content is a doc holding a single `drawing` block, so files, search, history and backup treat it like any page.
+import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types'
+import type { AppState, BinaryFiles } from '@excalidraw/excalidraw/types'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { repo, gcFiles } from './store'
 import type { Page } from './repo'
 import type { SaveState } from './PageView'
 import { loadScene, saveScene, type SceneData } from './editor/excalidraw'
 import { t } from './i18n'
-import * as Ic from './icons'
+import { Icon, IconButton } from './design-system'
+import { registerUpdateSave } from './updateSave'
 
 const Canvas = lazy(() => import('./DrawingCanvas')) // the library loads only when a board is opened
 
 const SAVE_DELAY = 1500
-const signature = (elements: readonly any[]) => elements.map((e) => e.id + ':' + e.version).join(',')
+const signature = (elements: readonly ExcalidrawElement[]) => elements.map((e) => e.id + ':' + e.version).join(',')
 const boardDoc = (ids: { scene: string; preview: string }) => ({ type: 'doc', content: [{ type: 'drawing', attrs: ids }] })
 
-export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Page; onSave: (s: SaveState) => void; onMeta: () => void; readOnly?: boolean }) {
+export function BoardView({ page, onSave, onMeta, onBack, readOnly = false }: { page: Page; onSave: (s: SaveState) => void; onMeta: () => void; onBack?: () => void; readOnly?: boolean }) {
   const [initial, setInitial] = useState<SceneData | null | undefined>(undefined) // undefined = still loading
   const latest = useRef<SceneData | null>(null) // newest canvas state; read on save so the Excalidraw API is never touched after unmount
   const saved = useRef('') // signature of what is stored
   const timer = useRef(0)
   const queue = useRef<Promise<unknown>>(Promise.resolve())
   const dirty = useRef(false) // anything saved during this visit (then old files are garbage-collected on leaving)
+  const saveError = useRef<unknown>(null)
   const [full, setFull] = useState(false) // the board fills the whole window
   const root = useRef<HTMLDivElement>(null)
   const notify = useRef(onSave)
@@ -54,7 +58,9 @@ export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Pa
 
   useEffect(() => {
     let live = true
-    void loadScene(page.content?.content?.[0]?.attrs?.scene ?? '').then((s) => {
+    // the live copy: the parent may still hold the page as it was before this board was last saved
+    const content = repo.get(page.id)?.content ?? page.content
+    void loadScene(typeof content === 'object' ? (content?.content?.[0]?.attrs?.scene ?? '') : '').then((s) => {
       if (!live) return
       saved.current = signature(s?.elements ?? [])
       setInitial(s)
@@ -67,12 +73,14 @@ export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Pa
     queue.current = queue.current.then(async () => {
       const scene = latest.current
       if (!scene || signature(scene.elements) === saved.current) return notify.current('saved')
-      saved.current = signature(scene.elements)
       try {
         const ids = await saveScene(scene)
         repo.update(page.id, { content: boardDoc(ids ?? { scene: '', preview: '' }) })
+        saved.current = signature(scene.elements)
+        saveError.current = null
         dirty.current = true
       } catch (e) {
+        saveError.current = e
         console.error('board save', e)
       }
       notify.current('saved')
@@ -81,11 +89,17 @@ export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Pa
   }
 
   useEffect(() => {
+    const unregister = registerUpdateSave(async () => {
+      window.clearTimeout(timer.current)
+      await run()
+      if (saveError.current) throw saveError.current
+    })
     const flush = () => (window.clearTimeout(timer.current), void run())
     const hidden = () => document.visibilityState === 'hidden' && flush()
     window.addEventListener('pagehide', flush)
     document.addEventListener('visibilitychange', hidden)
     return () => {
+      unregister()
       window.removeEventListener('pagehide', flush)
       document.removeEventListener('visibilitychange', hidden)
       window.clearTimeout(timer.current)
@@ -94,7 +108,7 @@ export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Pa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page.id])
 
-  const changed = (elements: readonly any[], appState: any, files: any) => {
+  const changed = (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
     latest.current = { elements, appState, files }
     if (readOnly || signature(elements) === saved.current) return
     notify.current('saving')
@@ -105,6 +119,11 @@ export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Pa
   return (
     <div ref={root} className={'board' + (full ? ' full' : '')}>
       <div className="board-head">
+        {onBack && (
+          <IconButton label={t('Back to drawings')} onClick={onBack}>
+            <Icon name="arrow-left" className="ds-flip" />
+          </IconButton>
+        )}
         <input
           className="board-title"
           readOnly={readOnly}
@@ -113,9 +132,9 @@ export function BoardView({ page, onSave, onMeta, readOnly = false }: { page: Pa
           defaultValue={page.title}
           onChange={(e) => (repo.update(page.id, { title: e.target.value }), onMeta())}
         />
-        <button className="icon-btn board-full" title={full ? t('Exit full screen') : t('Full screen')} aria-pressed={full} onClick={toggleFull}>
-          {full ? <Ic.Shrink /> : <Ic.Enlarge />}
-        </button>
+        <IconButton label={full ? t('Exit full screen') : t('Full screen')} pressed={full} onClick={toggleFull}>
+          <Icon name={full ? 'minimize' : 'maximize'} />
+        </IconButton>
       </div>
       <div className="board-stage" dir="ltr">
         {initial === undefined ? (

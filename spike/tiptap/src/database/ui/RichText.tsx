@@ -7,13 +7,15 @@ import { isSafeUrl } from '../props/registry.ts'
 import { matchKey } from '../text.ts'
 import { t } from '../../i18n'
 import { promptDialog } from '../../dialog'
+import { Icon, IconButton } from '../../design-system'
+import { Hint } from './common'
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 
 export function runsToHtml(runs: RichRun[]): string {
   return runs
     .map((r) => {
-      if (r.mention) return `<span data-mention="${esc(r.mention.id)}" data-kind="${r.mention.kind}" contenteditable="false" class="db-mention">@${esc(r.text)}</span>`
+      if (r.mention) return `<span data-mention="${esc(r.mention.id)}" data-kind="${r.mention.kind}" contenteditable="false" class="dv-mention">@${esc(r.text)}</span>`
       let h = esc(r.text).replace(/\n/g, '<br>')
       if (r.code) h = `<code>${h}</code>`
       if (r.bold) h = `<b>${h}</b>`
@@ -33,9 +35,28 @@ export function domToRuns(root: HTMLElement): RichRun[] {
   const push = (text: string, f: Flags, mention?: RichRun['mention']) => {
     if (!text && !mention) return
     const prev = out[out.length - 1]
-    const same = prev && !prev.mention && !mention && !!prev.bold === !!f.bold && !!prev.italic === !!f.italic && !!prev.underline === !!f.underline && !!prev.strike === !!f.strike && !!prev.code === !!f.code && prev.href === f.href
+    const same =
+      prev &&
+      !prev.mention &&
+      !mention &&
+      !!prev.bold === !!f.bold &&
+      !!prev.italic === !!f.italic &&
+      !!prev.underline === !!f.underline &&
+      !!prev.strike === !!f.strike &&
+      !!prev.code === !!f.code &&
+      prev.href === f.href
     if (same) prev.text += text
-    else out.push({ text, ...(f.bold ? { bold: true } : {}), ...(f.italic ? { italic: true } : {}), ...(f.underline ? { underline: true } : {}), ...(f.strike ? { strike: true } : {}), ...(f.code ? { code: true } : {}), ...(f.href ? { href: f.href } : {}), ...(mention ? { mention } : {}) })
+    else
+      out.push({
+        text,
+        ...(f.bold ? { bold: true } : {}),
+        ...(f.italic ? { italic: true } : {}),
+        ...(f.underline ? { underline: true } : {}),
+        ...(f.strike ? { strike: true } : {}),
+        ...(f.code ? { code: true } : {}),
+        ...(f.href ? { href: f.href } : {}),
+        ...(mention ? { mention } : {}),
+      })
   }
   const walk = (n: Node, f: Flags, first: boolean) => {
     if (n.nodeType === Node.TEXT_NODE) return push((n.textContent ?? '').replace(/​/g, ''), f)
@@ -66,7 +87,19 @@ export function domToRuns(root: HTMLElement): RichRun[] {
   return out
 }
 
-export function RichTextEditor({ runs, pages, onCommit, onCancel, autoFocus = true }: { runs: RichRun[]; pages: () => { id: string; title: string }[]; onCommit: (runs: RichRun[]) => void; onCancel: () => void; autoFocus?: boolean }) {
+export function RichTextEditor({
+  runs,
+  pages,
+  onCommit,
+  onCancel,
+  autoFocus = true,
+}: {
+  runs: RichRun[]
+  pages: () => { id: string; title: string }[]
+  onCommit: (runs: RichRun[]) => void
+  onCancel: () => void
+  autoFocus?: boolean
+}) {
   const ref = useRef<HTMLDivElement>(null)
   const done = useRef(false)
   const [mention, setMention] = useState<string | null>(null)
@@ -95,25 +128,35 @@ export function RichTextEditor({ runs, pages, onCommit, onCancel, autoFocus = tr
       document.execCommand('createLink', false, url)
     }
   }
-  const matches = mention !== null ? pages().filter((p) => matchKey(p.title).includes(matchKey(mention))).slice(0, 6) : []
+  const matches =
+    mention !== null
+      ? pages()
+          .filter((p) => matchKey(p.title).includes(matchKey(mention)))
+          .slice(0, 6)
+      : []
   const insertMention = (p: { id: string; title: string }) => {
     ref.current?.focus()
-    const html = `<span data-mention="${esc(p.id)}" data-kind="page" contenteditable="false" class="db-mention">@${esc(p.title || t('Untitled'))}</span>&nbsp;`
+    const html = `<span data-mention="${esc(p.id)}" data-kind="page" contenteditable="false" class="dv-mention">@${esc(p.title || t('Untitled'))}</span>&nbsp;`
     document.execCommand('insertHTML', false, html)
     setMention(null)
   }
+  const tool = (label: string, onPress: () => void, icon: string) => (
+    <IconButton label={label} onMouseDown={(e) => (e.preventDefault(), onPress())}>
+      <Icon name={icon} size={16} />
+    </IconButton>
+  )
   return (
-    <div className="db-rich-ed" onMouseDown={(e) => e.stopPropagation()}>
-      <div className="db-rich-bar" role="toolbar" aria-label={t('Text formatting')}>
-        <button type="button" title={t('Bold') + ' (' + shortcutLabel(['Mod', 'B']) + ')' } onMouseDown={(e) => (e.preventDefault(), cmd('bold'))}><b>B</b></button>
-        <button type="button" title={t('Italic') + ' (' + shortcutLabel(['Mod', 'I']) + ')' } onMouseDown={(e) => (e.preventDefault(), cmd('italic'))}><i>I</i></button>
-        <button type="button" title={t('Strikethrough')} onMouseDown={(e) => (e.preventDefault(), cmd('strikeThrough'))}><s>S</s></button>
-        <button type="button" title={t('Link')} onMouseDown={(e) => (e.preventDefault(), void link())}>🔗</button>
-        <button type="button" title={t('Mention a page')} onMouseDown={(e) => (e.preventDefault(), setMention(''))}>@</button>
+    <div className="dv-rich-ed" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="dv-rich-bar" role="toolbar" aria-label={t('Text formatting')}>
+        {tool(t('Bold') + ' (' + shortcutLabel(['Mod', 'B']) + ')', () => cmd('bold'), 'bold')}
+        {tool(t('Italic') + ' (' + shortcutLabel(['Mod', 'I']) + ')', () => cmd('italic'), 'italic')}
+        {tool(t('Strikethrough'), () => cmd('strikeThrough'), 'strikethrough')}
+        {tool(t('Link'), () => void link(), 'link')}
+        {tool(t('Mention a page'), () => setMention(''), 'mention')}
       </div>
       <div
         ref={ref}
-        className="db-rich-box"
+        className="ds-field dv-rich-box"
         contentEditable
         suppressContentEditableWarning
         dir="auto"
@@ -123,10 +166,16 @@ export function RichTextEditor({ runs, pages, onCommit, onCancel, autoFocus = tr
         dangerouslySetInnerHTML={{ __html: initial }}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return // never act on Enter / Tab while an IME composition is open
-          if (e.key === 'Escape') { e.preventDefault(); finish(false) }
-          else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); finish(true) }
-          else if (e.key === 'Enter') { e.preventDefault(); document.execCommand('insertLineBreak') }
-          else if (e.key === '@') setMention('')
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            finish(false)
+          } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault()
+            finish(true)
+          } else if (e.key === 'Enter') {
+            e.preventDefault()
+            document.execCommand('insertLineBreak')
+          } else if (e.key === '@') setMention('')
           else if (mention !== null && e.key.length === 1) setMention(mention + e.key)
           else if (mention !== null && e.key === 'Backspace') setMention(mention.length ? mention.slice(0, -1) : null)
         }}
@@ -137,16 +186,19 @@ export function RichTextEditor({ runs, pages, onCommit, onCancel, autoFocus = tr
         onBlur={() => window.setTimeout(() => !mention && finish(true), 0)}
       />
       {mention !== null && (
-        <div className="db-rich-mentions" role="listbox">
-          {matches.length === 0 && <div className="db-empty-hint">{t('No pages found')}</div>}
+        <div className="dv-choices" role="listbox" aria-label={t('Mention a page')}>
+          {matches.length === 0 && <Hint>{t('No pages found')}</Hint>}
           {matches.map((p) => (
-            <button key={p.id} type="button" role="option" onMouseDown={(e) => (e.preventDefault(), insertMention(p))}>
-              {p.title || t('Untitled')}
+            <button key={p.id} type="button" role="option" aria-selected={false} className="ds-menu-item" onMouseDown={(e) => (e.preventDefault(), insertMention(p))}>
+              <Icon name="file" size={15} />
+              <span className="ds-menu-label" dir="auto">
+                {p.title || t('Untitled')}
+              </span>
             </button>
           ))}
         </div>
       )}
-      <div className="db-rich-foot">{t('Ctrl+Enter to save, Esc to cancel')}</div>
+      <Hint>{t('Ctrl+Enter to save, Esc to cancel')}</Hint>
     </div>
   )
 }

@@ -1,7 +1,7 @@
 // CSV / Markdown interchange (handoff §27). CSV is a readable exchange format, never a lossless backup: it cannot carry schemas,
 // formulas or permissions. Import appends rows (explicit upsert is a labeled extension); export honours scope and permissions
 // and guards cells that a spreadsheet would execute.
-import type { Cell, Definition, Id, Json, QueryPage } from './model/types.ts'
+import type { Cell, Definition, Id, QueryPage } from './model/types.ts'
 import { DbError, fail } from './model/errors.ts'
 import { startsLikeFormula, matchKey, runsToText } from './text.ts'
 import { DESCRIPTORS, cellToText, parseCellText, defaultCell, type ParseCtx } from './props/registry.ts'
@@ -26,16 +26,42 @@ export function parseCsv(input: string, delimiter = ','): string[][] {
     const c = text[i]
     if (quoted) {
       if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i += 2; continue }
-        quoted = false; i++; continue
+        if (text[i + 1] === '"') {
+          field += '"'
+          i += 2
+          continue
+        }
+        quoted = false
+        i++
+        continue
       }
-      field += c; i++; continue
+      field += c
+      i++
+      continue
     }
-    if (c === '"' && field === '') { quoted = true; i++; continue }
-    if (c === delimiter) { endField(); i++; continue }
-    if (c === '\r') { if (text[i + 1] === '\n') i++; endRow(); i++; continue }
-    if (c === '\n') { endRow(); i++; continue }
-    field += c; i++
+    if (c === '"' && field === '') {
+      quoted = true
+      i++
+      continue
+    }
+    if (c === delimiter) {
+      endField()
+      i++
+      continue
+    }
+    if (c === '\r') {
+      if (text[i + 1] === '\n') i++
+      endRow()
+      i++
+      continue
+    }
+    if (c === '\n') {
+      endRow()
+      i++
+      continue
+    }
+    field += c
+    i++
   }
   if (quoted) fail('INVALID_VALUE', 'the CSV file ends inside a quoted field')
   if (field !== '' || row.length) endRow()
@@ -71,9 +97,16 @@ function displayCell(state: DbState, rs: Resolver, def: Definition, pageId: Id):
   const row = state.row(pageId)!
   if (!rs.access.canReadProperty(rs.principalId, def, row)) return ''
   switch (def.kind) {
-    case 'title': return row.page.title
-    case 'relation': return rs.relationTargets(row, def).filter((t) => t.state === 'live').map((t) => rs.title(t.pageId) ?? '').join(', ')
-    case 'unique_id': return formatUniqueId(def, row.ext.allocatedIds[def.id])
+    case 'title':
+      return row.page.title
+    case 'relation':
+      return rs
+        .relationTargets(row, def)
+        .filter((t) => t.state === 'live')
+        .map((t) => rs.title(t.pageId) ?? '')
+        .join(', ')
+    case 'unique_id':
+      return formatUniqueId(def, row.ext.allocatedIds[def.id])
     case 'formula':
     case 'rollup': {
       const q = rs.value(row, def)
@@ -86,23 +119,39 @@ function displayCell(state: DbState, rs: Resolver, def: Definition, pageId: Id):
       if (q.c === 'list') return q.items.map((x) => (x.c === 'text' ? x.text : x.c === 'number' ? String(x.n) : '')).join(', ')
       return ''
     }
-    case 'created_time': case 'last_edited_time': { const q = rs.value(row, def); return q.c === 'date' ? q.v.start : '' }
-    case 'created_by': case 'last_edited_by': { const q = rs.value(row, def); return q.c === 'members' ? (rs.access.principal(q.ids[0])?.displayName ?? q.ids[0]) : '' }
-    case 'button': case 'connected': return ''
-    default: return cellToText(def, row.ext.cells[def.id]?.value ?? defaultCell(def), { personName: (id) => rs.access.principal(id)?.displayName ?? id })
+    case 'created_time':
+    case 'last_edited_time': {
+      const q = rs.value(row, def)
+      return q.c === 'date' ? q.v.start : ''
+    }
+    case 'created_by':
+    case 'last_edited_by': {
+      const q = rs.value(row, def)
+      return q.c === 'members' ? (rs.access.principal(q.ids[0])?.displayName ?? q.ids[0]) : ''
+    }
+    case 'button':
+    case 'connected':
+      return ''
+    default:
+      return cellToText(def, row.ext.cells[def.id]?.value ?? defaultCell(def), { personName: (id) => rs.access.principal(id)?.displayName ?? id })
   }
 }
 
 export function exportTable(state: DbState, o: ExportOptions): { header: string[]; rows: string[][]; ids: Id[] } {
   const rs = new Resolver(state, { principalId: o.principalId, nowMs: Date.parse(o.now), zone: o.zone, weekStart: 6 })
-  const defs = (o.propertyIds ? o.propertyIds.map((id) => state.prop(id)).filter((d): d is Definition => !!d) : state.props(o.sourceId)).filter((d) => d.kind !== 'button' && rs.access.canReadProperty(o.principalId, d))
+  const defs = (o.propertyIds ? o.propertyIds.map((id) => state.prop(id)).filter((d): d is Definition => !!d) : state.props(o.sourceId)).filter(
+    (d) => d.kind !== 'button' && rs.access.canReadProperty(o.principalId, d),
+  )
   const header = defs.map((d) => d.name)
   const rows: string[][] = []
   const ids: Id[] = []
   let cursor: string | undefined
   do {
     const page: QueryPage = runQuery(state, makeQuery(state, o.sourceId, o.principalId, o.now, o.zone, { ...(o.query ?? {}), limit: MAX_LIMIT, cursor }), rs)
-    for (const id of page.pageIds) { rows.push([...(o.includeIds ? [id] : []), ...defs.map((d) => displayCell(state, rs, d, id))]); ids.push(id) }
+    for (const id of page.pageIds) {
+      rows.push([...(o.includeIds ? [id] : []), ...defs.map((d) => displayCell(state, rs, d, id))])
+      ids.push(id)
+    }
     cursor = page.nextCursor ?? undefined
   } while (cursor)
   return { header: o.includeIds ? ['id', ...header] : header, rows, ids }
@@ -164,7 +213,9 @@ export interface ImportWorld {
 }
 
 export const worldOf = (state: DbState): ImportWorld => ({
-  props: (s) => state.props(s), row: (id) => state.row(id), relationOf: (id) => state.relationOf(id),
+  props: (s) => state.props(s),
+  row: (id) => state.row(id),
+  relationOf: (id) => state.relationOf(id),
   titlesIn: (s) => state.rows(s).map((r) => ({ id: r.page.id, title: r.page.title })),
 })
 
@@ -187,18 +238,33 @@ export function planImport(state: ImportWorld, data: string[][], o: ImportOption
     for (const c of o.columns) {
       const raw = (r[c.column] ?? '').toString()
       if (c.target === 'skip') continue
-      if (c.target === 'title') { row.title = raw; continue }
-      if (c.target === 'page_id') { if (raw.trim()) row.pageId = raw.trim(); continue }
+      if (c.target === 'title') {
+        row.title = raw
+        continue
+      }
+      if (c.target === 'page_id') {
+        if (raw.trim()) row.pageId = raw.trim()
+        continue
+      }
       const d = defs.get(c.target)!
       const at = (message: string) => problems.push({ row: ri + (o.hasHeader ? 2 : 1), column: c.column, propertyId: d.id, message })
       try {
         if (d.kind === 'relation') {
-          const labels = raw.split(o.listDelimiter ?? '\u0000').map((s) => s.trim()).filter(Boolean)
+          const labels = raw
+            .split(o.listDelimiter ?? '\u0000')
+            .map((s) => s.trim())
+            .filter(Boolean)
           const ids: Id[] = []
           for (const l of o.listDelimiter ? labels : raw.trim() ? [raw.trim()] : []) {
-            if (state.row(l)) { ids.push(l); continue } // ids first
+            if (state.row(l)) {
+              ids.push(l)
+              continue
+            } // ids first
             const mapped = o.relationLabels?.[d.id]?.[l]
-            if (mapped) { ids.push(mapped); continue }
+            if (mapped) {
+              ids.push(mapped)
+              continue
+            }
             const rel = state.relationOf(d.id)
             const target = rel ? (rel.propertyId === d.id ? rel.targetSourceId : rel.sourceId) : null
             const same = target ? state.titlesIn(target).filter((x) => matchKey(x.title) === matchKey(l)) : []
@@ -219,7 +285,6 @@ export function planImport(state: ImportWorld, data: string[][], o: ImportOption
   return { rows, problems, newOptions, inferred: inferColumnKinds(body, Math.max(0, ...data.map((r) => r.length))) }
 }
 
-export const rowToJson = (r: ImportRow): Json => r as unknown as Json
 export { runsToText }
 
 /** Option labels in select-like columns that do not exist yet (created first, with schema permission, when the user allows it). */

@@ -1,8 +1,15 @@
 [package]
 name = "nevis"
-version = "1.0.0"
+version = "1.1.0"
 description = "Nevis: offline notes with full Persian/RTL support"
 edition = "2021"
+
+[features]
+# Connections still start disabled and require a separate document-editing grant.
+default = ["mcp-writes"]
+mcp-writes = []
+# Keep existing acceptance commands compatible; app identity supplies the isolation.
+mcp-write-acceptance = ["mcp-writes"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -13,14 +20,30 @@ serde_json = "1"
 rusqlite = { version = "0.37", features = ["bundled"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-updater = "2"
+semver = "1"
+unicode-normalization = "0.1"
 uuid = { version = "1", features = ["v4"] }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls", "http2"] }
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
-md-5 = "0.10"
 base64 = "0.22"
-keyring = { version = "3", features = ["windows-native", "apple-native"] }
+same-file = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots", "system-proxy", "socks", "http2"] }
+hyper = { version = "1.12", features = ["server", "http1"] }
+hyper-util = { version = "0.1.21", features = ["tokio"] }
+http-body-util = "0.1.5"
+tokio = { version = "1.54", features = ["rt", "net", "time", "sync"] }
 trash = "5" # moves a vault folder to the Recycle Bin / Trash instead of deleting it
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSPrintInfo", "NSPrintOperation", "objc2-core-foundation"] }
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["CGPDFDocument"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["NSDictionary", "NSString", "NSURL"] }
+objc2-web-kit = { version = "0.3", default-features = false, features = ["WKWebView", "objc2-app-kit"] }
+
+[dev-dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["blocking"] }
 
 [profile.release]
 lto = true

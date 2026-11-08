@@ -1,0 +1,10 @@
+/* ───────── popovers + menus ───────── */
+
+/* shared select */
+.sel-check { margin-inline-start: auto; color: var(--ds-accent); display: inline-flex; }
+
+/* emoji + icon picker */
+
+/* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
+
+.name-dialog { width: min(440px, 92vw); max-height: none; }

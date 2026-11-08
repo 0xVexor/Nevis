@@ -3,6 +3,7 @@
 import type { Definition, Id, PageLike, RecordKind, RelationEdge, RowExtension } from '../model/types.ts'
 import { compareKeys } from '../model/ids.ts'
 import type { DbState, Records, Row } from '../state.ts'
+import { identifyBlocks } from '../../documents/blockIdentity.ts'
 
 const k = (kind: RecordKind, id: Id) => `${kind}:${id}`
 
@@ -81,6 +82,7 @@ export class Draft {
     return c
   }
   addPage(p: PageLike): PageLike {
+    if (p.content !== undefined) p.content = identifyBlocks(p.content).content
     this.pgs.set(p.id, p)
     const st = p.database ? this.stats.get(p.database.sourceId) : undefined
     if (st) {
@@ -110,7 +112,7 @@ export class Draft {
   allPages(): PageLike[] {
     const out = new Map<Id, PageLike>()
     for (const p of this.base.pages.all()) out.set(p.id, p)
-    for (const [id, p] of this.pgs) (p ? out.set(id, p) : out.delete(id))
+    for (const [id, p] of this.pgs) p ? out.set(id, p) : out.delete(id)
     return [...out.values()]
   }
 
@@ -130,7 +132,9 @@ export class Draft {
     return out.sort((a, b) => compareKeys(a.ext.sortKey, b.ext.sortKey) || compareKeys(a.page.id, b.page.id))
   }
   props(sourceId: Id): Definition[] {
-    return this.live('property').filter((p) => p.sourceId === sourceId).sort((a, b) => compareKeys(a.sortKey, b.sortKey) || compareKeys(a.id, b.id))
+    return this.live('property')
+      .filter((p) => p.sourceId === sourceId)
+      .sort((a, b) => compareKeys(a.sortKey, b.sortKey) || compareKeys(a.id, b.id))
   }
   prop(id: Id): Definition | undefined {
     const p = this.get('property', id)
@@ -140,9 +144,13 @@ export class Draft {
     return this.live('relation').find((r) => r.propertyId === propertyId || r.inversePropertyId === propertyId)
   }
   edgesOut(defId: Id, pageId: Id): RelationEdge[] {
-    return this.live('edge').filter((e) => e.definitionId === defId && e.fromPageId === pageId).sort((a, b) => compareKeys(a.sortKey, b.sortKey) || compareKeys(a.id, b.id))
+    return this.live('edge')
+      .filter((e) => e.definitionId === defId && e.fromPageId === pageId)
+      .sort((a, b) => compareKeys(a.sortKey, b.sortKey) || compareKeys(a.id, b.id))
   }
   edgesIn(defId: Id, pageId: Id): RelationEdge[] {
-    return this.live('edge').filter((e) => e.definitionId === defId && e.toPageId === pageId).sort((a, b) => compareKeys(a.sortKey, b.sortKey) || compareKeys(a.id, b.id))
+    return this.live('edge')
+      .filter((e) => e.definitionId === defId && e.toPageId === pageId)
+      .sort((a, b) => compareKeys(a.sortKey, b.sortKey) || compareKeys(a.id, b.id))
   }
 }

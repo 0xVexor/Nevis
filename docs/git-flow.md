@@ -18,7 +18,7 @@ Fixes follow the same route through `dev`. Keep unfinished work out of the relea
 
 ## Final releases
 
-1. On `dev`, update the app version in `spike/tiptap/package.json`, its package lock, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` and `src-tauri/tauri.conf.json`.
+1. On `dev`, run `node .github/scripts/bump-version.cjs X.Y.Z`. It updates `spike/tiptap/package.json`, its package lock, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` and `src-tauri/tauri.conf.json`, starts the release notes from the previous ones, and runs the release check. Always branch from the latest `dev`: CI rejects a `release/*` pull request that is behind its base or does not raise the version.
 2. Add the release notes in `docs/releases/vX.Y.Z.md` and finish the release changes on `dev`.
 3. Open a pull request from `dev` into `main`. The release policy verifies the source branch, matching versions, and an increase over the current stable version. Required checks must pass before merging.
 4. Merge the release pull request, then tag that exact `main` commit:
@@ -31,11 +31,19 @@ Fixes follow the same route through `dev`. Keep unfinished work out of the relea
    git push origin vX.Y.Z
    ```
 
-5. The installer workflow checks that the tag is on `main` and matches all version files. It builds Windows EXE/MSI and universal macOS DMG packages, then publishes the final release only after both platforms succeed. A failed platform leaves the release as a draft.
+5. The installer workflow checks that the tag is on `main` and matches all version files. It builds the Windows NSIS EXE and the universal macOS DMG and PKG. It publishes the final release after both platforms and the updater manifest pass verification. A failed platform leaves the release as a draft.
 6. Merge `main` back into `dev` so development includes the release merge. Do not squash release merges or the merge back into `dev`; preserving ancestry keeps future release comparisons clear.
 
-Manual installer builds are available only from `main` and do not publish a release. Tags beginning with `v` are reserved for final releases. Publishing a tag does not replace the required `dev` to `main` pull request.
+Manual installer builds are available only from `main` and do not publish a release. Final tags use `vX.Y.Z`; publishing a final tag does not replace the required `dev` to `main` pull request.
+
+## Pre-releases and desktop updates
+
+Pre-release tags such as `v1.3.0-beta.1` must point to commits on `dev`. Run `node .github/scripts/bump-version.cjs X.Y.Z-beta.N` (it updates the same version files and creates the tag's release notes to rewrite) before tagging. The installer workflow publishes these as pre-releases without changing the stable Latest release. Users receive them only when they enable pre-release updates in Settings → About → Updates.
+
+Both release channels require the updater signing configuration described in [desktop updates](updates.md). Platform builds finish and the signed update manifest is checked before publication. Feature pull requests still target `dev`; final releases still flow from `dev` to `main`.
+
+For an installer preview, open **Actions → Build installers → Run workflow** and select a branch. The run uploads the Windows and macOS installers as artifacts. Tagged builds use the release signing and publishing steps.
 
 ## Compatibility
 
-Nevis retains the existing application identifier, vault marker format, local database names, credentials service and sync protocol. Renaming the product must not relocate user data, forget accounts or disconnect existing devices. The legacy `NOVIQ_SERVER` build variable is still accepted; new builds may use `NEVIS_SERVER` instead.
+New installers use `com.vexor.nevis`. Nevis moves the previous app-data directory on first launch and migrates workspace metadata to `.nevis` when opening an older workspace. New backups use Nevis format names, and imports accept older formats.

@@ -16,14 +16,14 @@ export type RecordWrite = {
 export type PageWrite = {
   id: Id
   baseRevision: number
+  /** Full page observed when the batch was prepared, or null for a new page. */
+  before?: PageLike | null
   after: PageLike | null
 }
 
 export type HistoryWrite = { recordKind: string; id: Id; revision: number; body: Json }
 
-export type UndoItem =
-  | { t: 'record'; kind: RecordKind; id: Id; afterRevision: number; before: AnyRecord | null }
-  | { t: 'page'; id: Id; afterRevision: number; paths: UndoPath[]; created: boolean }
+export type UndoItem = { t: 'record'; kind: RecordKind; id: Id; afterRevision: number; before: AnyRecord | null } | { t: 'page'; id: Id; afterRevision: number; paths: UndoPath[]; created: boolean }
 
 /** One touched field of a page: undo only restores it while the current value is still the one this batch wrote. */
 export type UndoPath = { path: string; before: Json | null; after: Json | null }
@@ -68,4 +68,6 @@ export interface PageHost {
   adopt(upserts: PageLike[], removed: Id[]): void
   /** wait until pending page writes reached the store, so revisions in memory and on disk agree before a batch is built */
   flush?(): Promise<void>
+  /** Prevent live editor/repository edits until durable publication finishes. */
+  reserveCommit?(): Promise<() => void>
 }

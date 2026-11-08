@@ -1,7 +1,12 @@
-import { Node, Extension, InputRule, mergeAttributes } from '@tiptap/core'
-import { NodeSelection, Plugin, PluginKey, Selection } from '@tiptap/pm/state'
+import { commandMatches } from '../shortcutCommands'
+import { Node, Extension, InputRule, mergeAttributes, type CommandProps, type NodeViewRendererProps, type RawCommands } from '@tiptap/core'
+import type { Node as PMNode, Schema } from '@tiptap/pm/model'
+import { NodeSelection, Plugin, PluginKey, Selection, type EditorState, type Transaction } from '@tiptap/pm/state'
+import type { EditorView } from '@tiptap/pm/view'
 import katex from 'katex'
 import { t } from '../i18n'
+
+type EditDom = HTMLElement & { __edit?: () => void }
 
 function paint(el: HTMLElement, latex: string, display: boolean) {
   if (!latex.trim()) {
@@ -27,15 +32,15 @@ function live(box: HTMLElement, latex: string, display: boolean) {
   }
   try {
     katex.render(latex, box, { displayMode: display, throwOnError: true, output: 'html' })
-  } catch (e: any) {
+  } catch (e) {
     box.classList.add('math-err')
-    box.textContent = String(e?.message ?? e).replace(/^KaTeX parse error:\s*/, '')
+    box.textContent = String((e as Error | undefined)?.message ?? e).replace(/^KaTeX parse error:\s*/, '')
   }
 }
 
 /** Click (or Enter on a selected formula) opens an editor with a live preview; Enter saves and moves on, Esc cancels. */
 function makeView(display: boolean) {
-  return ({ node, editor, getPos }: any) => {
+  return ({ node, editor, getPos }: NodeViewRendererProps) => {
     let cur = node
     let editing = false
     const dom = document.createElement(display ? 'div' : 'span')
@@ -114,22 +119,26 @@ function makeView(display: boolean) {
       }
       field.onkeydown = (e) => {
         e.stopPropagation()
-        if (e.key === 'Escape') (e.preventDefault(), finish(null))
-        else if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) (e.preventDefault(), finish(field.value))
-        else if (e.key === 'Enter' && !display) e.preventDefault() // Shift+Enter: a new line only exists in block formulas
+        if (commandMatches(e, 'Cancel editing a formula or diagram')) (e.preventDefault(), finish(null))
+        else if (commandMatches(e, 'Save a formula') || (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey)) (e.preventDefault(), finish(field.value))
+        else if (display && commandMatches(e, 'New line in a block formula')) {
+          e.preventDefault()
+          field.setRangeText('\n', field.selectionStart ?? 0, field.selectionEnd ?? 0, 'end')
+          field.dispatchEvent(new Event('input'))
+        } else if (e.key === 'Enter') e.preventDefault()
       }
       field.onblur = () => finish(field.value)
       field.focus()
       field.setSelectionRange(field.value.length, field.value.length)
     }
 
-    ;(dom as any).__edit = startEdit
+    ;(dom as EditDom).__edit = startEdit
     dom.onclick = () => startEdit() // reader mode: not editable (startEdit checks)
     if (!node.attrs.latex) setTimeout(startEdit, 0) // freshly inserted: go straight to typing
 
     return {
       dom,
-      update: (n: any) => {
+      update: (n: PMNode) => {
         if (n.type !== cur.type) return false
         cur = n
         if (!editing) paint(dom, n.attrs.latex, display)
@@ -145,7 +154,7 @@ const latexAttr = {
   latex: {
     default: '',
     parseHTML: (el: HTMLElement) => el.getAttribute('data-latex') ?? el.textContent ?? '',
-    renderHTML: (a: any) => ({ 'data-latex': a.latex }),
+    renderHTML: (a: Record<string, unknown>) => ({ 'data-latex': a.latex }),
   },
 }
 
@@ -203,7 +212,7 @@ const autoKey = new PluginKey('mathAuto')
 const INLINE = /(?<![\\$\w])\$([^\s$](?:[^$\n]*[^\s$])?)\$(?![\w$])/g
 
 /** Turns `$…$` inside a paragraph into inline formulas, and a paragraph that is just `$$…$$` into a formula block. */
-function convertBlock(tr: any, pos: number, schema: any) {
+function convertBlock(tr: Transaction, pos: number, schema: Schema) {
   const node = tr.doc.nodeAt(pos)
   if (!node || !node.isTextblock || !['paragraph', 'heading'].includes(node.type.name)) return
   const whole = node.textContent.trim().match(/^\$\$([\s\S]+)\$\$$/)
@@ -214,9 +223,9 @@ function convertBlock(tr: any, pos: number, schema: any) {
   const inline = schema.nodes.mathInline
   if (!inline) return
   const edits: { from: number; to: number; latex: string }[] = []
-  node.forEach((child: any, offset: number) => {
-    if (!child.isText || child.marks.some((m: any) => m.type.name === 'code')) return
-    for (const m of child.text.matchAll(INLINE)) {
+  node.forEach((child, offset) => {
+    if (!child.isText || child.marks.some((m) => m.type.name === 'code')) return
+    for (const m of (child.text ?? '').matchAll(INLINE)) {
       const from = pos + 1 + offset + m.index
       edits.push({ from, to: from + m[0].length, latex: m[1] })
     }
@@ -227,46 +236,60 @@ function convertBlock(tr: any, pos: number, schema: any) {
 /** A formula typed as plain `$x^2$` stays text while you are on that line; it becomes a real formula as soon as the cursor leaves the paragraph, the editor loses focus, or you run "convert formulas". */
 export const MathAuto = Extension.create({
   name: 'mathAuto',
-  addKeyboardShortcuts() {
-    return {
+  addProseMirrorPlugins() {
+    const editor = this.editor
+    const commands = {
       // Enter on a selected formula edits it
-      Enter: ({ editor }: any) => {
+      'Edit the selected formula': () => {
         const sel = editor.state.selection
         if (!(sel instanceof NodeSelection) || !['mathInline', 'mathBlock'].includes(sel.node.type.name)) return false
-        const dom = editor.view.nodeDOM(sel.from) as any
+        const dom = editor.view.nodeDOM(sel.from) as EditDom | null
         dom?.__edit?.()
         return !!dom?.__edit
       },
       // Ctrl+Shift+M: on an empty line a block formula, on selected text a formula made of it, otherwise an empty inline formula
-      'Mod-Shift-m': ({ editor }: any) => {
+      'New formula (empty line: block; selected text or elsewhere: inline)': () => {
         const { selection: sel, doc } = editor.state
         const $from = sel.$from
         if (sel.empty && $from.parent.type.name === 'paragraph' && $from.parent.content.size === 0) {
-          return editor.chain().focus().insertContentAt({ from: $from.before(), to: $from.after() }, { type: 'mathBlock', attrs: { latex: '' } }).run()
+          return editor
+            .chain()
+            .focus()
+            .insertContentAt({ from: $from.before(), to: $from.after() }, { type: 'mathBlock', attrs: { latex: '' } })
+            .run()
         }
         if (!sel.empty) {
           const text = doc.textBetween(sel.from, sel.to, ' ').trim()
-          if (text) return editor.chain().focus().insertContentAt({ from: sel.from, to: sel.to }, { type: 'mathInline', attrs: { latex: text } }).run()
+          if (text)
+            return editor
+              .chain()
+              .focus()
+              .insertContentAt({ from: sel.from, to: sel.to }, { type: 'mathInline', attrs: { latex: text } })
+              .run()
         }
-        return editor.chain().focus().insertContent({ type: 'mathInline', attrs: { latex: '' } }).run()
+        return editor
+          .chain()
+          .focus()
+          .insertContent({ type: 'mathInline', attrs: { latex: '' } })
+          .run()
       },
     }
-  },
-  addCommands() {
-    return { convertFormulas: () => ({ tr, dispatch }: any) => (dispatch?.(tr.setMeta(autoKey, 'all')), true) } as any
-  },
-  addProseMirrorPlugins() {
     return [
+      new Plugin({ props: { handleKeyDown: (_view, event) => {
+        if (!editor.isEditable) return false
+        const action = Object.entries(commands).find(([label]) => commandMatches(event, label))
+        return action?.[1]() ?? false
+      } } }),
       new Plugin({
         key: autoKey,
-        props: { handleDOMEvents: { blur: (view: any) => (view.dispatch(view.state.tr.setMeta(autoKey, 'all')), false) } },
-        appendTransaction(trs: readonly any[], oldState: any, newState: any) {
+        props: { handleDOMEvents: { blur: (view: EditorView) => (view.dispatch(view.state.tr.setMeta(autoKey, 'all')), false) } },
+        appendTransaction(trs: readonly Transaction[], oldState: EditorState, newState: EditorState) {
           if (trs.some((t) => t.getMeta(autoKey) === 'skip')) return null
           const all = trs.some((t) => t.getMeta(autoKey) === 'all')
           if (!all && !trs.some((t) => t.selectionSet || t.docChanged)) return null
           const targets = new Set<number>()
           if (all) {
-            newState.doc.descendants((n: any, p: number) => {
+            newState.doc.descendants((n, p) => {
               if (n.isTextblock) targets.add(p)
               return !n.isTextblock
             })
@@ -295,4 +318,19 @@ export const MathAuto = Extension.create({
       }),
     ]
   },
+  addCommands() {
+    return {
+      convertFormulas:
+        () =>
+        ({ tr, dispatch }: CommandProps) => (dispatch?.(tr.setMeta(autoKey, 'all')), true),
+    } as unknown as Partial<RawCommands>
+  },
 })
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    nevisMath: {
+      convertFormulas: () => ReturnType
+    }
+  }
+}

@@ -1,0 +1,166 @@
+/* ───────── formatting toolbar: one floating glass pill ───────── */
+
+/* ───────── editor text ───────── */
+.ec { position: relative; }
+/* Auto direction only: an explicit dir (set via /rtl, /ltr) must win, plaintext would ignore it. */
+.tiptap p:not([dir]), .tiptap h1:not([dir]), .tiptap h2:not([dir]), .tiptap h3:not([dir]) { unicode-bidi: plaintext; }
+.tiptap [data-dir] { text-align: start; }
+.tiptap p.is-empty::before, .tiptap h1.is-empty::before { content: attr(data-placeholder); float: inline-start; height: 0; pointer-events: none; color: var(--ds-text-3); }
+.tiptap ul, .tiptap ol { margin: 2px 0; padding-inline: 1.6em; }
+.tiptap li::marker { color: var(--ds-text-3); font-weight: 400; }
+.tiptap li > p { margin: 1px 0; }
+.tiptap ul[data-type='taskList'] { list-style: none; padding-inline: 0.2em; }
+.tiptap ul[data-type='taskList'] li > label input:hover { border-color: var(--ds-accent); }
+.tiptap ul[data-type='taskList'] li > label input:checked { background-color: var(--ds-accent); background-image: var(--ds-accent), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E"); background-size: cover, 13px; background-repeat: no-repeat; background-position: center; border-color: transparent; transform: scale(1.06); }
+.tiptap ul[data-type='taskList'] li > div { flex: 1; }
+.tiptap ul[data-type='taskList'] li[data-checked='true'] > div { text-decoration: line-through; text-decoration-color: var(--ds-text-3); color: var(--ds-text-2); }
+/* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
+.tiptap pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+.tiptap img { max-width: 100%; height: auto; border-radius: var(--ds-r); display: block; margin: 8px 0; }
+.tiptap img.ProseMirror-selectednode { outline: 2px solid var(--ds-accent); }
+
+/* tables */
+.tiptap td > p, .tiptap th > p { margin: 0; }
+.tiptap .selectedCell::after { content: ''; position: absolute; inset: 0; background: var(--ds-accent-soft); pointer-events: none; }
+.tiptap .column-resize-handle { position: absolute; inset-inline-end: -2px; top: 0; bottom: 0; width: 4px; background: var(--ds-accent); pointer-events: none; }
+/* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
+.tiptap .tableWrapper[data-align='left'] { margin-left: 0; margin-right: auto; }
+/* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
+.tiptap .tableWrapper[data-align='center'] { margin-left: auto; margin-right: auto; }
+/* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
+.tiptap .tableWrapper[data-align='right'] { margin-left: auto; margin-right: 0; }
+
+/* syntax colours */
+.tiptap .hljs-keyword, .tiptap .hljs-literal, .tiptap .hljs-built_in { color: var(--hl-kw); }
+.tiptap .hljs-string, .tiptap .hljs-regexp { color: var(--hl-str); }
+.tiptap .hljs-number { color: var(--hl-num); }
+.tiptap .hljs-comment { color: var(--hl-com); font-style: italic; }
+.tiptap .hljs-title, .tiptap .hljs-function, .tiptap .hljs-class { color: var(--hl-fn); }
+.tiptap .hljs-type, .tiptap .hljs-params, .tiptap .hljs-attr, .tiptap .hljs-attribute, .tiptap .hljs-property { color: var(--hl-type); }
+.tiptap .hljs-tag, .tiptap .hljs-name, .tiptap .hljs-selector-tag { color: var(--hl-tag); }
+.tiptap .hljs-selector-class, .tiptap .hljs-selector-id, .tiptap .hljs-selector-pseudo, .tiptap .hljs-section { color: var(--hl-fn); }
+.tiptap .hljs-meta, .tiptap .hljs-doctag, .tiptap .hljs-meta .hljs-keyword { color: var(--hl-meta); }
+.tiptap .hljs-symbol, .tiptap .hljs-bullet, .tiptap .hljs-char, .tiptap .hljs-template-variable, .tiptap .hljs-link { color: var(--hl-num); }
+.tiptap .hljs-variable, .tiptap .hljs-subst, .tiptap .hljs-operator { color: inherit; }
+.tiptap .hljs-punctuation { color: var(--hl-punc); }
+.tiptap .hljs-addition { background: var(--hl-add); }
+.tiptap .hljs-deletion { background: var(--hl-del); }
+.tiptap .hljs-quote, .tiptap .hljs-formula { color: var(--hl-com); font-style: italic; }
+.tiptap .hljs-strong { font-weight: 700; }
+.tiptap .hljs-emphasis { font-style: italic; }
+
+/* drag handle */
+/* 32×32 hit area; the ::before bridges the gap to the text so the pointer never loses the handle on its way */
+/* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
+/* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
+
+/* code blocks with a language bar */
+.code-wrap pre { margin: 0; padding-top: 38px; }
+/* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
+
+/* callout / toggle / math / mermaid */
+.callout-ic:hover { background: color-mix(in oklab, var(--ds-accent) 12%, transparent); transform: none; }
+.callout-body { flex: 1; min-width: 0; }
+.callout-body > :first-child { margin-block-start: 0; }
+.callout-body > :last-child { margin-block-end: 0; }
+.toggle-btn:hover { color: var(--ds-accent); background: var(--ds-hover); }
+.toggle-btn svg { transition: transform var(--ds-base) var(--ds-ease); }
+:root[dir='rtl'] .toggle-btn svg { transform: scaleX(-1); }
+.toggle.open .toggle-btn svg, :root[dir='rtl'] .toggle.open .toggle-btn svg { transform: rotate(90deg); }
+.toggle-body { flex: 1; min-width: 0; }
+.toggle:not(.open) .toggle-body > :not(:first-child) { display: none; }
+.toggle-body > :nth-child(n + 2) { margin-inline-start: 4px; }
+.math-inline { display: inline-block; padding: 0 3px; border-radius: var(--ds-r-sm); cursor: var(--cursor-hand, pointer); unicode-bidi: isolate; }
+.math-inline:hover, .math-block:hover { background: var(--ds-hover); }
+.math-empty { color: var(--ds-text-3); font-size: 14px; }
+/* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
+.ProseMirror-selectednode.math-inline, .ProseMirror-selectednode.math-block, .ProseMirror-selectednode.mermaid-block, .ProseMirror-selectednode.page-link { outline: 2px solid var(--ds-accent); }
+.page-link { display: inline-flex; align-items: baseline; gap: 5px; padding: 0 8px; border-radius: var(--ds-r); background: var(--ds-accent-soft); color: var(--ds-accent); text-decoration: none; cursor: var(--cursor-hand, pointer); line-height: 1.55; font-weight: 600; transition: background var(--ds-fast); }
+.page-link:hover { background: var(--ds-accent-line); }
+.page-link.missing { color: var(--ds-text-3); background: var(--ds-hover); text-decoration: line-through; cursor: var(--cursor-arrow, default); font-weight: 400; }
+.page-link-ic { font-size: 0.95em; }
+.mermaid-block { position: relative; margin: 12px 0; border: 1px solid transparent; border-radius: var(--ds-r-lg); }
+.mermaid-block:hover { border-color: var(--ds-line); background: var(--ds-sunk); }
+.mermaid-view { padding: 14px; text-align: center; overflow-x: auto; cursor: var(--cursor-hand, pointer); }
+.mermaid-view svg { max-width: 100%; height: auto; }
+.mermaid-view.empty { color: var(--ds-text-3); font-size: 14px; padding: 28px; }
+.mermaid-view.error, .mermaid-edit .error { color: var(--ds-bad); font-size: 13px; font-family: var(--ds-font-mono); white-space: pre-wrap; text-align: start; }
+.mermaid-bar { position: absolute; top: 8px; inset-inline-end: 8px; opacity: 0; transition: opacity var(--ds-fast); z-index: 2; flex-wrap: nowrap; direction: inherit; }
+.mermaid-block:hover .mermaid-bar, .mermaid-block.editing .mermaid-bar { opacity: 1; }
+.mermaid-block.editing .mermaid-bar { display: none; }
+/* an error or an empty diagram is only a line tall: the actions get their own row above it instead of floating over the text */
+.mermaid-block:has(> .mermaid-view:is(.error, .empty)) > .mermaid-bar { position: static; display: flex; inline-size: fit-content; margin: var(--ds-s2) var(--ds-s2) 0; margin-inline-start: auto; opacity: 1; }
+.app.reading .mermaid-block:has(> .mermaid-view:is(.error, .empty)) > .mermaid-bar { display: none; }
+.mermaid-edit { border-top: 1px solid var(--ds-line); padding: 12px; }
+/* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
+.mermaid-src { width: 100%; font-family: var(--ds-font-mono); font-size: 13px; line-height: 1.6; border: 1px solid var(--ds-accent); border-radius: var(--ds-r); background: var(--ds-bg); color: var(--ds-text); padding: 10px 12px; outline: none; resize: vertical; direction: ltr; text-align: left; box-shadow: 0 0 0 3px var(--ds-accent-line); }
+.mermaid-hint { color: var(--ds-text-3); font-size: 12px; margin-top: 6px; }
+
+/* drawings (Excalidraw) */
+.ProseMirror-selectednode.drawing-block { outline: 2px solid var(--ds-accent); }
+.drawing-block { position: relative; margin: 12px 0; border: 1px solid transparent; border-radius: var(--ds-r-lg); }
+.drawing-block:hover { border-color: var(--ds-line); background: var(--ds-sunk); }
+.drawing-view { padding: 10px; text-align: center; overflow-x: auto; cursor: var(--cursor-hand, pointer); }
+.drawing-view .drawing-img, .drawing-view img { max-width: 100%; height: auto; border-radius: var(--ds-r); background: var(--ds-white); }
+.drawing-view.empty { color: var(--ds-text-3); font-size: 14px; padding: 28px; }
+.drawing-actions { position: absolute; top: 8px; inset-inline-end: 8px; display: flex; gap: 6px; opacity: 0; transition: opacity var(--ds-fast); z-index: 2; }
+.drawing-block:hover .drawing-actions { opacity: 1; }
+.drawing-actions button { border: 1px solid var(--ds-line); background: var(--ds-raised); color: var(--ds-text-2); border-radius: var(--ds-r); padding: 3px 12px; font-size: 12px; cursor: var(--cursor-hand, pointer); }
+.drawing-actions button:hover { color: var(--ds-accent); background: var(--ds-raised); }
+.app.reading .drawing-actions .dr-edit { display: none; }
+.drawing-modal { position: fixed; inset: 0; z-index: var(--ds-z-modal); display: flex; flex-direction: column; background: var(--ds-bg); animation: fade-in var(--ds-base); }
+.drawing-bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--ds-line); background: var(--ds-raised, var(--ds-bg)); }
+.drawing-bar strong { font-size: 15px; }
+.drawing-hint { flex: 1; color: var(--ds-text-3); font-size: 12px; }
+.drawing-stage { flex: 1; min-height: 0; position: relative; }
+
+/* images */
+.tiptap .img-fig { position: relative; display: block; margin: 10px 0; max-width: 100%; width: fit-content; }
+.tiptap .img-fig.sized { width: auto; }
+.tiptap .img-fig.sized img { width: 100%; }
+.tiptap .img-fig[data-align='center'] { margin-inline: auto; }
+.tiptap .img-fig[data-align='end'] { margin-inline-start: auto; margin-inline-end: 0; }
+.tiptap .img-fig[data-align='start'] { margin-inline-end: auto; margin-inline-start: 0; }
+/* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
+.tiptap .img-fig[data-align='left'] { margin-left: 0; margin-right: auto; }
+/* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
+.tiptap .img-fig[data-align='right'] { margin-left: auto; margin-right: 0; }
+.tiptap .img-fig.ProseMirror-selectednode img { outline: 2px solid var(--ds-accent); }
+.img-bar { position: absolute; top: 8px; inset-inline-start: 8px; opacity: 0; pointer-events: none; transition: opacity var(--ds-fast); z-index: 3; flex-wrap: nowrap; }
+.img-fig:hover .img-bar, .img-fig.ProseMirror-selectednode .img-bar { opacity: 1; pointer-events: auto; }
+.img-handle { position: absolute; bottom: 8px; inset-inline-end: 8px; width: 16px; height: 16px; border-radius: var(--ds-r-sm); background: var(--ds-accent); border: 2px solid var(--ds-white); cursor: var(--cursor-nwse, nwse-resize); opacity: 0; transition: opacity var(--ds-fast); z-index: 3; touch-action: none; box-shadow: 0 2px 8px var(--ds-accent-line); }
+[dir='rtl'] .img-handle, .img-fig:dir(rtl) .img-handle { cursor: var(--cursor-nesw, nesw-resize); }
+.img-fig:hover .img-handle, .img-fig.ProseMirror-selectednode .img-handle { opacity: 1; }
+
+/* zoom viewer (diagrams and images) */
+.lightbox { position: fixed; inset: 0; z-index: var(--ds-z-modal); background: rgb(6 5 14 / 0.9); backdrop-filter: blur(10px); display: flex; flex-direction: column; animation: fade-in var(--ds-base); }
+.lb-stage { flex: 1; position: relative; overflow: hidden; cursor: var(--cursor-grab, grab); touch-action: none; user-select: none; }
+.lb-stage.grabbing { cursor: var(--cursor-grabbing, grabbing); }
+/* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
+.lb-content { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.lb-content img { display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
+.lb-content.paper { background: var(--ds-bg, var(--ds-white)); color: var(--ds-text); border-radius: var(--ds-r-lg); padding: 28px; box-sizing: border-box; }
+.lb-content.paper svg { display: block; }
+/* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
+.lb-bar { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); flex-wrap: nowrap; max-inline-size: none; }
+
+/* ───────── floating menus attached to the editor ───────── */
+
+.slash-menu { position: fixed; z-index: var(--ds-z-float); }
+
+
+/* Excalidraw menus (right-click and the main menu) drawn like the app's own menus (see .ds-pop / .ds-menu-item in overlays.css, v2.css) */
+/* the app's global .ds-pop styles must not leak onto Excalidraw's own .ds-pop wrapper (the menu above draws the box itself) */
+.excalidraw.excalidraw .popover { min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; animation: none; overflow: visible; }
+/* Excalidraw's own loader says "Loading scene…" in English; the spinner alone is enough */
+:root[data-board-full] :is(.side, .topbar) { display: none; }
+
+
+/* A next-step separator in RTL prose points along the reading direction.
+   Decorations affect the display only; copy, search and storage keep the text. */
+.tiptap .rtl-flow-arrow {
+  display: inline-block;
+  direction: ltr;
+  unicode-bidi: isolate;
+  transform: scaleX(-1);
+}

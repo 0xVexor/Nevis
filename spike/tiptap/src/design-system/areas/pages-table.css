@@ -1,0 +1,50 @@
+/* ───── Pages table: every page, filtered and sorted ───── */
+.pt-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-s2); }
+.pt-search { flex: 1; min-inline-size: 220px; }
+.pt-tags { display: flex; flex-wrap: wrap; gap: var(--ds-s2); margin-block-start: var(--ds-s3); }
+.pt-tags .ds-chip-btn > .ds-icon:first-child { color: var(--ds-text-3); }
+.pt-tags .ds-chip-btn[aria-pressed='true'] > .ds-icon:first-child { color: inherit; }
+.pt-wrap { margin-block-start: var(--ds-s4); }
+/* fixed column widths: the table always fits its frame, whatever a title, a path or a page with many tags holds */
+.pt { table-layout: fixed; }
+.pt th:nth-child(1) { inline-size: 32%; }
+.pt .pt-col-path { inline-size: 18%; }
+.pt .pt-col-tags { inline-size: 26%; }
+.pt th:nth-child(4) { inline-size: 168px; } /* fits the widest status chip (In progress) with the cell padding */
+.pt .pt-col-words { inline-size: 80px; }
+.pt th:nth-child(6) { inline-size: 136px; }
+
+/* sortable headings are buttons; the arrow shows on hover and stays on the sorted column */
+.pt th { padding: 0; }
+.pt th.pt-col-tags { padding: var(--ds-s3) var(--ds-s4); }
+.pt-sort { display: inline-flex; align-items: center; gap: var(--ds-s1); inline-size: 100%; padding: var(--ds-s3) var(--ds-s4); border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: var(--cursor-hand, pointer); }
+.pt-sort .ds-icon { color: var(--ds-text-3); opacity: 0; transition: opacity var(--ds-fast); }
+.pt-sort:hover { color: var(--ds-text); }
+.pt-sort:hover .ds-icon, .pt-sort[data-on] .ds-icon { opacity: 1; }
+.pt-sort[data-on] { color: var(--ds-text); }
+.pt-sort:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: -2px; }
+.pt-num, .pt-num .pt-sort { justify-content: flex-end; text-align: end; }
+
+.pt tbody tr { cursor: var(--cursor-hand, pointer); }
+.pt td { block-size: 52px; }
+.pt-title { display: flex; align-items: center; gap: var(--ds-s3); max-inline-size: 100%; padding: 0; border: 0; background: none; color: var(--ds-text); font: inherit; font-weight: 550; text-align: start; cursor: var(--cursor-hand, pointer); }
+.pt-title > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-title:hover > span:last-child { color: var(--ds-accent); }
+.pt-title:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 4px; border-radius: var(--ds-r-sm); }
+.pt-ic { display: grid; place-items: center; flex: none; inline-size: 28px; block-size: 28px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-sm); color: var(--ds-text-3); font-size: var(--ds-text-ui); }
+.pt-path { overflow: hidden; color: var(--ds-text-3); font-size: var(--ds-text-small); text-overflow: ellipsis; white-space: nowrap; }
+/* tags stay on one line: the first two, then +N that opens the rest */
+.pt-tag-list { display: flex; align-items: center; gap: var(--ds-s1); min-inline-size: 0; overflow: hidden; }
+.pt-tag-list .ds-tag { flex: 0 1 auto; min-inline-size: 56px; }
+.pt-tag-more { flex: none; block-size: 22px; padding-inline: var(--ds-s2); font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; }
+.pt td { overflow: hidden; }
+.pt td .ds-chip-btn { max-inline-size: 100%; }
+.pt td .ds-chip-btn > span { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-num { color: var(--ds-text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pt td.pt-none { block-size: auto; cursor: default; }
+.pt tbody tr:has(.pt-none):hover td { background: none; }
+
+/* narrow: path, then word count, then tags give way to the title */
+@container (max-width: 900px) { .pt .pt-col-path { display: none; } .pt th:nth-child(1) { inline-size: 40%; } .pt .pt-col-tags { inline-size: 34%; } }
+@container (max-width: 720px) { .pt .pt-col-words { display: none; } .pt th:nth-child(6) { inline-size: 112px; } }
+@container (max-width: 560px) { .pt .pt-col-tags { display: none; } .pt th:nth-child(1) { inline-size: auto; } }

@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub type Res<T> = Result<T, String>;
 
 pub const KEEP_VERSIONS: usize = 40;
-pub const TRASH_KEEP_MS: i64 = 30 * 24 * 3600 * 1000;
+pub const TRASH_KEEP_MS: i64 = 7 * 24 * 3600 * 1000;
 
 pub fn err<E: ToString>(e: E) -> String {
     e.to_string()
@@ -37,7 +37,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Res<()> {
     let dir = path.parent().ok_or("bad path")?;
     fs::create_dir_all(dir).map_err(err)?;
     let name = path.file_name().and_then(|n| n.to_str()).ok_or("bad path")?;
-    let tmp = dir.join(format!(".{name}.tmp"));
+    let tmp = dir.join(format!(".{name}.{}.tmp", uuid::Uuid::new_v4()));
     let mut f = fs::File::create(&tmp).map_err(err)?;
     f.write_all(bytes).map_err(err)?;
     f.sync_all().map_err(err)?;
@@ -45,7 +45,65 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Res<()> {
     fs::rename(&tmp, path).map_err(|e| {
         let _ = fs::remove_file(&tmp);
         err(e)
-    })
+    })?;
+    #[cfg(unix)]
+    fs::File::open(dir).and_then(|d|d.sync_all()).map_err(err)?;
+    Ok(())
+}
+
+/// Cross-process local commit lock. Never hold this guard during remote I/O.
+/// File locks are released by the OS on close or process exit.
+pub fn commit_lock(root: &Path) -> Res<fs::File> {
+    let file = fs::OpenOptions::new().read(true).write(true).create(true).truncate(false)
+        .open(root.join(".nevis/document-commit.lock")).map_err(err)?;
+    file.lock().map_err(err)?;
+    crate::document_operations::recover_locked(root)?;
+    Ok(file)
+}
+
+/// Keeps only the newest KEEP_VERSIONS history entries of a page. Needs only the vault folder, so recovery can use it.
+pub(crate) fn trim_history_at(root: &Path, id: &str) {
+    let dir = root.join("history").join(id);
+    let mut ts: Vec<i64> = fs::read_dir(&dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.file_name().to_str()?.strip_suffix(".json")?.parse().ok())
+        .collect();
+    ts.sort_unstable_by(|a, b| b.cmp(a));
+    for t in ts.into_iter().skip(KEEP_VERSIONS) {
+        let _ = fs::remove_file(dir.join(format!("{t}.json")));
+    }
+}
+
+fn file_path_at(root: &Path, id: &str) -> Res<PathBuf> {
+    if id.len() < 8 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("bad file id".into());
+    }
+    Ok(root.join("files").join(&id[..2]).join(id))
+}
+
+/// Stores an attachment and its sidecar; the caller holds the commit lock.
+pub(crate) fn file_put_at(root: &Path, id: &str, bytes: &[u8], mime: &str, name: &str, added_at: i64) -> Res<()> {
+    let path = file_path_at(root, id)?;
+    if sha256_hex(bytes) != id { return Err("FILE:hash_mismatch".into()); }
+    let same = fs::read(&path).is_ok_and(|b| sha256_hex(&b) == id);
+    if !same {
+        write_atomic(&path, bytes)?;
+    }
+    // Keep the first name/timestamp for content-addressed duplicate imports.
+    if same && path.with_extension("json").is_file() { return Ok(()); }
+    // the sidecar is written after the bytes, so a sidecar that another program copies always has its file
+    let meta = json!({ "id": id, "type": mime, "size": bytes.len(), "name": name, "addedAt": added_at });
+    write_atomic(&path.with_extension("json"), meta.to_string().as_bytes())
+}
+
+fn strict_page(path: &Path) -> Res<Value> {
+    match fs::read(path) {
+        Ok(bytes) => serde_json::from_slice(&bytes).map_err(err),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Value::Null),
+        Err(e) => Err(err(e)),
+    }
 }
 
 fn read_json(path: &Path) -> Option<Value> {
@@ -56,17 +114,70 @@ fn updated_at(v: &Value) -> i64 {
     v.get("updatedAt").and_then(Value::as_f64).unwrap_or(0.0) as i64
 }
 
+/// The lowercase hex SHA-256 of `b`; attachments are named by it.
+pub fn sha256_hex(b: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(b))
+}
+
+fn marker_id(meta: &Value) -> Res<String> {
+    if meta.get("format").and_then(Value::as_u64).unwrap_or(1) != 1 {
+        return Err("VAULT_UNSUPPORTED_FORMAT".into());
+    }
+    let id = meta["id"].as_str().filter(|id| !id.is_empty()).ok_or(VAULT_MISSING)?;
+    check_id(id)?;
+    Ok(id.to_string())
+}
+const LEGACY_METADATA: &str = ".noviq";
+
+pub(crate) fn marker_path(root: &Path) -> PathBuf {
+    let current = root.join(".nevis/vault.json");
+    if root.join(".nevis").exists() {
+        current
+    } else {
+        root.join(LEGACY_METADATA).join("vault.json")
+    }
+}
+
+fn migrate_metadata(root: &Path) -> Res<()> {
+    let legacy = root.join(LEGACY_METADATA);
+    let current = root.join(".nevis");
+    if current.exists() || !legacy.join("vault.json").is_file() {
+        return Ok(());
+    }
+    // The lock only guards the checks. Windows cannot rename a folder while a file inside it is open, so the lock
+    // is released before the rename; a competing process that wins the rename is found by the check below it.
+    {
+        let _lock = match crate::vault_lock::acquire_metadata(root, LEGACY_METADATA) {
+            Ok(lock) => lock,
+            Err(_) if current.join("vault.json").is_file() => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        let marker = legacy.join("vault.json");
+        if fs::symlink_metadata(&marker).is_ok_and(|m| m.is_symlink()) {
+            return Err("STORAGE:symlink".into());
+        }
+        marker_id(&read_json(&marker).ok_or(VAULT_MISSING)?)?;
+    }
+    match fs::rename(legacy, &current) {
+        Err(_) if current.join("vault.json").is_file() => Ok(()),
+        result => result.map_err(err),
+    }
+}
+
 /// What is at `root`, reading only: the vault `id` ("ok"), another vault ("mismatch") or nothing ("missing").
 pub fn probe(root: &Path, id: &str) -> &'static str {
-    match read_json(&root.join(".noviq/vault.json")) {
+    match read_json(&marker_path(root)) {
         None => "missing",
-        Some(m) if m.get("id").and_then(Value::as_str) == Some(id) => "ok",
+        Some(m) if marker_id(&m).is_ok_and(|actual|actual==id) => "ok",
         Some(_) => "mismatch",
     }
 }
 
 pub struct Vault {
     pub root: PathBuf,
+    expected_id:String,
+    _lock:std::sync::Arc<crate::vault_lock::Guard>,
 }
 
 /// Error codes the UI knows (see `explain` in the web app). They are plain strings because commands return `Res<T>`.
@@ -75,79 +186,72 @@ pub const VAULT_MISMATCH: &str = "VAULT_MISMATCH"; // the folder holds another v
 
 impl Vault {
     /// Opens a vault that exists. It never creates the folder or an identity: a vault whose folder vanished must not
-    /// come back as an empty vault under a new id (a sync would then take that as "everything was deleted").
+    /// come back as an empty vault under a new id (a sync tool would then take that as "everything was deleted").
     pub fn open(root: PathBuf) -> Res<Vault> {
-        if !root.is_dir() || !root.join(".noviq/vault.json").is_file() {
+        migrate_metadata(&root)?;
+        if !root.is_dir() || !root.join(".nevis/vault.json").is_file() {
             return Err(VAULT_MISSING.into());
         }
-        let v = Vault { root };
+        for p in [&root, &root.join(".nevis"), &root.join(".nevis/vault.json"), &root.join("pages"), &root.join("files"), &root.join("databases"), &root.join("kv"), &root.join("history"), &root.join("conflicts")] {
+            if fs::symlink_metadata(p).is_ok_and(|m|m.file_type().is_symlink()){return Err("STORAGE:symlink".into());}
+        }
+        let expected_id=marker_id(&read_json(&root.join(".nevis/vault.json")).ok_or(VAULT_MISSING)?)?;
+        let lock=crate::vault_lock::acquire(&root)?;
+        let v = Vault { root,expected_id,_lock:lock };
         if v.id().is_empty() {
             return Err(VAULT_MISSING.into());
         }
+        v.ensure_exclusive()?;
         v.make_dirs()?;
         Ok(v)
     }
 
+    pub fn ensure_exclusive(&self)->Res<()> {
+        match probe(&self.root,&self.expected_id){"ok"=>(),"missing"=>return Err(VAULT_MISSING.into()),_=>return Err(VAULT_MISMATCH.into())}
+        self._lock.check(&self.root)
+    }
     /// Like `open`, and also checks that the folder is the vault `id`.
     pub fn open_as(root: PathBuf, id: &str) -> Res<Vault> {
         let v = Vault::open(root)?;
         if v.id() != id {
             return Err(VAULT_MISMATCH.into());
         }
+        // Finish local accepted operations before startup readers or sync scan this vault.
+        { let _guard = commit_lock(&v.root)?; }
         Ok(v)
     }
 
     /// The user picked a folder that may be an existing vault or just a folder: it becomes a vault (gets an identity if it has none).
     pub fn adopt(root: PathBuf) -> Res<Vault> {
+        migrate_metadata(&root)?;
         if !root.is_dir() {
             return Err(VAULT_MISSING.into());
         }
-        if !root.join(".noviq/vault.json").is_file() {
+        if !root.join(".nevis/vault.json").is_file() {
             let name = root.file_name().and_then(|n| n.to_str()).unwrap_or("Nevis").to_string();
-            fs::create_dir_all(root.join(".noviq")).map_err(err)?;
-            write_atomic(&root.join(".noviq/vault.json"), json!({ "format": 1, "id": uuid::Uuid::new_v4().to_string(), "name": name }).to_string().as_bytes())?;
+            fs::create_dir_all(root.join(".nevis")).map_err(err)?;
+            let _initializing=crate::vault_lock::acquire(&root)?;
+            if root.join(".nevis/vault.json").is_file(){return Vault::open(root);}
+            write_atomic(&root.join(".nevis/vault.json"), json!({ "format": 1, "id": uuid::Uuid::new_v4().to_string(), "name": name }).to_string().as_bytes())?;
         }
         Vault::open(root)
     }
 
     fn make_dirs(&self) -> Res<()> {
-        for d in ["pages", "files", "history", "kv", ".noviq", ".trash/pages", ".trash/files"] {
+        for d in ["pages", "files", "history", "kv", ".nevis", ".trash/pages", ".trash/files"] {
             fs::create_dir_all(self.root.join(d)).map_err(err)?;
         }
+        let workspace=self.root.join("kv/workspace.json");
+        if !workspace.exists() { write_atomic(&workspace, &serde_json::to_vec(&json!({"name":self.meta_value().get("name").and_then(Value::as_str).unwrap_or("Nevis")})).map_err(err)?)?; }
         Ok(())
     }
 
-    /// Where files go that the sync would otherwise drop (deleted or overwritten by another device). Not synced, emptied after 30 days.
-    pub fn sync_trash_dir(&self) -> PathBuf {
-        self.root.join(".noviq/sync-trash")
-    }
-
-    /// Keeps `bytes` (the content of vault file `rel`) in the sync trash.
-    pub fn sync_trash_put(&self, rel: &str, bytes: &[u8]) -> Res<()> {
-        let mut ts = now_ms();
-        while self.sync_trash_dir().join(ts.to_string()).join(rel).exists() {
-            ts += 1;
-        }
-        write_atomic(&self.sync_trash_dir().join(ts.to_string()).join(rel), bytes)
-    }
-
-    /// Moves vault file `rel` into the sync trash instead of deleting it.
-    pub fn sync_trash_move(&self, rel: &str) -> Res<()> {
-        let mut ts = now_ms();
-        while self.sync_trash_dir().join(ts.to_string()).join(rel).exists() {
-            ts += 1;
-        }
-        let dest = self.sync_trash_dir().join(ts.to_string()).join(rel);
-        fs::create_dir_all(dest.parent().ok_or("bad path")?).map_err(err)?;
-        fs::rename(self.root.join(rel), &dest).map_err(err)
-    }
-
     fn meta_value(&self) -> Value {
-        read_json(&self.root.join(".noviq/vault.json")).unwrap_or(Value::Null)
+        read_json(&self.root.join(".nevis/vault.json")).unwrap_or(Value::Null)
     }
 
     pub fn id(&self) -> String {
-        self.meta_value().get("id").and_then(Value::as_str).unwrap_or_default().to_string()
+        self.expected_id.clone()
     }
 
     pub fn name(&self) -> String {
@@ -156,30 +260,28 @@ impl Vault {
 
     /// A new vault in `root` with the given display name.
     pub fn create(root: PathBuf, name: &str) -> Res<Vault> {
-        Vault::create_with_id(root, name, &uuid::Uuid::new_v4().to_string())
-    }
-
-    /// Used when a vault that already exists in the cloud is downloaded: it keeps its identity.
-    pub fn create_with_id(root: PathBuf, name: &str, id: &str) -> Res<Vault> {
-        fs::create_dir_all(root.join(".noviq")).map_err(err)?;
-        let marker = root.join(".noviq/vault.json");
+        migrate_metadata(&root)?;
+        fs::create_dir_all(root.join(".nevis")).map_err(err)?;
+        let _initializing=crate::vault_lock::acquire(&root)?;
+        let marker = root.join(".nevis/vault.json");
         if !marker.exists() {
-            write_atomic(&marker, json!({ "format": 1, "id": id, "name": name }).to_string().as_bytes())?;
+            write_atomic(&marker, json!({ "format": 1, "id": uuid::Uuid::new_v4().to_string(), "name": name }).to_string().as_bytes())?;
         }
         Vault::open(root)
     }
 
-    /// New display name, stored in the marker (it travels through sync like the id).
+    /// New display name, stored in the marker.
     pub fn rename(&self, name: &str) -> Res<()> {
+        write_atomic(&self.root.join("kv/workspace.json"), &serde_json::to_vec(&json!({"name":name})).map_err(err)?)?;
         let mut meta = self.meta_value();
         meta["name"] = Value::String(name.to_string());
-        write_atomic(&self.root.join(".noviq/vault.json"), meta.to_string().as_bytes())
+        write_atomic(&self.root.join(".nevis/vault.json"), meta.to_string().as_bytes())
     }
 
     pub fn pages_dir(&self) -> PathBuf {
         self.root.join("pages")
     }
-    fn page_path(&self, id: &str) -> Res<PathBuf> {
+    pub fn page_path(&self, id: &str) -> Res<PathBuf> {
         Ok(self.pages_dir().join(format!("{}.json", check_id(id)?)))
     }
 
@@ -187,9 +289,11 @@ impl Vault {
 
     /// All pages. Conflict copies made by the sync tool are merged first (rule 5 of ADR-0003).
     pub fn pages_all(&self) -> Res<Vec<Value>> {
-        self.resolve_conflicts();
+        let _guard = commit_lock(&self.root)?;
+        self.resolve_conflicts_locked()?;
         let mut out = vec![];
-        for e in fs::read_dir(self.pages_dir()).map_err(err)?.flatten() {
+        for e in fs::read_dir(self.pages_dir()).map_err(err)? {
+            let e=e.map_err(err)?;
             let path = e.path();
             let Some(stem) = path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_suffix(".json")) else { continue };
             if !is_id(stem) {
@@ -200,14 +304,14 @@ impl Vault {
                     v["id"] = Value::String(stem.to_string()); // the file name is the identity
                     out.push(v);
                 }
-                _ => eprintln!("unreadable page file: {}", path.display()),
+                _ => return Err(format!("STORAGE:unreadable_page:{}",path.display())),
             }
         }
         Ok(out)
     }
 
-    pub fn resolve_conflicts(&self) {
-        let Ok(rd) = fs::read_dir(self.pages_dir()) else { return };
+    pub(crate) fn resolve_conflicts_locked(&self) -> Res<()> {
+        let rd = fs::read_dir(self.pages_dir()).map_err(err)?;
         for e in rd.flatten() {
             let path = e.path();
             let Some(stem) = path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_suffix(".json")) else { continue };
@@ -217,6 +321,7 @@ impl Vault {
             let Some(copy) = read_json(&path) else { continue };
             let main = self.pages_dir().join(format!("{}.json", &stem[..36]));
             let id = &stem[..36];
+            if main.exists() && read_json(&main).is_none() { return Err("STORAGE:unreadable_page".into()); }
             let result = match read_json(&main) {
                 None => write_atomic(&main, copy.to_string().as_bytes()),
                 Some(cur) => {
@@ -229,23 +334,20 @@ impl Vault {
                         (cur, vec![copy])
                     };
                     for lose in &losers {
-                        let _ = self.keep_loser(id, lose);
-                        let _ = crate::database::keep_page_loser(&self.root, id, lose);
+                        self.keep_loser(id, lose)?;
+                        crate::database::keep_page_loser(&self.root, id, lose)?;
                     }
                     write_atomic(&main, win.to_string().as_bytes())
                 }
             };
-            if result.is_ok() {
-                let _ = fs::remove_file(&path);
-            }
+            result?;
+            fs::remove_file(&path).map_err(err)?;
         }
+        Ok(())
     }
 
     /// A page version that lost against a newer one is not dropped: it becomes a history entry.
     fn keep_loser(&self, id: &str, page: &Value) -> Res<()> {
-        if page.get("kind").and_then(Value::as_str) == Some("folder") {
-            return Ok(());
-        }
         let mut ts = updated_at(page);
         let dir = self.root.join("history").join(check_id(id)?);
         while dir.join(format!("{ts}.json")).exists() {
@@ -260,17 +362,73 @@ impl Vault {
     /// Returns the ids of pages whose version on disk was not the one the edit started from (`_base`, the `updatedAt`
     /// the editor loaded): that version came from another device, so it is kept in the history before ours replaces it.
     pub fn save_pages(&self, upserts: &[Value], removed: &[String], clear_first: bool) -> Res<Vec<String>> {
+        let _guard = commit_lock(&self.root)?;
+        self.save_pages_locked(upserts, removed, clear_first, false)
+    }
+
+    /// All preconditions are checked before writing any page. The caller's vault ID is
+    /// checked under the same native command lock that protects vault switching.
+    pub fn save_pages_checked(&self, upserts: &[Value], removed: &[String], clear_first: bool,
+        expected_pages: Option<&serde_json::Map<String, Value>>, expected_all: Option<&[Value]>) -> Res<Vec<String>> {
+        let _guard = commit_lock(&self.root)?;
+        self.resolve_conflicts_locked()?;
+        for id in removed { check_id(id)?; }
+        if let Some(expected) = expected_all {
+            let mut actual = serde_json::Map::new();
+            for e in fs::read_dir(self.pages_dir()).map_err(err)? {
+                let e = e.map_err(err)?;
+                let path = e.path();
+                if let Some(id) = path.file_stem().and_then(|s| s.to_str()).filter(|id| is_id(id)) {
+                    if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                        actual.insert(id.to_string(), strict_page(&path)?);
+                    }
+                }
+            }
+            let expected: serde_json::Map<String, Value> = expected.iter().map(|p| {
+                let id = p.get("id").and_then(Value::as_str).ok_or("page without id")?;
+                check_id(id)?;
+                Ok((id.to_string(), p.clone()))
+            }).collect::<Res<_>>()?;
+            if actual != expected { return Err("Document revision conflict".into()); }
+        } else if let Some(expected) = expected_pages {
+            if clear_first { return Err("Missing whole-vault precondition".into()); }
+            for id in upserts.iter().map(|p| p.get("id").and_then(Value::as_str).unwrap_or_default()).chain(removed.iter().map(String::as_str)) {
+                let before = expected.get(id).ok_or("Missing document precondition")?;
+                if strict_page(&self.page_path(id)?)? != *before { return Err("Document revision conflict".into()); }
+            }
+        } else { return Err("Missing document precondition".into()); }
+        // A single-document failure leaves its original atomic file intact. Retain
+        // complete pre-images as well for a disk error during a multi-page UI save.
+        for p in upserts {
+            let id = p.get("id").and_then(Value::as_str).ok_or("page without id")?;
+            let before = strict_page(&self.page_path(id)?)?;
+            if !before.is_null() {
+                use sha2::{Digest, Sha256};
+                let hash = format!("{:x}", Sha256::digest(before.to_string().as_bytes()));
+                let dir = self.root.join(".nevis/document-preimages").join(id);
+                write_atomic(&dir.join(format!("{hash}.json")), before.to_string().as_bytes())?;
+                let mut files: Vec<_> = fs::read_dir(&dir).map_err(err)?.flatten().map(|e| e.path()).collect();
+                files.sort_by_key(|p| fs::metadata(p).and_then(|m| m.modified()).ok());
+                let excess = files.len().saturating_sub(KEEP_VERSIONS);
+                for old in files.into_iter().take(excess) { let _ = fs::remove_file(old); }
+            }
+        }
+        self.save_pages_locked(upserts, removed, clear_first, true)
+    }
+
+    fn save_pages_locked(&self, upserts: &[Value], removed: &[String], clear_first: bool, checked: bool) -> Res<Vec<String>> {
         let mut kept = vec![];
         for p in upserts {
             let id = p.get("id").and_then(Value::as_str).ok_or("page without id")?;
             let path = self.page_path(id)?;
+            if path.exists() && read_json(&path).is_none() { return Err("STORAGE:unreadable_page".into()); }
             // `_base` is bookkeeping of the editor, not part of the page file
             let base = p.get("_base").and_then(Value::as_i64);
             let mut p = p.clone();
             if let Some(o) = p.as_object_mut() {
                 o.remove("_base");
             }
-            if !clear_first {
+            if !clear_first && !checked {
                 if let Some(cur) = read_json(&path) {
                     if updated_at(&cur) > updated_at(&p) {
                         // another device saved a newer version of this page: ours must not overwrite it
@@ -278,7 +436,7 @@ impl Vault {
                         continue;
                     }
                     if base.is_some_and(|b| updated_at(&cur) != b && updated_at(&cur) != updated_at(&p)) {
-                        // the file changed under the editor (the sync brought another device's edit): do not lose that version
+                        // the file changed under the editor (a file-sync tool brought another device's edit): do not lose that version
                         self.keep_loser(id, &cur)?;
                         kept.push(id.to_string());
                     }
@@ -299,14 +457,44 @@ impl Vault {
         }
         for id in gone {
             let path = self.page_path(&id)?;
-            if path.exists() {
-                let dest = self.root.join(".trash/pages").join(format!("{id}.json"));
-                let _ = fs::remove_file(&dest);
-                fs::rename(&path, &dest).map_err(err)?;
-                write_atomic(&self.root.join(".trash/pages").join(format!("{id}.del")), now_ms().to_string().as_bytes())?;
+            if path.exists() { fs::remove_file(&path).map_err(err)?; }
+            for p in [self.root.join(".trash/pages").join(format!("{id}.json")), self.root.join(".trash/pages").join(format!("{id}.del"))] {
+                if p.exists(){fs::remove_file(p).map_err(err)?;}
             }
+            self.versions_delete_locked(&id)?;
         }
         Ok(kept)
+    }
+
+    /// Covers individual page files and sync conflict copies without reading page bodies.
+    #[cfg(unix)]
+    pub fn pages_search_stamp(&self) -> Res<Option<String>> {
+        use std::hash::{DefaultHasher, Hash, Hasher};
+        use std::os::unix::fs::MetadataExt;
+
+        let _guard = commit_lock(&self.root)?;
+        let mut files = Vec::new();
+        for entry in fs::read_dir(self.pages_dir()).map_err(err)? {
+            let path = entry.map_err(err)?.path();
+            if path.extension().is_none_or(|ext| ext != "json") {
+                continue;
+            }
+            // Follow links just as pages_all does. ctime detects writes even when a
+            // sync tool restores the file's original modification time.
+            let meta = fs::metadata(&path).map_err(err)?;
+            let version = (meta.dev(), meta.ino(), meta.len(), meta.mtime(), meta.mtime_nsec(), meta.ctime(), meta.ctime_nsec());
+            files.push((path, version));
+        }
+        files.sort_unstable();
+        let mut hash = DefaultHasher::new();
+        files.hash(&mut hash);
+        Ok(Some(format!("{:016x}", hash.finish())))
+    }
+
+    #[cfg(not(unix))]
+    pub fn pages_search_stamp(&self) -> Res<Option<String>> {
+        // Keep body validation where the filesystem change time is unavailable.
+        Ok(None)
     }
 
     /// Cheap fingerprint of the pages folder, to notice changes made by the sync tool.
@@ -332,18 +520,8 @@ impl Vault {
 
     // ───── history ─────
 
-    fn trim_history(&self, id: &str) {
-        let dir = self.root.join("history").join(id);
-        let mut ts: Vec<i64> = fs::read_dir(&dir)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter_map(|e| e.file_name().to_str()?.strip_suffix(".json")?.parse().ok())
-            .collect();
-        ts.sort_unstable_by(|a, b| b.cmp(a));
-        for t in ts.into_iter().skip(KEEP_VERSIONS) {
-            let _ = fs::remove_file(dir.join(format!("{t}.json")));
-        }
+    pub(crate) fn trim_history(&self, id: &str) {
+        trim_history_at(&self.root, id);
     }
 
     pub fn versions_list(&self, id: &str) -> Res<Vec<Value>> {
@@ -360,17 +538,33 @@ impl Vault {
     }
 
     pub fn version_add(&self, version: &Value) -> Res<()> {
+        let _guard = commit_lock(&self.root)?;
         let id = version.get("pageId").and_then(Value::as_str).ok_or("version without pageId")?;
         if !self.page_path(id)?.exists() {
             return Ok(()); // the page itself is not saved yet; its first snapshot is not worth failing for
         }
-        let ts = version.get("ts").and_then(Value::as_i64).unwrap_or_else(now_ms);
-        write_atomic(&self.root.join("history").join(id).join(format!("{ts}.json")), version.to_string().as_bytes())?;
+        let mut ts = version.get("ts").and_then(Value::as_i64).unwrap_or_else(now_ms);
+        let mut version = version.clone();
+        loop {
+            if !(0..=9_007_199_254_740_991).contains(&ts) { return Err("Invalid operation history clock".into()); }
+            version["ts"] = json!(ts);
+            let path = self.root.join("history").join(id).join(format!("{ts}.json"));
+            let previous = strict_page(&path)?;
+            if previous == version { return Ok(()); }
+            if previous.is_null() { write_atomic(&path, version.to_string().as_bytes())?; break; }
+            ts = ts.checked_add(1).ok_or("Invalid operation history clock")?;
+        }
         self.trim_history(id);
         Ok(())
     }
 
     pub fn versions_delete(&self, id: &str) -> Res<()> {
+        let _guard = commit_lock(&self.root)?;
+        self.versions_delete_locked(id)
+    }
+
+    /// The caller holds the commit lock; taking it again would block this thread on its own lock.
+    fn versions_delete_locked(&self, id: &str) -> Res<()> {
         let _ = fs::remove_dir_all(self.root.join("history").join(check_id(id)?));
         Ok(())
     }
@@ -384,21 +578,11 @@ impl Vault {
     // ───── attachments ─────
 
     fn file_path(&self, id: &str) -> Res<PathBuf> {
-        if id.len() < 8 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err("bad file id".into());
-        }
-        Ok(self.root.join("files").join(&id[..2]).join(id))
+        file_path_at(&self.root, id)
     }
 
     pub fn file_put(&self, id: &str, bytes: &[u8], mime: &str, name: &str, added_at: i64) -> Res<()> {
-        let path = self.file_path(id)?;
-        let same = fs::metadata(&path).is_ok_and(|m| m.len() == bytes.len() as u64);
-        if !same {
-            write_atomic(&path, bytes)?;
-        }
-        // the sidecar is written after the bytes, so a synced sidecar always has its file
-        let meta = json!({ "id": id, "type": mime, "size": bytes.len(), "name": name, "addedAt": added_at });
-        write_atomic(&path.with_extension("json"), meta.to_string().as_bytes())
+        file_put_at(&self.root, id, bytes, mime, name, added_at)
     }
 
     pub fn file_get(&self, id: &str) -> Res<Vec<u8>> {
@@ -420,22 +604,9 @@ impl Vault {
         out
     }
 
-    /// Never an immediate delete: the other devices may not have synced the page that still uses the file.
-    pub fn file_delete(&self, id: &str) -> Res<()> {
-        let path = self.file_path(id)?;
-        let trash = self.root.join(".trash/files");
-        if path.exists() {
-            let _ = fs::remove_file(trash.join(id));
-            fs::rename(&path, trash.join(id)).map_err(err)?;
-            write_atomic(&trash.join(format!("{id}.del")), now_ms().to_string().as_bytes())?;
-        }
-        let _ = fs::remove_file(path.with_extension("json"));
-        Ok(())
-    }
-
     /// Permanently drops trash entries older than TRASH_KEEP_MS.
     pub fn purge_trash(&self) {
-        for sub in [".trash/pages", ".trash/files"] {
+        for sub in [".trash/pages"] { // Retain trashed assets until the complete history/conflict reference index can prove them unused.
             let dir = self.root.join(sub);
             for e in fs::read_dir(&dir).into_iter().flatten().flatten() {
                 let path = e.path();
@@ -452,40 +623,6 @@ impl Vault {
                 }
             }
         }
-        // what the sync set aside (one folder per moment, named by its time)
-        for e in fs::read_dir(self.sync_trash_dir()).into_iter().flatten().flatten() {
-            let Some(at) = e.file_name().to_str().and_then(|n| n.parse::<i64>().ok()) else { continue };
-            if now_ms() - at > TRASH_KEEP_MS {
-                let _ = fs::remove_dir_all(e.path());
-            }
-        }
-    }
-
-    pub fn has_pages(&self) -> bool {
-        fs::read_dir(self.pages_dir()).is_ok_and(|rd| rd.flatten().any(|e| e.file_name().to_str().is_some_and(|n| n.ends_with(".json"))))
-    }
-
-    /// Copies everything that belongs to the vault (not the trash) into `to`.
-    pub fn copy_into(&self, to: &Path) -> Res<()> {
-        fn walk(from: &Path, to: &Path) -> Res<()> {
-            fs::create_dir_all(to).map_err(err)?;
-            for e in fs::read_dir(from).map_err(err)?.flatten() {
-                let (p, name) = (e.path(), e.file_name());
-                if name.to_str().is_some_and(|n| n.starts_with('.') && n.ends_with(".tmp")) {
-                    continue;
-                }
-                if p.is_dir() {
-                    walk(&p, &to.join(&name))?;
-                } else {
-                    fs::copy(&p, to.join(&name)).map_err(err)?;
-                }
-            }
-            Ok(())
-        }
-        for d in ["pages", "files", "history", "kv"] {
-            walk(&self.root.join(d), &to.join(d))?;
-        }
-        Ok(())
     }
 }
 
@@ -494,7 +631,7 @@ mod tests {
     use super::*;
 
     fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("noviq-test-{name}-{}", now_ms()));
+        let d = std::env::temp_dir().join(format!("nevis-test-{name}-{}", now_ms()));
         let _ = fs::remove_dir_all(&d);
         d
     }
@@ -503,6 +640,71 @@ mod tests {
 
     fn page(id: &str, title: &str, at: i64) -> Value {
         json!({ "id": id, "title": title, "content": { "type": "doc", "content": [] }, "updatedAt": at, "deletedAt": null })
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn search_stamp_tracks_each_page_even_when_size_and_mtime_are_preserved() {
+        let v = Vault::create(tmp("search-stamp"), "T").unwrap();
+        v.save_pages(&[page(A, "old", 100)], &[], false).unwrap();
+        let path = v.page_path(A).unwrap();
+        let original_mtime = fs::metadata(&path).unwrap().modified().unwrap();
+        let original = v.pages_search_stamp().unwrap();
+        assert_eq!(original, v.pages_search_stamp().unwrap());
+
+        let old = fs::read_to_string(&path).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        fs::write(&path, old.replace("old", "new")).unwrap();
+        fs::File::open(&path).unwrap().set_modified(original_mtime).unwrap();
+        assert_eq!(fs::metadata(&path).unwrap().len(), old.len() as u64);
+        assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), original_mtime);
+        let edited = v.pages_search_stamp().unwrap();
+        assert_ne!(original, edited);
+
+        fs::write(v.pages_dir().join(format!("{A} (conflicted copy).json")), old).unwrap();
+        assert_ne!(edited, v.pages_search_stamp().unwrap());
+        fs::remove_dir_all(&v.root).unwrap();
+    }
+
+    #[test]
+    fn checked_revision_serializes_independent_vault_handles() {
+        let v = Vault::create(tmp("checked-race"), "T").unwrap();
+        let before = page(A, "base", 100);
+        v.save_pages(&[before.clone()], &[], false).unwrap();
+        let root = v.root.clone();
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let threads: Vec<_> = ["one", "two"].into_iter().map(|title| {
+            let root = root.clone(); let before = before.clone(); let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                let v = Vault::open(root).unwrap();
+                let expected = serde_json::Map::from_iter([(A.to_string(), before)]);
+                barrier.wait();
+                v.save_pages_checked(&[page(A, title, 100)], &[], false, Some(&expected), None)
+            })
+        }).collect();
+        let results: Vec<_> = threads.into_iter().map(|t| t.join().unwrap()).collect();
+        assert_eq!(results.iter().filter(|r| r.is_ok()).count(), 1);
+        assert_eq!(results.iter().filter(|r| r.as_ref().err().is_some_and(|e| e.contains("revision conflict"))).count(), 1);
+        assert!(v.root.join(".nevis/document-preimages").join(A).is_dir());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn checked_revision_refuses_stale_delete_replace_and_disk_failure() {
+        let v = Vault::create(tmp("checked-failure"), "T").unwrap();
+        let before = page(A, "base", 100);
+        v.save_pages(&[before.clone()], &[], false).unwrap();
+        let expected = serde_json::Map::from_iter([(A.to_string(), before.clone())]);
+        let fresh = page(A, "external", 100);
+        write_atomic(&v.page_path(A).unwrap(), fresh.to_string().as_bytes()).unwrap();
+        assert!(v.save_pages_checked(&[], &[A.to_string()], false, Some(&expected), None).unwrap_err().contains("revision conflict"));
+        assert!(v.save_pages_checked(&[], &[], true, None, Some(&[before])).unwrap_err().contains("revision conflict"));
+        let expected = serde_json::Map::from_iter([(A.to_string(), fresh.clone())]);
+        // Block the pre-image directory, causing I/O failure before installation.
+        fs::write(v.root.join(".nevis/document-preimages"), b"blocked").unwrap();
+        assert!(v.save_pages_checked(&[page(A, "new", 200)], &[], false, Some(&expected), None).is_err());
+        assert_eq!(v.pages_all().unwrap(), vec![fresh]);
+        fs::remove_dir_all(v.root).unwrap();
     }
 
     #[test]
@@ -536,15 +738,12 @@ mod tests {
         v.save_pages(&[page(A, "x", 1)], &[], false).unwrap();
         v.save_pages(&[], &[A.to_string()], false).unwrap();
         assert!(v.pages_all().unwrap().is_empty());
-        assert!(v.root.join(".trash/pages").join(format!("{A}.json")).exists());
+        assert!(!v.root.join(".trash/pages").join(format!("{A}.json")).exists());
 
-        let id = "ab".repeat(32);
+        let id = sha256_hex(b"hello");
         v.file_put(&id, b"hello", "text/plain", "a.txt", 5).unwrap();
         assert_eq!(v.file_get(&id).unwrap(), b"hello");
         assert_eq!(v.files_list().len(), 1);
-        v.file_delete(&id).unwrap();
-        assert!(v.files_list().is_empty());
-        assert_eq!(v.file_get(&id).unwrap(), b"hello"); // still recoverable from the trash
     }
 
     #[test]
@@ -566,7 +765,7 @@ mod tests {
         // a folder that exists but has no marker is not a vault either (the user must adopt it on purpose)
         fs::create_dir_all(&root).unwrap();
         assert_eq!(Vault::open(root.clone()).err().as_deref(), Some(VAULT_MISSING));
-        assert!(!root.join(".noviq").exists());
+        assert!(!root.join(".nevis").exists());
         let adopted = Vault::adopt(root.clone()).unwrap();
         assert_ne!(adopted.id(), id);
     }
@@ -598,17 +797,37 @@ mod tests {
         assert!(v.save_pages(&[next], &[], false).unwrap().is_empty());
     }
 
+}
+
+#[cfg(test)]
+mod locking_tests {
+    use super::*;
     #[test]
-    fn sync_trash_keeps_files_and_purges_old_ones() {
-        let v = Vault::create(tmp("strash"), "T").unwrap();
-        v.save_pages(&[page(A, "x", 1)], &[], false).unwrap();
-        v.sync_trash_move(&format!("pages/{A}.json")).unwrap();
-        assert!(v.pages_all().unwrap().is_empty());
-        v.sync_trash_put("kv/srs.json", b"{}").unwrap();
-        let old = v.sync_trash_dir().join("1000");
-        write_atomic(&old.join("pages/old.json"), b"{}").unwrap();
-        v.purge_trash();
-        assert!(!old.exists(), "older than the retention time");
-        assert_eq!(fs::read_dir(v.sync_trash_dir()).unwrap().count(), 2, "recent entries stay");
+    fn process_probe() {
+        let Ok(root)=std::env::var("NEVIS_TEST_LOCK_ROOT") else{return;};
+        let expected=std::env::var("NEVIS_TEST_LOCK_EXPECT").unwrap();
+        let result=Vault::open(PathBuf::from(root));
+        if expected=="held"{assert_eq!(result.err().as_deref(),Some("VAULT_IN_USE"));}
+        else{let v=result.unwrap();v.save_pages(&[json!({"id":"child","title":"written by child","updatedAt":1,"deletedAt":null,"content":{"type":"doc","content":[]}})],&[],false).unwrap();}
+    }
+    #[test]
+    fn another_process_cannot_open_until_every_local_handle_is_closed(){
+        let root=std::env::temp_dir().join(format!("nevis-lock-{}",uuid::Uuid::new_v4()));let a=Vault::create(root.clone(),"locked").unwrap();let b=Vault::open_as(root.clone(),&a.id()).unwrap();
+        let child=|expect:&str|std::process::Command::new(std::env::current_exe().unwrap()).args(["--exact","vault::locking_tests::process_probe","--nocapture"]).env("NEVIS_TEST_LOCK_ROOT",&root).env("NEVIS_TEST_LOCK_EXPECT",expect).output().unwrap();
+        assert!(child("held").status.success());drop(a);assert!(child("held").status.success());drop(b);let outcome=child("free");assert!(outcome.status.success(),"{}",String::from_utf8_lossy(&outcome.stderr));assert!(root.join("pages/child.json").is_file());fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn a_marker_of_an_unknown_format_is_refused() {
+        let root = std::env::temp_dir().join(format!("nevis-format-{}", uuid::Uuid::new_v4()));
+        let v = Vault::create(root.clone(), "T").unwrap();
+        let id = v.id();
+        drop(v);
+        write_atomic(&root.join(".nevis/vault.json"), &serde_json::to_vec(&json!({"format":2,"id":id,"name":"T"})).unwrap()).unwrap();
+        assert_eq!(Vault::open(root.clone()).err().as_deref(), Some("VAULT_UNSUPPORTED_FORMAT"));
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn replacing_marker_never_changes_the_open_vault_identity(){
+        let root=std::env::temp_dir().join(format!("nevis-identity-{}",uuid::Uuid::new_v4()));let v=Vault::create(root.clone(),"T").unwrap();let original=v.id();write_atomic(&root.join(".nevis/vault.json"),&serde_json::to_vec(&json!({"format":1,"id":uuid::Uuid::new_v4().to_string(),"name":"other"})).unwrap()).unwrap();assert_eq!(v.id(),original);assert_eq!(v.ensure_exclusive().unwrap_err(),VAULT_MISMATCH);drop(v);fs::remove_dir_all(root).unwrap();
     }
 }

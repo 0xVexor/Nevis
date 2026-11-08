@@ -13,7 +13,7 @@ import type { PageStore } from './state'
 import { dueReminders } from './reminders'
 import { GatewayClient, gatewayConfig, pullInbox } from './gateway/client'
 
-const DEVICE_KEY = 'not.deviceId' // per device, never synced: kv files travel with the vault, localStorage does not
+const DEVICE_KEY = 'not.deviceId' // per device: kv files travel with the vault, localStorage does not
 
 function deviceId(): string {
   try {
@@ -21,7 +21,7 @@ function deviceId(): string {
     if (!id) localStorage.setItem(DEVICE_KEY, (id = crypto.randomUUID()))
     return id
   } catch {
-    return 'device-unknown'
+    throw new Error('DB:device_identity_unavailable')
   }
 }
 
@@ -40,11 +40,10 @@ const host: PageHost = {
   all: pages.all,
   adopt: (upserts, removed) => repo.adoptDatabase(upserts as unknown as Page[], removed),
   flush: () => repo.flushForDatabase(),
+  reserveCommit: () => repo.reserveCommit(),
 }
 
 const adapters: ExternalAdapter[] = []
-/** Gateways / providers register their external effects here (webhook, email, Slack). Credentials stay outside the Vault. */
-export const registerAdapter = (a: ExternalAdapter) => void adapters.push(a)
 
 let instance: DatabaseService | null = null
 let starting: Promise<DatabaseService> | null = null
@@ -55,18 +54,34 @@ export function getDatabase(): Promise<DatabaseService> {
     const vaultId = isTauri ? (await vaultInfo()).id : 'browser'
     const storage = isTauri ? new TauriStorage((cmd, args) => invoke(cmd, args)) : new IdbStorage(db)
     const svc = new DatabaseService({
-      vaultId, storage, pages, host, deviceId: deviceId(), zone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-      runtime: storage.runtime(), adapters, weekStart: weekStart(),
+      vaultId,
+      storage,
+      pages,
+      host,
+      deviceId: deviceId(),
+      zone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      runtime: storage.runtime(),
+      adapters,
+      weekStart: weekStart(),
     })
     await svc.open()
     instance = svc
     window.addEventListener('external-change', (e) => void svc.reloadExternal((e as CustomEvent<string[]>).detail))
     if (storage instanceof IdbStorage) {
-      storage.onExternal(() => void repo.refreshFromStore().then(() => svc.reloadExternal()).catch((err) => console.error('database refresh', err)))
+      storage.onExternal(
+        () =>
+          void repo
+            .refreshFromStore()
+            .then(() => svc.reloadExternal())
+            .catch((err) => console.error('database refresh', err)),
+      )
     }
     startJobs(svc)
     return svc
-  })())
+  })().catch((error) => {
+    starting = null
+    throw error
+  }))
 }
 
 /** The service if it has been started (for code that must not wait, e.g. the graph). */
@@ -94,7 +109,9 @@ async function fireReminders(svc: DatabaseService) {
     window.dispatchEvent(new CustomEvent(REMINDER_EVENT, { detail: r }))
     try {
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') new Notification(r.title || r.propertyName, { body: r.propertyName })
-    } catch { /* notifications are optional */ }
+    } catch {
+      /* notifications are optional */
+    }
   }
 }
 export const REMINDER_EVENT = 'db-reminder'
@@ -108,7 +125,8 @@ function startJobs(svc: DatabaseService) {
       await svc.engine.dispatchOutbox()
       await fireReminders(svc)
       await pullGateway(svc)
-      if (svc.state.live('template').some((t) => t.repeat)) await svc.exec([{ type: 'template.run_repeats', payload: {} }], { operationId: `repeats:${Math.floor(Date.now() / JOB_EVERY)}`, origin: 'automation' })
+      if (svc.state.live('template').some((t) => t.repeat))
+        await svc.exec([{ type: 'template.run_repeats', payload: {} }], { operationId: `repeats:${Math.floor(Date.now() / JOB_EVERY)}`, origin: 'automation' })
     } catch (e) {
       console.error('database jobs', e)
     }

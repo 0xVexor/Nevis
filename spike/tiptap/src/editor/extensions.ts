@@ -1,8 +1,10 @@
+import { PhysicalShortcuts } from './physicalShortcuts'
 import StarterKit from '@tiptap/starter-kit'
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 import { TaskList, TaskItem } from '@tiptap/extension-list'
 import { CodeBlock } from './codeBlock'
-import { Extension } from '@tiptap/core'
+import { Extension, type CommandProps, type RawCommands } from '@tiptap/core'
+import type { Node as PMNode } from '@tiptap/pm/model'
 import { Plugin } from '@tiptap/pm/state'
 import { Placeholder } from '@tiptap/extensions'
 import { SlashCommand } from './slash'
@@ -16,29 +18,41 @@ import { InlineIcon } from './inlineIcon'
 import { HeadingDir } from './headingDir'
 import { FlowArrows } from './flowArrows'
 import { DragHandle } from './dragHandle'
+import { LayoutGroup, LayoutColumn, LayoutSafety } from './layout'
 import { MarkdownPaste } from './markdownPaste'
-import { MarkdownTab } from './markdownTab'
+import { MarkdownTab, TabStaysInEditor } from './markdownTab'
 import { MathAuto, MathBlock, MathInline } from './math'
 import { Callout, Toggle } from './blocks'
 import { PageLink, PageLinkSuggest } from './pageLink'
 import { t } from '../i18n'
+import { createSectionDragSurface } from './snapSurface'
+import { BlockIdentity } from './blockIdentity'
+import { TableColumnResize } from './tableResize'
 
-const BaseTableView = (Table as any).options.View
+type TableViewLike = { dom: HTMLElement; table: HTMLTableElement; update: (n: PMNode) => boolean }
+const BaseTableView = Table.options.View as unknown as new (...args: unknown[]) => TableViewLike
 
 // The default table NodeView ignores node attrs, so mirror `dir` onto <table>.
-function DirTableView(this: any, node: any, ...rest: any[]) {
+function DirTableView(node: PMNode, ...rest: unknown[]) {
   const view = new BaseTableView(node, ...rest)
-  const apply = (n: any) => {
-    view.table.setAttribute('dir', n.attrs.dir || 'auto')
+  const surface = createSectionDragSurface(t('Move table'), t('Drag this area to move the whole block.'))
+  view.dom.prepend(surface)
+  const apply = (n: PMNode) => {
+    // An explicit table direction wins; otherwise the table follows the page / column it sits in. `auto` would re-resolve the
+    // whole table (and which side every border and corner is on) from whichever letters happen to come first in it.
+    if (n.attrs.dir && n.attrs.dir !== 'auto') view.table.setAttribute('dir', n.attrs.dir)
+    else view.table.removeAttribute('dir')
     // width and position belong to the wrapper <div class="tableWrapper"> around the table
     const wrap = view.dom as HTMLElement
     wrap.style.width = n.attrs.tableWidth ? `${n.attrs.tableWidth}%` : ''
+    // resized columns give the table a fixed pixel width: the frame then hugs the table (or, with a chosen width, the table fills it)
+    wrap.toggleAttribute('data-fixed-cols', !!view.table.style.width)
     if (n.attrs.tableAlign) wrap.dataset.align = n.attrs.tableAlign
     else delete wrap.dataset.align
   }
   apply(node)
   const update = view.update.bind(view)
-  view.update = (n: any) => {
+  view.update = (n: PMNode) => {
     const ok = update(n)
     if (ok) apply(n)
     return ok
@@ -49,8 +63,8 @@ function DirTableView(this: any, node: any, ...rest: any[]) {
 const LEAF = ['paragraph', 'heading']
 const CONTAINER = ['blockquote', 'tableCell', 'tableHeader', 'table', 'listItem', 'taskItem']
 
-// dir="auto" lets the browser pick direction per block from the first strong
-// character (Word-like); the `dir` attribute overrides it manually.
+// Automatic block directions are rendered by HeadingDir. Persisted `dir` attributes
+// remain manual overrides; container dir=auto also works in exported HTML.
 const Direction = Extension.create({
   name: 'direction',
   addGlobalAttributes() {
@@ -63,7 +77,7 @@ const Direction = Extension.create({
           dir: {
             default: 'auto',
             parseHTML,
-            renderHTML: (a: any) => (a.dir && a.dir !== 'auto' ? { dir: a.dir } : {}),
+            renderHTML: (a: Record<string, unknown>) => (a.dir && a.dir !== 'auto' ? { dir: a.dir } : {}),
           },
         },
       },
@@ -74,7 +88,7 @@ const Direction = Extension.create({
           textAlign: {
             default: null,
             parseHTML: (el: HTMLElement) => el.style.textAlign || null,
-            renderHTML: (a: any) => (a.textAlign ? { style: `text-align: ${a.textAlign}` } : {}),
+            renderHTML: (a: Record<string, unknown>) => (a.textAlign ? { style: `text-align: ${a.textAlign}` } : {}),
           },
         },
       },
@@ -82,7 +96,7 @@ const Direction = Extension.create({
       {
         types: CONTAINER,
         attributes: {
-          dir: { default: 'auto', parseHTML, renderHTML: (a: any) => ({ dir: a.dir || 'auto' }) },
+          dir: { default: 'auto', parseHTML, renderHTML: (a: Record<string, unknown>) => ({ dir: a.dir || 'auto' }) },
         },
       },
       // Tables can be narrower than the column and placed left / center / right (physical sides, like Word).
@@ -92,71 +106,78 @@ const Direction = Extension.create({
           tableAlign: {
             default: null,
             parseHTML: (el: HTMLElement) => el.getAttribute('data-table-align'),
-            renderHTML: (a: any) => (a.tableAlign ? { 'data-table-align': a.tableAlign } : {}),
+            renderHTML: (a: Record<string, unknown>) => (a.tableAlign ? { 'data-table-align': a.tableAlign } : {}),
           },
           tableWidth: {
             default: null,
             parseHTML: (el: HTMLElement) => Number(el.getAttribute('data-table-width')) || null,
-            renderHTML: (a: any) => (a.tableWidth ? { 'data-table-width': a.tableWidth } : {}),
+            renderHTML: (a: Record<string, unknown>) => (a.tableWidth ? { 'data-table-width': a.tableWidth } : {}),
           },
         },
       },
     ]
   },
   addCommands() {
-    const setDirection = (dir: string) => ({ state, tr, dispatch }: any) => {
-      const { from, to } = state.selection
-      state.doc.nodesBetween(from, to, (node: any, pos: number) => {
-        if ([...LEAF, ...CONTAINER].includes(node.type.name) && node.type.name !== 'table') {
-          tr.setNodeMarkup(pos, undefined, { ...node.attrs, dir })
-        }
-      })
-      if (dispatch) dispatch(tr)
-      return true
-    }
-    const setTableDirection = (dir: string) => ({ state, tr, dispatch }: any) => {
-      const { $from } = state.selection
-      for (let d = $from.depth; d > 0; d--) {
-        if ($from.node(d).type.name === 'table') {
-          tr.setNodeMarkup($from.before(d), undefined, { ...$from.node(d).attrs, dir })
-          if (dispatch) dispatch(tr)
-          return true
-        }
+    const setDirection =
+      (dir: string) =>
+      ({ state, tr, dispatch }: CommandProps) => {
+        const { from, to } = state.selection
+        state.doc.nodesBetween(from, to, (node: PMNode, pos: number) => {
+          if ([...LEAF, ...CONTAINER].includes(node.type.name) && node.type.name !== 'table') {
+            tr.setNodeMarkup(pos, undefined, { ...node.attrs, dir })
+          }
+        })
+        if (dispatch) dispatch(tr)
+        return true
       }
-      return false
-    }
+    const setTableDirection =
+      (dir: string) =>
+      ({ state, tr, dispatch }: CommandProps) => {
+        const { $from } = state.selection
+        for (let d = $from.depth; d > 0; d--) {
+          if ($from.node(d).type.name === 'table') {
+            tr.setNodeMarkup($from.before(d), undefined, { ...$from.node(d).attrs, dir })
+            if (dispatch) dispatch(tr)
+            return true
+          }
+        }
+        return false
+      }
     // patch the table the caret (or a cell selection) is in
-    const patchTable = (patch: (attrs: any) => any) => ({ state, tr, dispatch }: any) => {
-      const { $from } = state.selection
-      for (let d = $from.depth; d > 0; d--) {
-        if ($from.node(d).type.name === 'table') {
-          tr.setNodeMarkup($from.before(d), undefined, { ...$from.node(d).attrs, ...patch($from.node(d).attrs) })
-          if (dispatch) dispatch(tr)
-          return true
+    const patchTable =
+      (patch: (attrs: Record<string, unknown>) => Record<string, unknown>) =>
+      ({ state, tr, dispatch }: CommandProps) => {
+        const { $from } = state.selection
+        for (let d = $from.depth; d > 0; d--) {
+          if ($from.node(d).type.name === 'table') {
+            tr.setNodeMarkup($from.before(d), undefined, { ...$from.node(d).attrs, ...patch($from.node(d).attrs) })
+            if (dispatch) dispatch(tr)
+            return true
+          }
         }
+        return false
       }
-      return false
-    }
     const setTableWidth = (w: number | null) => patchTable(() => ({ tableWidth: w && w < 100 ? w : null }))
     // a full-width table has nowhere to move to, so choosing a side also narrows it to 75 %
-    const setTableAlign = (a: 'left' | 'center' | 'right' | null) =>
-      patchTable((attrs) => ({ tableAlign: a, ...(a && !attrs.tableWidth ? { tableWidth: 75 } : {}) }))
+    const setTableAlign = (a: 'left' | 'center' | 'right' | null) => patchTable((attrs) => ({ tableAlign: a, ...(a && !attrs.tableWidth ? { tableWidth: 75 } : {}) }))
     // paragraphs and headings in the selection; choosing the side that is already set clears it
-    const setTextAlign = (a: 'left' | 'center' | 'right' | 'justify') => ({ state, tr, dispatch }: any) => {
-      const { from, to } = state.selection
-      const nodes: [any, number][] = []
-      state.doc.nodesBetween(from, to, (node: any, pos: number) => void (([...LEAF, 'codeBlock'].includes(node.type.name)) && nodes.push([node, pos])))
-      const clear = nodes.length > 0 && nodes.every(([n]) => n.attrs.textAlign === a)
-      for (const [node, pos] of nodes) tr.setNodeMarkup(pos, undefined, { ...node.attrs, textAlign: clear ? null : a })
-      if (dispatch) dispatch(tr)
-      return nodes.length > 0
-    }
-    return { setDirection, setTableDirection, setTableWidth, setTableAlign, setTextAlign } as any
+    const setTextAlign =
+      (a: 'left' | 'center' | 'right' | 'justify') =>
+      ({ state, tr, dispatch }: CommandProps) => {
+        const { from, to } = state.selection
+        const nodes: [PMNode, number][] = []
+        state.doc.nodesBetween(from, to, (node: PMNode, pos: number) => void ([...LEAF, 'codeBlock'].includes(node.type.name) && nodes.push([node, pos])))
+        const clear = nodes.length > 0 && nodes.every(([n]) => n.attrs.textAlign === a)
+        for (const [node, pos] of nodes) tr.setNodeMarkup(pos, undefined, { ...node.attrs, textAlign: clear ? null : a })
+        if (dispatch) dispatch(tr)
+        return nodes.length > 0
+      }
+    return { setDirection, setTableDirection, setTableWidth, setTableAlign, setTextAlign } as unknown as Partial<RawCommands>
   },
   // Word's shortcut: left Ctrl + left Shift = LTR, right Ctrl + right Shift = RTL. It fires when the two keys are
   // released without any other key in between, so Ctrl+Shift+Z etc. are not mistaken for it.
   addProseMirrorPlugins() {
-    const editor = this.editor as any
+    const editor = this.editor
     let ctrl: 'L' | 'R' | null = null
     let shift: 'L' | 'R' | null = null
     let armed = false
@@ -194,7 +215,7 @@ const Direction = Extension.create({
     ]
   },
   addKeyboardShortcuts() {
-    const ed = this.editor as any
+    const ed = this.editor
     return {
       'Mod-Shift-ArrowRight': () => ed.commands.setDirection('ltr'),
       'Mod-Shift-ArrowLeft': () => ed.commands.setDirection('rtl'),
@@ -203,9 +224,13 @@ const Direction = Extension.create({
 })
 
 export const extensions = [
-  StarterKit.configure({ codeBlock: false }),
+  PhysicalShortcuts,
+  BlockIdentity,
+  TableColumnResize,
+  StarterKit.configure({ codeBlock: false, dropcursor: { color: 'var(--ds-accent)', width: 2 } }),
   CodeBlock,
-  Table.configure({ resizable: true, View: DirTableView as any }),
+  // `resizable` keeps the stock view (colgroup widths); TableColumnResize does the dragging, so the stock grab zone is minimal
+  Table.configure({ resizable: true, handleWidth: 1, cellMinWidth: 56, View: DirTableView as never }),
   TableRow,
   TableHeader,
   TableCell,
@@ -219,12 +244,16 @@ export const extensions = [
   ImageFiles,
   MarkdownPaste,
   MarkdownTab,
+  TabStaysInEditor,
   Callout,
   Toggle,
   MathInline,
   MathBlock,
   PageLink,
   PageLinkSuggest,
+  LayoutGroup,
+  LayoutColumn,
+  LayoutSafety,
   DragHandle,
   FindInPage,
   MermaidBlock,
@@ -235,3 +264,15 @@ export const extensions = [
   SlashCommand,
   CommandPalette,
 ]
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    nevisDirection: {
+      setDirection: (dir: string) => ReturnType
+      setTableDirection: (dir: string) => ReturnType
+      setTableWidth: (width: number | null) => ReturnType
+      setTableAlign: (align: 'left' | 'center' | 'right' | null) => ReturnType
+      setTextAlign: (align: 'left' | 'center' | 'right' | 'justify') => ReturnType
+    }
+  }
+}

@@ -1,0 +1,7 @@
+.home-preview-side { gap: var(--ds-s2); }
+.home-preview-side > .ds-btn { justify-content: flex-start; }
+.home-preview-side > .ds-workspace-header { margin-block-end: var(--ds-s6); }
+.home-preview-side .home-preview-selected { background: var(--ds-accent-soft); color: var(--ds-accent); }
+.home-preview-tree { display: flex; flex-direction: column; flex: 1; min-block-size: 0; overflow: auto; padding-block: var(--ds-s4); }
+.home-preview-tree .ds-btn { display: block; text-align: start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ds-text-3); }
+.home-preview-feedback { position: absolute; inset-block-end: var(--ds-s4); inset-inline-end: var(--ds-s4); padding: var(--ds-s3); border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); color: var(--ds-text); }

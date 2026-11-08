@@ -1,28 +1,36 @@
+import { commandMatches } from '../shortcutCommands'
+import type { Editor } from '@tiptap/core'
 import { Extension } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
 import { menuRender } from './menu'
-import { INSERTS, paletteItems, shownItem, type CommandItem } from './slash'
+import { INSERTS, paletteItems, shownItem, type CommandItem, type ExtraCommands, previewOf } from './slash'
 import { t } from '../i18n'
 
 let closeActive: (() => void) | null = null
+let paletteOwner: Editor | null = null
+
+export function closeCommandPalette(editor: Editor) {
+  if (paletteOwner === editor) closeActive?.()
+}
 
 /**
  * Ctrl+/ — the "/" menu on demand, without typing a slash into the text.
  * It opens at the caret, you type to filter, ↑ ↓ Enter to run, Esc to close. With text selected the commands
  * work on the selection (turn it into a heading / list / code, wrap it in a callout, draw it as a diagram…).
  */
-function openPalette(editor: any) {
+export function openCommandPalette(editor: Editor, allowedCommands: readonly string[] | null = null, extraCommands?: ExtraCommands) {
   if (closeActive) return closeActive() // the shortcut toggles
 
   let query = ''
-  const render = menuRender<CommandItem>({ label: () => (query ? `${t('Commands')} · ${query}` : t('Commands')), view: shownItem })()
+  const render = menuRender<CommandItem>({ label: () => (query ? `${t('Commands')} · ${query}` : t('Commands')), view: shownItem, preview: previewOf })()
   const caret = () => {
     const c = editor.view.coordsAtPos(editor.state.selection.head)
     return new DOMRect(c.left, c.top, 0, c.bottom - c.top)
   }
-  const props = () => ({ items: paletteItems(query, editor), command: pick, clientRect: caret })
+  const props = () => ({ items: paletteItems(query, editor, extraCommands, allowedCommands), command: pick, clientRect: caret })
 
   function pick(item: CommandItem) {
+    if (item.disabled || (item.check && !item.run(editor.can().chain(), editor).run())) return
     close()
     const { empty, to } = editor.state.selection
     let chain = editor.chain().focus()
@@ -32,7 +40,7 @@ function openPalette(editor: any) {
 
   const onKey = (e: KeyboardEvent) => {
     // the shortcut itself closes (and must not reach the editor, which would open the menu again)
-    const isShortcut = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === 'Slash' || e.key === '/')
+    const isShortcut = commandMatches(e, 'Open the “/” menu')
     if (e.key === 'Escape' || isShortcut) return void (e.preventDefault(), e.stopPropagation(), close())
     if (/^(Shift|Control|Alt|Meta|CapsLock)$/.test(e.key)) return // modifiers alone do nothing
     if (render.onKeyDown({ event: e })) return void (e.preventDefault(), e.stopPropagation()) // ↑ ↓ Enter Tab
@@ -52,16 +60,21 @@ function openPalette(editor: any) {
     document.removeEventListener('mousedown', onDown, true)
     render.onExit()
     closeActive = null
+    paletteOwner = null
   }
 
   render.onStart(props())
   document.addEventListener('keydown', onKey, true) // capture: the editor must not see these keys meanwhile
   document.addEventListener('mousedown', onDown, true)
   closeActive = close
+  paletteOwner = editor
 }
 
-export const CommandPalette = Extension.create({
+export const CommandPalette = Extension.create<{ allowedCommands: readonly string[] | null; extraCommands?: ExtraCommands }>({
   name: 'commandPalette',
+  addOptions() {
+    return { allowedCommands: null }
+  },
   addProseMirrorPlugins() {
     const editor = this.editor
     return [
@@ -69,9 +82,9 @@ export const CommandPalette = Extension.create({
         props: {
           // by physical key (`code`), so it also works with the Persian layout where "/" is a letter
           handleKeyDown: (_view, e) => {
-            if (editor.isEditable && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === 'Slash' || e.key === '/')) {
+            if (editor.isEditable && commandMatches(e, 'Open the “/” menu')) {
               e.preventDefault()
-              openPalette(editor)
+              openCommandPalette(editor, this.options.allowedCommands, this.options.extraCommands)
               return true
             }
             return false

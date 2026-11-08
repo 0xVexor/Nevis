@@ -1,7 +1,9 @@
 # زبان طراحی (Design Language)
 
+> **v6 «Calm» جایگزین این سند است.** قواعد، توکن‌ها و کامپوننت‌های جدید در [design-system.md](design-system.md) (انگلیسی) و صفحه‌ی زنده‌ی [design-system/index.html](design-system/index.html) هستند. هر ویژگی تازه باید طبق آن ساخته شود؛ این سند فقط تاریخچه‌ی ظاهر قدیمی است.
+
 > **v4 — «Aurora Paper» (فعلی).** UI از صفر بازطراحی شد؛ بخش‌های قدیمی‌تر این سند فقط تاریخچه‌اند.
-> - استایل‌ها در `spike/tiptap/src/styles/` هستند (`tokens → base → shell → page → editor → overlays → views → print`) و از `src/index.css` import می‌شوند. `App.css` و `home.css` حذف شدند.
+> - استایل‌ها در `spike/tiptap/src/design-system/` هستند (توکن‌ها و کامپوننت‌ها در خود پوشه، و چیدمان هر بخش در `areas/`؛ ترتیب import را `src/index.css` تعیین می‌کند) و از `src/index.css` import می‌شوند. `App.css` و `home.css` حذف شدند.
 > - **توکن‌ها** با `light-dark()` فقط یک‌بار تعریف می‌شوند؛ تم از `color-scheme` می‌آید (سیستم، یا `data-theme` روی `<html>`).
 > - **رنگ**: یک `--accent`؛ `--accent-2` با `oklch(from … h+52)` از آن مشتق می‌شود و `--grad` را می‌سازد، پس تغییر رنگ تأکید در تنظیمات کل اپ را بازرنگ می‌کند.
 > - **ساختار**: سایدبار شناور (شیشه‌ای) + برگه‌ی اصلی شناور روی بوم «شفق» با شبکه‌ی نقطه‌ای؛ ردیف فعال با نوار گرادیانی؛ دکمه‌های اصلی گرادیانی با درخشش؛ کاشی‌های آیکون squircle؛ حرکت با `--ease`/`--spring` و احترام به «کاهش حرکت».

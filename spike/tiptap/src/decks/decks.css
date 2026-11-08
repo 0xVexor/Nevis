@@ -1,0 +1,94 @@
+.deck-view {
+  max-inline-size: 64rem;
+  margin-inline: auto;
+  padding: 1.5rem;
+}
+
+.deck-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block-end: 1rem;
+}
+
+.deck-slide {
+  inline-size: min(100%, 36rem);
+  margin-inline: auto;
+  box-sizing: border-box;
+  padding: clamp(1rem, 5%, 3rem);
+  border: 1px solid var(--deck-border);
+  background: var(--deck-paper);
+  color: var(--deck-ink);
+  overflow: auto;
+}
+
+.deck-slide-content.tiptap, .deck-slide-content .tiptap {
+  color: var(--deck-ink);
+  font-family: 'Instrument Sans', Vazirmatn, sans-serif;
+}
+.deck-slide-content .tiptap { min-block-size: 6rem; }
+.deck-slide-content.tiptap pre,
+.deck-slide-content .tiptap .code-wrap pre {
+  background: var(--deck-code-paper);
+  color: var(--deck-code-ink);
+  border-color: var(--deck-border);
+}
+.deck-slide-content.tiptap pre[data-slide-code-style='compact'] { padding: 0.45em 0.75em; font-size: 0.8em; }
+.deck-slide-content .tiptap .code-wrap[data-compact] pre { padding: calc(var(--ds-control) + 0.45em) 0.75em 0.45em; font-size: 0.8em; }
+.deck-slide-content pre[data-align='left'] { text-align: left; } /* ui-allow: saved physical alignment from Align left */
+.deck-slide-content pre[data-align='center'] { text-align: center; }
+.deck-slide-content pre[data-align='right'] { text-align: right; } /* ui-allow: saved physical alignment from Align right */
+.deck-slide-content img { max-inline-size: 100%; height: auto; }
+.deck-print-slide img { display: block; }
+.deck-print-slide img[data-align='center'] { margin-inline: auto; }
+.deck-print-slide img[data-align='right'] { margin-left: auto; } /* ui-allow: saved physical alignment from Align right */
+.deck-print-slide img[data-align='left'] { margin-right: auto; } /* ui-allow: saved physical alignment from Align left */
+.deck-print-slide img[data-align='end'] { margin-inline-start: auto; }
+.deck-print-slide img[data-align='start'] { margin-inline-end: auto; }
+.deck-print-slide [data-type='mermaid'] img { margin-inline: auto; }
+.deck-slide-content .section-drag-surface,
+.deck-slide-content .code-diagram[hidden] { display: none; }
+.deck-print-slide pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.deck-print-slide [data-type='mermaid'] { text-align: center; }
+.deck-slide-content .code-bar { color: var(--deck-code-ink); }
+.deck-component { background: var(--deck-callout); }
+
+.deck-slide-content :is(h1, h2, h3) { color: var(--deck-accent); }
+.deck-accent { display: inline-flex; align-items: center; gap: var(--ds-s2); }
+.deck-component { border-inline-start: 0.25rem solid var(--component-line); padding: var(--ds-s3) var(--ds-s4); margin-block: var(--ds-s3); }
+.deck-component[data-variant='compact'] { padding-block: var(--ds-s1); }
+
+.deck-print { position: fixed; inset-inline-start: 0; inset-block-start: 0; visibility: hidden; pointer-events: none; }
+.deck-print-slide { box-sizing: border-box; padding: 0.5in; background: var(--deck-paper); overflow: hidden; break-inside: avoid; }
+.tpl-deck-sheet .layout-export, .deck-print .layout-export { grid-template-columns: var(--layout-tracks); }
+.deck-print pre { direction: ltr; }
+
+@media print {
+  :root:root:root[data-printing-deck] #root { display: none; }
+  .deck-print { position: static; visibility: visible; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .deck-print-slide + .deck-print-slide { break-before: page; }
+}
+
+.tpl-deck-preview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ds-s2);
+}
+
+.tpl-deck-sheet {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: var(--ds-s2);
+  border: 1px solid var(--deck-border);
+  background: var(--deck-paper);
+  color: var(--deck-ink);
+  overflow-wrap: anywhere;
+  font-size: var(--ds-text-small);
+}
+
+.tpl-deck-sheet { min-inline-size: 0; overflow: hidden; }
+.tpl-deck-sheet .deck-slide-content { font-size: 0.6rem; }
+.tpl-deck-sheet .deck-slide-content :is(h1, h2, h3) { font-size: 0.8rem; }
+.tpl-deck-sheet .deck-slide-content pre { font-size: inherit; padding: var(--ds-s1); }
+.tpl-deck-sheet .layout-export { gap: var(--ds-s1); }

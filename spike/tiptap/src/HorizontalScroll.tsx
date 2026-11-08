@@ -2,7 +2,15 @@ import { useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode,
 import { t } from './i18n'
 
 /** A horizontal viewport with a matching native rail that stays inside its section while the page scrolls. */
-export function HorizontalScroll({ children, className = '', viewportClassName = '', viewportRef, viewportProps = {}, label, followVisibleBottom = false }: {
+export function HorizontalScroll({
+  children,
+  className = '',
+  viewportClassName = '',
+  viewportRef,
+  viewportProps = {},
+  label,
+  followVisibleBottom = false,
+}: {
   children: ReactNode
   className?: string
   viewportClassName?: string
@@ -19,7 +27,9 @@ export function HorizontalScroll({ children, className = '', viewportClassName =
   const [width, setWidth] = useState(0)
   const [overflow, setOverflow] = useState(false)
   useLayoutEffect(() => {
-    const el = viewport.current, bar = rail.current, inner = content.current
+    const el = viewport.current,
+      bar = rail.current,
+      inner = content.current
     if (!el || !bar || !inner) return
     let frame = 0
     const measure = () => {
@@ -28,26 +38,39 @@ export function HorizontalScroll({ children, className = '', viewportClassName =
       bar.scrollLeft = el.scrollLeft
     }
     // One source of truth in either direction, including the browser's negative RTL scroll offsets.
-    const fromViewport = () => { if (Math.abs(bar.scrollLeft - el.scrollLeft) > 1) bar.scrollLeft = el.scrollLeft }
-    const fromRail = () => { if (Math.abs(el.scrollLeft - bar.scrollLeft) > 1) el.scrollLeft = bar.scrollLeft }
-    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure) }
-    const ro = new ResizeObserver(schedule)
-    ro.observe(el); ro.observe(inner)
-    const mo = new MutationObserver(schedule)
+    const fromViewport = () => {
+      if (Math.abs(bar.scrollLeft - el.scrollLeft) > 1) bar.scrollLeft = el.scrollLeft
+    }
+    const fromRail = () => {
+      if (Math.abs(el.scrollLeft - bar.scrollLeft) > 1) el.scrollLeft = bar.scrollLeft
+    }
+    const schedule = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(measure)
+    }
+    // observers already run after layout: measure there directly, so the rail never waits on a frame that may not come (a hidden window)
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    ro.observe(inner)
+    const mo = new MutationObserver(() => (measure(), schedule()))
     mo.observe(inner, { childList: true, subtree: true, attributes: true, characterData: true })
     el.addEventListener('scroll', fromViewport, { passive: true })
     bar.addEventListener('scroll', fromRail, { passive: true })
     measure()
     return () => {
-      cancelAnimationFrame(frame); ro.disconnect(); mo.disconnect()
-      el.removeEventListener('scroll', fromViewport); bar.removeEventListener('scroll', fromRail)
+      cancelAnimationFrame(frame)
+      ro.disconnect()
+      mo.disconnect()
+      el.removeEventListener('scroll', fromViewport)
+      bar.removeEventListener('scroll', fromRail)
     }
   }, [viewport])
   // Keep the Pages rail within the visible slice of its section. Its vertical
   // position follows the sidebar scrollport, rather than the end of the list.
   useLayoutEffect(() => {
     if (!followVisibleBottom || !overflow) return
-    const host = section.current, bar = rail.current
+    const host = section.current,
+      bar = rail.current
     if (!host || !bar) return
     let scrollport = host.parentElement
     while (scrollport && !/(auto|scroll)/.test(getComputedStyle(scrollport).overflowY)) scrollport = scrollport.parentElement
@@ -62,7 +85,10 @@ export function HorizontalScroll({ children, className = '', viewportClassName =
       bar.style.visibility = visible ? 'visible' : 'hidden'
       bar.style.top = Math.max(0, Math.min(bounds.height - height, bottom - bounds.top - height)) + 'px'
     }
-    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(position) }
+    const schedule = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(position)
+    }
     const observer = new ResizeObserver(schedule)
     observer.observe(host)
     if (scrollport) observer.observe(scrollport)
@@ -79,12 +105,16 @@ export function HorizontalScroll({ children, className = '', viewportClassName =
       bar.style.removeProperty('visibility')
     }
   }, [followVisibleBottom, overflow])
-  return <div ref={section} className={'hscroll ' + className + (followVisibleBottom ? ' hscroll-follow' : '')}>
-    <div {...viewportProps} ref={viewport} className={'hscroll-viewport ' + viewportClassName}>
-      <div ref={content} className="hscroll-content">{children}</div>
+  return (
+    <div ref={section} className={'hscroll ' + className + (followVisibleBottom ? ' hscroll-follow' : '')}>
+      <div {...viewportProps} ref={viewport} className={'hscroll-viewport ' + viewportClassName}>
+        <div ref={content} className="hscroll-content">
+          {children}
+        </div>
+      </div>
+      <div ref={rail} className="hscroll-rail" hidden={!overflow} tabIndex={overflow ? 0 : -1} role="region" aria-label={label ? t('Horizontal scroll') + ': ' + label : t('Horizontal scroll')}>
+        <div style={{ width, height: 1 }} />
+      </div>
     </div>
-    <div ref={rail} className="hscroll-rail" hidden={!overflow} tabIndex={overflow ? 0 : -1} role="region" aria-label={label ? t('Horizontal scroll') + ': ' + label : t('Horizontal scroll')}>
-      <div style={{ width, height: 1 }} />
-    </div>
-  </div>
+  )
 }

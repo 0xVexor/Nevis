@@ -1,0 +1,33 @@
+/* ═════════ Settings: a nav, then cards of rows ═════════ */
+
+
+
+/* font picker: every card shows its own face */
+.fp { display: flex; flex-direction: column; gap: var(--ds-s5); padding: var(--ds-s1) 0 var(--ds-s4); }
+.fp-label { margin: 0 2px var(--ds-s2); font-size: var(--ds-text-caption); font-weight: 550; letter-spacing: 0; color: var(--ds-text-3); text-transform: none; }
+.fp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: var(--ds-s3); }
+.fp-card { display: flex; flex-direction: column; gap: var(--ds-s2); padding: var(--ds-s3) var(--ds-s4); border: 1px solid var(--ds-line); background: var(--ds-bg); border-radius: var(--ds-r-lg); text-align: start; cursor: var(--cursor-hand, pointer); color: var(--ds-text-2); transition: transform var(--ds-base) var(--ds-ease), border-color var(--ds-base), box-shadow var(--ds-base); }
+.fp-card:hover { transform: translateY(-1px); border-color: var(--ds-line-strong); }
+.fp-card.on { border-color: var(--ds-accent); box-shadow: 0 0 0 4px var(--ds-accent-line); color: var(--ds-text); }
+.fp-name { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-s2); font-size: var(--ds-text-caption); font-weight: 600; }
+.fp-name svg { color: var(--ds-accent); }
+.fp-sample { font-size: 18px; line-height: 1.6; color: var(--ds-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* action rows (import, export, sync…) */
+
+
+/* the live preview follows the glass sliders */
+
+/* Legacy service panels still used by data, updates and AI settings. */
+
+/* AI connection: one switch on top, the per-document hide list tucked into a disclosure */
+
+
+
+
+
+
+
+
+
+/* folded from the former override layers (surfaces.css, screens.css) */

@@ -33,13 +33,51 @@ export type PeopleConfig = { multiple: boolean }
 export type FilesConfig = { allowedTypes: string[]; maxBytes: number }
 export type RelationFieldConfig = { definitionId: Id; side: 'forward' | 'inverse' }
 export type RollupAggregation =
-  | 'count_all' | 'count_values' | 'count_unique' | 'count_empty' | 'count_not_empty' | 'percent_empty' | 'percent_not_empty'
-  | 'checked' | 'unchecked' | 'percent_checked' | 'percent_unchecked' | 'sum' | 'average' | 'median' | 'min' | 'max' | 'range'
-  | 'earliest_date' | 'latest_date' | 'date_range' | 'show_original' | 'show_unique'
+  | 'count_all'
+  | 'count_values'
+  | 'count_unique'
+  | 'count_empty'
+  | 'count_not_empty'
+  | 'percent_empty'
+  | 'percent_not_empty'
+  | 'checked'
+  | 'unchecked'
+  | 'percent_checked'
+  | 'percent_unchecked'
+  | 'sum'
+  | 'average'
+  | 'median'
+  | 'min'
+  | 'max'
+  | 'range'
+  | 'earliest_date'
+  | 'latest_date'
+  | 'date_range'
+  | 'show_original'
+  | 'show_unique'
 export const ROLLUP_AGGREGATIONS: RollupAggregation[] = [
-  'count_all', 'count_values', 'count_unique', 'count_empty', 'count_not_empty', 'percent_empty', 'percent_not_empty', 'checked',
-  'unchecked', 'percent_checked', 'percent_unchecked', 'sum', 'average', 'median', 'min', 'max', 'range', 'earliest_date', 'latest_date',
-  'date_range', 'show_original', 'show_unique',
+  'count_all',
+  'count_values',
+  'count_unique',
+  'count_empty',
+  'count_not_empty',
+  'percent_empty',
+  'percent_not_empty',
+  'checked',
+  'unchecked',
+  'percent_checked',
+  'percent_unchecked',
+  'sum',
+  'average',
+  'median',
+  'min',
+  'max',
+  'range',
+  'earliest_date',
+  'latest_date',
+  'date_range',
+  'show_original',
+  'show_unique',
 ]
 export type RollupConfig = { relationPropertyId: Id; targetPropertyId: Id; aggregation: RollupAggregation; numberFormat?: NumberConfig }
 export type FormulaConfig = {
@@ -56,12 +94,6 @@ export type VerificationConfig = { expiryPolicy: 'never' | '7d' | '30d' | '90d' 
 export type ConnectedConfig = { providerId: string; connectionId: Id; exposedFields: string[] }
 
 export const NUMBER_PRECISION_MAX = 12
-
-export const defaultNumberConfig = (): NumberConfig => ({ format: 'plain', precision: 0 })
-
-export function newOption(id: Id, name: string, color: OptionColor, sortKey: string): SelectOption {
-  return { id, name, color, sortKey }
-}
 
 export function defaultStatusConfig(ids: () => Id): StatusConfig {
   const [k1, k2, k3] = keysBetween(null, null, 3)
@@ -81,8 +113,7 @@ export function defaultStatusConfig(ids: () => Id): StatusConfig {
 const isObj = (v: unknown): v is Record<string, Json> => !!v && typeof v === 'object' && !Array.isArray(v)
 
 function validOption(o: unknown, where: string): SelectOption {
-  if (!isObj(o) || typeof o.id !== 'string' || !o.id || typeof o.name !== 'string' || typeof o.sortKey !== 'string')
-    return fail('SCHEMA_MISMATCH', `${where}: malformed option`)
+  if (!isObj(o) || typeof o.id !== 'string' || !o.id || typeof o.name !== 'string' || typeof o.sortKey !== 'string') return fail('SCHEMA_MISMATCH', `${where}: malformed option`)
   const color = (OPTION_COLORS as string[]).includes(o.color as string) ? (o.color as OptionColor) : 'default'
   return { id: o.id, name: o.name, color, sortKey: o.sortKey }
 }
@@ -160,9 +191,7 @@ export function dateConfig(cfg: Json): DateConfig {
     dateFormat: (['short', 'long', 'iso', 'relative'] as string[]).includes(c.dateFormat as string) ? (c.dateFormat as DateConfig['dateFormat']) : 'short',
     timeFormat: (['24h', '12h', 'none'] as string[]).includes(c.timeFormat as string) ? (c.timeFormat as DateConfig['timeFormat']) : '24h',
     defaultZone: zone,
-    reminders: Array.isArray(c.reminders)
-      ? c.reminders.filter(isObj).map((r) => ({ offsetMinutes: typeof r.offsetMinutes === 'number' ? Math.trunc(r.offsetMinutes) : 0 }))
-      : [],
+    reminders: Array.isArray(c.reminders) ? c.reminders.filter(isObj).map((r) => ({ offsetMinutes: typeof r.offsetMinutes === 'number' ? Math.trunc(r.offsetMinutes) : 0 })) : [],
   }
 }
 
@@ -247,23 +276,38 @@ export function connectedConfig(cfg: Json): ConnectedConfig {
 export function validateConfig(kind: Kind, cfg: Json, ids: () => Id): Json {
   switch (kind) {
     case 'select':
-    case 'multi_select': return selectConfig(cfg ?? { options: [] }) as unknown as Json
-    case 'status': return statusConfig(isObj(cfg) && cfg.options ? cfg : (defaultStatusConfig(ids) as unknown as Json)) as unknown as Json
-    case 'number': return numberConfig(cfg ?? {}) as unknown as Json
+    case 'multi_select':
+      return selectConfig(cfg ?? { options: [] }) as unknown as Json
+    case 'status':
+      return statusConfig(isObj(cfg) && cfg.options ? cfg : (defaultStatusConfig(ids) as unknown as Json)) as unknown as Json
+    case 'number':
+      return numberConfig(cfg ?? {}) as unknown as Json
     case 'date':
     case 'created_time':
-    case 'last_edited_time': return dateConfig(cfg ?? {}) as unknown as Json
-    case 'people': return peopleConfig(cfg ?? {}) as unknown as Json
-    case 'files': return filesConfig(cfg ?? {}) as unknown as Json
-    case 'relation': return relationFieldConfig(cfg) as unknown as Json
-    case 'rollup': return rollupConfig(cfg) as unknown as Json
-    case 'formula': return formulaConfig(cfg) as unknown as Json
-    case 'unique_id': return idConfig(cfg ?? {}) as unknown as Json
-    case 'place': return placeConfig(cfg ?? {}) as unknown as Json
-    case 'button': return buttonConfig(cfg) as unknown as Json
-    case 'verification': return verificationConfig(cfg ?? {}) as unknown as Json
-    case 'connected': return connectedConfig(cfg) as unknown as Json
-    default: return (isObj(cfg) ? cfg : {}) as Json
+    case 'last_edited_time':
+      return dateConfig(cfg ?? {}) as unknown as Json
+    case 'people':
+      return peopleConfig(cfg ?? {}) as unknown as Json
+    case 'files':
+      return filesConfig(cfg ?? {}) as unknown as Json
+    case 'relation':
+      return relationFieldConfig(cfg) as unknown as Json
+    case 'rollup':
+      return rollupConfig(cfg) as unknown as Json
+    case 'formula':
+      return formulaConfig(cfg) as unknown as Json
+    case 'unique_id':
+      return idConfig(cfg ?? {}) as unknown as Json
+    case 'place':
+      return placeConfig(cfg ?? {}) as unknown as Json
+    case 'button':
+      return buttonConfig(cfg) as unknown as Json
+    case 'verification':
+      return verificationConfig(cfg ?? {}) as unknown as Json
+    case 'connected':
+      return connectedConfig(cfg) as unknown as Json
+    default:
+      return (isObj(cfg) ? cfg : {}) as Json
   }
 }
 

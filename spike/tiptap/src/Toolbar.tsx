@@ -1,20 +1,51 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { alertDialog, promptDialog } from './dialog'
+import type { ChainedCommands } from '@tiptap/core'
+import type { Editor } from '@tiptap/core'
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { alertDialog } from './dialog'
 import { hasHeaderColumn, hasHeaderRow } from './editor/tableHeader'
 import { linkSelection } from './editor/slash'
-import * as Ic from './icons'
+import { editLink } from './editor/linkPrompt'
+import { Icon, useMenu, type MenuItem } from './design-system'
 import { insertImageFromUrl, insertImages, pickImages } from './editor/image'
+import { commandBinding } from './shortcutCommands'
+import { shortcutLabel } from './shortcuts'
 import { t } from './i18n'
 
-type Chain = any
+type Chain = ChainedCommands
 
-/** Fixed formatting bar above the page (as in the mockups): one floating pill. The same commands as the floating text menu. */
-export function Toolbar({ editor, diagram }: { editor: any; diagram?: { from: number; to: number; code: string } | null }) {
-  const B = ({ label, title, on, run, cls }: { label: ReactNode; title: string; on?: boolean; run: (c: Chain) => Chain; cls?: string }) => (
-    <button className={(on ? 'on ' : '') + (cls ?? '')} title={title} aria-label={title} onMouseDown={(e) => e.preventDefault()} onClick={() => run(editor.chain().focus()).run()}>
-      {label}
+/** The command's name and its current shortcut (Settings can change it), for a tooltip or a menu hint. */
+const keysOf = (label: string) => {
+  const keys = commandBinding(label)?.keys[0]
+  return keys ? shortcutLabel(keys) : undefined
+}
+const tip = (label: string) => {
+  const keys = keysOf(label)
+  return t(label) + (keys ? '  ' + keys : '')
+}
+
+/**
+ * The formatting bar above the page: one raised strip of design-system icon buttons in groups, each with its shortcut in the tooltip.
+ * Less-used commands fold into "More" when the page is narrow. Dropdowns are design-system menus.
+ */
+/** One button of the bar. Defined at module level so the bar's per-keystroke re-render updates the buttons instead of remounting them. */
+function B({ editor, label, name, icon, on, run, primary }: { editor: Editor; label: string; name?: string; icon: ReactNode; on?: boolean; run: (c: Chain) => Chain; primary?: boolean }) {
+  return (
+    <button
+      type="button"
+      className={'ds-icon-btn tb-btn' + (primary ? ' tb-btn--primary' : '')}
+      aria-pressed={on === undefined ? undefined : on}
+      title={name ?? tip(label)}
+      aria-label={name ?? tip(label)}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => run(editor.chain().focus()).run()}
+    >
+      {icon}
     </button>
   )
+}
+
+export function Toolbar({ editor, diagram }: { editor: Editor; diagram?: { from: number; to: number; code: string } | null }) {
+  const { open, close, menu } = useMenu()
   // re-render on every transaction so the active states (bold, heading, …) follow the selection
   const [, tick] = useState(0)
   useEffect(() => {
@@ -24,189 +55,42 @@ export function Toolbar({ editor, diagram }: { editor: any; diagram?: { from: nu
   }, [editor])
   const is = (name: string, attrs?: object) => editor.isActive(name, attrs)
   const wrap = useRef<HTMLDivElement>(null)
+  const pill = useRef<HTMLDivElement>(null)
   const [compact, setCompact] = useState(false)
+  // the width the full bar needs, measured whenever it is shown in full; narrower than that, the rest folds into More
+  const needed = useRef(0)
+  useLayoutEffect(() => {
+    const el = wrap.current,
+      bar = pill.current
+    if (compact || !el || !bar) return
+    const style = getComputedStyle(bar)
+    const items = [...bar.children] as HTMLElement[]
+    needed.current = items.reduce((w, item) => w + item.offsetWidth, 0) + parseFloat(style.columnGap || '0') * (items.length - 1) + parseFloat(style.paddingInlineStart) + parseFloat(style.paddingInlineEnd) + 2
+    if (needed.current > el.clientWidth) setCompact(true)
+  })
   useEffect(() => {
     const el = wrap.current
     if (!el || typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(() => setCompact(el.clientWidth < 700))
+    const ro = new ResizeObserver(() => setCompact(el.clientWidth < needed.current))
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-  const link = (c: Chain) => {
-    const prev = editor.getAttributes('link').href ?? ''
-    void promptDialog({ title: t('Link'), message: t('Link URL (empty = remove link)'), initial: prev, placeholder: 'https://', ltr: true }).then((url) => {
-      if (url === null) return
-      const ch = editor.chain().focus()
-      ;(url ? ch.setLink({ href: url }) : ch.unsetLink()).run()
-    })
-    return c
-  }
-  // Less-used commands: inline in the bar when there is room, otherwise folded into the "more" dropdown.
-  const extras = [
-    { key: 'strike', icon: <s>S</s>, title: t('Strikethrough'), on: is('strike'), run: (c: Chain) => c.toggleStrike() },
-    { key: 'ol', icon: <Ic.OrderedList size={16} />, title: t('Numbered list'), on: is('orderedList'), run: (c: Chain) => c.toggleOrderedList() },
-    { key: 'task', icon: <Ic.Checklist size={16} />, title: t('Checklist'), on: is('taskList'), run: (c: Chain) => c.toggleTaskList() },
-    { key: 'quote', icon: <Ic.Quote size={16} />, title: t('Quote'), on: is('blockquote'), run: (c: Chain) => c.toggleBlockquote() },
-    { key: 'code', icon: <Ic.Code size={16} />, title: t('Inline code'), on: is('code'), run: (c: Chain) => c.toggleCode() },
-    { key: 'link', icon: <Ic.Link size={16} />, title: t('Link'), on: is('link'), run: link },
-    { key: 'at', icon: <Ic.At size={16} />, title: t('Link to page'), run: (c: Chain) => linkSelection(c, editor) },
-    { key: 'cb', icon: <span className="tb-tx">{'{ }'}</span>, title: t('Code block'), on: is('codeBlock'), run: (c: Chain) => c.toggleCodeBlock() },
-    ...(diagram ? [{ key: 'diagram', icon: <Ic.Diagram size={16} />, title: t('Turn the selected text into a Mermaid diagram'), run: (c: Chain) => c.insertContentAt({ from: diagram.from, to: diagram.to }, { type: 'mermaid', attrs: { code: diagram.code } }) }] : []),
-    { key: 'undo', icon: <Ic.Undo size={16} />, title: t('Undo  Ctrl+Z'), run: (c: Chain) => c.undo() },
-    { key: 'redo', icon: <Ic.Redo size={16} />, title: t('Redo  Ctrl+Y'), run: (c: Chain) => c.redo() },
-  ]
-  return (
-    <div className="toolbar" role="toolbar" aria-label={t('Formatting')} ref={wrap}>
-      <div className="tb-pill">
-        <B cls="tb-add" label={<Ic.Plus size={16} />} title={t('Add block ( / )')} run={(c) => c.setTextSelection(editor.state.selection.to).insertContent('/')} />
-        <span className="sep" />
-        <B label="H1" title={t('Heading 1')} on={is('heading', { level: 1 })} run={(c) => c.toggleHeading({ level: 1 })} />
-        <B label="H2" title={t('Heading 2')} on={is('heading', { level: 2 })} run={(c) => c.toggleHeading({ level: 2 })} />
-        <B label="H3" title={t('Heading 3')} on={is('heading', { level: 3 })} run={(c) => c.toggleHeading({ level: 3 })} />
-        <span className="sep" />
-        <B label={<b>B</b>} title={t('Bold  Ctrl+B')} on={is('bold')} run={(c) => c.toggleBold()} />
-        <B label={<i>I</i>} title={t('Italic  Ctrl+I')} on={is('italic')} run={(c) => c.toggleItalic()} />
-        <B label={<u>U</u>} title={t('Underline  Ctrl+U')} on={is('underline')} run={(c) => c.toggleUnderline()} />
-        <B label={<Ic.List size={16} />} title={t('Bulleted list')} on={is('bulletList')} run={(c) => c.toggleBulletList()} />
-        <span className="sep" />
-        <ImageMenu editor={editor} />
-        <TableMenu editor={editor} />
-        <DirMenu editor={editor} />
-        <span className="sep" />
-        {(['left', 'center', 'right'] as const).map((a) => (
-          <B key={a} label={{ left: <Ic.AlignLeft size={16} />, center: <Ic.AlignCenter size={16} />, right: <Ic.AlignRight size={16} /> }[a]} title={t({ left: 'Align left', center: 'Center', right: 'Align right' }[a])} on={editor.getAttributes('paragraph').textAlign === a || editor.getAttributes('heading').textAlign === a} run={(c) => c.setTextAlign(a)} />
-        ))}
-        <span className="sep" />
-        {compact ? <MoreMenu editor={editor} items={extras} /> : extras.map(({ key, icon, title, on, run }) => <B key={key} label={icon} title={title} on={on} run={run} />)}
-      </div>
-    </div>
-  )
-}
-
-/** "More" dropdown: the commands that did not fit in the bar. */
-function MoreMenu({ editor, items }: { editor: any; items: { key: string; icon: ReactNode; title: string; on?: boolean; run: (c: Chain) => Chain }[] }) {
-  const { open, setOpen, ref } = useDropdown()
-  return (
-    <div className="tb-dd" ref={ref}>
-      <button className={open ? 'on' : ''} title={t('More')} aria-label={t('More')} aria-haspopup="menu" aria-expanded={open} onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen(!open)}>
-        <Ic.Dots size={16} />
-      </button>
-      {open && (
-        <div className="tb-menu" role="menu">
-          {items.map((it) => (
-            <button key={it.key} className={'tb-mi' + (it.on ? ' on' : '')} role="menuitem" onMouseDown={(e) => e.preventDefault()} onClick={() => (it.run(editor.chain().focus()).run(), setOpen(false))}>
-              <span className="tb-mi-ic">{it.icon}</span>
-              <span className="tb-mi-l">{it.title}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/** Open/close state for a toolbar dropdown: closes on an outside click or Escape. */
-function useDropdown() {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const off = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false)
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
-    document.addEventListener('mousedown', off)
-    document.addEventListener('keydown', esc)
-    return () => (document.removeEventListener('mousedown', off), document.removeEventListener('keydown', esc))
-  }, [open])
-  return { open, setOpen, ref }
-}
-
-/** Direction picker: one button that opens a small menu with LTR / RTL (replaces the two separate buttons). */
-function DirMenu({ editor }: { editor: any }) {
-  const { open, setOpen, ref } = useDropdown()
-  const cur = editor.getAttributes('paragraph').dir ?? editor.getAttributes('heading').dir
-  const pick = (d: 'ltr' | 'rtl') => (editor.chain().focus().setDirection(d).run(), setOpen(false))
-  const Item = ({ d, label }: { d: 'ltr' | 'rtl'; label: string }) => (
-    <button className={'tb-mi' + (cur === d ? ' on' : '')} role="menuitem" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(d)}>
-      <span className="tb-mi-ic"><Ic.Direction size={16} /></span>
-      <span className="tb-mi-l">{label}</span>
-      {cur === d && <Ic.Check size={14} />}
+  const run = (fn: (c: Chain) => Chain) => () => fn(editor.chain().focus()).run()
+  const menuItem = (label: string, icon: string, fn: () => unknown, on?: boolean, more: { hint?: string; danger?: boolean; disabled?: boolean } = {}): MenuItem => ({ label, icon: <Icon name={icon} />, hint: more.hint ?? keysOf(label), checked: on, danger: more.danger, disabled: more.disabled, onSelect: () => void fn() })
+  const dropdown = (label: string, icon: string, items: () => MenuItem[], header?: () => ReactNode) => (
+    <button
+      type="button"
+      className="ds-icon-btn tb-btn tb-btn--menu"
+      title={label === 'Line direction' ? t(label) + '  ' + [keysOf('Line direction: left-to-right'), keysOf('Line direction: right-to-left')].filter(Boolean).join(' · ') : tip(label)}
+      aria-label={t(label)}
+      aria-haspopup="menu"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => open(items(), e.currentTarget, header?.())}
+    >
+      <Icon name={icon} size={16} />
+      <Icon name="chevron-down" size={10} />
     </button>
   )
-  return (
-    <div className="tb-dd" ref={ref}>
-      <button className={open ? 'on' : ''} title={t('Line direction')} aria-label={t('Line direction')} aria-haspopup="menu" aria-expanded={open} onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen(!open)}>
-        <Ic.Direction size={16} />
-        <span className="tb-chev"><Ic.Chevron size={12} /></span>
-      </button>
-      {open && (
-        <div className="tb-menu" role="menu">
-          <Item d="ltr" label="LTR (Left to right)" />
-          <Item d="rtl" label="RTL (Right to left)" />
-        </div>
-      )}
-    </div>
-  )
-}
-
-const GRID_ROWS = 5
-const GRID_COLS = 9
-
-/** Table menu: size grid to insert a table, plus row/column/delete actions for the table the cursor is in. */
-function TableMenu({ editor }: { editor: any }) {
-  const { open, setOpen, ref } = useDropdown()
-  const [hover, setHover] = useState({ r: 3, c: 3 })
-  const inTable = editor.isActive('table')
-  const run = (fn: (c: Chain) => Chain) => (fn(editor.chain().focus()).run(), setOpen(false))
-  const insert = (rows: number, cols: number) => run((c) => c.insertTable({ rows, cols, withHeaderRow: true }))
-  const Item = ({ icon, label, onClick, danger, off, on }: { icon: ReactNode; label: string; onClick: () => void; danger?: boolean; off?: boolean; on?: boolean }) => (
-    <button className={'tb-mi' + (danger ? ' danger' : '') + (on ? ' on' : '')} role="menuitemcheckbox" aria-checked={on} disabled={off} onMouseDown={(e) => e.preventDefault()} onClick={onClick}>
-      <span className="tb-mi-ic">{icon}</span>
-      <span className="tb-mi-l">{label}</span>
-      {on && <Ic.Check size={14} />}
-    </button>
-  )
-  return (
-    <div className="tb-dd" ref={ref}>
-      <button className={open ? 'on' : ''} title={t('Table')} aria-label={t('Table')} aria-haspopup="menu" aria-expanded={open} onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen(!open)}>
-        <Ic.Table size={16} />
-      </button>
-      {open && (
-        <div className="tb-menu tb-table-menu" role="menu">
-          <div className="tb-grid" onMouseLeave={() => setHover({ r: 3, c: 3 })}>
-            {Array.from({ length: GRID_ROWS * GRID_COLS }, (_, i) => {
-              const r = Math.floor(i / GRID_COLS) + 1
-              const c = (i % GRID_COLS) + 1
-              return <span key={i} className={r <= hover.r && c <= hover.c ? 'on' : ''} onMouseEnter={() => setHover({ r, c })} onMouseDown={(e) => e.preventDefault()} onClick={() => insert(r, c)} />
-            })}
-          </div>
-          <div className="tb-grid-size">{hover.r} × {hover.c}</div>
-          <div className="tb-msep" />
-          <Item icon={<Ic.Table size={16} />} label={t('Insert table')} onClick={() => insert(hover.r, hover.c)} />
-          <Item icon={<Ic.Plus size={16} />} label={t('Insert row above')} off={!inTable} onClick={() => run((c) => c.addRowBefore())} />
-          <Item icon={<Ic.Plus size={16} />} label={t('Insert row below')} off={!inTable} onClick={() => run((c) => c.addRowAfter())} />
-          <Item icon={<Ic.Plus size={16} />} label={t('Insert column left')} off={!inTable} onClick={() => run((c) => c.addColumnBefore())} />
-          <Item icon={<Ic.Plus size={16} />} label={t('Insert column right')} off={!inTable} onClick={() => run((c) => c.addColumnAfter())} />
-          <div className="tb-msep" />
-          <Item icon={<Ic.Table size={16} />} label={t('Header row')} on={inTable && hasHeaderRow(editor)} off={!inTable} onClick={() => run((c) => c.toggleHeaderRow())} />
-          <Item icon={<Ic.Table size={16} />} label={t('Header column')} on={inTable && hasHeaderColumn(editor)} off={!inTable} onClick={() => run((c) => c.toggleHeaderColumn())} />
-          <div className="tb-msep" />
-          <Item icon={<Ic.AlignLeft size={16} />} label={t('Align table left')} off={!inTable} onClick={() => run((c) => c.setTableAlign('left'))} />
-          <Item icon={<Ic.AlignCenter size={16} />} label={t('Center table')} off={!inTable} onClick={() => run((c) => c.setTableAlign('center'))} />
-          <Item icon={<Ic.AlignRight size={16} />} label={t('Align table right')} off={!inTable} onClick={() => run((c) => c.setTableAlign('right'))} />
-          <Item icon="▭" label={t('Full-width table')} off={!inTable} onClick={() => run((c) => c.setTableAlign(null).setTableWidth(100))} />
-          <div className="tb-msep" />
-          <Item danger icon={<Ic.Trash size={16} />} label={t('Delete table')} off={!inTable} onClick={() => run((c) => c.deleteTable())} />
-        </div>
-      )}
-    </div>
-  )
-}
-
-/** Image menu: upload from the device, paste from the clipboard, add by URL, or remove the selected image. */
-function ImageMenu({ editor }: { editor: any }) {
-  const { open, setOpen, ref } = useDropdown()
-  const isImg = editor.isActive('image')
-  const done = (fn: () => unknown) => (setOpen(false), void fn())
   const pasteImage = async () => {
     try {
       const out: File[] = []
@@ -220,26 +104,144 @@ function ImageMenu({ editor }: { editor: any }) {
       void alertDialog({ title: t('No image on the clipboard') })
     }
   }
-  const Item = ({ icon, label, onClick, danger }: { icon: ReactNode; label: string; onClick: () => void; danger?: boolean }) => (
-    <button className={'tb-mi' + (danger ? ' danger' : '')} role="menuitem" onMouseDown={(e) => e.preventDefault()} onClick={onClick}>
-      <span className="tb-mi-ic">{icon}</span>
-      <span className="tb-mi-l">{label}</span>
-    </button>
-  )
+  const imageItems = (): MenuItem[] => [
+    menuItem('Upload from device', 'upload', () => pickImages(editor), undefined, { hint: keysOf('Insert image') }),
+    menuItem('Paste from clipboard', 'clipboard', pasteImage),
+    menuItem('Add image from link', 'link', () => insertImageFromUrl(editor)),
+    ...(is('image') ? [{ kind: 'sep' } as MenuItem, menuItem('Remove image', 'trash', run((c) => c.deleteSelection()), undefined, { danger: true })] : []),
+  ]
+  const dir = editor.getAttributes('paragraph').dir ?? editor.getAttributes('heading').dir
+  const dirItems = (): MenuItem[] => [
+    menuItem('Line direction: left-to-right', 'arrow-right', run((c) => c.setDirection('ltr')), dir === 'ltr'),
+    menuItem('Line direction: right-to-left', 'arrow-left', run((c) => c.setDirection('rtl')), dir === 'rtl'),
+  ]
+  const align: 'left' | 'center' | 'right' | undefined = editor.getAttributes('paragraph').textAlign ?? editor.getAttributes('heading').textAlign
+  const alignItems = (): MenuItem[] => [
+    menuItem('Align left', 'align-left', run((c) => c.setTextAlign('left')), align === 'left'),
+    menuItem('Center', 'align-center', run((c) => c.setTextAlign('center')), align === 'center'),
+    menuItem('Align right', 'align-right', run((c) => c.setTextAlign('right')), align === 'right'),
+  ]
+  // the table menu: a size grid above the row, column, header and alignment actions; "Insert table" uses the size picked in the grid
+  const tableSize = useRef(GRID_START)
+  const insertTable = (r: number, c: number) => editor.chain().focus().insertTable({ rows: r, cols: c, withHeaderRow: true }).run()
+  const tableGrid = () => {
+    tableSize.current = GRID_START
+    return <TableGrid onChange={(size) => (tableSize.current = size)} onPick={(r, c) => (close(), insertTable(r, c))} />
+  }
+  const tableItems = (): MenuItem[] => {
+    const off = !is('table')
+    const act = (label: string, icon: string, fn: (c: Chain) => Chain, more: { on?: boolean; danger?: boolean } = {}) => menuItem(label, icon, run(fn), more.on, { danger: more.danger, disabled: off })
+    return [
+      { kind: 'sep' },
+      menuItem('Insert table', 'table', () => insertTable(tableSize.current.r, tableSize.current.c)),
+      act('Insert row above', 'plus', (c) => c.addRowBefore()),
+      act('Insert row below', 'plus', (c) => c.addRowAfter()),
+      act('Insert column left', 'plus', (c) => c.addColumnBefore()),
+      act('Insert column right', 'plus', (c) => c.addColumnAfter()),
+      { kind: 'sep' },
+      act('Header row', 'table', (c) => c.toggleHeaderRow(), { on: !off && hasHeaderRow(editor) }),
+      act('Header column', 'table', (c) => c.toggleHeaderColumn(), { on: !off && hasHeaderColumn(editor) }),
+      { kind: 'sep' },
+      act('Align table left', 'align-left', (c) => c.setTableAlign('left')),
+      act('Center table', 'align-center', (c) => c.setTableAlign('center')),
+      act('Align table right', 'align-right', (c) => c.setTableAlign('right')),
+      act('Full-width table', 'maximize', (c) => c.setTableAlign(null).setTableWidth(100)),
+      { kind: 'sep' },
+      act('Delete table', 'trash', (c) => c.deleteTable(), { danger: true }),
+    ]
+  }
+  // less-used commands: in the bar when there is room, otherwise in "More"
+  const extras: { label: string; icon: string; on?: boolean; fn: (c: Chain) => Chain }[] = [
+    { label: 'Strikethrough', icon: 'strikethrough', on: is('strike'), fn: (c) => c.toggleStrike() },
+    { label: 'Numbered list', icon: 'list-ordered', on: is('orderedList'), fn: (c) => c.toggleOrderedList() },
+    { label: 'Checklist', icon: 'checklist', on: is('taskList'), fn: (c) => c.toggleTaskList() },
+    { label: 'Quote', icon: 'quote', on: is('blockquote'), fn: (c) => c.toggleBlockquote() },
+    { label: 'Inline code', icon: 'code', on: is('code'), fn: (c) => c.toggleCode() },
+    { label: 'Code block', icon: 'code-block', on: is('codeBlock'), fn: (c) => c.toggleCodeBlock() },
+    { label: 'Link', icon: 'link', on: is('link'), fn: (c) => (editLink(editor), c) },
+    { label: 'Link to page', icon: 'mention', fn: (c) => linkSelection(c, editor) },
+    ...(diagram
+      ? [{ label: 'Turn the selected text into a Mermaid diagram', icon: 'diagram', fn: (c: Chain) => c.insertContentAt({ from: diagram.from, to: diagram.to }, { type: 'mermaid', attrs: { code: diagram.code } }) }]
+      : []),
+  ]
   return (
-    <div className="tb-dd" ref={ref}>
-      <button className={open ? 'on' : ''} title={t('Image')} aria-label={t('Image')} aria-haspopup="menu" aria-expanded={open} onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen(!open)}>
-        <Ic.Image size={16} />
-      </button>
-      {open && (
-        <div className="tb-menu" role="menu">
-          <Item icon={<Ic.Upload size={16} />} label={t('Upload from device')} onClick={() => done(() => pickImages(editor))} />
-          <Item icon={<Ic.Page size={16} />} label={t('Paste from clipboard')} onClick={() => done(pasteImage)} />
-          <Item icon={<Ic.Link size={16} />} label={t('Add image from link')} onClick={() => done(() => insertImageFromUrl(editor))} />
-          {isImg && <div className="tb-msep" />}
-          {isImg && <Item danger icon={<Ic.Trash size={16} />} label={t('Remove image')} onClick={() => done(() => editor.chain().focus().deleteSelection().run())} />}
-        </div>
-      )}
+    <div className={'toolbar' + (menu ? ' is-open' : '')} role="toolbar" aria-label={t('Formatting')} ref={wrap}>
+      <div className="tb-pill" ref={pill}>
+        <B editor={editor} primary label="Open the “/” menu" icon={<Icon name="plus" size={16} />} run={(c) => c.setTextSelection(editor.state.selection.to).insertContent('/')} />
+        <span className="tb-sep" />
+        <B editor={editor} label="Heading 1" icon={<span className="tb-tx">H1</span>} on={is('heading', { level: 1 })} run={(c) => c.toggleHeading({ level: 1 })} />
+        <B editor={editor} label="Heading 2" icon={<span className="tb-tx">H2</span>} on={is('heading', { level: 2 })} run={(c) => c.toggleHeading({ level: 2 })} />
+        <B editor={editor} label="Heading 3" icon={<span className="tb-tx">H3</span>} on={is('heading', { level: 3 })} run={(c) => c.toggleHeading({ level: 3 })} />
+        <span className="tb-sep" />
+        <B editor={editor} label="Bold" icon={<span className="tb-tx tb-tx--bold">B</span>} on={is('bold')} run={(c) => c.toggleBold()} />
+        <B editor={editor} label="Italic" icon={<span className="tb-tx tb-tx--italic">I</span>} on={is('italic')} run={(c) => c.toggleItalic()} />
+        <B editor={editor} label="Underline" icon={<span className="tb-tx tb-tx--underline">U</span>} on={is('underline')} run={(c) => c.toggleUnderline()} />
+        <B editor={editor} label="Bulleted list" icon={<Icon name="list" size={16} />} on={is('bulletList')} run={(c) => c.toggleBulletList()} />
+        <span className="tb-sep" />
+        {dropdown('Insert image', 'image', imageItems)}
+        {dropdown('Insert table', 'table', tableItems, tableGrid)}
+        {dropdown('Line direction', 'text-direction', dirItems)}
+        <span className="tb-sep" />
+        {dropdown('Alignment', 'align-' + (align ?? 'left'), alignItems)}
+        <span className="tb-sep" />
+        {compact ? (
+          // narrow: the rest folds into one menu, so the bar keeps to one line
+          dropdown('More', 'more-horizontal', () => [...extras.map((x) => menuItem(x.label, x.icon, run(x.fn), x.on)), { kind: 'sep' }, menuItem('Undo', 'undo', run((c) => c.undo())), menuItem('Redo', 'redo', run((c) => c.redo()))])
+        ) : (
+          <>
+            {extras.map((x) => (
+              <B editor={editor} key={x.label} label={x.label} icon={<Icon name={x.icon} size={16} />} on={x.on} run={x.fn} />
+            ))}
+            <span className="tb-sep" />
+            <B editor={editor} label="Undo" icon={<Icon name="undo" size={16} />} run={(c) => c.undo()} />
+            <B editor={editor} label="Redo" icon={<Icon name="redo" size={16} />} run={(c) => c.redo()} />
+          </>
+        )}
+      </div>
+      {menu}
     </div>
+  )
+}
+
+const GRID_ROWS = 5
+const GRID_COLS = 9
+const GRID_START = { r: 3, c: 3 }
+
+/**
+ * The table size grid at the top of the table menu. The pointer picks a size by hovering; the keyboard moves with the arrows
+ * (Up from the first row and Down from the last hand back to the menu) and Enter inserts.
+ */
+function TableGrid({ onChange, onPick }: { onChange: (size: { r: number; c: number }) => void; onPick: (r: number, c: number) => void }) {
+  const [size, setSize] = useState(GRID_START)
+  const current = useRef(GRID_START) // read by the keys, so presses faster than a render still add up
+  const move = (next: { r: number; c: number }) => ((current.current = next), setSize(next), onChange(next))
+  const key = (e: KeyboardEvent<HTMLDivElement>) => {
+    const { r, c } = current.current
+    // the grid is laid out left to right in both directions, so Right always adds a column
+    const next =
+      e.key === 'ArrowRight' ? { r, c: Math.min(GRID_COLS, c + 1) }
+      : e.key === 'ArrowLeft' ? { r, c: Math.max(1, c - 1) }
+      : e.key === 'ArrowDown' && r < GRID_ROWS ? { r: r + 1, c }
+      : e.key === 'ArrowUp' && r > 1 ? { r: r - 1, c }
+      : null
+    if (next) move(next)
+    else if (e.key === 'Enter' || e.key === ' ') onPick(r, c)
+    else return
+    e.preventDefault()
+    e.stopPropagation() // the menu's own arrow keys wait until the grid hands over
+  }
+  return (
+    <>
+      <div className="tb-grid" data-menu-item tabIndex={0} role="group" aria-label={`${t('Insert table')} ${size.r} × ${size.c}`} onKeyDown={key} onMouseLeave={() => move(GRID_START)}>
+        {Array.from({ length: GRID_ROWS * GRID_COLS }, (_, i) => {
+          const r = Math.floor(i / GRID_COLS) + 1
+          const c = (i % GRID_COLS) + 1
+          return <span key={i} className={r <= size.r && c <= size.c ? 'on' : ''} onMouseEnter={() => move({ r, c })} onMouseDown={(e) => e.preventDefault()} onClick={() => onPick(r, c)} />
+        })}
+      </div>
+      <div className="tb-grid-size" aria-hidden="true">
+        {size.r} × {size.c}
+      </div>
+    </>
   )
 }

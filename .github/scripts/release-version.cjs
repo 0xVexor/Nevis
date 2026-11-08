@@ -8,7 +8,9 @@ const cargo = fs.readFileSync(root + 'src-tauri/Cargo.toml', 'utf8');
 const cargoLock = fs.readFileSync(root + 'src-tauri/Cargo.lock', 'utf8');
 function requireThat(value, message) { if (!value) throw new Error(message); }
 const version = app.version;
-requireThat(/^\d+\.\d+\.\d+$/.test(version), 'Final releases need an X.Y.Z version without a prerelease suffix.');
+const stable = /^\d+\.\d+\.\d+$/.test(version);
+const preview = /^\d+\.\d+\.\d+-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*$/.test(version);
+requireThat(stable || (process.env.ALLOW_PRERELEASE === '1' && preview), 'Use X.Y.Z for stable releases, or an allowed X.Y.Z-beta.N prerelease.');
 requireThat(app.name === 'nevis' && tauri.productName === 'Nevis', 'Product metadata must use Nevis.');
 requireThat(lock.version === version && lock.packages[''].version === version && lock.name === app.name && lock.packages[''].name === app.name, 'App package lock is out of date.');
 requireThat(tauri.version === version, 'Tauri version does not match package.json.');
@@ -23,5 +25,24 @@ if (process.env.REQUIRE_VERSION_INCREASE === '1') {
   const oldParts = previous.split('.').map(Number);
   const different = nextParts.findIndex((n, i) => n !== oldParts[i]);
   requireThat(different >= 0 && nextParts[different] > oldParts[different], 'A release into main must increase the stable version.');
+}
+
+// A release branch headed for dev must contain all of dev and move the version forward (catches a stale branch such as beta 9 on a dev at beta 18).
+if (process.env.REQUIRE_AHEAD_OF) {
+  const base = process.env.REQUIRE_AHEAD_OF;
+  try { execFileSync('git', ['merge-base', '--is-ancestor', base, 'HEAD']); }
+  catch { requireThat(false, 'This branch is behind ' + base + '. Merge ' + base + ' into it first.'); }
+  const previous = JSON.parse(execFileSync('git', ['show', base + ':' + root + 'package.json'], {encoding:'utf8'})).version;
+  const key = (v) => { const [core, pre = ''] = v.split('-'); const n = pre.match(/(\d+)$/); return [...core.split('.').map(Number), pre ? 0 : 1, n ? Number(n[1]) : 0]; };
+  const [a, b] = [key(version), key(previous)];
+  const at = a.findIndex((n, i) => n !== b[i]);
+  requireThat(at >= 0 && a[at] > b[at], 'Version ' + version + ' must be higher than ' + previous + ' on ' + base + '.');
+}
+if (version === '1.1.0') {
+  const features = JSON.parse(fs.readFileSync(root + 'release-features.json', 'utf8'));
+  requireThat(features.appearancePresets === false, 'Nevis 1.1.0 must keep named appearance presets disabled.');
+  requireThat(features.slides === false, 'Nevis 1.1.0 must keep slides disabled.');
+  requireThat(!fs.existsSync(root + 'src-tauri/src/server_auth.rs') && !fs.existsSync(root + 'src/cloud/AccountSettings.tsx'), 'Desktop server login must remain outside Nevis 1.1.0.');
+  requireThat(fs.existsSync(root + 'src/decks/model.ts') && fs.existsSync(root + 'src-tauri/src/deck_print.rs'), 'Disable slides without removing their implementation.');
 }
 console.log('Nevis ' + version + ': release metadata is consistent.');

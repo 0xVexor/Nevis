@@ -1,65 +1,265 @@
-// Form view: a builder for editors (questions linked to properties, required, branching, open/closed) and a fill / preview mode that
-// submits through the same validator the gateway uses. Drafts of unsent answers live only in this browser. A hosted public link needs
-// the gateway, which is not configured here: the panel says so instead of showing a link that would not work.
+// Form view. Build: the questions (each linked to a property, required, shown only when an earlier answer matches) beside a live
+// preview of the form. Fill in: the form itself, submitted through the same validator the gateway uses. Drafts of unsent answers
+// live only in this browser. A hosted public link needs the gateway; without one the panel says so instead of showing a link.
 import { useEffect, useMemo, useState, type ReactElement } from 'react'
+import { civilOf, formatCivil } from '../dates.ts'
+import { cfgOf } from '../props/config.ts'
+import { DatePicker } from './DatePicker'
 import type { Definition, Id, Json } from '../model/types.ts'
-import { validateFormConfig, visibleQuestions, answerToCell, evaluateSubmission, type FormConfig, type Question, type Condition } from '../forms.ts'
+import { validateFormConfig, visibleQuestions, evaluateSubmission, type FormConfig, type Question, type Condition } from '../forms.ts'
 import { optionsOf } from '../props/config.ts'
 import { randomId } from '../model/ids.ts'
-import { t } from '../../i18n'
-import { Select } from '../../ui'
-import * as Ic from '../../icons'
-import { errorText } from './common'
-import { Field, Seg, Switch } from './forms'
+import { Button, Checkbox, Dropdown, Field, FormField, Icon, IconButton, Notice, Panel, Popover, Radio, Segmented, SwitchRow } from '../../design-system'
+import { locale, t } from '../../i18n'
+import { ErrorLine, Hint, KindIcon, ViewMessage, errorText, rawOptions } from './common'
 import { GatewayClient, GatewayError, buildPublication, gatewayConfig, loadLinks, saveLink, type PublicationLink } from '../gateway/client'
 import type { ViewProps } from './viewTypes'
 
 const EMPTY: FormConfig = { questions: [], version: 0, open: false, anonymous: false, submitMessage: '' }
 const BLOCKED_KINDS = ['formula', 'rollup', 'button', 'created_time', 'created_by', 'last_edited_time', 'last_edited_by', 'unique_id', 'connected', 'verification', 'title2']
 const draftKey = (viewId: Id) => `not.db.formdraft.${viewId}`
+const COND_LABEL: Record<Condition['op'], string> = { equals: 'is', not_equals: 'is not', contains: 'contains', is_empty: 'is empty', is_not_empty: 'is not empty' }
+
+/** A date answer: the database's own picker (Jalali when the property shows Jalali, Persian digits), not the browser's control. */
+function DateAnswer({
+  def,
+  svc,
+  value,
+  onChange,
+  field,
+}: {
+  def: Definition
+  svc: ViewProps['svc']
+  value: Json | undefined
+  onChange: (v: Json) => void
+  field: { id: string; 'aria-invalid': boolean; 'aria-describedby'?: string }
+}) {
+  const [anchor, setAnchor] = useState<DOMRect | null>(null)
+  const cfg = cfgOf.date(def)
+  const zone = cfg.defaultZone ?? svc.zone
+  const civil = typeof value === 'string' && value ? value : null
+  return (
+    <>
+      <button type="button" {...field} className="ds-field dv-form-date" aria-haspopup="dialog" aria-expanded={!!anchor} onClick={(e) => setAnchor(e.currentTarget.getBoundingClientRect())}>
+        <Icon name="calendar" size={15} />
+        <span data-empty={!civil || undefined}>{civil ? formatCivil(civil, { calendar: cfg.displayCalendar, locale: locale() }) : t('Pick a date')}</span>
+      </button>
+      {anchor && (
+        <Popover anchor={anchor} onClose={() => setAnchor(null)}>
+          <Panel size="sm">
+            <DatePicker
+              single
+              value={civil ? { kind: 'date', start: civil, end: null } : null}
+              config={cfg}
+              zone={zone}
+              weekStart={svc.weekStart}
+              todayCivil={civilOf(svc.now(), zone)}
+              onChange={(v) => {
+                onChange(v && v.kind === 'date' ? v.start : null)
+                setAnchor(null)
+              }}
+              onClose={() => setAnchor(null)}
+            />
+          </Panel>
+        </Popover>
+      )}
+    </>
+  )
+}
 
 function Answer({ def, q, value, onChange, svc, err }: { def: Definition; q: Question; value: Json | undefined; onChange: (v: Json) => void; svc: ViewProps['svc']; err?: string }) {
   const id = 'fq-' + q.id
   const opts = optionsOf(def)
-  const common = { id, 'aria-invalid': !!err, 'aria-describedby': err ? id + '-e' : undefined, dir: 'auto' as const }
+  const common = { id, 'aria-invalid': !!err, 'aria-describedby': err ? id + '-e' : undefined, dir: 'auto' as const, className: 'ds-field' }
   let input: ReactElement
   switch (def.kind) {
-    case 'select': case 'status':
-      input = q.inputStyle === 'radio'
-        ? <div role="radiogroup" aria-labelledby={id + '-l'}>{opts.map((o) => <label key={o.id} className="db-radio"><input type="radio" name={id} checked={value === o.id} onChange={() => onChange(o.id)} /> {o.name}</label>)}</div>
-        : <Select {...common} value={(value as string) ?? ''} onChange={(v) => onChange(v || null)} options={[{ value: '', label: t('Choose…') }, ...opts.map((o) => ({ value: o.id, label: o.name }))]} />
+    case 'select':
+    case 'status':
+      input =
+        q.inputStyle === 'radio' ? (
+          <div className="dv-checks" role="radiogroup" aria-labelledby={id + '-l'}>
+            {opts.map((o) => (
+              <Radio key={o.id} name={id} checked={value === o.id} onChange={() => onChange(o.id)}>
+                <span dir="auto">{o.name}</span>
+              </Radio>
+            ))}
+          </div>
+        ) : (
+          <Dropdown label={q.title || def.name} placeholder={t('Choose…')} value={(value as string) ?? ''} onChange={(v) => onChange(v || null)} options={rawOptions(opts)} />
+        )
       break
     case 'multi_select': {
       const cur = (Array.isArray(value) ? value : []) as string[]
-      input = <div role="group" aria-labelledby={id + '-l'}>{opts.map((o) => <label key={o.id} className="db-radio"><input type="checkbox" checked={cur.includes(o.id)} disabled={!cur.includes(o.id) && !!q.maxSelections && cur.length >= q.maxSelections} onChange={(e) => onChange(e.target.checked ? [...cur, o.id] : cur.filter((x) => x !== o.id))} /> {o.name}</label>)}</div>
+      input = (
+        <div className="dv-checks" role="group" aria-labelledby={id + '-l'}>
+          {opts.map((o) => (
+            <Checkbox
+              key={o.id}
+              checked={cur.includes(o.id)}
+              disabled={!cur.includes(o.id) && !!q.maxSelections && cur.length >= q.maxSelections}
+              onChange={(on) => onChange(on ? [...cur, o.id] : cur.filter((x) => x !== o.id))}
+            >
+              <span dir="auto">{o.name}</span>
+            </Checkbox>
+          ))}
+        </div>
+      )
       break
     }
     case 'checkbox':
-      input = <label className="db-radio"><input type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} /> {def.name}</label>
+      input = (
+        <Checkbox checked={value === true} onChange={(on) => onChange(on)}>
+          <span dir="auto">{def.name}</span>
+        </Checkbox>
+      )
       break
     case 'number':
-      input = <input {...common} inputMode="decimal" value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} />
+      input = <input {...common} dir="ltr" inputMode="decimal" value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} />
       break
     case 'date':
-      input = <input {...common} type="date" value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} />
+      input = <DateAnswer def={def} svc={svc} value={value} onChange={onChange} field={{ id: common.id, 'aria-invalid': common['aria-invalid'], 'aria-describedby': common['aria-describedby'] }} />
       break
     case 'relation': {
-      const rel = svc.state.relationOf(def.id)
       const targets = q.optionProjection ?? []
       const cur = (Array.isArray(value) ? value : []) as string[]
-      input = <div role="group" aria-labelledby={id + '-l'}>{targets.length === 0 ? <small>{t('No choices are available.')}</small> : targets.map((tid) => <label key={tid} className="db-radio"><input type="checkbox" checked={cur.includes(tid)} onChange={(e) => onChange(e.target.checked ? [...cur, tid] : cur.filter((x) => x !== tid))} /> {svc.state.pages.get(tid)?.title ?? tid}</label>)}{rel ? null : null}</div>
+      input = (
+        <div className="dv-checks" role="group" aria-labelledby={id + '-l'}>
+          {targets.length === 0 ? (
+            <Hint>{t('No choices are available.')}</Hint>
+          ) : (
+            targets.map((tid) => (
+              <Checkbox key={tid} checked={cur.includes(tid)} onChange={(on) => onChange(on ? [...cur, tid] : cur.filter((x) => x !== tid))}>
+                <span dir="auto">{svc.state.pages.get(tid)?.title ?? tid}</span>
+              </Checkbox>
+            ))
+          )}
+        </div>
+      )
       break
     }
     default:
-      input = q.inputStyle === 'multiline' || def.kind === 'text' ? <textarea {...common} rows={3} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} /> : <input {...common} type={def.kind === 'email' ? 'email' : def.kind === 'url' ? 'url' : def.kind === 'phone' ? 'tel' : 'text'} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} />
+      input =
+        q.inputStyle === 'multiline' || def.kind === 'text' ? (
+          <textarea {...common} rows={3} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} />
+        ) : (
+          <input
+            {...common}
+            dir={def.kind === 'email' || def.kind === 'url' || def.kind === 'phone' ? 'ltr' : 'auto'}
+            type={def.kind === 'email' ? 'email' : def.kind === 'url' ? 'url' : def.kind === 'phone' ? 'tel' : 'text'}
+            value={(value as string) ?? ''}
+            onChange={(e) => onChange(e.target.value)}
+          />
+        )
   }
   return (
-    <div className={'db-fq' + (err ? ' bad' : '')}>
-      <label id={id + '-l'} htmlFor={id} className="db-fq-l" dir="auto">{q.title || def.name}{q.required && <span aria-hidden> *</span>}</label>
-      {q.description && <small dir="auto">{q.description}</small>}
+    <div className="dv-question" data-bad={err ? true : undefined}>
+      <label id={id + '-l'} htmlFor={id} className="dv-question-label" dir="auto">
+        {q.title || def.name}
+        {q.required && (
+          <span className="dv-required" title={t('Required')}>
+            {' '}
+            *
+          </span>
+        )}
+      </label>
+      {q.description && (
+        <small className="dv-hint" dir="auto">
+          {q.description}
+        </small>
+      )}
       {input}
-      {err && <div id={id + '-e'} className="db-error" role="alert">{err}</div>}
+      {err && (
+        <Notice id={id + '-e'} tone="bad" compact>{err}</Notice>
+      )}
     </div>
+  )
+}
+
+/** The form as people fill it in. `preview` keeps the answers in memory and never sends them. */
+function FormFill({ svc, view, form, preview, onSent }: { svc: ViewProps['svc']; view: ViewProps['view']; form: FormConfig; preview?: boolean; onSent?: (msg: string) => void }) {
+  const [answers, setAnswers] = useState<Record<Id, Json>>(() => {
+    if (preview) return {}
+    try {
+      return JSON.parse(localStorage.getItem(draftKey(view.id)) ?? '{}') as Record<Id, Json>
+    } catch {
+      return {}
+    }
+  })
+  const [errors, setErrors] = useState<Record<Id, string>>({})
+  const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    if (preview) return
+    try {
+      localStorage.setItem(draftKey(view.id), JSON.stringify(answers))
+    } catch {
+      /* draft is a convenience only */
+    }
+  }, [answers, view.id, preview])
+  const shown = visibleQuestions(form, answers)
+  const submit = async () => {
+    const asked = new Set(shown.map((q) => q.id))
+    const given: Record<Id, Json> = {}
+    for (const q of shown) if (answers[q.id] !== undefined) given[q.id] = answers[q.id]
+    const pre = evaluateSubmission({ ...form, questions: form.questions.filter((q) => asked.has(q.id)) }, (id) => svc.state.prop(id), given)
+    if (pre.errors.length) return setErrors(Object.fromEntries(pre.errors.map((e) => [e.questionId, e.message])))
+    setErrors({})
+    if (preview) return
+    setBusy(true)
+    const r = await svc.tryExec([{ type: 'form.submit', payload: { formViewId: view.id, version: form.version, submissionId: randomId(), answers: given } }])
+    setBusy(false)
+    if (!r.ok) return setErr(errorText(r.code, r.message))
+    setErr(null)
+    setAnswers({})
+    try {
+      localStorage.removeItem(draftKey(view.id))
+    } catch {
+      /* ignore */
+    }
+    onSent?.(form.submitMessage || t('Thank you. Your answer was recorded.'))
+  }
+  return (
+    <form
+      className="dv-form-fill"
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault()
+        void submit()
+      }}
+    >
+      <h3 className="dv-form-title" dir="auto">
+        {view.name}
+      </h3>
+      {shown.length === 0 && <Hint>{t('Add a question to see it here.')}</Hint>}
+      {shown.map((q) => {
+        const d = svc.state.prop(q.propertyId)
+        return d ? (
+          <Answer
+            key={q.id}
+            def={d}
+            q={q}
+            svc={svc}
+            value={answers[q.id]}
+            err={errors[q.id]}
+            onChange={(v) => {
+              setAnswers({ ...answers, [q.id]: v })
+              setErrors((prev) => {
+                const next = { ...prev }
+                delete next[q.id]
+                return next
+              })
+            }}
+          />
+        ) : null
+      })}
+      {err && <ErrorLine>{err}</ErrorLine>}
+      <div className="dv-form-acts">
+        <Button type="submit" variant="primary" disabled={busy || shown.length === 0}>
+          {preview ? t('Check answers') : t('Send')}
+        </Button>
+        {preview && <span className="dv-hint">{t('Preview: answers here are not saved.')}</span>}
+      </div>
+    </form>
   )
 }
 
@@ -68,18 +268,23 @@ export function FormView({ svc, view, ctl }: ViewProps) {
   const [mode, setMode] = useState<'build' | 'fill'>(ctl.canSchema ? 'build' : 'fill')
   const [draft, setDraft] = useState<FormConfig>(cfg)
   const [dirty, setDirty] = useState(false)
-  useEffect(() => { if (!dirty) setDraft(cfg) }, [view.configuration]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [done, setDone] = useState<string | null>(null)
+  useEffect(() => {
+    if (!dirty) setDraft(cfg)
+  }, [view.configuration]) // eslint-disable-line react-hooks/exhaustive-deps
   const props = svc.state.props(view.sourceId!).filter((p) => !BLOCKED_KINDS.includes(p.kind))
   const problems = useMemo(() => validateFormConfig(draft, (id) => svc.state.prop(id)), [draft, svc, svc.getVersion()]) // eslint-disable-line react-hooks/exhaustive-deps
   const [err, setErr] = useState<string | null>(null)
-  const set = (patch: Partial<FormConfig>) => { setDraft({ ...draft, ...patch }); setDirty(true) }
-  const setQ = (id: Id, patch: Partial<Question>) => set({ questions: draft.questions.map((q) => (q.id === id ? { ...q, ...patch } : q)) })
-  const add = (p: Definition) => {
-    const q: Question = { id: randomId(), propertyId: p.id, title: p.name, description: '', syncLabel: true, required: p.kind === 'title', order: draft.questions.length }
-    set({ questions: [...draft.questions, q] })
+  const set = (patch: Partial<FormConfig>) => {
+    setDraft({ ...draft, ...patch })
+    setDirty(true)
   }
+  const ordered = [...draft.questions].sort((a, b) => a.order - b.order)
+  const setQ = (id: Id, patch: Partial<Question>) => set({ questions: draft.questions.map((q) => (q.id === id ? { ...q, ...patch } : q)) })
+  const add = (p: Definition) =>
+    set({ questions: [...draft.questions, { id: randomId(), propertyId: p.id, title: p.name, description: '', syncLabel: true, required: p.kind === 'title', order: draft.questions.length }] })
   const move = (i: number, d: number) => {
-    const a = [...draft.questions].sort((x, y) => x.order - y.order)
+    const a = [...ordered]
     const j = i + d
     if (j < 0 || j >= a.length) return
     ;[a[i], a[j]] = [a[j], a[i]]
@@ -88,90 +293,125 @@ export function FormView({ svc, view, ctl }: ViewProps) {
   const save = async (open?: boolean) => {
     const next = { ...draft, open: open ?? draft.open }
     const r = await svc.tryExec([{ type: 'form.configure', payload: { viewId: view.id, config: next as unknown as Json } }])
-    if (!r.ok) { setErr(errorText(r.code, r.message)); return }
-    setErr(null); setDirty(false)
+    if (!r.ok) return setErr(errorText(r.code, r.message))
+    setErr(null)
+    setDirty(false)
     ctl.notice(next.open ? t('The form is open.') : t('Form saved.'))
   }
-
-  // fill / preview
-  const [answers, setAnswers] = useState<Record<Id, Json>>(() => {
-    try { return JSON.parse(localStorage.getItem(draftKey(view.id)) ?? '{}') as Record<Id, Json> } catch { return {} }
-  })
-  const [errors, setErrors] = useState<Record<Id, string>>({})
-  const [done, setDone] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  useEffect(() => { try { localStorage.setItem(draftKey(view.id), JSON.stringify(answers)) } catch { /* draft is a convenience only */ } }, [answers, view.id])
-  const live = mode === 'fill' ? cfg : draft
-  const shown = visibleQuestions(live, answers)
-  const submit = async () => {
-    const asked = new Set(shown.map((q) => q.id))
-    const given: Record<Id, Json> = {}
-    for (const q of shown) if (answers[q.id] !== undefined) given[q.id] = answers[q.id]
-    const pre = evaluateSubmission({ ...live, questions: live.questions.filter((q) => asked.has(q.id)) }, (id) => svc.state.prop(id), given)
-    if (pre.errors.length) { setErrors(Object.fromEntries(pre.errors.map((e) => [e.questionId, e.message]))); return }
-    setErrors({}); setBusy(true)
-    const r = await svc.tryExec([{ type: 'form.submit', payload: { formViewId: view.id, version: cfg.version, submissionId: randomId(), answers: given } }])
-    setBusy(false)
-    if (!r.ok) { setErr(errorText(r.code, r.message)); return }
-    setErr(null); setAnswers({}); setDone(cfg.submitMessage || t('Thank you. Your answer was recorded.'))
-    try { localStorage.removeItem(draftKey(view.id)) } catch { /* ignore */ }
-  }
-  void answerToCell
+  const unused = props.filter((p) => !draft.questions.some((q) => q.propertyId === p.id))
 
   return (
-    <div className="db-form">
-      {ctl.canSchema && <Seg value={mode} onChange={setMode} label={t('Form mode')} options={[{ value: 'build', label: t('Build') }, { value: 'fill', label: t('Fill in') }]} />}
-      {err && <div className="db-error-box" role="alert">{err}</div>}
+    <div className="dv-form">
+      <header className="dv-period">
+        {ctl.canSchema && (
+          <Segmented
+            label={t('Form mode')}
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: 'build', label: t('Build') },
+              { value: 'fill', label: t('Fill in') },
+            ]}
+          />
+        )}
+        <span className="dv-form-state" data-open={cfg.open || undefined}>
+          <Icon name={cfg.open ? 'check-circle' : 'lock'} size={15} /> {cfg.open ? t('Open, accepting answers') : t('Closed')}
+        </span>
+        {mode === 'build' && (
+          <span className="dv-period-end">
+            <Button size="sm" variant="ghost" disabled={problems.length > 0 || draft.questions.length === 0} onClick={() => void save(!cfg.open)}>
+              {cfg.open ? t('Close the form') : t('Open the form')}
+            </Button>
+            <Button size="sm" variant="primary" disabled={!dirty} onClick={() => void save()}>
+              {t('Save form')}
+            </Button>
+          </span>
+        )}
+      </header>
+      {err && <ErrorLine>{err}</ErrorLine>}
       {mode === 'build' ? (
-        <div className="db-form-build">
-          <div className="db-form-status">
-            <b>{cfg.open ? t('Open — accepting answers here') : t('Closed')}</b>
-            {!gatewayConfig() && <small>{t('A public link needs the Nevis gateway. It is not set up in this workspace, so answers can only be entered here by people who can edit this database.')}</small>}
+        <div className="dv-form-build">
+          <div className="dv-form-questions">
+            {!gatewayConfig() && (
+              <Notice>{t('A public link needs the Nevis gateway. It is not set up in this workspace, so answers can only be entered here by people who can edit this database.')}</Notice>
+            )}
+            {gatewayConfig() && <PublishPanel svc={svc} viewId={view.id} dirty={dirty} />}
+            {ordered.length === 0 && <ViewMessage title={t('No questions yet')}>{t('Each question fills in one property of the new item.')}</ViewMessage>}
+            <ol className="dv-qlist">
+              {ordered.map((q, i) => {
+                const d = svc.state.prop(q.propertyId)
+                const bad = problems.filter((p) => p.questionId === q.id)
+                return (
+                  <li key={q.id} className="dv-qcard" data-bad={bad.length ? true : undefined}>
+                    <header className="dv-qcard-head">
+                      <span className="dv-step-n">{i + 1}</span>
+                      {d && <KindIcon kind={d.kind} />}
+                      <b dir="auto">{d ? d.name : t('Deleted property')}</b>
+                      <span className="dv-rule-tools">
+                        <IconButton label={t('Move up')} disabled={i === 0} onClick={() => move(i, -1)}>
+                          <Icon name="arrow-up" size={15} />
+                        </IconButton>
+                        <IconButton label={t('Move down')} disabled={i === ordered.length - 1} onClick={() => move(i, 1)}>
+                          <Icon name="arrow-down" size={15} />
+                        </IconButton>
+                        <IconButton label={t('Remove question')} onClick={() => set({ questions: draft.questions.filter((x) => x.id !== q.id).map((x, k) => ({ ...x, order: k })) })}>
+                          <Icon name="x" size={15} />
+                        </IconButton>
+                      </span>
+                    </header>
+                    <FormField label={t('Question')}>
+                      <Field value={q.title} onChange={(e) => setQ(q.id, { title: e.target.value })} />
+                    </FormField>
+                    <FormField label={t('Help text')}>
+                      <Field value={q.description} onChange={(e) => setQ(q.id, { description: e.target.value })} />
+                    </FormField>
+                    <SwitchRow label={t('Required')} checked={q.required} onChange={(v) => setQ(q.id, { required: v })} />
+                    <ConditionEditor q={q} all={draft.questions} svc={svc} onChange={(c) => setQ(q.id, { visibleWhen: c })} />
+                    {bad.map((p, k) => (
+                      <ErrorLine key={k}>{p.message}</ErrorLine>
+                    ))}
+                  </li>
+                )
+              })}
+            </ol>
+            {unused.length > 0 && (
+              <FormField label={t('Add a question')}>
+                <Dropdown
+                  label={t('Add a question')}
+                  placeholder={t('Choose a property…')}
+                  value=""
+                  onChange={(v) => {
+                    const p = props.find((x) => x.id === v)
+                    if (p) add(p)
+                  }}
+                  options={rawOptions(unused)}
+                />
+              </FormField>
+            )}
+            <FormField label={t('Message after sending')}>
+              <Field value={draft.submitMessage} placeholder={t('Thank you. Your answer was recorded.')} onChange={(e) => set({ submitMessage: e.target.value })} />
+            </FormField>
           </div>
-          {gatewayConfig() && <PublishPanel svc={svc} viewId={view.id} dirty={dirty} />}
-          <ol className="db-fq-list">
-            {[...draft.questions].sort((a, b) => a.order - b.order).map((q, i) => {
-              const d = svc.state.prop(q.propertyId)
-              const bad = problems.filter((p) => p.questionId === q.id)
-              return (
-                <li key={q.id} className={'db-fqb' + (bad.length ? ' bad' : '')}>
-                  <div className="db-fqb-head">
-                    <b dir="auto">{d ? d.name : t('Deleted property')}</b>
-                    <span className="spacer" />
-                    <button type="button" className="icon-btn" aria-label={t('Move up')} disabled={i === 0} onClick={() => move(i, -1)}><span style={{ display: 'inline-flex', transform: 'rotate(180deg)' }}><Ic.Chevron size={12} /></span></button>
-                    <button type="button" className="icon-btn" aria-label={t('Move down')} disabled={i === draft.questions.length - 1} onClick={() => move(i, 1)}><Ic.Chevron size={12} /></button>
-                    <button type="button" className="icon-btn" aria-label={t('Remove question')} onClick={() => set({ questions: draft.questions.filter((x) => x.id !== q.id).map((x, k) => ({ ...x, order: k })) })}><Ic.Close size={12} /></button>
-                  </div>
-                  <Field label={t('Question')}><input dir="auto" value={q.title} onChange={(e) => setQ(q.id, { title: e.target.value })} /></Field>
-                  <Field label={t('Help text')}><input dir="auto" value={q.description} onChange={(e) => setQ(q.id, { description: e.target.value })} /></Field>
-                  <Switch label={t('Required')} on={q.required} onChange={(v) => setQ(q.id, { required: v })} />
-                  <ConditionEditor q={q} all={draft.questions} svc={svc} onChange={(c) => setQ(q.id, { visibleWhen: c })} />
-                  {bad.map((p, k) => <div key={k} className="db-error" role="alert">{p.message}</div>)}
-                </li>
-              )
-            })}
-          </ol>
-          <Field label={t('Add a question')}>
-            <Select title={t('Add a question')} value="" onChange={(v) => { const p = props.find((x) => x.id === v); if (p) add(p) }} options={[{ value: '', label: t('Choose a property…') }, ...props.filter((p) => !draft.questions.some((q) => q.propertyId === p.id)).map((p) => ({ value: p.id, label: p.name }))]} />
-          </Field>
-          <Field label={t('Message after sending')}><input dir="auto" value={draft.submitMessage} onChange={(e) => set({ submitMessage: e.target.value })} /></Field>
-          <div className="db-form-actions">
-            <button type="button" className="primary" disabled={!dirty && !problems.length} onClick={() => void save()}>{t('Save')}</button>
-            <button type="button" disabled={problems.length > 0 || draft.questions.length === 0} onClick={() => void save(!cfg.open)}>{cfg.open ? t('Close the form') : t('Open the form')}</button>
-          </div>
+          <aside className="dv-form-preview" aria-label={t('Preview')}>
+            <h4 className="dv-subhead">{t('Preview')}</h4>
+            <FormFill key={JSON.stringify(draft.questions)} svc={svc} view={view} form={draft} preview />
+          </aside>
         </div>
       ) : done ? (
-        <div className="db-empty" role="status"><b>{done}</b><button type="button" onClick={() => setDone(null)}>{t('Send another answer')}</button></div>
+        <ViewMessage
+          title={done}
+          action={
+            <Button size="sm" onClick={() => setDone(null)}>
+              {t('Send another answer')}
+            </Button>
+          }
+        />
       ) : !cfg.open ? (
-        <div className="db-empty"><b>{t('This form is closed')}</b><p>{t('Open it from the Build tab to accept answers.')}</p></div>
+        <ViewMessage title={t('This form is closed')}>{t('Open it from the Build tab to accept answers.')}</ViewMessage>
       ) : (
-        <form className="db-form-fill" noValidate onSubmit={(e) => { e.preventDefault(); void submit() }}>
-          {shown.map((q) => {
-            const d = svc.state.prop(q.propertyId)
-            return d ? <Answer key={q.id} def={d} q={q} svc={svc} value={answers[q.id]} err={errors[q.id]} onChange={(v) => { setAnswers({ ...answers, [q.id]: v }); setErrors((prev) => { const next = { ...prev }; delete next[q.id]; return next }) }} /> : null
-          })}
-          <div className="db-form-actions"><button type="submit" className="primary" disabled={busy}>{t('Send')}</button></div>
-        </form>
+        <div className="dv-form-single">
+          <FormFill svc={svc} view={view} form={cfg} onSent={setDone} />
+        </div>
       )}
     </div>
   )
@@ -184,31 +424,66 @@ function PublishPanel({ svc, viewId, dirty }: { svc: ViewProps['svc']; viewId: I
   const [msg, setMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const client = useMemo(() => new GatewayClient(cfg), [cfg.url, cfg.token]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (link) void client.publicationStatus(link.id).then((s) => setCounts(s.submissions)).catch(() => setCounts(null)) }, [client, link])
+  useEffect(() => {
+    if (link)
+      void client
+        .publicationStatus(link.id)
+        .then((s) => setCounts(s.submissions))
+        .catch(() => setCounts(null))
+  }, [client, link])
   const run = async (f: () => Promise<void>) => {
-    setBusy(true); setMsg(null)
-    try { await f() } catch (e) { setMsg(e instanceof GatewayError ? e.message : String(e)) } finally { setBusy(false) }
+    setBusy(true)
+    setMsg(null)
+    try {
+      await f()
+    } catch (e) {
+      setMsg(e instanceof GatewayError ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
   }
-  const publish = () => run(async () => {
-    const payload = buildPublication(svc, viewId)
-    const r = link ? await client.update(link.id, payload, link.version) : await client.publish(payload)
-    const next = { id: r.id, publicId: r.publicId, version: r.version, url: r.url, viewId }
-    saveLink(next, viewId); setLink(next)
-  })
-  const revoke = () => run(async () => { if (!link) return; await client.revoke(link.id); saveLink(null, viewId); setLink(null); setCounts(null) })
+  const publish = () =>
+    run(async () => {
+      const payload = buildPublication(svc, viewId)
+      const r = link ? await client.update(link.id, payload, link.version) : await client.publish(payload)
+      const next = { id: r.id, publicId: r.publicId, version: r.version, url: r.url, viewId }
+      saveLink(next, viewId)
+      setLink(next)
+    })
+  const revoke = () =>
+    run(async () => {
+      if (!link) return
+      await client.revoke(link.id)
+      saveLink(null, viewId)
+      setLink(null)
+      setCounts(null)
+    })
   return (
-    <div className="db-form-status" role="group" aria-label={t('Public link')}>
-      <b>{link ? t('Published — version {n}', { n: link.version }) : t('Not published')}</b>
-      {link && <input readOnly dir="ltr" value={link.url} aria-label={t('Public link')} onFocus={(e) => e.currentTarget.select()} />}
-      <small>{t('Publishing sends only the questions above and the choices they offer. Answers wait on the gateway as “received, pending import” until this app imports them.')}</small>
-      {counts && <small>{t('Waiting for import')}: {counts.pending ?? 0} · {t('Imported')}: {counts.applied ?? 0} · {t('Needs repair')}: {counts.rejected ?? 0}</small>}
-      {dirty && <small>{t('Save your changes before publishing.')}</small>}
-      {msg && <div className="db-error" role="alert">{msg}</div>}
-      <div className="db-form-actions">
-        <button type="button" className="primary" disabled={busy || dirty} onClick={() => void publish()}>{link ? t('Publish changes') : t('Publish')}</button>
-        {link && <button type="button" disabled={busy} onClick={() => void revoke()}>{t('Stop publishing')}</button>}
+    <section className="dv-qcard" aria-label={t('Public link')}>
+      <header className="dv-qcard-head">
+        <Icon name="link" size={16} />
+        <b>{link ? t('Published, version {n}', { n: link.version }) : t('Not published')}</b>
+      </header>
+      {link && <Field ltr readOnly value={link.url} aria-label={t('Public link')} onFocus={(e) => e.currentTarget.select()} />}
+      <Hint>{t('Publishing sends only the questions above and the choices they offer. Answers wait on the gateway as “received, pending import” until this app imports them.')}</Hint>
+      {counts && (
+        <p className="dv-text">
+          {t('Waiting for import')}: {counts.pending ?? 0} · {t('Imported')}: {counts.applied ?? 0} · {t('Needs repair')}: {counts.rejected ?? 0}
+        </p>
+      )}
+      {dirty && <Hint>{t('Save your changes before publishing.')}</Hint>}
+      {msg && <ErrorLine>{msg}</ErrorLine>}
+      <div className="dv-form-acts">
+        <Button size="sm" variant="primary" disabled={busy || dirty} onClick={() => void publish()}>
+          {link ? t('Publish changes') : t('Publish')}
+        </Button>
+        {link && (
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void revoke()}>
+            {t('Stop publishing')}
+          </Button>
+        )}
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -217,13 +492,34 @@ function ConditionEditor({ q, all, svc, onChange }: { q: Question; all: Question
   const c = q.visibleWhen
   if (!earlier.length) return null
   return (
-    <div className="db-cond">
-      <Switch label={t('Show only when…')} on={!!c} onChange={(v) => onChange(v ? { questionId: earlier[0].id, op: 'is_not_empty' } : null)} />
+    <div className="dv-cond">
+      <SwitchRow label={t('Show only when…')} checked={!!c} onChange={(v) => onChange(v ? { questionId: earlier[0].id, op: 'is_not_empty' } : null)} />
       {c && (
-        <div className="db-cond-row">
-          <Select title={t('Question')} value={c.questionId} onChange={(v) => onChange({ ...c, questionId: v })} options={earlier.map((x) => ({ value: x.id, label: x.title || svc.state.prop(x.propertyId)?.name || t('Deleted property') }))} />
-          <Select title={t('Condition')} value={c.op} onChange={(v) => onChange({ ...c, op: v as Condition['op'] })} options={['equals', 'not_equals', 'contains', 'is_empty', 'is_not_empty'].map((o) => ({ value: o, label: t(o.replace(/_/g, ' ')) }))} />
-          {(c.op === 'equals' || c.op === 'not_equals' || c.op === 'contains') && <input dir="auto" aria-label={t('Value')} value={(c.value as string) ?? ''} onChange={(e) => onChange({ ...c, value: e.target.value })} />}
+        <div className="dv-rule">
+          <Dropdown
+            className="ds-dd-btn--sm"
+            label={t('Question')}
+            value={c.questionId}
+            onChange={(v) => onChange({ ...c, questionId: v })}
+            options={earlier.map((x) => ({ value: x.id, label: x.title || svc.state.prop(x.propertyId)?.name || t('Deleted property'), raw: true }))}
+          />
+          <Dropdown
+            className="ds-dd-btn--sm"
+            label={t('Condition')}
+            value={c.op}
+            onChange={(v) => onChange({ ...c, op: v })}
+            options={(Object.keys(COND_LABEL) as Condition['op'][]).map((o) => ({ value: o, label: COND_LABEL[o] }))}
+          />
+          {(c.op === 'equals' || c.op === 'not_equals' || c.op === 'contains') && (
+            <input
+              className="ds-field dv-operand"
+              dir="auto"
+              aria-label={t('Value')}
+              placeholder={t('Value')}
+              value={(c.value as string) ?? ''}
+              onChange={(e) => onChange({ ...c, value: e.target.value })}
+            />
+          )}
         </div>
       )}
     </div>

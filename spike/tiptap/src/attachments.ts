@@ -1,5 +1,5 @@
 // Content-addressed file store (the `attachments` table of ADR-0002): id = sha256 of the bytes, identical files are stored once.
-// Desktop app: files live in <app data>/files/<sha[0:2]>/<sha> (src-tauri); browser: IndexedDB.
+// Desktop app: files live in <vault>/files/<sha[0:2]>/<sha> (src-tauri); browser: IndexedDB.
 import { invoke } from '@tauri-apps/api/core'
 import { isTauri, storageFrozen } from './db'
 import { maybeCompress } from './compress'
@@ -58,19 +58,6 @@ export async function putRecord(rec: FileRec) {
   await tx('readwrite', (s) => s.put(rec))
 }
 
-export const deleteFile = async (id: string) => {
-  if (storageFrozen()) return
-  if (isTauri) await invoke('file_delete', { id })
-  else await tx('readwrite', (s) => s.delete(id))
-  const u = urls.get(id)
-  if (u) (URL.revokeObjectURL(u), urls.delete(id))
-}
-
-/** Ids and add times only (no bytes), for garbage collection. */
-export async function fileIndex(): Promise<{ id: string; addedAt?: number }[]> {
-  return isTauri ? invoke('files_list') : tx<FileRec[]>('readonly', (s) => s.getAll())
-}
-
 const types = new Map<string, string>() // desktop app: mime type per file id
 async function refreshTypes() {
   for (const m of await invoke<{ id: string; type: string }[]>('files_list')) types.set(m.id, m.type)
@@ -87,14 +74,6 @@ export async function allFiles(): Promise<FileRec[]> {
   return Promise.all(metas.map(async (m) => ({ ...m, name: decodeURIComponent(m.name), blob: await readBlob(m.id, m.type) })))
 }
 
-export const clearFiles = async () => {
-  if (isTauri) await invoke('files_clear')
-  else await tx('readwrite', (s) => s.clear())
-  urls.forEach((u) => URL.revokeObjectURL(u))
-  urls.clear()
-}
-
-/** `att:<sha256>` -> object URL (cached). Returns null if the file is missing. */
 export async function urlFor(src: string): Promise<string | null> {
   if (!src.startsWith('att:')) return src
   const id = src.slice(4)
@@ -117,7 +96,8 @@ export async function fileMeta(ids: string[]): Promise<Map<string, { name: strin
   if (!ids.length) return out
   if (isTauri) {
     const want = new Set(ids)
-    for (const m of await invoke<{ id: string; type: string; name: string; size: number }[]>('files_list')) if (want.has(m.id)) out.set(m.id, { name: decodeURIComponent(m.name), type: m.type, size: m.size })
+    for (const m of await invoke<{ id: string; type: string; name: string; size: number }[]>('files_list'))
+      if (want.has(m.id)) out.set(m.id, { name: decodeURIComponent(m.name), type: m.type, size: m.size })
   } else {
     for (const id of ids) {
       const r = await tx<FileRec | undefined>('readonly', (s) => s.get(id))

@@ -4,27 +4,62 @@ import { useMemo, useSyncExternalStore } from 'react'
 import { repo } from '../../store'
 import { peekDatabase } from '../runtime'
 import { GRAPH_LIMITS, selectGraph, type GraphEdgeKind } from '../graph.ts'
+import { ChipButton, Icon } from '../../design-system'
 import { t } from '../../i18n'
 
 export type ExtraKinds = { relation: boolean; dependency: boolean; hierarchy: boolean }
 const noSub = () => () => {}
+
+function edgesOf(svc: NonNullable<ReturnType<typeof peekDatabase>>, edgeKinds: GraphEdgeKind[]): [string, string][] {
+  const pages = repo.pagesOnly().map((p) => ({ id: p.id, title: p.title, icon: p.icon, kind: p.kind, deletedAt: p.deletedAt }))
+  const r = selectGraph(svc.state, pages, [], { vaultId: svc.vaultId, hops: 0, edgeKinds, maxNodes: GRAPH_LIMITS.maxNodes * 6, maxEdges: GRAPH_LIMITS.maxEdges, principalId: svc.principalId })
+  return r.edges.map((e) => [e.fromPageId, e.toPageId] as [string, string])
+}
 
 export function useDatabaseEdges(kinds: ExtraKinds): [string, string][] {
   const svc = peekDatabase()
   const version = useSyncExternalStore(svc ? svc.subscribe : noSub, svc ? svc.getVersion : () => 0)
   return useMemo(() => {
     const edgeKinds = (Object.keys(kinds) as GraphEdgeKind[]).filter((k) => kinds[k as keyof ExtraKinds])
-    if (!svc || !edgeKinds.length) return []
-    const pages = repo.pagesOnly().map((p) => ({ id: p.id, title: p.title, icon: p.icon, kind: p.kind, deletedAt: p.deletedAt }))
-    const r = selectGraph(svc.state, pages, [], { vaultId: svc.vaultId, hops: 0, edgeKinds, maxNodes: GRAPH_LIMITS.maxNodes * 6, maxEdges: GRAPH_LIMITS.maxEdges, principalId: svc.principalId })
-    return r.edges.map((e) => [e.fromPageId, e.toPageId] as [string, string])
+    return svc && edgeKinds.length ? edgesOf(svc, edgeKinds) : []
   }, [svc, version, kinds.relation, kinds.dependency, kinds.hierarchy]) // eslint-disable-line react-hooks/exhaustive-deps
 }
 
+/** How many links of each kind the vault has, so a toggle with nothing behind it can say so. */
+function useKindCounts(): Record<keyof ExtraKinds, number> {
+  const svc = peekDatabase()
+  const version = useSyncExternalStore(svc ? svc.subscribe : noSub, svc ? svc.getVersion : () => 0)
+  return useMemo(() => {
+    const n = (k: GraphEdgeKind) => (svc ? edgesOf(svc, [k]).length : 0)
+    return { relation: n('relation'), dependency: n('dependency'), hierarchy: n('hierarchy') }
+  }, [svc, version])
+}
+
 export function EdgeKindToggles({ kinds, onChange }: { kinds: ExtraKinds; onChange: (k: ExtraKinds) => void }) {
+  const counts = useKindCounts()
   if (!peekDatabase()) return null
-  const item = (k: keyof ExtraKinds, label: string) => (
-    <label key={k} className="gv-kind"><input type="checkbox" checked={kinds[k]} onChange={(e) => onChange({ ...kinds, [k]: e.target.checked })} /> {t(label)}</label>
+  const item = (k: keyof ExtraKinds, label: string, icon: string) => (
+    <ChipButton
+      key={k}
+      disabled={counts[k] === 0}
+      title={counts[k] === 0 ? t('No links of this kind in your databases yet') : undefined}
+      aria-pressed={kinds[k] && counts[k] > 0}
+      icon={<Icon name={icon} size={12} />}
+      onClick={() => onChange({ ...kinds, [k]: !kinds[k] })}
+    >
+      {t(label)}
+      {counts[k] > 0 && <span className="dv-count">{counts[k]}</span>}
+    </ChipButton>
   )
-  return <div className="gv-kinds" role="group" aria-label={t('Database links')}>{item('relation', 'Relations')}{item('dependency', 'Dependencies')}{item('hierarchy', 'Sub-items')}</div>
+  const none = !counts.relation && !counts.dependency && !counts.hierarchy
+  return (
+    <>
+      <div className="gr-tags" role="group" aria-label={t('Database links')}>
+        {item('relation', 'Relations', 'relation')}
+        {item('dependency', 'Dependencies', 'timeline')}
+        {item('hierarchy', 'Sub-items', 'folder-tree')}
+      </div>
+      {none && <small className="ds-muted">{t('These turn on once a database has a relation, a dependency or sub-items.')}</small>}
+    </>
+  )
 }

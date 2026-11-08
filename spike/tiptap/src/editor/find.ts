@@ -1,6 +1,7 @@
-import { Extension } from '@tiptap/core'
+import { Extension, type CommandProps, type Editor, type RawCommands } from '@tiptap/core'
+import type { Node as PMNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
-import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import { normalizeFa } from '../normalize'
 
 interface FindState {
@@ -17,22 +18,22 @@ const EMPTY: FindState = { query: '', matches: [], index: 0 }
  * (ي/ك, ZWNJ, digits, diacritics), so «كلاس» finds «کلاس» and «می‌روم» finds «می روم».
  * Normalisation is done per character so offsets in the normalised text map 1:1 back to document positions.
  */
-function search(doc: any, query: string): { from: number; to: number }[] {
+function search(doc: PMNode, query: string): { from: number; to: number }[] {
   const q = normalizeFa(query).trim()
   if (!q) return []
   const out: { from: number; to: number }[] = []
-  doc.descendants((node: any, pos: number) => {
+  doc.descendants((node, pos) => {
     if (!node.isTextblock) return true
     let norm = ''
     const at: number[] = []
-    node.forEach((child: any, offset: number) => {
+    node.forEach((child, offset) => {
       const start = pos + 1 + offset
       if (child.isText) {
-        const s: string = child.text
+        const s = child.text ?? ''
         for (let i = 0; i < s.length; i++) {
-          for (const ch of normalizeFa(s[i])) (norm += ch, at.push(start + i)) // '' for diacritics: skipped
+          for (const ch of normalizeFa(s[i])) ((norm += ch), at.push(start + i)) // '' for diacritics: skipped
         }
-      } else (norm += '￼', at.push(start)) // inline atom (math, page link, image): can never match
+      } else ((norm += '￼'), at.push(start)) // inline atom (math, page link, image): can never match
     })
     for (let i = norm.indexOf(q); i >= 0; i = norm.indexOf(q, i + q.length)) out.push({ from: at[i], to: at[i + q.length - 1] + 1 })
     return false
@@ -40,11 +41,23 @@ function search(doc: any, query: string): { from: number; to: number }[] {
   return out
 }
 
-function scrollTo(view: any, from: number) {
+/**
+ * Bring a match into view the way a reader would: a match already on screen leaves the page where it is;
+ * one outside glides to a third of the way down, clear of the find bar and the formatting bar.
+ */
+function scrollTo(view: EditorView, from: number) {
   try {
-    const { node } = view.domAtPos(from)
-    const el: HTMLElement | null = node.nodeType === 1 ? node : node.parentElement
-    el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    const at = view.coordsAtPos(from)
+    const scroller = view.dom.closest<HTMLElement>('.scroller')
+    if (!scroller) {
+      const { node } = view.domAtPos(from)
+      ;(node.nodeType === 1 ? (node as HTMLElement) : node.parentElement)?.scrollIntoView({ block: 'nearest' })
+      return
+    }
+    const box = scroller.getBoundingClientRect()
+    if (at.top >= box.top + 112 && at.bottom <= box.bottom - 64) return
+    const reduced = document.documentElement.dataset.motion === 'reduce' || matchMedia('(prefers-reduced-motion: reduce)').matches
+    scroller.scrollTo({ top: Math.max(0, scroller.scrollTop + at.top - box.top - box.height / 3), behavior: reduced ? 'auto' : 'smooth' })
   } catch {
     /* position no longer in the DOM */
   }
@@ -79,7 +92,7 @@ export const FindInPage = Extension.create({
             if (!s?.matches.length) return DecorationSet.empty
             return DecorationSet.create(
               state.doc,
-              s.matches.map((m, i) => Decoration.inline(m.from, m.to, { class: i === s.index ? 'find-hit find-cur' : 'find-hit' })),
+              s.matches.map((m, i) => Decoration.inline(m.from, m.to, i === s.index ? { class: 'find-hit find-cur', 'data-find-step': String(i) } : { class: 'find-hit' })),
             )
           },
         },
@@ -87,24 +100,38 @@ export const FindInPage = Extension.create({
     ]
   },
   addCommands() {
-    const meta = (m: object) => ({ tr, dispatch }: any) => (dispatch?.(tr.setMeta(findKey, m)), true)
+    const meta =
+      (m: object) =>
+      ({ tr, dispatch }: CommandProps) => (dispatch?.(tr.setMeta(findKey, m)), true)
     return {
       setFind: (query: string) => meta({ query }),
       clearFind: () => meta({ clear: true }),
-      stepFind: (dir: 1 | -1) => ({ tr, state, dispatch, view }: any) => {
-        const s = findKey.getState(state)
-        if (!s?.matches.length) return false
-        const index = (s.index + dir + s.matches.length) % s.matches.length
-        dispatch?.(tr.setMeta(findKey, { index }))
-        scrollTo(view, s.matches[index].from)
-        return true
-      },
-    } as any
+      stepFind:
+        (dir: 1 | -1) =>
+        ({ tr, state, dispatch, view }: CommandProps) => {
+          const s = findKey.getState(state)
+          if (!s?.matches.length) return false
+          const index = (s.index + dir + s.matches.length) % s.matches.length
+          dispatch?.(tr.setMeta(findKey, { index }))
+          scrollTo(view, s.matches[index].from)
+          return true
+        },
+    } as unknown as Partial<RawCommands>
   },
 })
 
-export const getFind = (editor: any): FindState => findKey.getState(editor.state) ?? EMPTY
-export const scrollToMatch = (editor: any) => {
+export const getFind = (editor: Editor): FindState => findKey.getState(editor.state) ?? EMPTY
+export const scrollToMatch = (editor: Editor) => {
   const s = getFind(editor)
   if (s.matches[s.index]) scrollTo(editor.view, s.matches[s.index].from)
+}
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    nevisFind: {
+      setFind: (query: string) => ReturnType
+      clearFind: () => ReturnType
+      stepFind: (dir: 1 | -1) => ReturnType
+    }
+  }
 }

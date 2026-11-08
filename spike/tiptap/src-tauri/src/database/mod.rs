@@ -3,10 +3,10 @@
 //! ```text
 //! databases/<containers|sources|properties|views|relations|edges|templates|workflows|comments|principals|grants|events|allocators>/<id>.json
 //! history/records/<kind>/<id>/<revision>.json         full pre-images (synced)
-//! .noviq/database-journal/<operation>.json            redo journal, local only
-//! .noviq/database-ops/<operation>.json                results of applied operations (idempotent retries), local only
-//! .noviq/database-undo.json, .noviq/workflow-runtime/ local only
-//! .noviq/index.db                                     disposable query index (see index.rs)
+//! .nevis/database-journal/<operation>.json            redo journal, local only
+//! .nevis/database-ops/<operation>.json                results of applied operations (idempotent retries), local only
+//! .nevis/database-undo.json, .nevis/workflow-runtime/ local only
+//! .nevis/index.db                                     disposable query index (see index.rs)
 //! ```
 //!
 //! A batch is one durable unit: it is written to a journal, the journal is marked committed, the post-images are applied
@@ -16,7 +16,7 @@
 pub mod index;
 pub mod merge;
 
-use crate::vault::{err, now_ms, write_atomic, Res};
+use crate::vault::{err, write_atomic, Res};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -86,10 +86,10 @@ fn page_path(root: &Path, id: &str) -> Res<PathBuf> {
     Ok(root.join("pages").join(format!("{id}.json")))
 }
 fn journal_dir(root: &Path) -> PathBuf {
-    root.join(".noviq/database-journal")
+    root.join(".nevis/database-journal")
 }
 fn ops_dir(root: &Path) -> PathBuf {
-    root.join(".noviq/database-ops")
+    root.join(".nevis/database-ops")
 }
 
 fn revision_of(v: &Value) -> i64 {
@@ -189,10 +189,11 @@ fn parse<'a>(b: &'a Value) -> Res<Batch<'a>> {
 /// The revision a file has on disk (0 = not there).
 fn on_disk(root: &Path, w: &Value, is_page: bool) -> Res<i64> {
     let id = w["id"].as_str().unwrap_or_default();
-    if is_page {
-        Ok(read_json(&page_path(root, id)?).map_or(0, |v| page_revision(&v)))
-    } else {
-        Ok(read_json(&rec_path(root, w["kind"].as_str().unwrap_or_default(), id)?).map_or(0, |v| revision_of(&v)))
+    let path=if is_page {page_path(root,id)?}else{rec_path(root,w["kind"].as_str().unwrap_or_default(),id)?};
+    match fs::read(&path) {
+        Ok(b)=>{let v:Value=serde_json::from_slice(&b).map_err(|_|format!("STORAGE:unreadable_record:{}",path.display()))?;Ok(if is_page {page_revision(&v)}else{revision_of(&v)})},
+        Err(e) if e.kind()==std::io::ErrorKind::NotFound=>Ok(0),
+        Err(e)=>Err(err(e))
     }
 }
 
@@ -204,6 +205,22 @@ fn post_revision(w: &Value, is_page: bool) -> Option<i64> {
 fn verify(root: &Path, b: &Batch, recovering: bool) -> Res<()> {
     for (list, is_page) in [(b.records, false), (b.pages, true)] {
         for w in list {
+            if is_page {
+                if let Some(before) = w.get("before") {
+                    let path = page_path(root, w["id"].as_str().unwrap_or_default())?;
+                    let actual = match fs::read(&path) {
+                        Ok(bytes) => serde_json::from_slice::<Value>(&bytes).map_err(err)?,
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Value::Null,
+                        Err(e) => return Err(err(e)),
+                    };
+                    let mut after = w.get("after").cloned().unwrap_or(Value::Null);
+                    if after.is_object() && after.get("content").map_or(true, Value::is_null) {
+                        if let Some(body) = before.get("content").filter(|b| !b.is_null()) { after["content"] = body.clone(); }
+                    }
+                    if actual == *before || (recovering && actual == after) { continue; }
+                    return Err(if recovering { "RECOVERY_REQUIRED:page content changed" } else { "REVISION_CONFLICT:page content changed" }.into());
+                }
+            }
             let cur = on_disk(root, w, is_page)?;
             let base = w.get("baseRevision").and_then(Value::as_i64).unwrap_or(0);
             let what = if is_page { format!("page/{}", w["id"].as_str().unwrap_or("?")) } else { format!("{}/{}", w["kind"].as_str().unwrap_or("?"), w["id"].as_str().unwrap_or("?")) };
@@ -259,11 +276,7 @@ fn apply(root: &Path, b: &Batch) -> Res<()> {
             }
             None => {
                 if path.exists() {
-                    let dest = root.join(".trash/pages").join(format!("{id}.json"));
-                    let _ = fs::create_dir_all(root.join(".trash/pages"));
-                    let _ = fs::remove_file(&dest);
-                    fs::rename(&path, &dest).map_err(err)?;
-                    write_atomic(&root.join(".trash/pages").join(format!("{id}.del")), now_ms().to_string().as_bytes())?;
+fs::remove_file(&path).map_err(err)?;
                 }
             }
         }
@@ -310,6 +323,7 @@ fn prune_ops(root: &Path) {
 
 /// Durable, atomic from the app's point of view. Errors carry a code prefix the UI maps to its stable error codes.
 pub fn commit(root: &Path, batch: &Value) -> Res<()> {
+    let _guard = crate::vault::commit_lock(root)?;
     let b = parse(batch)?;
     if batch.to_string().len() > MAX_BATCH_BYTES {
         return Err("QUOTA:batch is larger than 64 MiB".into());
@@ -329,6 +343,7 @@ pub fn commit(root: &Path, batch: &Value) -> Res<()> {
 
 /// Replay committed journals; drop uncommitted ones (they have no visible effect). Fails closed on any mismatch.
 pub fn recover(root: &Path) -> Res<Value> {
+    let _guard = crate::vault::commit_lock(root)?;
     let dir = journal_dir(root);
     let mut replayed = 0;
     let mut files: Vec<PathBuf> = fs::read_dir(&dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().and_then(|x| x.to_str()) == Some("json")).collect();
@@ -367,25 +382,25 @@ pub fn history(root: &Path, kind: &str, id: &str) -> Res<Vec<Value>> {
 // ───── device-local state ─────
 
 pub fn undo_load(root: &Path) -> Value {
-    read_json(&root.join(".noviq/database-undo.json")).unwrap_or(json!([]))
+    read_json(&root.join(".nevis/database-undo.json")).unwrap_or(json!([]))
 }
 pub fn undo_save(root: &Path, v: &Value) -> Res<()> {
-    write_atomic(&root.join(".noviq/database-undo.json"), v.to_string().as_bytes())
+    write_atomic(&root.join(".nevis/database-undo.json"), v.to_string().as_bytes())
 }
 pub fn runtime_get(root: &Path, key: &str) -> Res<Option<Value>> {
-    Ok(read_json(&root.join(".noviq/workflow-runtime").join(format!("{}.json", enc(key)?))).and_then(|v| v.get("value").cloned()))
+    Ok(read_json(&root.join(".nevis/workflow-runtime").join(format!("{}.json", enc(key)?))).and_then(|v| v.get("value").cloned()))
 }
 pub fn runtime_set(root: &Path, key: &str, v: &Value) -> Res<()> {
-    write_atomic(&root.join(".noviq/workflow-runtime").join(format!("{}.json", enc(key)?)), json!({ "__key": key, "value": v }).to_string().as_bytes())
+    write_atomic(&root.join(".nevis/workflow-runtime").join(format!("{}.json", enc(key)?)), json!({ "__key": key, "value": v }).to_string().as_bytes())
 }
 pub fn runtime_delete(root: &Path, key: &str) -> Res<()> {
-    let _ = fs::remove_file(root.join(".noviq/workflow-runtime").join(format!("{}.json", enc(key)?)));
+    let _ = fs::remove_file(root.join(".nevis/workflow-runtime").join(format!("{}.json", enc(key)?)));
     Ok(())
 }
 /// Keys are stored inside the file (`{"key": ..., "value": ...}`) so prefixes can be listed despite name encoding.
 pub fn runtime_keys(root: &Path, prefix: &str) -> Vec<String> {
     let mut out = vec![];
-    for e in fs::read_dir(root.join(".noviq/workflow-runtime")).into_iter().flatten().flatten() {
+    for e in fs::read_dir(root.join(".nevis/workflow-runtime")).into_iter().flatten().flatten() {
         if let Some(v) = read_json(&e.path()) {
             if let Some(k) = v.get("__key").and_then(Value::as_str) {
                 if k.starts_with(prefix) {
@@ -400,7 +415,7 @@ pub fn runtime_keys(root: &Path, prefix: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests;
 
-// ───── conflicts (used by sync and by the vault's conflict-copy merge) ─────
+// ───── conflicts (used by the vault's conflict-copy merge) ─────
 
 fn short_hash(v: &Value) -> String {
     let mut h = Sha256::new();
@@ -408,35 +423,8 @@ fn short_hash(v: &Value) -> String {
     h.finalize().iter().take(4).map(|b| format!("{b:02x}")).collect()
 }
 
-/// A synced database path is `databases/<known dir>/<file>.json`, nothing deeper, no escapes.
-pub fn safe_database_rel(p: &str) -> bool {
-    let Some(rest) = p.strip_prefix("databases/") else { return false };
-    let mut it = rest.split('/');
-    let (Some(dir), Some(file), None) = (it.next(), it.next(), it.next()) else { return false };
-    KINDS.iter().any(|(_, d)| *d == dir) && file.ends_with(".json") && !file.starts_with('.') && file.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'~' | b'.' | b' ' | b'(' | b')'))
-}
-
-/// Both complete versions are kept: the loser becomes a history entry of its record, whichever side won.
-pub fn keep_losers(root: &Path, rel_path: &str, losers: &[Value]) -> Res<()> {
-    let dir_name = rel_path.split('/').nth(1).unwrap_or_default();
-    let Some((kind, _)) = KINDS.iter().find(|(_, d)| *d == dir_name) else { return Err(format!("not a database path: {rel_path}")) };
-    for l in losers {
-        let id = l.get("id").and_then(Value::as_str).unwrap_or_default();
-        if id.is_empty() {
-            continue;
-        }
-        let rev = revision_of(l);
-        let dir = root.join("history/records").join(enc(kind)?).join(enc(id)?);
-        write_atomic(&dir.join(format!("{rev:010}-conflict-{}.json", short_hash(l))), json!({ "revision": rev, "body": l, "conflict": true }).to_string().as_bytes())?;
-    }
-    Ok(())
-}
-
 /// The complete losing version of a page (properties, stamps, extension), not just its title and body.
 pub fn keep_page_loser(root: &Path, id: &str, loser: &Value) -> Res<()> {
-    if loser.get("database").is_none() && loser.get("recordMeta").is_none() {
-        return Ok(()); // a plain page: the vault's own history entry (title + body) is complete
-    }
     let rev = page_revision(loser);
     let dir = root.join("history/records").join("page").join(enc(id)?);
     write_atomic(&dir.join(format!("{rev:010}-conflict-{}.json", short_hash(loser))), json!({ "revision": rev, "body": loser, "conflict": true }).to_string().as_bytes())?;

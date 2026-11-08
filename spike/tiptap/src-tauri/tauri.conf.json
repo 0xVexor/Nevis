@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Nevis",
-  "version": "1.0.0",
-  "identifier": "com.vexor.noviq",
+  "version": "1.1.0",
+  "identifier": "com.vexor.nevis",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:5173",
@@ -14,20 +14,39 @@
       {
         "label": "main",
         "title": "Nevis.",
-        "width": 1280,
-        "height": 820,
-        "minWidth": 820,
-        "minHeight": 560,
+        "width": 1366,
+        "height": 825,
+        "minWidth": 1366,
+        "minHeight": 825,
         "dragDropEnabled": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data: https://esm.sh; img-src 'self' asset: http://asset.localhost https: data: blob:; connect-src 'self' ipc: http://ipc.localhost https: http://localhost:* http://127.0.0.1:*; worker-src 'self' blob:; media-src 'self' https: data: blob:; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'",
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data: https://esm.sh; img-src 'self' asset: http://asset.localhost https: data: blob:; connect-src 'self' ipc: http://ipc.localhost https: http://localhost:* http://127.0.0.1:* ws://localhost:*; worker-src 'self' blob:; media-src 'self' https: data: blob:; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "windows": {
+        "installMode": "passive"
+      }
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "windows": {
+      "nsis": {
+        "headerImage": "installer/header.bmp",
+        "sidebarImage": "installer/sidebar.bmp",
+        "installerIcon": "icons/icon.ico",
+        "installerHooks": "installer/upgrade.nsh",
+        "uninstallerIcon": "icons/icon.ico",
+        "uninstallerHeaderImage": "installer/uninstall.bmp"
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

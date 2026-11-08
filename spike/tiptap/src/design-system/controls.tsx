@@ -1,0 +1,262 @@
+import { Fragment, useId, type ButtonHTMLAttributes, type CSSProperties, type ElementType, type HTMLAttributes, type InputHTMLAttributes, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref } from 'react'
+import { motion } from 'motion/react'
+import { cx } from './dir'
+import { useUIMotion } from './motion'
+import { Icon } from './icons'
+
+/** A container: `interactive` for clickable cards, `selected` for the chosen one. */
+export function Card({ as: Tag = 'div', interactive, selected, className, ...rest }: HTMLAttributes<HTMLElement> & { as?: ElementType; interactive?: boolean; selected?: boolean }) {
+  return <Tag {...rest} className={cx('ds-card', interactive && 'ds-card--interactive', selected && 'ds-card--selected', className)} />
+}
+
+/** On / off. In lists and tables use a checkbox (`ds-check`) instead. */
+export function Switch({ checked, onChange, label, disabled, className }: { checked: boolean; onChange: (next: boolean) => void; label: string; disabled?: boolean; className?: string }) {
+  return <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} className={cx('ds-switch', className)} onClick={() => onChange(!checked)} />
+}
+
+/** A checkbox for lists and tables: a real input (keyboard, forms, screen readers) drawn as `ds-check`. `children` is its visible label. */
+export function Checkbox({ checked, onChange, label, disabled, className, children }: { checked: boolean; onChange: (next: boolean) => void; label?: string; disabled?: boolean; className?: string; children?: ReactNode }) {
+  return (
+    <label className={cx('ds-checkbox', className)} data-checked={checked || undefined}>
+      <input type="checkbox" className="ds-checkbox-input" checked={checked} disabled={disabled} aria-label={label} onChange={(event) => onChange(event.target.checked)} />
+      <span className="ds-check" aria-hidden="true">
+        <Icon name="check" size={12} />
+      </span>
+      {children}
+    </label>
+  )
+}
+
+/** A search box: the icon, the input and a clear button once something is typed. `label` names it for assistive technology; `onEnter` runs on Enter (go to the first result). */
+export function SearchField({ value, onChange, onEnter, onKeyDown, label, placeholder, clearLabel, autoFocus, className }: { value: string; onChange: (next: string) => void; onEnter?: () => void; /** runs first; call preventDefault() to skip the field's own Escape / Enter handling (arrow keys in a result list) */ onKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void; label: string; placeholder?: string; clearLabel: string; autoFocus?: boolean; className?: string }) {
+  return (
+    <div className={cx('ds-search', className)}>
+      <Icon name="search" size={16} />
+      <input type="search" dir="auto" autoComplete="off" value={value} placeholder={placeholder} aria-label={label} autoFocus={autoFocus} onChange={(event) => onChange(event.target.value)} onKeyDown={(event) => (onKeyDown?.(event), event.defaultPrevented) ? undefined : (event.key === 'Escape' && value ? (event.stopPropagation(), onChange('')) : event.key === 'Enter' && onEnter ? (event.preventDefault(), onEnter()) : undefined)} />
+      {value && (
+        <button type="button" className="ds-search-clear" aria-label={clearLabel} title={clearLabel} onClick={() => onChange('')}>
+          <Icon name="x" size={14} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** One line of facts, each a number and its words ("3 due now"). Labels are already translated and read after the number. */
+export function Stats({ items, label, className }: { items: { label: string; value: ReactNode }[]; label: string; className?: string }) {
+  return (
+    <dl className={cx('ds-stats', className)} aria-label={label}>
+      {items.map((item) => (
+        <div key={item.label} className="ds-stat">
+          <dt>{item.label}</dt>
+          <dd>{item.value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+/** Text input. The direction follows what is typed unless `ltr` (codes, URLs, numbers). */
+export function Field({ ltr, className, ...rest }: Omit<InputHTMLAttributes<HTMLInputElement>, 'dir'> & { ltr?: boolean }) {
+  return <input {...rest} className={cx('ds-field', className)} dir={ltr ? 'ltr' : 'auto'} />
+}
+
+/** Tag, status or label. Set `color` for the dot and tint, `dot` for a status dot. */
+export function Chip({ children, color, dot, className }: { children: ReactNode; color?: string; dot?: boolean; className?: string }) {
+  return (
+    <span className={cx('ds-chip', dot && 'ds-chip--dot', className)} style={color ? ({ '--c': color } as CSSProperties) : undefined}>
+      {children}
+    </span>
+  )
+}
+
+export interface TabItem {
+  id: string
+  label: string
+  icon?: ReactNode
+}
+
+/** A row of tabs. Labels are already translated by the caller. */
+export function Tabs({ items, value, onChange, className }: { items: TabItem[]; value: string; onChange: (id: string) => void; className?: string }) {
+  const bar = useId()
+  const motionOf = useUIMotion()
+  return (
+    <div role="tablist" className={cx('ds-tabs', className)}>
+      {items.map((item) => (
+        <button key={item.id} type="button" role="tab" aria-selected={item.id === value} onClick={() => onChange(item.id)}>
+          {item.icon}
+          {item.label}
+          {item.id === value && <motion.span layoutId={bar} className="ds-tab-bar" transition={motionOf.spring} />}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** A titled group on a page: heading, an optional action at the end, then the content. */
+export function Section({ title, action, children, className }: { title: string; action?: ReactNode; children: ReactNode; className?: string }) {
+  return (
+    <section className={cx('ds-section', className)}>
+      <header>
+        <h2>{title}</h2>
+        {action}
+      </header>
+      {children}
+    </section>
+  )
+}
+
+/** Labels and values for a summary. Labels and string values are already translated by the caller. */
+export function Facts({ items, className }: { items: [string, ReactNode][]; className?: string }) {
+  return (
+    <dl className={cx('ds-facts', className)}>
+      {items.map(([label, value]) => (
+        <Fragment key={label}>
+          <dt>{label}</dt>
+          <dd dir="auto">{value}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  )
+}
+
+/** One thing that needs to be seen. `warn` and `bad` always come with words and an icon. */
+export function Notice({ tone = 'info', icon, title, action, trailing, children, className, role, id, style, compact }: {
+  tone?: 'info' | 'ok' | 'warn' | 'bad'
+  icon?: ReactNode
+  title?: ReactNode
+  action?: ReactNode
+  trailing?: ReactNode
+  children: ReactNode
+  className?: string
+  role?: 'note' | 'status' | 'alert'
+  id?: string
+  style?: CSSProperties
+  compact?: boolean
+}) {
+  const glyph = { info: 'info', ok: 'check', warn: 'warning', bad: 'error' } as const
+  return (
+    <div id={id} style={style} className={cx('ds-notice', `ds-notice--${tone}`, compact && 'ds-notice--compact', className)}>
+      <span className="ds-notice-icon" aria-hidden="true">{icon ?? <Icon name={glyph[tone]} size={16} />}</span>
+      <div className="ds-notice-body">
+        <div role={role ?? (tone === 'warn' || tone === 'bad' ? 'alert' : 'note')}>
+          {title && <strong className="ds-notice-title">{title}</strong>}
+          <div className="ds-notice-message" dir="auto">{children}</div>
+        </div>
+        {action && <div className="ds-notice-action">{action}</div>}
+      </div>
+      {trailing}
+    </div>
+  )
+}
+
+/** A chip that is a control: a status picker, an add action. `empty` draws it dashed (nothing set yet). */
+export function ChipButton({ empty, icon, className, children, type = 'button', ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { empty?: boolean; icon?: ReactNode; ref?: Ref<HTMLButtonElement> }) {
+  return (
+    <button {...rest} type={type} className={cx('ds-chip-btn', className)} data-empty={empty || undefined}>
+      {icon}
+      {children}
+    </button>
+  )
+}
+
+/** The hue a tag is tinted with: the same name always gets the same colour. */
+export const tagHue = (label: string) => [...label].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7)
+
+/** A tag in its own colour. With `onOpen` the name is a button; with `onRemove` a cross appears on hover or focus. Labels are already translated. */
+export function Tag({
+  label,
+  onOpen,
+  openLabel,
+  onRemove,
+  removeLabel,
+  onContextMenu,
+}: {
+  label: string
+  onOpen?: () => void
+  openLabel?: string
+  onRemove?: () => void
+  removeLabel?: string
+  onContextMenu?: (event: MouseEvent<HTMLElement>) => void
+}) {
+  return (
+    <span className="ds-tag" dir="auto" style={{ '--hue': tagHue(label) } as CSSProperties} onContextMenu={onContextMenu}>
+      {onOpen ? (
+        <button type="button" className="ds-tag-name" title={openLabel} onClick={onOpen}>
+          {label}
+        </button>
+      ) : (
+        <span className="ds-tag-name">{label}</span>
+      )}
+      {onRemove && (
+        <button type="button" className="ds-tag-x" aria-label={`${removeLabel} ${label}`} title={removeLabel} onClick={onRemove}>
+          <Icon name="x" size={12} />
+        </button>
+      )}
+    </span>
+  )
+}
+
+/** The properties of an object, one row each. `label` names the group for assistive technology. */
+export function PropertyList({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <section className={cx('ds-props', className)} aria-label={label}>
+      {children}
+    </section>
+  )
+}
+
+/** One property: an optional icon and its label, then the value. */
+export function PropertyRow({ icon, label, children }: { icon?: ReactNode; label: string; children: ReactNode }) {
+  return (
+    <div className="ds-prop">
+      <span className="ds-prop-label">
+        {icon}
+        {label}
+      </span>
+      <div className="ds-prop-value">{children}</div>
+    </div>
+  )
+}
+
+/** A small grid of the actions an object offers, each a tile with its icon over a short label. */
+export function ActionGrid({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cx('ds-actions', className)}>{children}</div>
+}
+
+/** One action in an ActionGrid. The label is already translated. */
+export function ActionTile({ icon, label, className, type = 'button', ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { icon: ReactNode; label: string }) {
+  return (
+    <button {...rest} type={type} className={cx('ds-action', className)}>
+      {icon}
+      <span>{label}</span>
+    </button>
+  )
+}
+
+/** One choice of a group (a radio): the round mark is drawn by the system, the native input stays for keyboard and screen readers. */
+export function Radio({ checked, onChange, name, label, disabled, className, children }: { checked: boolean; onChange: () => void; name: string; label?: string; disabled?: boolean; className?: string; children?: ReactNode }) {
+  return (
+    <label className={cx('ds-radio', className)}>
+      <input type="radio" className="ds-radio-input" name={name} checked={checked} disabled={disabled} aria-label={label} onChange={onChange} />
+      <span className="ds-radio-mark" aria-hidden="true" />
+      {children}
+    </label>
+  )
+}
+
+/** A section that opens and closes (native <details>, so it works from the keyboard and in print). The caret sits at the inline end. */
+export function Disclosure({ title, icon, open, className, children }: { title: ReactNode; icon?: ReactNode; open?: boolean; className?: string; children: ReactNode }) {
+  return (
+    <details className={cx('ds-disclosure', className)} open={open}>
+      <summary>
+        {icon}
+        <span className="ds-disclosure-title" dir="auto">
+          {title}
+        </span>
+        <Icon name="chevron-down" size={14} className="ds-disclosure-caret" />
+      </summary>
+      {children}
+    </details>
+  )
+}

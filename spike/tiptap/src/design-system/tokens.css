@@ -1,0 +1,132 @@
+/*
+ * Nevis design system — tokens ("Calm").
+ * Source of truth for every new screen and component. Guide: docs/design-system.md. Live reference: docs/design-system/index.html.
+ *
+ * Rules
+ *  - Each token is defined once. light-dark() picks the palette from color-scheme (set by the theme setting or the system).
+ *  - Everything derives from ONE accent. Surfaces, lines and states carry a faint tint of it, so a new accent recolours the app.
+ *  - New code reads --ds-* tokens only. Never write a raw colour, radius or shadow in a component.
+ *  - Legacy tokens (--bg, --border, --accent …) stay until a screen is migrated. See docs/design-system.md → Migration.
+ */
+:root {
+  /* accent: --user-accent is written by the appearance setting; null falls back to the system default */
+  --ds-accent-base: var(--user-accent, #087f74);
+  --ds-accent: light-dark(var(--ds-accent-base), color-mix(in oklab, var(--ds-accent-base) 78%, #fff));
+  --ds-accent-ink: light-dark(#ffffff, #102c28);
+  --ds-accent-soft: color-mix(in oklab, var(--ds-accent) 14%, var(--ds-bg));
+  --ds-accent-line: color-mix(in oklab, var(--ds-accent) 34%, var(--ds-bg));
+  --ds-white: #fff;
+  --ds-scene-ink: #192c38;
+  /* hues for tiles, tags and chips */
+  --ds-violet: light-dark(#6a5cff, #9a90ff);
+  --ds-blue: light-dark(#2f7cf6, #6aa5ff);
+  --ds-green: light-dark(#17a56a, #3ccf92);
+  --ds-orange: light-dark(#ee8412, #ffa84a);
+  --ds-pink: light-dark(#e1459a, #ff7ab9);
+  --ds-danger: #d4493a; /* toolbar and menu delete actions */
+  --ds-accent-faint: color-mix(in srgb, var(--ds-accent) 7%, transparent);
+
+  /* surfaces */
+  --ds-bg: light-dark(#fcfcfb, #191c20);
+  --ds-side: light-dark(#f3f4f2, #15181b);
+  --ds-raised: light-dark(#ffffff, #202429);
+  --ds-sunk: light-dark(#eff1ee, #262b30);
+
+  /* ink */
+  --ds-text: light-dark(#222923, #e9eee9);
+  --ds-text-2: light-dark(#58625b, #b1bbb5);
+  --ds-text-3: light-dark(#6d7870, #909c95);
+
+  /* lines and states */
+  --ds-line: light-dark(#e4e7e2, #30363c);
+  --ds-line-strong: color-mix(in oklab, var(--ds-accent) 13%, light-dark(#d6dae0, #434a57));
+  --ds-hover: color-mix(in oklab, var(--ds-accent) 9%, transparent);
+  --ds-press: color-mix(in oklab, var(--ds-accent) 15%, transparent);
+
+  /* status: colour is never the only signal, pair it with an icon or a label */
+  --ds-ok: light-dark(#2e9e6a, #4cc790);
+  --ds-warn: light-dark(#c77d0a, #e0a13a);
+  --ds-bad: light-dark(#cf3b3b, #ec6a6a);
+  --ds-info: light-dark(#3b6fd4, #7aa2ee);
+
+  /* shape */
+  /* follow Settings → Corner radius (it writes --user-radius, --user-radius-sm and --user-radius-lg) */
+  --ds-r-sm: var(--user-radius-sm, 7px);
+  --ds-r: var(--user-radius, 10px);
+  --ds-r-lg: var(--user-radius-lg, 14px);
+  --ds-r-full: 999px;
+
+  /* spacing: multiples of 4 */
+  --ds-s1: 4px;
+  --ds-s2: 8px;
+  --ds-s3: 12px;
+  --ds-s4: 16px;
+  --ds-s5: 20px;
+  --ds-s6: 24px;
+  --ds-s8: 32px;
+  --ds-s10: 40px;
+
+  /* depth: borders carry most of the structure, shadows only on things that float */
+  --ds-shadow-thumb: 0 1px 2px rgb(0 0 0 / 0.25);
+  --ds-shadow-lift: 0 1px 2px rgb(0 0 0 / 0.08);
+  --ds-shadow-seg: 0 0 0 1px var(--ds-line), 0 1px 2px rgb(0 0 0 / 0.06);
+  --ds-shadow-table: 0 10px 28px -18px light-dark(rgb(30 20 100 / 0.25), rgb(0 0 0 / 0.6));
+  --ds-shadow-media: 0 6px 24px light-dark(rgb(30 20 100 / 0.12), rgb(0 0 0 / 0.4));
+  --ds-shadow-inset: inset 0 1px 0 light-dark(rgb(255 255 255 / 0.8), rgb(255 255 255 / 0.03));
+  --ds-shadow-pop: 0 1px 2px rgb(0 0 0 / 0.08), 0 14px 34px -10px rgb(0 0 0 / 0.3);
+
+  /* type */
+  --ds-font-ui: 'Instrument Sans', 'Vazirmatn', system-ui, sans-serif;
+  --ds-font-serif: 'Newsreader', 'Vazirmatn', Georgia, serif;
+  --ds-font-mono: 'JetBrains Mono', 'Cascadia Mono', Consolas, 'SFMono-Regular', ui-monospace, monospace;
+
+  --ds-control: 36px;
+  --ds-control-sm: 28px;
+  --ds-text-caption: 12px;
+  --ds-text-small: 13px;
+  --ds-text-section: 20px;
+  --ds-icon-size: 18px;
+  --ds-text-ui: 14px;
+  --ds-text-heading: 32px;
+  --ds-teal: #087f74;
+  --ds-dot-grid: light-dark(#d6ddd7, #37403a);
+  /* the ten colours a database option (select, status, multi-select) can take; used through --c on .ds-chip */
+  --ds-opt-default: var(--ds-text-2);
+  --ds-opt-gray: light-dark(oklch(0.5 0.01 250), oklch(0.75 0.01 250));
+  --ds-opt-brown: light-dark(oklch(0.5 0.07 55), oklch(0.76 0.06 55));
+  --ds-opt-orange: light-dark(oklch(0.56 0.15 55), oklch(0.8 0.12 60));
+  --ds-opt-yellow: light-dark(oklch(0.55 0.12 90), oklch(0.84 0.12 95));
+  --ds-opt-green: light-dark(oklch(0.5 0.12 155), oklch(0.8 0.12 155));
+  --ds-opt-blue: light-dark(oklch(0.5 0.14 250), oklch(0.8 0.1 250));
+  --ds-opt-purple: light-dark(oklch(0.5 0.15 300), oklch(0.8 0.1 300));
+  --ds-opt-pink: light-dark(oklch(0.55 0.16 350), oklch(0.82 0.1 350));
+  --ds-opt-red: light-dark(oklch(0.52 0.17 25), oklch(0.8 0.11 25));
+  /* chart series, in this fixed order and never cycled. Validated for colour-blind separation against --ds-raised in
+     both modes (lightness steps differ per slot, unlike the option colours). Slots 3–5 are under 3:1 on white, so a
+     chart always shows its labels or a legend beside the marks. A select or status axis uses its options' colours instead. */
+  --ds-chart-1: light-dark(#2a78d6, #3987e5);
+  --ds-chart-2: light-dark(#eb6834, #d95926);
+  --ds-chart-3: light-dark(#1baf7a, #199e70);
+  --ds-chart-4: light-dark(#eda100, #c98500);
+  --ds-chart-5: light-dark(#e87ba4, #d55181);
+  --ds-chart-6: light-dark(#008300, #008300);
+  --ds-chart-7: light-dark(#6250d6, #9085e9);
+  --ds-chart-8: light-dark(#e34948, #e66767);
+
+  /* motion */
+  --ds-ease: cubic-bezier(.22, 1, .36, 1);
+  --ds-fast: 120ms;
+  --ds-base: 220ms;
+  --ds-slow: 300ms;
+  --ds-spring: cubic-bezier(0.34, 1.4, 0.64, 1); /* a small overshoot for a check or an icon that pops in */
+
+  /* layers */
+  --ds-z-grip: 40;
+  --ds-z-pop: 60;
+  --ds-z-modal: 70;
+  /* popovers, menus, tooltips and floating toolbars: they can open from a dialog, so they sit above it */
+  --ds-z-float: 80;
+  /* drag feedback (snap previews, the ghost) stays on top while a drag lasts; small offsets keep its own order */
+  --ds-z-drag: 88;
+  --ds-z-toast: 90;
+}

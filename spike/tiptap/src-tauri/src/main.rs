@@ -1,44 +1,34 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-//! Storage for Nevis: Vault folders (pages, attachments, history as plain files; see ADR-0003) that the app can
-//! keep in sync, by itself, through the Nevis sync server (server/ in this repository). The web UI talks to it through the commands below
-//! (spike/tiptap/src/db.ts and attachments.ts); in a plain browser the same UI falls back to IndexedDB.
+//! Storage for Nevis: Vault folders (pages, attachments, history as plain files; see ADR-0003). The web UI talks to it
+//! through the commands below (spike/tiptap/src/db.ts and attachments.ts); in a plain browser the same UI falls back to IndexedDB.
 
 mod database;
+mod deck_print;
+mod release_features;
+mod document_operations;
+mod mcp;
+mod mcp_relay;
 mod index;
-mod legacy;
+mod portable;
 mod registry;
-mod sync;
 mod vault;
+mod vault_lock;
+mod updates;
 
 use registry::{Entry, Registry};
 use serde_json::{json, Value};
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{Duration, Instant};
-use sync::hub::{self, Hub};
-use sync::{account, SyncState};
 use tauri::ipc::{InvokeBody, Request, Response};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{Emitter, Manager, State};
 use vault::{err, now_ms, Res, Vault, VAULT_MISMATCH, VAULT_MISSING};
 
-#[derive(Clone, Default)]
-struct SyncStatus {
-    state: &'static str, // "off" | "idle" | "syncing" | "paused" | "error" | "offline"
-    last_at: i64,
-    error: String,
-    /// why a sync is paused: VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE | SIGNED_OUT | NEEDS_CONFIRM (then `error` holds the number of held deletions)
-    reason: String,
-}
-
 struct Store {
-    app_data: PathBuf, // per-device data: the list of vaults, sign-in, sync bookkeeping
+    mcp: Arc<mcp::Host>,
+    app_data: PathBuf, // per-device data: the list of vaults
     reg: Mutex<Registry>,
     vault: Mutex<Option<Vault>>,
-    ctx: SyncCtx,
-    kick: Mutex<Sender<Kick>>,
     index: Mutex<Option<(PathBuf, rusqlite::Connection)>>, // search index of the open vault
 }
 
@@ -50,31 +40,40 @@ fn lock_vault<'a>(s: &'a St) -> Res<MutexGuard<'a, Option<Vault>>> {
 
 /// Runs `f` on the open vault; errors when the picker is showing.
 fn with<T>(s: &St, f: impl FnOnce(&Vault) -> Res<T>) -> Res<T> {
+    let expected=s.reg.lock().map_err(err)?.current.clone();
     match &*lock_vault(s)? {
         Some(v) => {
+            v.ensure_exclusive()?;
             // a vault whose folder vanished while it was open is not written to: that would re-create half of it
-            if !v.root.join(".noviq/vault.json").is_file() {
+            if !v.root.join(".nevis/vault.json").is_file() {
                 return Err(VAULT_MISSING.into());
             }
+            if expected.as_deref()!=Some(v.id().as_str()){return Err(VAULT_MISMATCH.into());}
             f(v)
         }
         None => Err("no vault open".into()),
     }
 }
 
-/// A change was written: let the sync thread know (it waits a moment so bursts become one sync).
-fn kick(s: &St) {
-    kick_as(s, Kick::Edit);
-}
-
 // Settings that belong to this device and must not travel through the vault.
-const LOCAL_KEYS: [&str; 1] = ["backupCfg"];
+const LOCAL_KEYS: [&str; 2] = ["backupCfg", "graphLayouts"];
+
+fn migrate_app_directory(current: &Path) -> std::io::Result<()> {
+    let legacy = current.with_file_name("com.vexor.noviq");
+    if current.exists() || !legacy.is_dir() {
+        return Ok(());
+    }
+    match std::fs::rename(legacy, current) {
+        Err(_) if current.is_dir() => Ok(()),
+        result => result,
+    }
+}
 
 // ───── vaults: list, create, open, switch ─────
 
 fn entry_json(e: &Entry) -> Value {
     let status = vault::probe(Path::new(&e.path), &e.id); // "ok" | "missing" | "mismatch"
-    json!({ "id": e.id, "name": e.name, "path": e.path, "sync": e.sync, "exists": status == "ok", "status": status })
+    json!({ "id": e.id, "name": e.name, "path": e.path, "exists": status == "ok", "status": status })
 }
 
 #[tauri::command]
@@ -89,30 +88,17 @@ fn vault_info(s: St) -> Res<Value> {
 }
 
 /// Makes the vault of `e` the open one.
-fn activate(s: &St, e: &Entry, import_legacy: bool) -> Res<()> {
+fn activate(s: &St, e: &Entry) -> Res<()> {
     // never creates anything: a folder that vanished, or holds another vault, is reported instead of replaced by an empty one
     let v = Vault::open_as(PathBuf::from(&e.path), &e.id)?;
-    if import_legacy {
-        match legacy::import(&s.app_data, &v) {
-            Ok(n) if n > 0 => eprintln!("imported {n} pages from noviq.db"),
-            Ok(_) => {}
-            Err(e) => eprintln!("legacy import failed: {e}"),
-        }
-    }
+    s.mcp.stop();
     v.purge_trash();
     let mut r = s.reg.lock().map_err(err)?;
     r.add(Entry { name: v.name(), ..e.clone() });
     r.current = Some(e.id.clone());
     r.save(&s.app_data)?;
     *lock_vault(s)? = Some(v);
-    drop(r);
-    kick(s);
     Ok(())
-}
-
-/// A vault created while signed in is synced from the start: signing in is all the user has to do.
-fn auto_sync(s: &St) -> bool {
-    account::load(&s.app_data).is_some()
 }
 
 fn clean_name(name: &str) -> Res<String> {
@@ -131,13 +117,12 @@ fn vault_create(s: St, parent: String, name: String) -> Res<String> {
     if !PathBuf::from(&parent).is_absolute() {
         return Err("path must be absolute".into());
     }
-    if root.join(".noviq/vault.json").exists() {
+    if vault::marker_path(&root).exists() {
         return Err("a vault already exists there".into());
     }
-    let first = s.reg.lock().map_err(err)?.vaults.is_empty();
     let v = Vault::create(root.clone(), &name)?;
-    let e = Entry { id: v.id(), name, path: root.to_string_lossy().into(), sync: auto_sync(&s) };
-    activate(&s, &e, first)?;
+    let e = Entry { id: v.id(), name, path: root.to_string_lossy().into() };
+    activate(&s, &e)?;
     Ok(e.id)
 }
 
@@ -149,17 +134,13 @@ fn vault_add(s: St, path: String) -> Res<String> {
         return Err("not a folder".into());
     }
     let v = Vault::adopt(root.clone())?;
-    let e = Entry { id: v.id(), name: v.name(), path, sync: auto_sync(&s) };
-    activate(&s, &e, false)?;
+    let e = Entry { id: v.id(), name: v.name(), path };
+    activate(&s, &e)?;
     Ok(e.id)
 }
 
 fn entry_of(s: &St, id: &str) -> Res<Entry> {
     s.reg.lock().map_err(err)?.find(id).cloned().ok_or_else(|| "unknown vault".to_string())
-}
-
-fn state_file(app_data: &Path, id: &str) -> PathBuf {
-    app_data.join("sync").join(format!("{id}.json"))
 }
 
 /// The user points at the folder of a vault that was moved or renamed.
@@ -174,13 +155,10 @@ fn vault_locate(s: St, id: String, path: String) -> Res<()> {
     let e = r.vaults.iter_mut().find(|e| e.id == id).ok_or("unknown vault")?;
     e.path = path;
     e.name = v.name();
-    r.save(&s.app_data)?;
-    drop(r);
-    kick(&s);
-    Ok(())
+    r.save(&s.app_data)
 }
 
-/// Moves the folder of a vault to the Recycle Bin / Trash and forgets the vault on this device. The cloud copy stays.
+/// Moves the folder of a vault to the Recycle Bin / Trash and forgets the vault on this device.
 #[tauri::command]
 fn vault_trash_local(s: St, id: String) -> Res<()> {
     let e = entry_of(&s, &id)?;
@@ -193,7 +171,7 @@ fn vault_trash_local(s: St, id: String) -> Res<()> {
         if let Err(m) = trash::delete(&e.path) {
             // nothing was removed: the vault stays as it was, open again if it was open
             if was_open {
-                let _ = activate(&s, &e, false);
+                let _ = activate(&s, &e);
             }
             return Err(err(m));
         }
@@ -201,14 +179,13 @@ fn vault_trash_local(s: St, id: String) -> Res<()> {
     let mut r = s.reg.lock().map_err(err)?;
     r.vaults.retain(|x| x.id != id);
     if r.current.as_deref() == Some(&id) {
+        s.mcp.stop();
         r.current = None;
     }
-    r.save(&s.app_data)?;
-    let _ = std::fs::remove_file(state_file(&s.app_data, &id));
-    Ok(())
+    r.save(&s.app_data)
 }
 
-/// The display name of a vault (it is kept in the vault folder and travels with the sync).
+/// The display name of a vault (it is kept in the vault folder).
 #[tauri::command]
 fn vault_rename(s: St, id: String, name: String) -> Res<()> {
     let name = clean_name(&name)?;
@@ -223,21 +200,19 @@ fn vault_rename(s: St, id: String, name: String) -> Res<()> {
     if let Some(x) = r.vaults.iter_mut().find(|x| x.id == id) {
         x.name = name;
     }
-    r.save(&s.app_data)?;
-    drop(r);
-    kick(&s);
-    Ok(())
+    r.save(&s.app_data)
 }
 
 #[tauri::command]
 fn vault_open(s: St, id: String) -> Res<()> {
     let e = s.reg.lock().map_err(err)?.find(&id).cloned().ok_or("unknown vault")?;
-    activate(&s, &e, false)
+    activate(&s, &e)
 }
 
 /// Back to the picker (switching vaults).
 #[tauri::command]
 fn vault_close(s: St) -> Res<()> {
+    s.mcp.stop();
     let mut r = s.reg.lock().map_err(err)?;
     r.current = None;
     r.save(&s.app_data)?;
@@ -251,19 +226,88 @@ fn vault_forget(s: St, id: String) -> Res<()> {
     let mut r = s.reg.lock().map_err(err)?;
     r.vaults.retain(|e| e.id != id);
     if r.current.as_deref() == Some(&id) {
+        s.mcp.stop();
         r.current = None;
         *lock_vault(&s)? = None;
     }
     r.save(&s.app_data)
 }
 
-/// Changes whenever a page file is added, removed or rewritten, by us or by the sync.
+/// Changes whenever a page file is added, removed or rewritten, by us or by another program.
 #[tauri::command]
 fn vault_stamp(s: St) -> Res<String> {
     with(&s, |v| Ok(v.stamp()))
 }
 
+// MCP commands are local main-window controls, never protocol methods.
+fn mcp_window(window: &tauri::WebviewWindow) -> Res<()> {
+    if window.label() != "main" { return Err("Connection access denied".into()); }
+    Ok(())
+}
+#[tauri::command]
+fn mcp_ready(s: St, window: tauri::WebviewWindow, expected_vault_id: String, owner: String) -> Res<()> {
+    mcp_window(&window)?;
+    with(&s, |v| { if v.id() != expected_vault_id { return Err("Connection vault changed".into()); } s.mcp.ready(&expected_vault_id, &owner) })
+}
+#[tauri::command]
+fn mcp_status(s: St, window: tauri::WebviewWindow) -> Res<Value> { mcp_window(&window)?; s.mcp.status() }
+#[tauri::command]
+fn mcp_enable(s: St, window: tauri::WebviewWindow, expected_vault_id: String, policy: mcp::Policy) -> Res<Value> {
+    mcp_window(&window)?;
+    with(&s, |v| {
+        if v.id() != expected_vault_id { return Err("Connection vault changed".into()); }
+        let config_dir = s.app_data.join("mcp");
+        std::fs::create_dir_all(&config_dir).map_err(err)?;
+        if std::fs::canonicalize(&config_dir).map_err(err)?.starts_with(std::fs::canonicalize(&v.root).map_err(err)?) { return Err("Connection settings must be outside the vault".into()); }
+        let status = s.mcp.enable(&s.app_data, &expected_vault_id, policy.clone())?;
+        // the choice survives a restart: the connection comes back by itself when this vault opens
+        mcp_relay::autostart_set(&s.app_data, &expected_vault_id, &policy)?;
+        Ok(status)
+    })
+}
+#[tauri::command]
+fn mcp_disable(s: St, window: tauri::WebviewWindow) -> Res<()> {
+    mcp_window(&window)?;
+    s.mcp.stop();
+    let id = with(&s, |v| Ok(v.id()))?;
+    mcp_relay::autostart_remove(&s.app_data, &id)
+}
+/// The scope to switch back on for this vault, if the user left the connection on last time.
+#[tauri::command]
+fn mcp_autostart(s: St, window: tauri::WebviewWindow, expected_vault_id: String) -> Res<Option<mcp::Policy>> {
+    mcp_window(&window)?;
+    Ok(mcp_relay::autostart_get(&s.app_data, &expected_vault_id))
+}
+/// How an AI client starts the relay, for the copy-for-any-AI text.
+#[tauri::command]
+fn mcp_setup_info(window: tauri::WebviewWindow) -> Res<Value> {
+    mcp_window(&window)?;
+    let exe = std::env::current_exe().map_err(err)?;
+    Ok(json!({"command": exe.to_string_lossy(), "args": [mcp_relay::RELAY_FLAG]}))
+}
+/// Writes the Nevis entry into Claude Desktop, Codex or Gemini CLI settings (other entries are kept, a backup is made).
+#[tauri::command]
+fn mcp_install_client(window: tauri::WebviewWindow, client: String) -> Res<String> {
+    mcp_window(&window)?;
+    let exe = std::env::current_exe().map_err(err)?;
+    Ok(mcp_relay::install_client(&client, &exe)?.to_string_lossy().to_string())
+}
+#[tauri::command]
+fn mcp_credential(s: St, window: tauri::WebviewWindow, expected_vault_id: String) -> Res<String> {
+    mcp_window(&window)?;
+    with(&s, |v| { if v.id() != expected_vault_id { return Err("Connection vault changed".into()); } s.mcp.credential() })
+}
+#[tauri::command]
+fn mcp_reply(s: St, window: tauri::WebviewWindow, request_id: String, revision: String, result: Value) -> Res<()> {
+    mcp_window(&window)?; s.mcp.reply(&request_id, &revision, result)
+}
+
 // ───── pages ─────
+
+#[tauri::command]
+fn pages_search_stamp(s: St) -> Res<Option<String>> {
+    with(&s, |v| v.pages_search_stamp())
+}
 
 #[tauri::command]
 fn pages_all(s: St) -> Res<Vec<Value>> {
@@ -272,11 +316,103 @@ fn pages_all(s: St) -> Res<Vec<Value>> {
 
 /// `clear_first` = the upserts are the whole workspace. Every page is its own atomic file write.
 #[tauri::command]
-fn pages_save(s: St, upserts: Vec<Value>, removed: Vec<String>, clear_first: bool) -> Res<Vec<String>> {
-    // ids of pages whose newer version on disk (another device's edit) went to the page history before ours replaced it
-    let kept = with(&s, |v| v.save_pages(&upserts, &removed, clear_first))?;
-    kick(&s);
+fn pages_save(s: St, upserts: Vec<Value>, removed: Vec<String>, clear_first: bool, expected_vault_id: Option<String>, expected_pages: Option<serde_json::Map<String, Value>>, expected_all: Option<Vec<Value>>) -> Res<Vec<String>> {
+    // ids of pages whose newer version on disk (changed by another program) went to the page history before ours replaced it
+    let kept = with(&s, |v| {
+        if let Some(id) = &expected_vault_id {
+            if v.id() != *id { return Err("Document vault changed".into()); }
+            v.save_pages_checked(&upserts, &removed, clear_first, expected_pages.as_ref(), expected_all.as_deref())
+        } else { Err("Missing document vault precondition".into()) }
+    })?;
     Ok(kept)
+}
+
+#[tauri::command]
+fn vault_backup_export(s: St) -> Res<Value> { with(&s,|v| { database::recover(&v.root)?; serde_json::to_value(portable::export(v)?).map_err(err) }) }
+#[tauri::command]
+fn vault_backup_save(s: St, path: String) -> Res<()> {
+    let p=PathBuf::from(path);
+    if !p.is_absolute() || p.extension().and_then(|e|e.to_str()).map(str::to_ascii_lowercase).as_deref()!=Some("json"){return Err("BACKUP:invalid_destination".into());}
+    with(&s,|v| {
+        let parent=p.parent().ok_or("BACKUP:invalid_destination")?.canonicalize().map_err(err)?;
+        if parent.starts_with(v.root.canonicalize().map_err(err)?) || parent.starts_with(s.app_data.canonicalize().map_err(err)?) {return Err("BACKUP:destination_inside_live_data".into());}
+        database::recover(&v.root)?;
+        let backup=portable::export(v)?;
+        let bytes=serde_json::to_vec(&backup).map_err(err)?;
+        vault::write_atomic(&p,&bytes)?;
+        if vault::sha256_hex(&std::fs::read(&p).map_err(err)?)!=vault::sha256_hex(&bytes){return Err("BACKUP:verification_failed".into());}
+        Ok(())
+    })
+}
+/// Brings the backup folder of the open workspace up to date inside `dir` (see `portable::export_folder`).
+#[tauri::command]
+fn vault_backup_folder_save(s: St, dir: String, force: Option<bool>) -> Res<portable::FolderReport> {
+    let parent = PathBuf::from(dir);
+    if !parent.is_absolute() { return Err("BACKUP:invalid_destination".into()); }
+    with(&s, |v| {
+        let parent = parent.canonicalize().map_err(err)?;
+        if parent.starts_with(v.root.canonicalize().map_err(err)?) || parent.starts_with(s.app_data.canonicalize().map_err(err)?) { return Err("BACKUP:destination_inside_live_data".into()); }
+        database::recover(&v.root)?;
+        portable::export_folder(v, &parent, force.unwrap_or(false))
+    })
+}
+/// A backup folder as the same data a backup file holds. Nothing is written.
+#[tauri::command]
+fn vault_backup_folder_read(dir: String) -> Res<Value> {
+    let dir = PathBuf::from(dir);
+    if !dir.is_absolute() { return Err("BACKUP:invalid_destination".into()); }
+    portable::read_folder(&dir)
+}
+#[tauri::command]
+fn vault_backup_restore(s: St, data: Value, target: Option<String>, name: Option<String>) -> Res<Value> {
+    // "here": into the open workspace; anything else: a new workspace, named `name` or as the backup itself
+    // "merge": the same, but a page that is newer here stays and nothing is replaced by an older version
+    let merge=target.as_deref()==Some("merge");
+    if merge || target.as_deref()==Some("here") {
+        // a copy of the workspace as it is now goes next to it first, so a restore into it can always be undone
+        let (pages,files,copy,merged)=with(&s,|v|{
+            let parent=v.root.parent().ok_or("no parent directory")?;
+            let safe:String=v.name().chars().filter(|c|!"<>:\"/\\|?*".contains(*c)&&!c.is_control()).collect();
+            let copy=format!("{} before restore {}.json",safe.trim(),vault::now_ms());
+            database::recover(&v.root)?;
+            let bytes=serde_json::to_vec(&portable::export(v)?).map_err(err)?;
+            vault::write_atomic(&parent.join(&copy),&bytes)?;
+            let merged=if merge { Some(portable::restore_merge(v,data)?) } else { portable::restore_into(v,data)?; None };
+            Ok((v.pages_all()?.len(),v.files_list().len(),copy,merged))
+        })?;
+        return Ok(json!({"pages":pages,"files":files,"copy":copy,"merged":merged}));
+    }
+    let v=with(&s,|v|portable::restore(v.root.parent().ok_or("no parent directory")?,data,name.as_deref()))?;
+    let entry=Entry{id:v.id(),name:v.name(),path:v.root.to_string_lossy().into()};
+    activate(&s,&entry)?;
+    Ok(json!({"pages":v.pages_all()?.len(),"files":v.files_list().len()}))
+}
+
+#[tauri::command]
+fn document_operation_list(s: St, scope_id: String, document_id: String, expected_vault_id: String) -> Res<Value> {
+    with(&s, |v| {
+        if v.id() != expected_vault_id { return Err("Document vault changed".into()); }
+        document_operations::list(v, &scope_id, &document_id)
+    })
+}
+#[tauri::command]
+fn document_operation_find(s: St, scope_id: String, operation_id: String, expected_vault_id: String) -> Res<Option<Value>> {
+    with(&s, |v| {
+        if v.id() != expected_vault_id { return Err("Document vault changed".into()); }
+        document_operations::find(v, &scope_id, &operation_id)
+    })
+}
+#[tauri::command]
+fn document_operation_commit(s: St, record: Value, expected_vault_id: String, include_status: Option<bool>, admission: Option<mcp::WriteAdmission>) -> Res<Value> {
+    let receipt = with(&s, |v| {
+        if v.id() != expected_vault_id { return Err("Document vault changed".into()); }
+        if let Some(admission) = admission {
+            let result = document_operations::commit_result_authorized(v, &record, |root, record| s.mcp.write_guard(&expected_vault_id, &admission, root, record))?;
+            if include_status.unwrap_or(false) { Ok(result) } else { Ok(result["receipt"].clone()) }
+        } else if include_status.unwrap_or(false) { document_operations::commit_result(v, &record) }
+        else { document_operations::commit(v, &record) }
+    })?;
+    Ok(receipt)
 }
 
 // ───── key-value settings ─────
@@ -292,14 +428,16 @@ fn kv_file(s: &St, v: &Vault, key: &str) -> Res<PathBuf> {
 
 #[tauri::command]
 fn kv_get(s: St, key: String) -> Res<Option<Value>> {
-    with(&s, |v| Ok(std::fs::read(kv_file(&s, v, &key)?).ok().and_then(|b| serde_json::from_slice(&b).ok())))
+    with(&s, |v| match std::fs::read(kv_file(&s,v,&key)?) {
+        Ok(bytes)=>serde_json::from_slice(&bytes).map(Some).map_err(|_|format!("STORAGE:unreadable_setting:{key}")),
+        Err(e)if e.kind()==std::io::ErrorKind::NotFound=>Ok(None),
+        Err(e)=>Err(err(e))
+    })
 }
 
 #[tauri::command]
 fn kv_set(s: St, key: String, value: Value) -> Res<()> {
-    with(&s, |v| vault::write_atomic(&kv_file(&s, v, &key)?, value.to_string().as_bytes()))?;
-    kick(&s);
-    Ok(())
+    with(&s, |v| vault::write_atomic(&kv_file(&s, v, &key)?, value.to_string().as_bytes()))
 }
 
 // ───── page history ─────
@@ -311,16 +449,12 @@ fn versions_list(s: St, page_id: String) -> Res<Vec<Value>> {
 
 #[tauri::command]
 fn version_add(s: St, version: Value) -> Res<()> {
-    with(&s, |v| v.version_add(&version))?;
-    kick(&s);
-    Ok(())
+    with(&s, |v| v.version_add(&version))
 }
 
 #[tauri::command]
 fn versions_delete(s: St, page_id: String) -> Res<()> {
-    with(&s, |v| v.versions_delete(&page_id))?;
-    kick(&s);
-    Ok(())
+    with(&s, |v| v.versions_delete(&page_id))
 }
 
 // ───── attachments: <vault>/files/<id[0:2]>/<id> (+ <id>.json metadata); id = sha256 of the bytes ─────
@@ -334,14 +468,44 @@ fn header(r: &Request, k: &str) -> String {
 fn file_put(s: St, request: Request) -> Res<()> {
     let InvokeBody::Raw(bytes) = request.body() else { return Err("expected raw bytes".into()) };
     let added = header(&request, "x-added-at").parse::<i64>().unwrap_or_else(|_| now_ms());
-    with(&s, |v| v.file_put(&header(&request, "x-file-id"), bytes, &header(&request, "x-file-type"), &header(&request, "x-file-name"), added))?;
-    kick(&s);
-    Ok(())
+    with(&s, |v| v.file_put(&header(&request, "x-file-id"), bytes, &header(&request, "x-file-type"), &header(&request, "x-file-name"), added))
 }
 
 #[tauri::command]
 fn file_get(s: St, id: String) -> Res<Response> {
     with(&s, |v| v.file_get(&id)).map(Response::new)
+}
+
+/// Absolute path of the file that holds a page.
+#[tauri::command]
+fn page_path(s: St, id: String) -> Res<String> {
+    with(&s, |v| v.page_path(&id)).map(|p| p.to_string_lossy().into_owned())
+}
+
+/// Shows a page's file in Explorer, Finder or the system file manager.
+#[tauri::command]
+fn page_reveal(s: St, id: String) -> Res<()> {
+    let path = with(&s, |v| v.page_path(&id))?;
+    // a page that has not been written yet has no file: show the folder it will live in
+    let shown = if path.is_file() { path.clone() } else { path.parent().map(Path::to_path_buf).unwrap_or(path) };
+    let mut command;
+    #[cfg(target_os = "windows")]
+    {
+        command = std::process::Command::new("explorer");
+        if shown.is_file() { command.arg(format!("/select,{}", shown.display())); } else { command.arg(&shown); }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        command = std::process::Command::new("open");
+        if shown.is_file() { command.arg("-R"); }
+        command.arg(&shown);
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        command = std::process::Command::new("xdg-open");
+        command.arg(if shown.is_file() { shown.parent().unwrap_or(&shown) } else { &shown });
+    }
+    command.spawn().map(|_| ()).map_err(err)
 }
 
 /// Metadata of every stored file (no bytes).
@@ -350,26 +514,6 @@ fn files_list(s: St) -> Res<Vec<Value>> {
     with(&s, |v| Ok(v.files_list()))
 }
 
-#[tauri::command]
-fn file_delete(s: St, id: String) -> Res<()> {
-    with(&s, |v| v.file_delete(&id))?;
-    kick(&s);
-    Ok(())
-}
-
-#[tauri::command]
-fn files_clear(s: St) -> Res<()> {
-    with(&s, |v| {
-        for f in v.files_list() {
-            if let Some(id) = f.get("id").and_then(Value::as_str) {
-                v.file_delete(id)?;
-            }
-        }
-        Ok(())
-    })?;
-    kick(&s);
-    Ok(())
-}
 
 
 // ───── database records (see database/mod.rs; the query engine itself runs in the UI) ─────
@@ -390,20 +534,22 @@ fn db_recover(s: St) -> Res<Value> {
 
 #[tauri::command]
 fn db_load_all(s: St) -> Res<Value> {
-    // files may have been changed by the sync tool: whatever the index says is no longer trustworthy
+    // files may have been changed by another program: whatever the index says is no longer trustworthy
     let _ = db_index(&s, |c, _| c.execute("INSERT OR REPLACE INTO db_index_meta(key,value) VALUES('needs_rebuild','1')", []).map(|_| ()).map_err(err));
     with(&s, |v| database::load_all(&v.root))
 }
 
 #[tauri::command]
 fn db_commit(s: St, batch: Value) -> Res<()> {
-    with(&s, |v| database::commit(&v.root, &batch))?;
+    with(&s, |v| {
+        if batch.get("vaultId").and_then(Value::as_str) != Some(v.id().as_str()) { return Err("Document vault changed".into()); }
+        database::commit(&v.root, &batch)
+    })?;
     // the index is derived: a failure here never fails a durable commit, it only marks the index for a rebuild
     let r = db_index(&s, |c, root| if database::index::needs_rebuild(c) { database::index::rebuild(c, root).map(|_| ()) } else { database::index::apply_batch(c, root, &batch) });
     if r.is_err() {
         let _ = db_index(&s, |c, _| c.execute("INSERT OR REPLACE INTO db_index_meta(key,value) VALUES('needs_rebuild','1')", []).map(|_| ()).map_err(err));
     }
-    kick(&s);
     Ok(())
 }
 
@@ -500,522 +646,64 @@ fn index_search(s: St, words: Vec<String>, limit: usize) -> Res<Vec<String>> {
     with_index(&s, |db| index::search(db, &words, limit))
 }
 
-// ───── account and sync ─────
-
-/// Why the sync thread was woken. A saved edit syncs at once; a change reported by the server (or the user pressing
-/// "Sync now") may also try while the network was known to be down, an edit may not (it would only wait for a timeout again).
-#[derive(Clone, Copy, PartialEq)]
-enum Kick {
-    Edit,
-    Remote,
-    User,
-}
-
-/// What the sync needs besides the vault. Cheap to clone, so that the sync thread, the watcher and the commands share one.
-#[derive(Clone)]
-struct SyncCtx {
-    app_data: PathBuf,
-    status: Arc<Mutex<SyncStatus>>,
-    /// vaults whose held-back deletions the user confirmed; used up by the next sync of that vault
-    confirm: Arc<Mutex<BTreeSet<String>>>,
-    /// (vault id, server `seq` this device has applied): what the watcher compares the server with
-    synced: Arc<Mutex<(String, i64)>>,
-    app: Option<AppHandle>,
-}
-
-fn kick_as(s: &St, k: Kick) {
-    if let Ok(tx) = s.kick.lock() {
-        let _ = tx.send(k);
-    }
-}
-
-fn set_off(ctx: &SyncCtx) {
-    if let Ok(mut st) = ctx.status.lock() {
-        *st = SyncStatus { state: "off", ..Default::default() };
-    }
-}
-
-/// Runs a blocking job (network, proof of work) off the thread that serves the UI.
-async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Res<T> + Send + 'static) -> Res<T> {
-    tauri::async_runtime::spawn_blocking(f).await.map_err(err)?
-}
-
-/// Signed in or not, and what the sync of the open vault is doing.
-#[tauri::command]
-fn account_status(s: St) -> Value {
-    let acct = account::load(&s.app_data);
-    let st = s.ctx.status.lock().map(|x| x.clone()).unwrap_or_default();
-    let sync_on = lock_vault(&s).ok().and_then(|g| g.as_ref().map(|v| v.id())).and_then(|id| s.reg.lock().ok()?.find(&id).map(|e| e.sync)).unwrap_or(false);
-    json!({
-        "signedIn": acct.is_some(),
-        "username": acct.as_ref().map(|a| a.username.clone()),
-        "server": acct.as_ref().map_or_else(|| account::DEFAULT_SERVER.to_string(), |a| a.server.clone()),
-        "defaultServer": account::DEFAULT_SERVER,
-        "syncOn": sync_on,
-        "state": st.state,
-        "lastAt": st.last_at,
-        "error": st.error,
-        "reason": st.reason,
-    })
-}
-
-/// What a server says about itself (does it take new accounts, does it want an invite code); for the sign-up form.
-#[tauri::command]
-async fn server_health(server: String) -> Res<Value> {
-    blocking(move || account::health(&server)).await
-}
-
-/// Creates an account and signs in. Returns the recovery key (shown once).
-#[tauri::command]
-async fn account_register(s: St<'_>, server: String, username: String, password: String, invite: String) -> Res<String> {
-    let app_data = s.app_data.clone();
-    let key = blocking(move || account::register(&app_data, &server, username.trim(), &password, invite.trim())).await?;
-    kick_as(&s, Kick::User);
-    Ok(key)
-}
-
-#[tauri::command]
-async fn account_login(s: St<'_>, server: String, username: String, password: String) -> Res<()> {
-    let app_data = s.app_data.clone();
-    blocking(move || account::login(&app_data, &server, username.trim(), &password)).await?;
-    kick_as(&s, Kick::User);
-    Ok(())
-}
-
-/// A forgotten password: the recovery key sets a new one. Returns the new recovery key.
-#[tauri::command]
-async fn account_recover(s: St<'_>, server: String, username: String, recovery_key: String, new_password: String) -> Res<String> {
-    let app_data = s.app_data.clone();
-    let key = blocking(move || account::recover(&app_data, &server, username.trim(), &recovery_key, &new_password)).await?;
-    kick_as(&s, Kick::User);
-    Ok(key)
-}
-
-#[tauri::command]
-async fn account_logout(s: St<'_>) -> Res<()> {
-    let app_data = s.app_data.clone();
-    blocking(move || {
-        account::logout(&app_data);
-        Ok(())
-    })
-    .await?;
-    set_off(&s.ctx);
-    Ok(())
-}
-
-/// The account page: devices, storage used.
-#[tauri::command]
-async fn account_info(s: St<'_>) -> Res<Value> {
-    let app_data = s.app_data.clone();
-    blocking(move || account::info(&app_data)).await
-}
-
-#[tauri::command]
-async fn account_revoke_device(s: St<'_>, id: String) -> Res<()> {
-    let app_data = s.app_data.clone();
-    blocking(move || account::revoke_device(&app_data, &id)).await
-}
-
-#[tauri::command]
-async fn account_change_password(s: St<'_>, old_password: String, new_password: String) -> Res<()> {
-    let app_data = s.app_data.clone();
-    blocking(move || account::change_password(&app_data, &old_password, &new_password)).await
-}
-
-#[tauri::command]
-async fn account_new_recovery_key(s: St<'_>, password: String) -> Res<String> {
-    let app_data = s.app_data.clone();
-    blocking(move || account::new_recovery_key(&app_data, &password)).await
-}
-
-/// Schedules the deletion of the account on the server (30 days of grace) and signs out here.
-#[tauri::command]
-async fn account_delete(s: St<'_>, password: String) -> Res<i64> {
-    let app_data = s.app_data.clone();
-    let after = blocking(move || account::delete_account(&app_data, &password)).await?;
-    set_off(&s.ctx);
-    Ok(after)
-}
-
-/// Writes a small text file at a place the user chose in the save dialog (the recovery key). The webview of the desktop app
-/// cannot download a file by itself. Only an absolute `.txt` path and a short text are accepted.
-#[tauri::command]
-fn save_text_file(path: String, text: String) -> Res<()> {
-    let p = PathBuf::from(&path);
-    if !p.is_absolute() || text.len() > 4096 || p.extension().and_then(|e| e.to_str()).map(str::to_lowercase).as_deref() != Some("txt") {
-        return Err("this file cannot be saved here".into());
-    }
-    vault::write_atomic(&p, text.as_bytes())
-}
-
-/// Turns sync of the open vault on or off.
-#[tauri::command]
-fn sync_set(s: St, on: bool) -> Res<()> {
-    let id = with(&s, |v| Ok(v.id()))?;
-    let mut r = s.reg.lock().map_err(err)?;
-    if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
-        e.sync = on;
-    }
-    r.save(&s.app_data)?;
-    drop(r);
-    kick_as(&s, Kick::User);
-    Ok(())
-}
-
-#[tauri::command]
-fn sync_now(s: St) {
-    kick_as(&s, Kick::User);
-}
-
-/// The user confirmed the deletions a sync held back (many files, or a side that looked empty): the next sync runs them.
-#[tauri::command]
-fn sync_confirm(s: St) -> Res<()> {
-    let id = with(&s, |v| Ok(v.id()))?;
-    s.ctx.confirm.lock().map_err(err)?.insert(id);
-    kick_as(&s, Kick::User);
-    Ok(())
-}
-
-/// The cloud copy of a vault goes to the server's trash (30 days); the vault on this device stays and its sync is turned off here.
-#[tauri::command]
-async fn cloud_delete(s: St<'_>, id: String) -> Res<()> {
-    {
-        let mut r = s.reg.lock().map_err(err)?;
-        if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
-            e.sync = false;
-        }
-        r.save(&s.app_data)?;
-    }
-    let app_data = s.app_data.clone();
-    let vault_id = id.clone();
-    blocking(move || {
-        let api = account::api(&app_data)?;
-        let url = api.url(&format!("/v1/vaults/{vault_id}"));
-        api.send(|c| c.delete(&url)).map(|_| ())
-    })
-    .await?;
-    // a later upload starts from a clean slate: a missing cloud must never be read as "deleted there"
-    let _ = std::fs::remove_file(state_file(&s.app_data, &id));
-    set_off(&s.ctx);
-    Ok(())
-}
-
-/// The cloud copy is gone but the vault here is kept: sync it again as a new cloud copy (everything is uploaded, nothing is deleted).
-#[tauri::command]
-fn cloud_reupload(s: St, id: String) -> Res<()> {
-    let _ = std::fs::remove_file(state_file(&s.app_data, &id));
-    let mut r = s.reg.lock().map_err(err)?;
-    if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
-        e.sync = true;
-    }
-    r.save(&s.app_data)?;
-    drop(r);
-    kick_as(&s, Kick::User);
-    Ok(())
-}
-
-/// Every vault stored in the account. The UI hides the ones that are on this device with their folder in place; those whose
-/// folder is gone stay in the list, so that they can be downloaded again.
-#[tauri::command]
-async fn cloud_vaults(s: St<'_>) -> Res<Vec<Value>> {
-    let app_data = s.app_data.clone();
-    let r = blocking(move || account::api(&app_data)?.get("/v1/vaults")).await?;
-    Ok(r["vaults"].as_array().cloned().unwrap_or_default().into_iter().map(|v| json!({ "id": v["id"], "name": v["name"], "files": v["files"], "bytes": v["bytes"] })).collect())
-}
-
-/// Vaults deleted from the account in the last 30 days, which can still be brought back.
-#[tauri::command]
-async fn cloud_trashed(s: St<'_>) -> Res<Vec<Value>> {
-    let app_data = s.app_data.clone();
-    let r = blocking(move || account::api(&app_data)?.get("/v1/vaults?trashed=1")).await?;
-    Ok(r["vaults"].as_array().cloned().unwrap_or_default().into_iter().map(|v| json!({ "id": v["id"], "name": v["name"], "deletedAt": v["deleted_at"] })).collect())
-}
-
-/// Deletes a vault that is in the server's trash for good. The server refuses a vault that is not in the trash.
-#[tauri::command]
-async fn cloud_purge(s: St<'_>, id: String) -> Res<()> {
-    let app_data = s.app_data.clone();
-    blocking(move || {
-        let api = account::api(&app_data)?;
-        let url = api.url(&format!("/v1/vaults/{id}/permanent"));
-        api.send(|c| c.delete(&url)).map(|_| ())
-    })
-    .await
-}
-
-#[tauri::command]
-async fn cloud_restore(s: St<'_>, id: String) -> Res<()> {
-    let app_data = s.app_data.clone();
-    blocking(move || account::api(&app_data)?.post(&format!("/v1/vaults/{id}/undelete"), &json!({})).map(|_| ())).await
-}
-
-/// Creates `<parent>/<name>` for a vault that exists in the cloud and downloads it.
-#[tauri::command]
-async fn cloud_download(s: St<'_>, id: String, name: String, parent: String) -> Res<()> {
-    let name = clean_name(&name)?;
-    let root = PathBuf::from(&parent).join(&name);
-    let v = Vault::create_with_id(root.clone(), &name, &id)?;
-    if v.id() != id {
-        return Err(VAULT_MISMATCH.into()); // the folder already holds another vault
-    }
-    let e = Entry { id: v.id(), name, path: root.to_string_lossy().into(), sync: true };
-    drop(v);
-    let ctx = s.ctx.clone();
-    let e2 = e.clone();
-    blocking(move || run_sync(&ctx, &e2, true)).await?;
-    activate(&s, &e, false)
-}
-
-/// One synchronization of one vault: bring the mirror of the server up to date, then let the engine compare and move files.
-/// `patient`: retry a lost request a few times. While the network is known to be down it is false: one try, then the back-off
-/// decides when to look again, so that a sync does not sit for ten seconds in retries when the connection has just come back.
-fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool) -> Res<()> {
-    let set = |state: &'static str, reason: &str, error: String, done: bool| {
-        if let Ok(mut st) = ctx.status.lock() {
-            st.state = state;
-            st.reason = reason.to_string();
-            st.error = error;
-            if done {
-                st.last_at = now_ms();
-            }
-        }
-    };
-    set("syncing", "", String::new(), false);
-    let result: Res<sync::Report> = (|| {
-        // The vault must be there and be the one we think it is. A folder that vanished is never a reason to
-        // delete the cloud copy, and nothing is created here.
-        let vault = Vault::open_as(PathBuf::from(&e.path), &e.id)?;
-        let acct = account::load(&ctx.app_data).ok_or("AUTH:signed_out")?;
-        let api = account::api(&ctx.app_data)?;
-        let api = if patient { api } else { api.quick() };
-        let state_file = state_file(&ctx.app_data, &e.id);
-        let mut state = SyncState::load(&state_file);
-        let who = format!("{}@{}", acct.username.to_lowercase(), acct.server);
-        if state.account != who {
-            // another account or server is another cloud: start over, with no `base` there is nothing to delete
-            state.files.clear();
-            state.hub = Default::default();
-            state.account = who;
-        }
-        let mut hub = Hub::new(api, &e.id, state.hub.clone());
-        let pre = hub.preflight(&vault.name())?;
-        if pre.baseline {
-            // a new cloud copy, a server that lost data, or a device that was away longer than the server remembers:
-            // what the engine believes about "the last sync" says nothing now, so it only adds, and deletes nothing
-            state.files.clear();
-        }
-        state.allow_deletes_once = ctx.confirm.lock().map(|mut c| c.remove(&e.id)).unwrap_or(false);
-        let rep = sync::sync_once(&vault, &mut hub, &mut state, &mut |st| {
-            let _ = st.save(&state_file); // after every batch of work: a crash costs only what came after
-        })?;
-        state.hub = hub.cache.clone();
-        state.save(&state_file)?;
-        if let Ok(mut s) = ctx.synced.lock() {
-            *s = (e.id.clone(), state.hub.seq);
-        }
-        Ok(rep)
-    })();
-    match result {
-        Ok(rep) => {
-            // pages changed by another device: the open page and the lists are refreshed now, not at the next poll
-            if rep.downloaded + rep.deleted + rep.conflicts > 0 {
-                if let Some(app) = &ctx.app {
-                    let _ = app.emit("vault-changed", e.id.clone());
-                }
-            }
-            if !rep.errors.is_empty() {
-                let m = rep.errors.join("; ");
-                let (state, reason) = if hub::is_network(&m) { ("offline", "NETWORK") } else if hub::is_auth(&m) { ("paused", "SIGNED_OUT") } else { ("error", "ERROR") };
-                set(state, reason, m.clone(), false);
-                Err(m)
-            } else if rep.held > 0 {
-                set("paused", "NEEDS_CONFIRM", rep.held.to_string(), false);
-                Ok(())
-            } else {
-                set("idle", "", String::new(), true);
-                Ok(())
-            }
-        }
-        Err(m) if [VAULT_MISSING, VAULT_MISMATCH, sync::CLOUD_GONE].contains(&m.as_str()) => {
-            set("paused", &m, String::new(), false);
-            Err(m)
-        }
-        Err(m) if hub::is_network(&m) => {
-            set("offline", "NETWORK", m.clone(), false);
-            Err(m)
-        }
-        Err(m) if hub::is_auth(&m) => {
-            set("paused", "SIGNED_OUT", m.clone(), false);
-            Err(m)
-        }
-        Err(m) => {
-            set("error", "ERROR", m.clone(), false);
-            Err(m)
-        }
-    }
-}
-
-fn current_entry(s: &Store) -> Option<Entry> {
-    let cur = s.reg.lock().ok().and_then(|r| r.current.clone());
-    cur.and_then(|id| s.reg.lock().ok()?.find(&id).cloned())
-}
-
-/// How long to wait before trying again after the n-th failure in a row: 3, 6, 12, then 20 seconds. Short on purpose: the
-/// network of a person who is offline comes and goes, and the first moment it is back is when their notes should move.
-fn backoff(fails: u32) -> Duration {
-    Duration::from_secs((3u64 << fails.saturating_sub(1).min(5)).min(20))
-}
-
-fn sync_thread(app: AppHandle, rx: Receiver<Kick>) {
-    let mut fails = 0u32;
-    let mut retry_at = Instant::now();
-    loop {
-        // an edit, the server, or the user wakes us at once; the long wait is only a safety net
-        let first = match rx.recv_timeout(Duration::from_secs(300)) {
-            Ok(k) => Some(k),
-            Err(RecvTimeoutError::Timeout) => None,
-            Err(RecvTimeoutError::Disconnected) => return,
-        };
-        let mut urgent = matches!(first, Some(Kick::User | Kick::Remote));
-        if first == Some(Kick::Edit) {
-            std::thread::sleep(Duration::from_millis(250)); // let a burst of saves finish; a change from the server is not a burst and goes at once
-            while let Ok(k) = rx.try_recv() {
-                urgent |= matches!(k, Kick::User | Kick::Remote);
-            }
-        }
-        // while the network is down an edit does not try again before the back-off is over; the server speaking to us, or the user, does
-        if fails > 0 && !urgent && Instant::now() < retry_at {
-            continue;
-        }
-        let s = app.state::<Store>();
-        let ctx = s.ctx.clone();
-        let entry = current_entry(&s);
-        let ready = entry.as_ref().is_some_and(|e| e.sync) && account::load(&ctx.app_data).is_some();
-        match entry {
-            Some(e) if ready => match run_sync(&ctx, &e, fails == 0) {
-                Ok(()) => fails = 0,
-                Err(_) => {
-                    fails += 1;
-                    retry_at = Instant::now() + backoff(fails);
-                }
-            },
-            _ => {
-                fails = 0;
-                set_off(&ctx);
-            }
-        }
-    }
-}
-
-/// Holds one request open to the server ("long poll"): it is answered the moment another device saves, so a change
-/// arrives within a second without anyone asking over and over. When the network is down it retries with a growing
-/// pause (at most 8 seconds), and the first answer after that wakes the sync at once.
-fn watcher(app: AppHandle) {
-    let mut failures = 0u32;
-    let mut hold = Duration::from_secs(4);
-    loop {
-        let s = app.state::<Store>();
-        let ctx = s.ctx.clone();
-        let tx = s.kick.lock().ok().map(|k| k.clone());
-        let (Some(e), Some(tx)) = (current_entry(&s).filter(|e| e.sync), tx) else {
-            std::thread::sleep(Duration::from_secs(2));
-            continue;
-        };
-        let Ok(api) = account::api(&ctx.app_data) else {
-            std::thread::sleep(Duration::from_secs(2));
-            continue;
-        };
-        let since = ctx.synced.lock().map(|g| if g.0 == e.id { g.1 } else { -1 }).unwrap_or(-1);
-        if since < 0 {
-            std::thread::sleep(Duration::from_secs(1)); // the first sync of this vault is still on its way
-            continue;
-        }
-        let api = api.quick();
-        // after a failure the first question is "are you there?", answered at once: waiting 25 seconds for news would hide that the network is back
-        let wait = if failures > 0 { 0 } else { 25 };
-        let url = api.url(&format!("/v1/vaults/{}/state?since={since}&wait={wait}", e.id));
-        let answer = api.send(|c| c.get(&url).timeout(Duration::from_secs(40))).and_then(|r| r.json::<Value>().map_err(err));
-        match answer {
-            Ok(v) => {
-                if failures > 0 {
-                    failures = 0;
-                    let _ = tx.send(Kick::Remote); // the network is back
-                }
-                if v["seq"].as_i64().unwrap_or(0) > since {
-                    let _ = tx.send(Kick::Remote);
-                    // wait until that sync has moved us forward; if it cannot (the server is failing), ask less and less often
-                    let start = Instant::now();
-                    let mut moved = false;
-                    while start.elapsed() < hold {
-                        std::thread::sleep(Duration::from_millis(200));
-                        if ctx.synced.lock().map(|g| g.0 != e.id || g.1 > since).unwrap_or(true) {
-                            moved = true;
-                            break;
-                        }
-                    }
-                    hold = if moved { Duration::from_secs(4) } else { (hold * 2).min(Duration::from_secs(60)) };
-                }
-            }
-            Err(m) => {
-                failures += 1;
-                // two failures in a row: say so now, without waiting for the sync thread's own (slower) attempt to give up
-                if failures >= 2 && hub::is_network(&m) {
-                    if let Ok(mut st) = ctx.status.lock() {
-                        if st.state == "idle" || st.state == "error" {
-                            st.state = "offline";
-                            st.reason = "NETWORK".into();
-                        }
-                    }
-                }
-                let pause = if hub::is_auth(&m) { 10 } else { (1u64 << failures.min(5)).min(8) };
-                std::thread::sleep(Duration::from_secs(pause));
-            }
-        }
-    }
-}
-
 fn main() {
+    // an AI client launches this same program as its MCP server: no window, just the relay
+    if std::env::args().any(|a| a == mcp_relay::RELAY_FLAG) {
+        std::process::exit(mcp_relay::run_stdio());
+    }
+    // WebView2 opens its profile when Tauri creates the first window.
+    #[cfg(windows)]
+    if let Some(local_data) = std::env::var_os("LOCALAPPDATA") {
+        let profile = PathBuf::from(local_data).join("com.vexor.nevis");
+        if let Err(error) = migrate_app_directory(&profile) {
+            eprintln!("Cannot migrate the previous Nevis WebView profile: {error}");
+        }
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updates::Updates::default())
         .setup(|app| {
-            let app_data = app.path().app_data_dir()?;
-            std::fs::create_dir_all(&app_data)?;
-            account::forget_google(&app_data); // the sign-in of earlier versions is gone
-            let (tx, rx) = channel();
-            let ctx = SyncCtx {
-                app_data: app_data.clone(),
-                status: Arc::new(Mutex::new(SyncStatus { state: "off", ..Default::default() })),
-                confirm: Arc::new(Mutex::new(BTreeSet::new())),
-                synced: Arc::new(Mutex::new((String::new(), -1))),
-                app: Some(app.handle().clone()),
+            // NEVIS_APP_DATA (shared with the MCP relay) runs a separate copy with its own workspace list, e.g. to try first launch
+            let app_data = match std::env::var_os("NEVIS_APP_DATA") {
+                Some(dir) => PathBuf::from(dir),
+                None => {
+                    let current = app.path().app_data_dir()?;
+                    migrate_app_directory(&current)?;
+                    current
+                },
             };
-            app.manage(Store { reg: Mutex::new(Registry::load(&app_data)), app_data, vault: Mutex::new(None), ctx, kick: Mutex::new(tx), index: Mutex::new(None) });
+            std::fs::create_dir_all(&app_data)?;
+            document_operations::configure(&app_data).map_err(std::io::Error::other)?;
+            app.manage(Store { mcp: Arc::new(mcp::Host::default()), reg: Mutex::new(Registry::load(&app_data)), app_data, vault: Mutex::new(None), index: Mutex::new(None) });
             // reopen the vault that was open last time; if it is gone, the picker is shown
             let s = app.state::<Store>();
+            let emit_handle = app.handle().clone();
+            let vault_handle = app.handle().clone();
+            s.mcp.set_bridge(Arc::new(move |event, payload| {
+                emit_handle.get_webview_window("main").ok_or("App unavailable")?.emit(event, payload).map_err(|_| "App unavailable".into())
+            }), Arc::new(move || with(&vault_handle.state::<Store>(), |v| Ok(v.id())).ok()));
             let cur = s.reg.lock().ok().and_then(|r| r.current.clone().and_then(|id| r.find(&id).cloned()));
             if let Some(e) = cur {
-                if let Err(m) = activate(&s, &e, false) {
+                if let Err(m) = activate(&s, &e) {
                     eprintln!("cannot open vault {}: {m}", e.path);
                     if let Ok(mut r) = s.reg.lock() {
                         r.current = None;
                     }
                 }
             }
-            let handle = app.handle().clone();
-            std::thread::spawn(move || sync_thread(handle, rx));
-            let handle = app.handle().clone();
-            std::thread::spawn(move || watcher(handle));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
+            deck_print::print_deck, deck_print::deck_pdf_available,
+            mcp_ready, mcp_status, mcp_enable, mcp_disable, mcp_autostart, mcp_setup_info, mcp_install_client, mcp_credential, mcp_reply,
+            updates::updates_check, updates::updates_download, updates::updates_install,
+            vault_backup_save, vault_backup_folder_save, vault_backup_folder_read, vault_backup_export, vault_backup_restore, vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
             db_recover, db_load_all, db_commit, db_get_operation, db_history, db_undo_load, db_undo_save, db_runtime_get, db_runtime_set, db_runtime_delete,
             db_runtime_keys, db_index_rebuild, db_index_candidates, db_index_count,
-            vault_stamp, pages_all, pages_save, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list,
-            file_delete, files_clear, account_status, server_health, account_register, account_login, account_recover, account_logout, account_info,
-            account_revoke_device, account_change_password, account_new_recovery_key, account_delete, save_text_file, sync_set, sync_now, sync_confirm, cloud_vaults,
-            cloud_trashed, cloud_restore, cloud_purge, cloud_download, cloud_delete, cloud_reupload, index_state, index_update, index_search
+            vault_stamp, pages_search_stamp, pages_all, pages_save, document_operation_list, document_operation_find, document_operation_commit, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list, page_path, page_reveal,
+            index_state, index_update, index_search
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nevis");

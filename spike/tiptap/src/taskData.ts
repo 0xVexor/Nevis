@@ -1,5 +1,6 @@
 // Tasks = every checklist item (taskItem) in the pages. Nothing is stored separately: this reads the page documents
 // and writes a toggle straight back into the page, so the editor and the Tasks view always agree.
+import type { DocNode } from './docNode'
 import { repo } from './store'
 import { kvGet, kvSet } from './db'
 
@@ -11,24 +12,24 @@ export interface Task {
   depth: number // nesting level (0 = top level)
 }
 
-const textOf = (n: any): string => (!n ? '' : (n.text ?? (n.content ?? []).map(textOf).join('')))
+const textOf = (n: DocNode | null | undefined): string => (!n ? '' : (n.text ?? (n.content ?? []).map(textOf).join('')))
 
 /** The text of a task item = its own paragraph(s), without nested lists. */
-const ownText = (item: any) =>
+const ownText = (item: DocNode) =>
   (item.content ?? [])
-    .filter((c: any) => c.type !== 'taskList' && c.type !== 'bulletList' && c.type !== 'orderedList')
+    .filter((c) => c.type !== 'taskList' && c.type !== 'bulletList' && c.type !== 'orderedList')
     .map(textOf)
     .join(' ')
     .trim()
 
-function walk(node: any, visit: (item: any, depth: number) => void, depth = 0) {
+function walk(node: DocNode | string | null | undefined, visit: (item: DocNode, depth: number) => void, depth = 0) {
   if (!node || typeof node === 'string') return
   const isItem = node.type === 'taskItem'
   if (isItem) visit(node, depth)
   for (const c of node.content ?? []) walk(c, visit, isItem ? depth + 1 : depth)
 }
 
-export function tasksOf(pageId: string, doc: any): Task[] {
+export function tasksOf(pageId: string, doc: DocNode | null | undefined): Task[] {
   const out: Task[] = []
   walk(doc, (item, depth) => out.push({ pageId, index: out.length, text: ownText(item), checked: !!item.attrs?.checked, depth }))
   return out

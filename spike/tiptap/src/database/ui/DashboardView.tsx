@@ -3,12 +3,10 @@
 import { Suspense, lazy, useEffect, useRef, useState, type ComponentType } from 'react'
 import type { Id, Json, View } from '../model/types.ts'
 import { effectiveFilter, suggestMappings } from '../viewLogic.ts'
+import { Button, Dropdown, FormField, Icon, IconButton, Segmented } from '../../design-system'
 import { t } from '../../i18n'
-import { Select } from '../../ui'
-import * as Ic from '../../icons'
-import { errorText } from './common'
-import { Field } from './forms'
-import { VIEW_ICON, VIEW_LABEL } from './viewMeta'
+import { Hint, ViewMessage, errorText, rawOptions } from './common'
+import { VIEW_LABEL, ViewIcon } from './viewMeta'
 import { FilterOperand, defaultFilterOperand, filterableProps, filterOperatorLabel } from './ViewControls'
 import { OPS } from '../props/registry.ts'
 import { filterClass } from '../query/engine.ts'
@@ -32,8 +30,24 @@ const KINDS: Record<string, ComponentType<ViewProps>> = {
   feed: lz(() => import('./FeedView').then((m) => ({ default: m.FeedView }))),
 }
 
-function WidgetFrame({ p, w, global, editing, span, onSpan, onRemove }: { p: ViewProps; w: View; global: Global | null; editing: boolean; span: number; onSpan: (span: 1 | 2 | 3) => void; onRemove: () => void }) {
-  const ref = useRef<HTMLDivElement>(null)
+function WidgetFrame({
+  p,
+  w,
+  global,
+  editing,
+  span,
+  onSpan,
+  onRemove,
+}: {
+  p: ViewProps
+  w: View
+  global: Global | null
+  editing: boolean
+  span: number
+  onSpan: (span: 1 | 2 | 3) => void
+  onRemove: () => void
+}) {
+  const ref = useRef<HTMLElement>(null)
   const [seen, setSeen] = useState(typeof IntersectionObserver === 'undefined')
   useEffect(() => {
     const el = ref.current
@@ -59,21 +73,52 @@ function WidgetFrame({ p, w, global, editing, span, onSpan, onRemove }: { p: Vie
     canSchema: p.ctl.canSchema && editing,
   }
   return (
-    <div className={'db-widget' + (editing ? ' editing' : '')} ref={ref}>
-      <div className="db-widget-head">
-        <span className="db-panel-icon">{VIEW_ICON[w.type]()}</span>
-        <div className="db-widget-titles"><b dir="auto">{w.name}</b><small dir="auto">{src?.name ?? t(VIEW_LABEL[w.type])}</small></div>
-        {global && !eff.affected && <small className="db-widget-na" title={t('The global filter is not mapped to this widget’s data.')}>{t('Not affected by the filter')}</small>}
-        <span className="spacer" />
-        {editing && <div className="db-widget-actions">
-          <Select className="db-widget-width" title={t('Widget width')} value={String(span)} onChange={(value) => onSpan(Number(value) as 1 | 2 | 3)} options={[{ value: '1', label: t('Normal') }, { value: '2', label: t('Wide') }, { value: '3', label: t('Extra wide') }]} />
-          <button type="button" className="icon-btn danger" aria-label={t('Remove widget')} title={t('Remove widget')} onClick={onRemove}><Ic.Trash size={14} /></button>
-        </div>}
+    <section className="dv-widget" data-editing={editing || undefined} ref={ref} aria-label={w.name}>
+      <header className="dv-widget-head">
+        <ViewIcon type={w.type} size={16} />
+        <b dir="auto">{w.name}</b>
+        <small dir="auto">{src?.name ?? t(VIEW_LABEL[w.type])}</small>
+        {global && !eff.affected && (
+          <small className="dv-widget-na" title={t('The global filter is not mapped to this widget’s data.')}>
+            · {t('Not affected by the filter')}
+          </small>
+        )}
+        {editing && (
+          <span className="dv-widget-acts">
+            <Segmented
+              label={t('Widget width')}
+              value={String(span) as '1' | '2' | '3'}
+              onChange={(value) => onSpan(Number(value) as 1 | 2 | 3)}
+              options={[
+                { value: '1', label: t('Normal'), title: t('Normal width') },
+                { value: '2', label: t('Wide'), title: t('Twice as wide') },
+                { value: '3', label: t('Extra wide'), title: t('Three times as wide') },
+              ]}
+            />
+            <IconButton label={t('Remove widget')} onClick={onRemove}>
+              <Icon name="trash" size={15} />
+            </IconButton>
+          </span>
+        )}
+      </header>
+      <div className="dv-widget-body">
+        {seen && V ? (
+          <Suspense
+            fallback={
+              <div className="dv-loading" role="status">
+                {t('Loading…')}
+              </div>
+            }
+          >
+            <V svc={p.svc} view={shown} container={p.container} ctl={ctl} />
+          </Suspense>
+        ) : !V ? (
+          <ViewMessage title={t('This layout cannot be shown in a dashboard.')} />
+        ) : (
+          <div className="dv-loading" />
+        )}
       </div>
-      <div className="db-widget-body">
-        {seen && V ? <Suspense fallback={<div className="db-loading" role="status">{t('Loading…')}</div>}><V svc={p.svc} view={shown} container={p.container} ctl={ctl} /></Suspense> : !V ? <div className="db-error-box">{t('This layout cannot be shown in a dashboard.')}</div> : <div className="db-loading" />}
-      </div>
-    </div>
+    </section>
   )
 }
 
@@ -88,17 +133,18 @@ export function DashboardView(p: ViewProps) {
   const savedGlobal = cfg.globalFilter ?? null
   const g = savedGlobal ? { ...savedGlobal, op: savedGlobal.op === 'does_not_equal' ? 'not_equals' : savedGlobal.op } : null
   const sources = container.sourceLinks.map((l) => svc.state.get('source', l.sourceId)).filter((s): s is NonNullable<typeof s> => !!s && s.deletedAt === null)
-  const [adding, setAdding] = useState<{ sourceId: Id; type: string } | null>(null)
+  const [adding, setAdding] = useState<{ sourceId: Id; type: string }>({ sourceId: sources[0]?.id ?? '', type: 'chart' })
 
   const saveRows = (next: Row[]) => ctl.patch({ rows: next as unknown as Json })
   const addWidget = async () => {
-    if (!adding) return
-    const r = await svc.tryExec([{ type: 'view.create', payload: { containerId: container.id, sourceId: adding.sourceId, type: adding.type, name: t(adding.type[0].toUpperCase() + adding.type.slice(1)), parentDashboardId: view.id } }])
+    if (!adding.sourceId) return
+    const r = await svc.tryExec([
+      { type: 'view.create', payload: { containerId: container.id, sourceId: adding.sourceId, type: adding.type, name: t(VIEW_LABEL[adding.type as keyof typeof VIEW_LABEL]), parentDashboardId: view.id } },
+    ])
     if (!r.ok) return ctl.notice(errorText(r.code, r.message))
     const viewId = (r.result as { viewId: Id }).viewId
     const last = rows[rows.length - 1]
     await saveRows(last && last.widgets.length < 2 ? [...rows.slice(0, -1), { widgets: [...last.widgets, { viewId }] }] : [...rows, { widgets: [{ viewId }] }])
-    setAdding(null)
   }
   const remove = async (id: Id) => {
     await saveRows(rows.map((r) => ({ widgets: r.widgets.filter((x) => x.viewId !== id) })).filter((r) => r.widgets.length))
@@ -114,44 +160,143 @@ export function DashboardView(p: ViewProps) {
     const operators = OPS[filterClass(svc.state, def)]
     const op = operators.includes('contains') ? 'contains' : operators[0]
     if (!op) return
-    void setGlobal({ propertyId: id, op, operand: defaultFilterOperand(svc, def, op), mappings: Object.fromEntries([[def.sourceId, id], ...suggestMappings(svc.state, id).map((match) => [match.sourceId, match.propertyId])]) })
+    void setGlobal({
+      propertyId: id,
+      op,
+      operand: defaultFilterOperand(svc, def, op),
+      mappings: Object.fromEntries([[def.sourceId, id], ...suggestMappings(svc.state, id).map((match) => [match.sourceId, match.propertyId])]),
+    })
   }
 
   return (
-    <div className="db-dash">
-      <header className="db-dash-header">
-        <div className="db-section-heading"><span className="db-panel-icon"><Ic.Layers size={20} /></span><div><h2 dir="auto">{view.name}</h2><p>{t('Bring your views together in one place.')}</p></div></div>
-        <div className="db-view-actions"><span className="db-count">{widgets.length} {t('Widgets')}</span>{ctl.canSchema && <button type="button" className={editing ? 'primary' : 'db-btn'} aria-pressed={editing} onClick={() => setEditing(!editing)}>{editing ? <Ic.Check size={15} /> : <Ic.Settings size={15} />}{editing ? t('Done editing') : t('Edit dashboard')}</button>}</div>
+    <div className="dv-dash">
+      <header className="dv-period">
+        <h3 className="dv-period-title">{t('{n} widgets', { n: widgets.length })}</h3>
+        {ctl.canSchema && (
+          <span className="dv-period-end">
+            <Button size="sm" variant={editing ? 'primary' : 'default'} aria-pressed={editing} icon={<Icon name={editing ? 'check' : 'pencil'} size={15} />} onClick={() => setEditing(!editing)}>
+              {editing ? t('Done editing') : t('Edit dashboard')}
+            </Button>
+          </span>
+        )}
       </header>
 
-      {(g || editing) && <section className="db-panel db-dash-global" aria-label={t('Global filter')}>
-        <header className="db-panel-head"><span className="db-panel-icon"><Ic.Search size={16} /></span><div><h3>{t('Global filter')}</h3><p>{t('Apply one filter across your widgets.')}</p></div><span className="spacer" />{editing && g && <button type="button" className="db-btn danger" onClick={() => void setGlobal(null)}><Ic.Trash size={14} />{t('Remove')}</button>}</header>
-        <div className="db-panel-body">
-          <div className="db-dash-filter-fields">
-            <Field label={g ? t('Property') : t('Add a global filter')}><Select title={t('Property')} value={g?.propertyId ?? ''} disabled={!ctl.canSchema} onChange={selectGlobal} options={[{ value: '', label: t('Choose a property…') }, ...globalProperties.map((property) => ({ value: property.id, label: sources.length > 1 ? (svc.state.get('source', property.sourceId)?.name ?? '') + ' · ' + property.name : property.name }))]} /></Field>
-            {g && globalDefinition && <><Field label={t('Condition')}><Select title={t('Condition')} value={g.op} disabled={!ctl.canSchema} onChange={(op) => void setGlobal({ ...g, op, operand: defaultFilterOperand(svc, globalDefinition, op) })} options={globalOperators.map((op) => ({ value: op, label: filterOperatorLabel(op) }))} /></Field>
-            {!['is_empty', 'is_not_empty'].includes(g.op) && <div className="db-field"><span className="db-field-l">{t('Value')}</span><fieldset className="db-filter-value" disabled={!ctl.canSchema}><FilterOperand svc={svc} def={globalDefinition} op={g.op} value={g.operand} onChange={(operand) => void setGlobal({ ...g, operand })} /></fieldset></div>}</>}
-          </div>
-          {editing && g && sources.length > 1 && <div className="db-dash-mappings"><span className="db-field-l">{t('Match properties')}</span>{sources.map((source) => <Field key={source.id} label={source.name}><Select title={source.name} value={g.mappings[source.id] ?? ''} onChange={(id) => void setGlobal({ ...g, mappings: { ...g.mappings, [source.id]: id } })} options={[{ value: '', label: t('Not mapped') }, ...filterableProps(svc, source.id).map((property) => ({ value: property.id, label: property.name }))]} /></Field>)}</div>}
-        </div>
-      </section>}
+      {(g || editing) && (
+        <section className="dv-dash-filter" aria-label={t('Global filter')}>
+          <span className="dv-dash-filter-label">
+            <Icon name="filter" size={15} /> {t('Filter every widget by')}
+          </span>
+          <Dropdown
+            className="ds-dd-btn--sm"
+            label={t('Property')}
+            placeholder={t('Choose a property…')}
+            value={g?.propertyId ?? ''}
+            disabled={!ctl.canSchema}
+            onChange={selectGlobal}
+            options={globalProperties.map((property) => ({
+              value: property.id,
+              label: sources.length > 1 ? (svc.state.get('source', property.sourceId)?.name ?? '') + ' · ' + property.name : property.name,
+              raw: true,
+            }))}
+          />
+          {g && globalDefinition && (
+            <>
+              <Dropdown
+                className="ds-dd-btn--sm"
+                label={t('Condition')}
+                value={g.op}
+                disabled={!ctl.canSchema}
+                onChange={(op) => void setGlobal({ ...g, op, operand: defaultFilterOperand(svc, globalDefinition, op) })}
+                options={globalOperators.map((op) => ({ value: op, label: filterOperatorLabel(op), raw: true }))}
+              />
+              {!['is_empty', 'is_not_empty'].includes(g.op) && (
+                <fieldset className="dv-fieldset" disabled={!ctl.canSchema}>
+                  <FilterOperand svc={svc} def={globalDefinition} op={g.op} value={g.operand} onChange={(operand) => void setGlobal({ ...g, operand })} />
+                </fieldset>
+              )}
+              {editing && (
+                <IconButton label={t('Remove the global filter')} onClick={() => void setGlobal(null)}>
+                  <Icon name="x" size={15} />
+                </IconButton>
+              )}
+            </>
+          )}
+          {editing && g && sources.length > 1 && (
+            <div className="dv-dash-mappings">
+              <span className="dv-hint">{t('Match properties')}</span>
+              {sources.map((source) => (
+                <FormField key={source.id} label={source.name}>
+                  <Dropdown
+                    label={source.name}
+                    value={g.mappings[source.id] ?? ''}
+                    onChange={(id) => void setGlobal({ ...g, mappings: { ...g.mappings, [source.id]: id } })}
+                    options={[{ value: '', label: 'Not mapped' }, ...rawOptions(filterableProps(svc, source.id))]}
+                  />
+                </FormField>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
-      {rows.map((row, rowIndex) => <div key={rowIndex} className="db-dash-row" style={{ gridTemplateColumns: row.widgets.map((widget) => 'minmax(0, ' + (widget.span ?? 1) + 'fr)').join(' ') }}>
-        {row.widgets.map((item, index) => {
-          const widget = byId.get(item.viewId)
-          return widget ? <WidgetFrame key={item.viewId} p={p} w={widget} global={g} editing={editing} span={item.span ?? 1} onSpan={(span) => void saveRows(rows.map((current, i) => i === rowIndex ? { widgets: current.widgets.map((entry, j) => j === index ? { ...entry, span } : entry) } : current))} onRemove={() => void remove(item.viewId)} /> : null
-        })}
-      </div>)}
-      {widgets.some((widget) => !placed.has(widget.id)) && editing && <div className="db-empty-hint db-unplaced"><span>{t('Some widgets are not placed in a row.')}</span><button type="button" className="db-btn" onClick={() => void saveRows([...rows, ...widgets.filter((widget) => !placed.has(widget.id)).map((widget) => ({ widgets: [{ viewId: widget.id }] }))])}>{t('Place remaining widgets')}</button></div>}
-      {rows.length === 0 && !editing && <div className="db-empty db-dash-empty"><span className="db-empty-icon"><Ic.Layers size={28} /></span><b>{t('This dashboard is empty')}</b><p>{t('Add charts, tables and other views to build your dashboard.')}</p>{ctl.canSchema && <button type="button" className="primary" onClick={() => setEditing(true)}><Ic.Plus size={15} />{t('Add widget')}</button>}</div>}
-
-      {editing && ctl.canSchema && <section className="db-panel db-dash-add">
-        <header className="db-panel-head"><span className="db-panel-icon"><Ic.Plus size={18} /></span><div><h3>{t('Add widget')}</h3><p>{t('Choose a data source and a layout for your widget.')}</p></div></header>
-        <div className="db-panel-body db-widget-builder"><Field label={t('Data source')}><Select title={t('Data source')} value={adding?.sourceId ?? ''} onChange={(sourceId) => setAdding(sourceId ? { sourceId, type: adding?.type ?? 'chart' } : null)} options={[{ value: '', label: t('Choose data…') }, ...sources.map((source) => ({ value: source.id, label: source.name }))]} /></Field>
-          <Field label={t('Layout')}><Select title={t('Layout')} value={adding?.type ?? 'chart'} onChange={(type) => adding && setAdding({ ...adding, type })} disabled={!adding} options={Object.keys(KINDS).map((kind) => ({ value: kind, label: t(VIEW_LABEL[kind as keyof typeof VIEW_LABEL]) }))} /></Field>
-          <button type="button" className="primary" disabled={!adding} onClick={() => void addWidget()}><Ic.Plus size={15} />{t('Add widget')}</button>
+      {rows.map((row, rowIndex) => (
+        <div key={rowIndex} className="dv-dash-row" style={{ ['--dv-dash-cols' as string]: row.widgets.map((widget) => 'minmax(0, ' + (widget.span ?? 1) + 'fr)').join(' ') }}>
+          {row.widgets.map((item, index) => {
+            const widget = byId.get(item.viewId)
+            return widget ? (
+              <WidgetFrame
+                key={item.viewId}
+                p={p}
+                w={widget}
+                global={g}
+                editing={editing}
+                span={item.span ?? 1}
+                onSpan={(span) => void saveRows(rows.map((current, i) => (i === rowIndex ? { widgets: current.widgets.map((entry, j) => (j === index ? { ...entry, span } : entry)) } : current)))}
+                onRemove={() => void remove(item.viewId)}
+              />
+            ) : null
+          })}
         </div>
-      </section>}
+      ))}
+      {widgets.some((widget) => !placed.has(widget.id)) && editing && (
+        <Hint>
+          {t('Some widgets are not placed in a row.')}{' '}
+          <Button size="sm" variant="ghost" onClick={() => void saveRows([...rows, ...widgets.filter((widget) => !placed.has(widget.id)).map((widget) => ({ widgets: [{ viewId: widget.id }] }))])}>
+            {t('Place remaining widgets')}
+          </Button>
+        </Hint>
+      )}
+      {rows.length === 0 && !editing && (
+        <ViewMessage
+          title={t('This dashboard is empty')}
+          action={
+            ctl.canSchema && (
+              <Button size="sm" variant="primary" icon={<Icon name="plus" size={15} />} onClick={() => setEditing(true)}>
+                {t('Add widget')}
+              </Button>
+            )
+          }
+        >
+          {t('Add charts, tables and other views to build your dashboard.')}
+        </ViewMessage>
+      )}
+
+      {editing && ctl.canSchema && (
+        <section className="dv-dash-add" aria-label={t('Add widget')}>
+          <b>{t('Add widget')}</b>
+          {sources.length > 1 && <Dropdown className="ds-dd-btn--sm" label={t('Data source')} value={adding.sourceId} onChange={(sourceId) => setAdding({ ...adding, sourceId })} options={rawOptions(sources)} />}
+          <Dropdown
+            className="ds-dd-btn--sm"
+            label={t('Layout')}
+            value={adding.type}
+            onChange={(type) => setAdding({ ...adding, type })}
+            options={Object.keys(KINDS).map((kind) => ({ value: kind, label: VIEW_LABEL[kind as keyof typeof VIEW_LABEL] }))}
+          />
+          <Button size="sm" variant="primary" icon={<Icon name="plus" size={15} />} disabled={!adding.sourceId} onClick={() => void addWidget()}>
+            {t('Add')}
+          </Button>
+        </section>
+      )}
     </div>
   )
 }

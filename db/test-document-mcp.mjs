@@ -1,0 +1,461 @@
+import assert from 'node:assert/strict'
+import { createHash, randomUUID } from 'node:crypto'
+import test from 'node:test'
+import Ajv from './tests/tools/node_modules/ajv/dist/ajv.js'
+import { DocumentService } from '../spike/tiptap/src/documents/service.ts'
+import { MemoryDocumentStorage } from '../spike/tiptap/src/documents/memoryStorage.ts'
+import { McpDocumentSession, McpDocumentScope, MCP_PROTOCOL, matchesDocumentSchema, validMcpPolicy } from '../spike/tiptap/src/documents/mcp.ts'
+import { documentToolContracts } from '../spike/tiptap/src/documents/contracts.ts'
+
+const digest = async text => createHash('sha256').update(text).digest('hex')
+const body = text => ({ type: 'doc', attrs: { blockIdentityVersion: 1 }, content: [{ type: 'paragraph', attrs: { blockId: 'p1' }, content: [{ type: 'text', text }] }] })
+const page = (id, parentId = null) => ({ id, parentId, title: id, tags: [], favorite: false, sort: 0, updatedAt: 1, deletedAt: null, content: body(`فارسی saved ${id}`) })
+export async function fixture({ policy = { wholeVault: true, rootIds: [], excludedIds: ['private'], allowWrites: false }, writesReleased = false, markdown, icons, deckContentCheck, exportDeckPdf, slidesEnabled = false } = {}) {
+  let active = true, now = 100, sequence = 0
+  const storage = new MemoryDocumentStorage('fixed', [page('outer'), page('root', 'outer'), page('note', 'root'), page('private', 'root'), page('secret', 'private')], digest)
+  const host = { now: () => now, createId: () => `generated-${++sequence}`, defer: () => () => {}, emit() {}, report() {}}
+  const service = new DocumentService({ storage, host }); await service.init()
+  const runtime = { now: () => now, cursorId: randomUUID, digest, digestBytes: digest }
+  const connection = { vaultId: 'vault', grantId: 'grant', revision: 'revision', policy }
+  const session = new McpDocumentSession(service, connection, runtime, () => active, writesReleased, markdown, undefined, icons, deckContentCheck, exportDeckPdf, slidesEnabled)
+  const dispatch = message => session.dispatch(message, { id: randomUUID(), expiresAt: now + 1000, active: () => active })
+  let id = 0
+  const rpc = (method, params) => dispatch({ jsonrpc: '2.0', id: ++id, method, ...(params === undefined ? {} : { params }) })
+  const initialize = async () => { const result = await rpc('initialize', { protocolVersion: MCP_PROTOCOL, clientInfo: { name: 'test', version: '1' }, capabilities: {} }); assert.equal(result.result.protocolVersion, MCP_PROTOCOL); await dispatch({ jsonrpc: '2.0', method: 'notifications/initialized' }) }
+  const checks = Object.fromEntries(Object.entries(documentToolContracts).map(([name, contract]) => [name, new Ajv({ strict: true }).compile(contract.outputSchema)]))
+  const call = async (name, args = {}) => {
+    const result = await rpc('tools/call', { name, arguments: args })
+    assert.ok(result.result, JSON.stringify(result)); const out = result.result.structuredContent
+    assert.ok(checks[name](out), JSON.stringify(checks[name].errors)); assert.equal(result.result.content[0].text, JSON.stringify(out))
+    return out
+  }
+  return { service, storage, session, connection, dispatch, rpc, initialize, call, revoke: () => { active = false }, expire: () => { now += 2000 } }
+}
+
+test('deck MCP creates, reads and edits slides through scoped revision-gated commits', async () => {
+  const policy = { wholeVault: false, rootIds: ['root'], excludedIds: ['private'], allowWrites: true }
+  const h = await fixture({
+    policy, writesReleased: true, slidesEnabled: true, deckContentCheck: () => null,
+    exportDeckPdf: async (_title, deck) => {
+      assert.equal(deck.slides.length, 2)
+      assert.deepEqual(deck.size, { width: 1920, height: 1080 })
+      return '/tmp/technical-slides.pdf'
+    },
+    markdown: (text) => text === 'diagram and picture' ? [
+      { type: 'mermaid', attrs: { code: 'flowchart LR\n  A --> B' } },
+      { type: 'image', attrs: { src: 'upload:picture', alt: 'Sample' } },
+    ] : body(text).content.map(({ attrs, ...node }) => node),
+  })
+  await h.initialize()
+  const input = { operationId: 'deck-create', parentId: 'root', title: 'Technical slides', slides: [
+    { markdown: 'Cover' },
+    { markdown: 'diagram and picture', assets: [{ temporaryId: 'picture', mimeType: 'image/png', name: 'sample.png', data: 'iVBORw0KGgo=' }] },
+  ] }
+  assert.equal((await h.call('create_deck', { ...input, parentId: 'private' })).error.code, 'ACCESS_DENIED')
+  const create = await h.call('create_deck', input)
+  assert.equal(create.ok, true, JSON.stringify(create))
+  const { documentId, revision } = create.result
+  assert.equal((await h.call('create_deck', input)).result.documentId, documentId)
+  const list = await h.call('list_decks')
+  assert.deepEqual(list.result.decks.map((deck) => deck.documentId), [documentId])
+  const [first, second] = list.result.decks[0].slideIds
+  const diagram = await h.call('read_deck', { documentId, slideId: second })
+  assert.deepEqual(diagram.result.slide.structured.content.map((node) => node.type), ['mermaid', 'image'])
+  assert.match(diagram.result.slide.structured.content[1].attrs.src, /^att:[a-f0-9]{64}$/)
+  const edit = { documentId, expectedRevision: revision, operationId: 'deck-move', change: { kind: 'move_slide', slideId: second, beforeSlideId: first } }
+  assert.equal((await h.call('edit_deck', edit)).ok, true)
+  assert.equal((await h.call('edit_deck', edit)).result.replayed, true)
+  assert.equal((await h.call('edit_deck', { ...edit, operationId: 'deck-stale' })).error.code, 'REVISION_CONFLICT')
+  const moved = await h.call('read_deck', { documentId })
+  assert.deepEqual(moved.result.slideIds, [second, first])
+  const replace = { documentId, expectedRevision: moved.result.revision, operationId: 'deck-replace', change: { kind: 'replace_slide', slideId: first, markdown: 'New cover' } }
+  assert.equal((await h.call('edit_deck', replace)).ok, true)
+  const replaced = await h.call('read_deck', { documentId, slideId: first })
+  assert.equal(replaced.result.slide.structured.content[0].content[0].text, 'New cover')
+  const resize = { documentId, expectedRevision: replaced.result.revision, operationId: 'deck-resize', change: { kind: 'set_size', size: { width: 1920, height: 1080 } } }
+  assert.equal((await h.call('edit_deck', { ...resize, change: { kind: 'set_size', size: { width: 4000, height: 1000 } } })).error.code, 'INVALID_ARGUMENT')
+  const resized = await h.call('edit_deck', resize)
+  assert.equal(resized.ok, true, JSON.stringify(resized))
+  const reopened = await h.call('read_deck', { documentId, slideId: first })
+  assert.deepEqual(reopened.result.size, resize.change.size)
+  assert.deepEqual(reopened.result.slide, replaced.result.slide)
+  assert.deepEqual(reopened.result.slideIds, replaced.result.slideIds)
+  assert.equal((await h.call('export_deck_pdf', { documentId, expectedRevision: revision })).error.code, 'REVISION_CONFLICT')
+  const pdf = await h.call('export_deck_pdf', { documentId, expectedRevision: resized.result.revision })
+  assert.equal(pdf.result.path, '/tmp/technical-slides.pdf')
+})
+
+test('scopes inherit exclusions, hide missing/cyclic ancestry and preserve selected roots', () => {
+  const policy = { wholeVault: false, rootIds: ['root'], excludedIds: ['private'], allowWrites: true }
+  assert.ok(validMcpPolicy(policy)); assert.equal(validMcpPolicy({ ...policy, rootIds: [] }), false)
+  const scope = new McpDocumentScope(policy)
+  scope.observe([page('outer'), page('root', 'outer'), page('note', 'root'), page('private', 'root'), page('secret', 'private'), page('orphan', 'missing'), page('cycle', 'cycle')])
+  for (const id of ['root', 'note']) assert.equal(scope.canRead(id), true)
+  for (const id of ['outer', 'private', 'secret', 'orphan', 'cycle']) assert.equal(scope.canRead(id), false)
+  assert.equal(scope.canCreate(null), false); assert.equal(scope.canCreate('root'), true); assert.equal(scope.canCreate('private'), false)
+})
+
+test('handshake, nine contracts, strict validation, bounded saved reads and explicit host write capability', async () => {
+  const h = await fixture({ policy: { wholeVault: false, rootIds: ['root'], excludedIds: ['private'], allowWrites: true } })
+  assert.equal((await h.rpc('tools/list')).error.code, -32002); await h.initialize()
+  const tools = (await h.rpc('tools/list')).result.tools
+  assert.deepEqual(tools.map(t => t.name), Object.keys(documentToolContracts).filter(name => !['list_decks','read_deck','export_deck_pdf','create_deck','edit_deck'].includes(name)))
+  assert.equal((await h.rpc('tools/list', { cursor: 'unknown' })).error.code, -32602)
+  const capabilities = await h.call('get_editor_capabilities'); assert.equal(capabilities.ok, true); assert.ok(capabilities.result.nodes.some(node => node.type === 'mermaid' && node.attributes.code)); assert.ok(capabilities.result.marks.some(mark => mark.type === 'link'))
+  const listed = await h.call('list_documents'); assert.deepEqual(listed.result.documents.map(d => d.documentId).sort(), ['note', 'root'])
+  assert.equal(listed.result.documents.find(d => d.documentId === 'root').parentId, null)
+  assert.equal((await h.call('read_document', { documentId: 'secret', target: { kind: 'full' }, format: 'both' })).error.code, 'ACCESS_DENIED')
+  h.service.update('note', { content: body('unsaved PRIVATE draft') }); h.service.setEditorDirty('note', true)
+  const read = await h.call('read_document', { documentId: 'note', target: { kind: 'full' }, format: 'both' })
+  assert.equal(read.ok, true); assert.ok(JSON.stringify(read).includes('فارسی saved note')); assert.ok(!JSON.stringify(read).includes('PRIVATE'))
+  const search = await h.call('search_documents', { query: 'saved', mode: 'keywords' }); assert.equal(search.ok, true); assert.ok(!JSON.stringify(search).includes('secret'))
+  assert.equal((await h.call('get_document_history', { documentId: 'note' })).ok, true)
+  assert.equal((await h.call('list_documents', { limit: 101 })).error.code, 'INVALID_ARGUMENT')
+  assert.equal((await h.call('list_documents', JSON.parse('{"constructor":{}}'))).error.code, 'INVALID_ARGUMENT')
+  assert.equal((await h.call('create_document', { operationId: 'create', parentId: 'root', kind: 'page', metadata: { title: 'test', tags: [], favorite: false }, content: { type: 'doc', content: [] } })).error.code, 'CAPABILITY_UNAVAILABLE')
+  assert.equal((await h.rpc('tools/call', { name: '__proto__' })).error.code, -32602)
+  const schema = documentToolContracts.read_document.inputSchema
+  assert.equal(matchesDocumentSchema({ documentId: 'note', target: { kind: 'full' }, format: 'both', extra: true }, schema), false)
+  h.revoke(); assert.equal((await h.rpc('tools/list')).error.code, -32000)
+})
+
+test('all mutation handlers delegate to shared services with receipts/history under a test-only write grant', async () => {
+  const h = await fixture({ policy: { wholeVault: true, rootIds: [], excludedIds: ['private'], allowWrites: true }, writesReleased: true }); await h.initialize()
+  const created = await h.call('create_document', { operationId: 'create', parentId: 'root', kind: 'page', metadata: { title: 'created', tags: [], favorite: false }, content: { type: 'doc', content: [{ type: 'paragraph' }] } })
+  assert.equal(created.ok, true)
+  const renamed = await h.call('update_document_metadata', { documentId: created.result.documentId, operationId: 'rename', expectedRevision: created.result.revision, patch: { title: 'renamed' } }); assert.equal(renamed.ok, true)
+  const edited = await h.call('edit_document', { documentId: created.result.documentId, operationId: 'edit', expectedRevision: renamed.result.revision, mode: 'apply', operations: [{ kind: 'insert_blocks', at: { position: 'end', parent: null }, blocks: [{ temporaryId: 'new', node: { type: 'paragraph', content: [{ type: 'text', text: 'agent text' }] } }] }] }); assert.equal(edited.ok, true)
+  const history = await h.call('get_document_history', { documentId: created.result.documentId }); assert.equal(history.result.versions.length, 5)
+  const undone = await h.call('undo_document_edit', { documentId: created.result.documentId, operationId: 'undo', undoOperationId: 'edit', expectedRevision: edited.result.saved.revision }); assert.equal(undone.ok, true)
+  const retry = await h.call('create_document', { operationId: 'create', parentId: 'root', kind: 'page', metadata: { title: 'created', tags: [], favorite: false }, content: { type: 'doc', content: [{ type: 'paragraph' }] } }); assert.equal(retry.result.replayed, true)
+})
+
+test('scope changes during async reads, revocation, deadlines and unexpected errors disclose no content', async () => {
+  const h = await fixture(); await h.initialize()
+  const original = h.storage.load.bind(h.storage); let loads = 0
+  h.storage.load = async () => { const result = await original(); if (++loads === 3) return result.map(p => p.id === 'note' ? { ...p, parentId: 'private' } : p); return result }
+  const changed = await h.call('read_document', { documentId: 'note', target: { kind: 'full' }, format: 'both' }); assert.equal(changed.error.code, 'ACCESS_DENIED')
+  h.storage.load = async () => { throw new Error('secret note body and password') }
+  const failed = await h.call('list_documents'); assert.equal(failed.error.code, 'APP_UNAVAILABLE'); assert.ok(!JSON.stringify(failed).includes('password'))
+  h.storage.load = async () => { h.expire(); return original() }
+  const expired = await h.call('list_documents'); assert.equal(expired.error.code, 'APP_UNAVAILABLE')
+  h.session.close(); assert.equal((await h.rpc('tools/list')).error.code, -32000)
+})
+
+
+test('webview dispatch remains bounded when a storage read stalls', async () => {
+  const h = await fixture(); await h.initialize()
+  const load = h.storage.load.bind(h.storage)
+  let release, entered
+  const blocked = new Promise(resolve => { release = resolve }), started = new Promise(resolve => { entered = resolve })
+  h.storage.load = async () => { entered(); await blocked; return load() }
+  const pending = [h.rpc('tools/call', { name: 'list_documents', arguments: {} })]
+  await started
+  for (let i = 0; i < 7; i++) pending.push(h.rpc('ping'))
+  assert.equal((await h.rpc('ping')).error.message, 'Request capacity exceeded')
+  release(); await Promise.all(pending)
+  assert.deepEqual((await h.rpc('ping')).result, {})
+})
+
+test('markdown is accepted for create_document and insert_markdown, converted before validation, and retries replay', async () => {
+  // the real converter lives in the webview; here a stand-in turns each non-empty line into a paragraph
+  const markdown = text => text.split('\n').filter(Boolean).map(line => ({ type: 'paragraph', content: [{ type: 'text', text: line }] }))
+  const h = await fixture({ policy: { wholeVault: true, rootIds: [], excludedIds: ['private'], allowWrites: true }, writesReleased: true, markdown }); await h.initialize()
+  const args = { operationId: 'md-create', parentId: 'root', kind: 'page', metadata: { title: 'from markdown', tags: [], favorite: false }, markdown: 'first line\nsecond line فارسی' }
+  const created = await h.call('create_document', args); assert.equal(created.ok, true, JSON.stringify(created))
+  const read = await h.call('read_document', { documentId: created.result.documentId, target: { kind: 'full' }, format: 'markdown' })
+  assert.match(JSON.stringify(read), /second line فارسی/)
+  assert.equal((await h.call('create_document', args)).result.replayed, true)
+  const both = await h.call('create_document', { ...args, operationId: 'md-both', content: { type: 'doc', content: [{ type: 'paragraph' }] } }); assert.equal(both.ok, false); assert.equal(both.error.code, 'INVALID_ARGUMENT')
+  const neither = { ...args, operationId: 'md-neither' }; delete neither.markdown
+  assert.equal((await h.call('create_document', neither)).error.code, 'INVALID_ARGUMENT')
+  const edit = { documentId: created.result.documentId, operationId: 'md-edit', expectedRevision: created.result.revision, mode: 'apply', operations: [{ kind: 'insert_markdown', at: { position: 'end', parent: null }, markdown: 'appended by markdown' }] }
+  const edited = await h.call('edit_document', edit); assert.equal(edited.ok, true, JSON.stringify(edited))
+  assert.match(JSON.stringify(await h.call('read_document', { documentId: created.result.documentId, target: { kind: 'full' }, format: 'markdown' })), /appended by markdown/)
+  const plain = await fixture({ policy: { wholeVault: true, rootIds: [], excludedIds: [], allowWrites: true }, writesReleased: true }); await plain.initialize()
+  assert.equal((await plain.call('create_document', args)).error.code, 'CAPABILITY_UNAVAILABLE')
+})
+
+test('pages saved as an HTML string by old versions are converted once and become readable with stable block ids', async () => {
+  const legacy = { ...page('legacy'), content: '<p>old فارسی page</p>' }
+  const storage = new MemoryDocumentStorage('fixed', [legacy])
+  const host = { now: () => 100, createId: () => 'x', defer: () => () => {}, emit() {}, report() {}, legacyHtmlToDoc: html => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: html.replace(/<[^>]+>/g, '') }] }] }) }
+  const service = new DocumentService({ storage, host }); await service.init()
+  const session = new McpDocumentSession(service, { vaultId: 'vault', grantId: 'grant', revision: 'revision', policy: { wholeVault: true, rootIds: [], excludedIds: [], allowWrites: false } }, { now: () => 100, cursorId: randomUUID, digest }, () => true, false)
+  const send = (message) => session.dispatch(message, { id: randomUUID(), expiresAt: 1100, active: () => true })
+  await send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: MCP_PROTOCOL, clientInfo: { name: 'test', version: '1' }, capabilities: {} } })
+  await send({ jsonrpc: '2.0', method: 'notifications/initialized' })
+  const read = await send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'read_document', arguments: { documentId: 'legacy', target: { kind: 'full' }, format: 'markdown' } } })
+  assert.equal(read.result.structuredContent.ok, true, JSON.stringify(read.result.structuredContent))
+  assert.match(JSON.stringify(read.result.structuredContent), /old فارسی page/)
+})
+
+test('database tools list, describe and read rows as plain values, and respect the document scope', async () => {
+  const { DatabaseService: DbService } = await import('../spike/tiptap/src/database/service.ts')
+  const { MemoryPages } = await import('../spike/tiptap/src/database/state.ts')
+  const { MemoryStorage } = await import('../spike/tiptap/src/database/storage/memory.ts')
+  const { MemoryPageHost } = await import('../spike/tiptap/src/database/fixtures.ts')
+  const { createDatabaseTools } = await import('../spike/tiptap/src/database/mcpTools.ts')
+  const dbPages = new MemoryPages()
+  const dbService = new DbService({ vaultId: 'v', storage: new MemoryStorage(dbPages), pages: dbPages, host: new MemoryPageHost(dbPages), deviceId: 'D1', zone: 'UTC' })
+  await dbService.open()
+  const created = await dbService.one('database.create', { title: 'Bugs' })
+  const severity = (await dbService.one('property.create', { sourceId: created.sourceId, name: 'Severity', kind: 'select', config: { options: [{ name: 'Low' }, { name: 'High' }] } })).propertyId
+  const hours = (await dbService.one('property.create', { sourceId: created.sourceId, name: 'Hours', kind: 'number' })).propertyId
+  const high = dbService.state.get('property', severity).config.options[1].id
+  for (let i = 0; i < 3; i++) await dbService.one('row.create', { sourceId: created.sourceId, title: `Bug ${i}`, explicitValues: { [severity]: { kind: 'select', optionId: high }, [hours]: { kind: 'number', value: i + 1 } } })
+
+  const open = async excludedIds => {
+    const storage = new MemoryDocumentStorage('fixed', [page(created.hostPageId)])
+    const host = { now: () => 100, createId: () => 'x', defer: () => () => {}, emit() {}, report() {} }
+    const service = new DocumentService({ storage, host }); await service.init()
+    const session = new McpDocumentSession(service, { vaultId: 'vault', grantId: 'grant', revision: 'revision', policy: { wholeVault: true, rootIds: [], excludedIds, allowWrites: false } }, { now: () => 100, cursorId: randomUUID, digest }, () => true, false, undefined, createDatabaseTools(async () => dbService))
+    let n = 0
+    const send = message => session.dispatch(message, { id: randomUUID(), expiresAt: 1100, active: () => true })
+    await send({ jsonrpc: '2.0', id: ++n, method: 'initialize', params: { protocolVersion: MCP_PROTOCOL, clientInfo: { name: 'test', version: '1' }, capabilities: {} } })
+    await send({ jsonrpc: '2.0', method: 'notifications/initialized' })
+    const checks = Object.fromEntries(['list_databases', 'describe_database', 'query_database_rows'].map(name => [name, new Ajv({ strict: true }).compile(documentToolContracts[name].outputSchema)]))
+    return async (name, args = {}) => {
+      const out = (await send({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name, arguments: args } })).result.structuredContent
+      assert.ok(checks[name](out), JSON.stringify(checks[name].errors) + JSON.stringify(out)); return out
+    }
+  }
+  const call = await open([])
+  const listed = await call('list_databases'); assert.equal(listed.ok, true)
+  assert.deepEqual(listed.result.databases.map(d => [d.name, d.rowCount, d.documentId]), [['Bugs', 3, created.hostPageId]])
+  const described = await call('describe_database', { sourceId: created.sourceId })
+  assert.deepEqual(described.result.properties.find(p => p.name === 'Severity').options.map(o => o.name), ['Low', 'High'])
+  const rows = await call('query_database_rows', { sourceId: created.sourceId, limit: 2 })
+  assert.equal(rows.result.rows.length, 2); assert.equal(rows.result.truncated, true); assert.equal(rows.result.total, 3)
+  assert.deepEqual(rows.result.rows[0].values[severity], ['High'])
+  const next = await call('query_database_rows', { sourceId: created.sourceId, limit: 2, cursor: rows.result.nextCursor })
+  assert.equal(next.result.rows.length, 1); assert.equal(next.result.nextCursor, null)
+  assert.equal((await call('query_database_rows', { sourceId: created.sourceId, limit: 500 })).error.code, 'INVALID_ARGUMENT')
+  assert.equal((await call('describe_database', { sourceId: 'nope' })).error.code, 'NOT_FOUND')
+
+  const hidden = await open([created.hostPageId])
+  assert.deepEqual((await hidden('list_databases')).result.databases, [])
+  assert.equal((await hidden('describe_database', { sourceId: created.sourceId })).error.code, 'NOT_FOUND')
+  assert.equal((await hidden('query_database_rows', { sourceId: created.sourceId })).error.code, 'NOT_FOUND')
+})
+
+test('database write tools build a database with fake records, replay safely, reject bad values and honour the write grant', async () => {
+  const { DatabaseService: DbService } = await import('../spike/tiptap/src/database/service.ts')
+  const { MemoryPages } = await import('../spike/tiptap/src/database/state.ts')
+  const { MemoryStorage } = await import('../spike/tiptap/src/database/storage/memory.ts')
+  const { MemoryPageHost } = await import('../spike/tiptap/src/database/fixtures.ts')
+  const { createDatabaseTools } = await import('../spike/tiptap/src/database/mcpTools.ts')
+  const dbPages = new MemoryPages()
+  const dbService = new DbService({ vaultId: 'v', storage: new MemoryStorage(dbPages), pages: dbPages, host: new MemoryPageHost(dbPages), deviceId: 'D1', zone: 'UTC' })
+  await dbService.open()
+  const open = async (allowWrites, known = []) => {
+    const service = new DocumentService({ storage: new MemoryDocumentStorage('fixed', [page('anchor'), ...known.map(id => page(id))]), host: { now: () => 100, createId: () => 'x', defer: () => () => {}, emit() {}, report() {} } }); await service.init()
+    const session = new McpDocumentSession(service, { vaultId: 'vault', grantId: 'grant', revision: 'revision', policy: { wholeVault: true, rootIds: [], excludedIds: [], allowWrites } }, { now: () => 100, cursorId: randomUUID, digest }, () => true, allowWrites, undefined, createDatabaseTools(async () => dbService))
+    let n = 0
+    const send = message => session.dispatch(message, { id: randomUUID(), expiresAt: 1100, active: () => true })
+    await send({ jsonrpc: '2.0', id: ++n, method: 'initialize', params: { protocolVersion: MCP_PROTOCOL, clientInfo: { name: 'test', version: '1' }, capabilities: {} } })
+    await send({ jsonrpc: '2.0', method: 'notifications/initialized' })
+    const checks = Object.fromEntries(['create_database', 'add_database_rows'].map(name => [name, new Ajv({ strict: true }).compile(documentToolContracts[name].outputSchema)]))
+    return async (name, args) => {
+      const out = (await send({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name, arguments: args } })).result.structuredContent
+      assert.ok(checks[name](out), JSON.stringify(checks[name].errors) + JSON.stringify(out)); return out
+    }
+  }
+  const call = await open(true)
+  const fakeRows = Array.from({ length: 25 }, (_, i) => ({ title: `Fake customer ${i + 1}`, values: { Plan: ['Free', 'Pro', 'Team'][i % 3], Seats: i + 1, Active: i % 2 === 0, Tags: ['demo', 'fake'], Site: `https://example.com/${i}`, Signup: `2026-01-${String(i % 28 + 1).padStart(2, '0')}`, Notes: `نمونه ${i + 1}` } }))
+  const args = {
+    operationId: 'fake-db', parentId: null, title: 'Fake customers',
+    properties: [{ name: 'Plan', kind: 'select', options: ['Free', 'Pro', 'Team'] }, { name: 'Seats', kind: 'number' }, { name: 'Active', kind: 'checkbox' }, { name: 'Tags', kind: 'multi_select', options: ['demo', 'fake'] }, { name: 'Site', kind: 'url' }, { name: 'Signup', kind: 'date' }, { name: 'Notes', kind: 'text' }],
+    rows: fakeRows,
+  }
+  const created = await call('create_database', args); assert.equal(created.ok, true, JSON.stringify(created))
+  assert.equal(created.result.rowIds.length, 25); assert.equal(created.result.properties.length, 8) // 7 + the title column
+  const result = dbService.query(created.result.sourceId, { limit: 100 })
+  assert.equal(result.total, 25)
+  const plan = created.result.properties.find(p => p.name === 'Plan').propertyId
+  const probe = dbService.query(created.result.sourceId, { limit: 3, projection: [plan] })
+  assert.deepEqual(probe.rows[0].values[plan].ids.length, 1)
+
+  const again = await call('create_database', args); assert.equal(again.ok, true)
+  assert.equal(again.result.sourceId, created.result.sourceId)
+  assert.equal(dbService.query(created.result.sourceId, { limit: 100 }).total, 25, 'replay must not duplicate rows')
+  assert.equal(dbService.state.live('source').filter(s => s.name === 'Fake customers').length, 1, 'replay must not duplicate the database')
+
+  // in the app the new host page reaches the document scope through the shared page store; the test reopens the session to model that
+  const call2 = await open(true, [created.result.pageId])
+  const more = await call2('add_database_rows', { operationId: 'more-rows', sourceId: created.result.sourceId, rows: [{ title: 'Extra', values: { Plan: 'Pro', Seats: 99 } }] })
+  assert.equal(more.ok, true, JSON.stringify(more)); assert.equal(more.result.rowIds.length, 1)
+  assert.equal(dbService.query(created.result.sourceId, { limit: 100 }).total, 26)
+
+  const bad = await call2('add_database_rows', { operationId: 'bad-rows', sourceId: created.result.sourceId, rows: [{ title: 'Ok', values: { Seats: 1 } }, { title: 'Bad', values: { Plan: 'Platinum' } }] })
+  assert.equal(bad.ok, false); assert.equal(bad.error.code, 'INVALID_ARGUMENT')
+  assert.equal(dbService.query(created.result.sourceId, { limit: 100 }).total, 26, 'a rejected batch writes nothing')
+  assert.equal((await call2('add_database_rows', { operationId: 'unknown-prop', sourceId: created.result.sourceId, rows: [{ title: 'x', values: { Nope: 1 } }] })).error.code, 'INVALID_ARGUMENT')
+  assert.equal((await call('create_database', { operationId: 'dup-names', parentId: null, title: 'x', properties: [{ name: 'A', kind: 'text' }, { name: 'a', kind: 'text' }] })).error.code, 'INVALID_ARGUMENT')
+  assert.equal((await call('create_database', { operationId: 'formula', parentId: null, title: 'x', properties: [{ name: 'F', kind: 'text' }] })).ok, true)
+
+  const readOnly = await open(false, [created.result.pageId])
+  assert.equal((await readOnly('create_database', { operationId: 'ro', parentId: null, title: 'nope' })).error.code, 'ACCESS_DENIED')
+  assert.equal((await readOnly('add_database_rows', { operationId: 'ro2', sourceId: created.result.sourceId, rows: [{ title: 'nope' }] })).error.code, 'ACCESS_DENIED')
+})
+
+const writePolicy = { wholeVault: true, rootIds: [], excludedIds: ['private'], allowWrites: true }
+
+test('markdown converted by the real editor carries empty attributes; they are cleaned so create succeeds', async () => {
+  const markdown = text => [{ type: 'paragraph', attrs: { blockId: null, dir: 'auto', textAlign: null }, content: [{ type: 'text', text, marks: [{ type: 'link', attrs: { href: 'https://example.com', target: null } }] }] }]
+  const h = await fixture({ policy: writePolicy, writesReleased: true, markdown }); await h.initialize()
+  const created = await h.call('create_document', { operationId: 'md-empty-attrs', parentId: 'root', kind: 'page', metadata: { title: 'attrs', tags: [], favorite: false }, markdown: 'hello' })
+  assert.equal(created.ok, true, JSON.stringify(created))
+  const inserted = await h.call('edit_document', { documentId: created.result.documentId, expectedRevision: created.result.revision, operationId: 'md-insert-attrs', mode: 'apply', operations: [{ kind: 'insert_markdown', at: { position: 'end', parent: null }, markdown: 'more' }] })
+  assert.equal(inserted.ok, true, JSON.stringify(inserted))
+})
+
+test('a folder needs no content, and a folder with a body names the content field', async () => {
+  const h = await fixture({ policy: writePolicy, writesReleased: true }); await h.initialize()
+  const folder = await h.call('create_document', { operationId: 'folder-plain', parentId: null, kind: 'folder', metadata: { title: 'Plan', tags: [], favorite: false } })
+  assert.equal(folder.ok, true, JSON.stringify(folder))
+  const body = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'not allowed' }] }] }
+  const bad = await h.call('create_document', { operationId: 'folder-body', parentId: null, kind: 'folder', metadata: { title: 'Plan', tags: [], favorite: false }, content: body })
+  assert.equal(bad.ok, false); assert.equal(bad.error.code, 'UNSUPPORTED_CONTENT'); assert.equal(bad.error.details.field, 'content')
+})
+
+test('page icons are limited to the app icons, list_icons finds them, and null clears', async () => {
+  const known = { rocket: 'rocket launch', home: 'home house' }
+  const icons = {
+    valid: icon => { const [name, color] = icon.startsWith('i:') ? icon.slice(2).split('@') : [null]; return !!name && Object.hasOwn(known, name) && (color === undefined || /^#[0-9a-f]{6}$/i.test(color)) },
+    search: (query, limit) => { const found = Object.entries(known).filter(([name, words]) => !query || name.includes(query) || words.includes(query)); return { icons: found.slice(0, limit).map(([name, keywords]) => ({ name, icon: 'i:' + name, keywords })), total: found.length } },
+  }
+  const h = await fixture({ policy: writePolicy, writesReleased: true, icons }); await h.initialize()
+  const found = await h.call('list_icons', { query: 'rocket' })
+  assert.deepEqual(found.result, { icons: [{ name: 'rocket', icon: 'i:rocket', keywords: 'rocket launch' }], total: 1, truncated: false })
+  const page = (operationId, icon) => h.call('create_document', { operationId, parentId: 'root', kind: 'page', metadata: { title: 'icon', tags: [], favorite: false, icon }, content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'x' }] }] } })
+  assert.equal((await page('icon-ok', 'i:rocket')).ok, true)
+  assert.equal((await page('icon-color', 'i:home@#0f8f83')).ok, true)
+  for (const [index, bad] of ['🚀', 'rocket', 'i:no-such-icon', 'i:rocket@red'].entries()) {
+    const result = await page('icon-bad-' + index, bad)
+    assert.equal(result.ok, false, bad); assert.equal(result.error.code, 'INVALID_ARGUMENT'); assert.equal(result.error.details.field, 'icon')
+  }
+  const created = await page('icon-for-patch', 'i:rocket')
+  const patch = (operationId, icon, revision) => h.call('update_document_metadata', { documentId: created.result.documentId, expectedRevision: revision, operationId, patch: { icon } })
+  const refused = await patch('patch-bad', '🚀', created.result.revision)
+  assert.equal(refused.ok, false); assert.equal(refused.error.details.field, 'icon')
+  const cleared = await patch('patch-null', null, created.result.revision)
+  assert.equal(cleared.ok, true, JSON.stringify(cleared))
+})
+
+test('list_icons is unavailable when the host supplies no icon catalog', async () => {
+  const h = await fixture({ policy: writePolicy, writesReleased: true }); await h.initialize()
+  const result = await h.call('list_icons', {})
+  assert.equal(result.ok, false); assert.equal(result.error.code, 'CAPABILITY_UNAVAILABLE')
+})
+
+test('database tools change, trash, restore and extend an existing database; other databases and read-only grants are refused', async () => {
+  const { DatabaseService: DbService } = await import('../spike/tiptap/src/database/service.ts')
+  const { MemoryPages } = await import('../spike/tiptap/src/database/state.ts')
+  const { MemoryStorage } = await import('../spike/tiptap/src/database/storage/memory.ts')
+  const { MemoryPageHost } = await import('../spike/tiptap/src/database/fixtures.ts')
+  const { createDatabaseTools } = await import('../spike/tiptap/src/database/mcpTools.ts')
+  const dbPages = new MemoryPages()
+  const dbService = new DbService({ vaultId: 'v', storage: new MemoryStorage(dbPages), pages: dbPages, host: new MemoryPageHost(dbPages), deviceId: 'D1', zone: 'UTC' })
+  await dbService.open()
+  const names = ['create_database', 'update_database_rows', 'trash_database_rows', 'restore_database_rows', 'add_database_property', 'query_database_rows']
+  const open = async (allowWrites, known = []) => {
+    const service = new DocumentService({ storage: new MemoryDocumentStorage('fixed', [page('anchor'), ...known.map(id => page(id))]), host: { now: () => 100, createId: () => 'x', defer: () => () => {}, emit() {}, report() {} } }); await service.init()
+    const session = new McpDocumentSession(service, { vaultId: 'vault', grantId: 'grant', revision: 'revision', policy: { wholeVault: true, rootIds: [], excludedIds: [], allowWrites } }, { now: () => 100, cursorId: randomUUID, digest }, () => true, allowWrites, undefined, createDatabaseTools(async () => dbService))
+    let n = 0
+    const send = message => session.dispatch(message, { id: randomUUID(), expiresAt: 1100, active: () => true })
+    await send({ jsonrpc: '2.0', id: ++n, method: 'initialize', params: { protocolVersion: MCP_PROTOCOL, clientInfo: { name: 'test', version: '1' }, capabilities: {} } })
+    await send({ jsonrpc: '2.0', method: 'notifications/initialized' })
+    const checks = Object.fromEntries(names.map(name => [name, new Ajv({ strict: true }).compile(documentToolContracts[name].outputSchema)]))
+    return async (name, args) => {
+      const out = (await send({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name, arguments: args } })).result.structuredContent
+      assert.ok(checks[name](out), JSON.stringify(checks[name].errors) + JSON.stringify(out)); return out
+    }
+  }
+  // a session sees a database only through its host page, so the page is made known to the second session
+  const first = await open(true)
+  const made = await first('create_database', { operationId: 'chg-db', parentId: null, title: 'Customers', properties: [{ name: 'Plan', kind: 'select', options: ['Free', 'Pro'] }, { name: 'Seats', kind: 'number' }], rows: [{ title: 'Acme', values: { Plan: 'Free', Seats: 1 } }, { title: 'Globex', values: { Plan: 'Free', Seats: 2 } }] })
+  assert.equal(made.ok, true, JSON.stringify(made))
+  const other = await first('create_database', { operationId: 'chg-other', parentId: null, title: 'Other', rows: [{ title: 'Elsewhere' }] })
+  const call = await open(true, [made.result.pageId, other.result.pageId])
+  const sourceId = made.result.sourceId, [a, b] = made.result.rowIds
+  const props = Object.fromEntries(made.result.properties.map(p => [p.name, p.propertyId]))
+  const read = async () => (await call('query_database_rows', { sourceId })).result.rows
+  const rowOf = async id => (await read()).find(r => r.pageId === id)
+
+  const updated = await call('update_database_rows', { operationId: 'chg-1', sourceId, rows: [{ pageId: a, title: 'Acme Inc', values: { Plan: 'Pro', Seats: 50 } }, { pageId: b, values: { Seats: null } }] })
+  assert.equal(updated.ok, true, JSON.stringify(updated)); assert.equal(updated.result.count, 2)
+  const rowA = await rowOf(a)
+  assert.equal(rowA.title, 'Acme Inc'); assert.deepEqual(rowA.values[props.Plan], ['Pro']); assert.equal(rowA.values[props.Seats], 50)
+  assert.equal((await rowOf(b)).values[props.Seats] ?? null, null, 'null clears a value')
+  assert.equal((await call('update_database_rows', { operationId: 'chg-1', sourceId, rows: [{ pageId: a, title: 'Acme Inc', values: { Plan: 'Pro', Seats: 50 } }, { pageId: b, values: { Seats: null } }] })).ok, true, 'replay')
+
+  const bad = await call('update_database_rows', { operationId: 'chg-bad', sourceId, rows: [{ pageId: a, values: { Seats: 1 } }, { pageId: b, values: { Plan: 'Platinum' } }] })
+  assert.equal(bad.ok, false); assert.equal(bad.error.code, 'INVALID_ARGUMENT')
+  assert.equal((await rowOf(a)).values[props.Seats], 50, 'a rejected batch changes nothing')
+
+  const foreign = await call('update_database_rows', { operationId: 'chg-foreign', sourceId, rows: [{ pageId: other.result.rowIds[0], title: 'hijack' }] })
+  assert.equal(foreign.ok, false); assert.equal(foreign.error.code, 'NOT_FOUND')
+  assert.equal((await call('trash_database_rows', { operationId: 'chg-foreign-trash', sourceId, pageIds: [other.result.rowIds[0]] })).error.code, 'NOT_FOUND')
+
+  const total = () => dbService.query(sourceId, { limit: 100 }).total
+  assert.equal(total(), 2)
+  const trashed = await call('trash_database_rows', { operationId: 'chg-trash', sourceId, pageIds: [a] })
+  assert.equal(trashed.ok, true, JSON.stringify(trashed)); assert.equal(total(), 1)
+  const restored = await call('restore_database_rows', { operationId: 'chg-restore', sourceId, pageIds: [a] })
+  assert.equal(restored.ok, true, JSON.stringify(restored)); assert.equal(total(), 2)
+
+  const added = await call('add_database_property', { operationId: 'chg-prop', sourceId, name: 'Notes', kind: 'text' })
+  assert.equal(added.ok, true, JSON.stringify(added)); assert.ok(added.result.properties.some(p => p.name === 'Notes'))
+  assert.equal((await call('add_database_property', { operationId: 'chg-prop-dup', sourceId, name: 'notes', kind: 'text' })).error.code, 'INVALID_ARGUMENT')
+  assert.equal((await call('update_database_rows', { operationId: 'chg-notes', sourceId, rows: [{ pageId: a, values: { Notes: 'hello' } }] })).ok, true)
+
+  const readOnly = await open(false, [made.result.pageId, other.result.pageId])
+  for (const [name, args] of [['update_database_rows', { operationId: 'ro-1', sourceId, rows: [{ pageId: a, title: 'x' }] }], ['trash_database_rows', { operationId: 'ro-2', sourceId, pageIds: [a] }], ['restore_database_rows', { operationId: 'ro-3', sourceId, pageIds: [a] }], ['add_database_property', { operationId: 'ro-4', sourceId, name: 'Z', kind: 'text' }]]) {
+    assert.equal((await readOnly(name, args)).error.code, 'ACCESS_DENIED', name)
+  }
+})
+
+test('list_tags and get_document_links report only what the grant may see', async () => {
+  const h = await fixture({ policy: { wholeVault: true, rootIds: [], excludedIds: ['private'], allowWrites: true }, writesReleased: true }); await h.initialize()
+  const body = (...ids) => ({ type: 'doc', content: ids.length ? ids.map(id => ({ type: 'paragraph', content: [{ type: 'pageLink', attrs: { id } }] })) : [{ type: 'paragraph' }] })
+  const make = async (operationId, title, tags, content) => { const made = await h.call('create_document', { operationId, parentId: 'root', kind: 'page', metadata: { title, tags, favorite: false }, content }); assert.equal(made.ok, true, JSON.stringify(made)); return made.result.documentId }
+  const target = await make('lt-1', 'Target', ['java', 'notes'], body())
+  const source = await make('lt-2', 'Source', ['java'], body(target))
+  const tags = await h.call('list_tags', {})
+  assert.deepEqual(tags.result.tags, [{ name: 'java', count: 2 }, { name: 'notes', count: 1 }]); assert.equal(tags.result.total, 2)
+  assert.equal((await h.call('list_tags', { limit: 1 })).result.truncated, true)
+  const links = await h.call('get_document_links', { documentId: source })
+  assert.deepEqual(links.result.outgoing, [{ documentId: target, title: 'Target' }])
+  const toHidden = await h.call('create_document', { operationId: 'lt-3', parentId: 'root', kind: 'page', metadata: { title: 'Bad', tags: [], favorite: false }, content: body('private') })
+  assert.equal(toHidden.error.code, 'ACCESS_DENIED', 'a new link to a hidden page is refused, so none can leak through get_document_links')
+  const back = await h.call('get_document_links', { documentId: target })
+  assert.deepEqual(back.result.backlinks, [{ documentId: source, title: 'Source' }])
+  assert.equal((await h.call('get_document_links', { documentId: 'private' })).error.code, 'NOT_FOUND')
+})
+
+test('a write whose letters were already turned into question marks is refused with a clear message and saves nothing', async () => {
+  const markdown = text => text.split('\n').filter(Boolean).map(line => ({ type: 'paragraph', content: [{ type: 'text', text: line }] }))
+  const h = await fixture({ policy: { wholeVault: true, rootIds: [], excludedIds: [], allowWrites: true }, writesReleased: true, markdown }); await h.initialize()
+  const args = { operationId: 'lost-create', parentId: 'root', kind: 'page', metadata: { title: '????? ????? ????? NGDIR', tags: [], favorite: false }, markdown: 'first line\n????? ????? ????? ????' }
+  const refused = await h.call('create_document', args)
+  assert.equal(refused.ok, false); assert.equal(refused.error.code, 'INVALID_ARGUMENT'); assert.match(refused.error.message, /UTF-8/)
+  assert.equal(refused.error.retryable, false)
+  // the same request with the real letters is saved, so nothing was left half done under that operation id
+  const fixed = await h.call('create_document', { ...args, metadata: { ...args.metadata, title: 'پیوست NGDIR' }, markdown: 'first line\nسلام دنیا' })
+  assert.equal(fixed.ok, true, JSON.stringify(fixed))
+})
+
+
+test('stable release hides deck tools and rejects direct deck calls without changing stored content', async () => {
+  const h = await fixture({writesReleased:true,policy:{wholeVault:true,rootIds:[],excludedIds:[],allowWrites:true}})
+  await h.initialize()
+  const before=structuredClone(await h.service.persistedPages())
+  const listed=(await h.rpc('tools/list')).result.tools
+  for(const name of ['list_decks','read_deck','export_deck_pdf','create_deck','edit_deck']) {
+    assert.ok(!listed.some(tool=>tool.name===name))
+    assert.equal((await h.rpc('tools/call',{name,arguments:{}})).error.code,-32602)
+  }
+  assert.deepEqual(await h.service.persistedPages(),before)
+  assert.throws(()=>h.service.create(null,'deck'),/disabled/)
+})

@@ -1,9 +1,12 @@
 // Full-screen editor for the "Drawing" block. Loaded on demand (it pulls in the whole library).
-import { useRef, useState } from 'react'
+import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
+import { useEffect, useRef, useState } from 'react'
+import { registerUpdateSave } from './updateSave'
 import { createRoot } from 'react-dom/client'
 import DrawingCanvas from './DrawingCanvas'
 import { saveScene, type SceneData } from './editor/excalidraw'
 import { t } from './i18n'
+import { Button } from './design-system'
 
 /** Stored file ids of the finished drawing (both empty for a cleared canvas). */
 export interface DrawingResult {
@@ -12,8 +15,15 @@ export interface DrawingResult {
 }
 
 function DrawingEditor({ initial, onClose }: { initial: SceneData | null; onClose: (r: DrawingResult | null) => void }) {
-  const api = useRef<any>(null)
+  const api = useRef<ExcalidrawImperativeAPI | null>(null)
   const [saving, setSaving] = useState(false)
+  useEffect(
+    () =>
+      registerUpdateSave(() => {
+        throw new Error('Finish the open drawing before restarting')
+      }),
+    [],
+  )
 
   const done = async () => {
     if (!api.current || saving) return
@@ -43,12 +53,12 @@ function DrawingEditor({ initial, onClose }: { initial: SceneData | null; onClos
       <div className="drawing-bar">
         <strong>{t('Drawing')}</strong>
         <span className="drawing-hint">{t('Ctrl+Enter save')}</span>
-        <button type="button" className="drawing-cancel" onClick={() => onClose(null)}>
+        <Button size="sm" onClick={() => onClose(null)}>
           {t('Cancel')}
-        </button>
-        <button type="button" className="drawing-done" onClick={() => void done()} disabled={saving}>
+        </Button>
+        <Button size="sm" variant="primary" onClick={() => void done()} disabled={saving}>
           {saving ? t('Saving…') : t('Done')}
-        </button>
+        </Button>
       </div>
       <div className="drawing-stage" dir="ltr">
         <DrawingCanvas initial={initial} onApi={(a) => (api.current = a)} />

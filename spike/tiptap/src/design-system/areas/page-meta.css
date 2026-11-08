@@ -1,0 +1,92 @@
+
+/* ───────── sidebar tags: a cloud of tinted chips ───────── */
+.section-n { margin-inline-start: var(--ds-s2); min-width: 18px; padding: 0 var(--ds-s2); border-radius: var(--ds-r-full); background: var(--ds-hover); color: var(--ds-text-3); font-size: var(--ds-text-caption); font-weight: 700; letter-spacing: 0; text-align: center; line-height: 18px; }
+.section .section-n + svg { margin-inline-start: auto; }
+.tagbox { padding: var(--ds-s1) 2px 2px; }
+.tagcloud { display: flex; flex-wrap: wrap; gap: var(--ds-s2); }
+.tagchip { --c: light-dark(oklch(0.5 0.17 var(--hue, 270)), oklch(0.82 0.12 var(--hue, 270))); display: inline-flex; align-items: center; gap: var(--ds-s1); max-width: 100%; height: var(--ds-control-sm); padding: 0 var(--ds-s2) 0 var(--ds-s2); border-radius: var(--ds-r); background: color-mix(in srgb, var(--c) 10%, transparent); color: var(--c); font-size: var(--ds-text-small); font-weight: 600; cursor: var(--cursor-hand, pointer); transition: transform var(--ds-base) var(--ds-spring), background var(--ds-fast), box-shadow var(--ds-base); border: 0; padding-inline: var(--ds-s2); }
+.tagchip:hover { background: color-mix(in srgb, var(--c) 18%, transparent); transform: translateY(-1px); }
+.tagchip-h { place-items: center; border-radius: var(--ds-r-sm); line-height: 1; inline-size: auto; block-size: auto; background: none; font-size: inherit; font-weight: 500; opacity: 0.6; display: none; }
+.tagchip-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tagchip-n { font-variant-numeric: tabular-nums; font-weight: 500; font-size: var(--ds-text-caption); opacity: 0.7; }
+.tagchip.on { background: var(--c); border-color: transparent; color: var(--ds-bg); box-shadow: 0 4px 14px color-mix(in srgb, var(--c) 40%, transparent); }
+.tagchip.on .tagchip-h { color: inherit; background: none; }
+.tagchip.more { border-style: dashed; padding: 0 var(--ds-s3); font-weight: 500; --c: var(--ds-text-3); background: none; border: 1px dashed var(--ds-line-strong); }
+.tagres { margin-top: var(--ds-s3); padding: var(--ds-s2); border: 1px solid var(--ds-line); border-color: var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); animation: none; }
+.tagres-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-s2); padding: var(--ds-s1) var(--ds-s2) var(--ds-s2); font-size: var(--ds-text-caption); color: var(--ds-text-3); }
+.tagres-head b { color: var(--ds-text); font-weight: 700; }
+.tagres-head button { display: grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: var(--ds-r-sm); background: transparent; color: var(--ds-text-2); cursor: var(--cursor-hand, pointer); }
+.tagres-head button:hover { background: var(--ds-hover); color: var(--ds-text); }
+.tagres .row { min-height: 32px; margin: 1px 0; }
+
+/* ───────── page tree: folders with a count, children hung on a guide line ───────── */
+.row.tree { padding-inline-start: var(--ds-s1); }
+.row.tree.folder { color: var(--ds-text); font-weight: 550; }
+.row.tree.folder .ic { color: var(--ds-text-2); }
+.tree-count { flex: none; padding-inline: var(--ds-s2); font-size: var(--ds-text-caption); font-weight: 600; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; color: var(--ds-text-3); }
+/* a row is as wide at rest as under the pointer: the actions float over the end of the title and the count keeps its
+   place, so a hover never widens the tree, brings the rail in and pushes the row out from under the pointer.
+   The actions have no box of their own (a second background on top of the row's hover looked like a pill inside it):
+   the end of the title fades out under them instead. */
+.row:hover .tree-count, .row:focus-within .tree-count { visibility: hidden; }
+.tree-in .row .acts { position: absolute; inset-block: 0; inset-inline-end: var(--ds-s1); margin: 0; padding: 0; background: none; }
+.tree-in .row { --acts-w: calc(2 * var(--ds-control-sm) + 3 * var(--ds-s1)); }
+.tree-in .row:hover .ntitle, .tree-in .row:focus-within .ntitle { mask-image: linear-gradient(to left, transparent var(--acts-w), var(--ds-text) calc(var(--acts-w) + var(--ds-s4))); }
+@media (hover: none) { .tree-in .row .ntitle { mask-image: linear-gradient(to left, transparent var(--acts-w), var(--ds-text) calc(var(--acts-w) + var(--ds-s4))); } }
+/* the side the tools sit on follows the interface direction, never the direction of the title's own text (an English title in the Persian interface still ends under the tools on the left) */
+:root[dir='rtl'] .tree-in .row:hover .ntitle, :root[dir='rtl'] .tree-in .row:focus-within .ntitle { mask-image: linear-gradient(to right, transparent var(--acts-w), var(--ds-text) calc(var(--acts-w) + var(--ds-s4))); }
+@media (hover: none) { :root[dir='rtl'] .tree-in .row .ntitle { mask-image: linear-gradient(to right, transparent var(--acts-w), var(--ds-text) calc(var(--acts-w) + var(--ds-s4))); } }
+.tree-kids { position: relative; margin-inline-start: var(--ds-s4); padding-inline-start: var(--ds-s2); border-inline-start: 1px solid var(--ds-line-strong);
+  border-inline-start-color: transparent; }
+/* only a deep tree scrolls sideways: each title keeps at least 72px (a few letters and the ellipsis), so a normal tree
+   in a normal sidebar fits without a scrollbar */
+.tree-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: var(--ds-s1); }
+.tree-in { width: max-content; min-width: 100%; }
+.tree-in .row.tree .ntitle { flex: 1 1 0; width: 0; min-width: 72px; }
+.row.tree.leaf { min-height: var(--ds-control); font-weight: 450; }
+/* a page without sub-pages keeps its icon; the empty twisty keeps its place so its title lines up with its siblings */
+.row.tree.leaf .twisty { visibility: hidden; }
+.row.tree.leaf.cur::before { inset-inline-start: -9px; top: 8px; bottom: 8px; }
+.row.tree.folder.cur { background: transparent; color: var(--ds-accent); }
+.row.tree.folder.cur::before { display: none; }
+
+/* ───────── workspace card + dialog ───────── */
+.wscard { display: flex; align-items: center; gap: var(--ds-s3); width: 100%; margin: 0; padding: var(--ds-s2) var(--ds-s2); border: 1px solid transparent; border-radius: var(--ds-r); background: none; text-align: start; cursor: var(--cursor-hand, pointer); flex: none; box-shadow: none; transition: border-color var(--ds-base), box-shadow var(--ds-base);
+  margin-block-end: var(--ds-s2); }
+.wscard:hover { border-color: transparent; box-shadow: none;
+  background: var(--ds-hover); }
+.wscard-ic { display: grid; place-items: center; flex: none; width: 30px; height: var(--ds-control-sm); border-radius: var(--ds-r); background: var(--ds-accent-soft); color: var(--ds-accent); box-shadow: none; }
+.wscard-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wscard-tx b { font-size: var(--ds-text-small); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wscard-tx small { overflow: hidden; font-size: var(--ds-text-caption); font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ds-text-3); text-overflow: ellipsis; white-space: nowrap; } /* one line at any width, so the card, and the rail above it, keeps its height when the rail folds */
+.wscard-chev { display: grid; place-items: center; color: var(--ds-text-3); }
+.wsd-body { overflow: auto; padding: var(--ds-s4) var(--ds-s6) var(--ds-s6); }
+.wsd-tx { display: flex; flex-direction: column; gap: 1px; flex: 1; min-inline-size: 0; }
+.wsd-tx b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; font-size: var(--ds-text-ui); font-weight: 600; }
+.wsd-tx small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; font: 400 var(--ds-text-caption) var(--ds-font-mono); color: var(--ds-text-3); text-align: start; }
+.wsd-note { border-top: 1px solid var(--ds-line); line-height: 1.8; margin: var(--ds-s5) 0 0; padding: 0; border: 0; color: var(--ds-text-3); font-size: var(--ds-text-small); }
+/* workspace rows with an actions menu */
+.wsd-more { flex: none; width: 32px; height: 32px; border: 1px solid transparent; border-radius: var(--ds-r); background: none; color: var(--ds-text-2); font-size: var(--ds-text-section); line-height: 1; cursor: var(--cursor-hand, pointer); margin-inline-start: auto; }
+.wsd-more:hover:not(:disabled), .wsd-more[aria-expanded="true"] { border-color: var(--ds-line-strong); color: var(--ds-text); background: var(--ds-hover); }
+.wsd-tx small.wsd-bad { color: var(--ds-bad); }
+
+.sort-arrow { display: inline-flex; vertical-align: middle; }
+.sort-arrow.asc { transform: rotate(-90deg); }
+.sort-arrow.desc { transform: rotate(90deg); }
+
+/* compact page list: flat rows, no guide lines */
+.cmp-list { padding-bottom: var(--ds-s1); }
+.row.cmp-head { font-weight: 600; color: var(--ds-text); padding-inline-start: var(--ds-s1); }
+.cmp-path { font-style: normal; font-weight: 500; color: var(--ds-text-3); }
+.row.cmp-file { padding-inline-start: var(--ds-s8); min-height: 32px; font-weight: 400; }
+.row.cmp-head .ntitle, .row.cmp-file .ntitle { min-width: 0; }
+/* the same horizontal scroll as the tree: long names keep their width instead of being cut */
+.tree-in.cmp-list .row.cmp-head .ntitle, .tree-in.cmp-list .row.cmp-file .ntitle { flex: 1 1 0; width: 0; min-width: 72px; }
+.row.cmp-head.cur { background: transparent; color: var(--ds-accent); }
+.row.cmp-head.cur::before { display: none; }
+.row.cmp-file.cur::before { inset-inline-start: 18px; top: 8px; bottom: 8px; }
+
+/* folded from the former override layers (surfaces.css, screens.css) */
+.tagchip { border: 0; border-radius: var(--ds-r-full); box-shadow: none; transition: background var(--ds-fast), color var(--ds-fast); --c: light-dark(oklch(0.5 0.15 var(--hue, 270)), oklch(0.82 0.1 var(--hue, 270))); block-size: 22px; padding-inline: var(--ds-s2); gap: var(--ds-s1); background: color-mix(in oklab, var(--c) 13%, var(--ds-bg)); color: var(--c); font: 500 var(--ds-text-caption) var(--ds-font-ui); }
+.tagchip:hover { transform: none; background: color-mix(in oklab, var(--c) 20%, var(--ds-bg)); color: var(--c); }
+.tagchip.on { box-shadow: none; background: var(--c); color: var(--ds-bg); }
