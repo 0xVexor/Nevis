@@ -33,9 +33,16 @@ if (process.env.REQUIRE_AHEAD_OF) {
   try { execFileSync('git', ['merge-base', '--is-ancestor', base, 'HEAD']); }
   catch { requireThat(false, 'This branch is behind ' + base + '. Merge ' + base + ' into it first.'); }
   const previous = JSON.parse(execFileSync('git', ['show', base + ':' + root + 'package.json'], {encoding:'utf8'})).version;
-  const key = (v) => { const [core, pre = ''] = v.split('-'); const n = pre.match(/(d+)$/); return [...core.split('.').map(Number), pre ? 0 : 1, n ? Number(n[1]) : 0]; };
+  const key = (v) => { const [core, pre = ''] = v.split('-'); const n = pre.match(/(\d+)$/); return [...core.split('.').map(Number), pre ? 0 : 1, n ? Number(n[1]) : 0]; };
   const [a, b] = [key(version), key(previous)];
   const at = a.findIndex((n, i) => n !== b[i]);
   requireThat(at >= 0 && a[at] > b[at], 'Version ' + version + ' must be higher than ' + previous + ' on ' + base + '.');
+}
+if (version === '1.1.0') {
+  const features = JSON.parse(fs.readFileSync(root + 'release-features.json', 'utf8'));
+  requireThat(features.appearancePresets === false, 'Nevis 1.1.0 must keep named appearance presets disabled.');
+  requireThat(features.slides === false, 'Nevis 1.1.0 must keep slides disabled.');
+  requireThat(!fs.existsSync(root + 'src-tauri/src/server_auth.rs') && !fs.existsSync(root + 'src/cloud/AccountSettings.tsx'), 'Desktop server login must remain outside Nevis 1.1.0.');
+  requireThat(fs.existsSync(root + 'src/decks/model.ts') && fs.existsSync(root + 'src-tauri/src/deck_print.rs'), 'Disable slides without removing their implementation.');
 }
 console.log('Nevis ' + version + ': release metadata is consistent.');

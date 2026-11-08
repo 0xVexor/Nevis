@@ -1,3 +1,4 @@
+import { requireSlides } from '../releaseFeatures.ts'
 import type { DocNode } from '../docNode'
 import { createPortraitDeck } from '../decks/model.ts'
 import { decodeDeck, encodeDeck } from '../decks/storage.ts'
@@ -687,6 +688,7 @@ export class DocumentService implements PageRepo {
   // ───── mutations ─────
 
   create(parentId: string | null, kind: PageKind = 'page'): Page {
+    if (kind === 'deck') requireSlides()
     this.assertWritable()
     const sibs = this.pages.filter((p) => p.parentId === parentId)
     const page: Page = {

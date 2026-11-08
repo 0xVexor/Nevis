@@ -10,14 +10,14 @@ import { documentToolContracts } from '../spike/tiptap/src/documents/contracts.t
 const digest = async text => createHash('sha256').update(text).digest('hex')
 const body = text => ({ type: 'doc', attrs: { blockIdentityVersion: 1 }, content: [{ type: 'paragraph', attrs: { blockId: 'p1' }, content: [{ type: 'text', text }] }] })
 const page = (id, parentId = null) => ({ id, parentId, title: id, tags: [], favorite: false, sort: 0, updatedAt: 1, deletedAt: null, content: body(`فارسی saved ${id}`) })
-export async function fixture({ policy = { wholeVault: true, rootIds: [], excludedIds: ['private'], allowWrites: false }, writesReleased = false, markdown, icons, deckContentCheck, exportDeckPdf } = {}) {
+export async function fixture({ policy = { wholeVault: true, rootIds: [], excludedIds: ['private'], allowWrites: false }, writesReleased = false, markdown, icons, deckContentCheck, exportDeckPdf, slidesEnabled = false } = {}) {
   let active = true, now = 100, sequence = 0
   const storage = new MemoryDocumentStorage('fixed', [page('outer'), page('root', 'outer'), page('note', 'root'), page('private', 'root'), page('secret', 'private')], digest)
   const host = { now: () => now, createId: () => `generated-${++sequence}`, defer: () => () => {}, emit() {}, report() {}}
   const service = new DocumentService({ storage, host }); await service.init()
   const runtime = { now: () => now, cursorId: randomUUID, digest, digestBytes: digest }
   const connection = { vaultId: 'vault', grantId: 'grant', revision: 'revision', policy }
-  const session = new McpDocumentSession(service, connection, runtime, () => active, writesReleased, markdown, undefined, icons, deckContentCheck, exportDeckPdf)
+  const session = new McpDocumentSession(service, connection, runtime, () => active, writesReleased, markdown, undefined, icons, deckContentCheck, exportDeckPdf, slidesEnabled)
   const dispatch = message => session.dispatch(message, { id: randomUUID(), expiresAt: now + 1000, active: () => active })
   let id = 0
   const rpc = (method, params) => dispatch({ jsonrpc: '2.0', id: ++id, method, ...(params === undefined ? {} : { params }) })
@@ -35,7 +35,7 @@ export async function fixture({ policy = { wholeVault: true, rootIds: [], exclud
 test('deck MCP creates, reads and edits slides through scoped revision-gated commits', async () => {
   const policy = { wholeVault: false, rootIds: ['root'], excludedIds: ['private'], allowWrites: true }
   const h = await fixture({
-    policy, writesReleased: true, deckContentCheck: () => null,
+    policy, writesReleased: true, slidesEnabled: true, deckContentCheck: () => null,
     exportDeckPdf: async (_title, deck) => {
       assert.equal(deck.slides.length, 2)
       assert.deepEqual(deck.size, { width: 1920, height: 1080 })
@@ -99,7 +99,7 @@ test('handshake, nine contracts, strict validation, bounded saved reads and expl
   const h = await fixture({ policy: { wholeVault: false, rootIds: ['root'], excludedIds: ['private'], allowWrites: true } })
   assert.equal((await h.rpc('tools/list')).error.code, -32002); await h.initialize()
   const tools = (await h.rpc('tools/list')).result.tools
-  assert.deepEqual(tools.map(t => t.name), Object.keys(documentToolContracts))
+  assert.deepEqual(tools.map(t => t.name), Object.keys(documentToolContracts).filter(name => !['list_decks','read_deck','export_deck_pdf','create_deck','edit_deck'].includes(name)))
   assert.equal((await h.rpc('tools/list', { cursor: 'unknown' })).error.code, -32602)
   const capabilities = await h.call('get_editor_capabilities'); assert.equal(capabilities.ok, true); assert.ok(capabilities.result.nodes.some(node => node.type === 'mermaid' && node.attributes.code)); assert.ok(capabilities.result.marks.some(mark => mark.type === 'link'))
   const listed = await h.call('list_documents'); assert.deepEqual(listed.result.documents.map(d => d.documentId).sort(), ['note', 'root'])
@@ -444,4 +444,18 @@ test('a write whose letters were already turned into question marks is refused w
   // the same request with the real letters is saved, so nothing was left half done under that operation id
   const fixed = await h.call('create_document', { ...args, metadata: { ...args.metadata, title: 'پیوست NGDIR' }, markdown: 'first line\nسلام دنیا' })
   assert.equal(fixed.ok, true, JSON.stringify(fixed))
+})
+
+
+test('stable release hides deck tools and rejects direct deck calls without changing stored content', async () => {
+  const h = await fixture({writesReleased:true,policy:{wholeVault:true,rootIds:[],excludedIds:[],allowWrites:true}})
+  await h.initialize()
+  const before=structuredClone(await h.service.persistedPages())
+  const listed=(await h.rpc('tools/list')).result.tools
+  for(const name of ['list_decks','read_deck','export_deck_pdf','create_deck','edit_deck']) {
+    assert.ok(!listed.some(tool=>tool.name===name))
+    assert.equal((await h.rpc('tools/call',{name,arguments:{}})).error.code,-32602)
+  }
+  assert.deepEqual(await h.service.persistedPages(),before)
+  assert.throws(()=>h.service.create(null,'deck'),/disabled/)
 })

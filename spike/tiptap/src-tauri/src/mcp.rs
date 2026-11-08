@@ -809,7 +809,9 @@ mod tests {
     #[test]
     fn loopback_roundtrip_guards_bounds_status_and_revocation() {
         let (host, url, server, events) = fixture(true, Duration::from_secs(2));
+        // These requests must reach the loopback fixture rather than a system proxy.
         let client = Client::builder()
+            .no_proxy()
             .timeout(Duration::from_secs(3))
             .build()
             .unwrap();

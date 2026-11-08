@@ -7,7 +7,7 @@ import { identifyBlocks } from '../spike/tiptap/src/documents/blockIdentity.ts'
 import { IndexedDbDocumentStorage } from '../spike/tiptap/src/platform/documents/indexedDb.ts'
 import { NativeDocumentStorage } from '../spike/tiptap/src/platform/documents/native.ts'
 import { canonicalDocumentValue, documentRevision } from '../spike/tiptap/src/documents/revision.ts'
-import { addSlide, moveSlide } from '../spike/tiptap/src/decks/model.ts'
+import { addSlide, moveSlide, createPortraitDeck } from '../spike/tiptap/src/decks/model.ts'
 import { decodeDeck, encodeDeck } from '../spike/tiptap/src/decks/storage.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import './tests/tools/node_modules/fake-indexeddb/auto/index.mjs'
@@ -45,7 +45,10 @@ test('a portrait deck reopens from the vault with its slide content and order in
   const storage = new IndexedDbDocumentStorage('deck-vault', openDb())
   const service = new DocumentService({ storage, host: host() })
   await service.init()
-  const page = service.create(null, 'deck')
+  // A deck saved by an earlier build remains readable even when creation is disabled.
+  const page = { id: 'retained-deck', parentId: null, kind: 'deck', title: '', favorite: false, sort: 0, updatedAt: 1, deletedAt: null, content: encodeDeck(createPortraitDeck(randomUUID)) }
+  await storage.save(write([page]))
+  await service.refreshFromStore()
   const deck = addSlide(decodeDeck(page.content), randomUUID)
   const [first, second] = deck.slides
   second.content.content[0].content = [{ type: 'text', text: 'آشنایی با OpenAPI' }]

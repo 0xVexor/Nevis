@@ -1,3 +1,4 @@
+import { APPEARANCE_PRESETS_ENABLED } from '../releaseFeatures'
 import { createPortal } from 'react-dom'
 import { motion } from 'motion/react'
 import { useUIMotion } from '../design-system/motion'
@@ -34,7 +35,7 @@ export function Appearance() {
   const s = useSettings(), l = useLabels()
   return <>
     <SettingGroup title={l('Theme & color')}>
-      <SettingRow label={l('Appearance preset')}><Choice label={l('Appearance preset')} value={s.appearancePreset} items={appearancePresets.map(({ id, label }) => ({ value: id, label: l(label) }))} onChange={appearancePreset => updateSettings({ appearancePreset })} /></SettingRow>
+      {APPEARANCE_PRESETS_ENABLED && (<SettingRow label={l('Appearance preset')}><Choice label={l('Appearance preset')} value={s.appearancePreset} items={appearancePresets.map(({ id, label }) => ({ value: id, label: l(label) }))} onChange={appearancePreset => updateSettings({ appearancePreset })} /></SettingRow>)}
       <SettingRow label={l('Theme')} hint={l('Set the mood for your workspace.')}><Choice label={l('Theme')} value={s.theme} items={[{ value: 'light', label: l('Light'), icon: 'sun' }, { value: 'dark', label: l('Dark'), icon: 'moon' }, { value: 'system', label: l('System'), icon: 'monitor' }]} onChange={theme => updateSettings({ theme })} /></SettingRow>
       <SettingRow label={l('Accent color')} hint={l('A small detail. A personal touch.')}><AccentSwatches /></SettingRow>
     </SettingGroup>

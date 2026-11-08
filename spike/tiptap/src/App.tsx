@@ -1,3 +1,4 @@
+import { SLIDES_ENABLED, pageAvailableInRelease, requireSlides } from './releaseFeatures'
 import { commandHint, commandMatches, EDITOR_COMMANDS, matchesSidebarShortcut } from './shortcutCommands'
 import { cssVars } from './cssVars'
 import { setPreference } from './preferenceEvents'
@@ -97,7 +98,7 @@ const NARROW_WORKSPACE = '(max-width: 760px)'
 const BIG_TREE = 150 // pages from which the sidebar tree starts collapsed
 
 export default function App() {
-  const [pages, setPages] = useState<Page[]>(() => repo.list())
+  const [pages, setPages] = useState<Page[]>(() => repo.list().filter(pageAvailableInRelease))
   const [currentId, setCurrentIdRaw] = useState<string>(() => localStorage.getItem('not.current') || repo.pagesOnly()[0]?.id || '')
   const [view, setViewRaw] = useState<'home' | 'page' | 'settings' | 'tasks' | 'drawings' | 'decks' | 'databases' | 'files' | 'trash'>('home')
   // back / forward through the places visited (pages and views), each remembering how far it was scrolled
@@ -111,11 +112,11 @@ export default function App() {
     const sc = scrollerEl()
     if (e && sc) e.scroll = sc.scrollTop
   }
-  const setView = useCallback((v: Parameters<typeof setViewRaw>[0]) => (saveScroll(), setViewRaw(v)), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const setView = useCallback((v: Parameters<typeof setViewRaw>[0]) => { if (v === 'decks' && !SLIDES_ENABLED) return; saveScroll(); setViewRaw(v) }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const [panelOpen, setPanelOpen] = useState<boolean>(() => store('not.panel.v2', false))
   const [coverMenu, setCoverMenu] = useState<DOMRect | null>(null)
   // opening any page (sidebar, search, link, breadcrumb…) also leaves the settings view
-  const setCurrentId = useCallback((id: string) => (saveScroll(), setViewRaw('page'), setCurrentIdRaw(id)), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const setCurrentId = useCallback((id: string) => { if (!pageAvailableInRelease(repo.get(id) ?? {})) return; saveScroll(); setViewRaw('page'); setCurrentIdRaw(id) }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const goal = goingTo.current
     if (goal && goal.view === view && goal.id === currentId) return // arrived by back / forward: already in the list
@@ -409,7 +410,7 @@ export default function App() {
   const [readerCfg, setReaderCfg] = useState<ReaderCfg>(loadReaderCfg)
   const [pageW, setPageW] = useState<number>(() => Number(localStorage.getItem('not.page.width')) || PAGE_W.def)
   const settings = useSettings()
-  const refresh = useCallback(() => setPages(repo.list()), [])
+  const refresh = useCallback(() => setPages(repo.list().filter(pageAvailableInRelease)), [])
   useEffect(() => {
     const on = (e: Event) => {
       const r = (e as CustomEvent<{ title: string; propertyName: string }>).detail
@@ -573,6 +574,7 @@ export default function App() {
   }
   const deckAppearance = () => ({ theme: deckThemeForAppearance(settings.appearancePreset, isDark(settings)), ...(settings.accent ? { accent: settings.accent } : {}) })
   const add = (parentId: string | null, kind?: 'board' | 'todo' | 'deck') => {
+    if (kind === 'deck') requireSlides()
     const p = repo.create(parentId, kind)
     if (kind === 'todo') repo.update(p.id, { title: t('To-do list') }, { history: false })
     if (kind === 'deck') {
@@ -603,6 +605,7 @@ export default function App() {
     if (id === DATABASE_TEMPLATE) return addDatabase(null)
     const template = deckTemplates.find((item) => item.id === id)
     if (template) {
+      requireSlides()
       const page = repo.create(null, 'deck')
       repo.update(page.id, { title: t(template.title), content: encodeDeck(deckFromTemplate(template, t, () => crypto.randomUUID(), deckAppearance())) }, { history: false })
       refresh()
@@ -949,7 +952,7 @@ export default function App() {
     { id: 'settings', label: t('Settings'), hint: commandHint('Open Settings'), icon: <Icon name="settings" size={16} />, keywords: 'preferences تنظیمات', run: () => openSettings() },
     // every page of the settings, one command each: "Settings › Shortcuts", "Settings › Data & backup"…
     ...SETTINGS_TABS.map((x) => ({ id: 'settings-' + x.id, label: t('Settings') + ' › ' + t(x.label), icon: x.icon, keywords: x.id + ' ' + x.hint + ' ' + t(x.hint), run: () => openSettings(x.id) })),
-  ] satisfies PaletteCommand[]).map(command => {
+  ] satisfies PaletteCommand[]).filter(command => SLIDES_ENABLED || !['new-deck', 'decks'].includes(command.id)).map(command => {
     if ('group' in command && command.group) return command
     const id = command.id
     const group = id.startsWith('settings') || ['theme', 'sidebar', 'compact-pages', 'check-updates', 'fullscreen'].includes(id)
@@ -1127,10 +1130,9 @@ export default function App() {
             <span className="ntitle">{t('Drawings')}</span>
           </button>
 
-          <button aria-label={t('Slide decks')} className={'row plain' + (view === 'decks' && !overlayOpen ? ' cur' : '')} onClick={() => (closeOverlays(), setView('decks'))}>
+          {SLIDES_ENABLED && (<button aria-label={t('Slide decks')} className={'row plain' + (view === 'decks' && !overlayOpen ? ' cur' : '')} onClick={() => (closeOverlays(), setView('decks'))}>
             <span className="ic"><Icon name="layers" /></span>
-            <span className="ntitle">{t('Slide decks')}</span>
-          </button>
+            <span className="ntitle">{t('Slide decks')}</span></button>)}
           <button aria-label={t('Graph')} className={'row plain' + (graphOpen ? ' cur' : '')} onClick={() => (setCardsOpen(false), setTplOpen(false), setTableOpen(false), setGraphOpen(true))}>
             <span className="ic">
               <Icon name="graph" />
@@ -1185,7 +1187,7 @@ export default function App() {
                 { label: t('New page'), icon: <Icon name="file" size={16} />, onSelect: () => add(null) },
                 { label: t('New folder'), icon: <Icon name="folder" size={16} />, onSelect: () => addFolder(null) },
                 { label: t('New board'), icon: <Icon name="pencil" size={16} />, onSelect: () => add(null, 'board') },
-                { label: t('New deck'), icon: <Icon name="blocks" size={16} />, onSelect: () => add(null, 'deck') },
+                ...(SLIDES_ENABLED ? [{ label: t('New deck'), icon: <Icon name="blocks" size={16} />, onSelect: () => add(null, 'deck') }] : []),
                 { label: t('New database'), icon: <Icon name="table" size={16} />, onSelect: () => addDatabase(null) },
                 { label: t('New to-do list'), icon: <Icon name="checklist" size={16} />, onSelect: () => add(null, 'todo') },
               ]}
@@ -1596,7 +1598,7 @@ export default function App() {
             <Tasks panelHost={panelHost} index={index} onOpen={setCurrentId} onNewList={() => add(null, 'todo')} />
           ) : view === 'databases' ? (
             <Databases onOpen={setCurrentId} onNew={() => addDatabase(null)} onDelete={del} />
-          ) : view === 'decks' ? (
+          ) : view === 'decks' && SLIDES_ENABLED ? (
             <Decks pages={pages} onOpen={setCurrentId} onNew={() => add(null, 'deck')} onTemplates={() => setTplOpen(true)} />
           ) : view === 'drawings' ? (
             <Drawings onOpen={setCurrentId} onNew={() => add(null, 'board')} onDelete={delDrawing} />
@@ -1702,7 +1704,7 @@ export default function App() {
             { label: t('New page'), icon: <Icon name="plus" size={16} />, onSelect: () => add(null) },
             { label: t('New folder'), icon: <Icon name="folder-plus" size={16} />, onSelect: () => addFolder(null) },
             { label: t('New board'), icon: <Icon name="pencil" size={16} />, onSelect: () => add(null, 'board') },
-            { label: t('New deck'), icon: <Icon name="blocks" size={16} />, onSelect: () => add(null, 'deck') },
+            ...(SLIDES_ENABLED ? [{ label: t('New deck'), icon: <Icon name="blocks" size={16} />, onSelect: () => add(null, 'deck') }] : []),
             { label: t('New database'), icon: <Icon name="table" size={16} />, onSelect: () => addDatabase(null) },
             { label: t('New to-do list'), icon: <Icon name="checklist" size={16} />, onSelect: () => add(null, 'todo') },
             { label: t('New from template…'), icon: <Icon name="blocks" size={16} />, onSelect: () => setTplOpen(true) },
@@ -1787,7 +1789,7 @@ export default function App() {
       {searching && (
         <SearchModal
           pages={pages.filter((p) => p.kind !== 'folder')}
-          search={searchPages}
+          search={async query => (await searchPages(query)).filter(pageAvailableInRelease)}
           commands={commands}
           onOpen={setCurrentId}
           initialQuery={searchInit}
