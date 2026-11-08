@@ -1,6 +1,7 @@
 // Builds the data block of docs/design-system/index.html (the live reference page): icons, page glyphs, backgrounds and file kinds,
 // read straight from the design-system sources so the reference can never drift from the code.
 // Run after changing iconData.ts, backgrounds.ts or fileKinds.ts:  node scripts/design-system-data.mjs
+// CI runs it with --check (npm run check:docs), which fails when the page no longer matches the sources.
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, resolve } from 'node:path'
@@ -18,7 +19,7 @@ const { MORE_GLYPHS } = await load('iconSetMore.ts')
 const { EXTRA_GLYPHS } = await load('iconSetExtra.ts')
 
 // the main GLYPHS table lives in a .tsx file next to JSX, so read its object literal instead of importing the file
-const iconSet = readFileSync(resolve(src, 'iconSet.tsx'), 'utf8')
+const iconSet = readFileSync(resolve(src, 'iconSet.tsx'), 'utf8').split('\r\n').join('\n') // the data must not depend on the checkout's line endings
 const start = iconSet.indexOf('export const GLYPHS')
 const open = iconSet.indexOf('= {', start) + 2
 const close = iconSet.indexOf('\n}\n', open) + 2
@@ -41,7 +42,14 @@ const json = JSON.stringify(data).replace(/</g, '\\u003c')
 const block = '<!--DS_DATA_START-->\n<script>window.DS_DATA = ' + json + ';</script>\n<!--DS_DATA_END-->'
 const pattern = /<!--DS_DATA_START-->[\s\S]*?<!--DS_DATA_END-->/
 if (!pattern.test(html)) throw new Error('DS_DATA markers not found in ' + page)
-writeFileSync(page, html.replace(pattern, () => block))
+const next = html.replace(pattern, () => block)
+if (process.argv.includes('--check')) {
+  const same = (a, b) => a.split('\r\n').join('\n') === b.split('\r\n').join('\n')
+  if (!same(html, next)) { console.error('docs/design-system/index.html is out of date. Run: node scripts/design-system-data.mjs'); process.exit(1) }
+  console.log('Design-system reference is up to date.')
+  process.exit(0)
+}
+writeFileSync(page, next)
 
 const count = data.icons.reduce((n, g) => n + g.icons.length, 0)
 console.log(`icons ${count}, page glyphs ${glyphs.length}, backgrounds ${BACKGROUNDS.length}, file kinds ${Object.keys(FILE_KINDS).length}`)

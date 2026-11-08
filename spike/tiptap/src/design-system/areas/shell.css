@@ -118,10 +118,14 @@
 /* the chevron follows the direction of its own row (a Persian page title in an English interface still mirrors it) */
 .twisty:dir(rtl) svg { transform: scaleX(-1); }
 .twisty.open svg, .twisty.open:dir(rtl) svg { transform: rotate(90deg); }
-.acts { display: none; gap: 2px; }
-.row:hover .acts { display: flex; }
-.acts button { width: 26px; height: var(--ds-control-sm); border: 0; background: transparent; color: var(--ds-text-2); border-radius: var(--ds-r-sm); display: grid; place-items: center; cursor: var(--cursor-hand, pointer); padding: 0; }
-.acts button:hover { background: var(--ds-press); color: var(--ds-text); }
+.acts { display: none; align-items: center; gap: var(--ds-s1); margin-inline-start: var(--ds-s1); }
+/* the tools show for the pointer, for the keyboard (focus anywhere in the row) and always on a screen with no hover */
+.row:hover .acts, .row:focus-within .acts { display: flex; }
+@media (hover: none) { .tree-in .row .acts { display: flex; } }
+.acts button { width: var(--ds-control-sm); height: var(--ds-control-sm); border: 0; background: transparent; color: var(--ds-text-2); border-radius: var(--ds-r-sm); display: grid; place-items: center; cursor: var(--cursor-hand, pointer); padding: 0; }
+/* the row already shows a hover; its tools change color only, so there is no second box inside the first */
+.acts button:hover { background: none; color: var(--ds-text); }
+.acts button:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: -2px; }
 
 
 /* ───────── main sheet ───────── */

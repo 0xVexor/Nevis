@@ -18,7 +18,7 @@ Fixes follow the same route through `dev`. Keep unfinished work out of the relea
 
 ## Final releases
 
-1. On `dev`, update the app version in `spike/tiptap/package.json`, its package lock, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` and `src-tauri/tauri.conf.json`.
+1. On `dev`, run `node .github/scripts/bump-version.cjs X.Y.Z`. It updates `spike/tiptap/package.json`, its package lock, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` and `src-tauri/tauri.conf.json`, starts the release notes from the previous ones, and runs the release check. Always branch from the latest `dev`: CI rejects a `release/*` pull request that is behind its base or does not raise the version.
 2. Add the release notes in `docs/releases/vX.Y.Z.md` and finish the release changes on `dev`.
 3. Open a pull request from `dev` into `main`. The release policy verifies the source branch, matching versions, and an increase over the current stable version. Required checks must pass before merging.
 4. Merge the release pull request, then tag that exact `main` commit:
@@ -38,7 +38,7 @@ Manual installer builds are available only from `main` and do not publish a rele
 
 ## Pre-releases and desktop updates
 
-Pre-release tags such as `v1.3.0-beta.1` must point to commits on `dev`. Update the same version files and add the tag's release notes before tagging. The installer workflow publishes these as pre-releases without changing the stable Latest release. Users receive them only when they enable pre-release updates in Settings → About → Updates.
+Pre-release tags such as `v1.3.0-beta.1` must point to commits on `dev`. Run `node .github/scripts/bump-version.cjs X.Y.Z-beta.N` (it updates the same version files and creates the tag's release notes to rewrite) before tagging. The installer workflow publishes these as pre-releases without changing the stable Latest release. Users receive them only when they enable pre-release updates in Settings → About → Updates.
 
 Both release channels require the updater signing configuration described in [desktop updates](updates.md). Platform builds finish and the signed update manifest is checked before publication. Feature pull requests still target `dev`; final releases still flow from `dev` to `main`.
 

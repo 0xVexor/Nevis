@@ -17,3 +17,7 @@ db/*.db-shm
 
 # Local test installers and checksum reports
 /artifacts/
+
+# Claude Code local files (the shared launch.json stays)
+.claude/*
+!.claude/launch.json

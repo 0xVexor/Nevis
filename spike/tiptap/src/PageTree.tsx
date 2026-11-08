@@ -219,7 +219,7 @@ export function CompactList(props: Omit<RowProps, 'page' | 'depth'> & { roots: P
         {label(p)}
       </span>
       <span className="acts">
-        <button title={t('Options')} onClick={(e) => (e.stopPropagation(), props.onMenu(p.id, e.currentTarget.getBoundingClientRect()))}>
+        <button title={t('Options')} aria-label={t('Options')} onClick={(e) => (e.stopPropagation(), props.onMenu(p.id, e.currentTarget.getBoundingClientRect()))}>
           <Icon name="more-horizontal" size={16} />
         </button>
       </span>
@@ -258,10 +258,10 @@ export function CompactList(props: Omit<RowProps, 'page' | 'depth'> & { roots: P
         </span>
         {files.length > 0 && <span className="tree-count">{String(files.length).padStart(2, '0')}</span>}
         <span className="acts">
-          <button title={t('Options')} onClick={(e) => (e.stopPropagation(), props.onMenu(p.id, e.currentTarget.getBoundingClientRect()))}>
+          <button title={t('Options')} aria-label={t('Options')} onClick={(e) => (e.stopPropagation(), props.onMenu(p.id, e.currentTarget.getBoundingClientRect()))}>
             <Icon name="more-horizontal" size={16} />
           </button>
-          <button title={folder ? t('New page in folder') : t('New subpage')} onClick={(e) => (e.stopPropagation(), props.onAdd(p.id))}>
+          <button title={folder ? t('New page in folder') : t('New subpage')} aria-label={folder ? t('New page in folder') : t('New subpage')} onClick={(e) => (e.stopPropagation(), props.onAdd(p.id))}>
             <Icon name="plus" size={16} />
           </button>
         </span>
@@ -335,10 +335,10 @@ export function TreeRow(props: RowProps) {
         </span>
         {count > 0 && <span className="tree-count">{String(count).padStart(2, '0')}</span>}
         <span className="acts">
-          <button title={t('Options')} onClick={(e) => (e.stopPropagation(), props.onMenu(page.id, e.currentTarget.getBoundingClientRect()))}>
+          <button title={t('Options')} aria-label={t('Options')} onClick={(e) => (e.stopPropagation(), props.onMenu(page.id, e.currentTarget.getBoundingClientRect()))}>
             <Icon name="more-horizontal" size={16} />
           </button>
-          <button title={folder ? t('New page in folder') : t('New subpage')} onClick={(e) => (e.stopPropagation(), props.onAdd(page.id))}>
+          <button title={folder ? t('New page in folder') : t('New subpage')} aria-label={folder ? t('New page in folder') : t('New subpage')} onClick={(e) => (e.stopPropagation(), props.onAdd(page.id))}>
             <Icon name="plus" size={16} />
           </button>
         </span>

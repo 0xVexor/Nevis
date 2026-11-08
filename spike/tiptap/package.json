@@ -12,6 +12,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\"",
     "check:ui": "node scripts/check-ui.mjs",
+    "check:docs": "node scripts/design-system-data.mjs --check",
     "test:layout": "node --import ./tests/register.mjs --test \"./tests/*.test.mjs\"",
     "test:updates": "node --test ../../db/test-updates.mjs",
     "test:document-persistence": "npm run -s build:documents && node --test ../../db/test-document-service.mjs ../../db/tests/database/idb.test.mjs src/editor/documentCommitGuard.test.mjs",

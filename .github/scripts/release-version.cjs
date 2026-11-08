@@ -27,6 +27,17 @@ if (process.env.REQUIRE_VERSION_INCREASE === '1') {
   requireThat(different >= 0 && nextParts[different] > oldParts[different], 'A release into main must increase the stable version.');
 }
 
+// A release branch headed for dev must contain all of dev and move the version forward (catches a stale branch such as beta 9 on a dev at beta 18).
+if (process.env.REQUIRE_AHEAD_OF) {
+  const base = process.env.REQUIRE_AHEAD_OF;
+  try { execFileSync('git', ['merge-base', '--is-ancestor', base, 'HEAD']); }
+  catch { requireThat(false, 'This branch is behind ' + base + '. Merge ' + base + ' into it first.'); }
+  const previous = JSON.parse(execFileSync('git', ['show', base + ':' + root + 'package.json'], {encoding:'utf8'})).version;
+  const key = (v) => { const [core, pre = ''] = v.split('-'); const n = pre.match(/(\d+)$/); return [...core.split('.').map(Number), pre ? 0 : 1, n ? Number(n[1]) : 0]; };
+  const [a, b] = [key(version), key(previous)];
+  const at = a.findIndex((n, i) => n !== b[i]);
+  requireThat(at >= 0 && a[at] > b[at], 'Version ' + version + ' must be higher than ' + previous + ' on ' + base + '.');
+}
 if (version === '1.1.0') {
   const features = JSON.parse(fs.readFileSync(root + 'release-features.json', 'utf8'));
   requireThat(features.appearancePresets === false, 'Nevis 1.1.0 must keep named appearance presets disabled.');
