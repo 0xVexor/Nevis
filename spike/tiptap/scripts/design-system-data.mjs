@@ -19,7 +19,7 @@ const { MORE_GLYPHS } = await load('iconSetMore.ts')
 const { EXTRA_GLYPHS } = await load('iconSetExtra.ts')
 
 // the main GLYPHS table lives in a .tsx file next to JSX, so read its object literal instead of importing the file
-const iconSet = readFileSync(resolve(src, 'iconSet.tsx'), 'utf8')
+const iconSet = readFileSync(resolve(src, 'iconSet.tsx'), 'utf8').split('\r\n').join('\n') // the data must not depend on the checkout's line endings
 const start = iconSet.indexOf('export const GLYPHS')
 const open = iconSet.indexOf('= {', start) + 2
 const close = iconSet.indexOf('\n}\n', open) + 2
