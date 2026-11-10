@@ -29,7 +29,7 @@ export function ImageBubble({ editor }: { editor: Editor }) {
       return { pos: sel.from, w: sel.node.attrs.width ?? null, align: sel.node.attrs.align ?? null }
     },
   })
-  const box = useAnchor(editor, !!s, () => (s ? ((editor.view.nodeDOM(s.pos) as HTMLElement | null)?.querySelector('img') ?? (editor.view.nodeDOM(s.pos) as HTMLElement | null)) : null), [
+  const box = useAnchor(editor, !!s, () => (s ? ((editor.view.nodeDOM(s.pos) as HTMLElement | null)?.querySelector('img, video') ?? (editor.view.nodeDOM(s.pos) as HTMLElement | null)) : null), [
     s?.pos,
     s?.w,
     s?.align,
