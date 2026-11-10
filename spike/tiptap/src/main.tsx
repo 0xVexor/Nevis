@@ -18,7 +18,10 @@ import { DesktopFrame } from './DesktopFrame'
 
 initInputMenu()
 const root = createRoot(document.getElementById('root')!)
-const render = (content: ReactNode) => root.render(<DesktopFrame>{content}</DesktopFrame>)
+const render = (content: ReactNode) => {
+  root.render(<DesktopFrame>{content}</DesktopFrame>)
+  ;(window as { __splashDone?: () => void }).__splashDone?.()
+}
 // the component gallery: development only, open /#/design-system
 const Gallery = import.meta.env.DEV ? lazy(() => import('./design-system/Gallery').then((m) => ({ default: m.Gallery }))) : null
 const showGallery = () => !!Gallery && location.hash === '#/design-system'
