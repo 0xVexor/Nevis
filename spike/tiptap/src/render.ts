@@ -4,7 +4,7 @@ import { Editor, getSchema } from '@tiptap/core'
 import { contentProblem } from './editor/contentSafety'
 import { extensions } from './editor/extensions'
 import { renderDiagram } from './editor/mermaid'
-import { urlFor } from './attachments'
+import { typeFor, urlFor } from './attachments'
 
 /** ProseMirror doc (or array of blocks) -> HTML via the real schema, without mounting an editor. */
 export function docToHtml(doc: DocNode | DocNode[]): string {
@@ -33,8 +33,17 @@ export async function hydrate(root: HTMLElement) {
     group.style.gridTemplateColumns = stacked ? 'minmax(0, 1fr)' : 'var(--layout-tracks)'
   }
   for (const img of Array.from(root.querySelectorAll<HTMLImageElement>('img[src^="att:"]'))) {
-    const u = await urlFor(img.getAttribute('src')!)
-    if (u) img.src = u
+    const src = img.getAttribute('src')!
+    const u = await urlFor(src)
+    if (!u) continue
+    if ((await typeFor(src))?.startsWith('video/')) {
+      // a stored video (or a GIF kept as a loop) is a <video> in the exported page, not a broken picture
+      const loop = img.getAttribute('data-motion') === 'loop'
+      const video = Object.assign(document.createElement('video'), { src: u, controls: !loop, loop, muted: loop, autoplay: loop, playsInline: true })
+      video.className = img.className
+      video.style.cssText = 'max-width:100%;height:auto'
+      img.replaceWith(video)
+    } else img.src = u
   }
   for (const el of Array.from(root.querySelectorAll<HTMLElement>('[data-type="math-inline"], [data-type="math-block"]'))) {
     try {

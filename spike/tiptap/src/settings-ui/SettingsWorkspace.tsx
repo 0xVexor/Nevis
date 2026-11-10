@@ -64,7 +64,7 @@ export function LanguageSettings() {
 }
 export function GeneralSettings() {
   const l = useLabels()
-  return <><SettingGroup title={l('Comfort')}><Toggle label={l('Reduce motion')} hint={l('Keep transitions quiet and immediate.')} setting="reduceMotion" /></SettingGroup><SettingGroup title={l('Everyday preferences')}><Toggle label={l('Card reminders')} hint={l('Keep your review habit in view.')} setting="cardReminders" /><Toggle label={l('Compress images')} hint={l('Use smaller images when adding attachments.')} setting="compressImages" /></SettingGroup></>
+  return <><SettingGroup title={l('Comfort')}><Toggle label={l('Reduce motion')} hint={l('Keep transitions quiet and immediate.')} setting="reduceMotion" /></SettingGroup><SettingGroup title={l('Everyday preferences')}><Toggle label={l('Card reminders')} hint={l('Keep your review habit in view.')} setting="cardReminders" /><Toggle label={l('Compress images and videos')} hint={l('Store pictures, GIFs and videos at a smaller size, keeping their quality. Screenshots and PNGs lose no detail.')} setting="compressImages" /></SettingGroup></>
 }
 export interface WorkspaceProps {
   onLeave?: () => void

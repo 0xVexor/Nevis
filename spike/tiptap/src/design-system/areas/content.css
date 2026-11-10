@@ -66,7 +66,8 @@
 
 /* math, images */
 .math-block { display: block; text-align: center; cursor: var(--cursor-hand, pointer); overflow-x: auto; margin: 1em 0; padding: var(--ds-s4); border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: none; }
-.tiptap .img-fig img { display: block; max-width: 100%; height: auto; margin: 0; cursor: var(--cursor-zoom, zoom-in); border-radius: var(--ds-r-lg); box-shadow: none; }
+.tiptap .img-fig video { cursor: default; }
+.tiptap .img-fig :is(img, video) { display: block; max-width: 100%; height: auto; margin: 0; cursor: var(--cursor-zoom, zoom-in); border-radius: var(--ds-r-lg); box-shadow: none; }
 
 /* inside a code block the text is plain: no pill, no border, no tint */
 .tiptap pre code, .tiptap .code-wrap pre code { padding: 0; border: 0; border-radius: 0; background: none; color: inherit; font-size: inherit; font-weight: inherit; }

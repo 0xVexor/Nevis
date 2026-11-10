@@ -3,6 +3,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { isTauri, storageFrozen } from './db'
 import { maybeCompress } from './compress'
+import { optimizeVideo } from './media/video'
 
 interface FileRec {
   id: string
@@ -41,7 +42,7 @@ async function sha256(blob: Blob): Promise<string> {
 }
 
 export async function putFile(original: File | Blob, name = (original as File).name ?? ''): Promise<string> {
-  const file = await maybeCompress(original)
+  const file = original.type.startsWith('video/') ? await optimizeVideo(original) : await maybeCompress(original)
   const id = await sha256(file)
   const rec: FileRec = { id, type: file.type, name, size: file.size, blob: file, addedAt: Date.now() }
   await putRecord(rec)
@@ -88,6 +89,14 @@ export async function urlFor(src: string): Promise<string | null> {
   const u = URL.createObjectURL(blob)
   urls.set(id, u)
   return u
+}
+
+/** The stored mime type of an attachment (`att:<id>`), or undefined for an address or a missing file. */
+export async function typeFor(src: string): Promise<string | undefined> {
+  if (!src.startsWith('att:')) return undefined
+  const id = src.slice(4)
+  if (isTauri) return types.get(id) ?? (await refreshTypes()).get(id)
+  return (await tx<FileRec | undefined>('readonly', (s) => s.get(id)))?.type
 }
 
 /** Name, type and size of the given files, without their bytes (database file properties list names before anything is opened). */

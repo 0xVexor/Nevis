@@ -471,6 +471,33 @@ fn file_put(s: St, request: Request) -> Res<()> {
     with(&s, |v| v.file_put(&header(&request, "x-file-id"), bytes, &header(&request, "x-file-type"), &header(&request, "x-file-name"), added))
 }
 
+/// Writes a file the person just chose in the Save As dialog. Raw body = the bytes; the percent-encoded absolute path is in `x-path`.
+#[tauri::command]
+fn file_save_as(request: Request) -> Res<()> {
+    let InvokeBody::Raw(bytes) = request.body() else { return Err("expected raw bytes".into()) };
+    let path = PathBuf::from(percent_decode(&header(&request, "x-path")));
+    if !path.is_absolute() || path.file_name().is_none() || path.is_dir() { return Err("not a file path".into()); }
+    std::fs::write(&path, bytes).map_err(err)
+}
+
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Some(v) = std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 #[tauri::command]
 fn file_get(s: St, id: String) -> Res<Response> {
     with(&s, |v| v.file_get(&id)).map(Response::new)
@@ -702,9 +729,22 @@ fn main() {
             vault_backup_save, vault_backup_folder_save, vault_backup_folder_read, vault_backup_export, vault_backup_restore, vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
             db_recover, db_load_all, db_commit, db_get_operation, db_history, db_undo_load, db_undo_save, db_runtime_get, db_runtime_set, db_runtime_delete,
             db_runtime_keys, db_index_rebuild, db_index_candidates, db_index_count,
-            vault_stamp, pages_search_stamp, pages_all, pages_save, document_operation_list, document_operation_find, document_operation_commit, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_get, files_list, page_path, page_reveal,
+            vault_stamp, pages_search_stamp, pages_all, pages_save, document_operation_list, document_operation_find, document_operation_commit, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_save_as, file_get, files_list, page_path, page_reveal,
             index_state, index_update, index_search
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nevis");
+}
+
+#[cfg(test)]
+mod save_as_tests {
+    use super::percent_decode;
+
+    #[test]
+    fn decodes_a_path_the_page_encoded() {
+        assert_eq!(percent_decode("C%3A%5CUsers%5Cme%5Cnotes.md"), r"C:\Users\me\notes.md");
+        assert_eq!(percent_decode("%D8%A7%D9%84"), "ال");
+        assert_eq!(percent_decode("100%"), "100%", "a stray percent sign is kept as it is");
+        assert_eq!(percent_decode("a%2"), "a%2");
+    }
 }

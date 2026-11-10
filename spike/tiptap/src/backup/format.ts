@@ -8,7 +8,23 @@ export const STORES = ['pages', 'versions', 'kv', 'db_records', 'db_history', 'd
 /** A problem with the backup file itself. The message is already translated and meant to be shown. */
 export class BackupError extends Error {}
 
-export function download(name: string, blob: Blob) {
+/**
+ * Saves a file the person asked for. The desktop app asks where to put it (a Save As dialog) and writes it there; the browser
+ * uses its own download. Resolves false when the person cancels the dialog, true otherwise.
+ */
+export async function download(name: string, blob: Blob): Promise<boolean> {
+  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+    try {
+      const [{ save }, { invoke }] = await Promise.all([import('@tauri-apps/plugin-dialog'), import('@tauri-apps/api/core')])
+      const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : ''
+      const path = await save({ defaultPath: name, filters: ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : undefined })
+      if (!path) return false // cancelled
+      await invoke('file_save_as', new Uint8Array(await blob.arrayBuffer()), { headers: { 'x-path': encodeURIComponent(path) } })
+      return true
+    } catch (error) {
+      console.error(error) // fall back to the browser download below, so the file is not lost
+    }
+  }
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)
   a.download = name
@@ -16,6 +32,7 @@ export function download(name: string, blob: Blob) {
   a.click()
   a.remove()
   setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+  return true
 }
 
 export const toBase64 = (b: Blob) =>
