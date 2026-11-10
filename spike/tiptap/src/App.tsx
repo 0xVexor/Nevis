@@ -774,8 +774,7 @@ export default function App() {
   const doExportAll = async () => {
     try {
       const r = await exportAllZip()
-      download(`notes-export-${stamp()}.zip`, r.blob)
-      setToast({ msg: t('{pages} pages and {files} images exported', { pages: r.pages, files: r.files }) })
+      if (await download(`notes-export-${stamp()}.zip`, r.blob)) setToast({ msg: t('{pages} pages and {files} images exported', { pages: r.pages, files: r.files }) })
     } catch (e) {
       console.error(e)
       setToast({ msg: t('Export failed') })
