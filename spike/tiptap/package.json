@@ -25,6 +25,7 @@
     "test:document-search": "npm run -s build:documents && node --test ../../db/test-document-search.mjs",
     "test:search-freshness": "npm run -s build:documents && node --test ../../db/test-search-freshness.mjs",
     "test:direction": "node --test src/editor/direction.test.mjs",
+    "test:server-sync": "node --import ./tests/register.mjs --test ../../db/test-server-initialization.mjs ../../db/test-server-import-checkpoint.mjs \"src/serverSync/*.test.mjs\" tests/server-initialization.test.mjs",
     "test:documents": "npm run -s build:documents && node --test ../../db/test-agent-documents.mjs ../../db/test-document-projection.mjs ../../db/test-document-contracts.mjs ../../db/test-block-identity.mjs ../../db/test-repo-identity.mjs ../../db/test-document-service.mjs ../../db/test-document-operations.mjs ../../db/test-document-planner.mjs ../../db/test-document-edit-commits.mjs ../../db/test-document-mutations.mjs ../../db/test-document-history.mjs ../../db/test-document-mcp.mjs ../../db/test-document-tables.mjs ../../db/test-document-admission.mjs ../../db/test-document-reads.mjs ../../db/test-document-search.mjs ../../db/test-search-freshness.mjs src/editor/blockIdentity.test.mjs src/editor/documentCommitGuard.test.mjs",
     "test:db": "node --test \"../../db/tests/database/*.test.mjs\"",
     "preview": "vite preview",
@@ -65,6 +66,7 @@
     "@tiptap/react": "^3.32.0",
     "@tiptap/starter-kit": "^3.32.0",
     "@tiptap/suggestion": "^3.32.0",
+    "@tiptap/y-tiptap": "^3.3.0",
     "katex": "^0.19.1",
     "lowlight": "^3.3.0",
     "marked": "^18.1.1",
@@ -72,7 +74,8 @@
     "mermaid": "^12.2.0",
     "motion": "^12.43.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "yjs": "^13.6.33"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.4",

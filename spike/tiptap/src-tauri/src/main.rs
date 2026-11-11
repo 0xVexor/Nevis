@@ -6,6 +6,7 @@
 mod database;
 mod deck_print;
 mod release_features;
+mod server_initialization;
 mod document_operations;
 mod mcp;
 mod mcp_relay;
@@ -344,6 +345,47 @@ fn vault_backup_save(s: St, path: String) -> Res<()> {
         Ok(())
     })
 }
+/// Save a stable vault snapshot and return the independently read-back bytes.
+/// No network activity occurs while the vault commit lock is held.
+#[tauri::command]
+fn vault_backup_for_sync(s: St, path: String, expected_vault_id: String) -> Res<Response> {
+    let p = PathBuf::from(path);
+    if !p.is_absolute() || p.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref() != Some("json") {
+        return Err("BACKUP:invalid_destination".into());
+    }
+    let saved = with(&s, |v| {
+        if v.id() != expected_vault_id { return Err("BACKUP:vault_changed".into()); }
+        let parent = p.parent().ok_or("BACKUP:invalid_destination")?.canonicalize().map_err(err)?;
+        if parent.starts_with(v.root.canonicalize().map_err(err)?) || parent.starts_with(s.app_data.canonicalize().map_err(err)?) {
+            return Err("BACKUP:destination_inside_live_data".into());
+        }
+        database::recover(&v.root)?;
+        let _guard = vault::commit_lock(&v.root)?;
+        let bytes = serde_json::to_vec(&portable::export(v)?).map_err(err)?;
+        vault::write_atomic(&p, &bytes)?;
+        let readback = std::fs::read(&p).map_err(err)?;
+        if readback != bytes { return Err("BACKUP:verification_failed".into()); }
+        Ok(readback)
+    })?;
+    Ok(Response::new(saved))
+}
+/// Read a user-selected backup so an interrupted import can verify the same bytes.
+#[tauri::command]
+fn vault_backup_read_for_sync(s: St, path: String, expected_vault_id: String) -> Res<Response> {
+    let p = PathBuf::from(path);
+    if !p.is_absolute() || p.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref() != Some("json") {
+        return Err("BACKUP:invalid_destination".into());
+    }
+    let bytes = with(&s, |v| {
+        if v.id() != expected_vault_id { return Err("BACKUP:vault_changed".into()); }
+        let size = std::fs::metadata(&p).map_err(err)?.len();
+        if size == 0 || size > 1024 * 1024 * 1024 { return Err("BACKUP:too_large".into()); }
+        let bytes = std::fs::read(&p).map_err(err)?;
+        if bytes.len() as u64 != size { return Err("BACKUP:changed_during_read".into()); }
+        Ok(bytes)
+    })?;
+    Ok(Response::new(bytes))
+}
 /// Brings the backup folder of the open workspace up to date inside `dir` (see `portable::export_folder`).
 #[tauri::command]
 fn vault_backup_folder_save(s: St, dir: String, force: Option<bool>) -> Res<portable::FolderReport> {
@@ -438,6 +480,16 @@ fn kv_get(s: St, key: String) -> Res<Option<Value>> {
 #[tauri::command]
 fn kv_set(s: St, key: String, value: Value) -> Res<()> {
     with(&s, |v| vault::write_atomic(&kv_file(&s, v, &key)?, value.to_string().as_bytes()))
+}
+
+#[tauri::command]
+fn server_initialization_load(s: St, expected_vault_id: String, account_id: String, collaboration_origin: String, document_id: String) -> Res<Option<Vec<u8>>> {
+    with(&s, |v| server_initialization::load(v, &expected_vault_id, &account_id, &collaboration_origin, &document_id))
+}
+
+#[tauri::command]
+fn server_initialization_prepare(s: St, expected_vault_id: String, account_id: String, collaboration_origin: String, document_id: String, bytes: Vec<u8>, expected_page: Value) -> Res<Vec<u8>> {
+    with(&s, |v| server_initialization::prepare(v, &expected_vault_id, &account_id, &collaboration_origin, &document_id, &bytes, &expected_page))
 }
 
 // ───── page history ─────
@@ -726,10 +778,10 @@ fn main() {
             deck_print::print_deck, deck_print::deck_pdf_available,
             mcp_ready, mcp_status, mcp_enable, mcp_disable, mcp_autostart, mcp_setup_info, mcp_install_client, mcp_credential, mcp_reply,
             updates::updates_check, updates::updates_download, updates::updates_install,
-            vault_backup_save, vault_backup_folder_save, vault_backup_folder_read, vault_backup_export, vault_backup_restore, vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
+            vault_backup_save, vault_backup_for_sync, vault_backup_read_for_sync, vault_backup_folder_save, vault_backup_folder_read, vault_backup_export, vault_backup_restore, vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
             db_recover, db_load_all, db_commit, db_get_operation, db_history, db_undo_load, db_undo_save, db_runtime_get, db_runtime_set, db_runtime_delete,
             db_runtime_keys, db_index_rebuild, db_index_candidates, db_index_count,
-            vault_stamp, pages_search_stamp, pages_all, pages_save, document_operation_list, document_operation_find, document_operation_commit, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_save_as, file_get, files_list, page_path, page_reveal,
+            vault_stamp, pages_search_stamp, pages_all, pages_save, document_operation_list, document_operation_find, document_operation_commit, kv_get, kv_set, server_initialization_load, server_initialization_prepare, versions_list, version_add, versions_delete, file_put, file_save_as, file_get, files_list, page_path, page_reveal,
             index_state, index_update, index_search
         ])
         .run(tauri::generate_context!())
