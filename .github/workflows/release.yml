@@ -69,6 +69,8 @@ jobs:
           - os: macos-latest
             args: '--target universal-apple-darwin'
     runs-on: ${{ matrix.os }}
+    env:
+      NEVIS_SERVER: https://nevis.manaz.pro
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
