@@ -74,6 +74,9 @@ func (s *Store) ReceiveBlob(ctx context.Context, userID string, v *Vault, sha st
 	if !hex64.MatchString(sha) {
 		return BlobResult{}, apierr.New(400, "bad_sha")
 	}
+	// one upload of a given blob at a time: the second of two devices sending the same content finds it stored
+	unlock := s.Blobs.Lock(v.ID, sha)
+	defer unlock()
 	have, err := s.Blob(ctx, v.ID, sha)
 	if err != nil {
 		return BlobResult{}, err
@@ -87,8 +90,6 @@ func (s *Store) ReceiveBlob(ctx context.Context, userID string, v *Vault, sha st
 	if err := s.checkPiece(ctx, userID, sha, *rng, int64(len(body))); err != nil {
 		return BlobResult{}, err
 	}
-	unlock := s.Blobs.Lock(v.ID, sha)
-	defer unlock()
 	if err := s.Blobs.Receive(v.ID, sha, rng.Start, body); err != nil {
 		var gap *storage.OutOfOrder
 		if errors.As(err, &gap) {

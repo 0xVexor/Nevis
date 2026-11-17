@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"hash"
 
 	"github.com/0xVexor/Nevis/server/internal/apierr"
 )
@@ -75,6 +76,12 @@ func queryFiles(ctx context.Context, q querier, query string, args ...any) ([]Fi
 	return out, rows.Err()
 }
 
+// addToRoot feeds one live file into the root hash. The clients compute the same hash over their mirror, so the
+// exact bytes matter.
+func addToRoot(h hash.Hash, path, md5 string) {
+	h.Write([]byte(path + "\x00" + md5 + "\n"))
+}
+
 type cachedRoot struct {
 	seq  int64
 	root string
@@ -101,7 +108,7 @@ func (s *Store) rootHash(ctx context.Context, v *Vault) (string, error) {
 		if err := rows.Scan(&path, &md5); err != nil {
 			return "", err
 		}
-		h.Write([]byte(path + "\x00" + md5 + "\n"))
+		addToRoot(h, path, md5)
 	}
 	if err := rows.Err(); err != nil {
 		return "", err

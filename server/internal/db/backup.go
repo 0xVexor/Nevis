@@ -91,17 +91,19 @@ func List(dir string) ([]string, error) {
 // Restore puts a backup in place of the database file. The write-ahead log and the shared memory file of the old
 // database are removed first: replayed onto the restored file they would undo the restore.
 func Restore(backup, dbFile string) error {
+	if err := os.MkdirAll(filepath.Dir(dbFile), 0o755); err != nil {
+		return err
+	}
+	// the copy comes first: a backup that cannot be read must leave the current database as it is
+	tmp := dbFile + ".restore"
+	if err := copyFile(backup, tmp); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
 	for _, suffix := range []string{"-wal", "-shm"} {
 		if err := os.Remove(dbFile + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-	}
-	if err := os.MkdirAll(filepath.Dir(dbFile), 0o755); err != nil {
-		return err
-	}
-	tmp := dbFile + ".restore"
-	if err := copyFile(backup, tmp); err != nil {
-		return err
 	}
 	return os.Rename(tmp, dbFile)
 }
