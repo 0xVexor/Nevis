@@ -796,6 +796,25 @@ mod tests {
     }
 
     #[test]
+    fn sync_trash_keeps_files_and_purges_old_ones() {
+        let v = Vault::create(tmp("strash"), "T").unwrap();
+        v.save_pages(&[page(A, "x", 1)], &[], false).unwrap();
+        let original = fs::read(v.root.join(format!("pages/{A}.json"))).unwrap();
+        v.sync_trash_move(&format!("pages/{A}.json")).unwrap();
+        assert!(v.pages_all().unwrap().is_empty());
+        v.sync_trash_put("kv/srs.json", b"{}").unwrap();
+        let old = v.sync_trash_dir().join("1000");
+        write_atomic(&old.join("pages/old.json"), b"{}").unwrap();
+        v.purge_trash();
+        assert!(!old.exists(), "older than the retention time");
+        // Different paths may legitimately share one millisecond bucket. Verify
+        // both preserved contents rather than assuming two distinct timestamps.
+        let recent: Vec<_> = fs::read_dir(v.sync_trash_dir()).unwrap().map(|e|e.unwrap().path()).collect();
+        assert!(recent.iter().any(|dir| fs::read(dir.join(format!("pages/{A}.json"))).ok().as_deref() == Some(original.as_slice())), "recent page stays byte-for-byte");
+        assert!(recent.iter().any(|dir| fs::read(dir.join("kv/srs.json")).ok().as_deref() == Some(b"{}".as_slice())), "recent settings stay byte-for-byte");
+    }
+
+    #[test]
     fn rejects_path_traversal() {
         let v = Vault::create(tmp("sec"), "T").unwrap();
         assert!(v.save_pages(&[page("../evil", "x", 1)], &[], false).is_err());
@@ -880,22 +899,4 @@ mod locking_tests {
         let root=std::env::temp_dir().join(format!("nevis-identity-{}",uuid::Uuid::new_v4()));let v=Vault::create(root.clone(),"T").unwrap();let original=v.id();write_atomic(&root.join(".nevis/vault.json"),&serde_json::to_vec(&json!({"format":1,"id":uuid::Uuid::new_v4().to_string(),"name":"other"})).unwrap()).unwrap();assert_eq!(v.id(),original);assert_eq!(v.ensure_exclusive().unwrap_err(),VAULT_MISMATCH);drop(v);fs::remove_dir_all(root).unwrap();
     }
 
-    #[test]
-    fn sync_trash_keeps_files_and_purges_old_ones() {
-        let v = Vault::create(tmp("strash"), "T").unwrap();
-        v.save_pages(&[page(A, "x", 1)], &[], false).unwrap();
-        let original = fs::read(v.root.join(format!("pages/{A}.json"))).unwrap();
-        v.sync_trash_move(&format!("pages/{A}.json")).unwrap();
-        assert!(v.pages_all().unwrap().is_empty());
-        v.sync_trash_put("kv/srs.json", b"{}").unwrap();
-        let old = v.sync_trash_dir().join("1000");
-        write_atomic(&old.join("pages/old.json"), b"{}").unwrap();
-        v.purge_trash();
-        assert!(!old.exists(), "older than the retention time");
-        // Different paths may legitimately share one millisecond bucket. Verify
-        // both preserved contents rather than assuming two distinct timestamps.
-        let recent: Vec<_> = fs::read_dir(v.sync_trash_dir()).unwrap().map(|e|e.unwrap().path()).collect();
-        assert!(recent.iter().any(|dir| fs::read(dir.join(format!("pages/{A}.json"))).ok().as_deref() == Some(original.as_slice())), "recent page stays byte-for-byte");
-        assert!(recent.iter().any(|dir| fs::read(dir.join("kv/srs.json")).ok().as_deref() == Some(b"{}".as_slice())), "recent settings stay byte-for-byte");
-    }
 }

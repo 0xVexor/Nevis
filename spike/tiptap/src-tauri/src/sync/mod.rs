@@ -903,7 +903,7 @@ mod tests {
 
     #[test]
     fn server_and_desktop_share_the_path_contract() {
-        let cases: Vec<(String, Option<String>)> = serde_json::from_str(include_str!("../../../../../server/test/fixtures/sync-paths.json")).unwrap();
+        let cases: Vec<(String, Option<String>)> = serde_json::from_str(include_str!("sync-paths.json")).unwrap();
         for (path, expected) in cases {
             assert_eq!(path_problem(&path), expected.as_deref(), "{path}");
         }

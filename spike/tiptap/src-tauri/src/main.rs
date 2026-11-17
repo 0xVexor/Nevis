@@ -123,7 +123,7 @@ fn vault_create(s: St, parent: String, name: String) -> Res<String> {
         return Err("a vault already exists there".into());
     }
     let v = Vault::create(root.clone(), &name)?;
-    let e = Entry { id: v.id(), name, path: root.to_string_lossy().into() };
+    let e = Entry { id: v.id(), name, path: root.to_string_lossy().into(), sync: false };
     activate(&s, &e)?;
     Ok(e.id)
 }
@@ -136,7 +136,7 @@ fn vault_add(s: St, path: String) -> Res<String> {
         return Err("not a folder".into());
     }
     let v = Vault::adopt(root.clone())?;
-    let e = Entry { id: v.id(), name: v.name(), path };
+    let e = Entry { id: v.id(), name: v.name(), path, sync: false };
     activate(&s, &e)?;
     Ok(e.id)
 }
@@ -385,7 +385,7 @@ fn vault_backup_restore(s: St, data: Value, target: Option<String>, name: Option
         return Ok(json!({"pages":pages,"files":files,"copy":copy,"merged":merged}));
     }
     let v=with(&s,|v|portable::restore(v.root.parent().ok_or("no parent directory")?,data,name.as_deref()))?;
-    let entry=Entry{id:v.id(),name:v.name(),path:v.root.to_string_lossy().into()};
+    let entry=Entry{id:v.id(),name:v.name(),path:v.root.to_string_lossy().into(),sync:false};
     activate(&s,&entry)?;
     Ok(json!({"pages":v.pages_all()?.len(),"files":v.files_list().len()}))
 }
