@@ -51,7 +51,7 @@ type Config struct {
 // Load reads the settings and returns them together with the problems that make a server unsafe to start.
 func Load(getenv func(string) string) (Config, []string) {
 	c := Config{
-		Host:            str(getenv("HOST"), "0.0.0.0"),
+		Host:            str(getenv("LISTEN_HOST"), "0.0.0.0"),
 		Port:            integer(getenv("PORT"), 3000),
 		DataDir:         str(getenv("DATA_DIR"), "./data"),
 		Secret:          getenv("SESSION_SECRET"),
