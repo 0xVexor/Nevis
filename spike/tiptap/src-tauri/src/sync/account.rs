@@ -48,7 +48,32 @@ pub fn token(app_data: &Path) -> Option<String> {
 fn store(app_data: &Path, mut a: Account, token: &str) -> Res<()> {
     let in_keyring = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).and_then(|e| e.set_password(token)).is_ok();
     a.token = if in_keyring { String::new() } else { token.to_string() };
-    write_atomic(&file(app_data), &serde_json::to_vec(&a).map_err(err)?)
+    let bytes = serde_json::to_vec(&a).map_err(err)?;
+    if a.token.is_empty() {
+        write_atomic(&file(app_data), &bytes)
+    } else {
+        write_private(&file(app_data), &bytes) // the token is in the file: nobody else on this computer may read it
+    }
+}
+
+/// Like `write_atomic`, but the file is created readable by its owner only (the mode is set at creation, so there is no moment
+/// when the token is readable by others).
+fn write_private(path: &Path, bytes: &[u8]) -> Res<()> {
+    #[cfg(not(unix))]
+    return write_atomic(path, bytes);
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let tmp = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
+        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&tmp).map_err(err)?;
+        let written = f.write_all(bytes).and_then(|_| f.sync_all());
+        drop(f);
+        written.and_then(|_| std::fs::rename(&tmp, path)).map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            err(e)
+        })
+    }
 }
 
 /// Forgets the account on this device. Vaults, files and sync bookkeeping stay.
@@ -208,6 +233,21 @@ pub fn delete_account(app_data: &Path, password: &str) -> Res<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_token_in_the_account_file_is_readable_by_the_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("nevis-account-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("account.json");
+        write_private(&path, b"{}").unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        write_private(&path, b"{\"again\":1}").unwrap(); // replaces the file, same mode
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(std::fs::read(&path).unwrap(), b"{\"again\":1}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn servers_are_https_unless_they_are_on_this_computer() {

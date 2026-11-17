@@ -11,7 +11,10 @@ import (
 	"github.com/0xVexor/Nevis/server/internal/vaults"
 )
 
-var contentRange = regexp.MustCompile(`^bytes (\d+)-(\d+)/(\d+)$`)
+var (
+	contentRange = regexp.MustCompile(`^bytes (\d+)-(\d+)/(\d+)$`)
+	hex64        = regexp.MustCompile(`^[0-9a-f]{64}$`)
+)
 
 func (s *Server) blobRoutes() {
 	s.authed("PUT /v1/vaults/{id}/blobs/{sha}", s.putBlob)
@@ -76,6 +79,9 @@ func (s *Server) headBlob(w http.ResponseWriter, r *http.Request, p *auth.Princi
 		return err
 	}
 	sha := r.PathValue("sha")
+	if !hex64.MatchString(sha) {
+		return apierr.New(400, "bad_sha")
+	}
 	b, err := s.Vaults.Blob(r.Context(), v.ID, sha)
 	if err != nil {
 		return err

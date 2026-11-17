@@ -154,12 +154,28 @@ func (s *Server) changes(w http.ResponseWriter, r *http.Request, p *auth.Princip
 	if !hasLimit {
 		limit = vaults.DefaultPage
 	}
+	if r.URL.Query().Get("snapshot") == "1" {
+		page, err := s.Vaults.Snapshot(r.Context(), v.ID, pathAfter(r), int(min(limit, 1<<20)))
+		if err != nil {
+			return err
+		}
+		writeJSON(w, 200, page)
+		return nil
+	}
 	c, err := s.Vaults.Changes(r.Context(), v.ID, since, int(min(limit, 1<<20)))
 	if err != nil {
 		return err
 	}
 	writeJSON(w, 200, c)
 	return nil
+}
+
+// pathAfter is the `after` query parameter of a snapshot read; an absurdly long one counts as missing (the start).
+func pathAfter(r *http.Request) string {
+	if v := r.URL.Query().Get("after"); len(v) <= maxPath*4 {
+		return v
+	}
+	return ""
 }
 
 // pathParam is the `path` query parameter; an absurdly long one counts as missing.

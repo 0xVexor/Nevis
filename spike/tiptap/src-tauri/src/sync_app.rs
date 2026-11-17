@@ -319,7 +319,7 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool) -> Res<()> {
         let mut hub = Hub::new(api, &e.id, state.hub.clone());
         let pre = hub.preflight(&vault.name())?;
         if pre.baseline {
-            // a new server copy, a server that lost data, or a device that was away longer than the server remembers:
+            // a new server copy or a server that lost data (a device that was away longer than the server remembers keeps its bases):
             // what the engine believes about "the last sync" says nothing now, so it only adds, and deletes nothing
             state.files.clear();
         }
@@ -343,7 +343,10 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool) -> Res<()> {
                 }
             }
             if !rep.errors.is_empty() {
-                let m = rep.errors.join("; ");
+                let mut m = rep.errors.join("; ");
+                if rep.held > 0 {
+                    m = format!("{m}; {} deletions held back", rep.held);
+                }
                 let (state, reason) = if hub::is_network(&m) { ("offline", "NETWORK") } else if hub::is_auth(&m) { ("paused", "SIGNED_OUT") } else { ("error", "ERROR") };
                 set(state, reason, m.clone(), false);
                 Err(m)

@@ -20,8 +20,14 @@ const (
 var (
 	roots        = map[string]bool{"pages": true, "files": true, "history": true, "kv": true, ".trash": true, "databases": true}
 	reserved     = regexp.MustCompile(`(?i)^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$`)
-	databaseKind = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
+	databaseFile = regexp.MustCompile(`^[A-Za-z0-9_~. ()-]+$`)
 )
+
+// the record folders of the desktop client (KINDS in database/mod.rs)
+var databaseKinds = map[string]bool{
+	"containers": true, "sources": true, "properties": true, "views": true, "relations": true, "edges": true,
+	"templates": true, "workflows": true, "comments": true, "principals": true, "grants": true, "events": true, "allocators": true,
+}
 
 func hasBadChar(p string) bool {
 	return strings.ContainsFunc(p, func(r rune) bool { return r <= 0x1f || r == 0x7f || strings.ContainsRune(`<>"|?*:\`, r) })
@@ -63,9 +69,14 @@ func checkPath(p string) string {
 	return ""
 }
 
-// databasePath: databases/<kind>/<name>.json, nothing deeper. Which kinds exist is the client's business.
+// databasePath: databases/<kind folder>/<name>.json, nothing deeper. It is exactly what the desktop client accepts
+// (safe_database_rel): a path the server took but the client refuses would stop the sync on every device.
 func databasePath(parts []string) bool {
-	return len(parts) == 3 && databaseKind.MatchString(parts[1]) && len(parts[2]) > len(".json") && strings.HasSuffix(parts[2], ".json")
+	if len(parts) != 3 || !databaseKinds[parts[1]] {
+		return false
+	}
+	file := parts[2]
+	return strings.HasSuffix(file, ".json") && !strings.HasPrefix(file, ".") && databaseFile.MatchString(file)
 }
 
 // foldCase: two paths that differ only in letter case are one file on Windows and macOS, so the server treats them as one.

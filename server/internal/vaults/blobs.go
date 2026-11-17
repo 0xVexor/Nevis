@@ -82,6 +82,10 @@ func (s *Store) ReceiveBlob(ctx context.Context, userID string, v *Vault, sha st
 		return BlobResult{}, err
 	}
 	if have != nil {
+		// the upload is a sign of life: housekeeping must not take the blob before the commit that follows it
+		if _, err := s.DB.ExecContext(ctx, "UPDATE blobs SET created_at = ? WHERE vault_id = ? AND sha256 = ?", s.ms(), v.ID, sha); err != nil {
+			return BlobResult{}, err
+		}
 		return BlobResult{Complete: true, Existed: true, Size: have.Size, MD5: have.MD5}, nil
 	}
 	if rng == nil {

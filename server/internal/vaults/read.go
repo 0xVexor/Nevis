@@ -169,7 +169,8 @@ const (
 )
 
 // Changes returns what changed after rev `since`, oldest first. A `since` older than what was compacted away means
-// "start over" (410).
+// "start over" (410), except since 0: that is the start, and it is answered with every row up to `compacted` plus
+// `limit` more, so that the next page (since = Next) is never older than `compacted` and cannot be refused.
 func (s *Store) Changes(ctx context.Context, id string, since int64, limit int) (Changes, error) {
 	v, err := vaultRow(ctx, s.DB, id)
 	if err != nil {
@@ -180,18 +181,64 @@ func (s *Store) Changes(ctx context.Context, id string, since int64, limit int) 
 	}
 	since = max(since, 0)
 	limit = min(max(limit, 1), maxPage)
-	if since < v.Compacted {
+	if since > 0 && since < v.Compacted {
 		return Changes{}, apierr.With(410, "since_too_old", map[string]any{"epoch": v.Epoch, "compacted": v.Compacted})
 	}
-	rows, err := queryFiles(ctx, s.DB, "SELECT "+fileColumns+" FROM files WHERE vault_id = ? AND rev > ? ORDER BY rev LIMIT ?", id, since, limit+1)
+	page := limit
+	if since == 0 && v.Compacted > 0 {
+		var old int
+		if err := s.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM files WHERE vault_id = ? AND rev <= ?", id, v.Compacted).Scan(&old); err != nil {
+			return Changes{}, err
+		}
+		page += old
+	}
+	rows, err := queryFiles(ctx, s.DB, "SELECT "+fileColumns+" FROM files WHERE vault_id = ? AND rev > ? ORDER BY rev LIMIT ?", id, since, page+1)
 	if err != nil {
 		return Changes{}, err
 	}
 	out := Changes{Epoch: v.Epoch, Head: v.Seq, Next: v.Seq, Files: rows, ServerTime: s.ms()}
+	if len(rows) > page {
+		out.Files = rows[:page]
+		out.HasMore = true
+		out.Next = rows[page-1].Rev
+	}
+	return out, nil
+}
+
+// SnapshotPage is one page of the answer to GET /changes?snapshot=1. It has the fields of Changes (head and next are
+// the vault's seq) plus `seq` and `next_after`.
+type SnapshotPage struct {
+	Epoch      string `json:"epoch"`
+	Seq        int64  `json:"seq"`
+	Head       int64  `json:"head"`
+	Next       int64  `json:"next"`
+	HasMore    bool   `json:"has_more"`
+	NextAfter  string `json:"next_after"`
+	Files      []File `json:"files"`
+	ServerTime int64  `json:"server_time"`
+}
+
+// Snapshot returns the live files with a path after `after`, in path order, at most `limit` of them. It does not
+// look at compaction: a client that reads the whole vault this way keeps the `seq` of its first page as its cursor,
+// and whatever changed meanwhile has a rev above it and comes through Changes.
+func (s *Store) Snapshot(ctx context.Context, id string, after string, limit int) (SnapshotPage, error) {
+	v, err := vaultRow(ctx, s.DB, id)
+	if err != nil {
+		return SnapshotPage{}, err
+	}
+	if v == nil {
+		return SnapshotPage{}, apierr.New(404, "no_such_vault")
+	}
+	limit = min(max(limit, 1), maxPage)
+	rows, err := queryFiles(ctx, s.DB, "SELECT "+fileColumns+" FROM files WHERE vault_id = ? AND deleted = 0 AND path > ? ORDER BY path LIMIT ?", id, after, limit+1)
+	if err != nil {
+		return SnapshotPage{}, err
+	}
+	out := SnapshotPage{Epoch: v.Epoch, Seq: v.Seq, Head: v.Seq, Next: v.Seq, Files: rows, ServerTime: s.ms()}
 	if len(rows) > limit {
 		out.Files = rows[:limit]
 		out.HasMore = true
-		out.Next = rows[limit-1].Rev
+		out.NextAfter = rows[limit-1].Path
 	}
 	return out, nil
 }

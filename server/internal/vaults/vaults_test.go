@@ -4,6 +4,8 @@ import (
 	"crypto/md5"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 )
@@ -29,6 +31,45 @@ func TestCheckPath(t *testing.T) {
 		"pages/é.json": "not_nfc",
 	}
 	for p, want := range bad {
+		if got := checkPath(p); got != want {
+			t.Errorf("%q: got %q, want %q", p, got, want)
+		}
+	}
+}
+
+// The desktop client runs the same vectors (server_and_desktop_share_the_path_contract in sync/mod.rs): a path one
+// side accepts and the other refuses would stop the sync on every device.
+func TestCheckPathSharedVectors(t *testing.T) {
+	raw, err := os.ReadFile("../../../spike/tiptap/src-tauri/src/sync/sync-paths.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases [][]*string // [path, expected reason or null]
+	if err := json.Unmarshal(raw, &cases); err != nil {
+		t.Fatal(err)
+	}
+	if len(cases) == 0 {
+		t.Fatal("no vectors")
+	}
+	for _, c := range cases {
+		if len(c) != 2 || c[0] == nil {
+			t.Fatalf("malformed vector %v", c)
+		}
+		want := ""
+		if c[1] != nil {
+			want = *c[1]
+		}
+		if got := checkPath(*c[0]); got != want {
+			t.Errorf("%q: got %q, want %q", *c[0], got, want)
+		}
+	}
+}
+
+func TestDatabasePathUsesTheClientsCharacterSet(t *testing.T) {
+	for p, want := range map[string]string{
+		"databases/views/a b (1).json": "", "databases/views/\u00e9.json": "bad_database_path",
+		"databases/views/a,b.json": "bad_database_path", "databases/views/a$b.json": "bad_database_path",
+	} {
 		if got := checkPath(p); got != want {
 			t.Errorf("%q: got %q, want %q", p, got, want)
 		}

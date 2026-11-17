@@ -213,6 +213,11 @@ fn file_of(v: &Value) -> Option<(String, HubFile)> {
     ))
 }
 
+/// Everything but unreserved characters as %XX, for a path inside a query string.
+fn percent_encode(s: &str) -> String {
+    s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
+}
+
 pub fn make_id(rev: i64, path: &str) -> String {
     format!("{rev}:{path}")
 }
@@ -222,8 +227,8 @@ pub fn split_id(id: &str) -> Res<(i64, &str)> {
     Ok((rev.parse().map_err(|_| format!("bad file id {id}"))?, path))
 }
 
-/// What `preflight` found out. Both mean "start from what is here, delete nothing": the bookkeeping of the engine
-/// no longer says anything about this server.
+/// What `preflight` found out. `created` and `baseline` mean "start from what is here, delete nothing": the bookkeeping
+/// of the engine no longer says anything about this server.
 #[derive(Debug, Default)]
 pub struct Preflight {
     pub created: bool,
@@ -272,10 +277,15 @@ impl Hub {
         if out.created {
             out.baseline = true;
         }
-        self.cache.epoch = epoch;
-        if self.pull()? {
+        // the server's counter went backwards: it lost data (or was restored) without changing its epoch
+        if state["seq"].as_i64().is_some_and(|s| s < self.cache.seq) {
+            self.cache = Cache::default();
             out.baseline = true;
         }
+        self.cache.epoch = epoch;
+        // (a mirror rebuilt only because the server forgot how far we were is not a baseline: the bookkeeping of the
+        // engine is about files, not about change numbers, and is what turns a remote deletion into a deletion here)
+        self.pull()?;
         // the mirror must be what the server has: a file missing from it would look like a deletion to the engine
         if state["seq"].as_i64() == Some(self.cache.seq) && state["root"].as_str().is_some_and(|r| r != root_of(&self.cache.files)) {
             let epoch = self.cache.epoch.clone();
@@ -291,16 +301,20 @@ impl Hub {
         Ok(out)
     }
 
-    /// Applies every change after `cache.seq`. Returns true when the server no longer remembered that far back and the mirror was rebuilt.
-    fn pull(&mut self) -> Res<bool> {
+    /// Brings the mirror up to date. A mirror that has to be (re)built (fresh device, or the server no longer remembers
+    /// how far back we were) is built from a snapshot of the live files, then the normal feed continues from the
+    /// snapshot's first `seq`.
+    fn pull(&mut self) -> Res<()> {
         let mut rebuilt = false;
+        if self.cache.seq == 0 {
+            self.snapshot()?;
+        }
         loop {
             let url = self.v(&format!("/changes?since={}&limit=500", self.cache.seq));
             let page = match self.api.get(&url) {
                 Ok(p) => p,
                 Err(e) if e.lines().next() == Some("HUB:since_too_old") && !rebuilt => {
-                    let epoch = self.cache.epoch.clone();
-                    self.cache = Cache { epoch, ..Default::default() };
+                    self.snapshot()?;
                     rebuilt = true;
                     continue;
                 }
@@ -318,9 +332,40 @@ impl Hub {
             // only now has this page been applied; a connection lost before this point repeats the page, which changes nothing
             self.cache.seq = page["next"].as_i64().unwrap_or(self.cache.seq).max(self.cache.seq);
             if !page["has_more"].as_bool().unwrap_or(false) {
-                return Ok(rebuilt);
+                return Ok(());
             }
         }
+    }
+
+    /// Replaces the mirror with the server's live files, read page by page in path order. The cursor becomes the `seq` of
+    /// the FIRST page: whatever changed while the pages were read is in the normal feed after it and is applied again
+    /// harmlessly. The mirror is only replaced when every page arrived.
+    fn snapshot(&mut self) -> Res<()> {
+        let mut files = BTreeMap::new();
+        let mut first_seq = None;
+        let mut after = String::new();
+        loop {
+            let page = self.api.get(&self.v(&format!("/changes?snapshot=1&after={}&limit=500", percent_encode(&after))))?;
+            self.offset = page["server_time"].as_i64().unwrap_or_else(now_ms) - now_ms();
+            first_seq.get_or_insert(page["seq"].as_i64().ok_or("HUB:bad_answer")?);
+            for f in page["files"].as_array().into_iter().flatten() {
+                let Some((path, file)) = file_of(f) else { continue };
+                if !f["deleted"].as_bool().unwrap_or(false) {
+                    files.insert(path, file);
+                }
+            }
+            if !page["has_more"].as_bool().unwrap_or(false) {
+                break;
+            }
+            let next = page["next_after"].as_str().unwrap_or("");
+            if next.is_empty() || next <= after.as_str() {
+                return Err("HUB:bad_answer".into()); // a server that does not move on would keep us here forever
+            }
+            after = next.to_string();
+        }
+        self.cache.files = files;
+        self.cache.seq = first_seq.unwrap_or(0);
+        Ok(())
     }
 
     /// Sends the contents under their hash. Nothing refers to them until a commit does.
@@ -533,6 +578,128 @@ mod tests {
         files.insert("pages/a.json".to_string(), HubFile { rev: 1, md5: md5_of(b"a"), sha: String::new(), size: 1, time: 0 });
         files.insert("pages/b.json".to_string(), HubFile { rev: 2, md5: md5_of(b"b"), sha: String::new(), size: 1, time: 0 });
         assert_eq!(root_of(&files), "9ee351a4056cc95744c24c1693184bc11988f3dc98bb1a2dc86136caabca773d");
+    }
+
+    /// A server on this computer that answers `n` requests with what `route` says (status, body).
+    fn mock_server(n: usize, route: impl Fn(&str) -> (u16, String) + Send + 'static) -> (String, std::thread::JoinHandle<()>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let handle = std::thread::spawn(move || {
+            for _ in 0..n {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buf = [0; 4096];
+                let len = stream.read(&mut buf).unwrap();
+                let request = String::from_utf8_lossy(&buf[..len]).to_string();
+                let target = request.split_whitespace().nth(1).unwrap_or("").to_string();
+                let (status, body) = route(&target);
+                write!(stream, "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+            }
+        });
+        (base, handle)
+    }
+
+    fn cache_at(seq: i64) -> Cache {
+        let mut files = BTreeMap::new();
+        files.insert("pages/a.json".to_string(), HubFile { rev: 1, md5: md5_of(b"a"), sha: String::new(), size: 1, time: 0 });
+        Cache { epoch: "e".into(), seq, files }
+    }
+
+    fn snap_row(path: &str, rev: i64, content: &[u8]) -> String {
+        format!(r#"{{"path":"{path}","rev":{rev},"md5":"{}"}}"#, md5_of(content))
+    }
+
+    #[test]
+    fn a_rebuild_for_history_keeps_the_bookkeeping_of_the_engine() {
+        let (base, server) = mock_server(4, |t| {
+            if t.ends_with("/state") {
+                (200, r#"{"epoch":"e","seq":9}"#.into())
+            } else if t.contains("since=5") {
+                (410, r#"{"error":"since_too_old"}"#.into())
+            } else if t.contains("snapshot=1") {
+                (200, format!(r#"{{"files":[{}],"seq":9,"has_more":false,"next_after":""}}"#, snap_row("pages/b.json", 9, b"b")))
+            } else {
+                assert!(t.contains("since=9"), "{t}");
+                (200, r#"{"files":[],"next":9,"has_more":false}"#.into())
+            }
+        });
+        let mut state = crate::sync::SyncState::default();
+        state.files.insert("pages/b.json".into(), crate::sync::Entry { base: md5_of(b"b"), remote_id: "9:pages/b.json".into(), ..Default::default() });
+        let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", cache_at(5));
+        let pre = hub.preflight("T").unwrap();
+        server.join().unwrap();
+        // what sync_app does with the answer: only a baseline wipes the bases of the engine
+        if pre.baseline {
+            state.files.clear();
+        }
+        assert!(!pre.baseline, "{pre:?}");
+        assert!(state.files.contains_key("pages/b.json"), "the bases survive a rebuild for history");
+        assert_eq!(hub.cache.files.keys().collect::<Vec<_>>(), vec!["pages/b.json"]);
+        assert_eq!(hub.cache.seq, 9);
+    }
+
+    #[test]
+    fn a_snapshot_is_read_page_by_page_and_continues_from_the_first_seq() {
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = seen.clone();
+        // 5 requests: state, three snapshot pages (seq 10, 11, 12: the vault moves on meanwhile), the feed after the first seq
+        let (base, server) = mock_server(5, move |t| {
+            log.lock().unwrap().push(t.to_string());
+            if t.ends_with("/state") {
+                (200, r#"{"epoch":"e","seq":10}"#.into())
+            } else if t.contains("snapshot=1&after=&") {
+                (200, format!(r#"{{"files":[{},{}],"seq":10,"has_more":true,"next_after":"pages/b b.json"}}"#, snap_row("pages/a.json", 1, b"a"), snap_row("pages/b b.json", 2, b"b")))
+            } else if t.contains("snapshot=1&after=pages%2Fb%20b.json&") {
+                (200, format!(r#"{{"files":[{}],"seq":11,"has_more":true,"next_after":"pages/c.json"}}"#, snap_row("pages/c.json", 3, b"c")))
+            } else if t.contains("snapshot=1&after=pages%2Fc.json&") {
+                // pages/a.json changed (rev 11) and pages/d.json appeared (rev 12) while the pages were read
+                (200, format!(r#"{{"files":[{}],"seq":12,"has_more":false,"next_after":""}}"#, snap_row("pages/e.json", 4, b"e")))
+            } else {
+                assert!(t.contains("since=10"), "the feed continues from the FIRST page's seq: {t}");
+                (200, format!(r#"{{"files":[{},{},{{"path":"pages/c.json","rev":12,"deleted":true}}],"next":12,"has_more":false}}"#, snap_row("pages/a.json", 11, b"a2"), snap_row("pages/d.json", 12, b"d")))
+            }
+        });
+        let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", Cache::default());
+        let pre = hub.preflight("T").unwrap();
+        server.join().unwrap();
+        assert!(!pre.baseline, "{pre:?}");
+        let files: Vec<_> = hub.cache.files.iter().map(|(p, f)| (p.as_str(), f.rev)).collect();
+        assert_eq!(files, vec![("pages/a.json", 11), ("pages/b b.json", 2), ("pages/d.json", 12), ("pages/e.json", 4)]);
+        assert_eq!(hub.cache.seq, 12);
+        assert!(seen.lock().unwrap().iter().all(|t| !t.contains("since=0")), "a fresh device does not use the plain feed");
+    }
+
+    #[test]
+    fn a_server_counter_that_went_backwards_is_a_baseline() {
+        let (base, server) = mock_server(3, |t| {
+            if t.ends_with("/state") {
+                (200, r#"{"epoch":"e","seq":3}"#.into())
+            } else if t.contains("snapshot=1") {
+                (200, r#"{"files":[],"seq":3,"has_more":false,"next_after":""}"#.into())
+            } else {
+                assert!(t.contains("since=3"), "{t}");
+                (200, r#"{"files":[],"next":3,"has_more":false}"#.into())
+            }
+        });
+        let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", cache_at(5));
+        let pre = hub.preflight("T").unwrap();
+        server.join().unwrap();
+        assert!(pre.baseline, "{pre:?}");
+        assert_eq!(hub.cache.seq, 3);
+    }
+
+    #[test]
+    fn a_snapshot_that_does_not_move_on_is_an_error_not_a_loop() {
+        let (base, _server) = mock_server(2, |t| {
+            if t.ends_with("/state") {
+                (200, r#"{"epoch":"e","seq":3}"#.into())
+            } else {
+                (200, r#"{"files":[],"seq":3,"has_more":true,"next_after":""}"#.into())
+            }
+        });
+        let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", Cache::default());
+        assert_eq!(hub.preflight("T").unwrap_err(), "HUB:bad_answer");
     }
 
     #[test]

@@ -638,6 +638,18 @@ pub fn tombstone(v: &Vault, path: &str) -> Res<()> {
     )
 }
 
+/// The path is alive again (the cloud has it, or a later edit brought it back): it must not stay marked as deleted.
+pub fn untombstone(v: &Vault, path: &str) -> Res<()> {
+    let mut dead = tombstones(v)?;
+    if dead.remove(path) {
+        write_atomic(
+            &v.root.join(".nevis/tombstones.json"),
+            &serde_json::to_vec(&dead).map_err(err)?,
+        )?;
+    }
+    Ok(())
+}
+
 pub fn tombstones(v: &Vault) -> Res<BTreeSet<String>> {
     match fs::read(v.root.join(".nevis/tombstones.json")) {
         Ok(b) => serde_json::from_slice(&b).map_err(|_| "SYNC:tombstones_corrupt".into()),

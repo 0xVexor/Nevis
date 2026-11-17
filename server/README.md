@@ -174,7 +174,7 @@ location / {
 
 ## Wire protocol (all under `/v1`, JSON unless noted)
 
-The protocol is the one of the earlier Node.js server, unchanged, so existing clients keep working. A few identifiers still carry the old product name because the client checks them: `/v1/health` answers `"name": "noviq-sync"`, the client sends its version in `X-Noviq-Api` (this server also reads `X-Nevis-Api`, and answers with both), and the vault marker path is `.noviq/vault.json`.
+The protocol is the one of the earlier Node.js server, unchanged, so existing clients keep working. A few identifiers still carry the old product name because the client checks them: `/v1/health` answers `"name": "nevis-sync"`, the client sends its version in `X-Noviq-Api` (this server also reads `X-Nevis-Api`, and answers with both), and the vault marker path is `.nevis/vault.json`.
 
 | | |
 |---|---|
@@ -183,7 +183,7 @@ The protocol is the one of the earlier Node.js server, unchanged, so existing cl
 | `POST /v1/auth/logout` · `/auth/password` · `/auth/recovery-key` · `GET /v1/account` · `DELETE /v1/account` · `DELETE /v1/devices/:id` | the account |
 | `GET/POST /v1/vaults` · `PATCH/DELETE /v1/vaults/:id` · `POST /v1/vaults/:id/undelete` | vaults (delete = trash for `RETENTION_DAYS`) |
 | `GET /v1/vaults/:id/state?since=&wait=` | state (`epoch`, `seq`, `compacted`, `files`, `root`); with `since` and `wait` (seconds, at most 30) it waits for news |
-| `GET /v1/vaults/:id/changes?since=&limit=` | what changed after a rev, oldest first (`head`, `next`, `has_more`, `files`); `410` when `since` is older than the server remembers |
+| `GET /v1/vaults/:id/changes?since=&limit=` | what changed after a rev, oldest first (`head`, `next`, `has_more`, `files`); `410` when `since` is older than the server remembers; with `snapshot=1` (and `after=<path>`) it instead returns the live files only, in path order, `limit` at a time (`seq`, `has_more`, `next_after`, `files`), ignores `since` and never answers `410`: a client keeps the `seq` of the first page as its cursor and reads on with `since=` |
 | `GET /v1/vaults/:id/file?path=` | one path as it is now |
 | `HEAD/PUT/GET /v1/vaults/:id/blobs/:sha256` | contents by hash; `PUT` with `Content-Range: bytes a-b/total` resumes |
 | `GET /v1/vaults/:id/rev/:rev` | the content of one revision |
@@ -196,7 +196,7 @@ Everything except the public routes needs `Authorization: Bearer <device token>`
 - **Sign-in** `{ username, password, device_name }` → `{ user, token, device, restored }` (`restored: true` when it brought back an account that was waiting to be deleted). Ten wrong passwords for a user name, or a hundred from one address, block further attempts for 15 minutes (`429`). Wrong recovery keys count the same way.
 - **Blob upload.** `PUT` the bytes with `Content-Type: application/octet-stream`. Without `Content-Range` the body is the whole file; with it, one piece. Answers: `201` stored, `200` already there, `202` piece accepted (`received` says how far the server has got), `409 out_of_order` (a piece beyond what the server holds; `received` says where to resume), `413 too_large`, `422 hash_mismatch` or `422 size_mismatch` (nothing is kept), `507 quota_exceeded`. `HEAD` answers `200` with `X-Size` and `X-Md5`, or `404` with `X-Received`. A request body is at most 16 MB.
 - **Commit.** A write names the rev it was based on (`base_rev`, `0` for a new path). A result is `{ ok: true, rev, sha256, md5, size, deleted, server_time }`, `{ ok: true, noop: true, ... }` when nothing changed, or `{ ok: false, error, ... }`: `conflict` (with `current`), `blob_missing`, `bad_sha`, `bad_path` (with `detail`), `path_case_clash`, `bulk_delete`, `bad_op`, `not_applied` (atomic commits). Deleting more than `max(5, 20% of the live files)` in one commit is refused as `bulk_delete` unless `confirm_bulk` is `true`. The same `op_id` (8 to 80 characters) always gets the same answer, marked `replay: true`.
-- **Paths** may live under `pages/`, `files/`, `history/`, `kv/`, `.trash/` and `databases/<kind>/<name>.json`, plus the marker `.noviq/vault.json`. No traversal, no absolute paths, no Windows-reserved names or characters, NFC normalized, at most 240 UTF-16 units; two paths that differ only in letter case count as one.
+- **Paths** may live under `pages/`, `files/`, `history/`, `kv/`, `.trash/` and `databases/<kind>/<name>.json`, plus the marker `.nevis/vault.json`. No traversal, no absolute paths, no Windows-reserved names or characters, NFC normalized, at most 240 UTF-16 units; two paths that differ only in letter case count as one.
 - **Epoch.** Each vault has an `epoch` that changes when the server is restored from a backup. A client that sees another epoch starts over from what it holds.
 
 Errors are `{ "error": "<code>" }` with a fitting status: `400 bad_request`, `401 unauthorized` / `bad_credentials`, `403`, `404 no_such_vault` (also for someone else's vault), `409`, `410 since_too_old`, `413 too_large`, `422`, `426 upgrade_required`, `429 rate_limited` (with `Retry-After`), `507 quota_exceeded`.
