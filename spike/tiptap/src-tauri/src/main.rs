@@ -12,6 +12,8 @@ mod mcp_relay;
 mod index;
 mod portable;
 mod registry;
+#[allow(dead_code)] // the engine is wired to the app in a later change
+mod sync;
 mod vault;
 mod vault_lock;
 mod updates;
