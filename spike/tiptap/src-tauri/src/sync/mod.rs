@@ -62,6 +62,9 @@ pub struct Entry {
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct SyncState {
+    /// The local folder whose absence/changes the baseline describes.
+    #[serde(default)]
+    pub local_root: String,
     /// The account and server this state belongs to (`user@server`). Another account is another cloud: the bookkeeping starts over.
     #[serde(default)]
     pub account: String,
@@ -383,6 +386,13 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         return Err(VAULT_MISSING.into());
     }
     remote.check()?;
+    let local_root = fs::canonicalize(root).map_err(err)?.to_string_lossy().into_owned();
+    if state.local_root != local_root {
+        // A different folder (including a fresh download) has no deletion history.
+        state.files.clear();
+        state.allow_deletes_once = false;
+        state.local_root = local_root;
+    }
     let (local, unknown) = scan(root, &state.files)?;
     let mut rep = Report::default();
     let listed = remote.list()?;
@@ -771,6 +781,32 @@ mod tests {
         a.sync();
         assert_eq!(a.page(P1).unwrap()["title"], "edited on b");
         assert!(!a.sync().changed() && !b.sync().changed());
+    }
+
+    #[test]
+    fn downloading_into_another_folder_preserves_server_pages() {
+        let (mut original, mut downloaded) = pair();
+        original.save(P1, "uploaded page", 100);
+        original.sync();
+        downloaded.state = original.state.clone();
+        downloaded.sync();
+        assert_eq!(downloaded.page(P1).unwrap()["title"], "uploaded page");
+        original.sync();
+        assert_eq!(original.page(P1).unwrap()["title"], "uploaded page");
+    }
+
+    #[test]
+    fn legacy_baseline_without_a_local_folder_does_not_delete_cloud_pages() {
+        let (mut original, mut downloaded) = pair();
+        original.save(P1, "keep on server", 100);
+        original.sync();
+        let mut legacy = serde_json::to_value(&original.state).unwrap();
+        legacy.as_object_mut().unwrap().remove("local_root");
+        downloaded.state = serde_json::from_value(legacy).unwrap();
+        downloaded.state.allow_deletes_once = true;
+        downloaded.sync();
+        assert_eq!(downloaded.page(P1).unwrap()["title"], "keep on server");
+        assert!(!downloaded.state.allow_deletes_once);
     }
 
     #[test]
