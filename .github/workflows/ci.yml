@@ -100,3 +100,36 @@ jobs:
         env:
           PLATFORM_RESULT: ${{ needs.app-platforms.result }}
         run: test "$PLATFORM_RESULT" = success
+
+  # The sync server (server/). On pull requests it only does its work when the pull request touches server/; on
+  # pushes to main and dev it always runs.
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Does this change touch the server?
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != "pull_request" ] || git diff --name-only "origin/$BASE...HEAD" | grep -q '^server/'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.scope.outputs.run == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - if: steps.scope.outputs.run == 'true'
+        run: go vet ./...
+        working-directory: server
+      - name: gofmt
+        if: steps.scope.outputs.run == 'true'
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+        working-directory: server
+      - if: steps.scope.outputs.run == 'true'
+        run: go test -race ./...
+        working-directory: server
