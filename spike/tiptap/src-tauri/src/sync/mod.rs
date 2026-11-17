@@ -78,6 +78,11 @@ pub struct SyncState {
 }
 
 impl SyncState {
+    pub fn reset_local_baseline(&mut self) {
+        self.files.clear();
+        self.allow_deletes_once = false;
+    }
+
     /// A state file that cannot be read is moved aside and the sync starts from a clean slate: without `base` the
     /// engine only adds (uploads what is only here, downloads what is only there) and never deletes.
     pub fn load(path: &Path) -> SyncState {
@@ -389,8 +394,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
     let local_root = fs::canonicalize(root).map_err(err)?.to_string_lossy().into_owned();
     if state.local_root != local_root {
         // A different folder (including a fresh download) has no deletion history.
-        state.files.clear();
-        state.allow_deletes_once = false;
+        state.reset_local_baseline();
         state.local_root = local_root;
     }
     let (local, unknown) = scan(root, &state.files)?;
@@ -410,7 +414,12 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
     let mut actions = plan(&local, &rmap, &state.files, &unknown);
 
     let deletes = actions.iter().filter(|a| matches!(a, Action::DeleteLocal(_) | Action::DeleteRemote(_))).count();
-    if hold_deletes(deletes, state.files.len(), local.is_empty(), rmap.is_empty()) && !state.allow_deletes_once {
+    let tombstones = snapshot::tombstones(vault)?;
+    let unconfirmed_absence = actions.iter().any(|action| match action {
+        Action::DeleteRemote(path) => !tombstones.contains(path),
+        _ => false,
+    });
+    if (unconfirmed_absence || hold_deletes(deletes, state.files.len(), local.is_empty(), rmap.is_empty())) && !state.allow_deletes_once {
         rep.held = deletes;
         actions.retain(|a| !matches!(a, Action::DeleteLocal(_) | Action::DeleteRemote(_)));
     }
@@ -807,6 +816,52 @@ mod tests {
         downloaded.sync();
         assert_eq!(downloaded.page(P1).unwrap()["title"], "keep on server");
         assert!(!downloaded.state.allow_deletes_once);
+    }
+
+    #[test]
+    fn a_missing_page_folder_never_empties_the_server() {
+        let (mut original, mut other) = pair();
+        original.save(P1, "keep my page", 100);
+        original.sync();
+        other.sync();
+        let page = original.vault.root.join(format!("pages/{P1}.json"));
+        fs::remove_file(page).unwrap();
+        let rep = original.sync();
+        assert!(rep.held > 0);
+        assert_eq!(rep.deleted, 0);
+        assert!(original.remote.0.borrow().trashed.is_empty());
+        other.sync();
+        assert_eq!(other.page(P1).unwrap()["title"], "keep my page");
+    }
+
+    #[test]
+    fn downloading_again_at_the_same_path_uses_a_fresh_baseline() {
+        let (mut original, mut other) = pair();
+        original.save(P1, "download again", 100);
+        original.sync();
+        other.sync();
+        fs::remove_file(original.vault.root.join(format!("pages/{P1}.json"))).unwrap();
+        original.state.reset_local_baseline();
+        let rep = original.sync();
+        assert_eq!(rep.held, 0);
+        assert_eq!(rep.deleted, 0);
+        assert_eq!(original.page(P1).unwrap()["title"], "download again");
+        assert!(original.remote.0.borrow().trashed.is_empty());
+    }
+
+    #[test]
+    fn a_missing_file_needs_confirmation_even_when_other_pages_remain() {
+        let (mut original, _) = pair();
+        original.save(P1, "missing", 100);
+        original.save(P2, "still here", 100);
+        original.sync();
+        fs::remove_file(original.vault.root.join(format!("pages/{P1}.json"))).unwrap();
+        let rep = original.sync();
+        assert!(rep.held > 0 && rep.deleted == 0);
+        assert!(original.remote.0.borrow().trashed.is_empty());
+        original.state.allow_deletes_once = true;
+        let confirmed = original.sync();
+        assert!(confirmed.deleted > 0);
     }
 
     #[test]

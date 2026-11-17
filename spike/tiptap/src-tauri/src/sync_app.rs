@@ -281,14 +281,14 @@ pub async fn cloud_download(s: St<'_>, id: String, name: String, parent: String)
     drop(v);
     let ctx = s.sync.ctx.clone();
     let e2 = e.clone();
-    blocking(move || run_sync(&ctx, &e2, true)).await?;
+    blocking(move || run_sync(&ctx, &e2, true, true)).await?;
     activate(&s, &e)
 }
 
 /// One synchronization of one vault: bring the mirror of the server up to date, then let the engine compare and move files.
 /// `patient`: retry a lost request a few times. While the network is known to be down it is false: one try, then the back-off
 /// decides when to look again, so that a sync does not sit for ten seconds in retries when the connection has just come back.
-fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool) -> Res<()> {
+fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool, downloading: bool) -> Res<()> {
     let set = |state: &'static str, reason: &str, error: String, done: bool| {
         if let Ok(mut st) = ctx.status.lock() {
             st.state = state;
@@ -315,6 +315,10 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool) -> Res<()> {
             state.files.clear();
             state.hub = Default::default();
             state.account = who;
+        }
+        if downloading {
+            state.reset_local_baseline();
+            state.hub = Default::default();
         }
         let mut hub = Hub::new(api, &e.id, state.hub.clone());
         let pre = hub.preflight(&vault.name())?;
@@ -421,7 +425,7 @@ fn sync_thread(app: AppHandle, rx: Receiver<Kick>) {
         let entry = current_entry(&s);
         let ready = entry.as_ref().is_some_and(|e| e.sync) && account::load(&ctx.app_data).is_some();
         match entry {
-            Some(e) if ready => match run_sync(&ctx, &e, fails == 0) {
+            Some(e) if ready => match run_sync(&ctx, &e, fails == 0, false) {
                 Ok(()) => fails = 0,
                 Err(_) => {
                     fails += 1;
