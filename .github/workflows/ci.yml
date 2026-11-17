@@ -150,3 +150,36 @@ jobs:
           kill $server
           exit $status
         working-directory: server
+
+  # The desktop sync client against the real Go server: the end-to-end tests of the Rust client (they are ignored in a
+  # plain `cargo test` because they need a server), pointed at a server started from this very commit.
+  sync-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: spike/tiptap/src-tauri
+      - name: Install Linux native dependencies
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - name: Build and start the server
+        run: |
+          go build -o "$RUNNER_TEMP/nevis-server" ./cmd/nevis-server
+          export SESSION_SECRET="$(openssl rand -hex 24)" REGISTRATION=open POW_BITS=12 PORT=3111 DATA_DIR="$RUNNER_TEMP/nevis-data" REGISTER_PER_HOUR=1000
+          nohup "$RUNNER_TEMP/nevis-server" > "$RUNNER_TEMP/server.log" 2>&1 &
+          for i in $(seq 1 50); do curl -fs http://127.0.0.1:3111/v1/health >/dev/null && exit 0; sleep 0.2; done
+          cat "$RUNNER_TEMP/server.log"; exit 1
+        working-directory: server
+      - name: Rust client against the server
+        env:
+          NEVIS_TEST_SERVER: http://127.0.0.1:3111
+        run: cargo test e2e -- --ignored --test-threads=1
+        working-directory: spike/tiptap/src-tauri
+      - name: Server log
+        if: failure()
+        run: cat "$RUNNER_TEMP/server.log"
