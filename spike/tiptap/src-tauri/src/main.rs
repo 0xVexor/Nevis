@@ -12,6 +12,8 @@ mod mcp_relay;
 mod index;
 mod portable;
 mod registry;
+mod sync;
+mod sync_app;
 mod vault;
 mod vault_lock;
 mod updates;
@@ -30,6 +32,7 @@ struct Store {
     reg: Mutex<Registry>,
     vault: Mutex<Option<Vault>>,
     index: Mutex<Option<(PathBuf, rusqlite::Connection)>>, // search index of the open vault
+    sync: sync_app::Runtime,
 }
 
 type St<'a> = State<'a, Store>;
@@ -121,7 +124,7 @@ fn vault_create(s: St, parent: String, name: String) -> Res<String> {
         return Err("a vault already exists there".into());
     }
     let v = Vault::create(root.clone(), &name)?;
-    let e = Entry { id: v.id(), name, path: root.to_string_lossy().into() };
+    let e = Entry { id: v.id(), name, path: root.to_string_lossy().into(), sync: false };
     activate(&s, &e)?;
     Ok(e.id)
 }
@@ -134,7 +137,7 @@ fn vault_add(s: St, path: String) -> Res<String> {
         return Err("not a folder".into());
     }
     let v = Vault::adopt(root.clone())?;
-    let e = Entry { id: v.id(), name: v.name(), path };
+    let e = Entry { id: v.id(), name: v.name(), path, sync: false };
     activate(&s, &e)?;
     Ok(e.id)
 }
@@ -324,6 +327,7 @@ fn pages_save(s: St, upserts: Vec<Value>, removed: Vec<String>, clear_first: boo
             v.save_pages_checked(&upserts, &removed, clear_first, expected_pages.as_ref(), expected_all.as_deref())
         } else { Err("Missing document vault precondition".into()) }
     })?;
+    s.sync.edited();
     Ok(kept)
 }
 
@@ -383,7 +387,7 @@ fn vault_backup_restore(s: St, data: Value, target: Option<String>, name: Option
         return Ok(json!({"pages":pages,"files":files,"copy":copy,"merged":merged}));
     }
     let v=with(&s,|v|portable::restore(v.root.parent().ok_or("no parent directory")?,data,name.as_deref()))?;
-    let entry=Entry{id:v.id(),name:v.name(),path:v.root.to_string_lossy().into()};
+    let entry=Entry{id:v.id(),name:v.name(),path:v.root.to_string_lossy().into(),sync:false};
     activate(&s,&entry)?;
     Ok(json!({"pages":v.pages_all()?.len(),"files":v.files_list().len()}))
 }
@@ -412,6 +416,7 @@ fn document_operation_commit(s: St, record: Value, expected_vault_id: String, in
         } else if include_status.unwrap_or(false) { document_operations::commit_result(v, &record) }
         else { document_operations::commit(v, &record) }
     })?;
+    s.sync.edited();
     Ok(receipt)
 }
 
@@ -437,7 +442,9 @@ fn kv_get(s: St, key: String) -> Res<Option<Value>> {
 
 #[tauri::command]
 fn kv_set(s: St, key: String, value: Value) -> Res<()> {
-    with(&s, |v| vault::write_atomic(&kv_file(&s, v, &key)?, value.to_string().as_bytes()))
+    with(&s, |v| vault::write_atomic(&kv_file(&s, v, &key)?, value.to_string().as_bytes()))?;
+    s.sync.edited();
+    Ok(())
 }
 
 // ───── page history ─────
@@ -449,12 +456,16 @@ fn versions_list(s: St, page_id: String) -> Res<Vec<Value>> {
 
 #[tauri::command]
 fn version_add(s: St, version: Value) -> Res<()> {
-    with(&s, |v| v.version_add(&version))
+    with(&s, |v| v.version_add(&version))?;
+    s.sync.edited();
+    Ok(())
 }
 
 #[tauri::command]
 fn versions_delete(s: St, page_id: String) -> Res<()> {
-    with(&s, |v| v.versions_delete(&page_id))
+    with(&s, |v| v.versions_delete(&page_id))?;
+    s.sync.edited();
+    Ok(())
 }
 
 // ───── attachments: <vault>/files/<id[0:2]>/<id> (+ <id>.json metadata); id = sha256 of the bytes ─────
@@ -468,7 +479,9 @@ fn header(r: &Request, k: &str) -> String {
 fn file_put(s: St, request: Request) -> Res<()> {
     let InvokeBody::Raw(bytes) = request.body() else { return Err("expected raw bytes".into()) };
     let added = header(&request, "x-added-at").parse::<i64>().unwrap_or_else(|_| now_ms());
-    with(&s, |v| v.file_put(&header(&request, "x-file-id"), bytes, &header(&request, "x-file-type"), &header(&request, "x-file-name"), added))
+    with(&s, |v| v.file_put(&header(&request, "x-file-id"), bytes, &header(&request, "x-file-type"), &header(&request, "x-file-name"), added))?;
+    s.sync.edited();
+    Ok(())
 }
 
 /// Writes a file the person just chose in the Save As dialog. Raw body = the bytes; the percent-encoded absolute path is in `x-path`.
@@ -572,6 +585,7 @@ fn db_commit(s: St, batch: Value) -> Res<()> {
         if batch.get("vaultId").and_then(Value::as_str) != Some(v.id().as_str()) { return Err("Document vault changed".into()); }
         database::commit(&v.root, &batch)
     })?;
+    s.sync.edited();
     // the index is derived: a failure here never fails a durable commit, it only marks the index for a rebuild
     let r = db_index(&s, |c, root| if database::index::needs_rebuild(c) { database::index::rebuild(c, root).map(|_| ()) } else { database::index::apply_batch(c, root, &batch) });
     if r.is_err() {
@@ -703,7 +717,8 @@ fn main() {
             };
             std::fs::create_dir_all(&app_data)?;
             document_operations::configure(&app_data).map_err(std::io::Error::other)?;
-            app.manage(Store { mcp: Arc::new(mcp::Host::default()), reg: Mutex::new(Registry::load(&app_data)), app_data, vault: Mutex::new(None), index: Mutex::new(None) });
+            let (sync, sync_rx) = sync_app::Runtime::start(&app_data, app.handle());
+            app.manage(Store { mcp: Arc::new(mcp::Host::default()), reg: Mutex::new(Registry::load(&app_data)), app_data, vault: Mutex::new(None), index: Mutex::new(None), sync });
             // reopen the vault that was open last time; if it is gone, the picker is shown
             let s = app.state::<Store>();
             let emit_handle = app.handle().clone();
@@ -720,6 +735,7 @@ fn main() {
                     }
                 }
             }
+            sync_app::spawn(app.handle(), sync_rx);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -730,7 +746,10 @@ fn main() {
             db_recover, db_load_all, db_commit, db_get_operation, db_history, db_undo_load, db_undo_save, db_runtime_get, db_runtime_set, db_runtime_delete,
             db_runtime_keys, db_index_rebuild, db_index_candidates, db_index_count,
             vault_stamp, pages_search_stamp, pages_all, pages_save, document_operation_list, document_operation_find, document_operation_commit, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_save_as, file_get, files_list, page_path, page_reveal,
-            index_state, index_update, index_search
+            index_state, index_update, index_search,
+            sync_app::account_status, sync_app::server_health, sync_app::account_register, sync_app::account_login, sync_app::account_recover, sync_app::account_logout, sync_app::account_info,
+            sync_app::account_revoke_device, sync_app::account_change_password, sync_app::account_new_recovery_key, sync_app::account_delete, sync_app::save_text_file,
+            sync_app::sync_set, sync_app::sync_now, sync_app::sync_confirm, sync_app::cloud_vaults, sync_app::cloud_download
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nevis");

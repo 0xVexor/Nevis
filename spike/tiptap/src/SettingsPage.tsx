@@ -8,6 +8,7 @@ import { SettingsWorkspace } from './settings-ui/SettingsWorkspace'
 import { About, EditorExtras } from './settings-ui/SettingsSections'
 import { ShortcutsSettings } from './settings-ui/ShortcutsSettings'
 import { SETTINGS_TABS, type SettingsTab } from './settings-ui/settingsTabs'
+import { SyncSettings } from './sync/SyncSettings'
 const DatabaseSettings = lazy(() => import('./database/ui/DatabaseSettings').then(module => ({ default: module.DatabaseSettings })))
 export { SETTINGS_TABS, type SettingsTab }
 /** Production adapter: approved presentation, existing vault/platform behavior. No preview services. */
@@ -20,7 +21,7 @@ export function SettingsView({ data, initialTab, onLeave, panelHost }: { data: D
   }
   return <SettingsWorkspace embedded panelHost={panelHost} onLeave={onLeave} initialCategory={initialTab} onReset={() => void reset()}
     editorExtras={<EditorExtras />}
-    panels={{ data: <DataTab api={data} />, connections: <McpConnectionSettings />,
+    panels={{ data: <DataTab api={data} />, sync: <SyncSettings />, connections: <McpConnectionSettings />,
       database: <Suspense fallback={<p role="status">{t('Loading…')}</p>}><DatabaseSettings /></Suspense>, shortcuts: <ShortcutsSettings />, about: <About /> }}
     context={category => { const section = SETTINGS_TABS.find(tab => tab.id === category)!
       return <aside className="prefs-preview prefs-context"><h3>{t(section.title)}</h3><p>{t(section.hint)}</p></aside>
