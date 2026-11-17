@@ -40,7 +40,7 @@ func TestHealthNamesTheServerTheWayTheClientExpects(t *testing.T) {
 		t.Fatalf("%d %v", rec.Code, body)
 	}
 	// the desktop client refuses any server whose name is not this, and asks for the database capability before it syncs databases/
-	if body.str("name") != "noviq-sync" {
+	if body.str("name") != "nevis-sync" {
 		t.Fatalf("name %q", body.str("name"))
 	}
 	caps, _ := body["capabilities"].([]any)

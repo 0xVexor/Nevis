@@ -230,7 +230,7 @@ func TestVaultsAndCommits(t *testing.T) {
 				t.Errorf("%s: %v", bad, r)
 			}
 		}
-		if r := result(f.commitOps([]op{put(".noviq/vault.json", "{}")}), 0); !r.flag("ok") {
+		if r := result(f.commitOps([]op{put(".nevis/vault.json", "{}")}), 0); !r.flag("ok") {
 			t.Errorf("the vault marker: %v", r)
 		}
 		if r := result(f.commitOps([]op{put("pages/Abc.json", "x")}), 0); !r.flag("ok") {

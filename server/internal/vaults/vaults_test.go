@@ -11,7 +11,7 @@ import (
 func TestCheckPath(t *testing.T) {
 	good := []string{
 		"pages/a.json", "files/ab/cd.bin", "history/records/view/v1/0000000001.json", "kv/srs.json", ".trash/pages/a.json",
-		".noviq/vault.json", "pages/Abc.json", "pages/" + strings.Repeat("é", 100) + ".json",
+		".nevis/vault.json", "pages/Abc.json", "pages/" + strings.Repeat("é", 100) + ".json",
 		"databases/views/abc.json", "databases/events/rep~3atpl~7c1.json",
 	}
 	for _, p := range good {

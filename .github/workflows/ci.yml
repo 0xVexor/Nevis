@@ -122,7 +122,18 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: server/go.mod
-          cache-dependency-path: server/go.sum
+          cache: false
+      # temporary: go.sum is produced here once and then committed
+      - name: go mod tidy (temporary)
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          go mod tidy
+          echo "=====GO.SUM====="
+          cat go.sum
+          echo "=====GO.MOD====="
+          cat go.mod
+          echo "=====END====="
+        working-directory: server
       - if: steps.scope.outputs.run == 'true'
         run: go vet ./...
         working-directory: server

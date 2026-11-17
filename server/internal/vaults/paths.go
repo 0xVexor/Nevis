@@ -11,9 +11,9 @@ import (
 // Which paths a vault may contain: the places the desktop app syncs, refused early on the server so that a hostile
 // or buggy client cannot make a path that breaks another operating system.
 //
-// The marker `.noviq/vault.json` keeps the name the clients use today.
+// The marker is `.nevis/vault.json`, the name the desktop client uses.
 const (
-	markerPath = ".noviq/vault.json"
+	markerPath = ".nevis/vault.json"
 	maxPath    = 240 // counted in UTF-16 units, like the client does
 )
 

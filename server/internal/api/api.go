@@ -24,9 +24,9 @@ const (
 	jsonLimit = 2 << 20  // a request body that is not a blob
 	blobLimit = 16 << 20 // one upload request; bigger blobs arrive in pieces
 
-	// The desktop client identifies this server by the name `noviq-sync` in /v1/health and sends its protocol
+	// The desktop client identifies this server by the name `nevis-sync` in /v1/health and sends its protocol
 	// version in `X-Noviq-Api`. Those are part of the wire protocol, so they keep their names until the client moves.
-	wireName         = "noviq-sync"
+	wireName         = "nevis-sync"
 	legacyAPIHeader  = "X-Noviq-Api"
 	currentAPIHeader = "X-Nevis-Api"
 )
