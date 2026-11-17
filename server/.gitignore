@@ -1,0 +1,9 @@
+/data/
+/nevis-server
+/nevis-server.exe
+/smoke
+/smoke.exe
+*.db
+*.db-wal
+*.db-shm
+.env
