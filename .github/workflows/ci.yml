@@ -122,17 +122,10 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: server/go.mod
-          cache: false
-      # temporary: go.sum is produced here once and then committed
-      - name: go mod tidy (temporary)
+          cache-dependency-path: server/go.sum
+      - name: go.sum matches go.mod
         if: steps.scope.outputs.run == 'true'
-        run: |
-          go mod tidy
-          echo "=====GO.SUM====="
-          cat go.sum
-          echo "=====GO.MOD====="
-          cat go.mod
-          echo "=====END====="
+        run: go mod tidy -diff
         working-directory: server
       - if: steps.scope.outputs.run == 'true'
         run: go vet ./...
@@ -143,4 +136,17 @@ jobs:
         working-directory: server
       - if: steps.scope.outputs.run == 'true'
         run: go test -race ./...
+        working-directory: server
+      - name: Smoke test against the real binary
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          go build -o "$RUNNER_TEMP/nevis-server" ./cmd/nevis-server
+          export SESSION_SECRET="$(openssl rand -hex 24)" REGISTRATION=open POW_BITS=12 PORT=3111 DATA_DIR="$RUNNER_TEMP/nevis-data"
+          "$RUNNER_TEMP/nevis-server" &
+          server=$!
+          for i in $(seq 1 50); do curl -fs http://127.0.0.1:3111/v1/health >/dev/null && break; sleep 0.2; done
+          status=0
+          go run ./cmd/smoke http://127.0.0.1:3111 || status=$?
+          kill $server
+          exit $status
         working-directory: server
