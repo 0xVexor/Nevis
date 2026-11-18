@@ -27,6 +27,7 @@
 @import './design-system/areas/databases.css';
 @import './design-system/areas/scrollbars.css';
 @import './design-system/areas/updates.css';
+@import './design-system/areas/sync-indicator.css';
 @import './design-system/areas/layout.css';
 /* New design system (docs/design-system.md). Everything is prefixed ds-, so it never touches the legacy styles above. */
 @import './design-system/tokens.css';
