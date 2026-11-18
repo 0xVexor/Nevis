@@ -191,14 +191,20 @@ func (s *Store) dropDeletedUsers(ctx context.Context, now int64) (int, error) {
 	return len(users), err
 }
 
+// dropVault removes a vault. The rows go first, in one transaction: a crash in between leaves blob files nobody
+// refers to, never live rows that point at missing blobs.
 func (s *Store) dropVault(ctx context.Context, id string) error {
-	if err := s.Blobs.RemoveVault(id); err != nil {
+	if err := s.DB.Write(ctx, func(tx *sql.Tx) error { return dropVaultRows(ctx, tx, id) }); err != nil {
 		return err
 	}
-	if _, err := s.DB.ExecContext(ctx, "DELETE FROM blobs WHERE vault_id = ?", id); err != nil {
+	return s.Blobs.RemoveVault(id)
+}
+
+func dropVaultRows(ctx context.Context, q querier, id string) error {
+	if _, err := q.ExecContext(ctx, "DELETE FROM blobs WHERE vault_id = ?", id); err != nil {
 		return err
 	}
-	_, err := s.DB.ExecContext(ctx, "DELETE FROM vaults WHERE id = ?", id)
+	_, err := q.ExecContext(ctx, "DELETE FROM vaults WHERE id = ?", id)
 	return err
 }
 

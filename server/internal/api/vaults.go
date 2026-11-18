@@ -20,6 +20,7 @@ func (s *Server) vaultRoutes() {
 	s.authed("PATCH /v1/vaults/{id}", s.renameVault)
 	s.authed("DELETE /v1/vaults/{id}", s.trashVault)
 	s.authed("POST /v1/vaults/{id}/undelete", s.untrashVault)
+	s.authed("POST /v1/vaults/{id}/purge", s.purgeVault)
 }
 
 func (s *Server) syncRoutes() {
@@ -98,6 +99,25 @@ func (s *Server) untrashVault(w http.ResponseWriter, r *http.Request, p *auth.Pr
 		return err
 	}
 	return ok(w)
+}
+
+// purgeVault removes a trashed vault for good. It needs the account password again, counted like a wrong one on
+// account deletion; the password is checked before the vault is looked at.
+func (s *Server) purgeVault(w http.ResponseWriter, r *http.Request, p *auth.Principal) error {
+	var b credentialsBody
+	if err := readJSON(w, r, &b); err != nil {
+		return err
+	}
+	if err := s.Accounts.ConfirmPassword(r.Context(), s.clientIP(r), p, b.Password); err != nil {
+		return err
+	}
+	gone, err := s.Vaults.Purge(r.Context(), p.User.ID, r.PathValue("id"))
+	if err != nil {
+		return err
+	}
+	s.Hub.Notify(r.PathValue("id")) // a device still waiting on it learns that it is gone
+	writeJSON(w, 200, map[string]any{"ok": true, "files": gone.Files, "bytes": gone.Bytes})
+	return nil
 }
 
 // state answers with the vault's state; with `since` and `wait` it answers as soon as the vault moves past `since`

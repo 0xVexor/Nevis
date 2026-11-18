@@ -181,7 +181,8 @@ The protocol is the one of the earlier Node.js server, unchanged, so existing cl
 | `GET /v1/health` · `GET /v1/auth/challenge` | public: what the server is (`name`, `api`, `min_api`, `registration`, `pow_bits`, `capabilities`, `server_time`), a sign-up challenge (`challenge`, `bits`) |
 | `POST /v1/auth/register` · `/auth/login` · `/auth/recover` | public: create an account, sign in, reset the password with the recovery key |
 | `POST /v1/auth/logout` · `/auth/password` · `/auth/recovery-key` · `GET /v1/account` · `DELETE /v1/account` · `DELETE /v1/devices/:id` | the account |
-| `GET/POST /v1/vaults` · `PATCH/DELETE /v1/vaults/:id` · `POST /v1/vaults/:id/undelete` | vaults (delete = trash for `RETENTION_DAYS`) |
+| `GET/POST /v1/vaults` · `PATCH/DELETE /v1/vaults/:id` · `POST /v1/vaults/:id/undelete` | vaults (delete = trash for `RETENTION_DAYS`; `GET /v1/vaults?trashed=1` lists the trash) |
+| `POST /v1/vaults/:id/purge` | `{ password }` → `{ ok, files, bytes }`: removes a vault that is already in the trash for good, freeing its quota; the password is re-checked and counted like on account deletion (`401 bad_credentials`, `429`); `409 not_in_trash` for a live vault, `404 no_such_vault` otherwise |
 | `GET /v1/vaults/:id/state?since=&wait=` | state (`epoch`, `seq`, `compacted`, `files`, `root`); with `since` and `wait` (seconds, at most 30) it waits for news |
 | `GET /v1/vaults/:id/changes?since=&limit=` | what changed after a rev, oldest first (`head`, `next`, `has_more`, `files`); `410` when `since` is older than the server remembers; with `snapshot=1` (and `after=<path>`) it instead returns the live files only, in path order, `limit` at a time (`seq`, `has_more`, `next_after`, `files`), ignores `since` and never answers `410`: a client keeps the `seq` of the first page as its cursor and reads on with `since=` |
 | `GET /v1/vaults/:id/file?path=` | one path as it is now |
