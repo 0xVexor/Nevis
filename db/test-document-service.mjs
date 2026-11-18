@@ -405,7 +405,8 @@ test('an edit made after another device changed the same page is saved, and the 
 test('a newer version from the other device wins, the local text is kept in the history and the UI is told', async () => {
   const { storage, h, service, page, onDisk } = await fresh('rebase-newer-disk')
   const disk = await onDisk()
-  await storage.save(write([{ ...disk, content: doc('newer elsewhere'), updatedAt: disk.updatedAt + 1_000_000 }]))
+  // Stay within the clock-skew allowance; a far-future clock has its own regression test.
+  await storage.save(write([{ ...disk, content: doc('newer elsewhere'), updatedAt: disk.updatedAt + 60_000 }]))
   service.update(page.id, { content: doc('typed here') })
   await service.flushBeforeUpdate()
   assert.equal(textOf(await onDisk()), 'newer elsewhere')
