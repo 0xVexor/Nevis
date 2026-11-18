@@ -19,7 +19,8 @@
 //!   "base": <page JSON> | null,                            // the common ancestor, when it could be fetched
 //!   "local":  { "page": <page JSON> | null, "deviceId": "", "deviceName": "", "savedAt": 0 },
 //!   "remote": { "page": <page JSON> | null, "deviceId": "", "deviceName": "", "savedAt": 0, "serverTime": 0 },
-//!   "kept": "local" | "remote" }                           // which side the sync/editor kept as the page
+//!   "kept": "local" | "remote",                            // which side the sync/editor kept as the page
+//!   "clockSkew": true }                                    // only when set: a side was stamped in the future and compared as an earlier one
 //! ```
 //! `savedAt` is the page's `updatedAt` (ms). `remote.serverTime` is the server's own clock for that revision (0 when
 //! unknown). Device ids/names are "" when unknown: the UI says "this device" / "another device". A marker larger than
@@ -89,6 +90,10 @@ pub struct Marker {
     pub local: Side,
     pub remote: Side,
     pub kept: String,
+    /// One of the two versions was stamped far in the future (a clock that runs fast) and was compared as an earlier one:
+    /// the UI can warn that "newer" may not be right. Absent in older markers.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub clock_skew: bool,
 }
 
 /// What a detector knows; `Marker::new` turns it into the file.
@@ -106,6 +111,7 @@ pub struct Found {
     pub server_time: i64,
     pub kept: &'static str,
     pub detected_by: Who,
+    pub clock_skew: bool,
 }
 
 pub fn updated_at(v: &Value) -> i64 {
@@ -149,6 +155,7 @@ impl Marker {
             local: Side { saved_at: saved(&f.local), page: Some(f.local), device_id: f.local_who.device_id, device_name: f.local_who.device_name, ..Default::default() },
             remote: Side { saved_at: saved(&f.remote), page: Some(f.remote), device_id: f.remote_who.device_id, device_name: f.remote_who.device_name, server_time: Some(f.server_time), ..Default::default() },
             kept: f.kept.to_string(),
+            clock_skew: f.clock_skew,
             page_id: f.page_id,
         }
     }
@@ -164,11 +171,16 @@ impl Marker {
             return Ok(());
         }
         let loser_is_local = self.kept == "remote";
+        let mut written: Vec<i64> = loser_ts.into_iter().collect(); // the second write's trim must not remove the first
         for (is_local, side) in [(true, &mut self.local), (false, &mut self.remote)] {
             let page = side.page.take().unwrap_or(Value::Null);
             side.history_ts = Some(match loser_ts.filter(|_| is_local == loser_is_local) {
                 Some(ts) => ts,
-                None => vault.keep_loser_ts(&self.page_id, &page)?,
+                None => {
+                    let ts = vault.keep_loser_ts_protecting(&self.page_id, &page, &written)?;
+                    written.push(ts);
+                    ts
+                }
             });
         }
         self.base = None;
@@ -325,6 +337,7 @@ pub fn record_from_editor(vault: &Vault, page_id: &str, base: Option<Value>, loc
         server_time: 0,
         kept,
         detected_by: me,
+        clock_skew: crate::vault::is_clock_ahead(lt) || crate::vault::is_clock_ahead(rt),
     });
     if exists_locked(&vault.root, &m) {
         return Ok((get(vault, &m.id)?.unwrap_or(m), false)); // a retry: nothing is written, not even history

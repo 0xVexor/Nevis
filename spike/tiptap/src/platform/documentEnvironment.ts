@@ -22,6 +22,7 @@ import { NativeDocumentStorage } from './documents/native'
 import { publishDocumentChange } from './documents/changes'
 import type { DocumentEnvironment } from '../documents/ports'
 import type { Page } from '../documents/model'
+import { t as translate } from '../i18n'
 import type { DocumentReadRuntime } from '../documents/reader'
 
 export function createDocumentReadRuntime(): DocumentReadRuntime {
@@ -84,6 +85,13 @@ export function createAppDocumentEnvironment(): DocumentEnvironment {
       },
       report(context, error) {
         console.error(context, error)
+      },
+      recoveredTitle: (title) => translate('Recovered: {title}', { title: title || translate('Untitled') }),
+      recovered({ toId, title }) {
+        // same channels as the rest of the app: 'app-toast' (APP_TOAST in ui.tsx) and 'open-page' (OPEN_PAGE in editor/pageLink.ts);
+        // not imported here because both reach back into this module
+        const msg = translate('“{title}” was deleted on another device while you were editing it. Your edit was saved as a new page.', { title: title || translate('Untitled') })
+        window.dispatchEvent(new CustomEvent('app-toast', { detail: { msg, action: { label: translate('Open'), run: () => window.dispatchEvent(new CustomEvent('open-page', { detail: toId })) } } }))
       },
       legacyHtmlToDoc: (html) => htmlToDoc(html),
       ...(isTauri && { recordConflict: (pageId, base, local, remote) => pageConflictRecord(pageId, base, local, remote, 'editor-race') }),

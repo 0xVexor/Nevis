@@ -323,14 +323,17 @@ fn pages_all(s: St) -> Res<Vec<Value>> {
 #[tauri::command]
 fn pages_save(s: St, upserts: Vec<Value>, removed: Vec<String>, clear_first: bool, expected_vault_id: Option<String>, expected_pages: Option<serde_json::Map<String, Value>>, expected_all: Option<Vec<Value>>) -> Res<Vec<String>> {
     // ids of pages whose newer version on disk (changed by another program) went to the page history before ours replaced it
-    let kept = with(&s, |v| {
+    let saved = with(&s, |v| {
         if let Some(id) = &expected_vault_id {
             if v.id() != *id { return Err("Document vault changed".into()); }
             v.save_pages_checked(&upserts, &removed, clear_first, expected_pages.as_ref(), expected_all.as_deref())
         } else { Err("Missing document vault precondition".into()) }
-    })?;
-    s.sync.edited();
-    Ok(kept)
+    });
+    // a save that refused only some pages (final deletions) still wrote the rest: that has to reach the sync as well
+    if saved.is_ok() || saved.as_ref().err().is_some_and(|e| e.starts_with(vault::PERMANENTLY_DELETED)) {
+        s.sync.edited();
+    }
+    saved
 }
 
 #[tauri::command]

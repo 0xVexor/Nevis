@@ -71,4 +71,8 @@ export const FA_CONFLICTS: Record<string, string> = {
 
   // preview page
   'Kept the current version.': 'نسخهٔ فعلی نگه داشته شد.',
+
+  // a page deleted for good on another device while it was open here
+  'Recovered: {title}': 'بازیابی‌شده: {title}',
+  '“{title}” was deleted on another device while you were editing it. Your edit was saved as a new page.': '«{title}» روی دستگاه دیگر حذف شد، در حالی که شما آن را ویرایش می‌کردید. ویرایش شما به‌صورت صفحهٔ جدید ذخیره شد.',
 }

@@ -48,7 +48,19 @@ function linkedIds(node: DocNode | string | null | undefined, out = new Set<stri
 }
 
 type PendingWrite = { full: boolean; upserts: Page[]; removed: string[] }
+/** Same limit as the desktop store (vault.rs, SKEW_MS). */
+const CLOCK_SKEW_MS = 10 * 60_000
 const isRevisionConflict = (e: unknown) => /revision conflict/i.test(e instanceof Error ? e.message : String(e))
+
+/**
+ * The native store refuses pages whose deletion is final (purged on another device, or deleted here) and still writes the
+ * rest of the batch: `SYNC:permanently_deleted`, then a line `ids=<id>,<id>` with the pages it refused. Null: another error.
+ */
+const refusedAsDeleted = (e: unknown): string[] | null => {
+  const message = e instanceof Error ? e.message : String(e)
+  if (!/(^|\n)SYNC:permanently_deleted(\n|$)/.test(message)) return null
+  return (/^ids=(.*)$/m.exec(message)?.[1] ?? '').split(',').filter(Boolean)
+}
 
 export class DocumentService implements PageRepo {
   private pages: Page[] = []
@@ -491,12 +503,24 @@ export class DocumentService implements PageRepo {
           : { expectedPages: Object.fromEntries([...upserts.map((p) => p.id), ...removed].map((id) => [id, cloneDocumentValue(this.diskPages.get(id) ?? null)])) }),
       })
     } catch (e) {
+      const refused = full ? null : refusedAsDeleted(e)
+      if (refused) {
+        // everything else of the batch was written: it is committed, and only the refused pages need an answer
+        await this.committed({ full, upserts: upserts.filter((p) => !refused.includes(p.id)), removed })
+        for (const id of refused) await this.recoverEditOfDeletedPage(id)
+        return
+      }
       if (full || tries >= 3 || !isRevisionConflict(e)) throw e
       const next = await this.rebase(w)
       if (next) await this.persist(next, tries + 1)
       else if (this.idle()) this.persistenceError = null
       return
     }
+    await this.committed(w)
+  }
+
+  /** Bookkeeping after the store has written these pages. */
+  private async committed({ full, upserts, removed }: PendingWrite) {
     if (this.idle()) this.persistenceError = null
     if (full) {
       this.diskAt.clear()
@@ -513,6 +537,38 @@ export class DocumentService implements PageRepo {
     this.invalidateSearch() // committed content first; indexing is a separate, fallible concern
     if (this.storage.stamp) this.stamp = await this.storage.stamp() // our own writes are not "external" changes
     for (const race of this.races.splice(0)) this.recordRace(race)
+  }
+
+  /**
+   * The store refused to save a page because its deletion is final (another device purged it while it was open here).
+   * An edit beats a delete, so the edit is never dropped: it is saved as a NEW page ("Recovered: ..."), with a version, and the
+   * person is told. A page that was also deleted here on purpose is not brought back: it is no longer among our pages.
+   */
+  private async recoverEditOfDeletedPage(id: string) {
+    this.diskAt.delete(id)
+    this.diskPages.delete(id)
+    const original = this.pages.find((p) => p.id === id)
+    if (!original || this.gone.has(id)) return
+    this.dirty.delete(id)
+    const copy: Page = {
+      ...cloneDocumentValue(original),
+      id: this.host.createId(),
+      title: this.host.recoveredTitle ? this.host.recoveredTitle(original.title) : `Recovered: ${original.title}`,
+      updatedAt: Math.max(this.host.now(), original.updatedAt),
+      deletedAt: null,
+    }
+    this.pages = this.pages.map((p) => (p.id === id ? cloneDocumentValue(copy) : p))
+    try {
+      await this.persist({ full: false, upserts: [cloneDocumentValue(copy)], removed: [] }) // a new id: nothing is deleted under it
+    } catch (e) {
+      this.dirty.add(copy.id) // the edit lives on as this page; the next save tries again
+      throw e
+    }
+    await this.keepVersion(copy) // after the page exists: a version of a page that is not saved yet is not kept
+    this.rebuildLinks()
+    this.invalidateSearch()
+    this.host.emit('external-change', [id, copy.id])
+    this.host.recovered?.({ fromId: id, toId: copy.id, title: original.title })
   }
 
   /**
@@ -547,7 +603,7 @@ export class DocumentService implements PageRepo {
         upserts.push(cloneDocumentValue(local))
       } else if (same(theirs, local)) {
         adopt(theirs) // both sides already say the same
-      } else if (local.updatedAt >= theirs.updatedAt) {
+      } else if (local.updatedAt >= theirs.updatedAt || (this.clockAhead(theirs.updatedAt) && !this.clockAhead(local.updatedAt))) {
         await this.keepVersion(theirs)
         // recorded once our version is on disk, so the record says which side the page keeps
         this.races.push({ base: this.diskPages.get(sent.id) ?? null, local: cloneDocumentValue(local), remote: cloneDocumentValue(theirs) })
@@ -578,6 +634,11 @@ export class DocumentService implements PageRepo {
       this.host.emit('external-change', changed)
     }
     return upserts.length || removed.length ? { full: false, upserts, removed } : null
+  }
+
+  /** A time this far ahead of our clock comes from a device whose clock runs fast; it must not win every conflict ("newer wins"). */
+  private clockAhead(updatedAt: number) {
+    return updatedAt > this.host.now() + CLOCK_SKEW_MS
   }
 
   /** Editor races whose winner is not on disk yet (see rebase); recorded after the write that decides it. */
