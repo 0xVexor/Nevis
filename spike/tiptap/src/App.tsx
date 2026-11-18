@@ -64,6 +64,7 @@ import { iconNode } from './iconSet'
 import { printPage } from './print'
 import { confirmDialog } from './dialog'
 import { OPEN_PAGE, PAGES_CHANGED } from './editor/pageLink'
+import { SyncIndicator } from './sync/SyncIndicator'
 import { t } from './i18n'
 import { isMac, shortcutHint, shortcutLabel } from './shortcuts'
 import { CompactList, TreeFrame, TreeRow } from './PageTree'
@@ -1148,6 +1149,7 @@ export default function App() {
         </div>
         <SideTip />
         <div className="side-foot">
+          <SyncIndicator titleOf={(id) => repo.get(id)?.title} onOpenSettings={() => openSettings('sync')} />
           <button aria-label={t('Settings')} className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => (closeOverlays(), setView('settings'))}>
             <span className="ic">
               <Icon name="settings" />
