@@ -238,7 +238,7 @@ impl Vault {
     }
 
     fn make_dirs(&self) -> Res<()> {
-        for d in ["pages", "files", "history", "kv", ".nevis", ".trash/pages", ".trash/files"] {
+        for d in ["pages", "pages-state", "files", "history", "kv", ".nevis", ".trash/pages", ".trash/files"] {
             fs::create_dir_all(self.root.join(d)).map_err(err)?;
         }
         let workspace=self.root.join("kv/workspace.json");
@@ -353,7 +353,9 @@ impl Vault {
             let main = self.pages_dir().join(format!("{}.json", &stem[..36]));
             let id = &stem[..36];
             if crate::sync::snapshot::tombstones(self)?.contains(&format!("pages/{id}.json")) {
-                continue;
+                // the page was deleted here while another device edited it: the edit wins (as in the sync plan), the
+                // copy becomes the page again. Leaving it would let a later sync remove the only copy of that edit.
+                crate::sync::snapshot::forget_tombstone(&self.root, &format!("pages/{id}.json"))?;
             }
             if main.exists() && read_json(&main).is_none() { return Err("STORAGE:unreadable_page".into()); }
             let result = match read_json(&main) {
@@ -381,7 +383,7 @@ impl Vault {
     }
 
     /// A page version that lost against a newer one is not dropped: it becomes a history entry.
-    fn keep_loser(&self, id: &str, page: &Value) -> Res<()> {
+    pub(crate) fn keep_loser(&self, id: &str, page: &Value) -> Res<()> {
         let mut ts = updated_at(page);
         let dir = self.root.join("history").join(check_id(id)?);
         while dir.join(format!("{ts}.json")).exists() {
@@ -459,13 +461,25 @@ impl Vault {
                 return Err("SYNC:permanently_deleted".into());
             }
             if path.exists() && read_json(&path).is_none() { return Err("STORAGE:unreadable_page".into()); }
+            let has_state = crate::page_state::has_state(&self.root, id);
             // `_base` is bookkeeping of the editor, not part of the page file
             let base = p.get("_base").and_then(Value::as_i64);
             let mut p = p.clone();
             if let Some(o) = p.as_object_mut() {
                 o.remove("_base");
             }
-            if !clear_first && !checked {
+            if has_state {
+                // a page with a state merges instead of losing: the edit is taken in below, nothing goes to history here
+                crate::page_state::precheck_locked(&self.root, id, &p)?;
+                if !clear_first && !checked && base.is_some_and(|b| read_json(&path).is_some_and(|cur| updated_at(&cur) != b && updated_at(&cur) != updated_at(&p))) {
+                    // the page changed under the writer (a merge brought another device's edit): the ingest below diffs
+                    // against the current text and would remove it, so the version it replaces is kept in the history first
+                    if let Some(cur) = read_json(&path) {
+                        self.keep_loser(id, &cur)?;
+                        kept.push(id.to_string());
+                    }
+                }
+            } else if !clear_first && !checked {
                 if let Some(cur) = read_json(&path) {
                     if updated_at(&cur) > updated_at(&p) {
                         // another device saved a newer version of this page: ours must not overwrite it
@@ -480,6 +494,9 @@ impl Vault {
                 }
             }
             write_atomic(&path, p.to_string().as_bytes())?;
+            if has_state {
+                crate::page_state::ingest_local_locked(&self.root, id)?;
+            }
         }
         let mut gone: Vec<String> = removed.to_vec();
         if clear_first {
@@ -496,6 +513,7 @@ impl Vault {
             let path = self.page_path(&id)?;
             crate::sync::snapshot::tombstone(self, &format!("pages/{id}.json"))?;
             if path.exists() { fs::remove_file(&path).map_err(err)?; }
+            crate::page_state::remove_locked(&self.root, &id);
             for p in [self.root.join(".trash/pages").join(format!("{id}.json")), self.root.join(".trash/pages").join(format!("{id}.del"))] {
                 if p.exists(){fs::remove_file(p).map_err(err)?;}
             }

@@ -18,9 +18,10 @@ const (
 )
 
 var (
-	roots        = map[string]bool{"pages": true, "files": true, "history": true, "kv": true, ".trash": true, "databases": true}
-	reserved     = regexp.MustCompile(`(?i)^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$`)
-	databaseKind = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
+	roots         = map[string]bool{"pages": true, "pages-state": true, "files": true, "history": true, "kv": true, ".trash": true, "databases": true}
+	reserved      = regexp.MustCompile(`(?i)^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$`)
+	databaseKind  = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
+	pageStateName = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}.bin$`)
 )
 
 func hasBadChar(p string) bool {
@@ -59,6 +60,9 @@ func checkPath(p string) string {
 	}
 	if parts[0] == "databases" && !databasePath(parts) {
 		return "bad_database_path"
+	}
+	if parts[0] == "pages-state" && !(len(parts) == 2 && pageStateName.MatchString(parts[1])) {
+		return "bad_page_state_path"
 	}
 	return ""
 }

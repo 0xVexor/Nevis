@@ -11,6 +11,7 @@
 
 pub mod account;
 pub mod hub;
+pub mod pages;
 pub mod snapshot;
 
 use crate::vault::{err, now_ms, write_atomic, Res, Vault, VAULT_MISMATCH, VAULT_MISSING};
@@ -38,6 +39,8 @@ pub trait Remote {
     fn list(&mut self) -> Res<Vec<RemoteFile>>;
     /// Check protocol compatibility before any file is changed or removed.
     fn validate_paths(&mut self, _paths: &[String]) -> Res<()> { Ok(()) }
+    /// The remote can store page states (`pages-state/`); pages only migrate when it can.
+    fn page_state_supported(&mut self) -> Res<bool> { Ok(false) }
     fn download(&mut self, f: &RemoteFile) -> Res<Vec<u8>>;
     /// Creates the file, or replaces its content when `existing` is the id of the current remote file.
     fn upload(&mut self, path: &str, existing: Option<&str>, bytes: &[u8]) -> Res<RemoteFile>;
@@ -58,6 +61,17 @@ pub struct Entry {
     pub mtime: u128,
     #[serde(default)]
     pub md5: String,
+    /// When the cache above was taken (ns since the epoch). A file system stamps mtime with a coarse clock, so an edit
+    /// made in the same tick as the one we hashed keeps the same size and mtime: the cache only counts when it was
+    /// taken at least RACY_NS after the mtime ("racy timestamps"). Older state files have 0: hashed again once.
+    #[serde(default)]
+    pub cached_at: u128,
+}
+
+const RACY_NS: u128 = 2_000_000_000;
+
+fn now_ns() -> u128 {
+    std::time::SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos())
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
@@ -162,7 +176,7 @@ fn md5_hex(bytes: &[u8]) -> String {
 }
 
 /// Everything that belongs to the vault and is worth syncing.
-const ROOTS: [&str; 6] = ["pages", "files", "history", "kv", ".trash", "databases"];
+const ROOTS: [&str; 7] = ["pages", "pages-state", "files", "history", "kv", ".trash", "databases"];
 
 fn mtime_of(meta: &fs::Metadata) -> u128 {
     meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos())
@@ -197,7 +211,7 @@ fn scan(root: &Path, cache: &BTreeMap<String, Entry>) -> Res<(BTreeMap<String, L
             }
             let mtime = mtime_of(&meta);
             let md5 = match cache.get(&rel) {
-                Some(c) if c.size == meta.len() && c.mtime == mtime && !c.md5.is_empty() => c.md5.clone(),
+                Some(c) if c.size == meta.len() && c.mtime == mtime && !c.md5.is_empty() && c.cached_at >= mtime + RACY_NS => c.md5.clone(),
                 _ => match fs::read(&path) {
                     Ok(b) => md5_hex(&b),
                     Err(_) => {
@@ -254,6 +268,7 @@ fn path_problem(p: &str) -> Option<&'static str> {
         if part.starts_with('.') && part.ends_with(".tmp") { return Some("temp_file"); }
     }
     if parts[0] == "databases" && !crate::database::safe_database_rel(p) { return Some("bad_database_path"); }
+    if parts[0] == "pages-state" && !(parts.len() == 2 && pages::page_of_bin(p).is_some_and(|id| id == id.to_ascii_lowercase())) { return Some("bad_page_state_path"); }
     None
 }
 
@@ -312,7 +327,11 @@ pub struct Report {
     pub held: usize,
     /// duplicate files of the same name that were cleaned up in the cloud
     pub deduped: usize,
+    /// page states merged with the server's (concurrent edits of one page)
+    pub state_merges: usize,
     pub errors: Vec<String>,
+    /// things to tell the user that are not failures (a very large page state)
+    pub warnings: Vec<String>,
 }
 
 impl Report {
@@ -383,8 +402,26 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         return Err(VAULT_MISSING.into());
     }
     remote.check()?;
-    let (local, unknown) = scan(root, &state.files)?;
+    // pages that have a state take in what local writers put into their JSON since the last projection
+    let migrate_pages = pages::enabled() && remote.page_state_supported()?;
+    pages::clear_pending(root);
+    let ingest_errors = {
+        let _guard = crate::vault::commit_lock(root)?;
+        crate::page_state::ingest_all_locked(root)
+    };
+    let (mut local, unknown) = scan(root, &state.files)?;
+    // A file that was hashed just now and has not changed for RACY_NS can have its hash cached: no later edit can
+    // share its mtime. (Files touched more recently are hashed again next time.)
+    let now = now_ns();
+    for (p, l) in &local {
+        if let Some(e) = state.files.get_mut(p) {
+            if l.mtime + RACY_NS <= now && !(e.cached_at >= e.mtime + RACY_NS && e.mtime == l.mtime && e.size == l.size) {
+                (e.size, e.mtime, e.md5, e.cached_at) = (l.size, l.mtime, l.md5.clone(), now);
+            }
+        }
+    }
     let mut rep = Report::default();
+    rep.errors.extend(ingest_errors);
     let listed = remote.list()?;
     // Reject incompatible or unsafe snapshots before deduplication can remove anything.
     let paths: Vec<String> = local.keys().cloned().chain(unknown.iter().cloned()).chain(listed.iter().map(|f| f.path.clone())).collect();
@@ -396,11 +433,15 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         }
     }
     remote.validate_paths(&paths)?;
-    let rmap = dedupe(vault, remote, listed, &mut rep);
+    let mut rmap = dedupe(vault, remote, listed, &mut rep);
+    // the JSON of a page that has a state is derived from it and is not synced any more
+    let legacy = pages::drop_derived(&mut local, &mut rmap, &mut state.files);
     let mut actions = plan(&local, &rmap, &state.files, &unknown);
 
-    let deletes = actions.iter().filter(|a| matches!(a, Action::DeleteLocal(_) | Action::DeleteRemote(_))).count();
-    if hold_deletes(deletes, state.files.len(), local.is_empty(), rmap.is_empty()) && !state.allow_deletes_once {
+    // deleting a page removes its file, its state and its history files: one deletion for the user, not dozens
+    let deletes = actions.iter().filter_map(|a| match a { Action::DeleteLocal(p) | Action::DeleteRemote(p) => Some(pages::delete_key(p)), _ => None }).collect::<BTreeSet<_>>().len();
+    let tracked = state.files.keys().map(|p| pages::delete_key(p)).collect::<BTreeSet<_>>().len();
+    if hold_deletes(deletes, tracked, local.is_empty(), rmap.is_empty()) && !state.allow_deletes_once {
         rep.held = deletes;
         actions.retain(|a| !matches!(a, Action::DeleteLocal(_) | Action::DeleteRemote(_)));
     }
@@ -409,7 +450,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
     let mut merged: Vec<(String, RemoteFile)> = vec![];
 
     let cache = |state: &mut SyncState, p: &str, l: &Local, base: &str, rid: &str| {
-        state.files.insert(p.to_string(), Entry { base: base.to_string(), remote_id: rid.to_string(), size: l.size, mtime: l.mtime, md5: l.md5.clone() });
+        state.files.insert(p.to_string(), Entry { base: base.to_string(), remote_id: rid.to_string(), size: l.size, mtime: l.mtime, md5: l.md5.clone(), cached_at: now_ns() });
     };
 
     // Resolve and upload merges before any deletion. Keep deletion bookkeeping on failure.
@@ -422,6 +463,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                     let (l, r) = (&local[p], &rmap[p]);
                     cache(state, p, l, &l.md5, &r.id);
                 }
+                Action::Download(p) if p.starts_with("pages-state/") => pages::download(vault, remote, state, &local, &legacy, p, &rmap[p], &mut rep)?,
                 Action::Upload(p) => {
                     let l = &local[p];
                     let bytes = fs::read(root.join(p)).map_err(err)?;
@@ -467,7 +509,9 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                 Action::Conflict(p) => {
                     let (l, r) = (&local[p], &rmap[p]);
                     rep.conflicts += 1;
-                    if p == ".nevis/vault.json" && !state.files.contains_key(p) {
+                    if p.starts_with("pages-state/") {
+                        pages::conflict(vault, remote, state, p, r, &mut rep)?;
+                    } else if p == ".nevis/vault.json" && !state.files.contains_key(p) {
                         // first sync of a vault that was downloaded: its identity and name are the cloud's
                         let theirs = remote.download(r)?;
                         let id_of = |b: &[u8]| serde_json::from_slice::<serde_json::Value>(b).ok().and_then(|v| v.get("id").and_then(|i| i.as_str().map(String::from)));
@@ -569,6 +613,9 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
             }
         }
     }
+    if migrate_pages && rep.errors.is_empty() {
+        pages::migrate(vault, remote, state, &rmap, &mut rep);
+    }
     for a in deletions {
         if !rep.errors.is_empty() {
             rep.held += 1;
@@ -595,6 +642,12 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                         rep.skipped += 1;
                         return Ok(());
                     }
+                    if pages::page_of_bin(p).is_some() {
+                        pages::delete_local(vault, p)?; // tombstone of the page, its files to the sync trash
+                        state.files.remove(p);
+                        rep.deleted += 1;
+                        return Ok(());
+                    }
                     if snapshot::safe_path(p).is_ok(){snapshot::tombstone(vault,p)?;}
                     vault.sync_trash_move(p)?; // recoverable for 30 days; when it fails the file stays and so does `base`
                     state.files.remove(p);
@@ -604,6 +657,10 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                     let id = rmap.get(p).map(|r| r.id.clone()).or_else(|| state.files.get(p).map(|e| e.remote_id.clone())).unwrap_or_default();
                     if !id.is_empty() {
                         remote.trash(&id)?;
+                    }
+                    // the frozen JSON a migrating device left behind must go with the page, or a new device would show it again
+                    if let Some(fr) = pages::page_of_bin(p).and_then(|pid| legacy.get(pid)).and_then(|l| l.remote.as_ref()) {
+                        remote.trash(&fr.id)?;
                     }
                     state.files.remove(p);
                     rep.deleted += 1;
@@ -639,6 +696,7 @@ mod tests {
         gone: bool,            // the cloud folder does not exist any more
         hide_all: bool,        // the listing answers nothing (a broken listing)
         reject_paths: bool,
+        page_state: bool,      // the server stores page states (capability `page_state`)
         corrupt_uploads: bool, // the cloud reports another md5 than what was sent
         on_download: Option<Rc<dyn Fn()>>,
         on_get: Option<Rc<dyn Fn()>>,
@@ -662,6 +720,9 @@ mod tests {
         fn validate_paths(&mut self, _paths: &[String]) -> Res<()> {
             if self.0.borrow().reject_paths { Err("HUB:server_upgrade_required".into()) } else { Ok(()) }
         }
+        fn page_state_supported(&mut self) -> Res<bool> {
+            Ok(self.0.borrow().page_state)
+        }
         fn check(&mut self) -> Res<()> {
             if self.0.borrow().gone { Err(CLOUD_GONE.into()) } else { Ok(()) }
         }
@@ -678,6 +739,9 @@ mod tests {
         }
         fn upload(&mut self, path: &str, existing: Option<&str>, bytes: &[u8]) -> Res<RemoteFile> {
             let mut m = self.0.borrow_mut();
+            if existing.is_none() && path.starts_with("pages-state/") && m.files.iter().any(|(f, _)| f.path == path) {
+                return Err(format!("HUB:conflict\npath={path}")); // base_rev 0 on a path that exists
+            }
             m.clock += 1000;
             let at = m.clock;
             let mut out = if let Some(i) = m.files.iter().position(|(f, _)| Some(f.id.as_str()) == existing) {
@@ -715,6 +779,8 @@ mod tests {
         vault: Vault,
         state: SyncState,
         remote: Shared,
+        /// page states switched on for this device (the release flag `pageState`)
+        ps: bool,
     }
 
     impl Device {
@@ -723,9 +789,10 @@ mod tests {
             let root: PathBuf = std::env::temp_dir().join(format!("nevis-sync-{name}-{}-{}", now_ms(), N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)));
             let _ = fs::remove_dir_all(&root);
             let vault = match id { Some(id) => Vault::create_with_id(root, "T", id).unwrap(), None => Vault::create(root, "T").unwrap() };
-            Device { vault, state: SyncState::default(), remote: remote.clone() }
+            Device { vault, state: SyncState::default(), remote: remote.clone(), ps: false }
         }
         fn try_sync(&mut self) -> Res<Report> {
+            pages::force_enabled(Some(self.ps));
             sync_once(&self.vault, &mut self.remote, &mut self.state, &mut |_| {})
         }
         fn sync(&mut self) -> Report {
@@ -988,6 +1055,251 @@ mod tests {
         assert!(!safe_rel(".nevis/database-journal/x.json") && !safe_rel(".nevis/index.db"));
     }
 
+    // ───── page states ─────
+
+    fn bid(n: u32) -> String {
+        format!("00000000-0000-4000-8000-{n:012}")
+    }
+    fn doc(texts: &[&str]) -> Value {
+        let kids: Vec<Value> = texts.iter().enumerate().map(|(i, t)| json!({ "type": "paragraph", "attrs": { "blockId": bid(i as u32 + 1) }, "content": [{ "type": "text", "text": t }] })).collect();
+        json!({ "type": "doc", "attrs": { "blockIdentityVersion": 1 }, "content": kids })
+    }
+    fn texts(p: &Value) -> Vec<String> {
+        p["content"]["content"].as_array().unwrap().iter().map(|n| n["content"][0]["text"].as_str().unwrap_or("").to_string()).collect()
+    }
+    impl Device {
+        fn save_doc(&self, id: &str, title: &str, t: &[&str], at: i64) {
+            self.vault.save_pages(&[json!({ "id": id, "title": title, "content": doc(t), "updatedAt": at, "deletedAt": null })], &[], false).unwrap();
+        }
+        fn has_bin(&self, id: &str) -> bool {
+            self.vault.root.join(format!("pages-state/{id}.bin")).is_file()
+        }
+        fn remote_paths(&self) -> Vec<String> {
+            self.remote.0.borrow().files.iter().map(|(f, _)| f.path.clone()).collect()
+        }
+    }
+    fn ps_pair() -> (Device, Device) {
+        let (mut a, mut b) = pair();
+        for d in [&mut a, &mut b] {
+            d.ps = true;
+            d.remote.0.borrow_mut().page_state = true;
+        }
+        (a, b)
+    }
+    /// Both devices know the page as a state (the first sync migrates, the next ones adopt).
+    fn migrated(id: &str, t: &[&str]) -> (Device, Device) {
+        let (mut a, mut b) = pair();
+        a.save_doc(id, "T", t, 100);
+        a.sync();
+        b.sync();
+        for d in [&mut a, &mut b] {
+            d.ps = true;
+            d.remote.0.borrow_mut().page_state = true;
+        }
+        a.sync();
+        b.sync();
+        a.sync();
+        assert!(a.has_bin(id) && b.has_bin(id), "migrated");
+        (a, b)
+    }
+
+    #[test]
+    fn a_page_migrates_once_fully_synced_and_the_json_leaves_the_sync() {
+        let (a, b) = migrated(P1, &["hello world"]);
+        assert_eq!(texts(&b.page(P1).unwrap()), ["hello world"]);
+        // the frozen legacy copy stays on the server, nothing tracks the derived JSON any more
+        assert!(a.remote_paths().contains(&format!("pages/{P1}.json")) && a.remote_paths().contains(&format!("pages-state/{P1}.bin")));
+        assert!(!a.state.files.contains_key(&format!("pages/{P1}.json")) && a.state.files.contains_key(&format!("pages-state/{P1}.bin")));
+        let mut a = a;
+        let mut b = b;
+        assert!(!a.sync().changed() && !b.sync().changed(), "a quiet sync does nothing");
+    }
+
+    #[test]
+    fn concurrent_edits_of_the_same_paragraph_on_two_devices_both_survive() {
+        let (mut a, mut b) = migrated(P1, &["hello world", "second"]);
+        a.save_doc(P1, "T", &["HEY hello world", "second"], 200);
+        b.save_doc(P1, "T", &["hello world, bye", "second!"], 300);
+        a.sync();
+        b.sync(); // conflict on b: merged
+        a.sync();
+        b.sync();
+        for d in [&a, &b] {
+            let t = texts(&d.page(P1).unwrap());
+            assert!(t[0].contains("HEY") && t[0].contains("bye"), "{t:?}");
+            assert_eq!(t[1], "second!");
+        }
+        assert_eq!(fs::read(a.vault.root.join(format!("pages-state/{P1}.bin"))).unwrap(), fs::read(b.vault.root.join(format!("pages-state/{P1}.bin"))).unwrap(), "same bytes");
+        assert_eq!(a.page(P1).unwrap(), b.page(P1).unwrap());
+        assert!(!a.sync().changed() && !b.sync().changed(), "quiet again");
+    }
+
+    #[test]
+    fn a_deleted_migrated_page_stays_deleted_even_for_a_new_device() {
+        let (mut a, mut b) = migrated(P1, &["x"]);
+        a.vault.save_pages(&[], &[P1.to_string()], false).unwrap();
+        for _ in 0..3 {
+            a.sync();
+            b.sync();
+        }
+        assert!(a.page(P1).is_none() && b.page(P1).is_none() && !b.has_bin(P1));
+        assert!(!a.remote_paths().iter().any(|p| p.contains(P1)), "{:?}", a.remote_paths());
+        let mut c = Device::new("c", &a.remote, Some("00000000-0000-4000-8000-000000000000"));
+        c.ps = true;
+        c.sync();
+        assert!(c.page(P1).is_none());
+    }
+
+    #[test]
+    fn an_edit_wins_over_a_concurrent_delete_of_a_migrated_page() {
+        let (mut a, mut b) = migrated(P1, &["x"]);
+        a.vault.save_pages(&[], &[P1.to_string()], false).unwrap();
+        b.save_doc(P1, "T", &["x edited"], 200);
+        b.sync();
+        a.sync(); // the state was changed on the server: not a delete any more
+        b.sync();
+        assert_eq!(texts(&a.page(P1).unwrap()), ["x edited"]);
+        assert_eq!(texts(&b.page(P1).unwrap()), ["x edited"]);
+    }
+
+    #[test]
+    fn a_legacy_device_that_edited_before_adopting_is_merged_three_way() {
+        let (mut a, mut b) = pair();
+        a.save_doc(P1, "T", &["hello world"], 100);
+        a.sync();
+        b.sync();
+        b.save_doc(P1, "T", &["oh hello world"], 150); // b is a legacy device (flag off) and has not synced this
+        a.ps = true;
+        a.remote.0.borrow_mut().page_state = true;
+        a.sync(); // migrates
+        a.save_doc(P1, "T", &["hello world!!"], 200);
+        a.sync();
+        b.ps = true;
+        b.sync(); // adopts: local edit against the frozen legacy copy
+        b.sync();
+        a.sync();
+        for d in [&a, &b] {
+            assert_eq!(texts(&d.page(P1).unwrap()), ["oh hello world!!"]);
+        }
+    }
+
+    #[test]
+    fn a_stale_writer_cannot_silently_revert_a_merged_edit() {
+        let (mut a, mut b) = migrated(P1, &["hello world"]);
+        a.save_doc(P1, "T", &["HEY hello world"], 200);
+        a.sync();
+        b.sync(); // b now has a's edit
+        assert_eq!(texts(&b.page(P1).unwrap()), ["HEY hello world"]);
+        // a writer that read the page before the sync (updatedAt 100) saves its version
+        let stale = json!({ "id": P1, "title": "T", "content": doc(&["hello world, bye"]), "updatedAt": 300, "deletedAt": null, "_base": 100 });
+        b.vault.save_pages(&[stale], &[], false).unwrap();
+        assert!(b.vault.versions_list(P1).unwrap().iter().any(|v| v.to_string().contains("HEY")), "the replaced version is in the history");
+    }
+
+    #[test]
+    fn the_editor_can_save_a_state_page_again_and_again_with_its_revision_check() {
+        let (a, _b) = migrated(P1, &["hello world"]);
+        let read = |d: &Device| -> Value { serde_json::from_slice(&fs::read(d.vault.root.join(format!("pages/{P1}.json"))).unwrap()).unwrap() };
+        let mut before = read(&a);
+        for (i, text) in ["one", "one two", "one two three"].iter().enumerate() {
+            let next = json!({ "id": P1, "title": "T", "content": doc(&[text]), "updatedAt": 200 + i as i64, "deletedAt": null });
+            let expected = serde_json::Map::from_iter([(P1.to_string(), before.clone())]);
+            a.vault.save_pages_checked(&[next.clone()], &[], false, Some(&expected), None).unwrap();
+            before = read(&a);
+            assert_eq!(before, next, "the file is exactly what the editor saved, so its next checked save matches");
+        }
+    }
+
+    #[test]
+    fn with_the_flag_off_nothing_is_migrated_and_files_stay_as_written() {
+        let (mut a, mut b) = pair();
+        a.remote.0.borrow_mut().page_state = true; // the server could, the release flag is off
+        a.save_doc(P1, "T", &["x"], 100);
+        let written = fs::read(a.vault.root.join(format!("pages/{P1}.json"))).unwrap();
+        for _ in 0..3 {
+            a.sync();
+            b.sync();
+        }
+        assert!(!a.remote_paths().iter().any(|p| p.starts_with("pages-state/")) && !a.has_bin(P1) && !b.has_bin(P1));
+        assert_eq!(fs::read(b.vault.root.join(format!("pages/{P1}.json"))).unwrap(), written);
+        assert!(!a.vault.root.join(".nevis/page-state").exists());
+    }
+
+    #[test]
+    fn without_server_support_nothing_is_migrated() {
+        let (mut a, _b) = pair();
+        a.ps = true; // flag on, server without the capability
+        a.save_doc(P1, "T", &["x"], 100);
+        a.sync();
+        a.sync();
+        assert!(!a.has_bin(P1));
+    }
+
+    #[test]
+    fn pages_that_cannot_be_states_stay_legacy() {
+        let (mut a, _b) = ps_pair();
+        a.vault.save_pages(&[json!({ "id": P1, "title": "welcome", "content": "a string", "updatedAt": 1, "deletedAt": null }),
+            json!({ "id": P2, "title": "folder", "kind": "folder", "content": { "type": "doc", "content": [] }, "updatedAt": 1, "deletedAt": null })], &[], false).unwrap();
+        a.sync();
+        a.sync();
+        assert!(!a.has_bin(P1) && !a.has_bin(P2));
+    }
+
+    #[test]
+    fn deleting_a_page_with_many_history_entries_is_not_held_back() {
+        let (mut a, mut b) = pair();
+        a.save(P1, "doomed", 100);
+        a.save(P2, "stays", 100);
+        for ts in 1..=6 {
+            write_atomic(&a.vault.root.join(format!("history/{P1}/{ts}.json")), json!({ "pageId": P1, "ts": ts, "title": "old", "content": null }).to_string().as_bytes()).unwrap();
+        }
+        a.sync();
+        b.sync();
+        a.vault.save_pages(&[], &[P1.to_string()], false).unwrap();
+        let rep = a.sync();
+        assert_eq!(rep.held, 0, "one page is one deletion");
+        let rep = b.sync();
+        assert_eq!(rep.held, 0);
+        assert!(b.page(P1).is_none() && b.page(P2).is_some());
+    }
+
+    #[test]
+    fn delete_keys_group_a_page_with_its_state_and_history() {
+        let k = |p: &str| pages::delete_key(p);
+        assert_eq!(k(&format!("pages/{P1}.json")), k(&format!("pages-state/{P1}.bin")));
+        assert_eq!(k(&format!("pages/{P1}.json")), k(&format!("history/{P1}/5.json")));
+        assert_ne!(k(&format!("pages/{P1}.json")), k(&format!("pages/{P2}.json")));
+        assert_eq!(k("kv/srs.json"), "kv/srs.json");
+    }
+
+    #[test]
+    fn the_json_of_a_page_with_a_state_is_dropped_before_planning() {
+        let l = |m: &str| Local { md5: m.into(), size: 0, mtime: 0 };
+        let r = |p: &str| RemoteFile { id: "i".into(), path: p.into(), md5: "r".into(), modified_ms: 0 };
+        let (mut local, mut rmap, mut files) = (BTreeMap::new(), BTreeMap::new(), BTreeMap::new());
+        for id in [P1, P2] {
+            local.insert(format!("pages/{id}.json"), l("x"));
+            rmap.insert(format!("pages/{id}.json"), r("p"));
+            files.insert(format!("pages/{id}.json"), Entry { base: "b".into(), ..Default::default() });
+        }
+        rmap.insert(format!("pages-state/{P1}.bin"), r("s")); // P1 has a state on the server only
+        local.insert(format!("pages/{P1} (cloud).json"), l("c"));
+        let legacy = pages::drop_derived(&mut local, &mut rmap, &mut files);
+        assert_eq!(local.keys().collect::<Vec<_>>(), [&format!("pages/{P2}.json")]);
+        assert_eq!(rmap.keys().cloned().collect::<Vec<_>>(), [format!("pages-state/{P1}.bin"), format!("pages/{P2}.json")]);
+        assert_eq!(files.keys().collect::<Vec<_>>(), [&format!("pages/{P2}.json")]);
+        assert_eq!(legacy[P1].base.as_deref(), Some("b"));
+        assert!(legacy[P1].remote.is_some());
+    }
+
+    #[test]
+    fn page_state_paths_are_validated() {
+        assert!(safe_rel(&format!("pages-state/{P1}.bin")));
+        for p in ["pages-state/x.bin", "pages-state/a/b.bin", &format!("pages-state/{P1}.json"), "pages-state/AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA.bin", "pages-state/.bin"] {
+            assert_eq!(path_problem(p), Some("bad_page_state_path"), "{p}");
+        }
+    }
+
     #[test]
     fn plan_table() {
         let l = |m: &str| Local { md5: m.into(), size: 0, mtime: 0 };
@@ -1113,6 +1425,35 @@ mod tests {
         let r = a.sync();
         assert_eq!((r.deleted, r.held), (0, 0));
         assert_eq!((a.page_count(), b.page_count()), (2, 2));
+    }
+
+    // ───── the hash cache must not hide an edit that shares the size and mtime of the hashed version ─────
+
+    #[test]
+    fn a_same_size_edit_with_the_same_mtime_is_seen_unless_the_cache_was_taken_long_after_it() {
+        let root = std::env::temp_dir().join(format!("nevis-racy-{}-{}", now_ms(), std::process::id()));
+        fs::create_dir_all(root.join("pages")).unwrap();
+        let file = root.join("pages/x.json");
+        fs::write(&file, b"{\"title\":\"aaaa\"}").unwrap();
+        let mtime_of_file = || fs::metadata(&file).unwrap().modified().unwrap();
+        let first = mtime_of_file();
+        let (size, ns) = (fs::metadata(&file).unwrap().len(), mtime_of(&fs::metadata(&file).unwrap()));
+        let stale = md5_hex(b"{\"title\":\"aaaa\"}");
+        // the same size, the same mtime, other bytes: what a coarse file-system clock allows
+        fs::write(&file, b"{\"title\":\"bbbb\"}").unwrap();
+        fs::File::options().write(true).open(&file).unwrap().set_modified(first).unwrap();
+        assert_eq!((fs::metadata(&file).unwrap().len(), mtime_of(&fs::metadata(&file).unwrap())), (size, ns));
+
+        let entry = |cached_at: u128| BTreeMap::from([("pages/x.json".to_string(), Entry { md5: stale.clone(), size, mtime: ns, cached_at, ..Default::default() })]);
+        // cached in the same tick as the mtime (or by an old client: 0): not trusted, the file is hashed again
+        for cached_at in [0, ns, ns + RACY_NS - 1] {
+            let (local, _) = scan(&root, &entry(cached_at)).unwrap();
+            assert_eq!(local["pages/x.json"].md5, md5_hex(b"{\"title\":\"bbbb\"}"), "cached_at {cached_at}");
+        }
+        // cached long after the mtime: nobody can have written in that tick since, so the cache stands
+        let (local, _) = scan(&root, &entry(ns + RACY_NS)).unwrap();
+        assert_eq!(local["pages/x.json"].md5, stale);
+        fs::remove_dir_all(&root).unwrap();
     }
 
     // ───── concurrency: a file that changed while we were busy is not overwritten ─────

@@ -47,6 +47,9 @@ function linkedIds(node: DocNode | string | null | undefined, out = new Set<stri
   return out
 }
 
+type PendingWrite = { full: boolean; upserts: Page[]; removed: string[] }
+const isRevisionConflict = (e: unknown) => /revision conflict/i.test(e instanceof Error ? e.message : String(e))
+
 export class DocumentService implements PageRepo {
   private pages: Page[] = []
   private dirty = new Set<string>()
@@ -456,35 +459,7 @@ export class DocumentService implements PageRepo {
     this.full = false
     if (!full && !upserts.length && !removed.length) return this.queue
     this.queue = this.queue
-      // Compare detached durable pre-images, including same-timestamp metadata changes.
-      .then(() =>
-        this.storage.save({
-          upserts,
-          removed,
-          replaceAll: full,
-          baseVersions: Object.fromEntries(upserts.map((p) => [p.id, this.diskAt.get(p.id) ?? null])),
-          ...(full
-            ? { expectedAll: [...this.diskPages.values()].map(cloneDocumentValue) }
-            : { expectedPages: Object.fromEntries([...upserts.map((p) => p.id), ...removed].map((id) => [id, cloneDocumentValue(this.diskPages.get(id) ?? null)])) }),
-        }),
-      )
-      .then(async () => {
-        if (this.idle()) this.persistenceError = null
-        if (full) {
-          this.diskAt.clear()
-          this.diskPages.clear()
-        }
-        for (const p of upserts) {
-          this.diskAt.set(p.id, storedVersion(p))
-          this.diskPages.set(p.id, cloneDocumentValue(p))
-        }
-        for (const id of removed) {
-          this.diskAt.delete(id)
-          this.diskPages.delete(id)
-        }
-        this.invalidateSearch() // committed content first; indexing is a separate, fallible concern
-        if (this.storage.stamp) this.stamp = await this.storage.stamp() // our own writes are not "external" changes
-      })
+      .then(() => this.persist({ full, upserts, removed }))
       .catch((e) => {
         this.persistenceError = e
         // Keep failed writes pending so they can be retried before installation.
@@ -495,6 +470,123 @@ export class DocumentService implements PageRepo {
       })
     this.host.emit('data-changed')
     return this.queue
+  }
+
+  /**
+   * One storage write. Compares detached durable pre-images, including same-timestamp metadata changes. When the pages
+   * changed on disk after we read them (the other device's sync, another program) the write is refused with a revision
+   * conflict; the pending change is then rebased onto what is on disk and written again. Without that, the refused change
+   * stayed pending, every later save (new page, delete) carried it along and was refused too, and nothing ever reloaded.
+   */
+  private async persist(w: PendingWrite, tries = 0): Promise<void> {
+    const { full, upserts, removed } = w
+    try {
+      await this.storage.save({
+        upserts,
+        removed,
+        replaceAll: full,
+        baseVersions: Object.fromEntries(upserts.map((p) => [p.id, this.diskAt.get(p.id) ?? null])),
+        ...(full
+          ? { expectedAll: [...this.diskPages.values()].map(cloneDocumentValue) }
+          : { expectedPages: Object.fromEntries([...upserts.map((p) => p.id), ...removed].map((id) => [id, cloneDocumentValue(this.diskPages.get(id) ?? null)])) }),
+      })
+    } catch (e) {
+      if (full || tries >= 3 || !isRevisionConflict(e)) throw e
+      const next = await this.rebase(w)
+      if (next) await this.persist(next, tries + 1)
+      else if (this.idle()) this.persistenceError = null
+      return
+    }
+    if (this.idle()) this.persistenceError = null
+    if (full) {
+      this.diskAt.clear()
+      this.diskPages.clear()
+    }
+    for (const p of upserts) {
+      this.diskAt.set(p.id, storedVersion(p))
+      this.diskPages.set(p.id, cloneDocumentValue(p))
+    }
+    for (const id of removed) {
+      this.diskAt.delete(id)
+      this.diskPages.delete(id)
+    }
+    this.invalidateSearch() // committed content first; indexing is a separate, fallible concern
+    if (this.storage.stamp) this.stamp = await this.storage.stamp() // our own writes are not "external" changes
+  }
+
+  /**
+   * Adjusts a refused write to the pages as they are on disk now. Nothing is dropped silently:
+   * - a page edited here and elsewhere: the newer `updatedAt` wins and the other version goes to its history (an edit
+   *   also beats a delete, like in the sync engine, because deleting does not touch `updatedAt`);
+   * - a page that was purged elsewhere comes back with our edit; a page we purge that was edited elsewhere stays.
+   * Returns what is still to be written, or null when nothing is.
+   */
+  private async rebase(w: PendingWrite): Promise<PendingWrite | null> {
+    const disk = new Map((await this.storage.load()).map((r) => [r.id, r]))
+    const same = (a: Page | null | undefined, b: Page | null | undefined) => canonicalDocumentValue(a ?? null) === canonicalDocumentValue(b ?? null)
+    const adopt = (theirs: Page) => {
+      this.diskPages.set(theirs.id, cloneDocumentValue(theirs))
+      this.diskAt.set(theirs.id, storedVersion(theirs))
+    }
+    const forget = (id: string) => {
+      this.diskPages.delete(id)
+      this.diskAt.delete(id)
+    }
+    const upserts: Page[] = []
+    const removed: string[] = []
+    const changed: string[] = []
+    for (const sent of w.upserts) {
+      const local = this.pages.find((p) => p.id === sent.id)
+      if (!local) continue // purged meanwhile: its removal is pending on its own
+      const theirs = disk.get(sent.id) ?? null
+      if (same(theirs, this.diskPages.get(sent.id))) {
+        upserts.push(cloneDocumentValue(local))
+      } else if (!theirs) {
+        forget(sent.id)
+        upserts.push(cloneDocumentValue(local))
+      } else if (same(theirs, local)) {
+        adopt(theirs) // both sides already say the same
+      } else if (local.updatedAt >= theirs.updatedAt) {
+        await this.keepVersion(theirs)
+        adopt(theirs)
+        upserts.push(cloneDocumentValue(local))
+      } else {
+        await this.keepVersion(local)
+        adopt(theirs)
+        this.pages = this.pages.map((p) => (p.id === theirs.id ? cloneDocumentValue(theirs) : p))
+        this.dirty.delete(theirs.id)
+        changed.push(theirs.id)
+      }
+    }
+    for (const id of w.removed) {
+      const theirs = disk.get(id) ?? null
+      if (!theirs) forget(id) // already gone
+      else if (same(theirs, this.diskPages.get(id))) removed.push(id)
+      else {
+        adopt(theirs) // edited elsewhere: that edit stays
+        if (!this.pages.some((p) => p.id === id)) this.pages.push(cloneDocumentValue(theirs))
+        changed.push(id)
+      }
+    }
+    if (changed.length) {
+      this.rebuildLinks()
+      this.invalidateSearch()
+      this.host.emit('external-change', changed)
+    }
+    return upserts.length || removed.length ? { full: false, upserts, removed } : null
+  }
+
+  /** The losing side of a conflict is kept as a history entry (unless it is blank or already the latest one). */
+  private async keepVersion(page: Page) {
+    if (page.kind === 'folder' || !page.content || typeof page.content === 'string' || (isBlankDoc(page.content) && !page.title.trim())) return
+    try {
+      const json = JSON.stringify(page.content)
+      const latest = (await this.storage.listVersions(page.id))[0]
+      if (latest && latest.title === page.title && JSON.stringify(latest.content) === json) return
+      await this.storage.addVersion({ pageId: page.id, ts: Math.max(this.host.now(), (latest?.ts ?? 0) + 1), title: page.title, content: cloneDocumentValue(page.content) })
+    } catch (e) {
+      this.host.report('history', e)
+    }
   }
 
   // ───── changes made by other programs (the vault folder may be shared by a file-sync tool) ─────
