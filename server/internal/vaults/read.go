@@ -220,8 +220,10 @@ type SnapshotPage struct {
 
 // Snapshot returns the live files with a path after `after`, in path order, at most `limit` of them. It does not
 // look at compaction: a client that reads the whole vault this way keeps the `seq` of its first page as its cursor,
-// and whatever changed meanwhile has a rev above it and comes through Changes.
-func (s *Store) Snapshot(ctx context.Context, id string, after string, limit int) (SnapshotPage, error) {
+// and whatever changed meanwhile has a rev above it and comes through Changes. With `deleted` it returns the
+// tombstones (and only them) instead, so a client that lost its bookkeeping can tell "deleted elsewhere" from
+// "never existed"; tombstones that housekeeping already dropped are not there.
+func (s *Store) Snapshot(ctx context.Context, id string, after string, limit int, deleted bool) (SnapshotPage, error) {
 	v, err := vaultRow(ctx, s.DB, id)
 	if err != nil {
 		return SnapshotPage{}, err
@@ -230,7 +232,11 @@ func (s *Store) Snapshot(ctx context.Context, id string, after string, limit int
 		return SnapshotPage{}, apierr.New(404, "no_such_vault")
 	}
 	limit = min(max(limit, 1), maxPage)
-	rows, err := queryFiles(ctx, s.DB, "SELECT "+fileColumns+" FROM files WHERE vault_id = ? AND deleted = 0 AND path > ? ORDER BY path LIMIT ?", id, after, limit+1)
+	flag := 0
+	if deleted {
+		flag = 1
+	}
+	rows, err := queryFiles(ctx, s.DB, "SELECT "+fileColumns+" FROM files WHERE vault_id = ? AND deleted = ? AND path > ? ORDER BY path LIMIT ?", id, flag, after, limit+1)
 	if err != nil {
 		return SnapshotPage{}, err
 	}

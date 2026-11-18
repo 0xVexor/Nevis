@@ -176,7 +176,7 @@ func (s *Server) changes(w http.ResponseWriter, r *http.Request, p *auth.Princip
 		limit = vaults.DefaultPage
 	}
 	if r.URL.Query().Get("snapshot") == "1" {
-		page, err := s.Vaults.Snapshot(r.Context(), v.ID, pathAfter(r), int(min(limit, 1<<20)))
+		page, err := s.Vaults.Snapshot(r.Context(), v.ID, pathAfter(r), int(min(limit, 1<<20)), r.URL.Query().Get("deleted") == "1")
 		if err != nil {
 			return err
 		}
