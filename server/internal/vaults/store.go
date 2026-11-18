@@ -35,6 +35,9 @@ type Store struct {
 
 	rootMu sync.Mutex
 	roots  map[string]cachedRoot
+
+	pendingMu sync.Mutex
+	pending   map[string]map[string]pendingUpload // by user, then vault+blob: uploads not complete yet
 }
 
 // querier is what both the database and a transaction can do.

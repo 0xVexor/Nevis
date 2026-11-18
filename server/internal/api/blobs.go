@@ -52,6 +52,11 @@ func (s *Server) putBlob(w http.ResponseWriter, r *http.Request, p *auth.Princip
 	if err != nil {
 		return err
 	}
+	declared := r.ContentLength
+	if declared < 0 { // chunked: the limit below is all that is known
+		declared = blobLimit
+	}
+	s.limitRead(w, s.Timeouts.transfer(declared))
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, blobLimit))
 	if err != nil {
 		return err
@@ -142,6 +147,7 @@ func (s *Server) sendBlob(w http.ResponseWriter, vaultID, sha string, r *http.Re
 	h.Set("Content-Length", strconv.FormatInt(info.Size, 10))
 	h.Set("X-Md5", info.MD5)
 	h.Set("X-Sha256", sha)
+	s.limitWrite(w, s.Timeouts.transfer(info.Size))
 	// the headers are out: a download the client abandoned halfway is its own business, not an error to answer
 	_, _ = io.Copy(w, f)
 	return nil

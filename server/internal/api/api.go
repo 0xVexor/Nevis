@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"time"
@@ -43,6 +44,8 @@ type Deps struct {
 	// OnWrite is called after every change that should reach the backup.
 	OnWrite func()
 	Log     *slog.Logger
+	// Timeouts are the per-request deadlines of uploads, downloads and long polls (zero fields: the defaults).
+	Timeouts Timeouts
 }
 
 // Server answers the API.
@@ -53,6 +56,7 @@ type Server struct {
 
 // New builds the handler of the whole API.
 func New(d Deps) http.Handler {
+	d.Timeouts = d.Timeouts.withDefaults()
 	s := &Server{Deps: d, mux: http.NewServeMux()}
 	s.routes()
 	return s.middleware(s.mux)
@@ -167,6 +171,10 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 			w.Header().Set("Retry-After", strconv.Itoa(ae.Extra["retry"].(int)))
 		}
 		writeJSON(w, ae.Status, ae.Body())
+	case errors.Is(err, os.ErrDeadlineExceeded):
+		// the client was too slow sending the body: the connection is not worth keeping
+		w.Header().Set("Connection", "close")
+		writeJSON(w, http.StatusRequestTimeout, map[string]any{"error": "request_timeout"})
 	case errors.As(err, &tooBig):
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": "too_large"})
 	default:

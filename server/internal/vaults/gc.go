@@ -36,7 +36,11 @@ func (s *Store) Housekeeping(ctx context.Context, now time.Time) (GCStats, error
 		func() (err error) { st.Blobs, err = s.dropOrphanBlobs(ctx, now.Add(-orphanGrace).UnixMilli()); return },
 		func() (err error) { st.Vaults, err = s.dropTrashedVaults(ctx, keep); return },
 		func() (err error) { st.Users, err = s.dropDeletedUsers(ctx, now.UnixMilli()); return },
-		func() (err error) { st.Staging, err = s.Blobs.SweepStaging(now, day); return },
+		func() (err error) {
+			s.dropStalePending(now, day)
+			st.Staging, err = s.Blobs.SweepStaging(now, day)
+			return
+		},
 	}
 	for _, step := range steps {
 		if err := step(); err != nil {

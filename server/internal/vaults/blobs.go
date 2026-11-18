@@ -91,17 +91,32 @@ func (s *Store) ReceiveBlob(ctx context.Context, userID string, v *Vault, sha st
 	if rng == nil {
 		rng = &Range{Start: 0, End: int64(len(body)) - 1, Total: int64(len(body))}
 	}
-	if err := s.checkPiece(ctx, userID, sha, *rng, int64(len(body))); err != nil {
+	if err := s.checkPiece(sha, *rng, int64(len(body))); err != nil {
 		return BlobResult{}, err
 	}
+	// the declared size counts against the quota from the first piece until the blob is recorded or given up
+	key := v.ID + "/" + sha
+	known, err := s.reserve(ctx, userID, key, rng.Total)
+	if err != nil {
+		return BlobResult{}, err
+	}
+	pending := false // true while the upload stays half-finished on purpose
+	defer func() {
+		if !pending {
+			s.release(userID, key)
+		}
+	}()
 	if err := s.Blobs.Receive(v.ID, sha, rng.Start, body); err != nil {
 		var gap *storage.OutOfOrder
 		if errors.As(err, &gap) {
+			// nothing was staged by this request: only an upload that already had pieces keeps its place
+			pending = known
 			return BlobResult{}, apierr.With(409, "out_of_order", map[string]any{"received": gap.Received})
 		}
 		return BlobResult{}, err
 	}
 	if rng.End+1 < rng.Total {
+		pending = true
 		return BlobResult{Received: rng.End + 1}, nil
 	}
 	md5, err := s.Blobs.Finish(v.ID, sha, rng.Total)
@@ -118,8 +133,8 @@ func (s *Store) ReceiveBlob(ctx context.Context, userID string, v *Vault, sha st
 }
 
 // checkPiece refuses what can be seen to be wrong before a byte is written: a piece that does not fit its range, a
-// blob over the size limit, one the account has no room for, an empty body that is not the empty file.
-func (s *Store) checkPiece(ctx context.Context, userID, sha string, r Range, bodyLen int64) error {
+// blob over the size limit, an empty body that is not the empty file. (Room in the quota is checked by reserve.)
+func (s *Store) checkPiece(sha string, r Range, bodyLen int64) error {
 	if r.End-r.Start+1 != bodyLen || r.Start < 0 || r.End+1 < r.Start {
 		return apierr.New(400, "bad_range")
 	}
@@ -128,13 +143,6 @@ func (s *Store) checkPiece(ctx context.Context, userID, sha string, r Range, bod
 	}
 	if r.Total == 0 && sha != emptySHA256 {
 		return apierr.New(422, "hash_mismatch")
-	}
-	used, err := s.UsedBytes(ctx, userID)
-	if err != nil {
-		return err
-	}
-	if used+r.Total > s.Cfg.QuotaBytes {
-		return apierr.With(507, "quota_exceeded", map[string]any{"limit": s.Cfg.QuotaBytes})
 	}
 	return nil
 }
