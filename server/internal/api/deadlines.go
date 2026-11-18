@@ -20,7 +20,9 @@ type Timeouts struct {
 
 func (t Timeouts) withDefaults() Timeouts {
 	if t.TransferBase <= 0 {
-		t.TransferBase = 30 * time.Second
+		// not stricter than the desktop client, whose requests time out after 60 s: a slow link that the client
+		// still waits for must not be cut off by the server first
+		t.TransferBase = 60 * time.Second
 	}
 	if t.TransferRate <= 0 {
 		t.TransferRate = 256 << 10

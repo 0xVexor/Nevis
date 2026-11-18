@@ -76,7 +76,9 @@ export const syncSet = (on: boolean) => invoke<void>('sync_set', { on })
 export const syncNow = () => invoke<void>('sync_now')
 export const syncHeld = () => invoke<HeldDelete[]>('sync_held')
 /** Confirms exactly the list the person was shown. */
-export const syncConfirm = (items: HeldDelete[]) => invoke<void>('sync_confirm', { items })
+export const syncConfirm = (items: HeldDelete[]) =>
+  // an empty list means the held list was not loaded (an older state): confirm what is planned, as before, instead of nothing
+  invoke<void>('sync_confirm', { items: items.length > 0 ? items : null })
 export const cloudTrashed = () => invoke<TrashedVault[]>('cloud_trashed')
 export const cloudRestore = (id: string) => invoke<void>('cloud_restore', { id })
 export const accountDelete = (password: string) => invoke<number>('account_delete', { password })
