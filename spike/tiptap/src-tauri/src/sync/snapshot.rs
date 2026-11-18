@@ -563,6 +563,7 @@ pub fn backup(v: &Vault, dest: &Path) -> Res<()> {
     }
     for d in [
         "pages",
+        "pages-state",
         "files",
         "databases",
         "kv",
@@ -612,9 +613,16 @@ pub fn capture(v: &Vault) -> Res<Bundle> {
     Ok(Bundle::new(&v.id(), &read(v)?, tombstones(v)?))
 }
 pub fn tombstone(v: &Vault, path: &str) -> Res<()> {
-    safe_path(path)?;
+    tombstone_many(v, &[path.to_string()])
+}
+
+/// Tombstones several paths with one read of the list, one scan of `conflicts/` and one write.
+pub fn tombstone_many(v: &Vault, paths: &[String]) -> Res<()> {
+    for path in paths {
+        safe_path(path)?;
+    }
     let mut dead = tombstones(v)?;
-    dead.insert(path.into());
+    dead.extend(paths.iter().cloned());
     let conflict_dir = v.root.join("conflicts");
     if conflict_dir.exists() {
         for e in fs::read_dir(&conflict_dir).map_err(err)? {
@@ -624,7 +632,7 @@ pub fn tombstone(v: &Vault, path: &str) -> Res<()> {
             }
             let b = fs::read(e.path()).map_err(err)?;
             let c: Value = serde_json::from_slice(&b).map_err(err)?;
-            if c["path"].as_str() == Some(path) {
+            if c["path"].as_str().is_some_and(|cp| paths.iter().any(|p| p == cp)) {
                 let rel = format!("conflicts/{}", e.file_name().to_string_lossy());
                 safe_path(&rel)?;
                 dead.insert(rel);

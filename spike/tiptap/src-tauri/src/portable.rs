@@ -143,7 +143,7 @@ fn verified(raw: serde_json::Value) -> Res<(String, BTreeMap<String, Vec<u8>>)> 
     let mut total = 0;
     for (p, f) in b.entries {
         if p == ".nevis/tombstones.json" || (legacy && p == ".noviq/tombstones.json") {
-            continue; // backups of earlier versions hold a list of deletions that nothing reads any more
+            continue; // the list of deletions is not restored: a backup must not decide what is deleted here (restore_merge reads the live one)
         }
         let p = if p == marker { ".nevis/vault.json".to_owned() } else { p };
         safe(&p)?;
@@ -219,7 +219,8 @@ pub fn restore(parent: &Path, raw: serde_json::Value, name: Option<&str>) -> Res
 
 /// Restores into the open workspace: its pages, files, databases and history from the backup are written over the
 /// workspace's own (a page with the same id is replaced by the backup's version). Nothing is deleted, and the
-/// workspace's identity, settings and trash stay as they are. Returns how many files were written.
+/// workspace's identity, settings and trash stay as they are. Pages and records it writes are alive again: a deletion
+/// recorded here for them is forgotten, as the user brings them back on purpose. Returns how many files were written.
 pub fn restore_into(v: &Vault, raw: serde_json::Value) -> Res<usize> {
     let (_, files) = verified(raw)?;
     let _guard = crate::vault::commit_lock(&v.root)?;
@@ -232,6 +233,9 @@ pub fn restore_into(v: &Vault, raw: serde_json::Value) -> Res<usize> {
             continue;
         }
         write_atomic(&v.root.join(p), bytes)?;
+        if p.starts_with("pages/") || p.starts_with("databases/") {
+            crate::sync::snapshot::untombstone(v, p)?;
+        }
         written += 1;
     }
     Ok(written)
@@ -246,13 +250,15 @@ pub struct Merged {
     pub updated: usize,
     /// Pages left as they are: newer here, the same, or in the trash here.
     pub kept: usize,
+    /// Pages and records the backup has that were deleted here after it was made: not brought back.
+    pub skipped_deleted: usize,
     /// Images and other files that were not here.
     pub files: usize,
 }
 
 /// Brings a backup into the open workspace without replacing anything that is newer or only here. A page that is in both
 /// keeps its newer version (database pages merge cell by cell) and the older one goes to the page's history. A page in this
-/// workspace's trash stays there. Nothing is deleted. Files, database sources and history are added when they are missing.
+/// workspace's trash stays there, and so does one that was deleted for good here. Nothing is deleted. Files, database sources and history are added when they are missing.
 pub fn restore_merge(v: &Vault, raw: serde_json::Value) -> Res<Merged> {
     let (_, files) = verified(raw)?;
     let _guard = crate::vault::commit_lock(&v.root)?;
@@ -262,10 +268,15 @@ pub fn restore_merge(v: &Vault, raw: serde_json::Value) -> Res<Merged> {
         let snapshot = json!({"pageId": id, "ts": ts, "title": old.get("title").cloned().unwrap_or_default(), "content": old.get("content").cloned().unwrap_or_default()});
         write_atomic(&v.root.join("history").join(id).join(format!("{ts}.json")), &serde_json::to_vec(&snapshot).map_err(err)?)
     };
+    let dead = crate::sync::snapshot::tombstones(v)?;
     let mut merged = Merged::default();
     let mut ts = crate::vault::now_ms();
     for (path, bytes) in &files {
         let dest = v.root.join(path);
+        if dead.contains(path) {
+            merged.skipped_deleted += 1; // deleted here after the backup was made
+            continue;
+        }
         let page_id = path.strip_prefix("pages/").and_then(|n| n.strip_suffix(".json")).filter(|id| !id.contains('/'));
         if let Some(id) = page_id {
             let theirs: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| "BACKUP:invalid_json")?;
@@ -595,7 +606,7 @@ mod tests {
         write_atomic(&there.root.join("kv/preferences.json"), b"{\"theme\":\"dark\"}").unwrap();
         let backup = serde_json::to_value(export(&there).unwrap()).unwrap();
         let merged = restore_merge(&here, backup.clone()).unwrap();
-        assert_eq!(merged, Merged { added: 1, updated: 1, kept: 3, files: 1 });
+        assert_eq!(merged, Merged { added: 1, updated: 1, kept: 3, skipped_deleted: 0, files: 1 });
         let read = |n: usize| -> serde_json::Value { serde_json::from_slice(&fs::read(here.root.join(format!("pages/{n:032x}.json"))).unwrap()).unwrap() };
         assert_eq!(read(2)["updatedAt"], 20); // the backup's newer version won
         assert_eq!(fs::read_dir(here.root.join("history").join(format!("{:032x}", 2))).unwrap().count(), 1); // and the one that was here is in the history
@@ -607,7 +618,7 @@ mod tests {
         assert_eq!(fs::read(here.root.join("files/bb/pic")).unwrap(), b"theirs");
         assert!(!here.root.join("kv/preferences.json").exists()); // settings stay as they are
         // doing it again changes nothing
-        assert_eq!(restore_merge(&here, backup).unwrap(), Merged { added: 0, updated: 0, kept: 5, files: 0 });
+        assert_eq!(restore_merge(&here, backup).unwrap(), Merged { added: 0, updated: 0, kept: 5, skipped_deleted: 0, files: 0 });
         fs::remove_dir_all(parent).unwrap();
     }
     #[test]
@@ -702,5 +713,25 @@ mod tests {
             },
         );
         assert!(restore(&parent, serde_json::to_value(&b).unwrap(), None).is_err());
+    }
+
+    #[test]
+    fn a_merge_does_not_bring_back_a_page_deleted_here_and_a_replace_makes_it_saveable() {
+        let parent = std::env::temp_dir().join(format!("portable-test-{}", uuid::Uuid::new_v4()));
+        let v = Vault::create(parent.join("here"), "mine").unwrap();
+        page(&v, 1, ",\"updatedAt\":10");
+        page(&v, 2, ",\"updatedAt\":10");
+        let backup = serde_json::to_value(export(&v).unwrap()).unwrap();
+        let dead = format!("{:032x}", 1);
+        v.save_pages(&[], &[dead.clone()], false).unwrap(); // deleted after the backup
+        let merged = restore_merge(&v, backup.clone()).unwrap();
+        assert_eq!((merged.skipped_deleted, merged.kept), (1, 1));
+        assert!(!v.root.join(format!("pages/{dead}.json")).exists());
+        restore_into(&v, backup).unwrap();
+        assert!(v.root.join(format!("pages/{dead}.json")).exists());
+        assert!(!crate::sync::snapshot::tombstones(&v).unwrap().contains(&format!("pages/{dead}.json")));
+        let again = json!({"id": dead, "title": "back", "content": {"type":"doc","content":[]}, "updatedAt": 99, "deletedAt": null});
+        v.save_pages(&[again], &[], false).unwrap();
+        fs::remove_dir_all(parent).unwrap();
     }
 }

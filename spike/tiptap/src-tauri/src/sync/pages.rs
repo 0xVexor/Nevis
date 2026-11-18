@@ -73,9 +73,7 @@ pub fn clear_pending(root: &Path) {
 }
 
 fn entry(state: &mut SyncState, p: &str, bytes: &[u8], id: &str, root: &Path) {
-    let m = fs::metadata(root.join(p)).ok();
-    let (size, mtime) = m.map_or((0, 0), |m| (m.len(), mtime_of(&m)));
-    state.files.insert(p.to_string(), Entry { base: md5_hex(bytes), remote_id: id.to_string(), size, mtime, md5: md5_hex(bytes), cached_at: now_ns(), ..Default::default() });
+    track_current(state, root, p, &md5_hex(bytes), id); // keeps the ring of seen contents and stamps the cache
 }
 
 /// The remote state is newer or new here: install it (adopting a legacy local page when there is one).

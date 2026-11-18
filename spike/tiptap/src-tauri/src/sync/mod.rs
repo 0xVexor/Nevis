@@ -216,13 +216,22 @@ fn is_content(p: &str) -> bool {
     p.split_once('/').is_some_and(|(top, _)| ROOTS.contains(&top))
 }
 
-/// Whether the app writes a tombstone when it deletes this file. Other synced files (history trims, the trash,
-/// version deletes) disappear without one, so their absence says nothing either way.
-fn deletion_is_tombstoned_by_app(p: &str) -> bool {
-    match p.strip_prefix("pages/").and_then(|f| f.strip_suffix(".json")) {
-        Some(id) => crate::vault::check_id(id).is_ok(),
-        None => p.starts_with("databases/") && snapshot::safe_path(p).is_ok(),
+/// The tombstone the app writes when it deletes this file, if it writes one. A page state is deleted together with its
+/// page, so it shares the tombstone of `pages/<id>.json`. Other synced files (history trims, the trash, version
+/// deletes) disappear without one, so their absence says nothing either way.
+fn tombstone_key(p: &str) -> Option<String> {
+    if let Some(id) = pages::page_of_bin(p) {
+        return Some(format!("pages/{id}.json"));
     }
+    match p.strip_prefix("pages/").and_then(|f| f.strip_suffix(".json")) {
+        Some(id) => crate::vault::check_id(id).is_ok().then(|| p.to_string()),
+        None => (p.starts_with("databases/") && snapshot::safe_path(p).is_ok()).then(|| p.to_string()),
+    }
+}
+
+/// Whether the app writes a tombstone when it deletes this file.
+fn deletion_is_tombstoned_by_app(p: &str) -> bool {
+    tombstone_key(p).is_some()
 }
 
 /// Deletions wait for the user when they look like a mistake instead of an edit: many at once, all of them, or
@@ -566,7 +575,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
     let unconfirmed: BTreeSet<String> = actions
         .iter()
         .filter_map(|action| match action {
-            Action::DeleteRemote(path) if deletion_is_tombstoned_by_app(path) && !tombstones.contains(path) => Some(path.clone()),
+            Action::DeleteRemote(path) if tombstone_key(path).is_some_and(|k| !tombstones.contains(&k)) => Some(path.clone()),
             _ => None,
         })
         .collect();
@@ -762,6 +771,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
     if migrate_pages && rep.errors.is_empty() {
         pages::migrate(vault, remote, state, &rmap, &mut rep);
     }
+    let mut to_tombstone: Vec<String> = vec![];
     for a in deletions {
         if rep.errors.iter().any(|e| !is_permanent_file_error(e)) {
             rep.held += 1;
@@ -798,9 +808,10 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                     vault.sync_trash_move(p)?; // recoverable for TRASH_KEEP_MS (7 days); when it fails the file stays and so does `base`
                     state.files.remove(p);
                     rep.deleted += 1;
-                    // only a file that is really gone is marked as deleted, otherwise a failed move would leave a live page "deleted"
-                    if snapshot::safe_path(p).is_ok() {
-                        snapshot::tombstone(vault, p)?;
+                    // only a file that is really gone is marked as deleted, otherwise a failed move would leave a live page "deleted";
+                    // only the kinds the app itself tombstones (nothing reads a tombstone of a history trim or an asset)
+                    if tombstone_key(p).is_some() {
+                        to_tombstone.push(p.clone());
                     }
                 }
                 Action::DeleteRemote(p) => {
@@ -820,6 +831,10 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
             Ok(())
         })();
         if let Err(e) = res { rep.errors.push(format!("{a:?}: {e}")); }
+    }
+    if !to_tombstone.is_empty() {
+        let _guard = crate::vault::commit_lock(&vault.root)?; // the per-file guards above are released
+        snapshot::tombstone_many(vault, &to_tombstone)?;
     }
     Ok(rep)
 }
@@ -2104,5 +2119,69 @@ mod tests {
         let r = a.sync();
         assert_eq!(r.uploaded, 1);
         assert!(a.remote.0.borrow().files.iter().any(|(f, _)| f.path == format!("pages/{P1}.json")));
+    }
+
+    #[test]
+    fn a_state_that_vanishes_without_the_app_is_held_but_one_the_app_deleted_goes() {
+        let (mut a, _b) = migrated(P1, &["hello"]);
+        let (mut c, _d) = migrated(P2, &["other"]);
+        let bin = |id: &str| format!("pages-state/{id}.bin");
+        assert_eq!(tombstone_key(&bin(P1)).as_deref(), Some(format!("pages/{P1}.json").as_str()));
+        assert!(!deletion_is_tombstoned_by_app("history/x/1.json") && tombstone_key("files/aa/b").is_none());
+        // gone by hand: no tombstone, so the server keeps it
+        fs::remove_file(a.vault.root.join(bin(P1))).unwrap();
+        let rep = a.sync();
+        assert_eq!(rep.held, 1);
+        assert!(a.remote.0.borrow().files.iter().any(|(f, _)| f.path == bin(P1)));
+        // deleted through the app: tombstone present, the server's state goes
+        c.vault.save_pages(&[], &[P2.to_string()], false).unwrap();
+        let rep = c.sync();
+        assert_eq!(rep.held, 0);
+        assert!(!c.remote.0.borrow().files.iter().any(|(f, _)| f.path == bin(P2)));
+    }
+
+    #[test]
+    fn a_state_download_keeps_the_seen_ring_and_stamps_the_cache() {
+        let (mut a, mut b) = migrated(P1, &["hello"]);
+        let bin = format!("pages-state/{P1}.bin");
+        a.save_doc(P1, "T", &["hello there"], 200);
+        a.sync();
+        let before = b.state.files[&bin].seen.clone();
+        assert!(!before.is_empty());
+        b.sync(); // downloads a's edit
+        let e = &b.state.files[&bin];
+        assert!(e.seen.len() > before.len() && e.seen.ends_with(&[e.base.clone()]) && before.iter().all(|m| e.seen.contains(m)));
+        assert!(e.cached_at > 0 && e.md5 == e.base && e.size > 0);
+        // an entry of beta 6 (no ring, no stamp) still loads
+        let old: SyncState = serde_json::from_str(&format!(r#"{{"files":{{"{bin}":{{"base":"a","remote_id":"i","size":1,"mtime":2,"md5":"a"}}}}}}"#)).unwrap();
+        assert!(old.files[&bin].seen.is_empty() && old.files[&bin].cached_at == 0);
+    }
+
+    #[test]
+    fn only_the_kinds_the_app_tombstones_are_tombstoned_when_another_device_deletes() {
+        let (mut a, mut b) = pair();
+        a.save(P1, "p", 100);
+        a.vault.save_pages(&[], &[], false).unwrap();
+        write_atomic(&a.vault.root.join("history/trim/1.json"), b"{}").unwrap();
+        a.sync();
+        b.sync();
+        b.vault.save_pages(&[], &[P1.to_string()], false).unwrap();
+        fs::remove_file(b.vault.root.join("history/trim/1.json")).unwrap();
+        b.sync();
+        a.sync();
+        let dead = snapshot::tombstones(&a.vault).unwrap();
+        assert!(dead.contains(&format!("pages/{P1}.json")));
+        assert!(!dead.iter().any(|p| p.starts_with("history/")));
+    }
+
+    #[test]
+    fn tombstone_many_writes_once_and_takes_the_conflict_copies() {
+        let (a, _) = pair();
+        let conflict = a.vault.root.join("conflicts/c1.json");
+        write_atomic(&conflict, serde_json::to_vec(&json!({"path": format!("pages/{P1}.json")})).unwrap().as_slice()).unwrap();
+        snapshot::tombstone_many(&a.vault, &[format!("pages/{P1}.json"), format!("pages/{P2}.json")]).unwrap();
+        let dead = snapshot::tombstones(&a.vault).unwrap();
+        assert_eq!(dead, BTreeSet::from([format!("pages/{P1}.json"), format!("pages/{P2}.json"), "conflicts/c1.json".to_string()]));
+        assert!(!conflict.exists());
     }
 }
