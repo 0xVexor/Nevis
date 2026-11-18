@@ -27,3 +27,6 @@ export interface ConflictMarker {
 }
 
 export type ConflictSideName = 'local' | 'remote'
+
+/** Thrown by onApply to say why nothing was applied; the view shows its (already translated) message instead of the generic one. */
+export class ConflictApplyError extends Error {}

@@ -63,6 +63,8 @@ export interface DocumentHost {
   legacyHtmlToDoc?(html: string): unknown
   clearLegacy?(): void
   requestPersistence?(): void
+  /** Desktop with sync only: keeps a durable record of a page that was edited here while another version arrived (an editor race). Best effort; may reject. */
+  recordConflict?(pageId: string, base: Page | null, local: Page, remote: Page): Promise<unknown>
   watchExternal?(changed: () => void): Promise<() => void>
 }
 export interface DocumentEnvironment {
