@@ -1,0 +1,6 @@
+.cfp { display: grid; grid-template-rows: auto minmax(0, 1fr); block-size: 100vh; background: var(--ds-bg); color: var(--ds-text); font-family: var(--ds-font-ui); }
+.cfp-cases { display: flex; flex-wrap: wrap; gap: var(--ds-s2); padding: var(--ds-s3) var(--ds-s6); border-block-end: 1px solid var(--ds-line); }
+.cfp-page { min-block-size: 0; overflow: auto; }
+.cfp-doc { inline-size: min(100%, 48rem); margin-inline: auto; padding: var(--ds-s6); }
+.cfp-note { color: var(--ds-text-2); }
+.cfp-result { padding: var(--ds-s3); border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-sunk); font-family: var(--ds-font-mono); font-size: var(--ds-text-caption); overflow: auto; max-block-size: 60vh; }
