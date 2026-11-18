@@ -8,7 +8,7 @@ The server behind Nevis's sync between devices. A change saved on one device rea
 - **Instant**: a device holds one request open (a "long poll", `GET /v1/vaults/:id/state?since=N&wait=25`); the server answers the moment another device commits. It works through any proxy that lets HTTPS through.
 - **One binary, one folder**: written in Go, no cgo, no database server. File contents live in `DATA_DIR/blobs`; everything else is one SQLite file (`DATA_DIR/nevis.db`, WAL mode) that is copied to `DATA_DIR/backup/` a few seconds after each change.
 
-The client is the desktop app (`src-tauri/src/sync/hub.rs` there is this server as a `Remote` of its sync engine). The design, with every rule and edge case, is in ADR-0004 (`docs/adr/0004-sync-server.md`) and `docs/sync-design-research.md`, which come with the sync client.
+The client is the desktop app (`src-tauri/src/sync/hub.rs` there is this server as a `Remote` of its sync engine). The design, with every rule and edge case, is in ADR-0004 (`docs/adr/0004-sync-server.md`).
 
 The server speaks plain HTTP. TLS, and the certificate, are the job of a reverse proxy (see [Deploy](#deploy-on-a-personal-linux-server)). The desktop app only accepts plain `http://` for a server on the same computer, so any other server needs HTTPS.
 
