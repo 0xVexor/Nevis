@@ -8,11 +8,13 @@ import { Button, Icon } from '../../design-system'
 import { updateSettings } from '../../settings'
 import { t } from '../../i18n'
 import type { VaultEntry } from '../../db'
+import type { ServerVault } from '../../sync/client'
 import '../../index.css'
 import './preview.css'
 
 // Isolated, in-memory review of first launch. No vault, native dialog or store is touched.
-// ?state=returning shows the workspace list; ?fail makes creating and opening fail once.
+// ?state=returning shows the workspace list; ?fail makes creating, opening, signing in and downloading fail once.
+// ?cloud=1 adds the "sign in to your server" steps (password: any; user "empty" has no workspaces); ?signedin=1 starts signed in.
 const query = new URLSearchParams(location.search)
 updateSettings({ lang: query.get('lang') === 'fa' ? 'fa' : 'en', dir: 'auto', theme: query.get('theme') === 'dark' ? 'dark' : 'light', accent: query.get('accent'), reduceMotion: query.has('reduced') })
 
@@ -23,16 +25,45 @@ const known: VaultEntry[] = [
   { id: 'old', name: 'Archive', path: 'C:\\Users\\me\\Archive', exists: true, status: 'mismatch' },
 ]
 
+const cloudVaults: ServerVault[] = [
+  { id: 'study', name: 'Study', files: 128, bytes: 18 * 1024 * 1024 },
+  { id: 'journal', name: 'دفتر روزانه', files: 342, bytes: 4 * 1024 * 1024 },
+  { id: 'research', name: 'Research notes', files: 12, bytes: 300 * 1024 },
+]
+
 function fakeServices(): WorkspaceServices {
   let list = query.get('state') === 'returning' ? [...known] : []
   let fail = query.has('fail')
   const wait = () => new Promise((resolve) => setTimeout(resolve, 450))
-  const maybeFail = () => {
+  const maybeFail = (code = 'VAULT_IN_USE') => {
     if (!fail) return
     fail = false
-    throw new Error('VAULT_IN_USE')
+    throw new Error(code)
+  }
+  let signedIn = query.has('signedin')
+  let account = { username: 'sara', server: 'https://sync.example.com', vaults: cloudVaults }
+  const cloud: WorkspaceServices['cloud'] = {
+    status: async () => (await wait(), { signedIn, username: signedIn ? account.username : null, server: signedIn ? account.server : '', defaultServer: 'https://sync.example.com' }),
+    login: async (server, username) => {
+      await wait()
+      maybeFail('HUB:bad_credentials')
+      if (server.startsWith('http://')) throw new Error('HUB:insecure_server')
+      signedIn = true
+      account = { username, server, vaults: username === 'empty' ? [] : cloudVaults }
+    },
+    vaults: async () => (await wait(), account.vaults),
+    download: async (id, name, parent) => {
+      await wait()
+      maybeFail('NETWORK:timeout')
+      list = [...list, { id, name, path: parent + '\\' + name, exists: true, status: 'ok' }]
+    },
+    logout: async () => {
+      await wait()
+      signedIn = false
+    },
   }
   return {
+    cloud: query.has('cloud') ? cloud : undefined,
     list: async () => list,
     pickFolder: async () => (await wait(), 'C:\\Users\\me\\Documents\\Nevis'),
     create: async (parent, name) => (await wait(), maybeFail(), (list = [...list, { id: crypto.randomUUID(), name, path: parent + '\\' + name, exists: true, status: 'ok' }])),

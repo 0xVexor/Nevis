@@ -21,6 +21,7 @@ import {
   cloudRestore,
   cloudTrashed,
   cloudVaults,
+  formatBytes,
   saveTextFile,
   serverHealth,
   syncConfirm,
@@ -37,8 +38,6 @@ import {
 } from './client'
 
 const HELD_SHOWN = 10
-
-const formatBytes = (n = 0) => (n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1024 / 1024).toFixed(n < 100 * 1024 * 1024 ? 1 : 0) + ' MB')
 
 function statusText(s: SyncStatus): string {
   if (!s.syncOn) return t('Sync is off for this workspace.')
