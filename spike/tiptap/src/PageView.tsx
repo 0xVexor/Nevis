@@ -9,7 +9,7 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import { getSchema, type CommandProps, type Editor } from '@tiptap/core'
 import { ConflictBanner } from './conflict/ConflictBanner'
 import { ConflictView } from './conflict/ConflictView'
-import { sameContent } from './conflict/applied'
+import { sameContent, withCurrentPage } from './conflict/applied'
 import { ConflictApplyError, type ConflictMarker } from './conflict/types'
 import { addVersion, onPageConflictsChanged, pageConflictClose, pageConflictsList } from './db'
 import { documentCommitGuard } from './editor/documentCommitGuard'
@@ -539,6 +539,15 @@ export function PageView({
     void loadMarkers()
   }
 
+  /** The view compares the page as it is NOW with the other version: edits made after the conflict was recorded must not be undone by Apply. */
+  const startReview = async (marker: ConflictMarker) => {
+    setConflictNote(null)
+    flush()
+    await repo.flushBeforeUpdate().catch(() => undefined)
+    const current = repo.get(page.id)
+    setReviewing(current && !current.deletedAt ? withCurrentPage(marker, current) : marker)
+  }
+
   /** Puts the merged page in place of the current one, and closes the conflict only once the merged page is verifiably saved. */
   const applyMerge = async (marker: ConflictMarker, content: unknown, title: string) => {
     if (applying.current) return
@@ -977,7 +986,7 @@ export function PageView({
         </Notice>
       )}
       {!reviewing && !readerOnly && !contentIssue && !commitLocked && markers.length > 0 && (
-        <ConflictBanner markers={markers} onReview={(m) => (setConflictNote(null), setReviewing(m))} onKeepCurrent={(m) => void keepCurrent(m)} />
+        <ConflictBanner markers={markers} onReview={(m) => void startReview(m)} onKeepCurrent={(m) => void keepCurrent(m)} />
       )}
       {reviewing && <ConflictView key={reviewing.id} marker={reviewing} onApply={(content, title) => applyMerge(reviewing, content, title)} onCancel={() => setReviewing(null)} />}
       {contentIssue ? (

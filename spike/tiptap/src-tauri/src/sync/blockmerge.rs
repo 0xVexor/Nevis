@@ -33,7 +33,7 @@ pub fn merge_pages(base: &Value, local: &Value, remote: &Value) -> Option<Value>
         let value = if k == "content" {
             Some(merge_doc(bc, lc, rc)?)
         } else if k == "updatedAt" {
-            Some(later(lv?, rv?)?)
+            Some(after_both(lv?, rv?)?)
         } else if lv == rv || rv == bv {
             lv.cloned()
         } else if lv == bv {
@@ -57,6 +57,17 @@ fn later(a: &Value, b: &Value) -> Option<Value> {
     let (x, y) = (a.as_f64()?, b.as_f64()?);
     // (equal numbers can be written differently, 1 and 1.0: the same pick on both devices)
     Some(if x > y || (x == y && a.to_string() <= b.to_string()) { a.clone() } else { b.clone() })
+}
+
+/// The merged page is newer than both of its sources. With the plain maximum it would tie with one of them, and a client
+/// that does not merge (an older release) resolves a tie by keeping its own page and sends it back: the merge is lost there.
+/// One more than the maximum is deterministic (the same on both devices) and wins on every client.
+fn after_both(a: &Value, b: &Value) -> Option<Value> {
+    let top = later(a, b)?;
+    Some(match top.as_i64() {
+        Some(n) => Value::from(n.checked_add(1)?),
+        None => Value::from(top.as_f64()? + 1.0),
+    })
 }
 
 fn blocks_of(doc: &Value) -> &[Value] {
@@ -213,7 +224,7 @@ mod tests {
         let r = page("t", &[("a", "one"), ("b", "two"), ("c", "three!"), ("d", "four")], 9);
         let m = both_ways(&base, &l, &r).unwrap();
         assert_eq!(texts(&m), ["one!", "two", "three!", "four"]);
-        assert_eq!(m["updatedAt"], 9);
+        assert_eq!(m["updatedAt"], 10); // one more than the newer source: it beats both, also on clients that do not merge
     }
 
     #[test]
