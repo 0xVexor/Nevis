@@ -96,12 +96,30 @@ pub struct SyncState {
     /// The user confirmed the deletions that were held back; used up by the next sync.
     #[serde(default)]
     pub allow_deletes_once: bool,
+    /// The deletions the last round held back, for the UI to list. Rewritten by every round.
+    #[serde(default)]
+    pub held: Vec<HeldDelete>,
+    /// The deletions the user confirmed after seeing them in `held`; used up by the next sync. Memory only.
+    #[serde(skip)]
+    pub confirmed: BTreeSet<(String, String)>,
+}
+
+/// A deletion that waits for the user. `side` is where the file is gone: "local" (this device lost it, the cloud
+/// copy would go to the cloud trash) or "remote" (the cloud lost it, the local copy would go to the sync trash).
+/// `base_md5` is the content both sides had at the last sync: a confirmation only counts for that content.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct HeldDelete {
+    pub path: String,
+    pub side: String,
+    pub base_md5: String,
 }
 
 impl SyncState {
     pub fn reset_local_baseline(&mut self) {
         self.files.clear();
         self.allow_deletes_once = false;
+        self.confirmed.clear();
+        self.held.clear();
     }
 
     /// A state file that cannot be read is moved aside and the sync starts from a clean slate: without `base` the
@@ -507,6 +525,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
     // forget the deletions of every state written before the field existed
     if state.local_root.is_empty() {
         state.allow_deletes_once = false; // a confirmation from before this state knew its folder must not apply to a reused baseline
+        state.confirmed.clear();
     }
     if let Ok(canonical) = fs::canonicalize(root) {
         state.local_root = canonical.to_string_lossy().into_owned();
@@ -562,7 +581,18 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
     let legacy = pages::drop_derived(&mut local, &mut rmap, &mut state.files);
     let mut actions = plan(&local, &rmap, &state.files, &unknown);
 
-    let deletes = actions.iter().filter_map(|a| match a { Action::DeleteLocal(p) | Action::DeleteRemote(p) => Some(pages::delete_key(p)), _ => None }).collect::<BTreeSet<_>>().len();
+    // The deletions this round plans. Only those the user has not confirmed (for this very content) face the rules below.
+    let planned: Vec<HeldDelete> = actions
+        .iter()
+        .filter_map(|a| match a {
+            Action::DeleteLocal(p) => Some((p, "remote")),
+            Action::DeleteRemote(p) => Some((p, "local")),
+            _ => None,
+        })
+        .map(|(p, side)| HeldDelete { path: p.clone(), side: side.into(), base_md5: state.files.get(p).map(|e| e.base.clone()).unwrap_or_default() })
+        .collect();
+    let pending: Vec<&HeldDelete> = planned.iter().filter(|d| !state.allow_deletes_once && !state.confirmed.contains(&(d.path.clone(), d.base_md5.clone()))).collect();
+    let deletes = pending.iter().map(|d| pages::delete_key(&d.path)).collect::<BTreeSet<_>>().len();
     // emptiness and the share of deletions are about the content of the vault, not about the marker file that is always there
     let tracked = state.files.keys().filter(|p| is_content(p)).map(|p| pages::delete_key(p)).collect::<BTreeSet<_>>().len();
     let local_empty = !local.keys().any(|p| is_content(p));
@@ -572,23 +602,24 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
     // a file that is gone here is only deleted in the cloud when the app saw it being deleted (a local tombstone)
     let tombstones = snapshot::tombstones(vault)?;
     // (only for files the app tombstones when it deletes them: history trims and the trash are deleted without one)
-    let unconfirmed: BTreeSet<String> = actions
+    let unconfirmed: BTreeSet<String> = pending
         .iter()
-        .filter_map(|action| match action {
-            Action::DeleteRemote(path) if tombstone_key(path).is_some_and(|k| !tombstones.contains(&k)) => Some(path.clone()),
-            _ => None,
-        })
+        .filter(|d| d.side == "local" && tombstone_key(&d.path).is_some_and(|k| !tombstones.contains(&k)))
+        .map(|d| d.path.clone())
         .collect();
-    if !state.allow_deletes_once {
-        if hold_deletes(deletes, tracked, local_empty, remote_empty) || (deletes > 0 && regressed) {
-            rep.held = deletes;
-            actions.retain(|a| !matches!(a, Action::DeleteLocal(_) | Action::DeleteRemote(_)));
-        } else if !unconfirmed.is_empty() {
-            // only the files that vanished without the app noticing wait; the rest of the round goes on
-            rep.held = unconfirmed.len();
-            actions.retain(|a| !matches!(a, Action::DeleteRemote(p) if unconfirmed.contains(p)));
-        }
+    let mut held: Vec<HeldDelete> = vec![];
+    if hold_deletes(deletes, tracked, local_empty, remote_empty) || (deletes > 0 && regressed) {
+        rep.held = deletes;
+        held = pending.iter().map(|d| (*d).clone()).collect();
+    } else if !unconfirmed.is_empty() {
+        // only the files that vanished without the app noticing wait; the rest of the round goes on
+        rep.held = unconfirmed.len();
+        held = pending.iter().filter(|d| unconfirmed.contains(&d.path)).map(|d| (*d).clone()).collect();
     }
+    let held_paths: BTreeSet<&str> = held.iter().map(|d| d.path.as_str()).collect();
+    actions.retain(|a| !matches!(a, Action::DeleteLocal(p) | Action::DeleteRemote(p) if held_paths.contains(p.as_str())));
+    state.held = held;
+    state.confirmed.clear();
     state.allow_deletes_once = false;
 
     let mut merged: Vec<(String, RemoteFile)> = vec![];
@@ -1916,6 +1947,37 @@ mod tests {
         let r = a.sync();
         assert_eq!(r.held, 0);
         assert_eq!(a.remote.0.borrow().trashed.len(), 8);
+    }
+
+    #[test]
+    fn a_confirmation_covers_exactly_the_deletions_the_user_saw() {
+        let (mut a, _b) = pair();
+        for i in 0..8 {
+            a.save(&format!("{i:08}-1111-4111-8111-111111111111"), "x", 100);
+        }
+        a.sync();
+        let pages: Vec<_> = fs::read_dir(a.vault.pages_dir()).unwrap().flatten().map(|e| e.path()).collect();
+        for p in &pages {
+            fs::remove_file(p).unwrap();
+        }
+        let r = a.sync();
+        assert_eq!(r.held, 8);
+        let shown = a.state.held.clone();
+        assert!(shown.len() >= 8 && shown.iter().all(|d| d.side == "local" && !d.base_md5.is_empty()));
+        // the user confirms what was listed, except one item: that one stays held, nothing else is held again
+        let kept = shown[0].clone();
+        a.state.confirmed = shown.iter().filter(|d| **d != kept).map(|d| (d.path.clone(), d.base_md5.clone())).collect();
+        let before = a.remote.0.borrow().trashed.len();
+        let r = a.sync();
+        assert!(a.remote.0.borrow().trashed.len() > before);
+        assert!(r.held > 0 && a.state.held.iter().any(|d| *d == kept));
+        assert!(a.state.confirmed.is_empty(), "a confirmation is used up");
+        // a confirmation for another content of the path does not count
+        let mut stale = kept.clone();
+        stale.base_md5 = "0".repeat(32);
+        a.state.confirmed = [(stale.path, stale.base_md5)].into_iter().collect();
+        let r = a.sync();
+        assert!(r.held > 0 && a.state.held.iter().any(|d| *d == kept));
     }
 
     #[test]
