@@ -202,6 +202,15 @@ fn is_content(p: &str) -> bool {
     p.split_once('/').is_some_and(|(top, _)| ROOTS.contains(&top))
 }
 
+/// Whether the app writes a tombstone when it deletes this file. Other synced files (history trims, the trash,
+/// version deletes) disappear without one, so their absence says nothing either way.
+fn deletion_is_tombstoned_by_app(p: &str) -> bool {
+    match p.strip_prefix("pages/").and_then(|f| f.strip_suffix(".json")) {
+        Some(id) => crate::vault::check_id(id).is_ok(),
+        None => p.starts_with("databases/") && snapshot::safe_path(p).is_ok(),
+    }
+}
+
 /// Deletions wait for the user when they look like a mistake instead of an edit: many at once, all of them, or
 /// one side is empty although we know it had files (an unplugged drive, a broken listing, a wiped cloud).
 fn hold_deletes(deletes: usize, tracked: usize, local_empty: bool, remote_empty: bool) -> bool {
@@ -466,11 +475,13 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         return Err(VAULT_MISSING.into());
     }
     remote.check()?;
-    let local_root = fs::canonicalize(root).map_err(err)?.to_string_lossy().into_owned();
-    if state.local_root != local_root {
-        // A different folder (including a fresh download) has no deletion history.
-        state.reset_local_baseline();
-        state.local_root = local_root;
+    // `local_root` is informational: a fresh download resets the baseline in run_sync, and wiping it here would
+    // forget the deletions of every state written before the field existed
+    if state.local_root.is_empty() {
+        state.allow_deletes_once = false; // a confirmation from before this state knew its folder must not apply to a reused baseline
+    }
+    if let Ok(canonical) = fs::canonicalize(root) {
+        state.local_root = canonical.to_string_lossy().into_owned();
     }
     let (mut local, mut unknown) = scan(root, &state.files)?;
     let mut rep = Report::default();
@@ -512,13 +523,23 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
     let regressed = local.iter().any(|(p, l)| rmap.get(p).is_some_and(|r| state.files.get(p).is_some_and(|e| e.base == r.md5)) && is_revert(&l.md5, state.files.get(p)));
     // a file that is gone here is only deleted in the cloud when the app saw it being deleted (a local tombstone)
     let tombstones = snapshot::tombstones(vault)?;
-    let unconfirmed_absence = actions.iter().any(|action| match action {
-        Action::DeleteRemote(path) => !tombstones.contains(path),
-        _ => false,
-    });
-    if (unconfirmed_absence || hold_deletes(deletes, tracked, local_empty, remote_empty) || (deletes > 0 && regressed)) && !state.allow_deletes_once {
-        rep.held = deletes;
-        actions.retain(|a| !matches!(a, Action::DeleteLocal(_) | Action::DeleteRemote(_)));
+    // (only for files the app tombstones when it deletes them: history trims and the trash are deleted without one)
+    let unconfirmed: BTreeSet<String> = actions
+        .iter()
+        .filter_map(|action| match action {
+            Action::DeleteRemote(path) if deletion_is_tombstoned_by_app(path) && !tombstones.contains(path) => Some(path.clone()),
+            _ => None,
+        })
+        .collect();
+    if !state.allow_deletes_once {
+        if hold_deletes(deletes, tracked, local_empty, remote_empty) || (deletes > 0 && regressed) {
+            rep.held = deletes;
+            actions.retain(|a| !matches!(a, Action::DeleteLocal(_) | Action::DeleteRemote(_)));
+        } else if !unconfirmed.is_empty() {
+            // only the files that vanished without the app noticing wait; the rest of the round goes on
+            rep.held = unconfirmed.len();
+            actions.retain(|a| !matches!(a, Action::DeleteRemote(p) if unconfirmed.contains(p)));
+        }
     }
     state.allow_deletes_once = false;
 
@@ -914,10 +935,18 @@ mod tests {
         original.save(P1, "uploaded page", 100);
         original.sync();
         downloaded.state = original.state.clone();
+        downloaded.state.reset_local_baseline(); // what run_sync does for a download
         downloaded.sync();
         assert_eq!(downloaded.page(P1).unwrap()["title"], "uploaded page");
         original.sync();
         assert_eq!(original.page(P1).unwrap()["title"], "uploaded page");
+    }
+
+    /// The state of a device that synced before `local_root` existed.
+    fn legacy(state: &SyncState) -> SyncState {
+        let mut legacy = serde_json::to_value(state).unwrap();
+        legacy.as_object_mut().unwrap().remove("local_root");
+        serde_json::from_value(legacy).unwrap()
     }
 
     #[test]
@@ -925,13 +954,107 @@ mod tests {
         let (mut original, mut downloaded) = pair();
         original.save(P1, "keep on server", 100);
         original.sync();
-        let mut legacy = serde_json::to_value(&original.state).unwrap();
-        legacy.as_object_mut().unwrap().remove("local_root");
-        downloaded.state = serde_json::from_value(legacy).unwrap();
+        downloaded.state = legacy(&original.state);
         downloaded.state.allow_deletes_once = true;
-        downloaded.sync();
-        assert_eq!(downloaded.page(P1).unwrap()["title"], "keep on server");
+        let rep = downloaded.sync();
+        // the baseline is not wiped: the page is missing here without a tombstone, so it waits instead of being downloaded
+        assert!(!downloaded.state.files.is_empty());
+        assert!(rep.held > 0 && rep.deleted == 0);
+        assert!(downloaded.page(P1).is_none());
+        assert!(original.remote.0.borrow().trashed.is_empty());
+        assert_eq!(original.remote.0.borrow().files.iter().filter(|(f, _)| f.path == format!("pages/{P1}.json")).count(), 1);
         assert!(!downloaded.state.allow_deletes_once);
+    }
+
+    #[test]
+    fn a_legacy_state_still_deletes_what_the_app_deleted_here() {
+        let (mut original, _) = pair();
+        original.save(P1, "gone here", 100);
+        original.save(P2, "stays", 100);
+        original.sync();
+        original.vault.save_pages(&[], &[P1.to_string()], false).unwrap();
+        original.state = legacy(&original.state);
+        let rep = original.sync();
+        assert_eq!(rep.held, 0);
+        assert_eq!(rep.downloaded, 0);
+        assert!(original.page(P1).is_none());
+        assert!(!original.remote.0.borrow().files.iter().any(|(f, _)| f.path == format!("pages/{P1}.json")));
+        assert!(snapshot::tombstones(&original.vault).unwrap().contains(&format!("pages/{P1}.json")));
+    }
+
+    #[test]
+    fn a_legacy_state_still_applies_a_deletion_from_another_device() {
+        let (mut a, mut b) = pair();
+        a.save(P1, "deleted elsewhere", 100);
+        a.save(P2, "stays", 100);
+        a.sync();
+        b.sync();
+        a.vault.save_pages(&[], &[P1.to_string()], false).unwrap();
+        a.sync();
+        b.state = legacy(&b.state);
+        let rep = b.sync();
+        assert_eq!(rep.uploaded, 0);
+        assert!(b.page(P1).is_none());
+    }
+
+    fn version(page: &str, ts: i64) -> Value {
+        json!({ "pageId": page, "ts": ts, "title": "v", "content": {"type":"doc","content":[]}, "updatedAt": ts })
+    }
+
+    /// A vault with enough tracked files that the share-of-deletions heuristic stays quiet.
+    fn busy(a: &Device) {
+        for i in 0..10 {
+            a.save(&format!("{i:08}-3333-4333-8333-333333333333"), "filler", 100);
+        }
+    }
+
+    #[test]
+    fn a_trimmed_history_is_not_a_held_deletion() {
+        let (mut a, _) = pair();
+        busy(&a);
+        a.save(P1, "long history", 100);
+        for ts in 1..=40 {
+            a.vault.version_add(&version(P1, ts)).unwrap();
+        }
+        a.sync();
+        a.vault.version_add(&version(P1, 41)).unwrap(); // trims the oldest entry without a tombstone
+        let rep = a.sync();
+        assert_eq!(rep.held, 0);
+        assert!(a.remote.0.borrow().trashed.iter().any(|(f, _)| f.path == format!("history/{P1}/1.json")));
+    }
+
+    #[test]
+    fn a_permanently_deleted_page_goes_with_its_history() {
+        let (mut a, _) = pair();
+        busy(&a);
+        a.save(P1, "doomed", 100);
+        a.vault.version_add(&version(P1, 1)).unwrap();
+        a.sync();
+        a.vault.save_pages(&[], &[P1.to_string()], false).unwrap();
+        let rep = a.sync();
+        assert_eq!(rep.held, 0);
+        let remote = a.remote.0.borrow();
+        assert!(!remote.files.iter().any(|(f, _)| f.path.contains(P1)));
+        assert!(remote.trashed.iter().any(|(f, _)| f.path == format!("pages/{P1}.json")));
+        assert!(remote.trashed.iter().any(|(f, _)| f.path == format!("history/{P1}/1.json")));
+    }
+
+    #[test]
+    fn only_the_untombstoned_page_is_held_while_other_deletions_go_on() {
+        let (mut a, mut b) = pair();
+        busy(&a);
+        a.save(P1, "missing without a tombstone", 100);
+        a.save(P2, "deleted on b", 100);
+        a.sync();
+        b.sync();
+        fs::remove_file(a.vault.root.join(format!("pages/{P1}.json"))).unwrap();
+        b.vault.save_pages(&[], &[P2.to_string()], false).unwrap();
+        b.sync();
+        let rep = a.sync();
+        assert_eq!(rep.held, 1);
+        assert_eq!(rep.deleted, 1);
+        assert!(a.page(P2).is_none());
+        assert!(a.remote.0.borrow().files.iter().any(|(f, _)| f.path == format!("pages/{P1}.json")));
     }
 
     #[test]

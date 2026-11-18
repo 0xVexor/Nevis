@@ -255,13 +255,13 @@ impl Hub {
 
     /// Makes the mirror current: checks that the vault exists (creating it the first time), notices a server that lost
     /// data, pulls what changed, and checks the mirror against the server's own hash of its files.
-    pub fn preflight(&mut self, name: &str) -> Res<Preflight> {
+    pub fn preflight(&mut self, name: &str, must_exist: bool) -> Res<Preflight> {
         let mut out = Preflight::default();
         let state = match self.api.get(&self.v("/state")) {
             Ok(s) => s,
             Err(e) if e.lines().next() == Some("HUB:no_such_vault") => {
-                if !self.cache.epoch.is_empty() {
-                    return Err(CLOUD_GONE.into()); // it was there and is gone: the user decides, nothing is created or deleted
+                if must_exist || !self.cache.epoch.is_empty() {
+                    return Err(CLOUD_GONE.into()); // it was there (or is being downloaded) and is gone: the user decides, nothing is created or deleted
                 }
                 self.api.post("/v1/vaults", &json!({ "id": self.vault, "name": name }))?;
                 out.created = true;
@@ -626,7 +626,7 @@ mod tests {
         let mut state = crate::sync::SyncState::default();
         state.files.insert("pages/b.json".into(), crate::sync::Entry { base: md5_of(b"b"), remote_id: "9:pages/b.json".into(), ..Default::default() });
         let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", cache_at(5));
-        let pre = hub.preflight("T").unwrap();
+        let pre = hub.preflight("T", false).unwrap();
         server.join().unwrap();
         // what sync_app does with the answer: only a baseline wipes the bases of the engine
         if pre.baseline {
@@ -661,7 +661,7 @@ mod tests {
             }
         });
         let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", Cache::default());
-        let pre = hub.preflight("T").unwrap();
+        let pre = hub.preflight("T", false).unwrap();
         server.join().unwrap();
         assert!(!pre.baseline, "{pre:?}");
         let files: Vec<_> = hub.cache.files.iter().map(|(p, f)| (p.as_str(), f.rev)).collect();
@@ -683,10 +683,22 @@ mod tests {
             }
         });
         let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", cache_at(5));
-        let pre = hub.preflight("T").unwrap();
+        let pre = hub.preflight("T", false).unwrap();
         server.join().unwrap();
         assert!(pre.baseline, "{pre:?}");
         assert_eq!(hub.cache.seq, 3);
+    }
+
+    #[test]
+    fn downloading_a_vault_that_is_gone_from_the_server_creates_nothing() {
+        // one request only: the state; a create (POST) would find no one to answer and fail the join
+        let (base, server) = mock_server(1, |t| {
+            assert!(t.ends_with("/state"), "{t}");
+            (404, r#"{"error":"no_such_vault"}"#.into())
+        });
+        let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", Cache::default());
+        assert_eq!(hub.preflight("T", true).unwrap_err(), CLOUD_GONE);
+        server.join().unwrap();
     }
 
     #[test]
@@ -699,7 +711,7 @@ mod tests {
             }
         });
         let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", Cache::default());
-        assert_eq!(hub.preflight("T").unwrap_err(), "HUB:bad_answer");
+        assert_eq!(hub.preflight("T", false).unwrap_err(), "HUB:bad_answer");
     }
 
     #[test]
@@ -753,7 +765,7 @@ mod e2e {
         }
         fn try_sync(&mut self) -> Res<Report> {
             let mut hub = Hub::new(self.api.clone(), &self.id, self.state.hub.clone());
-            let pre = hub.preflight("E2E")?;
+            let pre = hub.preflight("E2E", false)?;
             if pre.baseline {
                 self.state.files.clear();
             }
