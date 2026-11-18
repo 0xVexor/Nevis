@@ -353,7 +353,7 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool, downloading: bool) -> Res<(
     match result {
         Ok(rep) => {
             // pages changed by another device: the open page and the lists are refreshed now, not at the next poll
-            if rep.downloaded + rep.deleted + rep.conflicts > 0 {
+            if rep.downloaded + rep.deleted + rep.conflicts + rep.state_merges > 0 {
                 if let Some(app) = &ctx.app {
                     let _ = app.emit("vault-changed", e.id.clone());
                 }
