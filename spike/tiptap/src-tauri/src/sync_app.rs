@@ -321,16 +321,28 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool, downloading: bool) -> Res<(
             state.hub = Default::default();
         }
         let mut hub = Hub::new(api, &e.id, state.hub.clone());
-        let pre = hub.preflight(&vault.name())?;
+        let pre = hub.preflight(&vault.name(), downloading)?;
         if pre.baseline {
             // a new server copy or a server that lost data (a device that was away longer than the server remembers keeps its bases):
             // what the engine believes about "the last sync" says nothing now, so it only adds, and deletes nothing
             state.files.clear();
         }
         state.allow_deletes_once = ctx.confirm.lock().map(|mut c| c.remove(&e.id)).unwrap_or(false);
-        let rep = sync::sync_once(&vault, &mut hub, &mut state, &mut |st| {
+        let rep = match sync::sync_once(&vault, &mut hub, &mut state, &mut |st| {
             let _ = st.save(&state_file); // after every batch of work: a crash costs only what came after
-        })?;
+        }) {
+            Ok(rep) => rep,
+            Err(m) => {
+                // sync_once uses the confirmation up when it decides about deletions: if it failed before that
+                // (network, listing...), the person's confirmation is still unused and must survive for the retry
+                if state.allow_deletes_once {
+                    if let Ok(mut c) = ctx.confirm.lock() {
+                        c.insert(e.id.clone());
+                    }
+                }
+                return Err(m);
+            }
+        };
         state.hub = hub.cache.clone();
         state.save(&state_file)?;
         if let Ok(mut s) = ctx.synced.lock() {
