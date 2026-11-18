@@ -22,7 +22,7 @@ import {
   cloudTrashed,
   cloudVaults,
   formatBytes,
-  saveTextFile,
+  saveRecoveryKeyFile,
   serverHealth,
   syncConfirm,
   syncError,
@@ -66,11 +66,7 @@ function RecoveryKeyDialog({ keyText, username, onClose }: { keyText: string; us
   const [note, setNote] = useState('')
   const saveFile = async () => {
     try {
-      const { save } = await import('@tauri-apps/plugin-dialog')
-      const path = await save({ defaultPath: 'nevis-recovery-key.txt', filters: [{ name: 'TXT', extensions: ['txt'] }] })
-      if (!path) return
-      await saveTextFile(path, `Nevis recovery key\nUser: ${username}\nKey: ${keyText}\n`)
-      setNote(t('Saved.'))
+      if (await saveRecoveryKeyFile(username, keyText)) setNote(t('Saved.'))
     } catch (e) {
       setNote(syncError(e))
     }

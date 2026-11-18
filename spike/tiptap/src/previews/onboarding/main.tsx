@@ -13,8 +13,10 @@ import '../../index.css'
 import './preview.css'
 
 // Isolated, in-memory review of first launch. No vault, native dialog or store is touched.
-// ?state=returning shows the workspace list; ?fail makes creating, opening, signing in and downloading fail once.
-// ?cloud=1 adds the "sign in to your server" steps (password: any; user "empty" has no workspaces); ?signedin=1 starts signed in.
+// ?state=returning shows the workspace list; ?fail makes creating, opening, signing in or up, turning sync on and downloading fail once.
+// ?cloud=1 adds the account choices on the welcome step (password: any; user "empty" has no workspaces); ?signedin=1 starts signed in.
+// ?noserver=1 fakes a build without a fixed server (the address is then asked for).
+// ?registration=open|invite|closed sets what the fake server says about new accounts (default open; invite code: any).
 const query = new URLSearchParams(location.search)
 updateSettings({ lang: query.get('lang') === 'fa' ? 'fa' : 'en', dir: 'auto', theme: query.get('theme') === 'dark' ? 'dark' : 'light', accent: query.get('accent'), reduceMotion: query.has('reduced') })
 
@@ -43,7 +45,7 @@ function fakeServices(): WorkspaceServices {
   let signedIn = query.has('signedin')
   let account = { username: 'sara', server: 'https://sync.example.com', vaults: cloudVaults }
   const cloud: WorkspaceServices['cloud'] = {
-    status: async () => (await wait(), { signedIn, username: signedIn ? account.username : null, server: signedIn ? account.server : '', defaultServer: 'https://sync.example.com' }),
+    status: async () => (await wait(), { signedIn, username: signedIn ? account.username : null, server: signedIn ? account.server : '', defaultServer: query.has('noserver') ? '' : 'https://sync.example.com' }),
     login: async (server, username) => {
       await wait()
       maybeFail('HUB:bad_credentials')
@@ -57,6 +59,22 @@ function fakeServices(): WorkspaceServices {
       maybeFail('NETWORK:timeout')
       list = [...list, { id, name, path: parent + '\\' + name, exists: true, status: 'ok' }]
     },
+    health: async () => {
+      await wait()
+      const mode = query.get('registration')
+      return { name: 'Nevis', registration: mode === 'invite' || mode === 'closed' ? mode : 'open' }
+    },
+    register: async (server, username) => {
+      await wait()
+      maybeFail('HUB:username_taken')
+      if (server.startsWith('http://')) throw new Error('HUB:insecure_server')
+      signedIn = true
+      account = { username, server, vaults: [] }
+      return 'ABCD-EFGH-IJKL-MNOP'
+    },
+    saveKey: async () => (await wait(), true),
+    copyKey: (key) => navigator.clipboard.writeText(key),
+    enableSync: async () => (await wait(), maybeFail('NETWORK:timeout')),
     logout: async () => {
       await wait()
       signedIn = false
