@@ -790,7 +790,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                         return Ok(());
                     }
                     if pages::page_of_bin(p).is_some() {
-                        pages::delete_local(vault, p)?; // tombstone of the page, its files to the sync trash
+                        pages::delete_local_locked(vault, p)?; // tombstone of the page, its files to the sync trash
                         state.files.remove(p);
                         rep.deleted += 1;
                         return Ok(());

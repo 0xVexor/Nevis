@@ -185,10 +185,10 @@ pub fn conflict(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, p
 }
 
 /// A state was deleted elsewhere and not touched here: the page goes (its files to the sync trash, a tombstone is made).
-pub fn delete_local(vault: &Vault, p: &str) -> Res<()> {
+/// The caller holds the commit lock across its change check and this operation.
+pub fn delete_local_locked(vault: &Vault, p: &str) -> Res<()> {
     let root = &vault.root;
     let id = page_of_bin(p).ok_or_else(|| format!("refusing remote path {p}"))?;
-    let _g = commit_lock(root)?;
     snapshot::tombstone(vault, &format!("pages/{id}.json"))?;
     vault.sync_trash_move(p)?;
     if root.join(format!("pages/{id}.json")).is_file() {
