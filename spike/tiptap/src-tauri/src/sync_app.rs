@@ -147,6 +147,7 @@ pub fn account_status(s: St) -> Value {
         "server": acct.as_ref().map_or_else(|| account::DEFAULT_SERVER.to_string(), |a| a.server.clone()),
         "defaultServer": account::DEFAULT_SERVER,
         "syncOn": sync_on,
+        "vaultId": current_entry(&s).map(|e| e.id),
         "state": st.state,
         "lastAt": st.last_at,
         "error": st.error,
@@ -315,6 +316,45 @@ pub async fn cloud_restore(s: St<'_>, id: String) -> Res<()> {
     crate::vault::check_id(&id)?;
     let app_data = s.app_data.clone();
     blocking(move || account::api(&app_data)?.post(&format!("/v1/vaults/{id}/undelete"), &json!({})).map(|_| ())).await
+}
+
+/// Whether `id` is the vault that is open on this device, which is the one whose sync has to stop when it leaves the server.
+fn is_open_vault(current: Option<&str>, id: &str) -> bool {
+    current == Some(id)
+}
+
+/// Moves a vault to the server's trash (restorable for the retention period). When it is the open vault of this device its sync
+/// is turned off, so that this device neither recreates it nor fights with the server; local files are never touched.
+/// Returns whether the sync of this device was turned off.
+#[tauri::command]
+pub async fn cloud_delete(s: St<'_>, id: String) -> Res<bool> {
+    crate::vault::check_id(&id)?;
+    let app_data = s.app_data.clone();
+    let vid = id.clone();
+    blocking(move || account::delete_vault(&app_data, &vid)).await?;
+    let mut r = s.reg.lock().map_err(err)?;
+    let open = is_open_vault(r.current.as_deref(), &id);
+    let mut was_on = false;
+    if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
+        was_on = e.sync;
+        e.sync = false;
+    }
+    if was_on || open {
+        r.save(&s.app_data)?;
+    }
+    drop(r);
+    if open {
+        set_off(&s.sync.ctx);
+    }
+    Ok(open && was_on)
+}
+
+/// Removes a vault in the server's trash for good (needs the account password). Files on devices stay.
+#[tauri::command]
+pub async fn cloud_purge(s: St<'_>, id: String, password: String) -> Res<()> {
+    crate::vault::check_id(&id)?;
+    let app_data = s.app_data.clone();
+    blocking(move || account::purge_vault(&app_data, &id, &password)).await
 }
 
 /// Creates `<parent>/<name>` for a vault that exists on the server, downloads it and opens it.
@@ -583,3 +623,15 @@ fn listener(app: AppHandle) {
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_open_vault_has_its_sync_stopped_when_it_leaves_the_server() {
+        assert!(is_open_vault(Some("abc"), "abc"));
+        assert!(!is_open_vault(Some("abc"), "abd"));
+        assert!(!is_open_vault(None, "abc"));
+    }
+}

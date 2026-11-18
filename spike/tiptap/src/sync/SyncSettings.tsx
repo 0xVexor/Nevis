@@ -17,7 +17,9 @@ import {
   accountRegister,
   accountRevokeDevice,
   accountStatus,
+  cloudDelete,
   cloudDownload,
+  cloudPurge,
   cloudRestore,
   cloudTrashed,
   cloudVaults,
@@ -152,6 +154,9 @@ function SignIn({ status, onDone, onKey }: { status: SyncStatus; onDone: () => v
   const registration = health?.registration
   return (
     <PreferenceGroup title={t('Your server')} hint={t('Sync keeps your workspaces the same on all your devices, through a server that you run. Nothing goes anywhere else.')}>
+      <Notice tone="info" title={t('Sign in to send this workspace to your server')}>
+        {t('This workspace is only on this computer. After you sign in, you can send it to your server and keep it synced.')}
+      </Notice>
       <PreferenceRow wide label={t('Server address')} hint={t('For example sync.example.com')}>
         <Field ltr value={server} placeholder="sync.example.com" aria-label={t('Server address')} onChange={(e) => setServer(e.target.value)} onBlur={() => server.trim() && void check()} />
       </PreferenceRow>
@@ -221,6 +226,10 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
   const [held, setHeld] = useState<HeldDelete[]>([])
   const [deleting, setDeleting] = useState(false)
   const [deletePassword, setDeletePassword] = useState('')
+  const [removing, setRemoving] = useState<ServerVault | null>(null)
+  const [purging, setPurging] = useState<TrashedVault | null>(null)
+  const [purgePassword, setPurgePassword] = useState('')
+  const onServer = !!status.vaultId && !!vaults?.some((v) => v.id === status.vaultId)
   const needsConfirm = status.reason === 'NEEDS_CONFIRM'
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -278,6 +287,26 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
       },
       () => void load(),
     )
+  const removeFromServer = (v: ServerVault) =>
+    run(async () => {
+      const syncStopped = await cloudDelete(v.id)
+      setRemoving(null)
+      await load()
+      refresh()
+      setMessage(
+        syncStopped
+          ? t('“{name}” is in the server trash. Sync is off for this workspace; the files on this computer are untouched.').replace('{name}', v.name)
+          : t('“{name}” is in the server trash. You can restore it from there.').replace('{name}', v.name),
+      )
+    })
+  const purgeFromServer = (v: TrashedVault) =>
+    run(async () => {
+      await cloudPurge(v.id, purgePassword)
+      setPurging(null)
+      setPurgePassword('')
+      await load()
+      setMessage(t('“{name}” was removed from the server for good.').replace('{name}', v.name))
+    })
   const deleteAccount = () =>
     run(async () => {
       await accountDelete(deletePassword)
@@ -320,7 +349,32 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
       </PreferenceGroup>
 
       <PreferenceGroup title={t('This workspace')} hint={t('Turn it on and the workspace is copied to the server, then kept the same on every device you sign in on.')}>
-        <PreferenceRow label={t('Sync this workspace')} hint={statusText(status)}>
+        {!status.syncOn && (
+          <Notice
+            tone="info"
+            title={onServer ? t('This workspace is already on your server') : t('This workspace is only on this computer')}
+            action={
+              <Button
+                variant="primary"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await syncSet(true)
+                    await load()
+                    refresh()
+                  })
+                }
+              >
+                {onServer ? t('Keep it synced') : t('Send to your server and keep it synced')}
+              </Button>
+            }
+          >
+            {onServer
+              ? t('Sync is off, so changes are not exchanged with the server. Turn it on to keep this workspace the same on all your devices.')
+              : t('Send it once and it stays the same on every device you sign in on: changes go both ways, by themselves.')}
+          </Notice>
+        )}
+        <PreferenceRow label={t('Sync this workspace')} hint={status.syncOn ? `${t('Kept in sync with the server')} · ${statusText(status)}` : statusText(status)}>
           <Switch
             label={t('Sync this workspace')}
             checked={status.syncOn}
@@ -402,6 +456,9 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
           <PreferenceRow key={v.id} label={v.name} hint={`${v.files ?? 0} ${t('files')} · ${formatBytes(v.bytes)}`}>
             <Button disabled={busy} onClick={() => void download(v)}>
               {t('Download')}
+            </Button>{' '}
+            <Button disabled={busy} onClick={() => setRemoving(v)}>
+              {t('Delete from server…')}
             </Button>
           </PreferenceRow>
         ))}
@@ -413,6 +470,15 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
             <PreferenceRow key={v.id} label={v.name} hint={`${v.files ?? 0} ${t('files')} · ${formatBytes(v.bytes)}`}>
               <Button disabled={busy} onClick={() => void restore(v)}>
                 {t('Restore')}
+              </Button>{' '}
+              <Button
+                disabled={busy}
+                onClick={() => {
+                  setMessage('')
+                  setPurging(v)
+                }}
+              >
+                {t('Delete permanently…')}
               </Button>
             </PreferenceRow>
           ))}
@@ -496,7 +562,71 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
         </Dialog>
       )}
 
-      {message && !deleting && (
+      {removing && (
+        <Dialog
+          open
+          title={t('Delete “{name}” from the server?').replace('{name}', removing.name)}
+          onClose={() => setRemoving(null)}
+          actions={
+            <>
+              <Button disabled={busy} onClick={() => setRemoving(null)}>
+                {t('Cancel')}
+              </Button>
+              <Button variant="primary" disabled={busy} onClick={() => void removeFromServer(removing)}>
+                {t('Delete from server')}
+              </Button>
+            </>
+          }
+        >
+          <div className="ds-modal-body">
+            <p>{t('It moves to the server’s trash and can be restored for 30 days. The files on this computer stay.')}</p>
+            {removing.id === status.vaultId && <p>{t('Sync for this workspace will be turned off.')}</p>}
+            {message && (
+              <Notice tone="bad" role="alert">
+                {message}
+              </Notice>
+            )}
+          </div>
+        </Dialog>
+      )}
+      {purging && (
+        <Dialog
+          open
+          title={t('Delete “{name}” permanently?').replace('{name}', purging.name)}
+          onClose={() => {
+            setPurging(null)
+            setPurgePassword('')
+          }}
+          actions={
+            <>
+              <Button
+                disabled={busy}
+                onClick={() => {
+                  setPurging(null)
+                  setPurgePassword('')
+                }}
+              >
+                {t('Cancel')}
+              </Button>
+              <Button variant="primary" disabled={busy || !purgePassword} onClick={() => void purgeFromServer(purging)}>
+                {t('Delete permanently')}
+              </Button>
+            </>
+          }
+        >
+          <div className="ds-modal-body">
+            <p>{t('This removes the workspace from the server for good. It cannot be undone. The files on your devices stay. Type your password to confirm.')}</p>
+            <Field ltr type="password" value={purgePassword} autoComplete="current-password" aria-label={t('Password')} onChange={(e) => setPurgePassword(e.target.value)} />
+            {message && (
+              <Notice tone="bad" role="alert">
+                {message}
+              </Notice>
+            )}
+          </div>
+        </Dialog>
+      )}
+
+      {message && !deleting && !removing && !purging && (
         <Notice tone="info" role="status">
           {message}
         </Notice>

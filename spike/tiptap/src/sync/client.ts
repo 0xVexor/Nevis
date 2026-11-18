@@ -18,6 +18,8 @@ export interface SyncStatus {
   error: string
   /** why it is paused: SIGNED_OUT | NEEDS_CONFIRM (then `error` is the number of held deletions) | VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE */
   reason: string
+  /** id of the open workspace (null when none is open) */
+  vaultId?: string | null
   /** names the sync cannot carry (it leaves those files alone) */
   skippedPaths?: string[]
 }
@@ -89,6 +91,10 @@ export const syncConfirm = (items: HeldDelete[]) =>
   invoke<void>('sync_confirm', { items: items.length > 0 ? items : null })
 export const cloudTrashed = () => invoke<TrashedVault[]>('cloud_trashed')
 export const cloudRestore = (id: string) => invoke<void>('cloud_restore', { id })
+/** Moves a workspace to the server's trash. True when that was the open one and its sync on this device was turned off. */
+export const cloudDelete = (id: string) => invoke<boolean>('cloud_delete', { id })
+/** Removes a workspace in the server's trash for good; needs the account password. */
+export const cloudPurge = (id: string, password: string) => invoke<void>('cloud_purge', { id, password })
 export const accountDelete = (password: string) => invoke<number>('account_delete', { password })
 export const cloudVaults = () => invoke<ServerVault[]>('cloud_vaults')
 export const cloudDownload = (id: string, name: string, parent: string) => invoke<void>('cloud_download', { id, name, parent })
@@ -114,6 +120,8 @@ export function syncError(e: unknown): string {
     'HUB:quota_exceeded': t('The storage of this account on the server is full.'),
     'HUB:not_nevis': t('This address answers, but it is not a Nevis sync server.'),
     'HUB:insecure_server': t('Use an https:// address. Plain http:// works only for this computer.'),
+    'HUB:not_in_trash': t('This workspace is not in the server trash.'),
+    'HUB:no_such_vault': t('This workspace is not on the server (any more).'),
     'HUB:bad_server': t('This server address is not valid.'),
   }
   if (known[code]) return known[code]
