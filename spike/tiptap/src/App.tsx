@@ -493,7 +493,23 @@ export default function App() {
     window.addEventListener(APP_TOAST, screenToast)
     window.addEventListener('page-conflict', kept)
     window.addEventListener('storage-error', storageError)
+    // desktop: sync merged edits of two devices into one page (the engine sends the ids of the pages it merged)
+    let closed = false
+    let stopMerged: (() => void) | undefined
+    if (isTauri) {
+      void import('@tauri-apps/api/event')
+        .then(({ listen }) =>
+          listen<{ pageIds: string[] }>('page-auto-merged', (e) => {
+            const id = e.payload.pageIds?.[0]
+            if (id) setToast({ msg: t('Edits from two devices were merged into “{title}”. Both earlier versions are in the page history.', { title: repo.get(id)?.title || t('Untitled') }) })
+          }),
+        )
+        .then((off) => (closed ? off() : (stopMerged = off)))
+        .catch(() => {})
+    }
     return () => {
+      closed = true
+      stopMerged?.()
       window.removeEventListener(OPEN_PAGE, open)
       window.removeEventListener(PAGES_CHANGED, changed)
       window.removeEventListener('external-change', changed)

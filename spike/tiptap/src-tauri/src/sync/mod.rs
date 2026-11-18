@@ -10,6 +10,7 @@
 //! changed while we were talking to the server is never overwritten.
 
 pub mod account;
+pub mod blockmerge;
 pub mod hub;
 pub mod pages;
 pub mod snapshot;
@@ -514,7 +515,7 @@ fn merge_kv(path: &str, local: &[u8], remote: &[u8]) -> Option<Vec<u8>> {
     serde_json::to_vec(&Value::Object(out)).ok()
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Report {
     pub uploaded: usize,
     pub downloaded: usize,
@@ -535,11 +536,14 @@ pub struct Report {
     pub errors: Vec<String>,
     /// things to tell the user that are not failures (a very large page state)
     pub warnings: Vec<String>,
+    /// pages edited on two devices in different blocks, merged into one page (both versions are in the history)
+    #[serde(default)]
+    pub auto_merged: Vec<String>,
 }
 
 impl Report {
     pub fn changed(&self) -> bool {
-        self.uploaded + self.downloaded + self.deleted + self.conflicts > 0
+        self.uploaded + self.downloaded + self.deleted + self.conflicts + self.auto_merged.len() > 0
     }
 }
 
@@ -619,6 +623,39 @@ fn conflict_found(remote: &mut dyn Remote, state: &SyncState, root: &Path, p: &s
         server_time: author.map_or(0, |a| a.server_time),
         detected_by: me,
     })
+}
+
+/// Tries to merge the two versions of a page block by block (sync/blockmerge.rs). None: not applicable, the caller
+/// keeps the newer version and records a conflict. Some(false): the page changed here meanwhile, next round decides.
+/// Some(true): the merged page is written (under the commit lock, only if the page is still what the scan saw), and
+/// both original versions are in the page history.
+fn auto_merge(vault: &Vault, p: &str, l: &Local, found: &page_conflicts::Found) -> Option<bool> {
+    let base = found.base.as_ref().filter(|_| found.kind == "edit")?;
+    if pages::enabled() || crate::page_state::has_state(&vault.root, &found.page_id) {
+        return None; // page states merge by themselves
+    }
+    let merged = blockmerge::merge_pages(base, &found.local, &found.remote)?;
+    let bytes = snapshot::canonical(&merged).ok()?;
+    let res: Res<bool> = (|| {
+        let _guard = crate::vault::commit_lock(&vault.root)?;
+        if changed_since(&vault.root.join(p), Some(&l.md5)) {
+            return Ok(false);
+        }
+        // the same order on every device: by time, then by content
+        let mut both = [&found.local, &found.remote];
+        both.sort_by_key(|v| (page_conflicts::updated_at(v), v.to_string()));
+        let mut written = vec![];
+        for version in both {
+            written.push(vault.keep_loser_ts_protecting(&found.page_id, version, &written)?);
+        }
+        write_atomic(&vault.root.join(p), &bytes)?;
+        if snapshot::safe_path(p).is_ok() {
+            snapshot::untombstone(vault, p)?;
+        }
+        Ok(true)
+    })();
+    // a failure falls back to the newer-wins rule (nothing was written to the page)
+    res.ok()
 }
 
 /// Uploads and checks that the cloud stored what we sent; one more try before giving up on a damaged upload.
@@ -904,7 +941,21 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                         let stem = p.trim_start_matches("pages/").trim_end_matches(".json");
                         let bytes = remote.download(r)?;
                         // (the common ancestor is read before track_current below replaces what the bookkeeping knows)
-                        notes.extend(conflict_found(remote, state, root, p, l, r, &bytes, restored.contains(p)));
+                        let found = conflict_found(remote, state, root, p, l, r, &bytes, restored.contains(p));
+                        if let Some(done) = found.as_ref().and_then(|f| auto_merge(vault, p, l, f)) {
+                            // edits of different blocks: one page with both, no conflict. It goes up like any merge below.
+                            if !done {
+                                rep.conflicts -= 1;
+                                rep.skipped += 1;
+                                return Ok(());
+                            }
+                            rep.conflicts -= 1;
+                            rep.auto_merged.push(found.map(|f| f.page_id).unwrap_or_default());
+                            merged.push((p.clone(), r.clone()));
+                            track_current(state, root, p, &r.md5, &r.id);
+                            return Ok(());
+                        }
+                        notes.extend(found);
                         let copy_path = root.join(format!("pages/{stem} (cloud).json"));
                         write_atomic(&copy_path, &bytes)?;
                         // the copy's file time says when that version reached the server: the latest it can have been saved (vault.rs compares with it)
@@ -1489,6 +1540,55 @@ mod tests {
         // the history entry made by the merge travels in the next round; after a few rounds nothing is left to do
         let rounds = (0..5).take_while(|_| a.sync().changed() | b.sync().changed()).count();
         assert!(rounds < 5, "did not settle");
+    }
+
+    /// A page of four paragraphs (block ids b0..b3); `texts` are the paragraphs.
+    fn doc_page(id: &str, title: &str, texts: [&str; 4], at: i64) -> Value {
+        let kids: Vec<Value> = texts.iter().enumerate().map(|(i, t)| json!({ "type": "paragraph", "attrs": { "blockId": format!("b{i}") }, "content": [{ "type": "text", "text": t }] })).collect();
+        json!({ "id": id, "title": title, "content": { "type": "doc", "content": kids }, "updatedAt": at, "deletedAt": null })
+    }
+
+    #[test]
+    fn edits_of_different_blocks_on_two_devices_are_merged_without_a_conflict() {
+        let (mut a, mut b) = pair();
+        let save = |d: &Device, texts: [&str; 4], at: i64| d.vault.save_pages(&[doc_page(P1, "t", texts, at)], &[], false).unwrap();
+        save(&a, ["one", "two", "three", "four"], 100);
+        a.sync();
+        b.sync();
+        save(&a, ["one A", "two", "three", "four"], 200);
+        save(&b, ["one", "two", "three", "four B"], 300);
+        a.sync();
+        let rep = b.sync(); // conflict on b: different blocks
+        assert_eq!((rep.auto_merged.clone(), rep.conflicts), (vec![P1.to_string()], 0), "{rep:?}");
+        // the history entries of the merge travel in the rounds after it; after a few rounds nothing is left to do
+        let rounds = (0..6).take_while(|_| a.sync().changed() | b.sync().changed()).count();
+        assert!(rounds < 6, "did not settle");
+        let texts = |d: &Device| d.page(P1).unwrap()["content"]["content"].as_array().unwrap().iter().map(|b| b["content"][0]["text"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!(texts(&a), ["one A", "two", "three", "four B"]);
+        assert_eq!(fs::read(a.vault.root.join(format!("pages/{P1}.json"))).unwrap(), fs::read(b.vault.root.join(format!("pages/{P1}.json"))).unwrap(), "the same bytes on both devices");
+        for d in [&a, &b] {
+            assert!(page_conflicts::list(&d.vault, None).unwrap().markers.is_empty(), "no conflict marker");
+            let versions = d.vault.versions_list(P1).unwrap();
+            assert_eq!(versions.len(), 2, "both earlier versions are in the history: {versions:?}");
+        }
+    }
+
+    #[test]
+    fn edits_of_the_same_block_still_make_a_conflict_marker_and_the_newer_wins() {
+        let (mut a, mut b) = pair();
+        let save = |d: &Device, texts: [&str; 4], at: i64| d.vault.save_pages(&[doc_page(P1, "t", texts, at)], &[], false).unwrap();
+        save(&a, ["one", "two", "three", "four"], 100);
+        a.sync();
+        b.sync();
+        save(&a, ["one A", "two", "three", "four"], 200);
+        save(&b, ["one B", "two", "three", "four"], 300);
+        a.sync();
+        let rep = b.sync();
+        assert_eq!((rep.auto_merged.len(), rep.conflicts), (0, 1));
+        a.sync();
+        b.sync();
+        assert_eq!(a.page(P1).unwrap()["content"]["content"][0]["content"][0]["text"], "one B");
+        assert_eq!(page_conflicts::list(&b.vault, None).unwrap().markers.len(), 1);
     }
 
     #[test]

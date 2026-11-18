@@ -949,6 +949,61 @@ mod e2e {
         assert_eq!(mb[0].remote.device_name, "test", "and the account knows its name");
     }
 
+    fn block_page(id: &str, texts: [&str; 4], at: i64) -> Value {
+        let kids: Vec<Value> = texts.iter().enumerate().map(|(i, t)| json!({ "type": "paragraph", "attrs": { "blockId": format!("b{i}") }, "content": [{ "type": "text", "text": t }] })).collect();
+        json!({ "id": id, "title": "t", "content": { "type": "doc", "content": kids }, "updatedAt": at, "deletedAt": null })
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_edits_of_different_blocks_on_both_devices_are_merged_into_one_page() {
+        let (mut a, mut b) = pair();
+        let save = |d: &Dev, texts: [&str; 4], at: i64| d.vault.save_pages(&[block_page(P1, texts, at)], &[], false).unwrap();
+        save(&a, ["one", "two", "three", "four"], 100);
+        a.sync();
+        b.sync();
+        save(&a, ["one A", "two", "three", "four"], 200);
+        save(&b, ["one", "two", "three B", "four"], 300);
+        a.sync();
+        let rep = b.sync();
+        assert_eq!((rep.auto_merged.clone(), rep.conflicts), (vec![P1.to_string()], 0), "{rep:?}");
+        for _ in 0..3 {
+            a.sync();
+            b.sync();
+        }
+        let file = |d: &Dev| std::fs::read(d.vault.root.join(format!("pages/{P1}.json"))).unwrap();
+        assert_eq!(file(&a), file(&b), "converged to the same bytes");
+        let page = a.page(P1).unwrap();
+        let texts: Vec<_> = page["content"]["content"].as_array().unwrap().iter().map(|b| b["content"][0]["text"].as_str().unwrap().to_string()).collect();
+        assert_eq!(texts, ["one A", "two", "three B", "four"]);
+        for d in [&a, &b] {
+            assert!(crate::page_conflicts::list(&d.vault, None).unwrap().markers.is_empty());
+            assert_eq!(d.vault.versions_list(P1).unwrap().len(), 2, "both earlier versions are in the history");
+        }
+        assert!(!a.sync().changed() && !b.sync().changed());
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_edits_of_the_same_block_on_both_devices_still_conflict() {
+        let (mut a, mut b) = pair();
+        let save = |d: &Dev, texts: [&str; 4], at: i64| d.vault.save_pages(&[block_page(P1, texts, at)], &[], false).unwrap();
+        save(&a, ["one", "two", "three", "four"], 100);
+        a.sync();
+        b.sync();
+        save(&a, ["one A", "two", "three", "four"], 200);
+        save(&b, ["one B", "two", "three", "four"], 300);
+        a.sync();
+        let rep = b.sync();
+        assert_eq!((rep.auto_merged.len(), rep.conflicts), (0, 1));
+        for _ in 0..3 {
+            a.sync();
+            b.sync();
+        }
+        assert_eq!(a.page(P1).unwrap()["content"]["content"][0]["content"][0]["text"], "one B");
+        assert_eq!(crate::page_conflicts::list(&a.vault, None).unwrap().markers.len(), 1);
+    }
+
     #[test]
     #[ignore]
     fn e2e_a_deleted_page_reaches_the_other_device() {
@@ -1180,6 +1235,7 @@ mod e2e {
         json!({ "type": "doc", "attrs": { "blockIdentityVersion": 1 }, "content": kids })
     }
 
+    static AUTO_MERGES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     static STATE_SEEDS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     static STRICT_CHECKED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     static STATE_MERGES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -1191,15 +1247,16 @@ mod e2e {
         let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
         let (mut clock, mut counter) = (1_000i64, 0u32);
         let (mut written, mut killed) = (Vec::<String>::new(), std::collections::HashSet::<String>::new());
-        // seed % 3: 0 = page states off (the legacy oracle), 1 = both devices on, 2 = dev 1 is a legacy device that turns them on mid-run
+        // seed % 4: 0 = page states off (the legacy oracle), 1 = both devices on, 2 = dev 1 is a legacy device that turns them on mid-run,
+        // 3 = page states off but real documents: edits of different paragraphs on the two devices are merged block by block
         let (mut state_tokens, mut deleted_ever) = (Vec::<(String, String)>::new(), std::collections::HashSet::<String>::new());
         // titles of pages that end up with a state are one key of the page map: the later write wins and the other is gone (by design)
         let mut lww_titles = std::collections::HashMap::<String, String>::new();
         let mut ever_state = std::collections::HashSet::<String>::new();
-        let mode = std::env::var("NEVIS_FUZZ_MODE").ok().and_then(|m| m.parse::<u64>().ok()).unwrap_or(seed % 3);
+        let mode = std::env::var("NEVIS_FUZZ_MODE").ok().and_then(|m| m.parse::<u64>().ok()).unwrap_or(seed % 4);
         // what the page states add to the run draws from its own stream, so mode 0 replays the old fuzz exactly
         let mut prng = Rng(seed.wrapping_mul(0xD1B5_4A32_D192_ED03) | 1);
-        devs[0].ps = mode != 0;
+        devs[0].ps = mode != 0 && mode != 3;
         devs[1].ps = mode == 1;
         let flip = prng.below(steps.max(1));
 
@@ -1209,6 +1266,7 @@ mod e2e {
                 Ok(r) if !r.errors.is_empty() => findings.push(format!("sync errors on dev {i}: {:?}", r.errors)),
                 Ok(r) => {
                     STATE_MERGES.fetch_add(r.state_merges, std::sync::atomic::Ordering::Relaxed);
+                    AUTO_MERGES.fetch_add(r.auto_merged.len(), std::sync::atomic::Ordering::Relaxed);
                 }
                 Err(e) => findings.push(format!("sync failed on dev {i}: {e}")),
             }
@@ -1324,6 +1382,7 @@ mod e2e {
                     Ok(r) => {
                         held |= r.held > 0;
                         STATE_MERGES.fetch_add(r.state_merges, std::sync::atomic::Ordering::Relaxed);
+                        AUTO_MERGES.fetch_add(r.auto_merged.len(), std::sync::atomic::Ordering::Relaxed);
                         moved |= r.changed() || r.skipped > 0 || (r.held > 0 && round < 6);
                         if !r.errors.is_empty() {
                             findings.push(format!("sync errors at the end, dev {i}: {:?}", r.errors));
@@ -1418,7 +1477,7 @@ mod e2e {
         }
         eprintln!("{seeds} seeds, {} failed, {notes} had a deletion held back for confirmation", bad.len());
         let o = std::sync::atomic::Ordering::Relaxed;
-        eprintln!("page states: {} seeds ended with a state on both devices, {} paragraph tokens checked by the strict oracle, {} state merges", STATE_SEEDS.load(o), STRICT_CHECKED.load(o), STATE_MERGES.load(o));
+        eprintln!("page states: {} seeds ended with a state on both devices, {} paragraph tokens checked by the strict oracle, {} state merges, {} pages merged block by block", STATE_SEEDS.load(o), STRICT_CHECKED.load(o), STATE_MERGES.load(o), AUTO_MERGES.load(o));
         assert!(bad.is_empty(), "failing seeds: {bad:?}");
     }
 }

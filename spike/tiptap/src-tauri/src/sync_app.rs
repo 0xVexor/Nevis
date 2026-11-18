@@ -454,9 +454,15 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool, downloading: bool) -> Res<(
                 st.skipped = rep.skipped_paths.iter().take(SKIPPED_SHOWN).cloned().collect();
             }
             // pages changed by another device: the open page and the lists are refreshed now, not at the next poll
-            if rep.downloaded + rep.deleted + rep.conflicts + rep.state_merges > 0 {
+            if rep.downloaded + rep.deleted + rep.conflicts + rep.state_merges + rep.auto_merged.len() > 0 {
                 if let Some(app) = &ctx.app {
                     let _ = app.emit("vault-changed", e.id.clone());
+                }
+            }
+            // pages whose edits from two devices were merged: the app says so
+            if !rep.auto_merged.is_empty() {
+                if let Some(app) = &ctx.app {
+                    let _ = app.emit("page-auto-merged", serde_json::json!({ "pageIds": rep.auto_merged }));
                 }
             }
             // conflict markers recorded here, closed elsewhere, or brought by another device
