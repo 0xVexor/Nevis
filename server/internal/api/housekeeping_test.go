@@ -139,6 +139,58 @@ func TestHousekeeping(t *testing.T) {
 		}
 	})
 
+	t.Run("a snapshot read with deleted=1 pages through the tombstones that are still there, in path order", func(t *testing.T) {
+		f := newFixture(t)
+		made := f.commitOps([]op{put("pages/a.json", "a"), put("pages/b.json", "b"), put("pages/c.json", "c"), put("pages/d.json", "d"), put("pages/e.json", "e")})
+		f.commitOps([]op{del("pages/a.json", result(made, 0).num("rev"))})
+		if st := f.housekeeping(31 * day); st.Tombstones != 1 { // a is compacted away
+			t.Fatalf("%+v", st)
+		}
+		f.commitOps([]op{del("pages/e.json", result(made, 4).num("rev"))})
+		f.commitOps([]op{del("pages/c.json", result(made, 2).num("rev"))})
+		want := []string{"pages/c.json", "pages/e.json"}
+		for _, limit := range []int{1, 2, 3, 500} {
+			var got []string
+			after := ""
+			for pages := 0; ; pages++ {
+				if pages > 10 {
+					t.Fatal("paging does not end")
+				}
+				url := fmt.Sprintf("/v1/vaults/%s/changes?snapshot=1&deleted=1&limit=%d&after=%s", f.v, limit, after)
+				r := f.call("GET", url, opts{token: f.a.token})
+				if r.status != 200 {
+					t.Fatalf("limit %d after %q: %d %v", limit, after, r.status, r.body)
+				}
+				if r.body.num("seq") != f.seq() || r.body.num("head") != f.seq() {
+					t.Fatalf("seq %d head %d, want %d", r.body.num("seq"), r.body.num("head"), f.seq())
+				}
+				files := r.body.list("files")
+				if len(files) > limit {
+					t.Fatalf("limit %d: %d files", limit, len(files))
+				}
+				for _, file := range files {
+					if !file.flag("deleted") {
+						t.Fatalf("a live file was sent: %v", file)
+					}
+					got = append(got, file.str("path"))
+				}
+				if !r.body.flag("has_more") {
+					if r.body.str("next_after") != "" {
+						t.Fatalf("next_after %q on the last page", r.body.str("next_after"))
+					}
+					break
+				}
+				if r.body.str("next_after") != files[len(files)-1].str("path") {
+					t.Fatalf("next_after %q after %v", r.body.str("next_after"), files)
+				}
+				after = r.body.str("next_after")
+			}
+			if strings.Join(got, ",") != strings.Join(want, ",") {
+				t.Fatalf("limit %d: %v, want %v", limit, got, want)
+			}
+		}
+	})
+
 	t.Run("removes old revisions and blobs nothing refers to any more, but not the current ones", func(t *testing.T) {
 		f := newFixture(t)
 		first := f.commitOps([]op{put("pages/a.json", "one")})
