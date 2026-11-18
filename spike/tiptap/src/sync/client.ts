@@ -72,6 +72,14 @@ export const accountRevokeDevice = (id: string) => invoke<void>('account_revoke_
 export const accountChangePassword = (oldPassword: string, newPassword: string) => invoke<void>('account_change_password', { oldPassword, newPassword })
 export const accountNewRecoveryKey = (password: string) => invoke<string>('account_new_recovery_key', { password })
 export const saveTextFile = (path: string, text: string) => invoke<void>('save_text_file', { path, text })
+/** Asks where to save the recovery key and writes it there. False when the person closed the dialog. */
+export async function saveRecoveryKeyFile(username: string, keyText: string): Promise<boolean> {
+  const { save } = await import('@tauri-apps/plugin-dialog')
+  const path = await save({ defaultPath: 'nevis-recovery-key.txt', filters: [{ name: 'TXT', extensions: ['txt'] }] })
+  if (!path) return false
+  await saveTextFile(path, `Nevis recovery key\nUser: ${username}\nKey: ${keyText}\n`)
+  return true
+}
 export const syncSet = (on: boolean) => invoke<void>('sync_set', { on })
 export const syncNow = () => invoke<void>('sync_now')
 export const syncHeld = () => invoke<HeldDelete[]>('sync_held')
