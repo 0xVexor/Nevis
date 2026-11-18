@@ -9,6 +9,7 @@ mod release_features;
 mod document_operations;
 mod mcp;
 mod mcp_relay;
+mod page_state;
 mod index;
 mod portable;
 mod registry;

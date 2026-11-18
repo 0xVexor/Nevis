@@ -102,7 +102,7 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) error {
 	writeJSON(w, 200, map[string]any{
 		"ok": true, "name": wireName, "api": config.API, "min_api": config.MinAPI,
 		"registration": s.Cfg.Registration, "pow_bits": s.Cfg.PowBits, "server_time": s.Now().UnixMilli(),
-		"capabilities": []string{"database_sync"},
+		"capabilities": []string{"database_sync", "page_state"},
 	})
 	return nil
 }

@@ -114,3 +114,27 @@ func TestFoldCase(t *testing.T) {
 		t.Fatal("paths that differ in letter case must fold to one")
 	}
 }
+
+// The desktop client and the server share one table of paths (see spike/tiptap/src-tauri/src/sync/sync-paths.json).
+func TestPathsAgreeWithTheDesktopContract(t *testing.T) {
+	raw, err := os.ReadFile("../../../spike/tiptap/src-tauri/src/sync/sync-paths.json")
+	if err != nil {
+		t.Skip("shared contract file not found: " + err.Error())
+	}
+	var cases [][2]*string
+	if err := json.Unmarshal(raw, &cases); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cases {
+		if strings.HasPrefix(*c[0], "databases/") {
+			continue // which database kinds exist is the client's business (see databasePath)
+		}
+		want := ""
+		if c[1] != nil {
+			want = *c[1]
+		}
+		if got := checkPath(*c[0]); got != want {
+			t.Errorf("%q: %q, want %q", *c[0], got, want)
+		}
+	}
+}
