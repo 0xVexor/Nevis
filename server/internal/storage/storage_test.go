@@ -200,3 +200,18 @@ func TestReleaseTwiceIsHarmless(t *testing.T) {
 		t.Fatalf("second release: %v", err)
 	}
 }
+
+func TestMalformedHashNeverBuildsAPath(t *testing.T) {
+	b, dir := newBlobs(t)
+	for _, sha := range []string{"", "x", "../../x", "../../../etc/passwd", "ABCDEF" + string(bytes.Repeat([]byte("0"), 58))} {
+		if err := b.Receive("v", sha, 0, []byte("x")); err == nil {
+			t.Errorf("%q: a piece was accepted", sha)
+		}
+		if b.Has("v", sha) || b.Received("v", sha) != 0 {
+			t.Errorf("%q: found something", sha)
+		}
+	}
+	if entries, _ := os.ReadDir(filepath.Join(dir, "staging")); len(entries) != 0 {
+		t.Fatal("staging not empty")
+	}
+}

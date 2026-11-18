@@ -181,24 +181,28 @@ test('IndexedDB compare-and-save rejects a changed identity, unavailable store, 
   assert.deepEqual(await storage.load(), [base])
 })
 
-test('IndexedDB services reject stale page updates and retain the unsaved edit', async () => {
+test('IndexedDB services rebase a stale page update: the newer edit is saved and the other version is kept in the history', async () => {
   const open = openDb()
   const storageA = new IndexedDbDocumentStorage('fixed', open)
   const storageB = new IndexedDbDocumentStorage('fixed', open)
   await storageA.save(write(migrated, true))
   const a = new DocumentService({ storage: storageA, host: host() })
-  const b = new DocumentService({ storage: storageB, host: host() })
+  const laterClock = host()
+  for (let i = 0; i < 100; i++) laterClock.now() // this tab's clock is ahead, so its edit is the newer one
+  const b = new DocumentService({ storage: storageB, host: laterClock })
   await Promise.all([a.init(), b.init()])
-  const id = migrated[0].id
+  const id = migrated[1].id // a page (a folder keeps no history entries)
   a.update(id, { title: 'saved elsewhere' })
   await a.flushBeforeUpdate()
   b.update(id, { title: 'local draft' })
-  await assert.rejects(b.flushBeforeUpdate(), /revision conflict/)
+  // used to be refused for good (nothing ever reloaded), which also froze every later save and delete
+  await b.flushBeforeUpdate()
   assert.equal(b.get(id).title, 'local draft')
-  assert.equal((await storageA.load()).find(page => page.id === id).title, 'saved elsewhere')
-  await assert.rejects(b.flushBeforeUpdate(), /revision conflict/)
+  assert.equal((await storageA.load()).find(page => page.id === id).title, 'local draft')
+  assert.ok((await storageA.listVersions(id)).some(v => v.title === 'saved elsewhere'), 'the other title is kept in the history')
+  await b.flushBeforeUpdate()
+  await b.flushForDatabase()
   assert.equal(b.get(id).title, 'local draft')
-  await assert.rejects(b.flushForDatabase(), /revision conflict/)
 })
 
 test('IndexedDB guarded batches abort all writes on stale deletion or replacement', async () => {
@@ -335,19 +339,20 @@ test('commit reservation blocks repository changes and releases after a storage 
   assert.equal(runtime.events.filter(event => event.event === 'commit-state').length, 2)
 })
 
-test('external refresh retains an editor draft and later flush refuses the changed persisted baseline', async () => {
+test('external refresh retains an editor draft and the later flush rebases it on the changed persisted page', async () => {
   const storage = new MemoryDocumentStorage('fixed', migrated)
   const service = new DocumentService({ storage, host: host() })
   await service.init()
-  const before = service.dump()[0]
+  const before = service.dump().find(p => p.id === migrated[1].id) // a page (a folder keeps no history entries)
   service.setEditorDirty(before.id, true)
   await storage.save(write([{ ...before, title: 'sync change' }]))
   assert.equal(await service.refreshFromStore(), false)
   service.update(before.id, { title: 'human draft' })
   service.setEditorDirty(before.id, false)
-  await assert.rejects(service.flushBeforeUpdate(), /revision conflict/)
+  await service.flushBeforeUpdate()
   assert.equal(service.getRaw(before.id).title, 'human draft')
-  assert.equal((await storage.load()).find(p => p.id === before.id).title, 'sync change')
+  assert.equal((await storage.load()).find(p => p.id === before.id).title, 'human draft')
+  assert.ok((await storage.listVersions(before.id)).some(v => v.title === 'sync change'), 'the synced title is kept in the history')
 })
 
 test('native save sends exact preconditions and vault identity together to the command', async () => {
@@ -360,4 +365,94 @@ test('native save sends exact preconditions and vault identity together to the c
   const batch = { ...write([migrated[0]]), expectedPages: { [migrated[0].id]: migrated[0] } }
   await storage.save(batch)
   assert.deepEqual(calls[0][3], { expectedVaultId: 'bound-vault', expectedPages: batch.expectedPages, expectedAll: undefined })
+})
+
+// ───── a save refused because another device/program changed the page file (sync) ─────
+
+const doc = (text) => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] })
+const textOf = (page) => page?.content?.content?.[0]?.content?.[0]?.text
+async function fresh(name) {
+  const storage = new MemoryDocumentStorage(name)
+  const h = host()
+  const service = new DocumentService({ storage, host: h })
+  await service.init()
+  const page = service.create(null)
+  service.update(page.id, { content: doc('first') })
+  await service.flushBeforeUpdate()
+  const onDisk = async () => (await storage.load()).find((p) => p.id === page.id)
+  return { storage, h, service, page, onDisk }
+}
+
+test('an edit made after another device changed the same page is saved, and the other version goes to the history', async () => {
+  const { storage, service, page, onDisk } = await fresh('rebase-newer-local')
+  const disk = await onDisk()
+  await storage.save(write([{ ...disk, content: doc('from the other device'), updatedAt: disk.updatedAt + 1 }]))
+  service.update(page.id, { content: doc('second') })
+  await service.flushBeforeUpdate() // used to stay refused forever
+  assert.equal(textOf(await onDisk()), 'second')
+  assert.ok((await storage.listVersions(page.id)).some((v) => textOf(v) === 'from the other device'), 'the other version is kept')
+  // the saves after it are not dragged down by the old conflict
+  const other = service.create(null)
+  service.update(other.id, { title: 'added after' })
+  await service.flushBeforeUpdate()
+  service.remove(other.id)
+  await service.flushBeforeUpdate()
+  const rows = await storage.load()
+  assert.equal(rows.find((p) => p.id === other.id).title, 'added after')
+  assert.ok(rows.find((p) => p.id === other.id).deletedAt, 'the delete reached the disk')
+})
+
+test('a newer version from the other device wins, the local text is kept in the history and the UI is told', async () => {
+  const { storage, h, service, page, onDisk } = await fresh('rebase-newer-disk')
+  const disk = await onDisk()
+  // Stay within the clock-skew allowance; a far-future clock has its own regression test.
+  await storage.save(write([{ ...disk, content: doc('newer elsewhere'), updatedAt: disk.updatedAt + 60_000 }]))
+  service.update(page.id, { content: doc('typed here') })
+  await service.flushBeforeUpdate()
+  assert.equal(textOf(await onDisk()), 'newer elsewhere')
+  assert.equal(textOf(service.get(page.id)), 'newer elsewhere')
+  assert.ok((await storage.listVersions(page.id)).some((v) => textOf(v) === 'typed here'), 'the local text is kept')
+  assert.ok(h.events.some((e) => e.event === 'external-change' && e.detail.includes(page.id)))
+})
+
+test('typing in a page that was deleted on the other device brings it back with the typed text', async () => {
+  const { storage, service, page, onDisk } = await fresh('rebase-deleted-elsewhere')
+  const disk = await onDisk()
+  await storage.save(write([{ ...disk, deletedAt: 1 }]))
+  service.update(page.id, { content: doc('typed after the delete') })
+  await service.flushBeforeUpdate()
+  const now = await onDisk()
+  assert.equal(textOf(now), 'typed after the delete')
+  assert.equal(now.deletedAt, null)
+})
+
+test('emptying the trash does not remove a page that was edited on the other device', async () => {
+  const { storage, service, page, onDisk } = await fresh('rebase-purge')
+  service.remove(page.id)
+  await service.flushBeforeUpdate()
+  const disk = await onDisk()
+  await storage.save(write([{ ...disk, content: doc('edited elsewhere'), updatedAt: disk.updatedAt + 1 }]))
+  service.purge(page.id)
+  await service.flushBeforeUpdate()
+  assert.equal(textOf(await onDisk()), 'edited elsewhere')
+  assert.ok(service.pagesOnly().concat(service.trash()).some((p) => p.id === page.id), 'the page is back in the app')
+})
+
+test('a page that was purged on the other device is recreated by a local edit, and a missing page is not an error', async () => {
+  const { storage, service, page, onDisk } = await fresh('rebase-gone-elsewhere')
+  await storage.save({ upserts: [], removed: [page.id], replaceAll: false, baseVersions: {} })
+  service.update(page.id, { content: doc('still here') })
+  await service.flushBeforeUpdate()
+  assert.equal(textOf(await onDisk()), 'still here')
+})
+
+test('a write that fails for another reason is still reported and stays pending', async () => {
+  const { storage, service, page } = await fresh('rebase-other-error')
+  const save = storage.save.bind(storage)
+  storage.save = async () => { throw new Error('disk full') }
+  service.update(page.id, { content: doc('x') })
+  await assert.rejects(service.flushBeforeUpdate(), /disk full/)
+  storage.save = save
+  await service.flushBeforeUpdate() // the change was kept and goes through once the disk works again
+  assert.equal(textOf((await storage.load()).find((p) => p.id === page.id)), 'x')
 })

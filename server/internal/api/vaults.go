@@ -20,6 +20,7 @@ func (s *Server) vaultRoutes() {
 	s.authed("PATCH /v1/vaults/{id}", s.renameVault)
 	s.authed("DELETE /v1/vaults/{id}", s.trashVault)
 	s.authed("POST /v1/vaults/{id}/undelete", s.untrashVault)
+	s.authed("POST /v1/vaults/{id}/purge", s.purgeVault)
 }
 
 func (s *Server) syncRoutes() {
@@ -100,6 +101,25 @@ func (s *Server) untrashVault(w http.ResponseWriter, r *http.Request, p *auth.Pr
 	return ok(w)
 }
 
+// purgeVault removes a trashed vault for good. It needs the account password again, counted like a wrong one on
+// account deletion; the password is checked before the vault is looked at.
+func (s *Server) purgeVault(w http.ResponseWriter, r *http.Request, p *auth.Principal) error {
+	var b credentialsBody
+	if err := readJSON(w, r, &b); err != nil {
+		return err
+	}
+	if err := s.Accounts.ConfirmPassword(r.Context(), s.clientIP(r), p, b.Password); err != nil {
+		return err
+	}
+	gone, err := s.Vaults.Purge(r.Context(), p.User.ID, r.PathValue("id"))
+	if err != nil {
+		return err
+	}
+	s.Hub.Notify(r.PathValue("id")) // a device still waiting on it learns that it is gone
+	writeJSON(w, 200, map[string]any{"ok": true, "files": gone.Files, "bytes": gone.Bytes})
+	return nil
+}
+
 // state answers with the vault's state; with `since` and `wait` it answers as soon as the vault moves past `since`
 // (or after `wait` seconds).
 func (s *Server) state(w http.ResponseWriter, r *http.Request, p *auth.Principal) error {
@@ -111,6 +131,7 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request, p *auth.Principal
 	wait, _ := intParam(r, "wait")
 	wait = min(max(wait, 0), maxWait)
 	if hasSince && wait > 0 && v.Seq <= since {
+		s.limitWrite(w, time.Duration(wait)*time.Second+s.Timeouts.PollSlack)
 		if v, err = s.waitFor(r, v, since, time.Duration(wait)*time.Second); err != nil {
 			return err
 		}
@@ -154,12 +175,28 @@ func (s *Server) changes(w http.ResponseWriter, r *http.Request, p *auth.Princip
 	if !hasLimit {
 		limit = vaults.DefaultPage
 	}
+	if r.URL.Query().Get("snapshot") == "1" {
+		page, err := s.Vaults.Snapshot(r.Context(), v.ID, pathAfter(r), int(min(limit, 1<<20)), r.URL.Query().Get("deleted") == "1")
+		if err != nil {
+			return err
+		}
+		writeJSON(w, 200, page)
+		return nil
+	}
 	c, err := s.Vaults.Changes(r.Context(), v.ID, since, int(min(limit, 1<<20)))
 	if err != nil {
 		return err
 	}
 	writeJSON(w, 200, c)
 	return nil
+}
+
+// pathAfter is the `after` query parameter of a snapshot read; an absurdly long one counts as missing (the start).
+func pathAfter(r *http.Request) string {
+	if v := r.URL.Query().Get("after"); len(v) <= maxPath*4 {
+		return v
+	}
+	return ""
 }
 
 // pathParam is the `path` query parameter; an absurdly long one counts as missing.

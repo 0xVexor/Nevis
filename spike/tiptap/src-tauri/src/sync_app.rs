@@ -2,11 +2,11 @@
 //! changed (or the server says so), one thread listens to the server, and the commands below are what the settings page calls.
 //! The engine itself (what moves, what waits, what is never deleted) is in `sync/`; nothing here decides about files.
 use crate::registry::Entry;
-use crate::sync::{self, account, hub, hub::Hub, SyncState};
+use crate::sync::{self, account, hub, hub::Hub, HeldDelete, SyncState};
 use crate::vault::{err, now_ms, write_atomic, Res, Vault, VAULT_MISMATCH, VAULT_MISSING};
 use crate::{activate, clean_name, with, St, Store};
 use serde_json::{json, Value};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
@@ -21,7 +21,19 @@ pub struct SyncStatus {
     error: String,
     /// why a sync is paused: VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE | SIGNED_OUT | NEEDS_CONFIRM (then `error` holds the number of held deletions)
     reason: String,
+    /// paths the last sync left alone because their names cannot be synced (capped; the UI explains)
+    skipped: Vec<String>,
 }
+
+/// What the person confirmed for one vault: exactly the deletions they were shown, or (old callers) everything planned.
+#[derive(Default)]
+struct Confirmation {
+    all: bool,
+    /// (path, base md5) of the held deletions
+    items: BTreeSet<(String, String)>,
+}
+
+const SKIPPED_SHOWN: usize = 200;
 
 /// What wakes the sync thread.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -39,8 +51,8 @@ pub enum Kick {
 pub struct SyncCtx {
     app_data: PathBuf,
     status: Arc<Mutex<SyncStatus>>,
-    /// vaults whose held-back deletions the person confirmed; used up by the next sync of that vault
-    confirm: Arc<Mutex<BTreeSet<String>>>,
+    /// per vault id: the held-back deletions the person confirmed; used up by the next sync of that vault
+    confirm: Arc<Mutex<BTreeMap<String, Confirmation>>>,
     /// (vault id, server `seq` this device has applied): what the listener compares the server with
     synced: Arc<Mutex<(String, i64)>>,
     app: Option<AppHandle>,
@@ -59,7 +71,7 @@ impl Runtime {
         let ctx = SyncCtx {
             app_data: app_data.to_path_buf(),
             status: Arc::new(Mutex::new(SyncStatus { state: "off", ..Default::default() })),
-            confirm: Arc::new(Mutex::new(BTreeSet::new())),
+            confirm: Arc::new(Mutex::new(BTreeMap::new())),
             synced: Arc::new(Mutex::new((String::new(), -1))),
             app: Some(app.clone()),
         };
@@ -92,10 +104,18 @@ pub fn spawn(app: &AppHandle, rx: Receiver<Kick>) {
     std::thread::spawn(move || listener(handle));
 }
 
+/// Tells the settings page that the status changed, so that it need not poll often.
+fn emit_status(ctx: &SyncCtx) {
+    if let Some(app) = &ctx.app {
+        let _ = app.emit("sync-status", ());
+    }
+}
+
 fn set_off(ctx: &SyncCtx) {
     if let Ok(mut st) = ctx.status.lock() {
         *st = SyncStatus { state: "off", ..Default::default() };
     }
+    emit_status(ctx);
 }
 
 /// Runs a blocking job (network, proof of work) off the thread that serves the UI.
@@ -127,10 +147,12 @@ pub fn account_status(s: St) -> Value {
         "server": acct.as_ref().map_or_else(|| account::DEFAULT_SERVER.to_string(), |a| a.server.clone()),
         "defaultServer": account::DEFAULT_SERVER,
         "syncOn": sync_on,
+        "vaultId": current_entry(&s).map(|e| e.id),
         "state": st.state,
         "lastAt": st.last_at,
         "error": st.error,
         "reason": st.reason,
+        "skippedPaths": st.skipped,
     })
 }
 
@@ -247,11 +269,26 @@ pub fn sync_now(s: St) {
     s.sync.wake(Kick::User);
 }
 
-/// The person confirmed the deletions a sync held back (many files, or a side that looked empty): the next sync runs them.
+/// The deletions the last sync of the open vault held back, as the person is to see them.
 #[tauri::command]
-pub fn sync_confirm(s: St) -> Res<()> {
+pub fn sync_held(s: St) -> Res<Vec<HeldDelete>> {
     let id = with(&s, |v| Ok(v.id()))?;
-    s.sync.ctx.confirm.lock().map_err(err)?.insert(id);
+    Ok(SyncState::load(&state_file(&s.sync.ctx.app_data, &id)).held)
+}
+
+/// The person confirmed the deletions a sync held back (many files, or a side that looked empty): `items` is the list they
+/// were shown, and the next sync runs exactly those (a path that changed since is held again). Without `items` (an old
+/// caller) everything that sync plans is confirmed.
+#[tauri::command]
+pub fn sync_confirm(s: St, items: Option<Vec<HeldDelete>>) -> Res<()> {
+    let id = with(&s, |v| Ok(v.id()))?;
+    let mut all = s.sync.ctx.confirm.lock().map_err(err)?;
+    let c = all.entry(id).or_default();
+    match items {
+        Some(list) => c.items.extend(list.into_iter().map(|d| (d.path, d.base_md5))),
+        None => c.all = true,
+    }
+    drop(all);
     s.sync.wake(Kick::User);
     Ok(())
 }
@@ -263,6 +300,61 @@ pub async fn cloud_vaults(s: St<'_>) -> Res<Vec<Value>> {
     let app_data = s.app_data.clone();
     let r = blocking(move || account::api(&app_data)?.get("/v1/vaults")).await?;
     Ok(r["vaults"].as_array().cloned().unwrap_or_default().into_iter().map(|v| json!({ "id": v["id"], "name": v["name"], "files": v["files"], "bytes": v["bytes"] })).collect())
+}
+
+/// The vaults in the trash of the server (they are removed for good after a retention period).
+#[tauri::command]
+pub async fn cloud_trashed(s: St<'_>) -> Res<Vec<Value>> {
+    let app_data = s.app_data.clone();
+    let r = blocking(move || account::api(&app_data)?.get("/v1/vaults?trashed=1")).await?;
+    Ok(r["vaults"].as_array().cloned().unwrap_or_default().into_iter().map(|v| json!({ "id": v["id"], "name": v["name"], "files": v["files"], "bytes": v["bytes"], "deletedAt": v["deleted_at"] })).collect())
+}
+
+/// Takes a vault out of the server's trash.
+#[tauri::command]
+pub async fn cloud_restore(s: St<'_>, id: String) -> Res<()> {
+    crate::vault::check_id(&id)?;
+    let app_data = s.app_data.clone();
+    blocking(move || account::api(&app_data)?.post(&format!("/v1/vaults/{id}/undelete"), &json!({})).map(|_| ())).await
+}
+
+/// Whether `id` is the vault that is open on this device, which is the one whose sync has to stop when it leaves the server.
+fn is_open_vault(current: Option<&str>, id: &str) -> bool {
+    current == Some(id)
+}
+
+/// Moves a vault to the server's trash (restorable for the retention period). When it is the open vault of this device its sync
+/// is turned off, so that this device neither recreates it nor fights with the server; local files are never touched.
+/// Returns whether the sync of this device was turned off.
+#[tauri::command]
+pub async fn cloud_delete(s: St<'_>, id: String) -> Res<bool> {
+    crate::vault::check_id(&id)?;
+    let app_data = s.app_data.clone();
+    let vid = id.clone();
+    blocking(move || account::delete_vault(&app_data, &vid)).await?;
+    let mut r = s.reg.lock().map_err(err)?;
+    let open = is_open_vault(r.current.as_deref(), &id);
+    let mut was_on = false;
+    if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
+        was_on = e.sync;
+        e.sync = false;
+    }
+    if was_on || open {
+        r.save(&s.app_data)?;
+    }
+    drop(r);
+    if open {
+        set_off(&s.sync.ctx);
+    }
+    Ok(open && was_on)
+}
+
+/// Removes a vault in the server's trash for good (needs the account password). Files on devices stay.
+#[tauri::command]
+pub async fn cloud_purge(s: St<'_>, id: String, password: String) -> Res<()> {
+    crate::vault::check_id(&id)?;
+    let app_data = s.app_data.clone();
+    blocking(move || account::purge_vault(&app_data, &id, &password)).await
 }
 
 /// Creates `<parent>/<name>` for a vault that exists on the server, downloads it and opens it.
@@ -298,6 +390,7 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool, downloading: bool) -> Res<(
                 st.last_at = now_ms();
             }
         }
+        emit_status(ctx);
     };
     set("syncing", "", String::new(), false);
     let result: Res<sync::Report> = (|| {
@@ -320,17 +413,34 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool, downloading: bool) -> Res<(
             state.reset_local_baseline();
             state.hub = Default::default();
         }
+        state.me = (acct.device_id.clone(), account::device_name());
         let mut hub = Hub::new(api, &e.id, state.hub.clone());
-        let pre = hub.preflight(&vault.name())?;
+        let pre = hub.preflight(&vault.name(), downloading)?;
         if pre.baseline {
-            // a new server copy, a server that lost data, or a device that was away longer than the server remembers:
+            // a new server copy or a server that lost data (a device that was away longer than the server remembers keeps its bases):
             // what the engine believes about "the last sync" says nothing now, so it only adds, and deletes nothing
             state.files.clear();
         }
-        state.allow_deletes_once = ctx.confirm.lock().map(|mut c| c.remove(&e.id)).unwrap_or(false);
-        let rep = sync::sync_once(&vault, &mut hub, &mut state, &mut |st| {
+        let confirmed = ctx.confirm.lock().ok().and_then(|mut c| c.remove(&e.id)).unwrap_or_default();
+        state.allow_deletes_once = confirmed.all;
+        state.confirmed = confirmed.items;
+        let rep = match sync::sync_once(&vault, &mut hub, &mut state, &mut |st| {
             let _ = st.save(&state_file); // after every batch of work: a crash costs only what came after
-        })?;
+        }) {
+            Ok(rep) => rep,
+            Err(m) => {
+                // sync_once uses the confirmation up when it decides about deletions: if it failed before that
+                // (network, listing...), the person's confirmation is still unused and must survive for the retry
+                if state.allow_deletes_once || !state.confirmed.is_empty() {
+                    if let Ok(mut c) = ctx.confirm.lock() {
+                        let back = c.entry(e.id.clone()).or_default();
+                        back.all |= state.allow_deletes_once;
+                        back.items.extend(std::mem::take(&mut state.confirmed));
+                    }
+                }
+                return Err(m);
+            }
+        };
         state.hub = hub.cache.clone();
         state.save(&state_file)?;
         if let Ok(mut s) = ctx.synced.lock() {
@@ -340,14 +450,30 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool, downloading: bool) -> Res<(
     })();
     match result {
         Ok(rep) => {
+            if let Ok(mut st) = ctx.status.lock() {
+                st.skipped = rep.skipped_paths.iter().take(SKIPPED_SHOWN).cloned().collect();
+            }
             // pages changed by another device: the open page and the lists are refreshed now, not at the next poll
-            if rep.downloaded + rep.deleted + rep.conflicts > 0 {
+            if rep.downloaded + rep.deleted + rep.conflicts + rep.state_merges + rep.auto_merged.len() > 0 {
                 if let Some(app) = &ctx.app {
                     let _ = app.emit("vault-changed", e.id.clone());
                 }
             }
+            // pages whose edits from two devices were merged: the app says so
+            if !rep.auto_merged.is_empty() {
+                if let Some(app) = &ctx.app {
+                    let _ = app.emit("page-auto-merged", serde_json::json!({ "pageIds": rep.auto_merged }));
+                }
+            }
+            // conflict markers recorded here, closed elsewhere, or brought by another device
+            if let Some(app) = &ctx.app {
+                crate::page_conflicts::emit_changed(app, rep.marker_pages.iter().cloned());
+            }
             if !rep.errors.is_empty() {
-                let m = rep.errors.join("; ");
+                let mut m = rep.errors.join("; ");
+                if rep.held > 0 {
+                    m = format!("{m}; {} deletions held back", rep.held);
+                }
                 let (state, reason) = if hub::is_network(&m) { ("offline", "NETWORK") } else if hub::is_auth(&m) { ("paused", "SIGNED_OUT") } else { ("error", "ERROR") };
                 set(state, reason, m.clone(), false);
                 Err(m)
@@ -508,3 +634,15 @@ fn listener(app: AppHandle) {
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_open_vault_has_its_sync_stopped_when_it_leaves_the_server() {
+        assert!(is_open_vault(Some("abc"), "abc"));
+        assert!(!is_open_vault(Some("abc"), "abd"));
+        assert!(!is_open_vault(None, "abc"));
+    }
+}

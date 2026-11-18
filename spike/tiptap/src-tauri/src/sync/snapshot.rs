@@ -563,6 +563,7 @@ pub fn backup(v: &Vault, dest: &Path) -> Res<()> {
     }
     for d in [
         "pages",
+        "pages-state",
         "files",
         "databases",
         "kv",
@@ -612,9 +613,16 @@ pub fn capture(v: &Vault) -> Res<Bundle> {
     Ok(Bundle::new(&v.id(), &read(v)?, tombstones(v)?))
 }
 pub fn tombstone(v: &Vault, path: &str) -> Res<()> {
-    safe_path(path)?;
+    tombstone_many(v, &[path.to_string()])
+}
+
+/// Tombstones several paths with one read of the list, one scan of `conflicts/` and one write.
+pub fn tombstone_many(v: &Vault, paths: &[String]) -> Res<()> {
+    for path in paths {
+        safe_path(path)?;
+    }
     let mut dead = tombstones(v)?;
-    dead.insert(path.into());
+    dead.extend(paths.iter().cloned());
     let conflict_dir = v.root.join("conflicts");
     if conflict_dir.exists() {
         for e in fs::read_dir(&conflict_dir).map_err(err)? {
@@ -624,7 +632,7 @@ pub fn tombstone(v: &Vault, path: &str) -> Res<()> {
             }
             let b = fs::read(e.path()).map_err(err)?;
             let c: Value = serde_json::from_slice(&b).map_err(err)?;
-            if c["path"].as_str() == Some(path) {
+            if c["path"].as_str().is_some_and(|cp| paths.iter().any(|p| p == cp)) {
                 let rel = format!("conflicts/{}", e.file_name().to_string_lossy());
                 safe_path(&rel)?;
                 dead.insert(rel);
@@ -638,12 +646,37 @@ pub fn tombstone(v: &Vault, path: &str) -> Res<()> {
     )
 }
 
+/// The path is alive again (the cloud has it, or a later edit brought it back): it must not stay marked as deleted.
+pub fn untombstone(v: &Vault, path: &str) -> Res<()> {
+    let mut dead = tombstones(v)?;
+    if dead.remove(path) {
+        write_atomic(
+            &v.root.join(".nevis/tombstones.json"),
+            &serde_json::to_vec(&dead).map_err(err)?,
+        )?;
+    }
+    Ok(())
+}
+
 pub fn tombstones(v: &Vault) -> Res<BTreeSet<String>> {
-    match fs::read(v.root.join(".nevis/tombstones.json")) {
+    tombstones_at(&v.root)
+}
+
+pub fn tombstones_at(root: &std::path::Path) -> Res<BTreeSet<String>> {
+    match fs::read(root.join(".nevis/tombstones.json")) {
         Ok(b) => serde_json::from_slice(&b).map_err(|_| "SYNC:tombstones_corrupt".into()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(BTreeSet::new()),
         Err(e) => Err(err(e)),
     }
+}
+
+/// A page state arrived for a page that was deleted here: the edit wins over the delete (like restore_asset).
+pub fn forget_tombstone(root: &std::path::Path, path: &str) -> Res<()> {
+    let mut dead = tombstones_at(root)?;
+    if dead.remove(path) {
+        write_atomic(&root.join(".nevis/tombstones.json"), &serde_json::to_vec(&dead).map_err(err)?)?;
+    }
+    Ok(())
 }
 
 pub fn restore_record(v: &Vault, path: &str) -> Res<()> {

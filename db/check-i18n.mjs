@@ -1,4 +1,4 @@
-// Lists UI strings used as t('...') in the app that have no Persian entry in src/fa.ts.
+// Lists UI strings used as t('...') in the app that have no entry in its Persian dictionaries.
 // Usage: node db/check-i18n.mjs   (exit code 1 when something is missing)
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -11,15 +11,22 @@ const walk = (d) => {
   for (const f of readdirSync(d)) {
     const p = join(d, f)
     if (statSync(p).isDirectory()) walk(p)
-    else if (/\.(ts|tsx)$/.test(f) && f !== 'fa.ts' && f !== 'fa-db.ts' && f !== 'i18n.ts') files.push(p) // i18n.ts only mentions t('…') in a comment
+    else if (/\.(ts|tsx)$/.test(f) && !/^fa(?:-.+)?\.ts$/.test(f) && f !== 'i18n.ts') files.push(p) // i18n.ts only mentions t('…') in a comment
   }
 }
 walk(src)
 
 // Import the dictionaries themselves (Node runs the .ts directly), so the check does not depend on how Prettier quotes the keys.
-const { FA } = await import(pathToFileURL(join(src, 'fa.ts')).href)
-const { FA_DB } = await import(pathToFileURL(join(src, 'database/ui/fa-db.ts')).href)
-const have = new Set([...Object.keys(FA), ...Object.keys(FA_DB)])
+// Read the dictionary imports from the runtime registry so a new feature's dictionary is checked too.
+const registry = readFileSync(join(src, 'i18n.ts'), 'utf8')
+const imports = [...registry.matchAll(/import\s*\{\s*(FA(?:_[A-Z]+)?)(?:\s+as\s+\w+)?\s*\}\s*from\s*['"](\.[^'"]+)['"]/g)]
+if (!imports.length) throw new Error('No Persian dictionaries found in i18n.ts')
+const have = new Set()
+for (const [, name, module] of imports) {
+  const exports = await import(pathToFileURL(join(src, `${module}.ts`)).href)
+  if (!exports[name] || typeof exports[name] !== 'object') throw new Error(`Missing dictionary ${name} in ${module}`)
+  for (const key of Object.keys(exports[name])) have.add(key)
+}
 
 const used = new Map() // key -> first file
 const re = /\b(?:t|tr)\(\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1/g // mermaid.ts imports t as tr

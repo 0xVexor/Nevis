@@ -36,7 +36,11 @@ func (s *Store) Housekeeping(ctx context.Context, now time.Time) (GCStats, error
 		func() (err error) { st.Blobs, err = s.dropOrphanBlobs(ctx, now.Add(-orphanGrace).UnixMilli()); return },
 		func() (err error) { st.Vaults, err = s.dropTrashedVaults(ctx, keep); return },
 		func() (err error) { st.Users, err = s.dropDeletedUsers(ctx, now.UnixMilli()); return },
-		func() (err error) { st.Staging, err = s.Blobs.SweepStaging(now, day); return },
+		func() (err error) {
+			s.dropStalePending(now, day)
+			st.Staging, err = s.Blobs.SweepStaging(now, day)
+			return
+		},
 	}
 	for _, step := range steps {
 		if err := step(); err != nil {
@@ -112,15 +116,43 @@ func (s *Store) dropOrphanBlobs(ctx context.Context, before int64) (int, error) 
 	if err := rows.Close(); err != nil {
 		return 0, err
 	}
+	dropped := 0
 	for _, o := range orphans {
-		if err := s.Blobs.Remove(o.vault, o.sha); err != nil {
-			return 0, err
+		gone, err := s.dropOrphan(ctx, o.vault, o.sha, before)
+		if err != nil {
+			return dropped, err
 		}
-		if _, err := s.DB.ExecContext(ctx, "DELETE FROM blobs WHERE vault_id = ? AND sha256 = ?", o.vault, o.sha); err != nil {
-			return 0, err
+		if gone {
+			dropped++
 		}
 	}
-	return len(orphans), nil
+	return dropped, nil
+}
+
+// dropOrphan removes one blob unless it was re-uploaded or committed since the candidates were listed. The blob's
+// lock keeps a re-upload out until the file is gone, and the row is deleted only if, inside the writer's
+// transaction (which also serializes with commits), nothing refers to it and it is still old: so a commit either
+// finds the row and wins, or finds no blob and is refused with blob_missing. The file goes only after the row did.
+func (s *Store) dropOrphan(ctx context.Context, vault, sha string, before int64) (bool, error) {
+	unlock := s.Blobs.Lock(vault, sha)
+	defer unlock()
+	var n int64
+	err := s.DB.Write(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx,
+			`DELETE FROM blobs WHERE vault_id = ? AND sha256 = ? AND created_at < ?
+			   AND NOT EXISTS (SELECT 1 FROM revisions r WHERE r.vault_id = blobs.vault_id AND r.sha256 = blobs.sha256)
+			   AND NOT EXISTS (SELECT 1 FROM files f WHERE f.vault_id = blobs.vault_id AND f.sha256 = blobs.sha256)`,
+			vault, sha, before)
+		if err != nil {
+			return err
+		}
+		n, err = res.RowsAffected()
+		return err
+	})
+	if err != nil || n == 0 {
+		return false, err
+	}
+	return true, s.Blobs.Remove(vault, sha)
 }
 
 func (s *Store) dropTrashedVaults(ctx context.Context, before int64) (int, error) {
@@ -159,14 +191,20 @@ func (s *Store) dropDeletedUsers(ctx context.Context, now int64) (int, error) {
 	return len(users), err
 }
 
+// dropVault removes a vault. The rows go first, in one transaction: a crash in between leaves blob files nobody
+// refers to, never live rows that point at missing blobs.
 func (s *Store) dropVault(ctx context.Context, id string) error {
-	if err := s.Blobs.RemoveVault(id); err != nil {
+	if err := s.DB.Write(ctx, func(tx *sql.Tx) error { return dropVaultRows(ctx, tx, id) }); err != nil {
 		return err
 	}
-	if _, err := s.DB.ExecContext(ctx, "DELETE FROM blobs WHERE vault_id = ?", id); err != nil {
+	return s.Blobs.RemoveVault(id)
+}
+
+func dropVaultRows(ctx context.Context, q querier, id string) error {
+	if _, err := q.ExecContext(ctx, "DELETE FROM blobs WHERE vault_id = ?", id); err != nil {
 		return err
 	}
-	_, err := s.DB.ExecContext(ctx, "DELETE FROM vaults WHERE id = ?", id)
+	_, err := q.ExecContext(ctx, "DELETE FROM vaults WHERE id = ?", id)
 	return err
 }
 

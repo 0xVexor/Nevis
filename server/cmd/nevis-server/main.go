@@ -151,7 +151,8 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 
 	srv := &http.Server{
 		Handler: api.New(api.Deps{Cfg: cfg, Accounts: accounts, Vaults: store, Hub: notifier, Now: now, OnWrite: debounce.Trigger, Log: log}),
-		// no read or write timeout: a long poll is held open on purpose and an upload may be slow
+		// no read or write timeout here: a long poll is held open on purpose and an upload may be slow, so the handlers
+		// set their own deadlines (see api/deadlines.go)
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       65 * time.Second,
 	}

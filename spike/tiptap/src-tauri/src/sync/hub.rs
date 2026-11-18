@@ -12,13 +12,13 @@
 //!
 //! A `RemoteFile` id is `"<rev>:<path>"`: the engine keeps it as an opaque string, and we get back both parts.
 
-use super::{Remote, RemoteFile, CLOUD_GONE};
+use super::{Author, Remote, RemoteFile, CLOUD_GONE};
 use crate::vault::{err, now_ms, Res};
 use reqwest::blocking::{Client, RequestBuilder, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 /// Errors that mean "the network is not there right now", as opposed to "the server said no".
@@ -165,7 +165,7 @@ pub fn solve_pow(challenge: &str, bits: u32) -> u64 {
 
 // ───── the mirror of the server's file list ─────
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct HubFile {
     pub rev: i64,
     pub md5: String,
@@ -176,6 +176,9 @@ pub struct HubFile {
     /// server time of the change
     #[serde(default)]
     pub time: i64,
+    /// the device that wrote this revision (empty: not known, e.g. a mirror from before the server's answer was kept)
+    #[serde(default)]
+    pub by_device: String,
 }
 
 /// What this device knows about the server's copy of one vault. Kept in the sync state of the vault.
@@ -209,8 +212,14 @@ fn file_of(v: &Value) -> Option<(String, HubFile)> {
             sha: v.get("sha256").and_then(Value::as_str).unwrap_or("").to_string(),
             size: v.get("size").and_then(Value::as_u64).unwrap_or(0),
             time: v.get("server_time").and_then(Value::as_i64).unwrap_or(0),
+            by_device: v.get("by_device").and_then(Value::as_str).unwrap_or("").to_string(),
         },
     ))
+}
+
+/// Everything but unreserved characters as %XX, for a path inside a query string.
+fn percent_encode(s: &str) -> String {
+    s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
 }
 
 pub fn make_id(rev: i64, path: &str) -> String {
@@ -222,8 +231,8 @@ pub fn split_id(id: &str) -> Res<(i64, &str)> {
     Ok((rev.parse().map_err(|_| format!("bad file id {id}"))?, path))
 }
 
-/// What `preflight` found out. Both mean "start from what is here, delete nothing": the bookkeeping of the engine
-/// no longer says anything about this server.
+/// What `preflight` found out. `created` and `baseline` mean "start from what is here, delete nothing": the bookkeeping
+/// of the engine no longer says anything about this server.
 #[derive(Debug, Default)]
 pub struct Preflight {
     pub created: bool,
@@ -237,11 +246,23 @@ pub struct Hub {
     /// server clock minus our clock, so that "newer" between a server time and a local file time means something
     offset: i64,
     prepared: bool,
+    /// what the server can do (`/v1/health`), asked once per sync
+    capabilities: Option<Vec<String>>,
+    /// device id -> name of the account's devices, asked once per sync and only when a conflict needs it
+    device_names: Option<BTreeMap<String, String>>,
 }
 
 impl Hub {
     pub fn new(api: Api, vault: &str, cache: Cache) -> Hub {
-        Hub { api, vault: vault.to_string(), cache, offset: 0, prepared: false }
+        Hub { api, vault: vault.to_string(), cache, offset: 0, prepared: false, capabilities: None, device_names: None }
+    }
+
+    fn has_capability(&mut self, name: &str) -> Res<bool> {
+        if self.capabilities.is_none() {
+            let health = self.api.get("/v1/health")?;
+            self.capabilities = Some(health["capabilities"].as_array().into_iter().flatten().filter_map(|v| v.as_str().map(str::to_string)).collect());
+        }
+        Ok(self.capabilities.iter().flatten().any(|c| c == name))
     }
 
     fn v(&self, tail: &str) -> String {
@@ -250,13 +271,13 @@ impl Hub {
 
     /// Makes the mirror current: checks that the vault exists (creating it the first time), notices a server that lost
     /// data, pulls what changed, and checks the mirror against the server's own hash of its files.
-    pub fn preflight(&mut self, name: &str) -> Res<Preflight> {
+    pub fn preflight(&mut self, name: &str, must_exist: bool) -> Res<Preflight> {
         let mut out = Preflight::default();
         let state = match self.api.get(&self.v("/state")) {
             Ok(s) => s,
             Err(e) if e.lines().next() == Some("HUB:no_such_vault") => {
-                if !self.cache.epoch.is_empty() {
-                    return Err(CLOUD_GONE.into()); // it was there and is gone: the user decides, nothing is created or deleted
+                if must_exist || !self.cache.epoch.is_empty() {
+                    return Err(CLOUD_GONE.into()); // it was there (or is being downloaded) and is gone: the user decides, nothing is created or deleted
                 }
                 self.api.post("/v1/vaults", &json!({ "id": self.vault, "name": name }))?;
                 out.created = true;
@@ -272,10 +293,15 @@ impl Hub {
         if out.created {
             out.baseline = true;
         }
-        self.cache.epoch = epoch;
-        if self.pull()? {
+        // the server's counter went backwards: it lost data (or was restored) without changing its epoch
+        if state["seq"].as_i64().is_some_and(|s| s < self.cache.seq) {
+            self.cache = Cache::default();
             out.baseline = true;
         }
+        self.cache.epoch = epoch;
+        // (a mirror rebuilt only because the server forgot how far we were is not a baseline: the bookkeeping of the
+        // engine is about files, not about change numbers, and is what turns a remote deletion into a deletion here)
+        self.pull()?;
         // the mirror must be what the server has: a file missing from it would look like a deletion to the engine
         if state["seq"].as_i64() == Some(self.cache.seq) && state["root"].as_str().is_some_and(|r| r != root_of(&self.cache.files)) {
             let epoch = self.cache.epoch.clone();
@@ -291,22 +317,27 @@ impl Hub {
         Ok(out)
     }
 
-    /// Applies every change after `cache.seq`. Returns true when the server no longer remembered that far back and the mirror was rebuilt.
-    fn pull(&mut self) -> Res<bool> {
+    /// Brings the mirror up to date. A mirror that has to be (re)built (fresh device, or the server no longer remembers
+    /// how far back we were) is built from a snapshot of the live files, then the normal feed continues from the
+    /// snapshot's first `seq`.
+    fn pull(&mut self) -> Res<()> {
         let mut rebuilt = false;
+        if self.cache.seq == 0 {
+            self.snapshot()?;
+        }
         loop {
             let url = self.v(&format!("/changes?since={}&limit=500", self.cache.seq));
             let page = match self.api.get(&url) {
                 Ok(p) => p,
                 Err(e) if e.lines().next() == Some("HUB:since_too_old") && !rebuilt => {
-                    let epoch = self.cache.epoch.clone();
-                    self.cache = Cache { epoch, ..Default::default() };
+                    self.snapshot()?;
                     rebuilt = true;
                     continue;
                 }
                 Err(e) => return Err(e),
             };
             self.offset = page["server_time"].as_i64().unwrap_or_else(now_ms) - now_ms();
+            crate::vault::set_server_offset(self.offset); // the page versions compare in the server's time (vault.rs)
             for f in page["files"].as_array().into_iter().flatten() {
                 let Some((path, file)) = file_of(f) else { continue };
                 if f["deleted"].as_bool().unwrap_or(false) {
@@ -318,9 +349,41 @@ impl Hub {
             // only now has this page been applied; a connection lost before this point repeats the page, which changes nothing
             self.cache.seq = page["next"].as_i64().unwrap_or(self.cache.seq).max(self.cache.seq);
             if !page["has_more"].as_bool().unwrap_or(false) {
-                return Ok(rebuilt);
+                return Ok(());
             }
         }
+    }
+
+    /// Replaces the mirror with the server's live files, read page by page in path order. The cursor becomes the `seq` of
+    /// the FIRST page: whatever changed while the pages were read is in the normal feed after it and is applied again
+    /// harmlessly. The mirror is only replaced when every page arrived.
+    fn snapshot(&mut self) -> Res<()> {
+        let mut files = BTreeMap::new();
+        let mut first_seq = None;
+        let mut after = String::new();
+        loop {
+            let page = self.api.get(&self.v(&format!("/changes?snapshot=1&after={}&limit=500", percent_encode(&after))))?;
+            self.offset = page["server_time"].as_i64().unwrap_or_else(now_ms) - now_ms();
+            crate::vault::set_server_offset(self.offset); // the page versions compare in the server's time (vault.rs)
+            first_seq.get_or_insert(page["seq"].as_i64().ok_or("HUB:bad_answer")?);
+            for f in page["files"].as_array().into_iter().flatten() {
+                let Some((path, file)) = file_of(f) else { continue };
+                if !f["deleted"].as_bool().unwrap_or(false) {
+                    files.insert(path, file);
+                }
+            }
+            if !page["has_more"].as_bool().unwrap_or(false) {
+                break;
+            }
+            let next = page["next_after"].as_str().unwrap_or("");
+            if next.is_empty() || next <= after.as_str() {
+                return Err("HUB:bad_answer".into()); // a server that does not move on would keep us here forever
+            }
+            after = next.to_string();
+        }
+        self.cache.files = files;
+        self.cache.seq = first_seq.unwrap_or(0);
+        Ok(())
     }
 
     /// Sends the contents under their hash. Nothing refers to them until a commit does.
@@ -403,13 +466,18 @@ impl Hub {
 
 impl Remote for Hub {
     fn validate_paths(&mut self, paths: &[String]) -> Res<()> {
-        if let Some(path) = paths.iter().find(|p| p.starts_with("databases/")) {
-            let health = self.api.get("/v1/health")?;
-            if !health["capabilities"].as_array().is_some_and(|a| a.iter().any(|v| v == "database_sync")) {
-                return Err(format!("HUB:server_upgrade_required\npath={path}\noperation=sync"));
+        for (prefix, capability) in [("databases/", "database_sync"), ("pages-state/", "page_state")] {
+            if let Some(path) = paths.iter().find(|p| p.starts_with(prefix)) {
+                if !self.has_capability(capability)? {
+                    return Err(format!("HUB:server_upgrade_required\npath={path}\noperation=sync"));
+                }
             }
         }
         Ok(())
+    }
+
+    fn page_state_supported(&mut self) -> Res<bool> {
+        self.has_capability("page_state")
     }
 
     fn check(&mut self) -> Res<()> {
@@ -429,6 +497,46 @@ impl Remote for Hub {
         let url = self.api.url(&self.v(&format!("/rev/{rev}")));
         let r = self.api.send(|c| c.get(&url))?;
         r.bytes().map(|b| b.to_vec()).map_err(|e| format!("{NETWORK}{e}"))
+    }
+
+    /// Reads the tombstones page by page (`snapshot=1&deleted=1`). A server from before that flag ignores it and answers
+    /// with live files: that is recognised (a row that is not deleted) and means "cannot say".
+    fn deleted_paths(&mut self) -> Res<Option<BTreeSet<String>>> {
+        let mut out = BTreeSet::new();
+        let mut after = String::new();
+        loop {
+            let page = self.api.get(&self.v(&format!("/changes?snapshot=1&deleted=1&after={}&limit=500", percent_encode(&after))))?;
+            for f in page["files"].as_array().into_iter().flatten() {
+                if f["deleted"].as_bool() != Some(true) {
+                    return Ok(None);
+                }
+                if let Some(path) = f["path"].as_str() {
+                    out.insert(path.to_string());
+                }
+            }
+            if !page["has_more"].as_bool().unwrap_or(false) {
+                return Ok(Some(out));
+            }
+            let next = page["next_after"].as_str().unwrap_or("");
+            if next.is_empty() || next <= after.as_str() {
+                return Err("HUB:bad_answer".into());
+            }
+            after = next.to_string();
+        }
+    }
+
+    fn author(&self, path: &str) -> Option<Author> {
+        let f = self.cache.files.get(path)?;
+        Some(Author { device_id: f.by_device.clone(), server_time: f.time })
+    }
+
+    fn device_names(&mut self) -> BTreeMap<String, String> {
+        if self.device_names.is_none() {
+            // best effort: a conflict marker without names is still a marker
+            let names = self.api.get("/v1/account").map(|a| a["devices"].as_array().into_iter().flatten().filter_map(|d| Some((d["id"].as_str()?.to_string(), d["name"].as_str()?.to_string()))).collect()).unwrap_or_default();
+            self.device_names = Some(names);
+        }
+        self.device_names.clone().unwrap_or_default()
     }
 
     fn upload(&mut self, path: &str, existing: Option<&str>, bytes: &[u8]) -> Res<RemoteFile> {
@@ -530,9 +638,165 @@ mod tests {
     fn root_hash_is_the_same_as_the_servers() {
         // computed by the server code for these two files (server/src/vaults.js, rootHash)
         let mut files = BTreeMap::new();
-        files.insert("pages/a.json".to_string(), HubFile { rev: 1, md5: md5_of(b"a"), sha: String::new(), size: 1, time: 0 });
-        files.insert("pages/b.json".to_string(), HubFile { rev: 2, md5: md5_of(b"b"), sha: String::new(), size: 1, time: 0 });
+        files.insert("pages/a.json".to_string(), HubFile { rev: 1, md5: md5_of(b"a"), sha: String::new(), size: 1, time: 0, by_device: String::new() });
+        files.insert("pages/b.json".to_string(), HubFile { rev: 2, md5: md5_of(b"b"), sha: String::new(), size: 1, time: 0, by_device: String::new() });
         assert_eq!(root_of(&files), "9ee351a4056cc95744c24c1693184bc11988f3dc98bb1a2dc86136caabca773d");
+    }
+
+    /// A server on this computer that answers `n` requests with what `route` says (status, body).
+    fn mock_server(n: usize, route: impl Fn(&str) -> (u16, String) + Send + 'static) -> (String, std::thread::JoinHandle<()>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let handle = std::thread::spawn(move || {
+            for _ in 0..n {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buf = [0; 4096];
+                let len = stream.read(&mut buf).unwrap();
+                let request = String::from_utf8_lossy(&buf[..len]).to_string();
+                let target = request.split_whitespace().nth(1).unwrap_or("").to_string();
+                let (status, body) = route(&target);
+                write!(stream, "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+            }
+        });
+        (base, handle)
+    }
+
+    fn cache_at(seq: i64) -> Cache {
+        let mut files = BTreeMap::new();
+        files.insert("pages/a.json".to_string(), HubFile { rev: 1, md5: md5_of(b"a"), sha: String::new(), size: 1, time: 0, by_device: String::new() });
+        Cache { epoch: "e".into(), seq, files }
+    }
+
+    fn snap_row(path: &str, rev: i64, content: &[u8]) -> String {
+        format!(r#"{{"path":"{path}","rev":{rev},"md5":"{}"}}"#, md5_of(content))
+    }
+
+    #[test]
+    fn a_rebuild_for_history_keeps_the_bookkeeping_of_the_engine() {
+        let (base, server) = mock_server(4, |t| {
+            if t.ends_with("/state") {
+                (200, r#"{"epoch":"e","seq":9}"#.into())
+            } else if t.contains("since=5") {
+                (410, r#"{"error":"since_too_old"}"#.into())
+            } else if t.contains("snapshot=1") {
+                (200, format!(r#"{{"files":[{}],"seq":9,"has_more":false,"next_after":""}}"#, snap_row("pages/b.json", 9, b"b")))
+            } else {
+                assert!(t.contains("since=9"), "{t}");
+                (200, r#"{"files":[],"next":9,"has_more":false}"#.into())
+            }
+        });
+        let mut state = crate::sync::SyncState::default();
+        state.files.insert("pages/b.json".into(), crate::sync::Entry { base: md5_of(b"b"), remote_id: "9:pages/b.json".into(), ..Default::default() });
+        let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", cache_at(5));
+        let pre = hub.preflight("T", false).unwrap();
+        server.join().unwrap();
+        // what sync_app does with the answer: only a baseline wipes the bases of the engine
+        if pre.baseline {
+            state.files.clear();
+        }
+        assert!(!pre.baseline, "{pre:?}");
+        assert!(state.files.contains_key("pages/b.json"), "the bases survive a rebuild for history");
+        assert_eq!(hub.cache.files.keys().collect::<Vec<_>>(), vec!["pages/b.json"]);
+        assert_eq!(hub.cache.seq, 9);
+    }
+
+    #[test]
+    fn a_snapshot_is_read_page_by_page_and_continues_from_the_first_seq() {
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = seen.clone();
+        // 5 requests: state, three snapshot pages (seq 10, 11, 12: the vault moves on meanwhile), the feed after the first seq
+        let (base, server) = mock_server(5, move |t| {
+            log.lock().unwrap().push(t.to_string());
+            if t.ends_with("/state") {
+                (200, r#"{"epoch":"e","seq":10}"#.into())
+            } else if t.contains("snapshot=1&after=&") {
+                (200, format!(r#"{{"files":[{},{}],"seq":10,"has_more":true,"next_after":"pages/b b.json"}}"#, snap_row("pages/a.json", 1, b"a"), snap_row("pages/b b.json", 2, b"b")))
+            } else if t.contains("snapshot=1&after=pages%2Fb%20b.json&") {
+                (200, format!(r#"{{"files":[{}],"seq":11,"has_more":true,"next_after":"pages/c.json"}}"#, snap_row("pages/c.json", 3, b"c")))
+            } else if t.contains("snapshot=1&after=pages%2Fc.json&") {
+                // pages/a.json changed (rev 11) and pages/d.json appeared (rev 12) while the pages were read
+                (200, format!(r#"{{"files":[{}],"seq":12,"has_more":false,"next_after":""}}"#, snap_row("pages/e.json", 4, b"e")))
+            } else {
+                assert!(t.contains("since=10"), "the feed continues from the FIRST page's seq: {t}");
+                (200, format!(r#"{{"files":[{},{},{{"path":"pages/c.json","rev":12,"deleted":true}}],"next":12,"has_more":false}}"#, snap_row("pages/a.json", 11, b"a2"), snap_row("pages/d.json", 12, b"d")))
+            }
+        });
+        let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", Cache::default());
+        let pre = hub.preflight("T", false).unwrap();
+        server.join().unwrap();
+        assert!(!pre.baseline, "{pre:?}");
+        let files: Vec<_> = hub.cache.files.iter().map(|(p, f)| (p.as_str(), f.rev)).collect();
+        assert_eq!(files, vec![("pages/a.json", 11), ("pages/b b.json", 2), ("pages/d.json", 12), ("pages/e.json", 4)]);
+        assert_eq!(hub.cache.seq, 12);
+        assert!(seen.lock().unwrap().iter().all(|t| !t.contains("since=0")), "a fresh device does not use the plain feed");
+    }
+
+    #[test]
+    fn tombstones_are_read_page_by_page_and_an_old_server_is_recognised() {
+        let row = |p: &str| format!(r#"{{"path":"{p}","rev":3,"md5":"","deleted":true}}"#);
+        let (base, server) = mock_server(2, move |t| {
+            assert!(t.contains("snapshot=1&deleted=1"), "{t}");
+            if t.contains("after=&") {
+                (200, format!(r#"{{"files":[{}],"seq":9,"has_more":true,"next_after":"pages/a.json"}}"#, row("pages/a.json")))
+            } else {
+                (200, format!(r#"{{"files":[{}],"seq":9,"has_more":false,"next_after":""}}"#, row("pages/b.json")))
+            }
+        });
+        let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", Cache::default());
+        let dead = hub.deleted_paths().unwrap().unwrap();
+        server.join().unwrap();
+        assert_eq!(dead.into_iter().collect::<Vec<_>>(), ["pages/a.json", "pages/b.json"]);
+        // a server from before the flag answers with LIVE files: that is "cannot say", not "nothing was deleted"
+        let (base, server) = mock_server(1, |_| (200, format!(r#"{{"files":[{}],"seq":9,"has_more":false,"next_after":""}}"#, snap_row("pages/a.json", 1, b"a"))));
+        let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", Cache::default());
+        assert_eq!(hub.deleted_paths().unwrap(), None);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn a_server_counter_that_went_backwards_is_a_baseline() {
+        let (base, server) = mock_server(3, |t| {
+            if t.ends_with("/state") {
+                (200, r#"{"epoch":"e","seq":3}"#.into())
+            } else if t.contains("snapshot=1") {
+                (200, r#"{"files":[],"seq":3,"has_more":false,"next_after":""}"#.into())
+            } else {
+                assert!(t.contains("since=3"), "{t}");
+                (200, r#"{"files":[],"next":3,"has_more":false}"#.into())
+            }
+        });
+        let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", cache_at(5));
+        let pre = hub.preflight("T", false).unwrap();
+        server.join().unwrap();
+        assert!(pre.baseline, "{pre:?}");
+        assert_eq!(hub.cache.seq, 3);
+    }
+
+    #[test]
+    fn downloading_a_vault_that_is_gone_from_the_server_creates_nothing() {
+        // one request only: the state; a create (POST) would find no one to answer and fail the join
+        let (base, server) = mock_server(1, |t| {
+            assert!(t.ends_with("/state"), "{t}");
+            (404, r#"{"error":"no_such_vault"}"#.into())
+        });
+        let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", Cache::default());
+        assert_eq!(hub.preflight("T", true).unwrap_err(), CLOUD_GONE);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn a_snapshot_that_does_not_move_on_is_an_error_not_a_loop() {
+        let (base, _server) = mock_server(2, |t| {
+            if t.ends_with("/state") {
+                (200, r#"{"epoch":"e","seq":3}"#.into())
+            } else {
+                (200, r#"{"files":[],"seq":3,"has_more":true,"next_after":""}"#.into())
+            }
+        });
+        let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", Cache::default());
+        assert_eq!(hub.preflight("T", false).unwrap_err(), "HUB:bad_answer");
     }
 
     #[test]
@@ -576,17 +840,20 @@ mod e2e {
         state: SyncState,
         api: Api,
         id: String,
+        /// page states on (the release flag `pageState`) for this device
+        ps: bool,
     }
 
     impl Dev {
         fn new(token: &str, id: &str) -> Dev {
             let root: PathBuf = std::env::temp_dir().join(format!("nevis-e2e-{}", uuid::Uuid::new_v4()));
             let vault = Vault::create_with_id(root, "E2E", id).unwrap();
-            Dev { vault, state: SyncState::default(), api: Api::new(&server(), Some(token.to_string())).unwrap().quick(), id: id.to_string() }
+            Dev { vault, state: SyncState::default(), api: Api::new(&server(), Some(token.to_string())).unwrap().quick(), id: id.to_string(), ps: false }
         }
         fn try_sync(&mut self) -> Res<Report> {
+            crate::sync::pages::force_enabled(Some(self.ps));
             let mut hub = Hub::new(self.api.clone(), &self.id, self.state.hub.clone());
-            let pre = hub.preflight("E2E")?;
+            let pre = hub.preflight("E2E", false)?;
             if pre.baseline {
                 self.state.files.clear();
             }
@@ -604,6 +871,9 @@ mod e2e {
         }
         fn page(&self, id: &str) -> Option<Value> {
             self.vault.pages_all().unwrap().into_iter().find(|p| p["id"] == id)
+        }
+        fn has_state(&self, id: &str) -> bool {
+            crate::page_state::has_state(&self.vault.root, id)
         }
         fn titles(&self) -> Vec<String> {
             let mut t: Vec<String> = self.vault.pages_all().unwrap().iter().map(|p| p["title"].as_str().unwrap_or("").to_string()).collect();
@@ -669,6 +939,69 @@ mod e2e {
             assert_eq!(d.page(P1).unwrap()["title"], "from a", "the newer edit wins on both devices");
             assert!(d.vault.versions_list(P1).unwrap().iter().any(|v| v.to_string().contains("from b")), "the older edit is kept in the history");
         }
+        // the conflict left one marker, the same one on both devices, with the ancestor that the server still has
+        let (ma, mb) = (crate::page_conflicts::list(&a.vault, None).unwrap().markers, crate::page_conflicts::list(&b.vault, None).unwrap().markers);
+        assert_eq!((ma.len(), mb.len()), (1, 1));
+        assert_eq!(ma[0].id, mb[0].id);
+        assert_eq!(mb[0].base.as_ref().unwrap()["title"], "start");
+        assert_eq!((mb[0].kept.as_str(), mb[0].remote.page.as_ref().unwrap()["title"].clone()), ("remote", json!("from a")));
+        assert!(!mb[0].remote.device_id.is_empty(), "the server says which device wrote the other version");
+        assert_eq!(mb[0].remote.device_name, "test", "and the account knows its name");
+    }
+
+    fn block_page(id: &str, texts: [&str; 4], at: i64) -> Value {
+        let kids: Vec<Value> = texts.iter().enumerate().map(|(i, t)| json!({ "type": "paragraph", "attrs": { "blockId": format!("b{i}") }, "content": [{ "type": "text", "text": t }] })).collect();
+        json!({ "id": id, "title": "t", "content": { "type": "doc", "content": kids }, "updatedAt": at, "deletedAt": null })
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_edits_of_different_blocks_on_both_devices_are_merged_into_one_page() {
+        let (mut a, mut b) = pair();
+        let save = |d: &Dev, texts: [&str; 4], at: i64| d.vault.save_pages(&[block_page(P1, texts, at)], &[], false).unwrap();
+        save(&a, ["one", "two", "three", "four"], 100);
+        a.sync();
+        b.sync();
+        save(&a, ["one A", "two", "three", "four"], 200);
+        save(&b, ["one", "two", "three B", "four"], 300);
+        a.sync();
+        let rep = b.sync();
+        assert_eq!((rep.auto_merged.clone(), rep.conflicts), (vec![P1.to_string()], 0), "{rep:?}");
+        for _ in 0..3 {
+            a.sync();
+            b.sync();
+        }
+        let file = |d: &Dev| std::fs::read(d.vault.root.join(format!("pages/{P1}.json"))).unwrap();
+        assert_eq!(file(&a), file(&b), "converged to the same bytes");
+        let page = a.page(P1).unwrap();
+        let texts: Vec<_> = page["content"]["content"].as_array().unwrap().iter().map(|b| b["content"][0]["text"].as_str().unwrap().to_string()).collect();
+        assert_eq!(texts, ["one A", "two", "three B", "four"]);
+        for d in [&a, &b] {
+            assert!(crate::page_conflicts::list(&d.vault, None).unwrap().markers.is_empty());
+            assert_eq!(d.vault.versions_list(P1).unwrap().len(), 2, "both earlier versions are in the history");
+        }
+        assert!(!a.sync().changed() && !b.sync().changed());
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_edits_of_the_same_block_on_both_devices_still_conflict() {
+        let (mut a, mut b) = pair();
+        let save = |d: &Dev, texts: [&str; 4], at: i64| d.vault.save_pages(&[block_page(P1, texts, at)], &[], false).unwrap();
+        save(&a, ["one", "two", "three", "four"], 100);
+        a.sync();
+        b.sync();
+        save(&a, ["one A", "two", "three", "four"], 200);
+        save(&b, ["one B", "two", "three", "four"], 300);
+        a.sync();
+        let rep = b.sync();
+        assert_eq!((rep.auto_merged.len(), rep.conflicts), (0, 1));
+        for _ in 0..3 {
+            a.sync();
+            b.sync();
+        }
+        assert_eq!(a.page(P1).unwrap()["content"]["content"][0]["content"][0]["text"], "one B");
+        assert_eq!(crate::page_conflicts::list(&a.vault, None).unwrap().markers.len(), 1);
     }
 
     #[test]
@@ -684,6 +1017,35 @@ mod e2e {
         b.sync();
         assert_eq!(b.titles(), vec!["stays"]);
         assert!(b.vault.pages_all().unwrap().iter().all(|p| p["id"] != P1));
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_a_reset_device_does_not_bring_back_a_page_another_device_deleted() {
+        let (mut a, mut b) = pair();
+        a.save(P1, "doomed", 100);
+        a.save(P2, "stays", 100);
+        a.sync();
+        b.sync();
+        b.vault.save_pages(&[], &[P1.to_string()], false).unwrap();
+        b.sync();
+        a.state = SyncState::default(); // a corrupt state file, a reinstall, another account
+        a.save("33333333-3333-4333-8333-333333333333", "new", 100);
+        for _ in 0..2 {
+            let rep = a.sync();
+            assert!(rep.warnings.is_empty(), "the server lists its tombstones: {:?}", rep.warnings);
+            assert_eq!(a.state.held.iter().map(|h| h.path.as_str()).collect::<Vec<_>>(), [format!("pages/{P1}.json")]);
+        }
+        b.sync();
+        assert!(b.page(P1).is_none(), "the deletion of the other device is intact");
+        assert_eq!(b.titles(), vec!["new", "stays"]);
+        // the person confirms: the page goes to the sync trash and stays deleted
+        a.state.confirmed = a.state.held.iter().map(|h| (h.path.clone(), h.base_md5.clone())).collect();
+        a.sync();
+        assert!(a.page(P1).is_none());
+        a.sync();
+        b.sync();
+        assert!(a.page(P1).is_none() && b.page(P1).is_none());
     }
 
     #[test]
@@ -782,5 +1144,340 @@ mod e2e {
         let m = a.try_sync().unwrap_err();
         assert_eq!(m, CLOUD_GONE);
         assert_eq!(a.titles(), vec!["one"]);
+    }
+
+    // ---- randomized two-device test -------------------------------------------------------------------------------
+    //
+    // Random edits, deletes, syncs, offline stretches and "crashes" (the device forgets what its last sync recorded
+    // while the files stay as they are) on two devices of one vault. Afterwards the devices sync until quiet and two
+    // things must hold:
+    //   1. both devices have the same files and no sync reported an error;
+    //   2. no update was lost: every title that was written and never built upon (no later edit started from it, no
+    //      delete removed it) is still somewhere in one of the two vaults: as the page, in its history or as a
+    //      conflict copy. A title is a unique token, so "somewhere" is a byte search.
+    // Run: NEVIS_TEST_SERVER=http://localhost:3111 NEVIS_FUZZ_SEEDS=50 cargo test e2e_random -- --ignored --nocapture
+    // A failure prints its seed and the list of operations; NEVIS_FUZZ_START=<seed> NEVIS_FUZZ_SEEDS=1 replays it.
+
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+        fn below(&mut self, n: usize) -> usize {
+            (self.next() % n as u64) as usize
+        }
+    }
+
+    const FUZZ_PAGES: [&str; 3] = [P1, P2, "33333333-3333-4333-8333-333333333333"];
+    const SYNCED_ROOTS: [&str; 7] = ["pages", "pages-state", "files", "history", "kv", ".trash", "databases"];
+
+    fn all_files(root: &std::path::Path, only: Option<&[&str]>) -> std::collections::BTreeMap<String, Vec<u8>> {
+        fn walk(root: &std::path::Path, dir: &std::path::Path, out: &mut std::collections::BTreeMap<String, Vec<u8>>) {
+            let Ok(rd) = std::fs::read_dir(dir) else { return };
+            for e in rd.flatten() {
+                let p = e.path();
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') && name.ends_with(".tmp") {
+                    continue;
+                }
+                if p.is_dir() {
+                    walk(root, &p, out);
+                } else if let Ok(b) = std::fs::read(&p) {
+                    out.insert(p.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"), b);
+                }
+            }
+        }
+        let mut out = std::collections::BTreeMap::new();
+        walk(root, root, &mut out);
+        if let Some(only) = only {
+            out.retain(|k, _| only.iter().any(|r| k == r || k.starts_with(&format!("{r}/"))));
+        }
+        out
+    }
+
+    /// The unique title tokens ("t17_") in some bytes.
+    fn tokens_in(bytes: &[u8]) -> Vec<String> {
+        let s = String::from_utf8_lossy(bytes);
+        let b = s.as_bytes();
+        let mut out = vec![];
+        let mut i = 0;
+        while i < b.len() {
+            if b[i] == b't' && (i == 0 || !b[i - 1].is_ascii_alphanumeric()) {
+                let mut j = i + 1;
+                while j < b.len() && b[j].is_ascii_digit() {
+                    j += 1;
+                }
+                if j > i + 1 && j < b.len() && b[j] == b'_' {
+                    out.push(s[i..=j].to_string());
+                }
+            }
+            i += 1;
+        }
+        out
+    }
+
+    /// A page body of three paragraphs with fixed block ids (the same on every device).
+    fn fuzz_doc(texts: &[String]) -> Value {
+        let kids: Vec<Value> = texts
+            .iter()
+            .enumerate()
+            .map(|(k, t)| {
+                let mut p = json!({ "type": "paragraph", "attrs": { "blockId": format!("00000000-0000-4000-8000-00000000000{k}") } });
+                if !t.is_empty() {
+                    p["content"] = json!([{ "type": "text", "text": t }]);
+                }
+                p
+            })
+            .collect();
+        json!({ "type": "doc", "attrs": { "blockIdentityVersion": 1 }, "content": kids })
+    }
+
+    static AUTO_MERGES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    static STATE_SEEDS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    static STRICT_CHECKED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    static STATE_MERGES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    fn fuzz_once(token: &str, seed: u64, steps: usize) -> Vec<String> {
+        // one account for the whole run (the server limits sign-ups), a new vault for each seed
+        let id = uuid::Uuid::new_v4().to_string();
+        let (mut devs, mut findings, mut log) = (vec![Dev::new(token, &id), Dev::new(token, &id)], Vec::<String>::new(), Vec::<String>::new());
+        let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+        let (mut clock, mut counter) = (1_000i64, 0u32);
+        let (mut written, mut killed) = (Vec::<String>::new(), std::collections::HashSet::<String>::new());
+        // seed % 4: 0 = page states off (the legacy oracle), 1 = both devices on, 2 = dev 1 is a legacy device that turns them on mid-run,
+        // 3 = page states off but real documents: edits of different paragraphs on the two devices are merged block by block
+        let (mut state_tokens, mut deleted_ever) = (Vec::<(String, String)>::new(), std::collections::HashSet::<String>::new());
+        // titles of pages that end up with a state are one key of the page map: the later write wins and the other is gone (by design)
+        let mut lww_titles = std::collections::HashMap::<String, String>::new();
+        let mut ever_state = std::collections::HashSet::<String>::new();
+        let mode = std::env::var("NEVIS_FUZZ_MODE").ok().and_then(|m| m.parse::<u64>().ok()).unwrap_or(seed % 4);
+        // what the page states add to the run draws from its own stream, so mode 0 replays the old fuzz exactly
+        let mut prng = Rng(seed.wrapping_mul(0xD1B5_4A32_D192_ED03) | 1);
+        devs[0].ps = mode != 0 && mode != 3;
+        devs[1].ps = mode == 1;
+        let flip = prng.below(steps.max(1));
+
+        let sync = |devs: &mut Vec<Dev>, i: usize, crash: bool, log: &mut Vec<String>, findings: &mut Vec<String>| {
+            let before = devs[i].state.clone();
+            match devs[i].try_sync() {
+                Ok(r) if !r.errors.is_empty() => findings.push(format!("sync errors on dev {i}: {:?}", r.errors)),
+                Ok(r) => {
+                    STATE_MERGES.fetch_add(r.state_merges, std::sync::atomic::Ordering::Relaxed);
+                    AUTO_MERGES.fetch_add(r.auto_merged.len(), std::sync::atomic::Ordering::Relaxed);
+                }
+                Err(e) => findings.push(format!("sync failed on dev {i}: {e}")),
+            }
+            if crash {
+                devs[i].state = before; // the files moved, the bookkeeping did not
+            }
+            log.push(format!("sync dev{i}{}", if crash { " (then crash: state lost)" } else { "" }));
+        };
+
+        let trace = std::env::var("NEVIS_FUZZ_TRACE").ok();
+        let mut was_seen = false;
+        for step in 0..steps {
+            if mode == 2 && step == flip {
+                devs[1].ps = true;
+                log.push("dev1 turns page states on".to_string());
+            }
+            if let Some(watch) = &trace {
+                // which devices hold the watched title, and where (a page, a history file, a conflict copy...)
+                let mut where_ = vec![];
+                for (n, d) in devs.iter().enumerate() {
+                    for (path, bytes) in all_files(&d.vault.root, None) {
+                        if tokens_in(&bytes).iter().any(|t| t == watch) {
+                            where_.push(format!("dev{n}:{path}"));
+                        }
+                    }
+                }
+                if !where_.is_empty() || was_seen {
+                    eprintln!("  [trace] before step {step} (after: {}): {watch} is in {where_:?}", log.last().cloned().unwrap_or_default());
+                }
+                was_seen |= !where_.is_empty();
+            }
+            for id in FUZZ_PAGES {
+                if devs.iter().any(|d| d.has_state(id)) {
+                    ever_state.insert(id.to_string());
+                }
+            }
+            let i = rng.below(2);
+            match rng.below(10) {
+                0..=3 => {
+                    let id = FUZZ_PAGES[rng.below(FUZZ_PAGES.len())];
+                    let current = devs[i].page(id);
+                    let parent = current.as_ref().map(|p| p["title"].as_str().unwrap_or("").to_string());
+                    let had_state = devs[i].has_state(id);
+                    counter += 1;
+                    clock += 10;
+                    let token = format!("t{counter}_");
+                    // a ProseMirror document of three paragraphs with fixed block ids; the token goes into one paragraph or the title
+                    let mut texts: Vec<String> = (0..3).map(|k| current.as_ref().and_then(|p| p["content"]["content"][k]["content"][0]["text"].as_str()).unwrap_or("").to_string()).collect();
+                    let target = if mode == 0 { 3 } else { prng.below(5) };
+                    let mut title = parent.clone().unwrap_or_else(|| "p".to_string());
+                    if target >= 3 {
+                        title = token.clone();
+                    } else {
+                        texts[target] = format!("{} {token}", texts[target]);
+                    }
+                    let page = json!({ "id": id, "title": &title, "content": if mode == 0 { json!({"type":"doc","content":[]}) } else { fuzz_doc(&texts) }, "updatedAt": clock, "deletedAt": null });
+                    match devs[i].vault.save_pages(&[page], &[], false) {
+                        Ok(_) => {
+                            written.push(token.clone());
+                            if target >= 3 {
+                                lww_titles.insert(token.clone(), id.to_string());
+                                if let Some(p) = parent {
+                                    killed.insert(p);
+                                }
+                            } else if had_state {
+                                state_tokens.push((token.clone(), id.to_string()));
+                            }
+                            log.push(format!("dev{i} writes {token} to {} ({})", &id[..2], if target >= 3 { "title".to_string() } else { format!("paragraph {target}") }));
+                        }
+                        Err(e) => log.push(format!("dev{i} write to {} refused: {e}", &id[..2])),
+                    }
+                }
+                4 => {
+                    let id = FUZZ_PAGES[rng.below(FUZZ_PAGES.len())];
+                    if let Some(p) = devs[i].page(id) {
+                        killed.insert(p["title"].as_str().unwrap_or("").to_string());
+                        // deleting a page deletes its history on this device too: everything the user could see there goes
+                        for (path, bytes) in all_files(&devs[i].vault.root, None) {
+                            if path.contains(id) {
+                                killed.extend(tokens_in(&bytes));
+                            }
+                        }
+                        devs[i].vault.save_pages(&[], &[id.to_string()], false).unwrap();
+                        deleted_ever.insert(id.to_string());
+                        log.push(format!("dev{i} deletes {}", &id[..2]));
+                    }
+                }
+                5..=7 => sync(&mut devs, i, false, &mut log, &mut findings),
+                8 => sync(&mut devs, i, std::env::var("NEVIS_FUZZ_NOCRASH").is_err(), &mut log, &mut findings),
+                _ => {
+                    sync(&mut devs, i, false, &mut log, &mut findings);
+                    sync(&mut devs, 1 - i, false, &mut log, &mut findings);
+                }
+            }
+        }
+
+        // quiet: sync until nothing moves. Deletions the engine holds back wait for the user's confirmation; here the
+        // "user" confirms once the devices are quiet, and the hold itself is reported as a NOTE.
+        let mut held = false;
+        for round in 0..12 {
+            let mut moved = false;
+            if round >= 6 && held {
+                if round == 6 {
+                    findings.push("NOTE: a deletion was held back for the user's confirmation (the deleted page stayed on a device until then)".into());
+                }
+                // every device asks again: the confirmation is used up by one sync
+                for d in devs.iter_mut() {
+                    d.state.allow_deletes_once = true;
+                }
+            }
+            for i in 0..2 {
+                match devs[i].try_sync() {
+                    Ok(r) => {
+                        held |= r.held > 0;
+                        STATE_MERGES.fetch_add(r.state_merges, std::sync::atomic::Ordering::Relaxed);
+                        AUTO_MERGES.fetch_add(r.auto_merged.len(), std::sync::atomic::Ordering::Relaxed);
+                        moved |= r.changed() || r.skipped > 0 || (r.held > 0 && round < 6);
+                        if !r.errors.is_empty() {
+                            findings.push(format!("sync errors at the end, dev {i}: {:?}", r.errors));
+                        }
+                    }
+                    Err(e) => findings.push(format!("sync failed at the end, dev {i}: {e}")),
+                }
+            }
+            if !moved && !(held && round < 6) {
+                break;
+            }
+            if round == 11 {
+                findings.push("the devices never went quiet in 12 rounds (sync ping-pong)".into());
+            }
+        }
+
+        let (fa, fb) = (all_files(&devs[0].vault.root, Some(&SYNCED_ROOTS)), all_files(&devs[1].vault.root, Some(&SYNCED_ROOTS)));
+        for k in fa.keys().chain(fb.keys()).collect::<std::collections::BTreeSet<_>>() {
+            match (fa.get(k), fb.get(k)) {
+                (Some(x), Some(y)) if x != y => {
+                    let brief = |b: &Vec<u8>| String::from_utf8_lossy(&b[..b.len().min(160)]).replace('\n', " ");
+                    let st = |i: usize| format!("entry={:?} mirror={:?} local_md5={}", devs[i].state.files.get(k.as_str()), devs[i].state.hub.files.get(k.as_str()), crate::sync::md5_hex(if i == 0 { x } else { y }));
+                    findings.push(format!("DIVERGED: {k} differs between the devices\n    dev0: {}\n      {}\n    dev1: {}\n      {}", brief(x), st(0), brief(y), st(1)))
+                }
+                (Some(_), None) => findings.push(format!("DIVERGED: {k} only on dev 0")),
+                (None, Some(_)) => findings.push(format!("DIVERGED: {k} only on dev 1")),
+                _ => {}
+            }
+        }
+        // page states: the derived JSON is the projection of the state, and no paragraph edit made on a page that had a state is lost
+        for (n, d) in devs.iter().enumerate() {
+            for id in FUZZ_PAGES {
+                let Ok(bin) = std::fs::read(d.vault.root.join(format!("pages-state/{id}.bin"))) else { continue };
+                let projected = crate::page_state::State::from_blob(&bin).map(|s| s.project());
+                let file = std::fs::read(d.vault.root.join(format!("pages/{id}.json"))).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok());
+                match (projected, file) {
+                    (Ok(p), Some(f)) if crate::page_state::canon_page(&p) == crate::page_state::canon_page(&f) => {}
+                    (Ok(_), f) => findings.push(format!("dev{n}: pages/{id}.json is not the projection of its state ({})", if f.is_some() { "differs" } else { "missing" })),
+                    (Err(e), _) => findings.push(format!("dev{n}: state of {id} unreadable: {e}")),
+                }
+            }
+        }
+        if FUZZ_PAGES.iter().any(|id| devs.iter().all(|d| d.has_state(id))) {
+            STATE_SEEDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+        for (t, id) in &state_tokens {
+            let both = devs.iter().all(|d| d.has_state(id));
+            if deleted_ever.contains(id) || !both {
+                continue;
+            }
+            STRICT_CHECKED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            for (n, d) in devs.iter().enumerate() {
+                let text = std::fs::read_to_string(d.vault.root.join(format!("pages/{id}.json"))).unwrap_or_default();
+                if !text.contains(t.as_str()) {
+                    findings.push(format!("LOST FROM STATE: {t} was written into a paragraph of {} that had a state and is missing from dev{n}'s page", &id[..2]));
+                }
+            }
+        }
+        // conflict markers hold copies of whole pages: a version that is only there is not kept (they would hide a loss)
+        let everything: Vec<Vec<u8>> = (0..2).flat_map(|i| all_files(&devs[i].vault.root, None).into_iter().filter(|(p, _)| !p.starts_with("history/conflicts/")).map(|(_, b)| b)).collect();
+        for t in written.iter().filter(|t| !killed.contains(*t) && !lww_titles.get(*t).is_some_and(|id| ever_state.contains(id))) {
+            if !everything.iter().any(|b| b.windows(t.len()).any(|w| w == t.as_bytes())) {
+                findings.push(format!("LOST UPDATE: {t} was written, never built upon, and is nowhere in either vault"));
+            }
+        }
+        if findings.iter().any(|f| !f.starts_with("NOTE")) {
+            findings.push(format!("operations:\n  {}", log.join("\n  ")));
+        }
+        findings
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_random_edits_deletes_syncs_and_crashes_on_two_devices_lose_nothing() {
+        let env = |k: &str, d: u64| std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d);
+        let (start, seeds, steps) = (env("NEVIS_FUZZ_START", 1), env("NEVIS_FUZZ_SEEDS", 10), env("NEVIS_FUZZ_STEPS", 30) as usize);
+        let (mut bad, mut notes) = (vec![], 0);
+        // the server limits requests per device token (1500 a minute) and sign-ups per hour (120): a new account every few seeds
+        let mut token = String::new();
+        for seed in start..start + seeds {
+            if (seed - start) % 4 == 0 {
+                token = signup();
+            }
+            let f = fuzz_once(&token, seed, steps);
+            if f.iter().any(|x| x.starts_with("NOTE")) {
+                notes += 1;
+            }
+            if f.iter().any(|x| !x.starts_with("NOTE")) {
+                eprintln!("seed {seed} FAILED:\n  {}\n", f.join("\n  "));
+                bad.push(seed);
+            }
+        }
+        eprintln!("{seeds} seeds, {} failed, {notes} had a deletion held back for confirmation", bad.len());
+        let o = std::sync::atomic::Ordering::Relaxed;
+        eprintln!("page states: {} seeds ended with a state on both devices, {} paragraph tokens checked by the strict oracle, {} state merges, {} pages merged block by block", STATE_SEEDS.load(o), STRICT_CHECKED.load(o), STATE_MERGES.load(o), AUTO_MERGES.load(o));
+        assert!(bad.is_empty(), "failing seeds: {bad:?}");
     }
 }

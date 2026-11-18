@@ -18,6 +18,17 @@ export interface SyncStatus {
   error: string
   /** why it is paused: SIGNED_OUT | NEEDS_CONFIRM (then `error` is the number of held deletions) | VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE */
   reason: string
+  /** id of the open workspace (null when none is open) */
+  vaultId?: string | null
+  /** names the sync cannot carry (it leaves those files alone) */
+  skippedPaths?: string[]
+}
+
+/** A deletion the sync holds back until the person confirms it. `side`: where the file is gone. `base_md5` binds the confirmation to what was shown. */
+export interface HeldDelete {
+  path: string
+  side: 'local' | 'remote'
+  base_md5: string
 }
 
 export interface ServerHealth {
@@ -47,6 +58,11 @@ export interface ServerVault {
   bytes?: number
 }
 
+export interface TrashedVault extends ServerVault {
+  /** when it went to the server's trash (seconds since the epoch) */
+  deletedAt?: number | null
+}
+
 export const accountStatus = () => invoke<SyncStatus>('account_status')
 export const serverHealth = (server: string) => invoke<ServerHealth>('server_health', { server })
 export const accountRegister = (server: string, username: string, password: string, invite: string) => invoke<string>('account_register', { server, username, password, invite })
@@ -58,11 +74,32 @@ export const accountRevokeDevice = (id: string) => invoke<void>('account_revoke_
 export const accountChangePassword = (oldPassword: string, newPassword: string) => invoke<void>('account_change_password', { oldPassword, newPassword })
 export const accountNewRecoveryKey = (password: string) => invoke<string>('account_new_recovery_key', { password })
 export const saveTextFile = (path: string, text: string) => invoke<void>('save_text_file', { path, text })
+/** Asks where to save the recovery key and writes it there. False when the person closed the dialog. */
+export async function saveRecoveryKeyFile(username: string, keyText: string): Promise<boolean> {
+  const { save } = await import('@tauri-apps/plugin-dialog')
+  const path = await save({ defaultPath: 'nevis-recovery-key.txt', filters: [{ name: 'TXT', extensions: ['txt'] }] })
+  if (!path) return false
+  await saveTextFile(path, `Nevis recovery key\nUser: ${username}\nKey: ${keyText}\n`)
+  return true
+}
 export const syncSet = (on: boolean) => invoke<void>('sync_set', { on })
 export const syncNow = () => invoke<void>('sync_now')
-export const syncConfirm = () => invoke<void>('sync_confirm')
+export const syncHeld = () => invoke<HeldDelete[]>('sync_held')
+/** Confirms exactly the list the person was shown. */
+export const syncConfirm = (items: HeldDelete[]) =>
+  // an empty list means the held list was not loaded (an older state): confirm what is planned, as before, instead of nothing
+  invoke<void>('sync_confirm', { items: items.length > 0 ? items : null })
+export const cloudTrashed = () => invoke<TrashedVault[]>('cloud_trashed')
+export const cloudRestore = (id: string) => invoke<void>('cloud_restore', { id })
+/** Moves a workspace to the server's trash. True when that was the open one and its sync on this device was turned off. */
+export const cloudDelete = (id: string) => invoke<boolean>('cloud_delete', { id })
+/** Removes a workspace in the server's trash for good; needs the account password. */
+export const cloudPurge = (id: string, password: string) => invoke<void>('cloud_purge', { id, password })
+export const accountDelete = (password: string) => invoke<number>('account_delete', { password })
 export const cloudVaults = () => invoke<ServerVault[]>('cloud_vaults')
 export const cloudDownload = (id: string, name: string, parent: string) => invoke<void>('cloud_download', { id, name, parent })
+
+export const formatBytes = (n = 0) => (n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1024 / 1024).toFixed(n < 100 * 1024 * 1024 ? 1 : 0) + ' MB')
 
 /** A message for the person from an error of the sync backend. Unknown codes are shown as they are, without the technical lines. */
 export function syncError(e: unknown): string {
@@ -83,6 +120,8 @@ export function syncError(e: unknown): string {
     'HUB:quota_exceeded': t('The storage of this account on the server is full.'),
     'HUB:not_nevis': t('This address answers, but it is not a Nevis sync server.'),
     'HUB:insecure_server': t('Use an https:// address. Plain http:// works only for this computer.'),
+    'HUB:not_in_trash': t('This workspace is not in the server trash.'),
+    'HUB:no_such_vault': t('This workspace is not on the server (any more).'),
     'HUB:bad_server': t('This server address is not valid.'),
   }
   if (known[code]) return known[code]

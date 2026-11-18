@@ -17,9 +17,12 @@ import (
 
 const (
 	hour         = time.Hour
-	failureLimit = 10  // wrong passwords per user name
+	failureLimit = 10  // wrong passwords per user name from one address
 	failureIPMax = 100 // wrong passwords per address; behind a shared mobile NAT the per-user limit is the real one
-	failureSpan  = 15 * time.Minute
+	// failureUserMax is the ceiling for one user name across all addresses. It is far above failureLimit so that
+	// one attacker cannot lock the owner out, who signs in from another address; it only stops a distributed guess.
+	failureUserMax = 100
+	failureSpan    = 15 * time.Minute
 )
 
 var usernamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{2,31}$`)
@@ -211,9 +214,16 @@ func (a *Accounts) issueDevice(ctx context.Context, tx *sql.Tx, user User, name 
 
 // ───── sign-in, recovery ─────
 
-// guard refuses a caller that has failed too often, per user name and per address.
+// failureKey counts the wrong passwords of one user name from one address.
+func failureKey(ip, username string) string { return "fail:uip:" + username + "|" + ip }
+
+// guard refuses a caller that has failed too often: per address, per user name from that address, and per user
+// name overall.
 func (a *Accounts) guard(ip, username string) *apierr.Error {
-	wait := max(a.Limiter.Blocked("fail:ip:"+ip, failureIPMax), a.Limiter.Blocked("fail:u:"+username, failureLimit))
+	wait := max(
+		a.Limiter.Blocked("fail:ip:"+ip, failureIPMax),
+		a.Limiter.Blocked(failureKey(ip, username), failureLimit),
+		a.Limiter.Blocked("fail:u:"+username, failureUserMax))
 	if wait > 0 {
 		return apierr.RateLimited(wait)
 	}
@@ -222,7 +232,8 @@ func (a *Accounts) guard(ip, username string) *apierr.Error {
 
 func (a *Accounts) failed(ip, username string) {
 	a.Limiter.Hit("fail:ip:"+ip, failureIPMax, failureSpan)
-	a.Limiter.Hit("fail:u:"+username, failureLimit, failureSpan)
+	a.Limiter.Hit(failureKey(ip, username), failureLimit, failureSpan)
+	a.Limiter.Hit("fail:u:"+username, failureUserMax, failureSpan)
 }
 
 type userRow struct {
@@ -265,7 +276,7 @@ func (a *Accounts) Login(ctx context.Context, ip string, in Credentials) (s Sess
 		a.failed(ip, username)
 		return s, false, apierr.New(401, "bad_credentials")
 	}
-	a.Limiter.Clear("fail:u:" + username)
+	a.Limiter.Clear(failureKey(ip, username))
 	restored = user.deleteAfter.Valid
 	err = a.DB.Write(ctx, func(tx *sql.Tx) error {
 		if restored {
@@ -324,6 +335,8 @@ func (a *Accounts) Recover(ctx context.Context, ip string, in Credentials) (Sess
 		return err
 	})
 	if err == nil {
+		// the old password's failures are moot, whoever made them
+		a.Limiter.Clear(failureKey(ip, username))
 		a.Limiter.Clear("fail:u:" + username)
 	}
 	return session, recovery, err
@@ -421,6 +434,13 @@ func (a *Accounts) confirm(ctx context.Context, ip string, p *Principal, passwor
 		return nil, apierr.New(401, "bad_credentials")
 	}
 	return user, nil
+}
+
+// ConfirmPassword re-checks the password of the signed-in account for a destructive action, with the same
+// failure counting and lockout as deleting the account.
+func (a *Accounts) ConfirmPassword(ctx context.Context, ip string, p *Principal, password string) error {
+	_, err := a.confirm(ctx, ip, p, password)
+	return err
 }
 
 // ChangePassword signs every other device out.

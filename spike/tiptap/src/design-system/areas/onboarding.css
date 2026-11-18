@@ -29,6 +29,23 @@
 .onb-panel--center .onb-actions { justify-content: center; }
 .onb-aside { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-s1); margin: 0; color: var(--ds-text-3); font-size: var(--ds-text-small); }
 
+/* welcome with sync: three equal choices, each a real button */
+.onb-choices { display: grid; gap: var(--ds-s3); justify-self: stretch; text-align: start; }
+.onb-ask { margin: 0; color: var(--ds-text-2); font-size: var(--ds-text-small); font-weight: 500; }
+.onb-choice { display: flex; align-items: center; gap: var(--ds-s4); min-block-size: calc(var(--ds-control) * 1.5); padding: var(--ds-s3) var(--ds-s4); border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); color: inherit; font: inherit; text-align: start; cursor: pointer; transition: background var(--ds-fast) var(--ds-ease), border-color var(--ds-fast) var(--ds-ease); }
+.onb-choice:hover:not(:disabled) { border-color: var(--ds-accent-line); background: var(--ds-hover); }
+.onb-choice:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.onb-choice:disabled { opacity: .6; cursor: default; }
+.onb-choice > .ds-icon { flex: none; color: var(--ds-accent); }
+.onb-choice > .ds-icon:last-child { color: var(--ds-text-3); }
+.onb-choice-text { display: grid; flex: 1; gap: 2px; min-inline-size: 0; }
+.onb-choice-text b { font-weight: 600; }
+.onb-choice-text small { color: var(--ds-text-2); font-size: var(--ds-text-small); line-height: 1.5; }
+/* the one-time recovery key */
+.onb-key { padding: var(--ds-s4); border: 1px solid var(--ds-line-strong); border-radius: var(--ds-r-lg); background: var(--ds-sunk); text-align: center; }
+.onb-key code { font-family: var(--ds-font-mono); font-size: var(--ds-text-section); letter-spacing: .04em; user-select: all; overflow-wrap: anywhere; }
+.onb-row--gap { gap: var(--ds-s2); flex-wrap: wrap; }
+
 /* the mark draws itself once, on the welcome step */
 .onb-mark { color: var(--ds-accent); }
 .onb-mark path { stroke-dasharray: 80; stroke-dashoffset: 80; animation: onb-draw calc(var(--ds-slow) * 3) var(--ds-ease) var(--ds-fast) forwards; }
@@ -85,11 +102,11 @@
 @media (prefers-reduced-motion: reduce) {
   .onb-stage { animation-name: onb-fade; }
   .onb-mark path, .onb-landing .onb-preview, .onb[data-stage='landing'] { animation: none; stroke-dashoffset: 0; }
-  .onb-list > li, .onb-preview * { transition: none; }
+  .onb-list > li, .onb-choice, .onb-preview * { transition: none; }
 }
 :root[data-motion='reduce'] .onb-stage { animation-name: onb-fade; }
 :root[data-motion='reduce'] :is(.onb-mark path, .onb-landing .onb-preview, .onb[data-stage='landing']) { animation: none; stroke-dashoffset: 0; }
-:root[data-motion='reduce'] :is(.onb-list > li, .onb-preview *) { transition: none; }
+:root[data-motion='reduce'] :is(.onb-list > li, .onb-choice, .onb-preview *) { transition: none; }
 
 /* First note (src/onboarding/FirstNote.tsx): one sheet like a real page, a few ways in, one tip at a time.
    On leaving, the app is already behind it: the background clears and the sheet flies into its sidebar row (FLIP in the component). */
