@@ -18,6 +18,15 @@ export interface SyncStatus {
   error: string
   /** why it is paused: SIGNED_OUT | NEEDS_CONFIRM (then `error` is the number of held deletions) | VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE */
   reason: string
+  /** names the sync cannot carry (it leaves those files alone) */
+  skippedPaths?: string[]
+}
+
+/** A deletion the sync holds back until the person confirms it. `side`: where the file is gone. `base_md5` binds the confirmation to what was shown. */
+export interface HeldDelete {
+  path: string
+  side: 'local' | 'remote'
+  base_md5: string
 }
 
 export interface ServerHealth {
@@ -47,6 +56,11 @@ export interface ServerVault {
   bytes?: number
 }
 
+export interface TrashedVault extends ServerVault {
+  /** when it went to the server's trash (seconds since the epoch) */
+  deletedAt?: number | null
+}
+
 export const accountStatus = () => invoke<SyncStatus>('account_status')
 export const serverHealth = (server: string) => invoke<ServerHealth>('server_health', { server })
 export const accountRegister = (server: string, username: string, password: string, invite: string) => invoke<string>('account_register', { server, username, password, invite })
@@ -60,7 +74,12 @@ export const accountNewRecoveryKey = (password: string) => invoke<string>('accou
 export const saveTextFile = (path: string, text: string) => invoke<void>('save_text_file', { path, text })
 export const syncSet = (on: boolean) => invoke<void>('sync_set', { on })
 export const syncNow = () => invoke<void>('sync_now')
-export const syncConfirm = () => invoke<void>('sync_confirm')
+export const syncHeld = () => invoke<HeldDelete[]>('sync_held')
+/** Confirms exactly the list the person was shown. */
+export const syncConfirm = (items: HeldDelete[]) => invoke<void>('sync_confirm', { items })
+export const cloudTrashed = () => invoke<TrashedVault[]>('cloud_trashed')
+export const cloudRestore = (id: string) => invoke<void>('cloud_restore', { id })
+export const accountDelete = (password: string) => invoke<number>('account_delete', { password })
 export const cloudVaults = () => invoke<ServerVault[]>('cloud_vaults')
 export const cloudDownload = (id: string, name: string, parent: string) => invoke<void>('cloud_download', { id, name, parent })
 

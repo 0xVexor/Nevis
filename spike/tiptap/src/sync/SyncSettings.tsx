@@ -8,6 +8,7 @@ import { isTauri } from '../db'
 import { t } from '../i18n'
 import {
   accountChangePassword,
+  accountDelete,
   accountInfo,
   accountLogin,
   accountLogout,
@@ -17,18 +18,25 @@ import {
   accountRevokeDevice,
   accountStatus,
   cloudDownload,
+  cloudRestore,
+  cloudTrashed,
   cloudVaults,
   saveTextFile,
   serverHealth,
   syncConfirm,
   syncError,
+  syncHeld,
   syncNow,
   syncSet,
   type AccountInfo,
+  type HeldDelete,
   type ServerHealth,
   type ServerVault,
   type SyncStatus,
+  type TrashedVault,
 } from './client'
+
+const HELD_SHOWN = 10
 
 const formatBytes = (n = 0) => (n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1024 / 1024).toFixed(n < 100 * 1024 * 1024 ? 1 : 0) + ' MB')
 
@@ -214,6 +222,11 @@ function SignIn({ status, onDone, onKey }: { status: SyncStatus; onDone: () => v
 function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () => void; onKey: (key: string, username: string) => void }) {
   const [info, setInfo] = useState<AccountInfo | null>(null)
   const [vaults, setVaults] = useState<ServerVault[] | null>(null)
+  const [trashed, setTrashed] = useState<TrashedVault[]>([])
+  const [held, setHeld] = useState<HeldDelete[]>([])
+  const [deleting, setDeleting] = useState(false)
+  const [deletePassword, setDeletePassword] = useState('')
+  const needsConfirm = status.reason === 'NEEDS_CONFIRM'
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [oldPassword, setOldPassword] = useState('')
@@ -221,9 +234,10 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
 
   const load = useCallback(async () => {
     try {
-      const [i, v] = await Promise.all([accountInfo(), cloudVaults()])
+      const [i, v, tr] = await Promise.all([accountInfo(), cloudVaults(), cloudTrashed()])
       setInfo(i)
       setVaults(v)
+      setTrashed(tr)
     } catch (e) {
       setMessage(syncError(e))
     }
@@ -231,6 +245,16 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
   useEffect(() => {
     void load()
   }, [load])
+  // the list of held deletions is read again whenever the sync says it is waiting (its count can change between rounds)
+  useEffect(() => {
+    if (!needsConfirm) {
+      setHeld([])
+      return
+    }
+    syncHeld()
+      .then(setHeld)
+      .catch(() => setHeld([]))
+  }, [needsConfirm, status.error])
 
   const run = async (job: () => Promise<void>, after?: () => void) => {
     setBusy(true)
@@ -251,6 +275,20 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
       if (typeof parent !== 'string') return
       await cloudDownload(v.id, v.name, parent)
       window.location.reload() // the downloaded workspace is now the open one
+    })
+  const restore = (v: TrashedVault) =>
+    run(
+      async () => {
+        await cloudRestore(v.id)
+      },
+      () => void load(),
+    )
+  const deleteAccount = () =>
+    run(async () => {
+      await accountDelete(deletePassword)
+      setDeleting(false)
+      setDeletePassword('')
+      refresh()
     })
   const changePassword = () =>
     run(async () => {
@@ -325,7 +363,7 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
-                    await syncConfirm()
+                    await syncConfirm(held)
                     refresh()
                   })
                 }
@@ -335,7 +373,30 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
             }
           >
             {t('Many files, or a whole side, would be deleted by this sync. They are kept aside for 30 days. Allow them only if that is what you meant.')}
+            {held.length > 0 && (
+              <ul dir="ltr" style={{ textAlign: 'left' }}>
+                {held.slice(0, HELD_SHOWN).map((d) => (
+                  <li key={d.path} style={{ wordBreak: 'break-all' }}>
+                    {d.path}
+                  </li>
+                ))}
+                {held.length > HELD_SHOWN && <li>{t('and {n} more').replace('{n}', String(held.length - HELD_SHOWN))}</li>}
+              </ul>
+            )}
           </Notice>
+        )}
+        {!!status.skippedPaths?.length && (
+          <details className="prefs-note">
+            <summary>{t('{n} files were skipped').replace('{n}', String(status.skippedPaths.length))}</summary>
+            <p>{t('The names of these files cannot be synced (hidden characters or an unsupported name). They stay where they are. Rename them to sync them.')}</p>
+            <ul dir="ltr" style={{ textAlign: 'left' }}>
+              {status.skippedPaths.map((p) => (
+                <li key={p} style={{ wordBreak: 'break-all' }}>
+                  {JSON.stringify(p).slice(1, -1)}
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
       </PreferenceGroup>
 
@@ -350,6 +411,18 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
           </PreferenceRow>
         ))}
       </PreferenceGroup>
+
+      {trashed.length > 0 && (
+        <PreferenceGroup title={t('Workspaces in the server trash')} hint={t('They are removed from the server for good after a while. Restore one to get it back.')}>
+          {trashed.map((v) => (
+            <PreferenceRow key={v.id} label={v.name} hint={`${v.files ?? 0} ${t('files')} · ${formatBytes(v.bytes)}`}>
+              <Button disabled={busy} onClick={() => void restore(v)}>
+                {t('Restore')}
+              </Button>
+            </PreferenceRow>
+          ))}
+        </PreferenceGroup>
+      )}
 
       <PreferenceGroup title={t('Devices')}>
         {info?.devices?.map((d) => (
@@ -390,7 +463,45 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
         </PreferenceRow>
       </PreferenceGroup>
 
-      {message && (
+      <PreferenceGroup title={t('Delete account')} hint={t('Your account and its workspaces on the server are removed after 30 days. The workspaces on your devices stay.')}>
+        <PreferenceRow label="">
+          <Button disabled={busy} onClick={() => setDeleting(true)}>
+            {t('Delete my account…')}
+          </Button>
+        </PreferenceRow>
+      </PreferenceGroup>
+      {deleting && (
+        <Dialog
+          open
+          title={t('Delete your account?')}
+          onClose={() => {
+            setDeleting(false)
+            setDeletePassword('')
+          }}
+          actions={
+            <>
+              <Button disabled={busy} onClick={() => setDeleting(false)}>
+                {t('Cancel')}
+              </Button>
+              <Button variant="primary" disabled={busy || !deletePassword} onClick={() => void deleteAccount()}>
+                {t('Delete my account')}
+              </Button>
+            </>
+          }
+        >
+          <div className="ds-modal-body">
+            <p>{t('Type your password to confirm. You are signed out here, and the server removes the account after 30 days.')}</p>
+            <Field ltr type="password" value={deletePassword} autoComplete="current-password" aria-label={t('Password')} onChange={(e) => setDeletePassword(e.target.value)} />
+            {message && (
+              <Notice tone="bad" role="alert">
+                {message}
+              </Notice>
+            )}
+          </div>
+        </Dialog>
+      )}
+
+      {message && !deleting && (
         <Notice tone="info" role="status">
           {message}
         </Notice>
@@ -410,8 +521,22 @@ export function SyncSettings() {
   useEffect(() => {
     if (!isTauri) return
     refresh()
-    const timer = window.setInterval(refresh, 2000)
-    return () => window.clearInterval(timer)
+    // the app says when the status changes; the slow poll is only a safety net
+    const timer = window.setInterval(refresh, 20000)
+    let closed = false
+    let unlisten: (() => void) | undefined
+    void import('@tauri-apps/api/event')
+      .then(({ listen }) => listen('sync-status', refresh))
+      .then((stop) => {
+        if (closed) stop()
+        else unlisten = stop
+      })
+      .catch(() => {})
+    return () => {
+      closed = true
+      unlisten?.()
+      window.clearInterval(timer)
+    }
   }, [refresh])
 
   if (!isTauri)
