@@ -69,6 +69,9 @@ const SEEN_MAX: usize = 8;
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct SyncState {
+    /// The local folder whose absence/changes the baseline describes.
+    #[serde(default)]
+    pub local_root: String,
     /// The account and server this state belongs to (`user@server`). Another account is another cloud: the bookkeeping starts over.
     #[serde(default)]
     pub account: String,
@@ -82,6 +85,11 @@ pub struct SyncState {
 }
 
 impl SyncState {
+    pub fn reset_local_baseline(&mut self) {
+        self.files.clear();
+        self.allow_deletes_once = false;
+    }
+
     /// A state file that cannot be read is moved aside and the sync starts from a clean slate: without `base` the
     /// engine only adds (uploads what is only here, downloads what is only there) and never deletes.
     pub fn load(path: &Path) -> SyncState {
@@ -458,6 +466,12 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         return Err(VAULT_MISSING.into());
     }
     remote.check()?;
+    let local_root = fs::canonicalize(root).map_err(err)?.to_string_lossy().into_owned();
+    if state.local_root != local_root {
+        // A different folder (including a fresh download) has no deletion history.
+        state.reset_local_baseline();
+        state.local_root = local_root;
+    }
     let (mut local, mut unknown) = scan(root, &state.files)?;
     let mut rep = Report::default();
     // one odd local file name (macOS "Icon\r"...) must not stop the sync of everything else: it is reported and left alone
@@ -496,7 +510,13 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
     let remote_empty = !rmap.keys().any(|p| is_content(p));
     // a file that went back to an earlier synced content says an old copy of the folder was restored: no deletion round on top of that
     let regressed = local.iter().any(|(p, l)| rmap.get(p).is_some_and(|r| state.files.get(p).is_some_and(|e| e.base == r.md5)) && is_revert(&l.md5, state.files.get(p)));
-    if (hold_deletes(deletes, tracked, local_empty, remote_empty) || (deletes > 0 && regressed)) && !state.allow_deletes_once {
+    // a file that is gone here is only deleted in the cloud when the app saw it being deleted (a local tombstone)
+    let tombstones = snapshot::tombstones(vault)?;
+    let unconfirmed_absence = actions.iter().any(|action| match action {
+        Action::DeleteRemote(path) => !tombstones.contains(path),
+        _ => false,
+    });
+    if (unconfirmed_absence || hold_deletes(deletes, tracked, local_empty, remote_empty) || (deletes > 0 && regressed)) && !state.allow_deletes_once {
         rep.held = deletes;
         actions.retain(|a| !matches!(a, Action::DeleteLocal(_) | Action::DeleteRemote(_)));
     }
@@ -889,6 +909,78 @@ mod tests {
     }
 
     #[test]
+    fn downloading_into_another_folder_preserves_server_pages() {
+        let (mut original, mut downloaded) = pair();
+        original.save(P1, "uploaded page", 100);
+        original.sync();
+        downloaded.state = original.state.clone();
+        downloaded.sync();
+        assert_eq!(downloaded.page(P1).unwrap()["title"], "uploaded page");
+        original.sync();
+        assert_eq!(original.page(P1).unwrap()["title"], "uploaded page");
+    }
+
+    #[test]
+    fn legacy_baseline_without_a_local_folder_does_not_delete_cloud_pages() {
+        let (mut original, mut downloaded) = pair();
+        original.save(P1, "keep on server", 100);
+        original.sync();
+        let mut legacy = serde_json::to_value(&original.state).unwrap();
+        legacy.as_object_mut().unwrap().remove("local_root");
+        downloaded.state = serde_json::from_value(legacy).unwrap();
+        downloaded.state.allow_deletes_once = true;
+        downloaded.sync();
+        assert_eq!(downloaded.page(P1).unwrap()["title"], "keep on server");
+        assert!(!downloaded.state.allow_deletes_once);
+    }
+
+    #[test]
+    fn a_missing_page_folder_never_empties_the_server() {
+        let (mut original, mut other) = pair();
+        original.save(P1, "keep my page", 100);
+        original.sync();
+        other.sync();
+        let page = original.vault.root.join(format!("pages/{P1}.json"));
+        fs::remove_file(page).unwrap();
+        let rep = original.sync();
+        assert!(rep.held > 0);
+        assert_eq!(rep.deleted, 0);
+        assert!(original.remote.0.borrow().trashed.is_empty());
+        other.sync();
+        assert_eq!(other.page(P1).unwrap()["title"], "keep my page");
+    }
+
+    #[test]
+    fn downloading_again_at_the_same_path_uses_a_fresh_baseline() {
+        let (mut original, mut other) = pair();
+        original.save(P1, "download again", 100);
+        original.sync();
+        other.sync();
+        fs::remove_file(original.vault.root.join(format!("pages/{P1}.json"))).unwrap();
+        original.state.reset_local_baseline();
+        let rep = original.sync();
+        assert_eq!(rep.held, 0);
+        assert_eq!(rep.deleted, 0);
+        assert_eq!(original.page(P1).unwrap()["title"], "download again");
+        assert!(original.remote.0.borrow().trashed.is_empty());
+    }
+
+    #[test]
+    fn a_missing_file_needs_confirmation_even_when_other_pages_remain() {
+        let (mut original, _) = pair();
+        original.save(P1, "missing", 100);
+        original.save(P2, "still here", 100);
+        original.sync();
+        fs::remove_file(original.vault.root.join(format!("pages/{P1}.json"))).unwrap();
+        let rep = original.sync();
+        assert!(rep.held > 0 && rep.deleted == 0);
+        assert!(original.remote.0.borrow().trashed.is_empty());
+        original.state.allow_deletes_once = true;
+        let confirmed = original.sync();
+        assert!(confirmed.deleted > 0);
+    }
+
+    #[test]
     fn different_pages_edited_at_once_both_survive() {
         let (mut a, mut b) = pair();
         a.save(P1, "one", 100);
@@ -1178,7 +1270,9 @@ mod tests {
         a.save(P2, "stays", 100);
         a.sync();
         fs::remove_file(a.vault.root.join(format!("pages/{P1}.json"))).unwrap();
-        let big = "pages/44444444-4444-4444-8444-444444444444.json";
+        // the app saw the page being deleted: only then is the absence a deletion
+        snapshot::tombstone(&a.vault, &format!("pages/{P1}.json")).unwrap();
+        let big ="pages/44444444-4444-4444-8444-444444444444.json";
         write_atomic(&a.vault.root.join(big), b"{}").unwrap();
         a.remote.0.borrow_mut().refuse_upload = Some(big.into());
         let rep = a.try_sync().unwrap();
