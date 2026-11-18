@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,9 +37,157 @@ func TestHousekeeping(t *testing.T) {
 		if ok := f.changes(f.a.token, f.v, 3, 500); ok.status != 200 { // a device that was online recently is fine
 			t.Fatalf("%d", ok.status)
 		}
-		old := f.changes(f.a.token, f.v, 0, 500) // one that was away longer cannot know what was deleted
+		old := f.changes(f.a.token, f.v, 1, 500) // one that was away longer cannot know what was deleted
 		if old.status != 410 || old.body.str("error") != "since_too_old" || old.body.str("epoch") == "" || old.body.num("compacted") != 3 {
 			t.Fatalf("%d %v", old.status, old.body)
+		}
+	})
+
+	t.Run("a device starting over (since 0) pages through a compacted vault without ever being told to start over", func(t *testing.T) {
+		f := newFixture(t)
+		made := f.commitOps([]op{put("pages/a.json", "a"), put("pages/b.json", "b"), put("pages/c.json", "c"), put("pages/d.json", "d")})
+		f.commitOps([]op{del("pages/a.json", result(made, 0).num("rev"))}) // rev 5
+		if st := f.housekeeping(31 * day); st.Tombstones != 1 {
+			t.Fatalf("%+v", st)
+		}
+		f.commitOps([]op{put("pages/e.json", "e"), put("pages/f.json", "f")})
+		seen := map[string]bool{}
+		since := int64(0)
+		for pages := 0; ; pages++ {
+			if pages > 10 {
+				t.Fatal("paging does not end")
+			}
+			r := f.changes(f.a.token, f.v, since, 1)
+			if r.status != 200 {
+				t.Fatalf("since %d: %d %v", since, r.status, r.body)
+			}
+			for _, file := range r.body.list("files") {
+				if file.flag("deleted") {
+					t.Fatalf("a tombstone was sent: %v", file)
+				}
+				seen[file.str("path")] = true
+			}
+			if !r.body.flag("has_more") {
+				break
+			}
+			if next := r.body.num("next"); next <= since {
+				t.Fatalf("no progress: %d after %d", next, since)
+			} else {
+				since = next
+			}
+		}
+		if len(seen) != 5 || seen["pages/a.json"] || !seen["pages/b.json"] || !seen["pages/f.json"] {
+			t.Fatalf("%v", seen)
+		}
+	})
+
+	t.Run("a snapshot read pages through the live files in path order, whatever was compacted", func(t *testing.T) {
+		f := newFixture(t)
+		made := f.commitOps([]op{put("pages/a.json", "a"), put("pages/b.json", "b"), put("pages/c.json", "c"), put("pages/d.json", "d")})
+		f.commitOps([]op{del("pages/a.json", result(made, 0).num("rev"))})
+		if st := f.housekeeping(31 * day); st.Tombstones != 1 {
+			t.Fatalf("%+v", st)
+		}
+		f.commitOps([]op{put("pages/g.json", "g"), put("pages/f.json", "f")})
+		f.commitOps([]op{del("pages/c.json", result(made, 2).num("rev"))}) // a tombstone that is still there
+		want := []string{"pages/b.json", "pages/d.json", "pages/f.json", "pages/g.json"}
+		if old := f.changes(f.a.token, f.v, 1, 500); old.status != 410 {
+			t.Fatalf("since 1 should be too old: %d", old.status)
+		}
+		snap := func(after string, limit int) reply {
+			url := fmt.Sprintf("/v1/vaults/%s/changes?snapshot=1&since=1&limit=%d&after=%s", f.v, limit, after)
+			return f.call("GET", url, opts{token: f.a.token})
+		}
+		for _, limit := range []int{1, 2, 3, 500} {
+			var got []string
+			after := ""
+			for pages := 0; ; pages++ {
+				if pages > 10 {
+					t.Fatal("paging does not end")
+				}
+				r := snap(after, limit)
+				if r.status != 200 {
+					t.Fatalf("limit %d after %q: %d %v", limit, after, r.status, r.body)
+				}
+				if r.body.num("seq") != f.seq() {
+					t.Fatalf("seq %d, want %d", r.body.num("seq"), f.seq())
+				}
+				files := r.body.list("files")
+				if len(files) > limit {
+					t.Fatalf("limit %d: %d files", limit, len(files))
+				}
+				for _, file := range files {
+					if file.flag("deleted") {
+						t.Fatalf("a tombstone was sent: %v", file)
+					}
+					got = append(got, file.str("path"))
+				}
+				if !r.body.flag("has_more") {
+					if r.body.str("next_after") != "" {
+						t.Fatalf("next_after %q on the last page", r.body.str("next_after"))
+					}
+					break
+				}
+				if r.body.str("next_after") != files[len(files)-1].str("path") {
+					t.Fatalf("next_after %q after %v", r.body.str("next_after"), files)
+				}
+				after = r.body.str("next_after")
+			}
+			if strings.Join(got, ",") != strings.Join(want, ",") {
+				t.Fatalf("limit %d: %v, want %v", limit, got, want)
+			}
+		}
+	})
+
+	t.Run("a snapshot read with deleted=1 pages through the tombstones that are still there, in path order", func(t *testing.T) {
+		f := newFixture(t)
+		made := f.commitOps([]op{put("pages/a.json", "a"), put("pages/b.json", "b"), put("pages/c.json", "c"), put("pages/d.json", "d"), put("pages/e.json", "e")})
+		f.commitOps([]op{del("pages/a.json", result(made, 0).num("rev"))})
+		if st := f.housekeeping(31 * day); st.Tombstones != 1 { // a is compacted away
+			t.Fatalf("%+v", st)
+		}
+		f.commitOps([]op{del("pages/e.json", result(made, 4).num("rev"))})
+		f.commitOps([]op{del("pages/c.json", result(made, 2).num("rev"))})
+		want := []string{"pages/c.json", "pages/e.json"}
+		for _, limit := range []int{1, 2, 3, 500} {
+			var got []string
+			after := ""
+			for pages := 0; ; pages++ {
+				if pages > 10 {
+					t.Fatal("paging does not end")
+				}
+				url := fmt.Sprintf("/v1/vaults/%s/changes?snapshot=1&deleted=1&limit=%d&after=%s", f.v, limit, after)
+				r := f.call("GET", url, opts{token: f.a.token})
+				if r.status != 200 {
+					t.Fatalf("limit %d after %q: %d %v", limit, after, r.status, r.body)
+				}
+				if r.body.num("seq") != f.seq() || r.body.num("head") != f.seq() {
+					t.Fatalf("seq %d head %d, want %d", r.body.num("seq"), r.body.num("head"), f.seq())
+				}
+				files := r.body.list("files")
+				if len(files) > limit {
+					t.Fatalf("limit %d: %d files", limit, len(files))
+				}
+				for _, file := range files {
+					if !file.flag("deleted") {
+						t.Fatalf("a live file was sent: %v", file)
+					}
+					got = append(got, file.str("path"))
+				}
+				if !r.body.flag("has_more") {
+					if r.body.str("next_after") != "" {
+						t.Fatalf("next_after %q on the last page", r.body.str("next_after"))
+					}
+					break
+				}
+				if r.body.str("next_after") != files[len(files)-1].str("path") {
+					t.Fatalf("next_after %q after %v", r.body.str("next_after"), files)
+				}
+				after = r.body.str("next_after")
+			}
+			if strings.Join(got, ",") != strings.Join(want, ",") {
+				t.Fatalf("limit %d: %v, want %v", limit, got, want)
+			}
 		}
 	})
 
@@ -65,6 +215,27 @@ func TestHousekeeping(t *testing.T) {
 		f.putBlob(f.a.token, f.v, "in flight")
 		if st := f.housekeeping(0); st.Blobs != 0 {
 			t.Fatalf("%+v", st)
+		}
+	})
+
+	t.Run("an old orphan that is uploaded again is not taken by housekeeping before the commit that follows", func(t *testing.T) {
+		f := newFixture(t)
+		sum := f.putBlob(f.a.token, f.v, "late")
+		// by now it counts as an abandoned upload; the client tries again, and the grace period starts anew
+		f.clock.advance(2 * day)
+		f.putBlob(f.a.token, f.v, "late")
+		if st := f.housekeeping(0); st.Blobs != 0 {
+			t.Fatalf("%+v", st)
+		}
+		if !f.store.Blobs.Has(f.v, sum) {
+			t.Fatal("the blob was removed under the client")
+		}
+		r := f.call("POST", "/v1/vaults/"+f.v+"/commit", opts{token: f.a.token, json: J{"op_id": "late-orphan-1", "ops": []J{{"op": "put", "path": "pages/late.json", "sha256": sum, "base_rev": 0}}}})
+		if r.status != 200 || !result(r, 0).flag("ok") {
+			t.Fatalf("%d %v", r.status, r.body)
+		}
+		if !f.store.Blobs.Has(f.v, sum) {
+			t.Fatal("a live file lost its content")
 		}
 	})
 

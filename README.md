@@ -218,7 +218,7 @@ See [the Git workflow](docs/git-flow.md) for the complete process. The installer
 
 ## Privacy
 
-Nevis runs on your computer. It has no analytics or telemetry and sends your notes nowhere. Full details: [Privacy Policy](https://0xvexor.github.io/Nevis/privacy.html).
+Nevis runs on your computer. It has no analytics or telemetry and sends your notes nowhere, unless you turn on sync: then your files go to the sync server you chose. That server is blind to structure but is **not end-to-end encrypted**, so whoever runs it can read your files in plaintext (use HTTPS, and only a server you trust; see [the server README](server/README.md)). Full details: [Privacy Policy](https://0xvexor.github.io/Nevis/privacy.html).
 
 ---
 

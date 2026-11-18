@@ -10,6 +10,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub type Res<T> = Result<T, String>;
 
 pub const KEEP_VERSIONS: usize = 40;
+/// A save was refused for some pages because their deletion is final; the other pages of that save were written.
+/// The error is this code, then lines `ids=<id>,<id>` (the refused pages) and `kept=<id>,...`.
+pub const PERMANENTLY_DELETED: &str = "SYNC:permanently_deleted";
 pub const TRASH_KEEP_MS: i64 = 7 * 24 * 3600 * 1000;
 
 pub fn err<E: ToString>(e: E) -> String {
@@ -18,6 +21,44 @@ pub fn err<E: ToString>(e: E) -> String {
 
 pub fn now_ms() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+}
+
+/// A `savedAt` this far ahead of the server's clock comes from a device whose clock runs fast.
+pub const SKEW_MS: i64 = 10 * 60 * 1000;
+
+static SERVER_OFFSET_MS: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
+/// The server's clock minus this device's, as the last sync measured it (0 until then).
+pub fn set_server_offset(ms: i64) {
+    SERVER_OFFSET_MS.store(ms, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn server_offset() -> i64 {
+    SERVER_OFFSET_MS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Whether `saved_at` is in the future by more than SKEW_MS, on the server's clock when it is known.
+pub fn is_clock_ahead(saved_at: i64) -> bool {
+    clock_ahead(saved_at, now_ms(), server_offset())
+}
+
+fn clock_ahead(saved_at: i64, now: i64, offset: i64) -> bool {
+    saved_at > now.saturating_add(offset).saturating_add(SKEW_MS)
+}
+
+/// The time to compare for "which version is newer": the saved time itself, except a time in the future, which comes from a
+/// clock that runs fast and would win every conflict. That one counts as when it can have happened at the latest: the clock as
+/// this device would have shown it on the server's time, the moment the version reached us (`bound`, when known), now.
+/// Only for the comparison; the page keeps its `updatedAt`. Returns (time to compare, it was clamped).
+pub fn effective_saved_at(saved_at: i64, bound: Option<i64>) -> (i64, bool) {
+    effective_at(saved_at, bound, now_ms(), server_offset())
+}
+
+pub(crate) fn effective_at(saved_at: i64, bound: Option<i64>, now: i64, offset: i64) -> (i64, bool) {
+    if !clock_ahead(saved_at, now, offset) {
+        return (saved_at, false);
+    }
+    (saved_at.saturating_add(offset).min(bound.unwrap_or(i64::MAX)).min(now.saturating_add(offset)), true)
 }
 
 fn is_id(s: &str) -> bool {
@@ -63,6 +104,29 @@ pub fn commit_lock(root: &Path) -> Res<fs::File> {
 
 /// Keeps only the newest KEEP_VERSIONS history entries of a page. Needs only the vault folder, so recovery can use it.
 pub(crate) fn trim_history_at(root: &Path, id: &str) {
+    trim_history_keeping(root, id, &[]);
+}
+
+/// The history entries an open conflict marker of the page points to (`historyTs` of either side).
+fn marker_history_refs(root: &Path, id: &str) -> Vec<i64> {
+    let dir = root.join("history").join(crate::page_conflicts::DIR).join(id);
+    fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| read_json(&e.path()))
+        .flat_map(|m| ["local", "remote"].map(|side| m.get(side).and_then(|s| s.get("historyTs")).and_then(Value::as_i64)))
+        .flatten()
+        .collect()
+}
+
+/// Like `trim_history_at`, but an entry in `protect` (the one a conflict just wrote) and any entry an open conflict
+/// marker refers to survive: a version from a device with an old clock is the oldest by `ts` and would otherwise be
+/// trimmed at once, and the deletion would then travel to every device.
+pub(crate) fn trim_history_keeping(root: &Path, id: &str, protect: &[i64]) {
+    if id == crate::page_conflicts::DIR {
+        return; // `history/conflicts/` holds the conflict markers, not the versions of a page
+    }
     let dir = root.join("history").join(id);
     let mut ts: Vec<i64> = fs::read_dir(&dir)
         .into_iter()
@@ -71,8 +135,11 @@ pub(crate) fn trim_history_at(root: &Path, id: &str) {
         .filter_map(|e| e.file_name().to_str()?.strip_suffix(".json")?.parse().ok())
         .collect();
     ts.sort_unstable_by(|a, b| b.cmp(a));
+    let referenced = marker_history_refs(root, id);
     for t in ts.into_iter().skip(KEEP_VERSIONS) {
-        let _ = fs::remove_file(dir.join(format!("{t}.json")));
+        if !protect.contains(&t) && !referenced.contains(&t) {
+            let _ = fs::remove_file(dir.join(format!("{t}.json")));
+        }
     }
 }
 
@@ -112,6 +179,19 @@ fn read_json(path: &Path) -> Option<Value> {
 
 fn updated_at(v: &Value) -> i64 {
     v.get("updatedAt").and_then(Value::as_f64).unwrap_or(0.0) as i64
+}
+
+/// What `resolve_conflicts_locked` did with one conflict copy.
+pub(crate) struct Resolved {
+    pub page_id: String,
+    /// the copy (the other device's version) became the page; false: the page here stayed
+    pub copy_won: bool,
+    /// the history entry of the version that lost
+    pub loser_ts: Option<i64>,
+    /// database rows merge cell by cell: nobody chose
+    pub merged: bool,
+    /// one of the two versions carried a time far in the future and was compared as an earlier one (see `effective_saved_at`)
+    pub clock_skew: bool,
 }
 
 /// The lowercase hex SHA-256 of `b`; attachments are named by it.
@@ -238,7 +318,7 @@ impl Vault {
     }
 
     fn make_dirs(&self) -> Res<()> {
-        for d in ["pages", "files", "history", "kv", ".nevis", ".trash/pages", ".trash/files"] {
+        for d in ["pages", "pages-state", "files", "history", "kv", ".nevis", ".trash/pages", ".trash/files"] {
             fs::create_dir_all(self.root.join(d)).map_err(err)?;
         }
         let workspace=self.root.join("kv/workspace.json");
@@ -341,7 +421,9 @@ impl Vault {
         Ok(out)
     }
 
-    pub(crate) fn resolve_conflicts_locked(&self) -> Res<()> {
+    /// Merges the conflict copies in `pages/` into their pages and says what it did, so that the caller can record it.
+    pub(crate) fn resolve_conflicts_locked(&self) -> Res<Vec<Resolved>> {
+        let mut resolved = vec![];
         let rd = fs::read_dir(self.pages_dir()).map_err(err)?;
         for e in rd.flatten() {
             let path = e.path();
@@ -353,22 +435,31 @@ impl Vault {
             let main = self.pages_dir().join(format!("{}.json", &stem[..36]));
             let id = &stem[..36];
             if crate::sync::snapshot::tombstones(self)?.contains(&format!("pages/{id}.json")) {
-                continue;
+                // the page was deleted here while another device edited it: the edit wins (as in the sync plan), the
+                // copy becomes the page again. Leaving it would let a later sync remove the only copy of that edit.
+                crate::sync::snapshot::forget_tombstone(&self.root, &format!("pages/{id}.json"))?;
             }
             if main.exists() && read_json(&main).is_none() { return Err("STORAGE:unreadable_page".into()); }
+            let mut note = Resolved { page_id: id.to_string(), copy_won: true, loser_ts: None, merged: false, clock_skew: false };
             let result = match read_json(&main) {
                 None => write_atomic(&main, copy.to_string().as_bytes()),
                 Some(cur) => {
                     // database rows merge cell by cell (stamps decide), and the complete losing version is kept in history
-                    let (win, losers) = if copy.get("database").is_some() && cur.get("database").is_some() {
+                    note.merged = copy.get("database").is_some() && cur.get("database").is_some();
+                    // the copy file's time is the latest the other version can have been saved (sync stamps it with the server's time of that revision)
+                    let arrived = fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_millis() as i64);
+                    let ((copy_at, copy_clamped), (cur_at, cur_clamped)) = (effective_saved_at(updated_at(&copy), arrived), effective_saved_at(updated_at(&cur), None));
+                    note.clock_skew = copy_clamped || cur_clamped;
+                    note.copy_won = copy_at > cur_at;
+                    let (win, losers) = if note.merged {
                         crate::database::merge::merge_pages(&copy, &cur)
-                    } else if updated_at(&copy) > updated_at(&cur) {
+                    } else if note.copy_won {
                         (copy, vec![cur])
                     } else {
                         (cur, vec![copy])
                     };
                     for lose in &losers {
-                        self.keep_loser(id, lose)?;
+                        note.loser_ts = Some(self.keep_loser_ts(id, lose)?);
                         crate::database::keep_page_loser(&self.root, id, lose)?;
                     }
                     write_atomic(&main, win.to_string().as_bytes())
@@ -376,12 +467,23 @@ impl Vault {
             };
             result?;
             fs::remove_file(&path).map_err(err)?;
+            resolved.push(note);
         }
-        Ok(())
+        Ok(resolved)
     }
 
     /// A page version that lost against a newer one is not dropped: it becomes a history entry.
-    fn keep_loser(&self, id: &str, page: &Value) -> Res<()> {
+    pub(crate) fn keep_loser(&self, id: &str, page: &Value) -> Res<()> {
+        self.keep_loser_ts(id, page).map(|_| ())
+    }
+
+    /// Like `keep_loser`; returns the `ts` of the history entry that was written.
+    pub(crate) fn keep_loser_ts(&self, id: &str, page: &Value) -> Res<i64> {
+        self.keep_loser_ts_protecting(id, page, &[])
+    }
+
+    /// `protect`: history entries of the same conflict written earlier that the trim below must not remove.
+    pub(crate) fn keep_loser_ts_protecting(&self, id: &str, page: &Value, protect: &[i64]) -> Res<i64> {
         let mut ts = updated_at(page);
         let dir = self.root.join("history").join(check_id(id)?);
         while dir.join(format!("{ts}.json")).exists() {
@@ -389,8 +491,10 @@ impl Vault {
         }
         let v = json!({ "pageId": id, "ts": ts, "title": page.get("title").cloned().unwrap_or(json!("")), "content": page.get("content").cloned().unwrap_or(Value::Null) });
         write_atomic(&dir.join(format!("{ts}.json")), v.to_string().as_bytes())?;
-        self.trim_history(id);
-        Ok(())
+        let mut keep = protect.to_vec();
+        keep.push(ts); // never the entry this call wrote, whatever its clock says
+        trim_history_keeping(&self.root, id, &keep);
+        Ok(ts)
     }
 
     /// Returns the ids of pages whose version on disk was not the one the edit started from (`_base`, the `updatedAt`
@@ -452,27 +556,46 @@ impl Vault {
 
     fn save_pages_locked(&self, upserts: &[Value], removed: &[String], clear_first: bool, checked: bool) -> Res<Vec<String>> {
         let mut kept = vec![];
+        // pages whose deletion is final (another device purged them, or they were deleted here): refused one by one, so that
+        // one of them does not hold back every other page of the batch (and every later batch with it)
+        let mut refused: Vec<String> = vec![];
+        let dead = crate::sync::snapshot::tombstones(self)?;
         for p in upserts {
             let id = p.get("id").and_then(Value::as_str).ok_or("page without id")?;
             let path = self.page_path(id)?;
-            if crate::sync::snapshot::tombstones(self)?.contains(&format!("pages/{id}.json")) {
-                return Err("SYNC:permanently_deleted".into());
+            if dead.contains(&format!("pages/{id}.json")) {
+                refused.push(id.to_string());
+                continue;
             }
             if path.exists() && read_json(&path).is_none() { return Err("STORAGE:unreadable_page".into()); }
+            let has_state = crate::page_state::has_state(&self.root, id);
             // `_base` is bookkeeping of the editor, not part of the page file
             let base = p.get("_base").and_then(Value::as_i64);
             let mut p = p.clone();
             if let Some(o) = p.as_object_mut() {
                 o.remove("_base");
             }
-            if !clear_first && !checked {
+            if has_state {
+                // a page with a state merges instead of losing: the edit is taken in below, nothing goes to history here
+                crate::page_state::precheck_locked(&self.root, id, &p)?;
+                if !clear_first && !checked && base.is_some_and(|b| read_json(&path).is_some_and(|cur| updated_at(&cur) != b && updated_at(&cur) != updated_at(&p))) {
+                    // the page changed under the writer (a merge brought another device's edit): the ingest below diffs
+                    // against the current text and would remove it, so the version it replaces is kept in the history first
+                    if let Some(cur) = read_json(&path) {
+                        self.keep_loser(id, &cur)?;
+                        kept.push(id.to_string());
+                    }
+                }
+            } else if !clear_first && !checked {
                 if let Some(cur) = read_json(&path) {
-                    if updated_at(&cur) > updated_at(&p) {
+                    // a version from a clock that runs fast is "newer" than anything this device can write: it must not lock the page
+                    let from_fast_clock = updated_at(&cur) > updated_at(&p) && is_clock_ahead(updated_at(&cur)) && !is_clock_ahead(updated_at(&p));
+                    if updated_at(&cur) > updated_at(&p) && !from_fast_clock {
                         // another device saved a newer version of this page: ours must not overwrite it
                         self.keep_loser(id, &p)?;
                         continue;
                     }
-                    if base.is_some_and(|b| updated_at(&cur) != b && updated_at(&cur) != updated_at(&p)) {
+                    if from_fast_clock || base.is_some_and(|b| updated_at(&cur) != b && updated_at(&cur) != updated_at(&p)) {
                         // the file changed under the editor (a file-sync tool brought another device's edit): do not lose that version
                         self.keep_loser(id, &cur)?;
                         kept.push(id.to_string());
@@ -480,6 +603,9 @@ impl Vault {
                 }
             }
             write_atomic(&path, p.to_string().as_bytes())?;
+            if has_state {
+                crate::page_state::ingest_local_locked(&self.root, id)?;
+            }
         }
         let mut gone: Vec<String> = removed.to_vec();
         if clear_first {
@@ -496,10 +622,17 @@ impl Vault {
             let path = self.page_path(&id)?;
             crate::sync::snapshot::tombstone(self, &format!("pages/{id}.json"))?;
             if path.exists() { fs::remove_file(&path).map_err(err)?; }
+            crate::page_state::remove_locked(&self.root, &id);
             for p in [self.root.join(".trash/pages").join(format!("{id}.json")), self.root.join(".trash/pages").join(format!("{id}.del"))] {
                 if p.exists(){fs::remove_file(p).map_err(err)?;}
             }
             self.versions_delete_locked(&id)?;
+            crate::page_conflicts::remove_page_locked(&self.root, &id);
+        }
+        if !refused.is_empty() {
+            // everything else was saved. The first line is the code; `ids` are the pages that were not, `kept` those whose
+            // newer disk version went to the history (see `refused_pages`)
+            return Err(format!("{PERMANENTLY_DELETED}\nids={}\nkept={}", refused.join(","), kept.join(",")));
         }
         Ok(kept)
     }
@@ -603,6 +736,9 @@ impl Vault {
 
     /// The caller holds the commit lock; taking it again would block this thread on its own lock.
     fn versions_delete_locked(&self, id: &str) -> Res<()> {
+        if check_id(id)? == crate::page_conflicts::DIR {
+            return Ok(()); // never the folder of the conflict markers
+        }
         let _ = fs::remove_dir_all(self.root.join("history").join(check_id(id)?));
         Ok(())
     }

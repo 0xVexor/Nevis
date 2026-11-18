@@ -63,6 +63,12 @@ export interface DocumentHost {
   legacyHtmlToDoc?(html: string): unknown
   clearLegacy?(): void
   requestPersistence?(): void
+  /** Desktop with sync only: keeps a durable record of a page that was edited here while another version arrived (an editor race). Best effort; may reject. */
+  recordConflict?(pageId: string, base: Page | null, local: Page, remote: Page): Promise<unknown>
+  /** Title of the new page that keeps an edit made to a page that was deleted for good elsewhere ("Recovered: <title>"; the app translates it). */
+  recoveredTitle?(title: string): string
+  /** Tells the person that their edit of a page that was deleted elsewhere was saved as another page. */
+  recovered?(info: { fromId: string; toId: string; title: string }): void
   watchExternal?(changed: () => void): Promise<() => void>
 }
 export interface DocumentEnvironment {

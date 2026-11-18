@@ -8,6 +8,7 @@ import { isTauri } from '../db'
 import { t } from '../i18n'
 import {
   accountChangePassword,
+  accountDelete,
   accountInfo,
   accountLogin,
   accountLogout,
@@ -16,21 +17,29 @@ import {
   accountRegister,
   accountRevokeDevice,
   accountStatus,
+  cloudDelete,
   cloudDownload,
+  cloudPurge,
+  cloudRestore,
+  cloudTrashed,
   cloudVaults,
-  saveTextFile,
+  formatBytes,
+  saveRecoveryKeyFile,
   serverHealth,
   syncConfirm,
   syncError,
+  syncHeld,
   syncNow,
   syncSet,
   type AccountInfo,
+  type HeldDelete,
   type ServerHealth,
   type ServerVault,
   type SyncStatus,
+  type TrashedVault,
 } from './client'
 
-const formatBytes = (n = 0) => (n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1024 / 1024).toFixed(n < 100 * 1024 * 1024 ? 1 : 0) + ' MB')
+const HELD_SHOWN = 10
 
 function statusText(s: SyncStatus): string {
   if (!s.syncOn) return t('Sync is off for this workspace.')
@@ -59,11 +68,7 @@ function RecoveryKeyDialog({ keyText, username, onClose }: { keyText: string; us
   const [note, setNote] = useState('')
   const saveFile = async () => {
     try {
-      const { save } = await import('@tauri-apps/plugin-dialog')
-      const path = await save({ defaultPath: 'nevis-recovery-key.txt', filters: [{ name: 'TXT', extensions: ['txt'] }] })
-      if (!path) return
-      await saveTextFile(path, `Nevis recovery key\nUser: ${username}\nKey: ${keyText}\n`)
-      setNote(t('Saved.'))
+      if (await saveRecoveryKeyFile(username, keyText)) setNote(t('Saved.'))
     } catch (e) {
       setNote(syncError(e))
     }
@@ -149,6 +154,9 @@ function SignIn({ status, onDone, onKey }: { status: SyncStatus; onDone: () => v
   const registration = health?.registration
   return (
     <PreferenceGroup title={t('Your server')} hint={t('Sync keeps your workspaces the same on all your devices, through a server that you run. Nothing goes anywhere else.')}>
+      <Notice tone="info" title={t('Sign in to send this workspace to your server')}>
+        {t('This workspace is only on this computer. After you sign in, you can send it to your server and keep it synced.')}
+      </Notice>
       <PreferenceRow wide label={t('Server address')} hint={t('For example sync.example.com')}>
         <Field ltr value={server} placeholder="sync.example.com" aria-label={t('Server address')} onChange={(e) => setServer(e.target.value)} onBlur={() => server.trim() && void check()} />
       </PreferenceRow>
@@ -214,6 +222,15 @@ function SignIn({ status, onDone, onKey }: { status: SyncStatus; onDone: () => v
 function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () => void; onKey: (key: string, username: string) => void }) {
   const [info, setInfo] = useState<AccountInfo | null>(null)
   const [vaults, setVaults] = useState<ServerVault[] | null>(null)
+  const [trashed, setTrashed] = useState<TrashedVault[]>([])
+  const [held, setHeld] = useState<HeldDelete[]>([])
+  const [deleting, setDeleting] = useState(false)
+  const [deletePassword, setDeletePassword] = useState('')
+  const [removing, setRemoving] = useState<ServerVault | null>(null)
+  const [purging, setPurging] = useState<TrashedVault | null>(null)
+  const [purgePassword, setPurgePassword] = useState('')
+  const onServer = !!status.vaultId && !!vaults?.some((v) => v.id === status.vaultId)
+  const needsConfirm = status.reason === 'NEEDS_CONFIRM'
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [oldPassword, setOldPassword] = useState('')
@@ -221,9 +238,10 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
 
   const load = useCallback(async () => {
     try {
-      const [i, v] = await Promise.all([accountInfo(), cloudVaults()])
+      const [i, v, tr] = await Promise.all([accountInfo(), cloudVaults(), cloudTrashed()])
       setInfo(i)
       setVaults(v)
+      setTrashed(tr)
     } catch (e) {
       setMessage(syncError(e))
     }
@@ -231,6 +249,16 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
   useEffect(() => {
     void load()
   }, [load])
+  // the list of held deletions is read again whenever the sync says it is waiting (its count can change between rounds)
+  useEffect(() => {
+    if (!needsConfirm) {
+      setHeld([])
+      return
+    }
+    syncHeld()
+      .then(setHeld)
+      .catch(() => setHeld([]))
+  }, [needsConfirm, status.error])
 
   const run = async (job: () => Promise<void>, after?: () => void) => {
     setBusy(true)
@@ -251,6 +279,40 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
       if (typeof parent !== 'string') return
       await cloudDownload(v.id, v.name, parent)
       window.location.reload() // the downloaded workspace is now the open one
+    })
+  const restore = (v: TrashedVault) =>
+    run(
+      async () => {
+        await cloudRestore(v.id)
+      },
+      () => void load(),
+    )
+  const removeFromServer = (v: ServerVault) =>
+    run(async () => {
+      const syncStopped = await cloudDelete(v.id)
+      setRemoving(null)
+      await load()
+      refresh()
+      setMessage(
+        syncStopped
+          ? t('“{name}” is in the server trash. Sync is off for this workspace; the files on this computer are untouched.').replace('{name}', v.name)
+          : t('“{name}” is in the server trash. You can restore it from there.').replace('{name}', v.name),
+      )
+    })
+  const purgeFromServer = (v: TrashedVault) =>
+    run(async () => {
+      await cloudPurge(v.id, purgePassword)
+      setPurging(null)
+      setPurgePassword('')
+      await load()
+      setMessage(t('“{name}” was removed from the server for good.').replace('{name}', v.name))
+    })
+  const deleteAccount = () =>
+    run(async () => {
+      await accountDelete(deletePassword)
+      setDeleting(false)
+      setDeletePassword('')
+      refresh()
     })
   const changePassword = () =>
     run(async () => {
@@ -287,7 +349,32 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
       </PreferenceGroup>
 
       <PreferenceGroup title={t('This workspace')} hint={t('Turn it on and the workspace is copied to the server, then kept the same on every device you sign in on.')}>
-        <PreferenceRow label={t('Sync this workspace')} hint={statusText(status)}>
+        {!status.syncOn && (
+          <Notice
+            tone="info"
+            title={onServer ? t('This workspace is already on your server') : t('This workspace is only on this computer')}
+            action={
+              <Button
+                variant="primary"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await syncSet(true)
+                    await load()
+                    refresh()
+                  })
+                }
+              >
+                {onServer ? t('Keep it synced') : t('Send to your server and keep it synced')}
+              </Button>
+            }
+          >
+            {onServer
+              ? t('Sync is off, so changes are not exchanged with the server. Turn it on to keep this workspace the same on all your devices.')
+              : t('Send it once and it stays the same on every device you sign in on: changes go both ways, by themselves.')}
+          </Notice>
+        )}
+        <PreferenceRow label={t('Sync this workspace')} hint={status.syncOn ? `${t('Kept in sync with the server')} · ${statusText(status)}` : statusText(status)}>
           <Switch
             label={t('Sync this workspace')}
             checked={status.syncOn}
@@ -325,7 +412,7 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
-                    await syncConfirm()
+                    await syncConfirm(held)
                     refresh()
                   })
                 }
@@ -335,7 +422,30 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
             }
           >
             {t('Many files, or a whole side, would be deleted by this sync. They are kept aside for 30 days. Allow them only if that is what you meant.')}
+            {held.length > 0 && (
+              <ul dir="ltr" style={{ textAlign: 'left' }}>
+                {held.slice(0, HELD_SHOWN).map((d) => (
+                  <li key={d.path} style={{ wordBreak: 'break-all' }}>
+                    {d.path}
+                  </li>
+                ))}
+                {held.length > HELD_SHOWN && <li>{t('and {n} more').replace('{n}', String(held.length - HELD_SHOWN))}</li>}
+              </ul>
+            )}
           </Notice>
+        )}
+        {!!status.skippedPaths?.length && (
+          <details className="prefs-note">
+            <summary>{t('{n} files were skipped').replace('{n}', String(status.skippedPaths.length))}</summary>
+            <p>{t('The names of these files cannot be synced (hidden characters or an unsupported name). They stay where they are. Rename them to sync them.')}</p>
+            <ul dir="ltr" style={{ textAlign: 'left' }}>
+              {status.skippedPaths.map((p) => (
+                <li key={p} style={{ wordBreak: 'break-all' }}>
+                  {JSON.stringify(p).slice(1, -1)}
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
       </PreferenceGroup>
 
@@ -346,10 +456,34 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
           <PreferenceRow key={v.id} label={v.name} hint={`${v.files ?? 0} ${t('files')} · ${formatBytes(v.bytes)}`}>
             <Button disabled={busy} onClick={() => void download(v)}>
               {t('Download')}
+            </Button>{' '}
+            <Button disabled={busy} onClick={() => setRemoving(v)}>
+              {t('Delete from server…')}
             </Button>
           </PreferenceRow>
         ))}
       </PreferenceGroup>
+
+      {trashed.length > 0 && (
+        <PreferenceGroup title={t('Workspaces in the server trash')} hint={t('They are removed from the server for good after a while. Restore one to get it back.')}>
+          {trashed.map((v) => (
+            <PreferenceRow key={v.id} label={v.name} hint={`${v.files ?? 0} ${t('files')} · ${formatBytes(v.bytes)}`}>
+              <Button disabled={busy} onClick={() => void restore(v)}>
+                {t('Restore')}
+              </Button>{' '}
+              <Button
+                disabled={busy}
+                onClick={() => {
+                  setMessage('')
+                  setPurging(v)
+                }}
+              >
+                {t('Delete permanently…')}
+              </Button>
+            </PreferenceRow>
+          ))}
+        </PreferenceGroup>
+      )}
 
       <PreferenceGroup title={t('Devices')}>
         {info?.devices?.map((d) => (
@@ -390,7 +524,109 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
         </PreferenceRow>
       </PreferenceGroup>
 
-      {message && (
+      <PreferenceGroup title={t('Delete account')} hint={t('Your account and its workspaces on the server are removed after 30 days. The workspaces on your devices stay.')}>
+        <PreferenceRow label="">
+          <Button disabled={busy} onClick={() => setDeleting(true)}>
+            {t('Delete my account…')}
+          </Button>
+        </PreferenceRow>
+      </PreferenceGroup>
+      {deleting && (
+        <Dialog
+          open
+          title={t('Delete your account?')}
+          onClose={() => {
+            setDeleting(false)
+            setDeletePassword('')
+          }}
+          actions={
+            <>
+              <Button disabled={busy} onClick={() => setDeleting(false)}>
+                {t('Cancel')}
+              </Button>
+              <Button variant="primary" disabled={busy || !deletePassword} onClick={() => void deleteAccount()}>
+                {t('Delete my account')}
+              </Button>
+            </>
+          }
+        >
+          <div className="ds-modal-body">
+            <p>{t('Type your password to confirm. You are signed out here, and the server removes the account after 30 days.')}</p>
+            <Field ltr type="password" value={deletePassword} autoComplete="current-password" aria-label={t('Password')} onChange={(e) => setDeletePassword(e.target.value)} />
+            {message && (
+              <Notice tone="bad" role="alert">
+                {message}
+              </Notice>
+            )}
+          </div>
+        </Dialog>
+      )}
+
+      {removing && (
+        <Dialog
+          open
+          title={t('Delete “{name}” from the server?').replace('{name}', removing.name)}
+          onClose={() => setRemoving(null)}
+          actions={
+            <>
+              <Button disabled={busy} onClick={() => setRemoving(null)}>
+                {t('Cancel')}
+              </Button>
+              <Button variant="primary" disabled={busy} onClick={() => void removeFromServer(removing)}>
+                {t('Delete from server')}
+              </Button>
+            </>
+          }
+        >
+          <div className="ds-modal-body">
+            <p>{t('It moves to the server’s trash and can be restored for 30 days. The files on this computer stay.')}</p>
+            {removing.id === status.vaultId && <p>{t('Sync for this workspace will be turned off.')}</p>}
+            {message && (
+              <Notice tone="bad" role="alert">
+                {message}
+              </Notice>
+            )}
+          </div>
+        </Dialog>
+      )}
+      {purging && (
+        <Dialog
+          open
+          title={t('Delete “{name}” permanently?').replace('{name}', purging.name)}
+          onClose={() => {
+            setPurging(null)
+            setPurgePassword('')
+          }}
+          actions={
+            <>
+              <Button
+                disabled={busy}
+                onClick={() => {
+                  setPurging(null)
+                  setPurgePassword('')
+                }}
+              >
+                {t('Cancel')}
+              </Button>
+              <Button variant="primary" disabled={busy || !purgePassword} onClick={() => void purgeFromServer(purging)}>
+                {t('Delete permanently')}
+              </Button>
+            </>
+          }
+        >
+          <div className="ds-modal-body">
+            <p>{t('This removes the workspace from the server for good. It cannot be undone. The files on your devices stay. Type your password to confirm.')}</p>
+            <Field ltr type="password" value={purgePassword} autoComplete="current-password" aria-label={t('Password')} onChange={(e) => setPurgePassword(e.target.value)} />
+            {message && (
+              <Notice tone="bad" role="alert">
+                {message}
+              </Notice>
+            )}
+          </div>
+        </Dialog>
+      )}
+
+      {message && !deleting && !removing && !purging && (
         <Notice tone="info" role="status">
           {message}
         </Notice>
@@ -410,8 +646,22 @@ export function SyncSettings() {
   useEffect(() => {
     if (!isTauri) return
     refresh()
-    const timer = window.setInterval(refresh, 2000)
-    return () => window.clearInterval(timer)
+    // the app says when the status changes; the slow poll is only a safety net
+    const timer = window.setInterval(refresh, 20000)
+    let closed = false
+    let unlisten: (() => void) | undefined
+    void import('@tauri-apps/api/event')
+      .then(({ listen }) => listen('sync-status', refresh))
+      .then((stop) => {
+        if (closed) stop()
+        else unlisten = stop
+      })
+      .catch(() => {})
+    return () => {
+      closed = true
+      unlisten?.()
+      window.clearInterval(timer)
+    }
   }, [refresh])
 
   if (!isTauri)

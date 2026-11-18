@@ -58,11 +58,33 @@ func vaultDir(vault string) string {
 	return strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString([]byte(vault)))
 }
 
+// validSHA is the backstop behind the callers' own checks: a name that is not 64 lowercase hex digits never becomes
+// part of a path.
+func validSHA(sha string) bool {
+	if len(sha) != 64 {
+		return false
+	}
+	for _, c := range sha {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// path is "" for a malformed sha, which every file operation refuses (nothing exists there, nothing can be written).
 func (b *Blobs) path(vault, sha string) string {
+	if !validSHA(sha) {
+		return ""
+	}
 	return filepath.Join(b.root, vaultDir(vault), sha[:2], sha)
 }
 
+// stagingPath is "" for a malformed sha, like path.
 func (b *Blobs) stagingPath(vault, sha string) string {
+	if !validSHA(sha) {
+		return ""
+	}
 	return filepath.Join(b.staging, vaultDir(vault)+"_"+sha)
 }
 

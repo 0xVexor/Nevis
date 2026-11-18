@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"math"
 	"reflect"
 	"regexp"
@@ -143,6 +144,43 @@ func TestAccounts(t *testing.T) {
 		retry, _ := strconv.Atoi(locked.header.Get("Retry-After"))
 		if locked.status != 429 || retry <= 0 {
 			t.Fatalf("%d %v", locked.status, locked.header)
+		}
+	})
+
+	t.Run("an address that is locked out of a user name does not lock the owner out from another address", func(t *testing.T) {
+		e := newEnv(t)
+		e.register("alice", J{"password": secretPhrase})
+		login := func(ip, password string) reply {
+			return e.call("POST", "/v1/auth/login", opts{ip: ip, json: J{"username": "alice", "password": password, "device_name": "phone"}})
+		}
+		for range 10 {
+			login("203.0.113.9", "wrong")
+		}
+		if r := login("203.0.113.9", secretPhrase); r.status != 429 {
+			t.Fatalf("the attacker: %d", r.status)
+		}
+		if r := login("198.51.100.7", secretPhrase); r.status != 200 {
+			t.Fatalf("the owner: %d %v", r.status, r.body)
+		}
+	})
+
+	t.Run("a user name guessed from many addresses is locked for all of them", func(t *testing.T) {
+		e := newEnv(t)
+		e.register("alice", J{"password": secretPhrase})
+		login := func(ip, password string) reply {
+			return e.call("POST", "/v1/auth/login", opts{ip: ip, json: J{"username": "alice", "password": password, "device_name": "phone"}})
+		}
+		for i := range 100 {
+			if r := login(fmt.Sprintf("203.0.113.%d", i), "wrong"); r.status != 401 {
+				t.Fatalf("guess %d: %d", i, r.status)
+			}
+		}
+		if r := login("198.51.100.7", secretPhrase); r.status != 429 {
+			t.Fatalf("%d", r.status)
+		}
+		e.clock.advance(16 * time.Minute)
+		if r := login("198.51.100.7", secretPhrase); r.status != 200 {
+			t.Fatalf("after the window: %d", r.status)
 		}
 	})
 

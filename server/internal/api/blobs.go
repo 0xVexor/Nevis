@@ -11,7 +11,10 @@ import (
 	"github.com/0xVexor/Nevis/server/internal/vaults"
 )
 
-var contentRange = regexp.MustCompile(`^bytes (\d+)-(\d+)/(\d+)$`)
+var (
+	contentRange = regexp.MustCompile(`^bytes (\d+)-(\d+)/(\d+)$`)
+	hex64        = regexp.MustCompile(`^[0-9a-f]{64}$`)
+)
 
 func (s *Server) blobRoutes() {
 	s.authed("PUT /v1/vaults/{id}/blobs/{sha}", s.putBlob)
@@ -49,6 +52,11 @@ func (s *Server) putBlob(w http.ResponseWriter, r *http.Request, p *auth.Princip
 	if err != nil {
 		return err
 	}
+	declared := r.ContentLength
+	if declared < 0 { // chunked: the limit below is all that is known
+		declared = blobLimit
+	}
+	s.limitRead(w, s.Timeouts.transfer(declared))
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, blobLimit))
 	if err != nil {
 		return err
@@ -76,6 +84,9 @@ func (s *Server) headBlob(w http.ResponseWriter, r *http.Request, p *auth.Princi
 		return err
 	}
 	sha := r.PathValue("sha")
+	if !hex64.MatchString(sha) {
+		return apierr.New(400, "bad_sha")
+	}
 	b, err := s.Vaults.Blob(r.Context(), v.ID, sha)
 	if err != nil {
 		return err
@@ -136,6 +147,7 @@ func (s *Server) sendBlob(w http.ResponseWriter, vaultID, sha string, r *http.Re
 	h.Set("Content-Length", strconv.FormatInt(info.Size, 10))
 	h.Set("X-Md5", info.MD5)
 	h.Set("X-Sha256", sha)
+	s.limitWrite(w, s.Timeouts.transfer(info.Size))
 	// the headers are out: a download the client abandoned halfway is its own business, not an error to answer
 	_, _ = io.Copy(w, f)
 	return nil

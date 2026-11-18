@@ -1,0 +1,16 @@
+/* Sync indicator in the sidebar footer: a quiet row, calmer than the navigation rows; attention states only tint the dot. */
+.sync-ind { display: flex; flex-direction: column; gap: 2px; }
+.sync-ind-main { color: var(--ds-text-3); font-size: var(--ds-text-caption); }
+.sync-ind-main .ntitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sync-ind-main[data-tone='attention'], .sync-ind-main[data-tone='error'] { color: var(--ds-text-2); }
+.sync-ind-dot { display: block; inline-size: 8px; block-size: 8px; border-radius: var(--ds-r-full); background: var(--ds-text-3); opacity: .6; }
+.sync-ind-main[data-tone='attention'] .sync-ind-dot { background: var(--ds-warn); opacity: 1; }
+.sync-ind-main[data-tone='error'] .sync-ind-dot { background: var(--ds-danger); opacity: 1; }
+.sync-ind-main[data-tone='busy'] .sync-ind-dot { inline-size: 10px; block-size: 10px; background: transparent; opacity: 1;
+  border: 2px solid var(--ds-line); border-block-start-color: var(--ds-accent); animation: spin 1s linear infinite; }
+.sync-ind-count { display: grid; place-items: center; min-inline-size: 16px; block-size: 16px; padding-inline: 4px; border-radius: var(--ds-r-full);
+  background: color-mix(in oklab, var(--ds-warn) 22%, transparent); color: var(--ds-text); font-size: var(--ds-text-caption); font-weight: 600; }
+.sync-ind-list { display: flex; flex-direction: column; min-inline-size: 180px; max-inline-size: 280px; }
+.sync-ind-list .ds-menu-item { text-align: start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .sync-ind-main[data-tone='busy'] .sync-ind-dot { animation: none; } }
+[data-motion='reduce'] .sync-ind-main[data-tone='busy'] .sync-ind-dot { animation: none; }

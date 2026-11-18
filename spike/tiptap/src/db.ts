@@ -7,6 +7,7 @@ import { DB_SCHEMA_VERSION, upgradeDatabaseStores } from './database/storage/idb
 import { IndexedDbDocumentStorage } from './platform/documents/indexedDb'
 import { publishDocumentChange } from './platform/documents/changes'
 import type { Page } from './documents/model'
+import type { ConflictMarker } from './conflict/types'
 import type { DocumentWrite } from './documents/ports'
 import type { DocumentVersion } from './documents/ports'
 import type { DocumentOperationRecord, DocumentOperationReceipt, DocumentOperationCommitResult, DocumentOperationSummary } from './documents/operations'
@@ -165,3 +166,30 @@ export const vaultRename = (id: string, name: string) => invoke<void>('vault_ren
 export const pageFilePath = (id: string) => invoke<string>('page_path', { id })
 /** Shows that file in Explorer, Finder or the file manager (desktop app only). */
 export const revealPageFile = (id: string) => invoke<void>('page_reveal', { id })
+
+// ───── page conflicts (desktop app with sync; the browser build has no sync, so there is nothing to list or close) ─────
+
+export const pageConflictsList = async (pageId?: string): Promise<ConflictMarker[]> => (isTauri ? invoke<ConflictMarker[]>('page_conflicts_list', { pageId }) : [])
+export const pageConflictGet = async (cid: string): Promise<ConflictMarker | null> => (isTauri ? invoke<ConflictMarker | null>('page_conflict_get', { cid }) : null)
+/** resolved: the merged page was applied; dismissed: the current version was kept. The marker leaves the list either way. */
+export async function pageConflictClose(cid: string, outcome: 'resolved' | 'dismissed') {
+  if (isTauri) await invoke<void>('page_conflict_close', { cid, outcome })
+}
+export async function pageConflictRecord(pageId: string, base: Page | null, local: Page, remote: Page, kind: 'editor-race'): Promise<ConflictMarker | null> {
+  if (frozen || !isTauri) return null
+  return invoke<ConflictMarker>('page_conflict_record', { pageId, base, local, remote, kind })
+}
+/** Calls `changed` with the ids of pages whose markers were recorded, closed or arrived. Returns the unsubscribe function; does nothing in the browser. */
+export function onPageConflictsChanged(changed: (pageIds: string[]) => void): () => void {
+  if (!isTauri) return () => {}
+  let closed = false
+  let stop: (() => void) | undefined
+  void import('@tauri-apps/api/event')
+    .then(({ listen }) => listen<{ pageIds: string[] }>('page-conflicts-changed', (e) => changed(e.payload.pageIds ?? [])))
+    .then((off) => (closed ? off() : (stop = off)))
+    .catch(() => {})
+  return () => {
+    closed = true
+    stop?.()
+  }
+}

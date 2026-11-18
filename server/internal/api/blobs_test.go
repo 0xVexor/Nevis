@@ -46,6 +46,16 @@ func TestBlobs(t *testing.T) {
 		}
 	})
 
+	t.Run("refuses a HEAD whose name is not a hash, without looking at the disk", func(t *testing.T) {
+		f := newFixture(t)
+		for _, name := range []string{"..%2F..%2Fx", "not-a-hash"} {
+			r := f.call("HEAD", "/v1/vaults/"+f.v+"/blobs/"+name, opts{token: f.a.token})
+			if r.status != 400 || r.header.Get("X-Received") != "" {
+				t.Fatalf("%s: %d %v", name, r.status, r.header)
+			}
+		}
+	})
+
 	t.Run("refuses bytes that do not match the name they are uploaded under, and stores nothing", func(t *testing.T) {
 		f := newFixture(t)
 		r := f.call("PUT", blobURL(f, "real"), opts{token: f.a.token, raw: []byte("fake")})
