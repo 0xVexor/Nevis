@@ -230,6 +230,18 @@ pub fn delete_account(app_data: &Path, password: &str) -> Res<i64> {
     Ok(r["delete_after"].as_i64().unwrap_or(0))
 }
 
+/// Moves a vault of the account to the server's trash (it is kept there for the retention period).
+pub fn delete_vault(app_data: &Path, id: &str) -> Res<()> {
+    let api = api(app_data)?;
+    let url = api.url(&format!("/v1/vaults/{id}"));
+    api.send(|c| c.delete(&url)).map(|_| ())
+}
+
+/// Removes a vault that is in the server's trash for good. The server asks for the account password again.
+pub fn purge_vault(app_data: &Path, id: &str, password: &str) -> Res<()> {
+    api(app_data)?.post(&format!("/v1/vaults/{id}/purge"), &json!({ "password": password })).map(|_| ())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
