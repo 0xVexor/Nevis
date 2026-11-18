@@ -59,6 +59,9 @@ pub trait Remote {
     fn trash(&mut self, id: &str) -> Res<()>;
     /// Who wrote the current revision of `path`, when the remote knows. Only used to describe a conflict.
     fn author(&self, _path: &str) -> Option<Author> { None }
+    /// The paths the remote knows as deleted (tombstones). Only asked when this device has lost its bookkeeping, to tell
+    /// "deleted elsewhere" from "never uploaded". `Ok(None)`: this remote cannot say (an old server).
+    fn deleted_paths(&mut self) -> Res<Option<BTreeSet<String>>> { Ok(None) }
     /// Names of the account's devices by id. Best effort (empty when unknown); may cost a request.
     fn device_names(&mut self) -> BTreeMap<String, String> { BTreeMap::new() }
 }
@@ -83,7 +86,16 @@ pub struct Entry {
     /// taken at least RACY_NS after the mtime ("racy timestamps"). Older state files have 0: hashed again once.
     #[serde(default)]
     pub cached_at: u128,
+    /// `updatedAt` inside the page that was recorded as `base` (`pages/<id>.json` only), valid while `updated_of == base`.
+    /// A local page whose own `updatedAt` is older than this is an older copy that was put back, however new its file is.
+    #[serde(default)]
+    pub base_updated: i64,
+    #[serde(default)]
+    pub updated_of: String,
 }
+
+/// A file system stamps mtime coarsely (FAT: 2 s) and clocks drift a little: an mtime this much older than the recorded one is no regression.
+const MTIME_SLACK_NS: u128 = 2_000_000_000;
 
 const RACY_NS: u128 = 2_000_000_000;
 
@@ -112,6 +124,11 @@ pub struct SyncState {
     /// The deletions the last round held back, for the UI to list. Rewritten by every round.
     #[serde(default)]
     pub held: Vec<HeldDelete>,
+    /// Local files that another device deleted while this device had lost its bookkeeping (path -> md5 of the file): they
+    /// are not uploaded again and wait in `held` until the person decides. Without this the next round, which has
+    /// bookkeeping again, would take them for new files. A file that changes after that is an edit and goes up.
+    #[serde(default)]
+    pub resurrect_held: BTreeMap<String, String>,
     /// The deletions the user confirmed after seeing them in `held`; used up by the next sync. Memory only.
     #[serde(skip)]
     pub confirmed: BTreeSet<(String, String)>,
@@ -133,6 +150,7 @@ pub struct HeldDelete {
 impl SyncState {
     pub fn reset_local_baseline(&mut self) {
         self.files.clear();
+        self.resurrect_held.clear();
         self.allow_deletes_once = false;
         self.confirmed.clear();
         self.held.clear();
@@ -175,7 +193,8 @@ pub enum Action {
 }
 
 /// Pure decision table; see the module comment. Paths in `unknown` (could not be read right now) are left alone.
-pub fn plan(local: &BTreeMap<String, Local>, remote: &BTreeMap<String, RemoteFile>, base: &BTreeMap<String, Entry>, unknown: &BTreeSet<String>) -> Vec<Action> {
+/// `resurrected`: local files without a `base` that the remote has deleted (see `SyncState::resurrect_held`): not new, so not uploaded.
+pub fn plan(local: &BTreeMap<String, Local>, remote: &BTreeMap<String, RemoteFile>, base: &BTreeMap<String, Entry>, unknown: &BTreeSet<String>, resurrected: &BTreeSet<String>) -> Vec<Action> {
     let mut paths: Vec<&String> = local.keys().chain(remote.keys()).chain(base.keys()).collect();
     paths.sort();
     paths.dedup();
@@ -204,6 +223,7 @@ pub fn plan(local: &BTreeMap<String, Local>, remote: &BTreeMap<String, RemoteFil
             }
             (Some(l), None) => match b {
                 Some(b) if b == l.md5 => out.push(Action::DeleteLocal(p)), // deleted elsewhere, untouched here
+                None if resurrected.contains(&p) => out.push(Action::DeleteLocal(p)), // deleted elsewhere while we had no bookkeeping: held, never re-uploaded
                 _ => out.push(Action::Upload(p)),                          // new here, or edited here after the remote delete
             },
             (None, Some(r)) => match b {
@@ -221,6 +241,73 @@ fn is_revert(md5: &str, entry: Option<&Entry>) -> bool {
     entry.is_some_and(|e| md5 != e.base && e.seen.iter().any(|m| m == md5))
 }
 
+/// `pages/<uuid>.json`, the only paths whose content says when it was edited.
+fn is_page_json(p: &str) -> bool {
+    p.strip_prefix("pages/").and_then(|f| f.strip_suffix(".json")).is_some_and(|id| crate::vault::check_id(id).is_ok())
+}
+
+fn page_updated_at(bytes: &[u8]) -> Option<i64> {
+    serde_json::from_slice::<serde_json::Value>(bytes).ok().filter(serde_json::Value::is_object).map(|v| page_conflicts::updated_at(&v))
+}
+
+/// Remembers the `updatedAt` of every page whose file is, right now, the content recorded as its `base`.
+fn record_updated_at(root: &Path, files: &mut BTreeMap<String, Entry>) {
+    for (p, e) in files.iter_mut().filter(|(p, e)| is_page_json(p) && e.updated_of != e.base && e.md5 == e.base) {
+        if let Ok(bytes) = fs::read(root.join(p)) {
+            if md5_hex(&bytes) == e.base {
+                if let Some(at) = page_updated_at(&bytes) {
+                    (e.base_updated, e.updated_of) = (at, e.base.clone());
+                }
+            }
+        }
+    }
+}
+
+/// Local files that are not new but were deleted by another device: there is no `base` for them (the bookkeeping was reset: a
+/// state file that could not be read, another account, a reinstall, a new server copy) and the server accepts a write over a
+/// tombstone, so they would come back to life everywhere. The server's tombstones are read only when this device has no
+/// bookkeeping at all, and only when there is a candidate; on a server that cannot list them the old behaviour stays
+/// and a warning says so. Later rounds keep holding what this one held (`resurrect_held`) for as long as the file is unchanged.
+fn find_resurrected(remote: &mut dyn Remote, state: &mut SyncState, local: &BTreeMap<String, Local>, rmap: &BTreeMap<String, RemoteFile>, unknown: &BTreeSet<String>, rep: &mut Report) -> BTreeSet<String> {
+    let candidates: Vec<&String> = local.keys().filter(|p| !rmap.contains_key(*p) && !state.files.contains_key(*p) && !unknown.contains(*p) && tombstone_key(p).is_some()).collect();
+    let mut out = BTreeSet::new();
+    if state.files.is_empty() {
+        state.resurrect_held.clear();
+        if !candidates.is_empty() {
+            match remote.deleted_paths() {
+                Ok(Some(dead)) => out.extend(candidates.iter().filter(|p| dead.contains(**p) || tombstone_key(p).is_some_and(|k| dead.contains(&k))).map(|p| (*p).clone())),
+                Ok(None) => rep.warnings.push("SYNC:tombstones_unsupported".into()),
+                Err(e) => rep.warnings.push(format!("SYNC:tombstones_unavailable:{}", e.lines().next().unwrap_or(""))),
+            }
+        }
+    } else {
+        out.extend(candidates.iter().filter(|p| state.resurrect_held.get(**p).is_some_and(|m| *m == local[**p].md5)).map(|p| (*p).clone()));
+    }
+    state.resurrect_held = out.iter().map(|p| (p.clone(), local[p].md5.clone())).collect();
+    out
+}
+
+/// Paths whose local file looks like an older copy of the folder that was put back over a newer synced one, although only
+/// the local side differs from `base`: it went back to an earlier content (`is_revert`), the page's own `updatedAt` is older than
+/// the version recorded as base, or the file is older than what the last sync saw (a restore that keeps modification times).
+/// `recorded_mtime`: the mtimes the bookkeeping held before this round refreshed them.
+fn detect_restores(root: &Path, local: &BTreeMap<String, Local>, remote: &BTreeMap<String, RemoteFile>, files: &BTreeMap<String, Entry>, recorded_mtime: &BTreeMap<String, u128>) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for (p, l) in local {
+        let (Some(r), Some(e)) = (remote.get(p), files.get(p)) else { continue };
+        if e.base != r.md5 || l.md5 == r.md5 || p.starts_with("pages-state/") {
+            continue; // not "only we changed"
+        }
+        // (a time recorded from a fast clock says nothing: the first edit made with a correct clock would look like a restore)
+        let older_page = is_page_json(p) && e.updated_of == e.base && e.base_updated > 0 && !crate::vault::is_clock_ahead(e.base_updated) && fs::read(root.join(p)).ok().and_then(|b| page_updated_at(&b)).is_some_and(|at| at < e.base_updated);
+        let older_file = recorded_mtime.get(p).is_some_and(|&m| m > 0 && m <= now_ns() + crate::vault::SKEW_MS as u128 * 1_000_000 && l.mtime > 0 && l.mtime + MTIME_SLACK_NS < m);
+        if is_revert(&l.md5, Some(e)) || older_page || older_file {
+            out.insert(p.clone());
+        }
+    }
+    out
+}
+
 /// Records what a sync left behind for `p`, keeping the ring of earlier contents (`Entry::seen`) up to date.
 fn track(state: &mut SyncState, p: &str, l: &Local, base: &str, remote_id: &str) {
     let mut seen = state.files.get(p).map(|e| e.seen.clone()).unwrap_or_default();
@@ -229,7 +316,7 @@ fn track(state: &mut SyncState, p: &str, l: &Local, base: &str, remote_id: &str)
     if seen.len() > SEEN_MAX {
         seen.drain(..seen.len() - SEEN_MAX);
     }
-    state.files.insert(p.to_string(), Entry { base: base.to_string(), remote_id: remote_id.to_string(), size: l.size, mtime: l.mtime, md5: l.md5.clone(), seen, cached_at: now_ns() });
+    state.files.insert(p.to_string(), Entry { base: base.to_string(), remote_id: remote_id.to_string(), size: l.size, mtime: l.mtime, md5: l.md5.clone(), seen, cached_at: now_ns(), ..Default::default() });
 }
 
 /// Like `track`, with the local cache fields taken from the file as it is now (an unreadable file just means a re-hash next time).
@@ -491,7 +578,7 @@ fn is_permanent_file_error(e: &str) -> bool {
 /// What a conflict of `pages/<id>.json` is about, for the marker that records it: the two versions, who wrote them and,
 /// when the server still has it, their common ancestor. Everything here is best effort: no marker is better than a failed sync.
 /// None: nothing to record (not pages, database rows that merge by themselves).
-fn conflict_found(remote: &mut dyn Remote, state: &SyncState, root: &Path, p: &str, l: &Local, r: &RemoteFile, theirs: &[u8]) -> Option<page_conflicts::Found> {
+fn conflict_found(remote: &mut dyn Remote, state: &SyncState, root: &Path, p: &str, l: &Local, r: &RemoteFile, theirs: &[u8], restored: bool) -> Option<page_conflicts::Found> {
     use page_conflicts::{updated_at, Who};
     let mine = fs::read(root.join(p)).ok()?;
     let (local, remote_page): (serde_json::Value, serde_json::Value) = (serde_json::from_slice(&mine).ok()?, serde_json::from_slice(theirs).ok()?);
@@ -500,7 +587,7 @@ fn conflict_found(remote: &mut dyn Remote, state: &SyncState, root: &Path, p: &s
     }
     let page_id = p.strip_prefix("pages/")?.strip_suffix(".json")?.to_string();
     let entry = state.files.get(p);
-    let kind = if entry.is_some_and(|e| e.base == r.md5) && is_revert(&l.md5, entry) { "restore" } else { "edit" };
+    let kind = if restored || entry.is_some_and(|e| e.base == r.md5) && is_revert(&l.md5, entry) { "restore" } else { "edit" };
     let base = entry.filter(|e| !e.base.is_empty()).and_then(|e| {
         let bytes = if e.base == r.md5 {
             theirs.to_vec()
@@ -515,8 +602,11 @@ fn conflict_found(remote: &mut dyn Remote, state: &SyncState, root: &Path, p: &s
     let names = if author.as_ref().is_some_and(|a| !a.device_id.is_empty()) { remote.device_names() } else { BTreeMap::new() };
     let remote_who = author.as_ref().map(|a| Who { device_id: a.device_id.clone(), device_name: names.get(&a.device_id).cloned().unwrap_or_default() }).unwrap_or_default();
     let me = Who { device_id: state.me.0.clone(), device_name: state.me.1.clone() };
+    // (a version stamped in the future by a fast clock counts as when it reached the server at the latest)
+    let ((remote_at, remote_clamped), (local_at, local_clamped)) = (crate::vault::effective_saved_at(updated_at(&remote_page), Some(r.modified_ms).filter(|m| *m > 0)), crate::vault::effective_saved_at(updated_at(&local), None));
     Some(page_conflicts::Found {
-        kept: if updated_at(&remote_page) > updated_at(&local) { "remote" } else { "local" },
+        clock_skew: remote_clamped || local_clamped,
+        kept: if remote_at > local_at { "remote" } else { "local" },
         page_id,
         kind,
         base,
@@ -603,6 +693,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
     // A file that was hashed just now and has not changed for RACY_NS can have its hash cached: no later edit can
     // share its mtime. (Files touched more recently are hashed again next time.)
     let now = now_ns();
+    let recorded_mtime: BTreeMap<String, u128> = state.files.iter().map(|(p, e)| (p.clone(), e.mtime)).collect();
     for (p, l) in &local {
         if let Some(e) = state.files.get_mut(p) {
             if l.mtime + RACY_NS <= now && !(e.cached_at >= e.mtime + RACY_NS && e.mtime == l.mtime && e.size == l.size) {
@@ -641,7 +732,17 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
     let mut rmap = dedupe(vault, remote, listed, &mut rep);
     // the JSON of a page that has a state is derived from it and is not synced any more
     let legacy = pages::drop_derived(&mut local, &mut rmap, &mut state.files);
-    let mut actions = plan(&local, &rmap, &state.files, &unknown);
+    let resurrected = find_resurrected(remote, state, &local, &rmap, &unknown, &mut rep);
+    let mut actions = plan(&local, &rmap, &state.files, &unknown, &resurrected);
+    // an older copy of the folder that was put back is no edit, whatever its file times say: the newer cloud copy is kept
+    let restored = detect_restores(root, &local, &rmap, &state.files, &recorded_mtime);
+    for a in actions.iter_mut() {
+        if let Action::Upload(p) = a {
+            if restored.contains(p.as_str()) {
+                *a = Action::Conflict(std::mem::take(p));
+            }
+        }
+    }
 
     // The deletions this round plans. Only those the user has not confirmed (for this very content) face the rules below.
     let planned: Vec<HeldDelete> = actions
@@ -655,13 +756,16 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         .collect();
     let pending: Vec<&HeldDelete> = planned.iter().filter(|d| !state.allow_deletes_once && !state.confirmed.contains(&(d.path.clone(), d.base_md5.clone()))).collect();
     // closing conflict markers (six at once...) is no sign of a mistake: they do not count towards the rules below
-    let deletes = pending.iter().filter(|d| !crate::page_conflicts::is_marker_path(&d.path)).map(|d| pages::delete_key(&d.path)).collect::<BTreeSet<_>>().len();
+    // (a file another device deleted that we would bring back is held whatever else happens: it never counts towards the rules, and is never deleted unasked)
+    let forced: BTreeSet<&str> = pending.iter().filter(|d| resurrected.contains(&d.path)).map(|d| d.path.as_str()).collect();
+    let forced_count = forced.iter().map(|p| pages::delete_key(p)).collect::<BTreeSet<_>>().len();
+    let deletes = pending.iter().filter(|d| !crate::page_conflicts::is_marker_path(&d.path) && !forced.contains(d.path.as_str())).map(|d| pages::delete_key(&d.path)).collect::<BTreeSet<_>>().len();
     // emptiness and the share of deletions are about the content of the vault, not about the marker file that is always there
     let tracked = state.files.keys().filter(|p| is_content(p)).map(|p| pages::delete_key(p)).collect::<BTreeSet<_>>().len();
     let local_empty = !local.keys().any(|p| is_content(p));
     let remote_empty = !rmap.keys().any(|p| is_content(p));
     // a file that went back to an earlier synced content says an old copy of the folder was restored: no deletion round on top of that
-    let regressed = local.iter().any(|(p, l)| rmap.get(p).is_some_and(|r| state.files.get(p).is_some_and(|e| e.base == r.md5)) && is_revert(&l.md5, state.files.get(p)));
+    let regressed = !restored.is_empty() || local.iter().any(|(p, l)| rmap.get(p).is_some_and(|r| state.files.get(p).is_some_and(|e| e.base == r.md5)) && is_revert(&l.md5, state.files.get(p)));
     // a file that is gone here is only deleted in the cloud when the app saw it being deleted (a local tombstone)
     let tombstones = snapshot::tombstones(vault)?;
     // (only for files the app tombstones when it deletes them: history trims and the trash are deleted without one)
@@ -672,12 +776,12 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         .collect();
     let mut held: Vec<HeldDelete> = vec![];
     if hold_deletes(deletes, tracked, local_empty, remote_empty) || (deletes > 0 && regressed) {
-        rep.held = deletes;
+        rep.held = deletes + forced_count;
         held = pending.iter().map(|d| (*d).clone()).collect();
-    } else if !unconfirmed.is_empty() {
-        // only the files that vanished without the app noticing wait; the rest of the round goes on
-        rep.held = unconfirmed.len();
-        held = pending.iter().filter(|d| unconfirmed.contains(&d.path)).map(|d| (*d).clone()).collect();
+    } else if !unconfirmed.is_empty() || !forced.is_empty() {
+        // only the files that vanished without the app noticing, and those that would come back, wait; the rest of the round goes on
+        rep.held = unconfirmed.len() + forced_count;
+        held = pending.iter().filter(|d| unconfirmed.contains(&d.path) || forced.contains(d.path.as_str())).map(|d| (*d).clone()).collect();
     }
     let held_paths: BTreeSet<&str> = held.iter().map(|d| d.path.as_str()).collect();
     actions.retain(|a| !matches!(a, Action::DeleteLocal(p) | Action::DeleteRemote(p) if held_paths.contains(p.as_str())));
@@ -780,10 +884,19 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                                 track_current(state, root, p, &md5_hex(&bytes), &up.id);
                                 rep.uploaded += 1;
                             }
-                            _ => {
-                                // one side is unreadable: never pick silently. The remote bytes are kept next to the file and the local one is uploaded later.
+                            (local_record, _) => {
+                                // one side is unreadable: never pick silently. The remote bytes are kept next to the file.
                                 write_atomic(&root.join(format!("{} (cloud).json", p.trim_end_matches(".json"))), &theirs)?;
-                                track_current(state, root, p, &r.md5, &r.id);
+                                if local_record.is_err() {
+                                    // the unreadable file is ours: it is never uploaded over the cloud's copy, and `base` stays
+                                    // where it was so that the next round meets the same conflict instead of a plain edit
+                                    rep.conflicts -= 1;
+                                    rep.skipped += 1;
+                                    rep.warnings.push(format!("DATABASE:unreadable_local:{p}"));
+                                } else {
+                                    // only the cloud's copy is unreadable: the readable local one is uploaded next round
+                                    track_current(state, root, p, &r.md5, &r.id);
+                                }
                             }
                         }
                     } else if p.starts_with("pages/") && p.ends_with(".json") {
@@ -791,8 +904,13 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                         let stem = p.trim_start_matches("pages/").trim_end_matches(".json");
                         let bytes = remote.download(r)?;
                         // (the common ancestor is read before track_current below replaces what the bookkeeping knows)
-                        notes.extend(conflict_found(remote, state, root, p, l, r, &bytes));
-                        write_atomic(&root.join(format!("pages/{stem} (cloud).json")), &bytes)?;
+                        notes.extend(conflict_found(remote, state, root, p, l, r, &bytes, restored.contains(p)));
+                        let copy_path = root.join(format!("pages/{stem} (cloud).json"));
+                        write_atomic(&copy_path, &bytes)?;
+                        // the copy's file time says when that version reached the server: the latest it can have been saved (vault.rs compares with it)
+                        if r.modified_ms > 0 {
+                            let _ = fs::File::options().write(true).open(&copy_path).and_then(|f| f.set_modified(UNIX_EPOCH + std::time::Duration::from_millis(r.modified_ms as u64)));
+                        }
                         merged.push((p.clone(), r.clone()));
                         // from now on the remote content is the base: the merged result counts as a local change and is uploaded next round
                         track_current(state, root, p, &r.md5, &r.id);
@@ -858,6 +976,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                 }
                 if let Some(d) = done {
                     found.kept = if d.copy_won { "remote" } else { "local" };
+                    found.clock_skew |= d.clock_skew;
                 }
                 let loser_ts = done.and_then(|d| d.loser_ts);
                 let res: Res<()> = (|| {
@@ -975,6 +1094,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         let _guard = crate::vault::commit_lock(&vault.root)?; // the per-file guards above are released
         snapshot::tombstone_many(vault, &to_tombstone)?;
     }
+    record_updated_at(root, &mut state.files);
     Ok(rep)
 }
 
@@ -1005,6 +1125,7 @@ mod tests {
         page_state: bool,      // the server stores page states (capability `page_state`)
         corrupt_uploads: bool, // the cloud reports another md5 than what was sent
         refuse_upload: Option<String>, // the server refuses this one path for good (too large...)
+        no_tombstones: bool,   // an old server: it cannot list the deleted paths
         on_download: Option<Rc<dyn Fn()>>,
         on_get: Option<Rc<dyn Fn()>>,
     }
@@ -1081,6 +1202,10 @@ mod tests {
                 h();
             }
             Ok(self.0.borrow().files.iter().find(|(f, _)| f.id == id).map(|(f, _)| f.clone()))
+        }
+        fn deleted_paths(&mut self) -> Res<Option<BTreeSet<String>>> {
+            let m = self.0.borrow();
+            Ok((!m.no_tombstones).then(|| m.trashed.iter().map(|(f, _)| f.path.clone()).filter(|p| !m.files.iter().any(|(f, _)| &f.path == p)).collect()))
         }
         fn trash(&mut self, id: &str) -> Res<()> {
             let mut m = self.0.borrow_mut();
@@ -1454,6 +1579,100 @@ mod tests {
         r.0.borrow().files.iter().map(|(f, _)| f.path.clone()).collect()
     }
 
+    // ───── a reset of the bookkeeping must not bring back what another device deleted ─────
+
+    /// a and b synced P1 and P2; b deletes P1 (the server holds a tombstone); a then loses its bookkeeping.
+    fn deleted_elsewhere_then_reset() -> (Device, Device) {
+        let (mut a, mut b) = pair();
+        a.save(P1, "doomed", 100);
+        a.save(P2, "stays", 100);
+        a.sync();
+        b.sync();
+        b.vault.save_pages(&[], &[P1.to_string()], false).unwrap();
+        b.sync();
+        assert!(!remote_paths(&b.remote).contains(&format!("pages/{P1}.json")));
+        a.state = SyncState::default(); // a corrupt state file, another account, a reinstall...
+        (a, b)
+    }
+
+    #[test]
+    fn a_reset_does_not_resurrect_a_page_another_device_deleted() {
+        let (mut a, mut b) = deleted_elsewhere_then_reset();
+        for _ in 0..3 {
+            let rep = a.sync(); // the later rounds have bookkeeping again and must keep holding it
+            assert_eq!(rep.uploaded, 0, "{rep:?}");
+            assert!(!remote_paths(&a.remote).contains(&format!("pages/{P1}.json")), "re-uploaded");
+        }
+        assert_eq!(a.state.held.iter().map(|h| h.path.as_str()).collect::<Vec<_>>(), [format!("pages/{P1}.json")]);
+        assert!(a.vault.root.join(format!("pages/{P1}.json")).exists(), "unconfirmed: the file simply stays");
+        assert!(b.sync().errors.is_empty());
+        assert!(b.page(P1).is_none() && b.page(P2).is_some(), "the other device's deletion is intact");
+    }
+
+    #[test]
+    fn a_held_page_goes_to_the_sync_trash_when_the_person_confirms() {
+        let (mut a, _) = deleted_elsewhere_then_reset();
+        a.sync();
+        let held = a.state.held.clone();
+        let bytes = page_bytes(&a, P1);
+        a.state.confirmed = held.iter().map(|h| (h.path.clone(), h.base_md5.clone())).collect();
+        let rep = a.sync();
+        assert!(a.page(P1).is_none() && trash_has(&a.vault, &format!("pages/{P1}.json"), &bytes), "{rep:?}");
+        assert!(a.page(P2).is_some() && a.state.held.is_empty());
+        a.sync();
+        assert!(!remote_paths(&a.remote).contains(&format!("pages/{P1}.json")));
+    }
+
+    #[test]
+    fn a_genuinely_new_page_is_still_uploaded_after_a_reset_and_an_edited_held_page_too() {
+        let (mut a, _) = deleted_elsewhere_then_reset();
+        a.save("33333333-3333-4333-8333-333333333333", "new", 100);
+        a.sync();
+        assert!(remote_paths(&a.remote).contains(&"pages/33333333-3333-4333-8333-333333333333.json".to_string()));
+        assert!(!remote_paths(&a.remote).contains(&format!("pages/{P1}.json")));
+        // an edit after the deletion beats the deletion (as it always did)
+        a.save(P1, "edited after it was deleted elsewhere", 300);
+        a.sync();
+        assert!(remote_paths(&a.remote).contains(&format!("pages/{P1}.json")));
+        assert!(a.state.held.is_empty());
+    }
+
+    #[test]
+    fn a_server_that_cannot_list_tombstones_degrades_with_a_warning() {
+        let (mut a, _) = deleted_elsewhere_then_reset();
+        a.remote.0.borrow_mut().no_tombstones = true;
+        let rep = a.sync();
+        assert!(rep.warnings.iter().any(|w| w.contains("tombstones_unsupported")), "{rep:?}");
+        assert_eq!(rep.uploaded, 1, "as before: the file is uploaded");
+    }
+
+    #[test]
+    fn a_page_with_a_state_is_held_after_a_reset_too() {
+        let (mut a, mut b) = migrated(P1, &["x"]);
+        b.vault.save_pages(&[], &[P1.to_string()], false).unwrap();
+        b.sync();
+        a.state = SyncState::default();
+        let rep = a.sync();
+        assert_eq!(rep.uploaded, 0, "{rep:?}");
+        assert!(!a.remote_paths().iter().any(|p| p.contains(P1)), "{:?}", a.remote_paths());
+        assert!(a.has_bin(P1), "waits for the person");
+    }
+
+    #[test]
+    fn a_page_whose_deletion_is_final_does_not_block_the_rest_of_a_save() {
+        let (a, _) = pair();
+        a.save(P1, "doomed", 100);
+        a.vault.save_pages(&[], &[P1.to_string()], false).unwrap(); // deleted: tombstoned
+        let page = |id: &str, t: &str| json!({ "id": id, "title": t, "content": {"type":"doc","content":[]}, "updatedAt": 200, "deletedAt": null });
+        for round in 0..2 {
+            let e = a.vault.save_pages(&[page(P1, "edit of the deleted page"), page(P2, &format!("fine {round}"))], &[], false).unwrap_err();
+            assert_eq!(e.lines().next(), Some("SYNC:permanently_deleted"), "{e}");
+            assert!(e.contains(&format!("ids={P1}")) && !e.contains(P2), "{e}");
+            assert_eq!(a.page(P2).unwrap()["title"], format!("fine {round}"), "the other page was saved");
+            assert!(a.page(P1).is_none(), "the deleted page did not come back");
+        }
+    }
+
     #[test]
     fn a_missing_content_folder_is_not_a_deletion_in_the_cloud() {
         let (mut a, _) = pair();
@@ -1565,6 +1784,73 @@ mod tests {
         a.save(P1, "newer", 300);
         let rep = a.sync();
         assert_eq!((rep.uploaded, rep.conflicts), (1, 0));
+    }
+
+    /// P1 synced as v1 ... v10 (more versions than the ring of seen contents holds); returns the bytes of v1.
+    fn synced_many(a: &mut Device) -> Vec<u8> {
+        a.save(P1, "v1", 110);
+        a.sync();
+        let first = page_bytes(a, P1);
+        for i in 2..=10 {
+            a.save(P1, &format!("v{i}"), 100 + i * 10);
+            a.sync();
+        }
+        assert!(!a.state.files[&format!("pages/{P1}.json")].seen.contains(&md5_hex(&first)), "v1 fell out of the ring");
+        first
+    }
+
+    #[test]
+    fn a_restore_older_than_the_ring_is_caught_by_the_pages_own_updated_at() {
+        let (mut a, _) = pair();
+        let v1 = synced_many(&mut a);
+        a.save(P2, "doomed", 100);
+        a.sync();
+        fs::remove_file(a.vault.root.join(format!("pages/{P2}.json"))).unwrap();
+        write_atomic(&a.vault.root.join(format!("pages/{P1}.json")), &v1).unwrap(); // a NEW mtime: only updatedAt inside says it is old
+        let rep = a.sync();
+        assert_eq!((rep.conflicts, rep.held), (1, 1), "{rep:?}");
+        assert_eq!(a.page(P1).unwrap()["title"], "v10");
+        a.sync();
+        let cloud = a.remote.0.borrow().files.iter().find(|(f, _)| f.path == format!("pages/{P1}.json")).map(|(_, b)| b.clone()).unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&cloud).unwrap()["title"], "v10");
+        assert_eq!(markers(&a)[0].kind, "restore");
+        assert!(a.vault.versions_list(P1).unwrap().iter().any(|v| v["title"] == "v1"), "the older copy is kept in the history");
+    }
+
+    #[test]
+    fn a_restore_that_keeps_an_old_file_time_is_caught_for_any_file_even_beyond_the_ring() {
+        let (mut a, _) = pair();
+        let kv = a.vault.root.join("kv/notes.json");
+        let mut first = vec![];
+        for i in 1..=10 {
+            write_atomic(&kv, format!("{{\"n\":{i}}}").as_bytes()).unwrap();
+            if i == 1 {
+                first = fs::read(&kv).unwrap();
+            }
+            fs::File::options().write(true).open(&kv).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(10_000 - i)).unwrap();
+            a.sync();
+        }
+        a.save(P2, "doomed", 100);
+        a.sync();
+        fs::remove_file(a.vault.root.join(format!("pages/{P2}.json"))).unwrap();
+        write_atomic(&kv, &first).unwrap();
+        fs::File::options().write(true).open(&kv).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(20_000)).unwrap();
+        let rep = a.sync();
+        assert_eq!((rep.conflicts, rep.held), (1, 1), "{rep:?}");
+    }
+
+    #[test]
+    fn a_normal_edit_and_a_clock_that_steps_slightly_back_are_still_uploads() {
+        let (mut a, _) = pair();
+        synced_many(&mut a);
+        let path = a.vault.root.join(format!("pages/{P1}.json"));
+        a.save(P1, "v11", 500);
+        let recorded = a.state.files[&format!("pages/{P1}.json")].mtime;
+        // the file time ends up a second before the one the last sync recorded (coarse file system, clock adjustment)
+        let back = UNIX_EPOCH + std::time::Duration::from_nanos((recorded - 1_000_000_000) as u64);
+        fs::File::options().write(true).open(&path).unwrap().set_modified(back).unwrap();
+        let rep = a.sync();
+        assert_eq!((rep.uploaded, rep.conflicts), (1, 0), "{rep:?}");
     }
 
     #[test]
@@ -1699,6 +1985,25 @@ mod tests {
         // the version that did not win is still available, complete, in the record's history
         let hist = crate::database::history(&b.vault.root, "view", "v1").unwrap();
         assert!(hist.iter().any(|h| h["conflict"] == true && h["body"]["name"] != ma["name"]), "{hist:?}");
+    }
+
+    #[test]
+    fn an_unreadable_local_database_record_is_never_uploaded_over_the_cloud() {
+        let (mut a, mut b) = pair();
+        db_write(&a, "views", "v1", view(1, 10, "base", "a1"));
+        a.sync();
+        b.sync();
+        db_write(&a, "views", "v1", view(2, 20, "from A", "a2"));
+        a.sync();
+        let path = b.vault.root.join("databases/views/v1.json");
+        write_atomic(&path, b"{ not json").unwrap();
+        for _ in 0..3 {
+            let rep = b.sync();
+            assert!(rep.warnings.iter().any(|w| w.contains("unreadable_local")), "{rep:?}");
+        }
+        let cloud = a.remote.0.borrow().files.iter().find(|(f, _)| f.path == "databases/views/v1.json").map(|(_, bytes)| bytes.clone()).unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&cloud).unwrap()["name"], "from A", "the readable cloud copy is untouched");
+        assert_eq!(fs::read(&path).unwrap(), b"{ not json", "the local file was not replaced either");
     }
 
     #[test]
@@ -1838,6 +2143,44 @@ mod tests {
         b.sync();
         assert_eq!(texts(&a.page(P1).unwrap()), ["x edited"]);
         assert_eq!(texts(&b.page(P1).unwrap()), ["x edited"]);
+    }
+
+    /// A page JSON that another program wrote and that the state cannot represent (a node with a key the editor does not know).
+    fn write_unrepresentable(d: &Device, id: &str, text: &str) -> Value {
+        let page = json!({ "id": id, "title": "T", "content": { "type": "doc", "content": [{ "type": "paragraph", "foo": 1, "content": [{ "type": "text", "text": text }] }] }, "updatedAt": 150, "deletedAt": null });
+        write_atomic(&d.vault.root.join(format!("pages/{id}.json")), page.to_string().as_bytes()).unwrap();
+        page
+    }
+
+    #[test]
+    fn a_json_edit_the_state_rejects_is_kept_when_the_remote_state_replaces_it() {
+        let (mut a, mut b) = migrated(P1, &["hello world"]);
+        let edit = write_unrepresentable(&a, P1, "typed by another program");
+        b.save_doc(P1, "T", &["hello world, from b"], 200);
+        b.sync();
+        let rep = a.try_sync().unwrap(); // the ingest of the edit is reported, the round goes on
+        assert!(rep.marker_pages.contains(P1), "{rep:?}");
+        assert_eq!(texts(&a.page(P1).unwrap()), ["hello world, from b"]);
+        let versions = a.vault.versions_list(P1).unwrap();
+        assert!(versions.iter().any(|v| v["content"] == edit["content"]), "the edit that was overwritten is in the history: {versions:?}");
+        let ms = markers(&a);
+        assert_eq!((ms.len(), ms[0].kind.as_str(), ms[0].kept.as_str()), (1, "edit", "remote"));
+        assert_eq!(ms[0].local.page.as_ref().unwrap()["content"], edit["content"]);
+    }
+
+    #[test]
+    fn a_json_edit_the_state_rejects_is_kept_when_both_states_changed() {
+        let (mut a, mut b) = migrated(P1, &["hello world"]);
+        let edit = write_unrepresentable(&a, P1, "typed by another program");
+        b.save_doc(P1, "T", &["hello world, from b"], 200);
+        b.sync();
+        // a's state changes as well (the engine's own ingest of a representable edit cannot happen on this page, so touch the state directly)
+        let (st, _) = crate::page_state::read_state(&a.vault.root, P1).unwrap().unwrap();
+        st.ingest(&st.project(), &json!({ "id": P1, "title": "T2", "content": doc(&["hello world"]), "updatedAt": 160, "deletedAt": null })).unwrap();
+        write_atomic(&crate::page_state::bin_path(&a.vault.root, P1), &st.to_blob()).unwrap();
+        let _ = a.try_sync().unwrap();
+        let versions = a.vault.versions_list(P1).unwrap();
+        assert!(versions.iter().any(|v| v["content"] == edit["content"]), "{versions:?}");
     }
 
     #[test]
@@ -1988,7 +2331,7 @@ mod tests {
             lo.map(|m| lm.insert("p".to_string(), l(m)));
             re.map(|m| rm.insert("p".to_string(), r(m)));
             ba.map(|m| bm.insert("p".to_string(), e(m)));
-            plan(&lm, &rm, &bm, &BTreeSet::new())
+            plan(&lm, &rm, &bm, &BTreeSet::new(), &BTreeSet::new())
         };
         assert_eq!(run(Some("a"), None, None), [Action::Upload("p".into())]);
         assert_eq!(run(None, Some("a"), None), [Action::Download("p".into())]);
@@ -2008,8 +2351,8 @@ mod tests {
         let rm = BTreeMap::from([("p".to_string(), r)]);
         let bm = BTreeMap::from([("p".to_string(), Entry { base: "a".into(), remote_id: "i".into(), ..Default::default() })]);
         // not in the local scan only because it could not be read: that is not "deleted here"
-        assert_eq!(plan(&BTreeMap::new(), &rm, &bm, &BTreeSet::new()), [Action::DeleteRemote("p".into())]);
-        assert!(plan(&BTreeMap::new(), &rm, &bm, &BTreeSet::from(["p".to_string()])).is_empty());
+        assert_eq!(plan(&BTreeMap::new(), &rm, &bm, &BTreeSet::new(), &BTreeSet::new()), [Action::DeleteRemote("p".into())]);
+        assert!(plan(&BTreeMap::new(), &rm, &bm, &BTreeSet::from(["p".to_string()]), &BTreeSet::new()).is_empty());
     }
 
     #[test]
@@ -2466,6 +2809,7 @@ mod tests {
             server_time: 0,
             kept: "local",
             detected_by: Default::default(),
+            clock_skew: false,
         })
     }
 
@@ -2584,6 +2928,126 @@ mod tests {
         let titles: Vec<_> = a.vault.versions_list(P1).unwrap().iter().map(|v| v["title"].clone()).collect();
         assert!(titles.contains(&json!("big local")) && titles.contains(&json!("big remote")));
         assert!(fs::metadata(a.vault.root.join(page_conflicts::rel(P1, &h.id))).unwrap().len() < 4096);
+    }
+
+    #[test]
+    fn a_conflict_loser_from_an_old_clock_is_not_trimmed_in_the_call_that_wrote_it() {
+        let (mut a, mut b) = pair();
+        a.save(P1, "base", 100);
+        a.sync();
+        b.sync();
+        // b already holds a full history of newer versions
+        for ts in 1000..1000 + crate::vault::KEEP_VERSIONS as i64 {
+            b.vault.version_add(&json!({ "pageId": P1, "ts": ts, "title": "v", "content": null })).unwrap();
+        }
+        a.save(P1, "from a, clock far in the past", 150);
+        b.save(P1, "from b", 300);
+        a.sync();
+        b.sync();
+        let titles = |d: &Device| d.vault.versions_list(P1).unwrap().iter().map(|v| v["title"].clone()).collect::<Vec<_>>();
+        assert!(titles(&b).contains(&json!("from a, clock far in the past")), "the loser was trimmed at once");
+    }
+
+    #[test]
+    fn history_entries_an_open_marker_points_to_survive_trimming() {
+        let (a, _) = pair();
+        a.save(P1, "disk", 5000);
+        let big = |t: &str, at: i64| json!({ "id": P1, "title": t, "content": {"type":"doc","content":[]}, "updatedAt": at, "deletedAt": null, "blob": "x".repeat(page_conflicts::MAX_BYTES) });
+        let me = page_conflicts::Who::default();
+        let (m, _) = page_conflicts::record_from_editor(&a.vault, P1, None, big("old local", 10), big("old remote", 20), "editor-race", me).unwrap();
+        let refs = [m.local.history_ts.unwrap(), m.remote.history_ts.unwrap()];
+        for ts in 1000..1100 {
+            a.vault.version_add(&json!({ "pageId": P1, "ts": ts, "title": "v", "content": null })).unwrap();
+        }
+        let kept: Vec<i64> = a.vault.versions_list(P1).unwrap().iter().filter_map(|v| v["ts"].as_i64()).collect();
+        assert!(refs.iter().all(|r| kept.contains(r)), "{refs:?} not in {kept:?}");
+        // closing the marker lets them go again
+        close(&a, &m.id);
+        a.vault.version_add(&json!({ "pageId": P1, "ts": 2000, "title": "v", "content": null })).unwrap();
+        assert_eq!(a.vault.versions_list(P1).unwrap().len(), crate::vault::KEEP_VERSIONS);
+    }
+
+    // ───── a device whose clock runs fast ─────
+
+    const DAY: i64 = 86_400_000;
+
+    #[test]
+    fn a_phone_with_a_clock_one_day_ahead_does_not_win_every_conflict() {
+        let (mut a, mut b) = pair();
+        let now = now_ms();
+        a.remote.0.borrow_mut().clock = now; // the server's clock, as the mock stamps revisions
+        a.save(P1, "base", now - 3_600_000);
+        a.sync();
+        b.sync();
+        a.save(P1, "phone, clock one day ahead", now + DAY);
+        b.save(P1, "laptop, saved after the phone's edit reached the server", now + 5_000);
+        a.sync();
+        b.sync();
+        assert_eq!(b.page(P1).unwrap()["title"], "laptop, saved after the phone's edit reached the server");
+        // nothing is lost and nothing is rewritten: the phone's version is in the marker and the history, with its own time
+        let ms = markers(&b);
+        assert_eq!((ms.len(), ms[0].kept.as_str(), ms[0].clock_skew), (1, "local", true), "{ms:?}");
+        assert_eq!((ms[0].remote.page.as_ref().unwrap()["title"].clone(), ms[0].remote.saved_at), (json!("phone, clock one day ahead"), now + DAY));
+        assert!(b.vault.versions_list(P1).unwrap().iter().any(|v| v["title"] == "phone, clock one day ahead" && v["ts"] == now + DAY));
+        a.sync();
+        assert_eq!(a.page(P1).unwrap()["title"], b.page(P1).unwrap()["title"], "both converge");
+        // a marker without the flag (written by an older build) still reads, and a normal conflict does not carry it
+        assert!(serde_json::from_str::<page_conflicts::Marker>(&serde_json::to_string(&ms[0]).unwrap().replace(",\"clockSkew\":true", "")).is_ok());
+        let (_, c) = conflict_on_b();
+        assert!(!markers(&c)[0].clock_skew);
+    }
+
+    #[test]
+    fn a_version_stamped_by_a_fast_clock_does_not_make_the_next_ordinary_edit_look_like_a_restore() {
+        let (mut a, mut b) = pair();
+        let now = now_ms();
+        a.save(P1, "phone, clock one day ahead", now + DAY);
+        a.sync();
+        b.sync(); // b's bookkeeping now records an updatedAt a day ahead
+        b.save(P1, "edited here with a correct clock", now);
+        let rep = b.sync();
+        // (the page, and the history entry of the version it replaced)
+        assert_eq!((rep.uploaded, rep.conflicts, rep.held), (2, 0, 0), "{rep:?}");
+        assert!(markers(&b).is_empty(), "no phantom restore marker");
+    }
+
+    #[test]
+    fn a_recorded_file_time_in_the_future_does_not_turn_an_edit_into_a_restore() {
+        let (mut a, _) = pair();
+        a.save(P1, "v1", 100);
+        a.sync();
+        a.state.files.get_mut(&format!("pages/{P1}.json")).unwrap().mtime += 86_400_000_000_000; // a day ahead, in ns
+        a.save(P1, "v2", 200);
+        let rep = a.sync();
+        assert_eq!((rep.uploaded, rep.conflicts), (1, 0), "{rep:?}");
+    }
+
+    #[test]
+    fn a_version_from_a_fast_clock_does_not_lock_the_page_against_edits_here() {
+        let (a, _) = pair();
+        let now = now_ms();
+        a.save(P1, "from the fast phone", now + DAY);
+        let kept = a.vault.save_pages(&[json!({ "id": P1, "title": "typed here", "content": {"type":"doc","content":[]}, "updatedAt": now, "deletedAt": null })], &[], false).unwrap();
+        assert_eq!(kept, [P1.to_string()], "the version that was replaced is kept");
+        assert_eq!(a.page(P1).unwrap()["title"], "typed here");
+        assert!(a.vault.versions_list(P1).unwrap().iter().any(|v| v["title"] == "from the fast phone"));
+        // an ordinary newer version on disk still wins, as before
+        a.save(P2, "newer", now + 5_000);
+        a.vault.save_pages(&[json!({ "id": P2, "title": "older", "content": {"type":"doc","content":[]}, "updatedAt": now, "deletedAt": null })], &[], false).unwrap();
+        assert_eq!(a.page(P2).unwrap()["title"], "newer");
+    }
+
+    #[test]
+    fn the_time_to_compare_is_clamped_only_for_the_future_and_only_for_the_comparison() {
+        let (now, hour) = (1_800_000_000_000i64, 3_600_000i64);
+        use crate::vault::effective_at as at;
+        assert_eq!(at(now + 5 * 60_000, None, now, 0), (now + 5 * 60_000, false), "a few minutes ahead is just clock drift");
+        assert_eq!(at(now - hour, None, now, 0), (now - hour, false));
+        assert_eq!(at(now + DAY, None, now, 0), (now, true), "no better bound: now");
+        assert_eq!(at(now + DAY, Some(now - 1_000), now, 0), (now - 1_000, true), "the moment it reached the server, when known");
+        // the phone itself knows its clock is a day ahead of the server's: its own edit counts at its real time
+        let phone_now = now + DAY;
+        assert_eq!(at(phone_now - 60_000, None, phone_now, -DAY), (now - 60_000, true));
     }
 
     #[test]

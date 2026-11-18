@@ -94,12 +94,16 @@ pub fn download(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, l
     };
     let _g = commit_lock(root)?;
     if has_local_state {
-        ingest_tolerant(root, id)?; // an edit made after the scan: then this is a conflict for the next round
+        let rejected = ingest_tolerant(root, id)?; // an edit made after the scan: then this is a conflict for the next round
         if changed_since(&root.join(p), local.get(p).map(|l| l.md5.as_str())) {
             rep.skipped += 1;
             return Ok(());
         }
+        let kept = rejected.as_ref().map(|edit| vault.keep_loser_ts(id, edit)).transpose()?; // in the history before the installed state rewrites the JSON
         ps::install_locked(root, id, &bytes)?;
+        if let (Some(edit), Some(ts)) = (&rejected, kept) {
+            record_rejected_edit(vault, state, id, edit, ts, rep)?;
+        }
     } else {
         let json = root.join(format!("pages/{id}.json"));
         let mine = fs::read(&json).ok();
@@ -119,6 +123,10 @@ pub fn download(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, l
                         if st.ingest(&a, &m).is_ok() {
                             let nb = st.to_blob();
                             ps::install_locked(root, id, &nb)?;
+                        } else {
+                            // the state cannot take the edit in and the install above has replaced the JSON: the edit lives on as a history entry
+                            let ts = vault.keep_loser_ts(id, &m)?;
+                            record_rejected_edit(vault, state, id, &m, ts, rep)?;
                         }
                     }
                     (Some(m), _) => {
@@ -151,7 +159,8 @@ pub fn conflict(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, p
     ps::check_blob(id, &theirs)?;
     let (merged, equals) = {
         let _g = commit_lock(root)?;
-        ingest_tolerant(root, id)?;
+        let rejected = ingest_tolerant(root, id)?;
+        let kept = rejected.as_ref().map(|edit| vault.keep_loser_ts(id, edit)).transpose()?; // the merge below rewrites the JSON from the state
         let mine = fs::read(ps::bin_path(root, id)).map_err(err)?;
         if !ps::same_genesis(&mine, &theirs) {
             // two unrelated documents: the server's wins, ours stays in the history
@@ -159,12 +168,18 @@ pub fn conflict(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, p
                 vault.keep_loser(id, &st.project())?;
             }
             ps::install_locked(root, id, &theirs)?;
+            if let (Some(edit), Some(ts)) = (&rejected, kept) {
+                record_rejected_edit(vault, state, id, edit, ts, rep)?;
+            }
             entry(state, p, &theirs, &r.id, root);
             rep.downloaded += 1;
             return Ok(());
         }
         let (m, eq) = ps::merge(&mine, &theirs)?;
         ps::install_locked(root, id, &m)?;
+        if let (Some(edit), Some(ts)) = (&rejected, kept) {
+            record_rejected_edit(vault, state, id, edit, ts, rep)?;
+        }
         (m, eq)
     };
     rep.state_merges += 1;
@@ -257,9 +272,40 @@ pub fn migrate(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, rm
 }
 
 /// A local edit that the state cannot take in (a state of a newer client) must not stop the byte-level merge.
-fn ingest_tolerant(root: &Path, id: &str) -> Res<()> {
+/// What the state rejected is the JSON as the person (or another program) left it: it is returned so that the caller keeps it
+/// before the install rewrites the file from the state.
+fn ingest_tolerant(root: &Path, id: &str) -> Res<Option<Value>> {
     match ps::ingest_local_locked(root, id) {
-        Err(e) if e.starts_with("PAGE_STATE:") => Ok(()),
-        r => r.map(|_| ()),
+        Err(e) if e.starts_with("PAGE_STATE:") => Ok(fs::read(root.join(format!("pages/{id}.json"))).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).filter(Value::is_object)),
+        r => r.map(|_| None),
     }
+}
+
+/// Records the edit the state rejected (already in the history) as a conflict marker of kind "edit": the page now shows
+/// the state, the edit is on the "local" side (`loser_ts` is its history entry). The caller holds the commit lock and has installed the state.
+fn record_rejected_edit(vault: &Vault, state: &SyncState, id: &str, edit: &Value, loser_ts: i64, rep: &mut Report) -> Res<()> {
+    let root = &vault.root;
+    let now: Value = serde_json::from_slice(&fs::read(root.join(format!("pages/{id}.json"))).map_err(err)?).map_err(err)?;
+    let me = page_conflicts::Who { device_id: state.me.0.clone(), device_name: state.me.1.clone() };
+    let md5 = |v: &Value| md5_hex(v.to_string().as_bytes());
+    let mut marker = page_conflicts::Marker::new(page_conflicts::Found {
+        page_id: id.to_string(),
+        kind: "edit",
+        base: None,
+        local_md5: md5(edit),
+        remote_md5: md5(&now),
+        local: edit.clone(),
+        remote: now,
+        local_who: me.clone(),
+        remote_who: page_conflicts::Who::default(),
+        server_time: 0,
+        kept: "remote",
+        detected_by: me,
+        clock_skew: false,
+    });
+    marker.shrink_locked(vault, Some(loser_ts))?;
+    if page_conflicts::record_locked(root, &marker)? {
+        rep.marker_pages.insert(id.to_string());
+    }
+    Ok(())
 }

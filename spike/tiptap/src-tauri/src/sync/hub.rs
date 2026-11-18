@@ -18,7 +18,7 @@ use reqwest::blocking::{Client, RequestBuilder, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 /// Errors that mean "the network is not there right now", as opposed to "the server said no".
@@ -337,6 +337,7 @@ impl Hub {
                 Err(e) => return Err(e),
             };
             self.offset = page["server_time"].as_i64().unwrap_or_else(now_ms) - now_ms();
+            crate::vault::set_server_offset(self.offset); // the page versions compare in the server's time (vault.rs)
             for f in page["files"].as_array().into_iter().flatten() {
                 let Some((path, file)) = file_of(f) else { continue };
                 if f["deleted"].as_bool().unwrap_or(false) {
@@ -363,6 +364,7 @@ impl Hub {
         loop {
             let page = self.api.get(&self.v(&format!("/changes?snapshot=1&after={}&limit=500", percent_encode(&after))))?;
             self.offset = page["server_time"].as_i64().unwrap_or_else(now_ms) - now_ms();
+            crate::vault::set_server_offset(self.offset); // the page versions compare in the server's time (vault.rs)
             first_seq.get_or_insert(page["seq"].as_i64().ok_or("HUB:bad_answer")?);
             for f in page["files"].as_array().into_iter().flatten() {
                 let Some((path, file)) = file_of(f) else { continue };
@@ -495,6 +497,32 @@ impl Remote for Hub {
         let url = self.api.url(&self.v(&format!("/rev/{rev}")));
         let r = self.api.send(|c| c.get(&url))?;
         r.bytes().map(|b| b.to_vec()).map_err(|e| format!("{NETWORK}{e}"))
+    }
+
+    /// Reads the tombstones page by page (`snapshot=1&deleted=1`). A server from before that flag ignores it and answers
+    /// with live files: that is recognised (a row that is not deleted) and means "cannot say".
+    fn deleted_paths(&mut self) -> Res<Option<BTreeSet<String>>> {
+        let mut out = BTreeSet::new();
+        let mut after = String::new();
+        loop {
+            let page = self.api.get(&self.v(&format!("/changes?snapshot=1&deleted=1&after={}&limit=500", percent_encode(&after))))?;
+            for f in page["files"].as_array().into_iter().flatten() {
+                if f["deleted"].as_bool() != Some(true) {
+                    return Ok(None);
+                }
+                if let Some(path) = f["path"].as_str() {
+                    out.insert(path.to_string());
+                }
+            }
+            if !page["has_more"].as_bool().unwrap_or(false) {
+                return Ok(Some(out));
+            }
+            let next = page["next_after"].as_str().unwrap_or("");
+            if next.is_empty() || next <= after.as_str() {
+                return Err("HUB:bad_answer".into());
+            }
+            after = next.to_string();
+        }
     }
 
     fn author(&self, path: &str) -> Option<Author> {
@@ -706,6 +734,28 @@ mod tests {
     }
 
     #[test]
+    fn tombstones_are_read_page_by_page_and_an_old_server_is_recognised() {
+        let row = |p: &str| format!(r#"{{"path":"{p}","rev":3,"md5":"","deleted":true}}"#);
+        let (base, server) = mock_server(2, move |t| {
+            assert!(t.contains("snapshot=1&deleted=1"), "{t}");
+            if t.contains("after=&") {
+                (200, format!(r#"{{"files":[{}],"seq":9,"has_more":true,"next_after":"pages/a.json"}}"#, row("pages/a.json")))
+            } else {
+                (200, format!(r#"{{"files":[{}],"seq":9,"has_more":false,"next_after":""}}"#, row("pages/b.json")))
+            }
+        });
+        let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", Cache::default());
+        let dead = hub.deleted_paths().unwrap().unwrap();
+        server.join().unwrap();
+        assert_eq!(dead.into_iter().collect::<Vec<_>>(), ["pages/a.json", "pages/b.json"]);
+        // a server from before the flag answers with LIVE files: that is "cannot say", not "nothing was deleted"
+        let (base, server) = mock_server(1, |_| (200, format!(r#"{{"files":[{}],"seq":9,"has_more":false,"next_after":""}}"#, snap_row("pages/a.json", 1, b"a"))));
+        let mut hub = Hub::new(Api::new(&base, None).unwrap().quick(), "v", Cache::default());
+        assert_eq!(hub.deleted_paths().unwrap(), None);
+        server.join().unwrap();
+    }
+
+    #[test]
     fn a_server_counter_that_went_backwards_is_a_baseline() {
         let (base, server) = mock_server(3, |t| {
             if t.ends_with("/state") {
@@ -912,6 +962,35 @@ mod e2e {
         b.sync();
         assert_eq!(b.titles(), vec!["stays"]);
         assert!(b.vault.pages_all().unwrap().iter().all(|p| p["id"] != P1));
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_a_reset_device_does_not_bring_back_a_page_another_device_deleted() {
+        let (mut a, mut b) = pair();
+        a.save(P1, "doomed", 100);
+        a.save(P2, "stays", 100);
+        a.sync();
+        b.sync();
+        b.vault.save_pages(&[], &[P1.to_string()], false).unwrap();
+        b.sync();
+        a.state = SyncState::default(); // a corrupt state file, a reinstall, another account
+        a.save("33333333-3333-4333-8333-333333333333", "new", 100);
+        for _ in 0..2 {
+            let rep = a.sync();
+            assert!(rep.warnings.is_empty(), "the server lists its tombstones: {:?}", rep.warnings);
+            assert_eq!(a.state.held.iter().map(|h| h.path.as_str()).collect::<Vec<_>>(), [format!("pages/{P1}.json")]);
+        }
+        b.sync();
+        assert!(b.page(P1).is_none(), "the deletion of the other device is intact");
+        assert_eq!(b.titles(), vec!["new", "stays"]);
+        // the person confirms: the page goes to the sync trash and stays deleted
+        a.state.confirmed = a.state.held.iter().map(|h| (h.path.clone(), h.base_md5.clone())).collect();
+        a.sync();
+        assert!(a.page(P1).is_none());
+        a.sync();
+        b.sync();
+        assert!(a.page(P1).is_none() && b.page(P1).is_none());
     }
 
     #[test]
