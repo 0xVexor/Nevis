@@ -111,6 +111,7 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request, p *auth.Principal
 	wait, _ := intParam(r, "wait")
 	wait = min(max(wait, 0), maxWait)
 	if hasSince && wait > 0 && v.Seq <= since {
+		s.limitWrite(w, time.Duration(wait)*time.Second+s.Timeouts.PollSlack)
 		if v, err = s.waitFor(r, v, since, time.Duration(wait)*time.Second); err != nil {
 			return err
 		}
