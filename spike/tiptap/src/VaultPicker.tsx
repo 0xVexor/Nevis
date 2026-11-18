@@ -3,6 +3,8 @@ import { vaultAdd, vaultCreate, vaultForget, vaultList, vaultLocate, vaultOpen }
 import { explain } from './vaultErrors'
 import { Onboarding, type WorkspaceServices } from './onboarding/Onboarding'
 import { markFirstNote } from './onboarding/FirstNoteStart'
+import { SYNC_ENABLED } from './releaseFeatures'
+import { accountLogin, accountLogout, accountStatus, cloudDownload, cloudVaults } from './sync/client'
 
 const services: WorkspaceServices = {
   list: async () => (await vaultList()).vaults,
@@ -16,6 +18,8 @@ const services: WorkspaceServices = {
   locate: vaultLocate,
   forget: vaultForget,
   explain,
+  // sync is a desktop feature and can be switched off for a release; without it the start flow only knows local folders
+  cloud: SYNC_ENABLED ? { status: accountStatus, login: accountLogin, vaults: cloudVaults, download: cloudDownload, logout: accountLogout } : undefined,
 }
 
 /** Shown when no vault is open: the first run, or after “All workspaces…”. The user always chooses where a vault lives. */

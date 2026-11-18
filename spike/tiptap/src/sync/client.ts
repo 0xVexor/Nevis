@@ -85,6 +85,8 @@ export const accountDelete = (password: string) => invoke<number>('account_delet
 export const cloudVaults = () => invoke<ServerVault[]>('cloud_vaults')
 export const cloudDownload = (id: string, name: string, parent: string) => invoke<void>('cloud_download', { id, name, parent })
 
+export const formatBytes = (n = 0) => (n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1024 / 1024).toFixed(n < 100 * 1024 * 1024 ? 1 : 0) + ' MB')
+
 /** A message for the person from an error of the sync backend. Unknown codes are shown as they are, without the technical lines. */
 export function syncError(e: unknown): string {
   const raw = String(e)
