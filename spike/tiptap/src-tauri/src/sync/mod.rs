@@ -1285,7 +1285,9 @@ mod tests {
     fn one_odd_local_file_name_does_not_stop_the_sync() {
         let (mut a, _) = pair();
         a.save(P1, "fine", 100);
-        let odd = "files/Icon\r";
+        // Windows cannot create a carriage-return filename. A replacement character
+        // is legal there but is refused by the same sync path filter.
+        let odd = if cfg!(windows) { "files/Icon\u{fffd}" } else { "files/Icon\r" };
         write_atomic(&a.vault.root.join(odd), b"x").unwrap();
         let rep = a.sync();
         assert_eq!(rep.skipped_paths, vec![odd.to_string()]);
