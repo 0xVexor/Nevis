@@ -436,6 +436,13 @@ func (a *Accounts) confirm(ctx context.Context, ip string, p *Principal, passwor
 	return user, nil
 }
 
+// ConfirmPassword re-checks the password of the signed-in account for a destructive action, with the same
+// failure counting and lockout as deleting the account.
+func (a *Accounts) ConfirmPassword(ctx context.Context, ip string, p *Principal, password string) error {
+	_, err := a.confirm(ctx, ip, p, password)
+	return err
+}
+
 // ChangePassword signs every other device out.
 func (a *Accounts) ChangePassword(ctx context.Context, ip string, p *Principal, oldPassword, newPassword string) error {
 	next := clip(newPassword, 200)

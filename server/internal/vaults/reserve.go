@@ -2,6 +2,7 @@ package vaults
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/0xVexor/Nevis/server/internal/apierr"
@@ -58,6 +59,20 @@ func (s *Store) release(userID, key string) {
 	s.pendingMu.Lock()
 	defer s.pendingMu.Unlock()
 	delete(s.pending[userID], key)
+	if len(s.pending[userID]) == 0 {
+		delete(s.pending, userID)
+	}
+}
+
+// releaseVault gives back the reservations of the uploads into a vault that is gone.
+func (s *Store) releaseVault(userID, vaultID string) {
+	s.pendingMu.Lock()
+	defer s.pendingMu.Unlock()
+	for k := range s.pending[userID] {
+		if strings.HasPrefix(k, vaultID+"/") {
+			delete(s.pending[userID], k)
+		}
+	}
 	if len(s.pending[userID]) == 0 {
 		delete(s.pending, userID)
 	}

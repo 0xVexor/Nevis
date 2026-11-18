@@ -222,3 +222,39 @@ func (s *Store) Untrash(ctx context.Context, v *Vault) error {
 	_, err := s.DB.ExecContext(ctx, "UPDATE vaults SET deleted_at = NULL WHERE id = ?", v.ID)
 	return err
 }
+
+// Purged is what a permanent deletion removed.
+type Purged struct {
+	Files int64 `json:"files"`
+	Bytes int64 `json:"bytes"`
+}
+
+// Purge removes a vault of this user that is already in the trash, for good. A live vault is refused (409), an
+// unknown or somebody else's vault is a 404. The check and the deletion of the rows are one transaction under the
+// writer lock, so a vault restored in between is not removed; the blob files go after the rows (see dropVault).
+func (s *Store) Purge(ctx context.Context, userID, id string) (Purged, error) {
+	var out Purged
+	err := s.DB.Write(ctx, func(tx *sql.Tx) error {
+		v, err := vaultRow(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if v == nil || v.UserID != userID {
+			return apierr.New(404, "no_such_vault")
+		}
+		if !v.DeletedAt.Valid {
+			return apierr.New(409, "not_in_trash")
+		}
+		if err := tx.QueryRowContext(ctx,
+			`SELECT (SELECT COUNT(*) FROM files WHERE vault_id = ? AND deleted = 0),
+			        (SELECT COALESCE(SUM(size), 0) FROM blobs WHERE vault_id = ?)`, id, id).Scan(&out.Files, &out.Bytes); err != nil {
+			return err
+		}
+		return dropVaultRows(ctx, tx, id)
+	})
+	if err != nil {
+		return Purged{}, err
+	}
+	s.releaseVault(userID, id)
+	return out, s.Blobs.RemoveVault(id)
+}
