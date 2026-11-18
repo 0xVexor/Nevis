@@ -14,6 +14,7 @@ pub mod hub;
 pub mod pages;
 pub mod snapshot;
 
+use crate::page_conflicts;
 use crate::vault::{err, now_ms, write_atomic, Res, Vault, VAULT_MISMATCH, VAULT_MISSING};
 use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
@@ -33,6 +34,14 @@ pub struct RemoteFile {
     pub modified_ms: i64,
 }
 
+/// Who wrote the current revision of a remote file and when the server says so.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Author {
+    pub device_id: String,
+    /// the server's own clock, in ms (not shifted to this device's clock)
+    pub server_time: i64,
+}
+
 pub trait Remote {
     /// The cloud folder is there and usable; `Err(CLOUD_GONE)` when it is not.
     fn check(&mut self) -> Res<()>;
@@ -48,6 +57,10 @@ pub trait Remote {
     fn get(&mut self, id: &str) -> Res<Option<RemoteFile>>;
     /// Moves the file to the trash of the remote (never an outright delete).
     fn trash(&mut self, id: &str) -> Res<()>;
+    /// Who wrote the current revision of `path`, when the remote knows. Only used to describe a conflict.
+    fn author(&self, _path: &str) -> Option<Author> { None }
+    /// Names of the account's devices by id. Best effort (empty when unknown); may cost a request.
+    fn device_names(&mut self) -> BTreeMap<String, String> { BTreeMap::new() }
 }
 
 /// What the previous sync left behind, per path. Stored next to the app (per device), never in the vault.
@@ -102,6 +115,9 @@ pub struct SyncState {
     /// The deletions the user confirmed after seeing them in `held`; used up by the next sync. Memory only.
     #[serde(skip)]
     pub confirmed: BTreeSet<(String, String)>,
+    /// This device (id, name) as the server knows it, to describe conflicts. Set by the caller; memory only.
+    #[serde(skip)]
+    pub me: (String, String),
 }
 
 /// A deletion that waits for the user. `side` is where the file is gone: "local" (this device lost it, the cloud
@@ -230,8 +246,9 @@ fn track_current(state: &mut SyncState, root: &Path, p: &str, base: &str, remote
 }
 
 /// Content paths are the ones under the ROOTS; the vault marker is not content (it always exists on both sides).
+/// Conflict markers are bookkeeping that comes and goes in bulk (closing them is no mass deletion): not content either.
 fn is_content(p: &str) -> bool {
-    p.split_once('/').is_some_and(|(top, _)| ROOTS.contains(&top))
+    p.split_once('/').is_some_and(|(top, _)| ROOTS.contains(&top)) && !crate::page_conflicts::is_marker_path(p)
 }
 
 /// The tombstone the app writes when it deletes this file, if it writes one. A page state is deleted together with its
@@ -258,7 +275,7 @@ fn hold_deletes(deletes: usize, tracked: usize, local_empty: bool, remote_empty:
     deletes > 0 && (deletes > 5usize.max(tracked / 5) || (tracked >= 5 && deletes >= tracked) || ((local_empty || remote_empty) && tracked > 0))
 }
 
-fn md5_hex(bytes: &[u8]) -> String {
+pub(crate) fn md5_hex(bytes: &[u8]) -> String {
     Md5::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
 }
 
@@ -426,6 +443,8 @@ pub struct Report {
     pub skipped_paths: Vec<String>,
     /// page states merged with the server's (concurrent edits of one page)
     pub state_merges: usize,
+    /// pages whose conflict markers were recorded, removed or came from another device in this round
+    pub marker_pages: BTreeSet<String>,
     pub errors: Vec<String>,
     /// things to tell the user that are not failures (a very large page state)
     pub warnings: Vec<String>,
@@ -467,6 +486,49 @@ fn guarded_write(vault: &Vault, p: &str, expected: Option<&str>, bytes: &[u8]) -
 /// about whether the rest of the sync can be trusted. Every other error holds back deletions.
 fn is_permanent_file_error(e: &str) -> bool {
     ["HUB:too_large", "HUB:bad_path", "HUB:path_case_clash", "HUB:quota_exceeded"].iter().any(|c| e.contains(c))
+}
+
+/// What a conflict of `pages/<id>.json` is about, for the marker that records it: the two versions, who wrote them and,
+/// when the server still has it, their common ancestor. Everything here is best effort: no marker is better than a failed sync.
+/// None: nothing to record (not pages, database rows that merge by themselves).
+fn conflict_found(remote: &mut dyn Remote, state: &SyncState, root: &Path, p: &str, l: &Local, r: &RemoteFile, theirs: &[u8]) -> Option<page_conflicts::Found> {
+    use page_conflicts::{updated_at, Who};
+    let mine = fs::read(root.join(p)).ok()?;
+    let (local, remote_page): (serde_json::Value, serde_json::Value) = (serde_json::from_slice(&mine).ok()?, serde_json::from_slice(theirs).ok()?);
+    if !local.is_object() || !remote_page.is_object() || (local.get("database").is_some() && remote_page.get("database").is_some()) {
+        return None;
+    }
+    let page_id = p.strip_prefix("pages/")?.strip_suffix(".json")?.to_string();
+    let entry = state.files.get(p);
+    let kind = if entry.is_some_and(|e| e.base == r.md5) && is_revert(&l.md5, entry) { "restore" } else { "edit" };
+    let base = entry.filter(|e| !e.base.is_empty()).and_then(|e| {
+        let bytes = if e.base == r.md5 {
+            theirs.to_vec()
+        } else if !e.remote_id.is_empty() {
+            remote.download(&RemoteFile { id: e.remote_id.clone(), path: p.to_string(), md5: e.base.clone(), modified_ms: 0 }).ok()?
+        } else {
+            return None;
+        };
+        (md5_hex(&bytes) == e.base).then(|| serde_json::from_slice::<serde_json::Value>(&bytes).ok()).flatten().filter(serde_json::Value::is_object)
+    });
+    let author = remote.author(p);
+    let names = if author.as_ref().is_some_and(|a| !a.device_id.is_empty()) { remote.device_names() } else { BTreeMap::new() };
+    let remote_who = author.as_ref().map(|a| Who { device_id: a.device_id.clone(), device_name: names.get(&a.device_id).cloned().unwrap_or_default() }).unwrap_or_default();
+    let me = Who { device_id: state.me.0.clone(), device_name: state.me.1.clone() };
+    Some(page_conflicts::Found {
+        kept: if updated_at(&remote_page) > updated_at(&local) { "remote" } else { "local" },
+        page_id,
+        kind,
+        base,
+        local_md5: md5_hex(&mine),
+        remote_md5: r.md5.clone(),
+        local,
+        remote: remote_page,
+        local_who: me.clone(),
+        remote_who,
+        server_time: author.map_or(0, |a| a.server_time),
+        detected_by: me,
+    })
 }
 
 /// Uploads and checks that the cloud stored what we sent; one more try before giving up on a damaged upload.
@@ -592,7 +654,8 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         .map(|(p, side)| HeldDelete { path: p.clone(), side: side.into(), base_md5: state.files.get(p).map(|e| e.base.clone()).unwrap_or_default() })
         .collect();
     let pending: Vec<&HeldDelete> = planned.iter().filter(|d| !state.allow_deletes_once && !state.confirmed.contains(&(d.path.clone(), d.base_md5.clone()))).collect();
-    let deletes = pending.iter().map(|d| pages::delete_key(&d.path)).collect::<BTreeSet<_>>().len();
+    // closing conflict markers (six at once...) is no sign of a mistake: they do not count towards the rules below
+    let deletes = pending.iter().filter(|d| !crate::page_conflicts::is_marker_path(&d.path)).map(|d| pages::delete_key(&d.path)).collect::<BTreeSet<_>>().len();
     // emptiness and the share of deletions are about the content of the vault, not about the marker file that is always there
     let tracked = state.files.keys().filter(|p| is_content(p)).map(|p| pages::delete_key(p)).collect::<BTreeSet<_>>().len();
     let local_empty = !local.keys().any(|p| is_content(p));
@@ -623,6 +686,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
     state.allow_deletes_once = false;
 
     let mut merged: Vec<(String, RemoteFile)> = vec![];
+    let mut notes: Vec<page_conflicts::Found> = vec![];
 
     // Resolve and upload merges before any deletion. Keep deletion bookkeeping on failure.
     let (deletions, actions): (Vec<_>, Vec<_>) = actions.into_iter().partition(|a| matches!(a, Action::DeleteLocal(_) | Action::DeleteRemote(_)));
@@ -671,6 +735,9 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                     let m = fs::metadata(root.join(p)).map_err(err)?;
                     track(state, p, &Local { md5: md5_hex(&bytes), size: m.len(), mtime: mtime_of(&m) }, &md5_hex(&bytes), &r.id);
                     rep.downloaded += 1;
+                    if let Some(id) = page_conflicts::page_of_path(p) {
+                        rep.marker_pages.insert(id.to_string()); // a conflict another device recorded
+                    }
                 }
                 Action::DeleteLocal(_) | Action::DeleteRemote(_) => unreachable!(),
                 Action::Forget(p) => {
@@ -723,6 +790,8 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                         // keep both: the remote copy lands as a conflict copy, which the vault merges (newer wins, older goes to history)
                         let stem = p.trim_start_matches("pages/").trim_end_matches(".json");
                         let bytes = remote.download(r)?;
+                        // (the common ancestor is read before track_current below replaces what the bookkeeping knows)
+                        notes.extend(conflict_found(remote, state, root, p, l, r, &bytes));
                         write_atomic(&root.join(format!("pages/{stem} (cloud).json")), &bytes)?;
                         merged.push((p.clone(), r.clone()));
                         // from now on the remote content is the base: the merged result counts as a local change and is uploaded next round
@@ -777,9 +846,45 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         }
     }
     if !merged.is_empty() {
+        let mut new_markers: Vec<String> = vec![];
         {
             let _guard = crate::vault::commit_lock(&vault.root)?;
-            vault.resolve_conflicts_locked()?;
+            let resolved = vault.resolve_conflicts_locked()?;
+            for mut found in notes {
+                // what the merge really did decides which side was kept (the rule of the arm above is the fallback)
+                let done = resolved.iter().rev().find(|d| d.page_id == found.page_id);
+                if done.is_some_and(|d| d.merged) {
+                    continue; // database rows merge cell by cell: nothing to choose
+                }
+                if let Some(d) = done {
+                    found.kept = if d.copy_won { "remote" } else { "local" };
+                }
+                let loser_ts = done.and_then(|d| d.loser_ts);
+                let res: Res<()> = (|| {
+                    let mut marker = page_conflicts::Marker::new(found);
+                    if page_conflicts::exists_locked(root, &marker) {
+                        return Ok(()); // recorded before: a huge one must not write its history again
+                    }
+                    marker.shrink_locked(vault, loser_ts)?;
+                    if page_conflicts::record_locked(root, &marker)? {
+                        rep.marker_pages.insert(marker.page_id.clone());
+                        new_markers.push(page_conflicts::rel(&marker.page_id, &marker.id));
+                    }
+                    Ok(())
+                })();
+                if let Err(e) = res {
+                    rep.errors.push(format!("conflict marker: {e}"));
+                }
+            }
+        }
+        // send the markers with the merged page; one that does not go now (offline, or another device recorded the same
+        // conflict first) is picked up by the next round like any file
+        for rel in new_markers {
+            if let Ok(bytes) = fs::read(root.join(&rel)) {
+                if let Ok(up) = verified_upload(remote, &rel, None, &bytes) {
+                    track_current(state, root, &rel, &md5_hex(&bytes), &up.id);
+                }
+            }
         }
         // the merged page is the new truth: send it right away unless it is exactly what the cloud already has
         for (p, r) in merged {
@@ -829,6 +934,9 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
                     if changed_since(&root.join(p), local.get(p).map(|l| l.md5.as_str())) {
                         rep.skipped += 1;
                         return Ok(());
+                    }
+                    if let Some(id) = page_conflicts::page_of_path(p) {
+                        rep.marker_pages.insert(id.to_string()); // a conflict closed (or a page deleted) on another device
                     }
                     if pages::page_of_bin(p).is_some() {
                         pages::delete_local_locked(vault, p)?; // tombstone of the page, its files to the sync trash
@@ -887,6 +995,8 @@ mod tests {
     struct Mem {
         files: Vec<(RemoteFile, Vec<u8>)>,
         trashed: Vec<(RemoteFile, Vec<u8>)>,
+        /// (id, bytes) of what an upload replaced: the server keeps old revisions, and `download` finds them by md5
+        archive: Vec<(String, Vec<u8>)>,
         clock: i64,
         next: u32,
         gone: bool,            // the cloud folder does not exist any more
@@ -932,7 +1042,12 @@ mod tests {
             if let Some(h) = hook {
                 h();
             }
-            self.0.borrow().files.iter().find(|(x, _)| x.id == f.id).map(|(_, b)| b.clone()).ok_or("gone".to_string())
+            let m = self.0.borrow();
+            let current = m.files.iter().find(|(x, _)| x.id == f.id).map(|(_, b)| b.clone());
+            match current {
+                Some(b) if f.md5.is_empty() || md5_hex(&b) == f.md5 => Ok(b),
+                other => m.archive.iter().find(|(id, b)| *id == f.id && md5_hex(b) == f.md5).map(|(_, b)| b.clone()).or(other).ok_or("gone".to_string()),
+            }
         }
         fn upload(&mut self, path: &str, existing: Option<&str>, bytes: &[u8]) -> Res<RemoteFile> {
             let mut m = self.0.borrow_mut();
@@ -945,6 +1060,8 @@ mod tests {
             m.clock += 1000;
             let at = m.clock;
             let mut out = if let Some(i) = m.files.iter().position(|(f, _)| Some(f.id.as_str()) == existing) {
+                let old = (m.files[i].0.id.clone(), m.files[i].1.clone());
+                m.archive.push(old);
                 m.files[i] = (RemoteFile { id: m.files[i].0.id.clone(), path: path.into(), md5: md5_hex(bytes), modified_ms: at }, bytes.to_vec());
                 m.files[i].0.clone()
             } else {
@@ -2245,5 +2362,239 @@ mod tests {
         let dead = snapshot::tombstones(&a.vault).unwrap();
         assert_eq!(dead, BTreeSet::from([format!("pages/{P1}.json"), format!("pages/{P2}.json"), "conflicts/c1.json".to_string()]));
         assert!(!conflict.exists());
+    }
+
+    // ───── page conflict markers ─────
+
+    fn markers(d: &Device) -> Vec<page_conflicts::Marker> {
+        page_conflicts::list(&d.vault, None).unwrap().markers
+    }
+
+    fn close(d: &Device, cid: &str) {
+        let _g = crate::vault::commit_lock(&d.vault.root).unwrap();
+        assert!(page_conflicts::close_locked(&d.vault, cid).unwrap().is_some());
+    }
+
+    /// P1 edited on both devices (b is newer); returns the device that detected it (b) after its round.
+    fn conflict_on_b() -> (Device, Device) {
+        let (mut a, mut b) = pair();
+        a.save(P1, "base", 100);
+        a.sync();
+        b.sync();
+        a.save(P1, "from a", 200);
+        b.save(P1, "from b", 300);
+        a.sync();
+        b.sync();
+        (a, b)
+    }
+
+    #[test]
+    fn a_conflict_writes_one_marker_with_base_local_and_remote() {
+        let (mut a, mut b) = conflict_on_b();
+        let all = markers(&b);
+        assert_eq!(all.len(), 1);
+        let m = &all[0];
+        assert_eq!((m.format, m.kind.as_str(), m.page_id.as_str(), m.kept.as_str()), (1, "edit", P1, "local"));
+        assert_eq!(m.base.as_ref().unwrap()["title"], "base");
+        assert_eq!(m.local.page.as_ref().unwrap()["title"], "from b");
+        assert_eq!(m.remote.page.as_ref().unwrap()["title"], "from a");
+        assert_eq!((m.local.saved_at, m.remote.saved_at), (300, 200));
+        assert!(m.remote.server_time.is_some() && m.local.history_ts.is_none());
+        let json = serde_json::to_value(m).unwrap();
+        assert!(json["detectedBy"]["deviceId"].is_string() && json["remote"]["serverTime"].is_number() && json["pageId"] == P1);
+        // retries and the other device add no second file, here or there
+        for _ in 0..3 {
+            b.sync();
+            a.sync();
+        }
+        assert_eq!((markers(&a).len(), markers(&b).len()), (1, 1));
+        assert_eq!(markers(&a)[0].id, m.id);
+        let files = fs::read_dir(b.vault.root.join(format!("history/conflicts/{P1}"))).unwrap().count();
+        assert_eq!(files, 1);
+    }
+
+    #[test]
+    fn a_marker_is_reported_to_the_ui_here_and_when_it_arrives_elsewhere() {
+        let (mut a, mut b) = conflict_on_b();
+        // b's round was the one that recorded it; a learns about it by a normal download
+        assert!(a.sync().marker_pages.contains(P1));
+        let _ = &mut b;
+    }
+
+    #[test]
+    fn closing_a_marker_reaches_the_other_device() {
+        let (mut a, mut b) = conflict_on_b();
+        for _ in 0..2 {
+            a.sync();
+            b.sync();
+        }
+        let cid = markers(&b)[0].id.clone();
+        close(&b, &cid);
+        assert!(markers(&b).is_empty());
+        b.sync();
+        let rep = a.sync();
+        assert_eq!(rep.held, 0);
+        assert!(rep.marker_pages.contains(P1));
+        assert!(markers(&a).is_empty() && !a.vault.root.join(page_conflicts::rel(P1, &cid)).exists());
+        // and it does not come back
+        for _ in 0..2 {
+            a.sync();
+            b.sync();
+        }
+        assert!(markers(&a).is_empty() && markers(&b).is_empty());
+        // a later conflict of the same page is a new marker
+        a.save(P1, "again a", 400);
+        b.save(P1, "again b", 500);
+        a.sync();
+        b.sync();
+        assert_eq!(markers(&b).len(), 1);
+        assert_ne!(markers(&b)[0].id, cid);
+    }
+
+    fn fake_marker(page: &str, n: usize) -> page_conflicts::Marker {
+        let p = |t: &str| json!({ "id": page, "title": t, "updatedAt": n as i64 });
+        page_conflicts::Marker::new(page_conflicts::Found {
+            page_id: page.into(),
+            kind: "edit",
+            base: None,
+            local: p("l"),
+            remote: p("r"),
+            local_md5: format!("l{n}"),
+            remote_md5: format!("r{n}"),
+            local_who: Default::default(),
+            remote_who: Default::default(),
+            server_time: 0,
+            kept: "local",
+            detected_by: Default::default(),
+        })
+    }
+
+    #[test]
+    fn closing_many_markers_at_once_is_not_held_for_confirmation() {
+        let (mut a, mut b) = pair();
+        a.save(P1, "one", 100);
+        a.save(P2, "two", 100);
+        for n in 0..8 {
+            let _g = crate::vault::commit_lock(&a.vault.root).unwrap();
+            page_conflicts::record_locked(&a.vault.root, &fake_marker(if n % 2 == 0 { P1 } else { P2 }, n)).unwrap();
+        }
+        a.sync();
+        b.sync();
+        assert_eq!(markers(&b).len(), 8);
+        for m in markers(&a) {
+            close(&a, &m.id);
+        }
+        let rep = a.sync();
+        assert_eq!((rep.held, rep.errors.len()), (0, 0));
+        assert!(a.state.held.is_empty());
+        let rep = b.sync();
+        assert_eq!(rep.held, 0);
+        assert!(markers(&b).is_empty());
+        assert_eq!(b.page_count(), 2);
+    }
+
+    #[test]
+    fn a_conflict_from_an_older_copy_restored_over_a_page_is_a_restore_marker() {
+        let (mut a, _) = pair();
+        let old = synced_old_then_new(&mut a);
+        write_atomic(&a.vault.root.join(format!("pages/{P1}.json")), &old).unwrap();
+        a.sync();
+        let all = markers(&a);
+        assert_eq!(all.len(), 1);
+        assert_eq!((all[0].kind.as_str(), all[0].kept.as_str()), ("restore", "remote"));
+        assert_eq!(all[0].local.page.as_ref().unwrap()["title"], "old");
+        assert_eq!(all[0].remote.page.as_ref().unwrap()["title"], "new");
+    }
+
+    #[test]
+    fn markers_of_missing_pages_are_ignored_and_of_deleted_pages_cleaned() {
+        let (a, _) = pair();
+        {
+            let _g = crate::vault::commit_lock(&a.vault.root).unwrap();
+            page_conflicts::record_locked(&a.vault.root, &fake_marker(P1, 1)).unwrap();
+        }
+        // the page is not (yet) there: not listed, but the file stays (a download may still be on its way)
+        assert!(markers(&a).is_empty());
+        assert!(a.vault.root.join(page_conflicts::rel(P1, &fake_marker(P1, 1).id)).is_file());
+        a.save(P1, "x", 100);
+        assert_eq!(markers(&a).len(), 1);
+        snapshot::tombstone(&a.vault, &format!("pages/{P1}.json")).unwrap();
+        let listed = page_conflicts::list(&a.vault, None).unwrap();
+        assert!(listed.markers.is_empty() && listed.cleaned.contains(P1));
+        assert!(!a.vault.root.join(page_conflicts::rel(P1, &fake_marker(P1, 1).id)).exists());
+    }
+
+    #[test]
+    fn deleting_a_page_deletes_its_markers() {
+        let (a, _) = pair();
+        a.save(P1, "x", 100);
+        {
+            let _g = crate::vault::commit_lock(&a.vault.root).unwrap();
+            page_conflicts::record_locked(&a.vault.root, &fake_marker(P1, 1)).unwrap();
+        }
+        a.vault.save_pages(&[], &[P1.to_string()], false).unwrap();
+        assert!(!a.vault.root.join(format!("history/conflicts/{P1}")).exists());
+    }
+
+    #[test]
+    fn history_trimming_never_touches_conflict_markers() {
+        let (a, _) = pair();
+        a.save(P1, "x", 100);
+        let m = fake_marker(P1, 1);
+        {
+            let _g = crate::vault::commit_lock(&a.vault.root).unwrap();
+            page_conflicts::record_locked(&a.vault.root, &m).unwrap();
+        }
+        for ts in 1..=60 {
+            a.vault.version_add(&json!({ "pageId": P1, "ts": ts, "title": "v", "content": null })).unwrap();
+        }
+        assert_eq!(a.vault.versions_list(P1).unwrap().len(), crate::vault::KEEP_VERSIONS);
+        crate::vault::trim_history_at(&a.vault.root, page_conflicts::DIR);
+        a.vault.versions_delete(page_conflicts::DIR).unwrap();
+        assert!(a.vault.versions_list(page_conflicts::DIR).unwrap().is_empty());
+        assert_eq!(markers(&a).len(), 1);
+    }
+
+    #[test]
+    fn the_same_conflict_has_the_same_name_on_both_devices() {
+        assert_eq!(page_conflicts::cid(P1, "aaa", "bbb"), page_conflicts::cid(P1, "bbb", "aaa"));
+        assert_ne!(page_conflicts::cid(P1, "aaa", "bbb"), page_conflicts::cid(P2, "aaa", "bbb"));
+        assert_eq!(page_conflicts::cid(P1, "aaa", "bbb").len(), 32);
+    }
+
+    #[test]
+    fn an_editor_conflict_is_recorded_once_and_a_huge_one_keeps_history_references() {
+        let (a, _) = pair();
+        a.save(P1, "disk", 300);
+        let page = |t: &str, at: i64| json!({ "id": P1, "title": t, "content": {"type":"doc","content":[]}, "updatedAt": at, "deletedAt": null });
+        let me = page_conflicts::Who { device_id: "d1".into(), device_name: "This".into() };
+        let (m, new) = page_conflicts::record_from_editor(&a.vault, P1, None, page("typed", 300), page("theirs", 200), "editor-race", me.clone()).unwrap();
+        assert!(new && m.kept == "local" && m.local.device_name == "This" && m.remote.device_id.is_empty());
+        let (again, new) = page_conflicts::record_from_editor(&a.vault, P1, None, page("typed", 300), page("theirs", 200), "editor-race", me.clone()).unwrap();
+        assert!(!new && again.id == m.id && markers(&a).len() == 1);
+        assert!(page_conflicts::record_from_editor(&a.vault, P1, None, page("a", 1), page("b", 2), "deleted-here", me.clone()).is_err());
+        assert!(page_conflicts::record_from_editor(&a.vault, P2, None, page("a", 1), page("b", 2), "editor-race", me.clone()).is_err());
+        assert_eq!(page_conflicts::get(&a.vault, &m.id).unwrap().unwrap().id, m.id);
+        // above ~4 MB the bodies stay in the history and the marker refers to them
+        let big = |t: &str, at: i64| { let mut p = page(t, at); p["blob"] = json!("x".repeat(page_conflicts::MAX_BYTES)); p };
+        let (h, _) = page_conflicts::record_from_editor(&a.vault, P1, Some(big("b", 100)), big("big local", 310), big("big remote", 250), "editor-race", me).unwrap();
+        assert!(h.local.page.is_none() && h.remote.page.is_none() && h.base.is_none());
+        let (lt, rt) = (h.local.history_ts.unwrap(), h.remote.history_ts.unwrap());
+        assert_ne!(lt, rt);
+        let titles: Vec<_> = a.vault.versions_list(P1).unwrap().iter().map(|v| v["title"].clone()).collect();
+        assert!(titles.contains(&json!("big local")) && titles.contains(&json!("big remote")));
+        assert!(fs::metadata(a.vault.root.join(page_conflicts::rel(P1, &h.id))).unwrap().len() < 4096);
+    }
+
+    #[test]
+    fn old_state_files_and_server_rows_still_load() {
+        let f: hub::HubFile = serde_json::from_str(r#"{"rev":3,"md5":"abc"}"#).unwrap();
+        assert!(f.by_device.is_empty());
+        let (path, row) = (hub::Cache::default(), serde_json::from_str::<hub::HubFile>(r#"{"rev":3,"md5":"abc","by_device":"dev1","time":5}"#).unwrap());
+        assert_eq!((row.by_device.as_str(), path.files.len()), ("dev1", 0));
+        let old = r#"{"files":{"pages/a.json":{"base":"x","remote_id":"1:pages/a.json"}},"hub":{"epoch":"e","seq":4,"files":{"pages/a.json":{"rev":1,"md5":"x"}}}}"#;
+        let st: SyncState = serde_json::from_str(old).unwrap();
+        assert_eq!(st.hub.files["pages/a.json"].by_device, "");
+        assert!(st.me.0.is_empty());
     }
 }

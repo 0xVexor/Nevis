@@ -193,6 +193,7 @@ pub fn delete_local_locked(vault: &Vault, p: &str) -> Res<()> {
         vault.sync_trash_move(&format!("pages/{id}.json"))?;
     }
     ps::remove_locked(root, id);
+    crate::page_conflicts::remove_page_locked(root, id);
     Ok(())
 }
 

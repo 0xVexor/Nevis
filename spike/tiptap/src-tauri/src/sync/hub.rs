@@ -12,7 +12,7 @@
 //!
 //! A `RemoteFile` id is `"<rev>:<path>"`: the engine keeps it as an opaque string, and we get back both parts.
 
-use super::{Remote, RemoteFile, CLOUD_GONE};
+use super::{Author, Remote, RemoteFile, CLOUD_GONE};
 use crate::vault::{err, now_ms, Res};
 use reqwest::blocking::{Client, RequestBuilder, Response};
 use serde::{Deserialize, Serialize};
@@ -165,7 +165,7 @@ pub fn solve_pow(challenge: &str, bits: u32) -> u64 {
 
 // ───── the mirror of the server's file list ─────
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct HubFile {
     pub rev: i64,
     pub md5: String,
@@ -176,6 +176,9 @@ pub struct HubFile {
     /// server time of the change
     #[serde(default)]
     pub time: i64,
+    /// the device that wrote this revision (empty: not known, e.g. a mirror from before the server's answer was kept)
+    #[serde(default)]
+    pub by_device: String,
 }
 
 /// What this device knows about the server's copy of one vault. Kept in the sync state of the vault.
@@ -209,6 +212,7 @@ fn file_of(v: &Value) -> Option<(String, HubFile)> {
             sha: v.get("sha256").and_then(Value::as_str).unwrap_or("").to_string(),
             size: v.get("size").and_then(Value::as_u64).unwrap_or(0),
             time: v.get("server_time").and_then(Value::as_i64).unwrap_or(0),
+            by_device: v.get("by_device").and_then(Value::as_str).unwrap_or("").to_string(),
         },
     ))
 }
@@ -244,11 +248,13 @@ pub struct Hub {
     prepared: bool,
     /// what the server can do (`/v1/health`), asked once per sync
     capabilities: Option<Vec<String>>,
+    /// device id -> name of the account's devices, asked once per sync and only when a conflict needs it
+    device_names: Option<BTreeMap<String, String>>,
 }
 
 impl Hub {
     pub fn new(api: Api, vault: &str, cache: Cache) -> Hub {
-        Hub { api, vault: vault.to_string(), cache, offset: 0, prepared: false, capabilities: None }
+        Hub { api, vault: vault.to_string(), cache, offset: 0, prepared: false, capabilities: None, device_names: None }
     }
 
     fn has_capability(&mut self, name: &str) -> Res<bool> {
@@ -491,6 +497,20 @@ impl Remote for Hub {
         r.bytes().map(|b| b.to_vec()).map_err(|e| format!("{NETWORK}{e}"))
     }
 
+    fn author(&self, path: &str) -> Option<Author> {
+        let f = self.cache.files.get(path)?;
+        Some(Author { device_id: f.by_device.clone(), server_time: f.time })
+    }
+
+    fn device_names(&mut self) -> BTreeMap<String, String> {
+        if self.device_names.is_none() {
+            // best effort: a conflict marker without names is still a marker
+            let names = self.api.get("/v1/account").map(|a| a["devices"].as_array().into_iter().flatten().filter_map(|d| Some((d["id"].as_str()?.to_string(), d["name"].as_str()?.to_string()))).collect()).unwrap_or_default();
+            self.device_names = Some(names);
+        }
+        self.device_names.clone().unwrap_or_default()
+    }
+
     fn upload(&mut self, path: &str, existing: Option<&str>, bytes: &[u8]) -> Res<RemoteFile> {
         let sha = hex(&Sha256::digest(bytes));
         self.put_blob(&sha, bytes)?;
@@ -590,8 +610,8 @@ mod tests {
     fn root_hash_is_the_same_as_the_servers() {
         // computed by the server code for these two files (server/src/vaults.js, rootHash)
         let mut files = BTreeMap::new();
-        files.insert("pages/a.json".to_string(), HubFile { rev: 1, md5: md5_of(b"a"), sha: String::new(), size: 1, time: 0 });
-        files.insert("pages/b.json".to_string(), HubFile { rev: 2, md5: md5_of(b"b"), sha: String::new(), size: 1, time: 0 });
+        files.insert("pages/a.json".to_string(), HubFile { rev: 1, md5: md5_of(b"a"), sha: String::new(), size: 1, time: 0, by_device: String::new() });
+        files.insert("pages/b.json".to_string(), HubFile { rev: 2, md5: md5_of(b"b"), sha: String::new(), size: 1, time: 0, by_device: String::new() });
         assert_eq!(root_of(&files), "9ee351a4056cc95744c24c1693184bc11988f3dc98bb1a2dc86136caabca773d");
     }
 
@@ -616,7 +636,7 @@ mod tests {
 
     fn cache_at(seq: i64) -> Cache {
         let mut files = BTreeMap::new();
-        files.insert("pages/a.json".to_string(), HubFile { rev: 1, md5: md5_of(b"a"), sha: String::new(), size: 1, time: 0 });
+        files.insert("pages/a.json".to_string(), HubFile { rev: 1, md5: md5_of(b"a"), sha: String::new(), size: 1, time: 0, by_device: String::new() });
         Cache { epoch: "e".into(), seq, files }
     }
 
@@ -869,6 +889,14 @@ mod e2e {
             assert_eq!(d.page(P1).unwrap()["title"], "from a", "the newer edit wins on both devices");
             assert!(d.vault.versions_list(P1).unwrap().iter().any(|v| v.to_string().contains("from b")), "the older edit is kept in the history");
         }
+        // the conflict left one marker, the same one on both devices, with the ancestor that the server still has
+        let (ma, mb) = (crate::page_conflicts::list(&a.vault, None).unwrap().markers, crate::page_conflicts::list(&b.vault, None).unwrap().markers);
+        assert_eq!((ma.len(), mb.len()), (1, 1));
+        assert_eq!(ma[0].id, mb[0].id);
+        assert_eq!(mb[0].base.as_ref().unwrap()["title"], "start");
+        assert_eq!((mb[0].kept.as_str(), mb[0].remote.page.as_ref().unwrap()["title"].clone()), ("remote", json!("from a")));
+        assert!(!mb[0].remote.device_id.is_empty(), "the server says which device wrote the other version");
+        assert_eq!(mb[0].remote.device_name, "test", "and the account knows its name");
     }
 
     #[test]
@@ -1275,7 +1303,8 @@ mod e2e {
                 }
             }
         }
-        let everything: Vec<Vec<u8>> = (0..2).flat_map(|i| all_files(&devs[i].vault.root, None).into_values()).collect();
+        // conflict markers hold copies of whole pages: a version that is only there is not kept (they would hide a loss)
+        let everything: Vec<Vec<u8>> = (0..2).flat_map(|i| all_files(&devs[i].vault.root, None).into_iter().filter(|(p, _)| !p.starts_with("history/conflicts/")).map(|(_, b)| b)).collect();
         for t in written.iter().filter(|t| !killed.contains(*t) && !lww_titles.get(*t).is_some_and(|id| ever_state.contains(id))) {
             if !everything.iter().any(|b| b.windows(t.len()).any(|w| w == t.as_bytes())) {
                 findings.push(format!("LOST UPDATE: {t} was written, never built upon, and is nowhere in either vault"));
