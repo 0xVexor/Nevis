@@ -75,4 +75,7 @@ export const FA_CONFLICTS: Record<string, string> = {
   // a page deleted for good on another device while it was open here
   'Recovered: {title}': 'بازیابی‌شده: {title}',
   '“{title}” was deleted on another device while you were editing it. Your edit was saved as a new page.': '«{title}» روی دستگاه دیگر حذف شد، در حالی که شما آن را ویرایش می‌کردید. ویرایش شما به‌صورت صفحهٔ جدید ذخیره شد.',
+
+  // two devices edited different blocks of one page: merged on their own
+  'Edits from two devices were merged into “{title}”. Both earlier versions are in the page history.': 'ویرایش‌های دو دستگاه در «{title}» ادغام شد. هر دو نسخهٔ قبلی در تاریخچهٔ صفحه هست.',
 }
