@@ -413,6 +413,7 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool, downloading: bool) -> Res<(
             state.reset_local_baseline();
             state.hub = Default::default();
         }
+        state.me = (acct.device_id.clone(), account::device_name());
         let mut hub = Hub::new(api, &e.id, state.hub.clone());
         let pre = hub.preflight(&vault.name(), downloading)?;
         if pre.baseline {
@@ -457,6 +458,10 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool, downloading: bool) -> Res<(
                 if let Some(app) = &ctx.app {
                     let _ = app.emit("vault-changed", e.id.clone());
                 }
+            }
+            // conflict markers recorded here, closed elsewhere, or brought by another device
+            if let Some(app) = &ctx.app {
+                crate::page_conflicts::emit_changed(app, rep.marker_pages.iter().cloned());
             }
             if !rep.errors.is_empty() {
                 let mut m = rep.errors.join("; ");

@@ -9,6 +9,7 @@ mod release_features;
 mod document_operations;
 mod mcp;
 mod mcp_relay;
+mod page_conflicts;
 mod page_state;
 mod index;
 mod portable;
@@ -748,6 +749,7 @@ fn main() {
             db_runtime_keys, db_index_rebuild, db_index_candidates, db_index_count,
             vault_stamp, pages_search_stamp, pages_all, pages_save, document_operation_list, document_operation_find, document_operation_commit, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_save_as, file_get, files_list, page_path, page_reveal,
             index_state, index_update, index_search,
+            page_conflicts::page_conflicts_list, page_conflicts::page_conflict_get, page_conflicts::page_conflict_close, page_conflicts::page_conflict_record,
             sync_app::account_status, sync_app::server_health, sync_app::account_register, sync_app::account_login, sync_app::account_recover, sync_app::account_logout, sync_app::account_info,
             sync_app::account_revoke_device, sync_app::account_change_password, sync_app::account_new_recovery_key, sync_app::account_delete, sync_app::save_text_file,
             sync_app::sync_set, sync_app::sync_now, sync_app::sync_confirm, sync_app::sync_held, sync_app::cloud_trashed, sync_app::cloud_restore, sync_app::cloud_delete, sync_app::cloud_purge, sync_app::cloud_vaults, sync_app::cloud_download
