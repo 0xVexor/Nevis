@@ -1,4 +1,5 @@
 import type { Schema } from '@tiptap/pm/model'
+import type { ConflictMarker } from './types'
 import { canonical } from '../documents/conflictMerge'
 
 /** The block ids and the id version are the editor's own bookkeeping: it may add them to a merged page that came without. */
@@ -16,4 +17,9 @@ export function sameContent(schema: Schema, a: unknown, b: unknown): boolean {
   } catch {
     return false
   }
+}
+
+/** The marker with the side that the page currently shows replaced by the page as it is now (later edits included). */
+export function withCurrentPage(marker: ConflictMarker, current: ConflictMarker['local']['page']): ConflictMarker {
+  return { ...marker, [marker.kept]: { ...marker[marker.kept], page: current } }
 }
