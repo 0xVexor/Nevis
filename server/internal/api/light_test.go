@@ -44,7 +44,7 @@ func TestHealthNamesTheServerTheWayTheClientExpects(t *testing.T) {
 		t.Fatalf("name %q", body.str("name"))
 	}
 	caps, _ := body["capabilities"].([]any)
-	if len(caps) != 1 || caps[0] != "database_sync" {
+	if len(caps) != 2 || caps[0] != "database_sync" || caps[1] != "page_state" {
 		t.Fatalf("capabilities %v", body["capabilities"])
 	}
 	if body.num("api") != 1 || body.num("min_api") != 1 || body.str("registration") != "open" || body.num("pow_bits") != 4 || body.num("server_time") == 0 {

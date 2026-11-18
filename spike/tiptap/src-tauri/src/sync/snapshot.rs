@@ -651,11 +651,24 @@ pub fn untombstone(v: &Vault, path: &str) -> Res<()> {
 }
 
 pub fn tombstones(v: &Vault) -> Res<BTreeSet<String>> {
-    match fs::read(v.root.join(".nevis/tombstones.json")) {
+    tombstones_at(&v.root)
+}
+
+pub fn tombstones_at(root: &std::path::Path) -> Res<BTreeSet<String>> {
+    match fs::read(root.join(".nevis/tombstones.json")) {
         Ok(b) => serde_json::from_slice(&b).map_err(|_| "SYNC:tombstones_corrupt".into()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(BTreeSet::new()),
         Err(e) => Err(err(e)),
     }
+}
+
+/// A page state arrived for a page that was deleted here: the edit wins over the delete (like restore_asset).
+pub fn forget_tombstone(root: &std::path::Path, path: &str) -> Res<()> {
+    let mut dead = tombstones_at(root)?;
+    if dead.remove(path) {
+        write_atomic(&root.join(".nevis/tombstones.json"), &serde_json::to_vec(&dead).map_err(err)?)?;
+    }
+    Ok(())
 }
 
 pub fn restore_record(v: &Vault, path: &str) -> Res<()> {
