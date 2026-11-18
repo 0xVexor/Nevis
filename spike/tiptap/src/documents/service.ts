@@ -512,6 +512,7 @@ export class DocumentService implements PageRepo {
     }
     this.invalidateSearch() // committed content first; indexing is a separate, fallible concern
     if (this.storage.stamp) this.stamp = await this.storage.stamp() // our own writes are not "external" changes
+    for (const race of this.races.splice(0)) this.recordRace(race)
   }
 
   /**
@@ -548,10 +549,13 @@ export class DocumentService implements PageRepo {
         adopt(theirs) // both sides already say the same
       } else if (local.updatedAt >= theirs.updatedAt) {
         await this.keepVersion(theirs)
+        // recorded once our version is on disk, so the record says which side the page keeps
+        this.races.push({ base: this.diskPages.get(sent.id) ?? null, local: cloneDocumentValue(local), remote: cloneDocumentValue(theirs) })
         adopt(theirs)
         upserts.push(cloneDocumentValue(local))
       } else {
         await this.keepVersion(local)
+        this.recordRace({ base: this.diskPages.get(sent.id) ?? null, local: cloneDocumentValue(local), remote: cloneDocumentValue(theirs) })
         adopt(theirs)
         this.pages = this.pages.map((p) => (p.id === theirs.id ? cloneDocumentValue(theirs) : p))
         this.dirty.delete(theirs.id)
@@ -576,9 +580,24 @@ export class DocumentService implements PageRepo {
     return upserts.length || removed.length ? { full: false, upserts, removed } : null
   }
 
+  /** Editor races whose winner is not on disk yet (see rebase); recorded after the write that decides it. */
+  private races: { base: Page | null; local: Page; remote: Page }[] = []
+
+  /** Best effort: the durable conflict record only helps the person review later, so it never fails or delays a save. */
+  private recordRace(race: { base: Page | null; local: Page; remote: Page }) {
+    if (!this.host.recordConflict || !this.worthKeeping(race.local) || !this.worthKeeping(race.remote)) return
+    void Promise.resolve()
+      .then(() => this.host.recordConflict?.(race.local.id, race.base, race.local, race.remote))
+      .catch((e) => this.host.report('history', e))
+  }
+
+  private worthKeeping(page: Page) {
+    return !(page.kind === 'folder' || !page.content || typeof page.content === 'string' || (isBlankDoc(page.content) && !page.title.trim()))
+  }
+
   /** The losing side of a conflict is kept as a history entry (unless it is blank or already the latest one). */
   private async keepVersion(page: Page) {
-    if (page.kind === 'folder' || !page.content || typeof page.content === 'string' || (isBlankDoc(page.content) && !page.title.trim())) return
+    if (!this.worthKeeping(page)) return
     try {
       const json = JSON.stringify(page.content)
       const latest = (await this.storage.listVersions(page.id))[0]

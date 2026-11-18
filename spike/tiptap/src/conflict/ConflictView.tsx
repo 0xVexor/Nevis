@@ -8,7 +8,7 @@ import { hydrate } from '../render'
 import { ago } from '../ui'
 import { deviceLabel } from './labels'
 import { blocksHtml, editorSchema } from './renderBlock'
-import type { ConflictMarker, ConflictSideName } from './types'
+import { ConflictApplyError, type ConflictMarker, type ConflictSideName } from './types'
 import './conflict.css'
 
 export interface ConflictViewProps {
@@ -251,8 +251,9 @@ export function ConflictView({ marker, onApply, onCancel, renderBlocks }: Confli
     })
   }
 
-  // on arrival, land on the first block that needs a decision
-  useEffect(() => go(review, 1), []) // oxlint-disable-line react-hooks/exhaustive-deps
+  // on arrival, land on the first block that needs a decision; with nothing to decide, on the heading so the screen reader names the view
+  const heading = useRef<HTMLHeadingElement>(null)
+  useEffect(() => (review.length ? go(review, 1) : heading.current?.focus()), []) // oxlint-disable-line react-hooks/exhaustive-deps
 
   const apply = async () => {
     if (busy) return
@@ -263,8 +264,8 @@ export function ConflictView({ marker, onApply, onCancel, renderBlocks }: Confli
     setError(null)
     try {
       await onApply(merged.content, merged.title)
-    } catch {
-      if (alive.current) setError(t('Could not apply the merged page. Nothing was changed.'))
+    } catch (e) {
+      if (alive.current) setError(e instanceof ConflictApplyError ? e.message : t('Could not apply the merged page. Nothing was changed.'))
     } finally {
       if (alive.current) setBusy(false)
     }
@@ -323,7 +324,7 @@ export function ConflictView({ marker, onApply, onCancel, renderBlocks }: Confli
     <div className="cf" onKeyDown={keys}>
       <header className="cf-bar">
         <div className="cf-bar-main">
-          <h2 className="cf-heading">{t('Edited on two devices')}</h2>
+          <h2 ref={heading} tabIndex={-1} className="cf-heading">{t('Edited on two devices')}</h2>
           <p className="cf-progress">{progress}</p>
         </div>
         <div className="cf-bar-tools">

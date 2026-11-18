@@ -6,13 +6,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { registerUpdateSave } from './updateSave'
 import { createPortal } from 'react-dom'
 import { useEditor, EditorContent } from '@tiptap/react'
-import { getSchema, type Editor } from '@tiptap/core'
+import { getSchema, type CommandProps, type Editor } from '@tiptap/core'
+import { ConflictBanner } from './conflict/ConflictBanner'
+import { ConflictView } from './conflict/ConflictView'
+import { sameContent } from './conflict/applied'
+import { ConflictApplyError, type ConflictMarker } from './conflict/types'
+import { addVersion, onPageConflictsChanged, pageConflictClose, pageConflictsList } from './db'
 import { documentCommitGuard } from './editor/documentCommitGuard'
 import { EditorState, Selection, TextSelection } from '@tiptap/pm/state'
 import { LayoutControls } from './LayoutControls'
 import { contentProblem } from './editor/contentSafety'
 import { LAYOUT_CANCEL } from './editor/layout'
-import { activeGroup, validWidths } from './editor/layoutModel'
+import { activeGroup, structural, validWidths } from './editor/layoutModel'
 import { getFind, scrollToMatch } from './editor/find'
 import { Button, ChipButton, Disclosure, dirOf, Icon, IconButton, Notice, PropertyList, PropertyRow, Row, Tag, useMenu, type MenuItem, PageIconPicker } from './design-system'
 import { looksLikeMermaid } from './editor/mermaid'
@@ -75,10 +80,16 @@ export function PageView({
   const [originalContent, setOriginalContent] = useState(page.content)
   const dirty = useRef(false)
   const [commitLocked, setCommitLocked] = useState(repo.isWriteLocked())
+  // the page's unresolved conflicts, and the one being reviewed (the review replaces the editor and locks the page)
+  const [markers, setMarkers] = useState<ConflictMarker[]>([])
+  const [reviewing, setReviewing] = useState<ConflictMarker | null>(null)
+  const reviewingRef = useRef<ConflictMarker | null>(null)
+  reviewingRef.current = reviewing
+  const [conflictNote, setConflictNote] = useState<string | null>(null)
   useEffect(() => {
     const changed = () => {
       const locked = repo.isWriteLocked()
-      const readOnly = locked || readerOnly || protectedContent.current
+      const readOnly = locked || readerOnly || protectedContent.current || !!reviewingRef.current
       if (titleRef.current) titleRef.current.readOnly = readOnly
       const editor = editorRef.current
       if (editor && !editor.isDestroyed) editor.setEditable(!readOnly, false)
@@ -87,7 +98,7 @@ export function PageView({
     window.addEventListener('commit-state', changed)
     return () => window.removeEventListener('commit-state', changed)
   }, [readerOnly])
-  const readOnly = readerOnly || !!contentIssue || commitLocked
+  const readOnly = readerOnly || !!contentIssue || commitLocked || !!reviewing
   const guardedExtensions = useMemo(() => [...extensions, documentCommitGuard(repo.isWriteLocked)], [])
   const timer = useRef<number>(0)
   const editorRef = useRef<Editor | null>(null)
@@ -311,7 +322,7 @@ export function PageView({
       setOriginalContent(fresh)
       protectedContent.current = !!issue
       setContentIssue(issue)
-      editor.setEditable(!readerOnly && !issue, false)
+      editor.setEditable(!readerOnly && !issue && !reviewingRef.current, false)
       if (doc) {
         // Clear stale undo history while retaining a valid caret and scroll position.
         const previous = editor.state.selection
@@ -379,6 +390,57 @@ export function PageView({
     window.addEventListener('open-history', open)
     return () => window.removeEventListener('open-history', open)
   }, [])
+
+  // ───── page conflicts: the banner, and the review that replaces the editor ─────
+  const markerLoad = useRef(0)
+  const loadMarkers = useCallback(async () => {
+    const mine = ++markerLoad.current
+    try {
+      const list = await pageConflictsList(page.id)
+      if (mine === markerLoad.current) setMarkers(list)
+    } catch (e) {
+      console.error('page conflicts', e) // the banner just stays as it was
+    }
+  }, [page.id])
+  useEffect(() => {
+    setMarkers([])
+    setReviewing(null)
+    setConflictNote(null)
+    void loadMarkers()
+    const stop = onPageConflictsChanged((ids) => ids.includes(page.id) && void loadMarkers())
+    // a sync download is followed by external-change: markers that came with it are announced by their own event, but a vault swap is not
+    const external = (e: Event) => {
+      if (((e as CustomEvent<string[] | undefined>).detail ?? []).includes(page.id)) void loadMarkers()
+    }
+    window.addEventListener('external-change', external)
+    return () => {
+      markerLoad.current++
+      stop()
+      window.removeEventListener('external-change', external)
+    }
+  }, [page.id, loadMarkers])
+  // the review is over when its conflict was closed elsewhere (the other device resolved it) or the page is gone
+  const applying = useRef(false)
+  useEffect(() => {
+    if (reviewing && !applying.current && !markers.some((m) => m.id === reviewing.id)) setReviewing(null)
+  }, [markers, reviewing])
+  useEffect(() => {
+    if (!reviewing) return
+    const check = () => {
+      const current = repo.get(page.id)
+      if (!current || current.deletedAt) setReviewing(null)
+    }
+    window.addEventListener('external-change', check)
+    window.addEventListener(PAGES_CHANGED, check)
+    check()
+    return () => (window.removeEventListener('external-change', check), window.removeEventListener(PAGES_CHANGED, check))
+  }, [reviewing, page.id])
+  // leaving the review puts the focus on the page title
+  const wasReviewing = useRef(false)
+  useEffect(() => {
+    if (wasReviewing.current && !reviewing) titleRef.current?.focus()
+    wasReviewing.current = !!reviewing
+  }, [reviewing])
 
   // ───── find in page (Ctrl+F) ─────
   const [findOpen, setFindOpen] = useState(false)
@@ -466,6 +528,71 @@ export function PageView({
   })
 
   if (!editor) return null
+
+  const keepCurrent = async (marker: ConflictMarker) => {
+    setConflictNote(null)
+    try {
+      await pageConflictClose(marker.id, 'dismissed') // the version that lost stays in the page history
+    } catch {
+      setConflictNote(t('Could not close this conflict.'))
+    }
+    void loadMarkers()
+  }
+
+  /** Puts the merged page in place of the current one, and closes the conflict only once the merged page is verifiably saved. */
+  const applyMerge = async (marker: ConflictMarker, content: unknown, title: string) => {
+    if (applying.current) return
+    applying.current = true
+    try {
+      const failed = (message: string) => new ConflictApplyError(t(message))
+      flush()
+      await repo.flushBeforeUpdate().catch(() => {
+        throw failed('The merged page could not be saved. The conflict is still open, so you can try again.')
+      })
+      const snapshot = editor.state.doc
+      const issue = contentProblem(content, schema)
+      if (issue) throw new ConflictApplyError(t(issue))
+      const current = repo.get(page.id)
+      if (!current || current.deletedAt) throw failed('The merged page could not be saved. The conflict is still open, so you can try again.')
+      await addVersion({ pageId: page.id, ts: Date.now(), title: current.title, content: editor.getJSON() })
+      if (editor.isDestroyed || editor.state.doc !== snapshot) {
+        void loadMarkers()
+        throw failed('The page changed while you were reviewing. Review the choices and apply again.')
+      }
+      editor
+        .chain()
+        .command(({ tr }: CommandProps) => {
+          structural(tr)
+          return true
+        })
+        .setContent(content as Parameters<typeof editor.commands.setContent>[0])
+        .run()
+      dirty.current = true
+      repo.setEditorDirty(page.id, true)
+      if (titleRef.current) titleRef.current.value = title
+      setTitleText(title)
+      repo.update(page.id, { title })
+      onMeta()
+      requestAnimationFrame(fit)
+      flush()
+      try {
+        await repo.flushBeforeUpdate()
+      } catch {
+        throw failed('The merged page could not be saved. The conflict is still open, so you can try again.')
+      }
+      const saved = repo.get(page.id)
+      if (!saved || saved.title !== title || !sameContent(schema, saved.content, content)) throw failed('The merged page could not be saved. The conflict is still open, so you can try again.')
+      try {
+        await pageConflictClose(marker.id, 'resolved')
+      } catch {
+        setConflictNote(t('The merged page was saved, but this conflict could not be closed. Use Keep current to close it.'))
+      }
+      setReviewing(null)
+      void loadMarkers()
+    } finally {
+      applying.current = false
+    }
+  }
 
   const applyTemplate = (tp: Template) => {
     editor.commands.setContent(tp.html)
@@ -844,6 +971,15 @@ export function PageView({
             </Notice>
           ) : null
         })()}
+      {conflictNote && (
+        <Notice tone="bad" role="alert" className="cf-banner">
+          {conflictNote}
+        </Notice>
+      )}
+      {!reviewing && !readerOnly && !contentIssue && !commitLocked && markers.length > 0 && (
+        <ConflictBanner markers={markers} onReview={(m) => (setConflictNote(null), setReviewing(m))} onKeepCurrent={(m) => void keepCurrent(m)} />
+      )}
+      {reviewing && <ConflictView key={reviewing.id} marker={reviewing} onApply={(content, title) => applyMerge(reviewing, content, title)} onCancel={() => setReviewing(null)} />}
       {contentIssue ? (
         <Notice className="layout-protection" tone="warn" role="status">
           <p>{t(contentIssue)}</p>
@@ -852,7 +988,7 @@ export function PageView({
           </Disclosure>
         </Notice>
       ) : (
-        <EditorContent editor={editor} className="ec" />
+        <EditorContent editor={editor} className="ec" hidden={!!reviewing} />
       )}
 
       {historyOpen && <History page={page} editor={editor} onClose={() => setHistoryOpen(false)} />}

@@ -63,6 +63,12 @@ export const FA_CONFLICTS: Record<string, string> = {
   'Keep reviewing': 'ادامهٔ بررسی',
   'Discard choices': 'کنار گذاشتن انتخاب‌ها',
 
+  // applying in the real page
+  'The page changed while you were reviewing. Review the choices and apply again.': 'صفحه هنگام بررسی تغییر کرد. انتخاب‌ها را مرور کنید و دوباره اعمال کنید.',
+  'The merged page could not be saved. The conflict is still open, so you can try again.': 'صفحهٔ ادغام‌شده ذخیره نشد. تعارض هنوز باز است و می‌توانید دوباره تلاش کنید.',
+  'The merged page was saved, but this conflict could not be closed. Use Keep current to close it.': 'صفحهٔ ادغام‌شده ذخیره شد، اما بستن این تعارض ممکن نشد. برای بستن آن «نگه‌داشتن نسخهٔ فعلی» را بزنید.',
+  'Could not close this conflict.': 'بستن این تعارض ممکن نشد.',
+
   // preview page
   'Kept the current version.': 'نسخهٔ فعلی نگه داشته شد.',
 }

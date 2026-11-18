@@ -5,6 +5,7 @@ import {
   deleteVersions,
   isTauri,
   listVersions,
+  pageConflictRecord,
   pagesSearchStamp,
   savePages,
   storageFrozen,
@@ -85,6 +86,7 @@ export function createAppDocumentEnvironment(): DocumentEnvironment {
         console.error(context, error)
       },
       legacyHtmlToDoc: (html) => htmlToDoc(html),
+      ...(isTauri && { recordConflict: (pageId, base, local, remote) => pageConflictRecord(pageId, base, local, remote, 'editor-race') }),
       readLegacy(): Page[] | null {
         try {
           const raw = localStorage.getItem(LEGACY_KEY)
