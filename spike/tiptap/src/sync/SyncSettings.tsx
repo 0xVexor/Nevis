@@ -96,10 +96,11 @@ function statusText(s: SyncStatus): string {
 }
 
 /** What marks a workspace on the server when names alone do not: that it is the open one, and a short piece of its id when another has the same name. */
-function VaultTags({ id, openId, showId }: { id: string; openId?: string | null; showId: boolean }) {
+function VaultTags({ id, openId, showId, local }: { id: string; openId?: string | null; showId: boolean; local?: boolean }) {
   return (
     <>
       {id === openId && <span className="prefs-badge">{t('This workspace')}</span>}
+      {id !== openId && local && <span className="prefs-tag">{t('On this computer')}</span>}
       {showId && (
         <span dir="ltr" className="prefs-tag-id">
           {t('ID {id}').replace('{id}', id.slice(0, 6))}
@@ -671,14 +672,12 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
             label={v.name}
             hint={
               <>
-                {`${v.files ?? 0} ${t('files')} · ${formatBytes(v.bytes)}`} <VaultTags id={v.id} openId={status.vaultId} showId={sameName.has(v.name)} />
+                {`${v.files ?? 0} ${t('files')} · ${formatBytes(v.bytes)}`} <VaultTags id={v.id} openId={status.vaultId} showId={sameName.has(v.name)} local={onComputer.has(v.id)} />
               </>
             }
           >
             <div className="prefs-actions">
-              {v.id === status.vaultId || onComputer.has(v.id) ? (
-                <span className="prefs-note">{v.id === status.vaultId ? t('Open now') : t('On this computer')}</span>
-              ) : (
+              {v.id !== status.vaultId && !onComputer.has(v.id) && (
                 <Button disabled={busy} onClick={() => void download(v)}>
                   {t('Download')}
                 </Button>
