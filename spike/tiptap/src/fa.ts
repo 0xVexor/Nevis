@@ -1399,7 +1399,6 @@ export const FA: Record<string, string> = {
   "Send it once and it stays the same on every device you sign in on: changes go both ways, by themselves.": "یک بار بفرست؛ بعد روی هر دستگاهی که واردش شوی یکی می‌ماند و تغییرها خودکار از دو طرف می‌روند.",
   "Kept in sync with the server": "با سرور همگام نگه داشته می‌شود",
   "Delete from server…": "حذف از سرور…",
-  "Open now": "هم‌اکنون باز است",
   "Delete permanently…": "حذف دائمی…",
   "Delete “{name}” from the server?": "«{name}» از سرور حذف شود؟",
   "Delete from server": "حذف از سرور",
