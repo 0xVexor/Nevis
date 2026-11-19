@@ -16,6 +16,7 @@
 .onb-panel--center { justify-items: center; text-align: center; }
 .onb-panel--wide { inline-size: min(100%, 640px); }
 .onb-panel h1 { margin: 0; font-size: var(--ds-text-heading); font-weight: 600; line-height: 1.15; letter-spacing: -.02em; outline: none; }
+.onb-panel h2 { margin: var(--ds-s3) 0 0; font-size: var(--ds-text-body); font-weight: 600; }
 .onb-panel h1 + p { margin: calc(var(--ds-s3) * -1) 0 0; color: var(--ds-text-2); line-height: 1.7; }
 .onb-field { display: grid; gap: var(--ds-s2); justify-items: start; }
 .onb-field > span { color: var(--ds-text-2); font-size: var(--ds-text-small); font-weight: 500; }

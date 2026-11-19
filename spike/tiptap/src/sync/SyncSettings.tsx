@@ -4,8 +4,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button, Dialog, Field, Notice, PreferenceGroup, PreferenceRow } from '../design-system'
 import { Switch } from '../design-system/controls'
-import { isTauri } from '../db'
+import { isTauri, vaultList } from '../db'
 import { t } from '../i18n'
+import { PurgeDialog } from './PurgeDialog'
 import {
   accountChangePassword,
   accountDelete,
@@ -25,6 +26,7 @@ import {
   cloudVaults,
   formatBytes,
   passwordError,
+  purgeError,
   saveRecoveryKeyFile,
   serverHealth,
   syncConfirm,
@@ -286,13 +288,14 @@ function SignIn({ status, onDone, onKey }: { status: SyncStatus; onDone: () => v
 function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () => void; onKey: (key: string, username: string) => void }) {
   const [info, setInfo] = useState<AccountInfo | null>(null)
   const [vaults, setVaults] = useState<ServerVault[] | null>(null)
+  // the workspaces that are on this computer (their folder is there): a server workspace among them is not downloaded again
+  const [onComputer, setOnComputer] = useState<Set<string>>(new Set())
   const [trashed, setTrashed] = useState<TrashedVault[]>([])
   const [held, setHeld] = useState<HeldDelete[]>([])
   const [deleting, setDeleting] = useState(false)
   const [deletePassword, setDeletePassword] = useState('')
   const [removing, setRemoving] = useState<ServerVault | null>(null)
   const [purging, setPurging] = useState<TrashedVault | null>(null)
-  const [purgePassword, setPurgePassword] = useState('')
   const onServer = !!status.vaultId && !!vaults?.some((v) => v.id === status.vaultId)
   // two workspaces with the same name look alike: the row of the open one is marked, and a piece of the id tells the others apart
   const sameName = duplicateNames(vaults ?? [])
@@ -306,10 +309,11 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
 
   const load = useCallback(async () => {
     try {
-      const [i, v, tr] = await Promise.all([accountInfo(), cloudVaults(), cloudTrashed()])
+      const [i, v, tr, local] = await Promise.all([accountInfo(), cloudVaults(), cloudTrashed(), vaultList().catch(() => null)])
       setInfo(i)
       setVaults(v)
       setTrashed(tr)
+      setOnComputer(new Set((local?.vaults ?? []).filter((x) => x.exists).map((x) => x.id)))
     } catch (e) {
       setMessage(syncError(e))
     }
@@ -371,9 +375,8 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
   const purgeFromServer = (v: TrashedVault) =>
     run(
       async () => {
-        const syncStopped = await cloudPurge(v.id, purgePassword)
+        const syncStopped = await cloudPurge(v.id)
         setPurging(null)
-        setPurgePassword('')
         await load()
         refresh()
         setMessage(
@@ -383,7 +386,7 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
         )
       },
       undefined,
-      passwordError,
+      purgeError,
     )
   const deleteAccount = () =>
     run(
@@ -608,9 +611,13 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
             }
           >
             <div className="prefs-actions">
-              <Button disabled={busy} onClick={() => void download(v)}>
-                {t('Download')}
-              </Button>
+              {v.id === status.vaultId || onComputer.has(v.id) ? (
+                <span className="prefs-note">{v.id === status.vaultId ? t('Open now') : t('On this computer')}</span>
+              ) : (
+                <Button disabled={busy} onClick={() => void download(v)}>
+                  {t('Download')}
+                </Button>
+              )}
               <Button variant="danger" disabled={busy} onClick={() => setRemoving(v)}>
                 {t('Delete from server…')}
               </Button>
@@ -759,44 +766,15 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
         </Dialog>
       )}
       {purging && (
-        <Dialog
-          open
-          title={t('Delete “{name}” permanently?').replace('{name}', purging.name)}
-          onClose={() => {
-            setPurging(null)
-            setPurgePassword('')
-          }}
-          actions={
-            <>
-              <Button
-                disabled={busy}
-                onClick={() => {
-                  setPurging(null)
-                  setPurgePassword('')
-                }}
-              >
-                {t('Cancel')}
-              </Button>
-              <Button variant="primary" disabled={busy || !purgePassword} onClick={() => void purgeFromServer(purging)}>
-                {t('Delete permanently')}
-              </Button>
-            </>
-          }
-        >
-          <div className="ds-modal-body">
-            <p>
-              <b>{purging.name}</b> <VaultTags id={purging.id} openId={status.vaultId} showId={sameNameTrashed.has(purging.name)} />
-            </p>
-            <p>{t('This removes the workspace from the server for good. It cannot be undone. The files on your devices stay. Type your password to confirm.')}</p>
-            {purging.id === status.vaultId && <p>{t('Sync for this workspace will be turned off.')}</p>}
-            <Field ltr type="password" value={purgePassword} autoComplete="current-password" aria-label={t('Password')} onChange={(e) => setPurgePassword(e.target.value)} />
-            {message && (
-              <Notice tone="bad" role="alert">
-                {message}
-              </Notice>
-            )}
-          </div>
-        </Dialog>
+        <PurgeDialog
+          vault={purging}
+          tags={<VaultTags id={purging.id} openId={status.vaultId} showId={sameNameTrashed.has(purging.name)} />}
+          note={purging.id === status.vaultId && <p>{t('Sync for this workspace will be turned off.')}</p>}
+          busy={busy}
+          error={message}
+          onCancel={() => setPurging(null)}
+          onConfirm={() => void purgeFromServer(purging)}
+        />
       )}
 
       {message && !deleting && !removing && !purging && (

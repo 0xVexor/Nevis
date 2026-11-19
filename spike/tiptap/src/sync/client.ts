@@ -95,8 +95,8 @@ export const cloudTrashed = () => invoke<TrashedVault[]>('cloud_trashed')
 export const cloudRestore = (id: string) => invoke<void>('cloud_restore', { id })
 /** Moves a workspace to the server's trash. True when that was the open one and its sync on this device was turned off. */
 export const cloudDelete = (id: string) => invoke<boolean>('cloud_delete', { id })
-/** Removes a workspace in the server's trash for good; needs the account password. True when that was the open one and its sync on this device was turned off. */
-export const cloudPurge = (id: string, password: string) => invoke<boolean>('cloud_purge', { id, password })
+/** Removes a workspace in the server's trash for good (the signed-in device is enough). True when that was the open one and its sync on this device was turned off. */
+export const cloudPurge = (id: string) => invoke<boolean>('cloud_purge', { id })
 export const accountDelete = (password: string) => invoke<number>('account_delete', { password })
 export const cloudVaults = () => invoke<ServerVault[]>('cloud_vaults')
 export const cloudDownload = (id: string, name: string, parent: string) => invoke<void>('cloud_download', { id, name, parent })
@@ -137,4 +137,10 @@ export function syncError(e: unknown): string {
 export function passwordError(e: unknown): string {
   const code = String(e).split('\n')[0].replace(/^Error:\s*/, '')
   return code === 'HUB:bad_credentials' ? t('The password is wrong.') : syncError(e)
+}
+
+/** Like `syncError`, for a purge: a server that still asks for the password answers with a rejected one. */
+export function purgeError(e: unknown): string {
+  const code = String(e).split('\n')[0].replace(/^Error:\s*/, '')
+  return code === 'HUB:bad_credentials' ? t('This server still asks for the password. Update the server.') : syncError(e)
 }
