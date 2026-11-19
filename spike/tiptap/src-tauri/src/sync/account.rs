@@ -18,7 +18,7 @@ pub const DEFAULT_SERVER: &str = match option_env!("NEVIS_SERVER") {
 const KEYRING_SERVICE: &str = "nevis";
 const KEYRING_USER: &str = "device-token";
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct Account {
     pub server: String,
     pub username: String,
