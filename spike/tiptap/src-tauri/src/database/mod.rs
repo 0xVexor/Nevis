@@ -277,6 +277,8 @@ fn apply(root: &Path, b: &Batch) -> Res<()> {
                 // the UI loads page bodies lazily: a post-image without a body must never wipe the body on disk
                 let bodyless = after.get("content").map_or(true, Value::is_null);
                 if bodyless {
+                    // an existing page that cannot be read has a body we cannot preserve: do not write a bodyless one over it
+                    if path.exists() && read_json(&path).is_none() { return Err("STORAGE:unreadable_page".into()); }
                     if let Some(cur) = read_json(&path).and_then(|c| c.get("content").cloned()).filter(|c| !c.is_null()) {
                         let mut merged = after.clone();
                         merged["content"] = cur;
@@ -400,7 +402,12 @@ pub fn undo_save(root: &Path, v: &Value) -> Res<()> {
     write_atomic(&root.join(".nevis/database-undo.json"), v.to_string().as_bytes())
 }
 pub fn runtime_get(root: &Path, key: &str) -> Res<Option<Value>> {
-    Ok(read_json(&root.join(".nevis/workflow-runtime").join(format!("{}.json", enc(key)?))).and_then(|v| v.get("value").cloned()))
+    // a file that exists but cannot be read is an error, not "nothing stored": callers would start from scratch (e.g. re-run schedules)
+    match fs::read(root.join(".nevis/workflow-runtime").join(format!("{}.json", enc(key)?))) {
+        Ok(b) => serde_json::from_slice::<Value>(&b).map(|v| v.get("value").cloned()).map_err(|_| format!("STORAGE:unreadable_runtime:{key}")),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(err(e)),
+    }
 }
 pub fn runtime_set(root: &Path, key: &str, v: &Value) -> Res<()> {
     write_atomic(&root.join(".nevis/workflow-runtime").join(format!("{}.json", enc(key)?)), json!({ "__key": key, "value": v }).to_string().as_bytes())
