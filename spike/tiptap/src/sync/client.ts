@@ -16,7 +16,7 @@ export interface SyncStatus {
   state: SyncState
   lastAt: number
   error: string
-  /** why it is paused: SIGNED_OUT | NEEDS_CONFIRM (then `error` is the number of held deletions) | VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE */
+  /** why it is paused: SIGNED_OUT | NEEDS_CONFIRM (then `error` is the number of held deletions) | VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE | ACCOUNT_CHANGED (then `error` is the `user@server` the workspace syncs with) */
   reason: string
   /** id of the open workspace (null when none is open) */
   vaultId?: string | null
@@ -83,6 +83,14 @@ export async function saveRecoveryKeyFile(username: string, keyText: string): Pr
   return true
 }
 export const syncSet = (on: boolean) => invoke<void>('sync_set', { on })
+/** The server copy of the open workspace is gone: sends the local files to the server again and keeps syncing. */
+export const syncReupload = () => invoke<void>('sync_reupload')
+/** The workspace syncs with another account than the signed-in one: sends it to the signed-in account (everything goes up, nothing is deleted). */
+export const syncAcceptAccount = () => invoke<void>('sync_accept_account')
+/** `user@https://server` as shown to people: without the scheme. */
+export const accountShown = (label: string) => label.replace('@https://', '@')
+/** The account the signed-in person is, as `user@server`. */
+export const signedInShown = (s: { username: string | null; server: string }) => accountShown(`${s.username ?? ''}@${s.server}`)
 export const syncNow = () => invoke<void>('sync_now')
 export const syncHeld = () => invoke<HeldDelete[]>('sync_held')
 /** Confirms exactly the list the person was shown. */
@@ -93,8 +101,8 @@ export const cloudTrashed = () => invoke<TrashedVault[]>('cloud_trashed')
 export const cloudRestore = (id: string) => invoke<void>('cloud_restore', { id })
 /** Moves a workspace to the server's trash. True when that was the open one and its sync on this device was turned off. */
 export const cloudDelete = (id: string) => invoke<boolean>('cloud_delete', { id })
-/** Removes a workspace in the server's trash for good; needs the account password. */
-export const cloudPurge = (id: string, password: string) => invoke<void>('cloud_purge', { id, password })
+/** Removes a workspace in the server's trash for good (the signed-in device is enough). True when that was the open one and its sync on this device was turned off. */
+export const cloudPurge = (id: string) => invoke<boolean>('cloud_purge', { id })
 export const accountDelete = (password: string) => invoke<number>('account_delete', { password })
 export const cloudVaults = () => invoke<ServerVault[]>('cloud_vaults')
 export const cloudDownload = (id: string, name: string, parent: string) => invoke<void>('cloud_download', { id, name, parent })
@@ -121,6 +129,7 @@ export function syncError(e: unknown): string {
     'HUB:not_nevis': t('This address answers, but it is not a Nevis sync server.'),
     'HUB:insecure_server': t('Use an https:// address. Plain http:// works only for this computer.'),
     'HUB:not_in_trash': t('This workspace is not in the server trash.'),
+    'HUB:vault_deleted': t('This workspace is in the server trash. Restore it from there, then sync again.'),
     'HUB:no_such_vault': t('This workspace is not on the server (any more).'),
     'HUB:bad_server': t('This server address is not valid.'),
   }
@@ -128,4 +137,16 @@ export function syncError(e: unknown): string {
   if (code.startsWith('NETWORK:')) return t('The server cannot be reached. Check the address and your connection.')
   if (code.startsWith('HUB:http_')) return t('The server answered with an error ({code}).').replace('{code}', code.slice('HUB:http_'.length))
   return explain(code)
+}
+
+/** Like `syncError`, for a dialog that asks for the account password again: there a rejected password is just a wrong password. */
+export function passwordError(e: unknown): string {
+  const code = String(e).split('\n')[0].replace(/^Error:\s*/, '')
+  return code === 'HUB:bad_credentials' ? t('The password is wrong.') : syncError(e)
+}
+
+/** Like `syncError`, for a purge: a server that still asks for the password answers with a rejected one. */
+export function purgeError(e: unknown): string {
+  const code = String(e).split('\n')[0].replace(/^Error:\s*/, '')
+  return code === 'HUB:bad_credentials' ? t('This server still asks for the password. Update the server.') : syncError(e)
 }

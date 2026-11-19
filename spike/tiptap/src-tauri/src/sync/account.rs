@@ -18,7 +18,7 @@ pub const DEFAULT_SERVER: &str = match option_env!("NEVIS_SERVER") {
 const KEYRING_SERVICE: &str = "nevis";
 const KEYRING_USER: &str = "device-token";
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct Account {
     pub server: String,
     pub username: String,
@@ -76,8 +76,21 @@ fn write_private(path: &Path, bytes: &[u8]) -> Res<()> {
     }
 }
 
-/// Forgets the account on this device. Vaults, files and sync bookkeeping stay.
+fn last_server_file(app_data: &Path) -> PathBuf {
+    app_data.join("last-server.txt")
+}
+
+/// The server of the account this device was last signed in to (empty when none): a returning person on a build without a
+/// fixed server finds the address filled in again.
+pub fn last_server(app_data: &Path) -> String {
+    std::fs::read_to_string(last_server_file(app_data)).map(|s| s.trim().to_string()).unwrap_or_default()
+}
+
+/// Forgets the account on this device. Vaults, files and sync bookkeeping stay; only the server address is remembered.
 pub fn clear(app_data: &Path) {
+    if let Some(a) = load(app_data) {
+        let _ = write_atomic(&last_server_file(app_data), a.server.as_bytes());
+    }
     if let Ok(e) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
         let _ = e.delete_credential();
     }
@@ -237,9 +250,18 @@ pub fn delete_vault(app_data: &Path, id: &str) -> Res<()> {
     api.send(|c| c.delete(&url)).map(|_| ())
 }
 
-/// Removes a vault that is in the server's trash for good. The server asks for the account password again.
-pub fn purge_vault(app_data: &Path, id: &str, password: &str) -> Res<()> {
-    api(app_data)?.post(&format!("/v1/vaults/{id}/purge"), &json!({ "password": password })).map(|_| ())
+/// The body of a purge request: no password key unless one is given (the server accepts the device token alone for a vault in
+/// the trash; an older server still wants the password).
+fn purge_body(password: Option<&str>) -> Value {
+    match password.filter(|p| !p.is_empty()) {
+        Some(p) => json!({ "password": p }),
+        None => json!({}),
+    }
+}
+
+/// Removes a vault that is in the server's trash for good.
+pub fn purge_vault(app_data: &Path, id: &str, password: Option<&str>) -> Res<()> {
+    api(app_data)?.post(&format!("/v1/vaults/{id}/purge"), &purge_body(password)).map(|_| ())
 }
 
 #[cfg(test)]
@@ -274,6 +296,25 @@ mod tests {
         assert!(normalize_server("https://bad host").is_err());
         assert!(normalize_server("https://user:secret@sync.example.com").is_err());
         assert!(normalize_server("http://localhost.example.com").is_err());
+    }
+
+    #[test]
+    fn a_purge_sends_no_password_key_without_a_password() {
+        assert_eq!(purge_body(None), json!({}));
+        assert_eq!(purge_body(Some("")), json!({}));
+        assert_eq!(purge_body(Some("pw")), json!({ "password": "pw" }));
+    }
+
+    #[test]
+    fn the_server_of_a_signed_out_account_is_remembered() {
+        let dir = std::env::temp_dir().join(format!("nevis-last-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(last_server(&dir), "");
+        write_atomic(&dir.join("account.json"), br#"{"server":"https://s.example","username":"u","user_id":"1","device_id":"2"}"#).unwrap();
+        clear(&dir);
+        assert!(load(&dir).is_none());
+        assert_eq!(last_server(&dir), "https://s.example");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

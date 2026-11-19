@@ -101,15 +101,19 @@ func (s *Server) untrashVault(w http.ResponseWriter, r *http.Request, p *auth.Pr
 	return ok(w)
 }
 
-// purgeVault removes a trashed vault for good. It needs the account password again, counted like a wrong one on
-// account deletion; the password is checked before the vault is looked at.
+// purgeVault removes a trashed vault for good. The device token already authenticates the caller, so the password
+// is optional: when one is supplied it is verified (and a wrong one counted like on account deletion) before the
+// vault is looked at; an empty or missing one proceeds. Confirming the destruction is the client's job; the server
+// only allows it for a vault of the caller's own account that is already in the trash.
 func (s *Server) purgeVault(w http.ResponseWriter, r *http.Request, p *auth.Principal) error {
 	var b credentialsBody
 	if err := readJSON(w, r, &b); err != nil {
 		return err
 	}
-	if err := s.Accounts.ConfirmPassword(r.Context(), s.clientIP(r), p, b.Password); err != nil {
-		return err
+	if b.Password != "" {
+		if err := s.Accounts.ConfirmPassword(r.Context(), s.clientIP(r), p, b.Password); err != nil {
+			return err
+		}
 	}
 	gone, err := s.Vaults.Purge(r.Context(), p.User.ID, r.PathValue("id"))
 	if err != nil {

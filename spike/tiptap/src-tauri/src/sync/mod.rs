@@ -2563,6 +2563,31 @@ mod tests {
     }
 
     #[test]
+    fn sending_the_vault_again_after_the_cloud_copy_is_gone_uploads_everything_and_deletes_nothing() {
+        let (mut a, _b) = pair();
+        a.save(P1, "one", 100);
+        a.save(P2, "two", 100);
+        a.sync();
+        let uploaded_before = a.remote.0.borrow().files.len();
+        a.remote.0.borrow_mut().gone = true;
+        assert_eq!(a.try_sync().err().as_deref(), Some(CLOUD_GONE));
+        // a new, empty server copy; this device forgets the old one ("Send it to the server again")
+        {
+            let mut m = a.remote.0.borrow_mut();
+            m.gone = false;
+            m.files.clear();
+            m.trashed.clear();
+        }
+        crate::sync_app::forget_server_copy(&mut a.state);
+        let r = a.sync();
+        assert_eq!((r.deleted, r.held), (0, 0));
+        assert_eq!(a.page_count(), 2);
+        assert_eq!(a.remote.0.borrow().files.len(), uploaded_before);
+        let r = a.sync();
+        assert_eq!((r.uploaded, r.downloaded, r.deleted, r.held), (0, 0, 0, 0));
+    }
+
+    #[test]
     fn a_state_file_that_cannot_be_read_means_a_clean_slate_without_deletions() {
         let (mut a, mut b) = pair();
         a.save(P1, "one", 100);

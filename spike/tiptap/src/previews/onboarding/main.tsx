@@ -8,13 +8,14 @@ import { Button, Icon } from '../../design-system'
 import { updateSettings } from '../../settings'
 import { t } from '../../i18n'
 import type { VaultEntry } from '../../db'
-import type { ServerVault } from '../../sync/client'
+import type { ServerVault, TrashedVault } from '../../sync/client'
 import '../../index.css'
 import './preview.css'
 
 // Isolated, in-memory review of first launch. No vault, native dialog or store is touched.
 // ?state=returning shows the workspace list; ?fail makes creating, opening, signing in or up, turning sync on and downloading fail once.
 // ?cloud=1 adds the account choices on the welcome step (password: any; user "empty" has no workspaces); ?signedin=1 starts signed in.
+// In the workspace list of an account, each workspace can be deleted from the server and brought back from its trash (?notrash=1 starts with an empty trash).
 // ?noserver=1 fakes a build without a fixed server (the address is then asked for).
 // ?registration=open|invite|closed sets what the fake server says about new accounts (default open; invite code: any).
 const query = new URLSearchParams(location.search)
@@ -33,6 +34,8 @@ const cloudVaults: ServerVault[] = [
   { id: 'research', name: 'Research notes', files: 12, bytes: 300 * 1024 },
 ]
 
+const cloudTrash: TrashedVault[] = [{ id: 'old-ideas', name: 'Old ideas', files: 40, bytes: 1024 * 1024, deletedAt: 1 }]
+
 function fakeServices(): WorkspaceServices {
   let list = query.get('state') === 'returning' ? [...known] : []
   let fail = query.has('fail')
@@ -44,6 +47,7 @@ function fakeServices(): WorkspaceServices {
   }
   let signedIn = query.has('signedin')
   let account = { username: 'sara', server: 'https://sync.example.com', vaults: cloudVaults }
+  let trash = query.has('notrash') ? [] : [...cloudTrash]
   const cloud: WorkspaceServices['cloud'] = {
     status: async () => (await wait(), { signedIn, username: signedIn ? account.username : null, server: signedIn ? account.server : '', defaultServer: query.has('noserver') ? '' : 'https://sync.example.com' }),
     login: async (server, username) => {
@@ -54,6 +58,26 @@ function fakeServices(): WorkspaceServices {
       account = { username, server, vaults: username === 'empty' ? [] : cloudVaults }
     },
     vaults: async () => (await wait(), account.vaults),
+    delete: async (id) => {
+      await wait()
+      maybeFail('NETWORK:timeout')
+      const gone = account.vaults.find((v) => v.id === id)
+      account = { ...account, vaults: account.vaults.filter((v) => v.id !== id) }
+      if (gone) trash = [...trash, { ...gone, deletedAt: 1 }]
+    },
+    trashed: async () => (await wait(), trash),
+    restore: async (id) => {
+      await wait()
+      maybeFail('NETWORK:timeout')
+      const back = trash.find((v) => v.id === id)
+      trash = trash.filter((v) => v.id !== id)
+      if (back) account = { ...account, vaults: [...account.vaults, back] }
+    },
+    purge: async (id) => {
+      await wait()
+      maybeFail('HUB:bad_credentials') // ?fail shows the answer of an old server
+      trash = trash.filter((v) => v.id !== id)
+    },
     download: async (id, name, parent) => {
       await wait()
       maybeFail('NETWORK:timeout')

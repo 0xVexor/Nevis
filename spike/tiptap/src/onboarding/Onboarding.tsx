@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { Button, Checkbox, Facts, Field, Icon, IconButton, Notice, SegmentedChoice, Steps, WorkspaceHeader, useMenu, type MenuItem } from '../design-system'
+import { Button, Checkbox, Dialog, Facts, Field, Icon, IconButton, Notice, SegmentedChoice, Steps, WorkspaceHeader, useMenu, type MenuItem } from '../design-system'
 import { BrandMark } from '../BrandMark'
 import { AccentSwatches } from '../settings-ui/AccentSwatches'
 import { updateSettings, useSettings } from '../settings'
 import { t } from '../i18n'
 import type { VaultEntry } from '../db'
-import { formatBytes, syncError, type ServerHealth, type ServerVault, type SyncStatus } from '../sync/client'
+import { formatBytes, purgeError, syncError, type ServerHealth, type ServerVault, type SyncStatus, type TrashedVault } from '../sync/client'
+import { PurgeDialog } from '../sync/PurgeDialog'
 
 /** What first launch needs from the desktop backend. The preview passes in-memory fakes. */
 export interface WorkspaceServices {
@@ -22,6 +23,13 @@ export interface WorkspaceServices {
     status: () => Promise<Pick<SyncStatus, 'signedIn' | 'username' | 'server' | 'defaultServer'>>
     login: (server: string, username: string, password: string) => Promise<void>
     vaults: () => Promise<ServerVault[]>
+    /** Moves a workspace of the account to the server's trash (restorable for a while). Files on computers stay. */
+    delete: (id: string) => Promise<unknown>
+    /** The account's workspaces in the server's trash. */
+    trashed: () => Promise<TrashedVault[]>
+    restore: (id: string) => Promise<unknown>
+    /** Removes a workspace in the server's trash for good. */
+    purge: (id: string) => Promise<unknown>
     download: (id: string, name: string, parent: string) => Promise<void>
     logout: () => Promise<void>
     /** Makes an account and signs in; resolves to the one-time recovery key. */
@@ -61,6 +69,10 @@ export function Onboarding({ services, onOpened }: { services: WorkspaceServices
   const [password, setPassword] = useState('')
   const [account, setAccount] = useState<{ username: string | null; server: string } | null>(null)
   const [cloudVaults, setCloudVaults] = useState<ServerVault[] | null>(null)
+  const [trashed, setTrashed] = useState<TrashedVault[]>([])
+  // The workspace the person is being asked about: to move to the server's trash, or to remove from it for good.
+  const [removing, setRemoving] = useState<ServerVault | null>(null)
+  const [purging, setPurging] = useState<TrashedVault | null>(null)
   // The server a release build is fixed to (empty in dev builds): then the address is not asked for, unless the person wants another server.
   const [defaultServer, setDefaultServer] = useState('')
   const [customServer, setCustomServer] = useState(false)
@@ -133,7 +145,9 @@ export function Onboarding({ services, onOpened }: { services: WorkspaceServices
 
   const loadAccount = async () => {
     setAccount(await cloud!.status().then((s) => ({ username: s.username, server: s.server })))
-    setCloudVaults(await cloud!.vaults())
+    const [vaults, inTrash] = await Promise.all([cloud!.vaults(), cloud!.trashed()])
+    setTrashed(inTrash)
+    setCloudVaults(vaults)
   }
   // Already signed in (say, to the same server from an earlier run): straight to the workspaces.
   const startCloud = (from: 'welcome' | 'list') =>
@@ -255,6 +269,7 @@ export function Onboarding({ services, onOpened }: { services: WorkspaceServices
       async () => {
         await cloud!.logout()
         setCloudVaults(null)
+        setTrashed([])
         setAccount(null)
         go('signin', true)
       },
@@ -270,6 +285,36 @@ export function Onboarding({ services, onOpened }: { services: WorkspaceServices
         land({ name: v.name, created: false })
       },
       syncError,
+    )
+  // After each of these the lists are read again; the dialog stays open when the server refused.
+  const removeFromServer = (v: ServerVault) =>
+    run(
+      'remove' + v.id,
+      async () => {
+        await cloud!.delete(v.id)
+        setRemoving(null)
+        await loadAccount()
+      },
+      syncError,
+    )
+  const restoreFromTrash = (v: TrashedVault) =>
+    run(
+      'restore' + v.id,
+      async () => {
+        await cloud!.restore(v.id)
+        await loadAccount()
+      },
+      syncError,
+    )
+  const purgeFromServer = (v: TrashedVault) =>
+    run(
+      'purge' + v.id,
+      async () => {
+        await cloud!.purge(v.id)
+        setPurging(null)
+        await loadAccount()
+      },
+      purgeError,
     )
   const choose = () =>
     run('choose', async () => {
@@ -654,7 +699,7 @@ export function Onboarding({ services, onOpened }: { services: WorkspaceServices
             <bdi dir="auto">{account.username}</bdi> · <bdi dir="ltr">{account.server}</bdi>
           </p>
         )}
-        {notice}
+        {!removing && !purging && notice}
         {cloudVaults === null && !error && <p className="onb-muted" role="status">{t('Loading…')}</p>}
         {cloudVaults?.length === 0 && <p className="onb-muted">{t('No workspaces on this server yet')}</p>}
         {!!cloudVaults?.length && (
@@ -669,6 +714,9 @@ export function Onboarding({ services, onOpened }: { services: WorkspaceServices
                     <small>{`${v.files ?? 0} ${t('files')} · ${formatBytes(v.bytes)}`}</small>
                   </div>
                   <div className="onb-list-actions">
+                    <Button size="sm" variant="danger" disabled={!!busy} onClick={() => (setError(''), setRemoving(v))}>
+                      {t('Delete from server…')}
+                    </Button>
                     {here ? (
                       <>
                         <span className="onb-muted">{t('On this computer')}</span>
@@ -687,6 +735,57 @@ export function Onboarding({ services, onOpened }: { services: WorkspaceServices
             })}
           </ul>
         )}
+        {trashed.length > 0 && (
+          <>
+            <h2>{t('Server trash')}</h2>
+            <p className="onb-muted">{t('They are removed from the server for good after a while. Restore one to get it back.')}</p>
+            <ul className="onb-list">
+              {trashed.map((v) => (
+                <li key={v.id}>
+                  <Icon name="cloud" />
+                  <div className="onb-list-text">
+                    <b dir="auto">{v.name}</b>
+                    <small>{`${v.files ?? 0} ${t('files')} · ${formatBytes(v.bytes)}`}</small>
+                  </div>
+                  <div className="onb-list-actions">
+                    <Button size="sm" disabled={!!busy} aria-busy={busy === 'restore' + v.id} onClick={() => void restoreFromTrash(v)}>
+                      {t('Restore')}
+                    </Button>
+                    <Button size="sm" variant="danger" disabled={!!busy} onClick={() => (setError(''), setPurging(v))}>
+                      {t('Delete permanently…')}
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {removing && (
+          <Dialog
+            open
+            title={t('Delete “{name}” from the server?', { name: removing.name })}
+            onClose={() => setRemoving(null)}
+            actions={
+              <>
+                <Button disabled={!!busy} onClick={() => setRemoving(null)}>
+                  {t('Cancel')}
+                </Button>
+                <Button variant="primary" disabled={!!busy} aria-busy={busy === 'remove' + removing.id} onClick={() => void removeFromServer(removing)}>
+                  {t('Delete from server')}
+                </Button>
+              </>
+            }
+          >
+            <div className="ds-modal-body">
+              <p>
+                <b dir="auto">{removing.name}</b>
+              </p>
+              <p>{t('It moves to the server’s trash and can be restored for 30 days. Files on any computer stay.')}</p>
+              {notice}
+            </div>
+          </Dialog>
+        )}
+        {purging && <PurgeDialog vault={purging} busy={!!busy} error={error} onCancel={() => setPurging(null)} onConfirm={() => void purgeFromServer(purging)} />}
         <div className="onb-actions">
           {backButton(origin)}
           <span className="onb-row">

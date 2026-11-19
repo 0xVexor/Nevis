@@ -62,6 +62,8 @@ export const FA_ONBOARDING: Record<string, string> = {
   'Open workspace': 'باز کردن فضای کاری',
   'The workspace was created. You can turn sync on later in Settings → Sync.': 'فضای کاری ساخته شد. همگام‌سازی را بعداً در تنظیمات ← همگام‌سازی می‌توانید روشن کنید.',
   'Server:': 'سرور:',
+  'Server trash': 'سطل زبالهٔ سرور',
+  'It moves to the server’s trash and can be restored for 30 days. Files on any computer stay.': 'به سطل زبالهٔ سرور می‌رود و تا ۳۰ روز می‌شود برش گرداند. فایل‌های روی هر کامپیوتر می‌مانند.',
   'Use a different server': 'استفاده از سرور دیگر',
   'Sync keeps your workspaces the same on all your devices. Files are sent only to the server shown below, and only for workspaces with sync turned on.': 'همگام‌سازی فضاهای کاری شما را روی همهٔ دستگاه‌ها یکی نگه می‌دارد. فایل‌ها فقط به سرور نشان‌داده‌شده در پایین فرستاده می‌شوند، آن هم فقط برای فضاهای کاری که همگام‌سازی‌شان روشن است.',
 }

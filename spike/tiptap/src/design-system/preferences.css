@@ -4,6 +4,11 @@
 .prefs-row b { font-weight: 500; }
 .prefs-row p { margin: var(--ds-s1) 0 0; font-size: var(--ds-text-caption); line-height: 1.5; color: var(--ds-text-3); max-inline-size: 240px; }
 .prefs-control { flex: none; max-inline-size: 100%; }
+.prefs-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--ds-s2); }
+.prefs-badge, .prefs-tag, .prefs-tag-id { display: inline-block; margin-inline-start: var(--ds-s1); padding-inline: var(--ds-s2); border-radius: var(--ds-r-sm); font-size: var(--ds-text-caption); line-height: 1.6; }
+.prefs-badge { background: var(--ds-accent-soft); color: var(--ds-accent); }
+.prefs-tag { background: var(--ds-sunk); color: var(--ds-text-2); }
+.prefs-tag-id { background: var(--ds-sunk); color: var(--ds-text-2); font-family: var(--ds-font-mono); }
 .prefs-choice { display: inline-flex; gap: 2px; padding: var(--ds-s1); border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-side); }
 .prefs-choice .ds-btn { block-size: var(--ds-control-sm); padding-inline: var(--ds-s2); gap: var(--ds-s2); border: 0; font-size: var(--ds-text-caption); color: var(--ds-text-2); border-radius: var(--ds-r-sm); }
 .prefs-choice [aria-pressed='true'] { background: var(--ds-raised); color: var(--ds-text); box-shadow: 0 1px 3px var(--ds-line); }

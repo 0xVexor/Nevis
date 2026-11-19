@@ -8,7 +8,7 @@ import { t } from '../i18n'
 import { SYNC_ENABLED } from '../releaseFeatures'
 import { ago } from '../ui'
 import type { ConflictMarker } from '../conflict/types'
-import { accountStatus, type SyncStatus } from './client'
+import { accountShown, accountStatus, signedInShown, type SyncStatus } from './client'
 
 const POLL_MS = 20_000
 
@@ -37,6 +37,7 @@ export function describeSync(s: SyncStatus | null): { text: string; tone: Tone }
         case 'NEEDS_CONFIRM': return { text: t('{n} deletions are waiting for your OK', { n: s.error }), tone: 'attention' }
         case 'VAULT_MISSING': return { text: t('The vault folder was not found.'), tone: 'attention' }
         case 'VAULT_MISMATCH': return { text: t('A different vault is in this folder.'), tone: 'attention' }
+        case 'ACCOUNT_CHANGED': return { text: t('This workspace was syncing with {account}. You are signed in as {other}.', { account: `\u2066${accountShown(s.error)}\u2069`, other: `\u2066${signedInShown(s)}\u2069` }), tone: 'attention' }
         case 'CLOUD_GONE': return { text: t('This workspace was deleted on the server'), tone: 'attention' }
         default: return { text: t('Sync is paused'), tone: 'attention' }
       }

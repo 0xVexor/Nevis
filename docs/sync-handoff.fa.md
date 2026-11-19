@@ -129,7 +129,6 @@ SESSION_SECRET=$(openssl rand -hex 24) REGISTRATION=open DATA_DIR=/var/lib/nevis
 - PR برگرداندن `main` به `dev` (بعد از release 1.1.0) هنوز ساخته نشده.
 - release و تگ قدیمی `v1.0.0` را خودتان در GitHub حذف کنید.
 - تگ محلی قدیمی `v1.1.0-beta.9` را حذف کنید و هرگز push نکنید (`git tag -d v1.1.0-beta.9`).
-- یک worktree باقی‌مانده از کار سرور Go در `.claude/worktrees/agent-a0dd3696968e22e75` هست: `git worktree remove` را روی آن بزنید.
 - یک فایل `zig.exe` (کامپایلر C) در پوشهٔ موقت جلسه دانلود شد و **هرگز اجرا نشد**. پاکش کنید.
 
 ## نکته‌های کار با این مخزن
