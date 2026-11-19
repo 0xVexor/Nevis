@@ -24,12 +24,14 @@ import {
   cloudTrashed,
   cloudVaults,
   formatBytes,
+  passwordError,
   saveRecoveryKeyFile,
   serverHealth,
   syncConfirm,
   syncError,
   syncHeld,
   syncNow,
+  syncReupload,
   syncSet,
   type AccountInfo,
   type HeldDelete,
@@ -40,6 +42,9 @@ import {
 } from './client'
 
 const HELD_SHOWN = 10
+
+/** Sync is working (or about to): the states in which "kept in sync with the server" is true. */
+const isWorking = (s: SyncStatus) => s.syncOn && ['idle', 'syncing', 'pending'].includes(s.state)
 
 function statusText(s: SyncStatus): string {
   if (!s.syncOn) return t('Sync is off for this workspace.')
@@ -53,14 +58,50 @@ function statusText(s: SyncStatus): string {
     case 'idle':
       return s.lastAt ? t('Up to date. Last sync: {time}').replace('{time}', new Date(s.lastAt).toLocaleTimeString()) : t('Up to date.')
     case 'paused':
-      if (s.reason === 'NEEDS_CONFIRM') return t('{n} deletions are waiting for your OK.').replace('{n}', s.error)
-      if (s.reason === 'SIGNED_OUT') return t('You are signed out of the server. Sign in again.')
-      return syncError(s.reason)
-    case 'error':
-      return syncError(s.error)
+      switch (s.reason) {
+        case 'NEEDS_CONFIRM':
+          return t('{n} deletions are waiting for your OK.').replace('{n}', s.error)
+        case 'SIGNED_OUT':
+          return t('You are signed out of the server. Sign in again.')
+        case 'CLOUD_GONE':
+          return t('This workspace is no longer on the server (it was deleted there). The files on this computer are untouched.')
+        case 'VAULT_MISSING':
+          return t('The vault folder was not found.')
+        case 'VAULT_MISMATCH':
+          return t('A different vault is in this folder.')
+        default:
+          return t('Sync is paused')
+      }
+    case 'error': {
+      // never the raw code or the technical lines behind it
+      const m = syncError(s.error)
+      return /^(HUB|AUTH|NETWORK):|\n/.test(m) ? t('Sync failed') : m
+    }
     default:
       return t('Sync is off for this workspace.')
   }
+}
+
+/** What marks a workspace on the server when names alone do not: that it is the open one, and a short piece of its id when another has the same name. */
+function VaultTags({ id, openId, showId }: { id: string; openId?: string | null; showId: boolean }) {
+  return (
+    <>
+      {id === openId && <span className="prefs-badge">{t('This workspace')}</span>}
+      {showId && (
+        <span dir="ltr" className="prefs-tag-id">
+          {t('ID {id}').replace('{id}', id.slice(0, 6))}
+        </span>
+      )}
+    </>
+  )
+}
+
+/** The names that more than one workspace on the server has. */
+function duplicateNames(list: { name: string }[]): Set<string> {
+  const seen = new Set<string>()
+  const twice = new Set<string>()
+  for (const v of list) (seen.has(v.name) ? twice : seen).add(v.name)
+  return twice
 }
 
 /** The recovery key is shown once; it is the only way back in after a forgotten password. */
@@ -99,9 +140,10 @@ function RecoveryKeyDialog({ keyText, username, onClose }: { keyText: string; us
             {keyText}
           </code>
         </p>
-        <p>
-          <Button onClick={() => void saveFile()}>{t('Save to a file')}</Button> <Button onClick={() => void copy()}>{t('Copy')}</Button>
-        </p>
+        <div className="prefs-actions">
+          <Button onClick={() => void saveFile()}>{t('Save to a file')}</Button>
+          <Button onClick={() => void copy()}>{t('Copy')}</Button>
+        </div>
         {note && <p role="status">{note}</p>}
       </div>
     </Dialog>
@@ -109,7 +151,10 @@ function RecoveryKeyDialog({ keyText, username, onClose }: { keyText: string; us
 }
 
 function SignIn({ status, onDone, onKey }: { status: SyncStatus; onDone: () => void; onKey: (key: string, username: string) => void }) {
+  // The server a release build is fixed to (empty in dev builds): then the address is not asked for, unless the person wants another server.
+  const defaultServer = status.defaultServer
   const [server, setServer] = useState(status.server || '')
+  const [customServer, setCustomServer] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [invite, setInvite] = useState('')
@@ -130,36 +175,55 @@ function SignIn({ status, onDone, onKey }: { status: SyncStatus; onDone: () => v
       setBusy(false)
     }
   }
+  const showServerField = !defaultServer || customServer || (!!server.trim() && server.trim() !== defaultServer)
+  const serverUsed = showServerField ? server : defaultServer
   const check = () =>
     run(async () => {
-      setHealth(await serverHealth(server))
+      setHealth(await serverHealth(serverUsed))
     })
+  // with the address hidden there is no field to leave: ask the server what it takes (new accounts, invite code) right away
+  useEffect(() => {
+    if (!showServerField) void check()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const signIn = () =>
     run(async () => {
-      await accountLogin(server, username, password)
+      await accountLogin(serverUsed, username, password)
       onDone()
     })
   const register = () =>
     run(async () => {
-      const key = await accountRegister(server, username, password, invite)
+      const key = await accountRegister(serverUsed, username, password, invite)
       onKey(key, username)
       onDone()
     })
   const recoverNow = () =>
     run(async () => {
-      const key = await accountRecover(server, username, recoveryKey, password)
+      const key = await accountRecover(serverUsed, username, recoveryKey, password)
       onKey(key, username)
       onDone()
     })
   const registration = health?.registration
   return (
-    <PreferenceGroup title={t('Your server')} hint={t('Sync keeps your workspaces the same on all your devices, through a server that you run. Nothing goes anywhere else.')}>
+    <PreferenceGroup title={t('Your server')} hint={t('Sync keeps your workspaces the same on all your devices. Files are sent only to the server shown below, and only for workspaces with sync turned on.')}>
       <Notice tone="info" title={t('Sign in to send this workspace to your server')}>
         {t('This workspace is only on this computer. After you sign in, you can send it to your server and keep it synced.')}
       </Notice>
-      <PreferenceRow wide label={t('Server address')} hint={t('For example sync.example.com')}>
-        <Field ltr value={server} placeholder="sync.example.com" aria-label={t('Server address')} onChange={(e) => setServer(e.target.value)} onBlur={() => server.trim() && void check()} />
-      </PreferenceRow>
+      {showServerField ? (
+        <PreferenceRow wide label={t('Server address')} hint={t('For example sync.example.com')}>
+          <Field ltr value={server} placeholder="sync.example.com" aria-label={t('Server address')} onChange={(e) => setServer(e.target.value)} onBlur={() => server.trim() && void check()} />
+        </PreferenceRow>
+      ) : (
+        <p className="prefs-note">
+          {t('Server:')} <bdi dir="ltr">{defaultServer.replace(/^https?:\/\//, '')}</bdi>{' '}
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => {
+              setCustomServer(true)
+              setHealth(null)
+            }}>
+            {t('Use a different server')}
+          </Button>
+        </p>
+      )}
       <PreferenceRow wide label={t('User name')}>
         <Field ltr value={username} autoComplete="username" aria-label={t('User name')} onChange={(e) => setUsername(e.target.value)} />
       </PreferenceRow>
@@ -191,23 +255,23 @@ function SignIn({ status, onDone, onKey }: { status: SyncStatus; onDone: () => v
       <PreferenceRow wide label="">
         {recover ? (
           <>
-            <Button variant="primary" disabled={busy || !server || !username || !password || !recoveryKey} onClick={() => void recoverNow()}>
+            <Button variant="primary" disabled={busy || !serverUsed.trim() || !username || !password || !recoveryKey} onClick={() => void recoverNow()}>
               {t('Set the new password')}
-            </Button>{' '}
+            </Button>
             <Button disabled={busy} onClick={() => setRecover(false)}>
               {t('Back')}
             </Button>
           </>
         ) : (
           <>
-            <Button variant="primary" disabled={busy || !server || !username || !password} onClick={() => void signIn()}>
+            <Button variant="primary" disabled={busy || !serverUsed.trim() || !username || !password} onClick={() => void signIn()}>
               {t('Sign in')}
-            </Button>{' '}
+            </Button>
             {registration !== 'closed' && (
-              <Button disabled={busy || !server || !username || !password} onClick={() => void register()}>
+              <Button disabled={busy || !serverUsed.trim() || !username || !password} onClick={() => void register()}>
                 {t('Create account')}
               </Button>
-            )}{' '}
+            )}
             <Button variant="ghost" disabled={busy} onClick={() => setRecover(true)}>
               {t('Forgot password')}
             </Button>
@@ -230,6 +294,10 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
   const [purging, setPurging] = useState<TrashedVault | null>(null)
   const [purgePassword, setPurgePassword] = useState('')
   const onServer = !!status.vaultId && !!vaults?.some((v) => v.id === status.vaultId)
+  // two workspaces with the same name look alike: the row of the open one is marked, and a piece of the id tells the others apart
+  const sameName = duplicateNames(vaults ?? [])
+  const sameNameTrashed = duplicateNames(trashed)
+  const inTrash = !!status.vaultId && trashed.some((v) => v.id === status.vaultId)
   const needsConfirm = status.reason === 'NEEDS_CONFIRM'
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -260,14 +328,15 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
       .catch(() => setHeld([]))
   }, [needsConfirm, status.error])
 
-  const run = async (job: () => Promise<void>, after?: () => void) => {
+  // `describe`: how an error is told; the dialogs that ask for the password say "the password is wrong" for a rejected one
+  const run = async (job: () => Promise<void>, after?: () => void, describe: (e: unknown) => string = syncError) => {
     setBusy(true)
     setMessage('')
     try {
       await job()
       after?.()
     } catch (e) {
-      setMessage(syncError(e))
+      setMessage(describe(e))
     } finally {
       setBusy(false)
     }
@@ -300,32 +369,53 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
       )
     })
   const purgeFromServer = (v: TrashedVault) =>
-    run(async () => {
-      await cloudPurge(v.id, purgePassword)
-      setPurging(null)
-      setPurgePassword('')
-      await load()
-      setMessage(t('“{name}” was removed from the server for good.').replace('{name}', v.name))
-    })
+    run(
+      async () => {
+        const syncStopped = await cloudPurge(v.id, purgePassword)
+        setPurging(null)
+        setPurgePassword('')
+        await load()
+        refresh()
+        setMessage(
+          syncStopped
+            ? t('“{name}” was removed from the server for good. Sync is off for this workspace; the files on this computer are untouched.').replace('{name}', v.name)
+            : t('“{name}” was removed from the server for good.').replace('{name}', v.name),
+        )
+      },
+      undefined,
+      passwordError,
+    )
   const deleteAccount = () =>
-    run(async () => {
-      await accountDelete(deletePassword)
-      setDeleting(false)
-      setDeletePassword('')
-      refresh()
-    })
+    run(
+      async () => {
+        await accountDelete(deletePassword)
+        setDeleting(false)
+        setDeletePassword('')
+        refresh()
+      },
+      undefined,
+      passwordError,
+    )
   const changePassword = () =>
-    run(async () => {
-      await accountChangePassword(oldPassword, newPassword)
-      setOldPassword('')
-      setNewPassword('')
-      setMessage(t('The password was changed.'))
-    })
+    run(
+      async () => {
+        await accountChangePassword(oldPassword, newPassword)
+        setOldPassword('')
+        setNewPassword('')
+        setMessage(t('The password was changed.'))
+      },
+      undefined,
+      passwordError,
+    )
   const newKey = () =>
-    run(async () => {
-      if (!oldPassword) throw new Error(t('Type your password first.'))
-      onKey(await accountNewRecoveryKey(oldPassword), status.username ?? '')
-    })
+    run(
+      async () => {
+        if (!oldPassword) throw new Error(t('Type your password first.'))
+        onKey(await accountNewRecoveryKey(oldPassword), status.username ?? '')
+      },
+      undefined,
+      passwordError,
+    )
 
   return (
     <>
@@ -374,7 +464,7 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
               : t('Send it once and it stays the same on every device you sign in on: changes go both ways, by themselves.')}
           </Notice>
         )}
-        <PreferenceRow label={t('Sync this workspace')} hint={status.syncOn ? `${t('Kept in sync with the server')} · ${statusText(status)}` : statusText(status)}>
+        <PreferenceRow label={t('Sync this workspace')} hint={isWorking(status) ? `${t('Kept in sync with the server')} · ${statusText(status)}` : statusText(status)}>
           <Switch
             label={t('Sync this workspace')}
             checked={status.syncOn}
@@ -401,6 +491,61 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
               {t('Sync now')}
             </Button>
           </PreferenceRow>
+        )}
+        {status.syncOn && status.reason === 'CLOUD_GONE' && (
+          <Notice
+            tone="warn"
+            role="alert"
+            title={t('This workspace is no longer on the server')}
+            action={
+              <div className="prefs-actions">
+                {inTrash ? (
+                  // the server keeps the id of a workspace in its trash and refuses to create it again: it has to come back from there
+                  <Button
+                    variant="primary"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        await cloudRestore(status.vaultId ?? '')
+                        await syncNow()
+                        await load()
+                        refresh()
+                      })
+                    }
+                  >
+                    {t('Restore from the server trash')}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="primary"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        await syncReupload()
+                        refresh()
+                      })
+                    }
+                  >
+                    {t('Send it to the server again')}
+                  </Button>
+                )}
+                <Button
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      await syncSet(false)
+                      await load()
+                      refresh()
+                    })
+                  }
+                >
+                  {t('Turn off sync')}
+                </Button>
+              </div>
+            }
+          >
+            {t('This workspace is no longer on the server (it was deleted there). The files on this computer are untouched.')}
+          </Notice>
         )}
         {status.reason === 'NEEDS_CONFIRM' && (
           <Notice
@@ -453,13 +598,23 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
         {vaults === null && <p className="prefs-note">{t('Loading…')}</p>}
         {vaults?.length === 0 && <p className="prefs-note">{t('Nothing is on the server yet. Turn on sync for a workspace to put it there.')}</p>}
         {vaults?.map((v) => (
-          <PreferenceRow key={v.id} label={v.name} hint={`${v.files ?? 0} ${t('files')} · ${formatBytes(v.bytes)}`}>
-            <Button disabled={busy} onClick={() => void download(v)}>
-              {t('Download')}
-            </Button>{' '}
-            <Button disabled={busy} onClick={() => setRemoving(v)}>
-              {t('Delete from server…')}
-            </Button>
+          <PreferenceRow
+            key={v.id}
+            label={v.name}
+            hint={
+              <>
+                {`${v.files ?? 0} ${t('files')} · ${formatBytes(v.bytes)}`} <VaultTags id={v.id} openId={status.vaultId} showId={sameName.has(v.name)} />
+              </>
+            }
+          >
+            <div className="prefs-actions">
+              <Button disabled={busy} onClick={() => void download(v)}>
+                {t('Download')}
+              </Button>
+              <Button variant="danger" disabled={busy} onClick={() => setRemoving(v)}>
+                {t('Delete from server…')}
+              </Button>
+            </div>
           </PreferenceRow>
         ))}
       </PreferenceGroup>
@@ -467,19 +622,30 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
       {trashed.length > 0 && (
         <PreferenceGroup title={t('Workspaces in the server trash')} hint={t('They are removed from the server for good after a while. Restore one to get it back.')}>
           {trashed.map((v) => (
-            <PreferenceRow key={v.id} label={v.name} hint={`${v.files ?? 0} ${t('files')} · ${formatBytes(v.bytes)}`}>
-              <Button disabled={busy} onClick={() => void restore(v)}>
-                {t('Restore')}
-              </Button>{' '}
-              <Button
-                disabled={busy}
-                onClick={() => {
-                  setMessage('')
-                  setPurging(v)
-                }}
-              >
-                {t('Delete permanently…')}
-              </Button>
+            <PreferenceRow
+              key={v.id}
+              label={v.name}
+              hint={
+                <>
+                  {`${v.files ?? 0} ${t('files')} · ${formatBytes(v.bytes)}`} <VaultTags id={v.id} openId={status.vaultId} showId={sameNameTrashed.has(v.name)} />
+                </>
+              }
+            >
+              <div className="prefs-actions">
+                <Button disabled={busy} onClick={() => void restore(v)}>
+                  {t('Restore')}
+                </Button>
+                <Button
+                  variant="danger"
+                  disabled={busy}
+                  onClick={() => {
+                    setMessage('')
+                    setPurging(v)
+                  }}
+                >
+                  {t('Delete permanently…')}
+                </Button>
+              </div>
             </PreferenceRow>
           ))}
         </PreferenceGroup>
@@ -517,7 +683,7 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
         <PreferenceRow wide label="">
           <Button disabled={busy || !oldPassword || !newPassword} onClick={() => void changePassword()}>
             {t('Change password')}
-          </Button>{' '}
+          </Button>
           <Button disabled={busy || !oldPassword} onClick={() => void newKey()}>
             {t('Make a new recovery key')}
           </Button>
@@ -579,6 +745,9 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
           }
         >
           <div className="ds-modal-body">
+            <p>
+              <b>{removing.name}</b> <VaultTags id={removing.id} openId={status.vaultId} showId={sameName.has(removing.name)} />
+            </p>
             <p>{t('It moves to the server’s trash and can be restored for 30 days. The files on this computer stay.')}</p>
             {removing.id === status.vaultId && <p>{t('Sync for this workspace will be turned off.')}</p>}
             {message && (
@@ -615,7 +784,11 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
           }
         >
           <div className="ds-modal-body">
+            <p>
+              <b>{purging.name}</b> <VaultTags id={purging.id} openId={status.vaultId} showId={sameNameTrashed.has(purging.name)} />
+            </p>
             <p>{t('This removes the workspace from the server for good. It cannot be undone. The files on your devices stay. Type your password to confirm.')}</p>
+            {purging.id === status.vaultId && <p>{t('Sync for this workspace will be turned off.')}</p>}
             <Field ltr type="password" value={purgePassword} autoComplete="current-password" aria-label={t('Password')} onChange={(e) => setPurgePassword(e.target.value)} />
             {message && (
               <Notice tone="bad" role="alert">
