@@ -124,7 +124,9 @@ pub fn status_error(r: Response, authed: bool) -> String {
     let endpoint = format!("{}{}", r.url().origin().ascii_serialization(), r.url().path());
     let body: Value = r.json().unwrap_or(Value::Null);
     let name = body.get("error").and_then(Value::as_str).unwrap_or("");
-    if code == 401 && authed {
+    // a wrong confirmation password (purge, delete account, ...) is also a 401, but the token is fine: not "signed out"
+    let wrong_secret = name == "bad_credentials" || name == "bad_recovery_key";
+    if code == 401 && authed && !wrong_secret {
         return format!("{AUTH}unauthorized\nhttp={code}\nendpoint={endpoint}");
     }
     // only the server's own codes (lower case, underscores) are passed on; any other text is another program talking
@@ -610,6 +612,44 @@ mod tests {
         assert!(message.contains("http=404"));
         assert!(message.contains("/v1/example"));
         assert!(!message.contains("password") && !message.contains("token") && !message.contains("secret") && !message.contains("user"));
+    }
+
+    /// One request answered with `status`/`body`, then the `status_error` of that answer.
+    fn status_error_of(status: &str, body: &'static str, authed: bool) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let status = status.to_string();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 4096];
+            let _ = stream.read(&mut request).unwrap();
+            write!(stream, "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+        });
+        let response = reqwest::blocking::get(format!("http://user:password@{address}/v1/example?token=secret")).unwrap();
+        let message = status_error(response, authed);
+        server.join().unwrap();
+        assert!(!message.contains("password") && !message.contains("token") && !message.contains("secret") && !message.contains("user"));
+        message
+    }
+
+    #[test]
+    fn a_wrong_confirmation_password_is_not_a_dead_token() {
+        let m = status_error_of("401 Unauthorized", r#"{"error":"bad_credentials"}"#, true);
+        assert_eq!(m.lines().next(), Some("HUB:bad_credentials"));
+        assert!(!is_auth(&m));
+        let m = status_error_of("401 Unauthorized", r#"{"error":"bad_recovery_key"}"#, true);
+        assert_eq!(m.lines().next(), Some("HUB:bad_recovery_key"));
+        assert!(!is_auth(&m));
+    }
+
+    #[test]
+    fn an_unaccepted_token_is_still_auth() {
+        for body in [r#"{"error":"unauthorized"}"#, "{}"] {
+            let m = status_error_of("401 Unauthorized", body, true);
+            assert_eq!(m.lines().next(), Some("AUTH:unauthorized"));
+            assert!(is_auth(&m));
+        }
     }
 
     #[test]
@@ -1144,6 +1184,34 @@ mod e2e {
         let m = a.try_sync().unwrap_err();
         assert_eq!(m, CLOUD_GONE);
         assert_eq!(a.titles(), vec!["one"]);
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_sending_a_vault_again_after_it_was_deleted_on_the_server_uploads_everything_and_deletes_nothing() {
+        let (mut a, _b) = pair();
+        a.save(P1, "one", 100);
+        a.save(P2, "two", 100);
+        a.sync();
+        let url = a.api.url(&format!("/v1/vaults/{}", a.id));
+        a.api.send(|c| c.delete(&url)).unwrap();
+        assert_eq!(a.try_sync().unwrap_err(), CLOUD_GONE);
+        // while the copy is in the server's trash the server refuses to create the id again (the person restores it instead)
+        crate::sync_app::forget_server_copy(&mut a.state);
+        assert_eq!(a.try_sync().unwrap_err().lines().next(), Some("HUB:vault_deleted"));
+        // after a permanent delete the id is free: everything goes up again, nothing is deleted or held
+        a.api.post(&format!("/v1/vaults/{}/purge", a.id), &json!({ "password": "an end to end password" })).unwrap();
+        crate::sync_app::forget_server_copy(&mut a.state);
+        let r = a.sync();
+        assert_eq!((r.deleted, r.held), (0, 0));
+        assert_eq!(a.titles(), vec!["one", "two"]);
+        // a second device now gets both pages from the re-created copy
+        let token = a.api.token.clone().unwrap();
+        let mut c = Dev::new(&token, &a.id.clone());
+        c.sync();
+        assert_eq!(c.titles(), vec!["one", "two"]);
+        let r = a.sync();
+        assert_eq!((r.deleted, r.held), (0, 0));
     }
 
     // ---- randomized two-device test -------------------------------------------------------------------------------

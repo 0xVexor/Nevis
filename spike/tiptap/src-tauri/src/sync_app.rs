@@ -247,19 +247,69 @@ pub fn save_text_file(path: String, text: String) -> Res<()> {
 
 // ───── the sync of the open vault ─────
 
-/// Turns sync of the open vault on or off.
-#[tauri::command]
-pub fn sync_set(s: St, on: bool) -> Res<()> {
-    let id = with(&s, |v| Ok(v.id()))?;
+/// Makes this device forget everything it knew about the server's copy of a vault (which server copy, what the last sync
+/// recorded, what was held back), as on a fresh start: the next sync creates the vault on the server and only adds files,
+/// because a new server copy has no tombstones and the engine has no baseline to plan deletions from.
+pub(crate) fn forget_server_copy(state: &mut SyncState) {
+    state.reset_local_baseline();
+    state.hub = Default::default();
+}
+
+/// `forget_server_copy` for the state file of `id`, and drops a confirmation that was meant for the old server copy.
+fn forget_server_copy_of(ctx: &SyncCtx, id: &str) -> Res<()> {
+    let file = state_file(&ctx.app_data, id);
+    let mut state = SyncState::load(&file);
+    forget_server_copy(&mut state);
+    state.save(&file)?;
+    if let Ok(mut c) = ctx.confirm.lock() {
+        c.remove(id);
+    }
+    if let Ok(mut synced) = ctx.synced.lock() {
+        *synced = (String::new(), -1);
+    }
+    Ok(())
+}
+
+fn set_sync_flag(s: &Store, id: &str, on: bool) -> Res<()> {
     let mut r = s.reg.lock().map_err(err)?;
     if let Some(e) = r.vaults.iter_mut().find(|e| e.id == id) {
         e.sync = on;
     }
-    r.save(&s.app_data)?;
-    drop(r);
+    r.save(&s.app_data)
+}
+
+/// Whether the sync of the open vault is paused because its copy on the server is gone.
+fn cloud_is_gone(ctx: &SyncCtx) -> bool {
+    ctx.status.lock().is_ok_and(|st| st.reason == sync::CLOUD_GONE)
+}
+
+/// Turns sync of the open vault on or off. Turning it off while the server copy is gone also forgets that copy, so that
+/// turning it on later uploads the files again instead of stopping with "gone" once more.
+#[tauri::command]
+pub fn sync_set(s: St, on: bool) -> Res<()> {
+    let id = with(&s, |v| Ok(v.id()))?;
+    let gone = !on && cloud_is_gone(&s.sync.ctx);
+    set_sync_flag(&s, &id, on)?;
     if !on {
+        if gone {
+            forget_server_copy_of(&s.sync.ctx, &id)?;
+        }
         set_off(&s.sync.ctx);
     }
+    s.sync.wake(Kick::User);
+    Ok(())
+}
+
+/// The server copy of the open vault is gone (deleted there): sends the local files to the server again. The vault is created
+/// on the server anew and every file goes up; nothing is deleted anywhere. Only valid while the sync is paused as CLOUD_GONE.
+#[tauri::command]
+pub fn sync_reupload(s: St) -> Res<()> {
+    let id = with(&s, |v| Ok(v.id()))?;
+    if !cloud_is_gone(&s.sync.ctx) {
+        return Err("the workspace is still on the server".into());
+    }
+    forget_server_copy_of(&s.sync.ctx, &id)?;
+    set_sync_flag(&s, &id, true)?;
     s.sync.wake(Kick::User);
     Ok(())
 }
@@ -349,12 +399,24 @@ pub async fn cloud_delete(s: St<'_>, id: String) -> Res<bool> {
     Ok(open && was_on)
 }
 
-/// Removes a vault in the server's trash for good (needs the account password). Files on devices stay.
+/// Removes a vault in the server's trash for good (needs the account password). Files on devices stay. A wrong password
+/// changes nothing here. When it is the open vault, its sync is turned off and its server identity forgotten (as for a delete).
+/// Returns whether the sync of this device was turned off.
 #[tauri::command]
-pub async fn cloud_purge(s: St<'_>, id: String, password: String) -> Res<()> {
+pub async fn cloud_purge(s: St<'_>, id: String, password: String) -> Res<bool> {
     crate::vault::check_id(&id)?;
     let app_data = s.app_data.clone();
-    blocking(move || account::purge_vault(&app_data, &id, &password)).await
+    let vid = id.clone();
+    blocking(move || account::purge_vault(&app_data, &vid, &password)).await?;
+    let open = s.reg.lock().map_err(err)?.current.as_deref().is_some_and(|c| is_open_vault(Some(c), &id));
+    if !open {
+        return Ok(false);
+    }
+    let was_on = current_entry(&s).is_some_and(|e| e.sync);
+    set_sync_flag(&s, &id, false)?;
+    forget_server_copy_of(&s.sync.ctx, &id)?;
+    set_off(&s.sync.ctx);
+    Ok(was_on)
 }
 
 /// Creates `<parent>/<name>` for a vault that exists on the server, downloads it and opens it.
@@ -638,6 +700,49 @@ fn listener(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn forgetting_the_server_copy_leaves_nothing_to_delete_or_hold() {
+        let mut state = SyncState::default();
+        state.hub.epoch = "old".into();
+        state.hub.seq = 7;
+        state.files.insert("pages/a.json".into(), Default::default());
+        state.held.push(HeldDelete { path: "pages/b.json".into(), side: "remote".into(), base_md5: "x".into() });
+        state.resurrect_held.insert("pages/c.json".into(), "y".into());
+        state.allow_deletes_once = true;
+        state.confirmed.insert(("pages/d.json".into(), "z".into()));
+        state.account = "me@server".into();
+        forget_server_copy(&mut state);
+        assert!(state.hub.epoch.is_empty() && state.hub.seq == 0 && state.hub.files.is_empty());
+        assert!(state.files.is_empty() && state.held.is_empty() && state.resurrect_held.is_empty());
+        assert!(!state.allow_deletes_once && state.confirmed.is_empty());
+        assert_eq!(state.account, "me@server"); // the account is still the same one
+    }
+
+    #[test]
+    fn forgetting_is_saved_for_the_vault_and_drops_its_confirmation() {
+        let dir = std::env::temp_dir().join(format!("nevis-forget-{}-{}", now_ms(), std::process::id()));
+        let ctx = SyncCtx {
+            app_data: dir.clone(),
+            status: Arc::new(Mutex::new(SyncStatus { state: "paused", reason: sync::CLOUD_GONE.into(), ..Default::default() })),
+            confirm: Arc::new(Mutex::new(BTreeMap::new())),
+            synced: Arc::new(Mutex::new(("v".into(), 5))),
+            app: None,
+        };
+        std::fs::create_dir_all(dir.join("sync")).unwrap();
+        let mut state = SyncState::default();
+        state.hub.epoch = "old".into();
+        state.files.insert("pages/a.json".into(), Default::default());
+        state.save(&state_file(&dir, "v")).unwrap();
+        ctx.confirm.lock().unwrap().insert("v".into(), Confirmation { all: true, ..Default::default() });
+        assert!(cloud_is_gone(&ctx));
+        forget_server_copy_of(&ctx, "v").unwrap();
+        let after = SyncState::load(&state_file(&dir, "v"));
+        assert!(after.hub.epoch.is_empty() && after.files.is_empty());
+        assert!(ctx.confirm.lock().unwrap().is_empty());
+        assert_eq!(*ctx.synced.lock().unwrap(), (String::new(), -1));
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn only_the_open_vault_has_its_sync_stopped_when_it_leaves_the_server() {
