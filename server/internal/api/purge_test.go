@@ -56,13 +56,55 @@ func TestPurgeVault(t *testing.T) {
 
 	t.Run("refuses a wrong password and removes nothing", func(t *testing.T) {
 		f := trashed(t)
-		for _, body := range []any{J{"password": "wrong"}, J{}} {
+		for _, body := range []any{J{"password": "wrong"}, J{"password": " "}} {
 			if r := purge(f, f.a.token, f.v, body); r.status != 401 || r.body.str("error") != "bad_credentials" {
 				t.Fatalf("%d %v", r.status, r.body)
 			}
 		}
 		if r := purge(f, "", f.v, J{"password": pw}); r.status != 401 {
 			t.Fatalf("no token: %d", r.status)
+		}
+		if !f.store.Blobs.Has(f.v, sha("hello")) || count(t, f.env, "vaults") != 1 {
+			t.Fatal("something was removed")
+		}
+	})
+
+	t.Run("needs no password: no body or an empty object is enough on the device token", func(t *testing.T) {
+		for name, body := range map[string]any{"no body": nil, "empty object": J{}, "empty password": J{"password": ""}} {
+			f := trashed(t)
+			r := purge(f, f.a.token, f.v, body)
+			if r.status != 200 || !r.body.flag("ok") || r.body.num("files") != 1 {
+				t.Fatalf("%s: %d %v", name, r.status, r.body)
+			}
+			if f.store.Blobs.Has(f.v, sha("hello")) || count(t, f.env, "vaults") != 0 {
+				t.Fatalf("%s: not removed", name)
+			}
+		}
+	})
+
+	t.Run("without a password a live vault is still refused and a missing token is 401", func(t *testing.T) {
+		f := newFixture(t)
+		f.commitOps([]op{put("pages/a.json", "hello")})
+		for _, body := range []any{nil, J{}} {
+			if r := purge(f, f.a.token, f.v, body); r.status != 409 || r.body.str("error") != "not_in_trash" {
+				t.Fatalf("%d %v", r.status, r.body)
+			}
+		}
+		if r := purge(f, "", f.v, nil); r.status != 401 {
+			t.Fatalf("no token: %d", r.status)
+		}
+		if !f.store.Blobs.Has(f.v, sha("hello")) || count(t, f.env, "vaults") != 1 {
+			t.Fatal("something was removed")
+		}
+	})
+
+	t.Run("without a password another account's vault is 404", func(t *testing.T) {
+		f := trashed(t)
+		bob := f.register("bob")
+		for _, id := range []string{f.v, "no-such-vault-id"} {
+			if r := purge(f, bob.token, id, nil); r.status != 404 || r.body.str("error") != "no_such_vault" {
+				t.Fatalf("%s: %d %v", id, r.status, r.body)
+			}
 		}
 		if !f.store.Blobs.Has(f.v, sha("hello")) || count(t, f.env, "vaults") != 1 {
 			t.Fatal("something was removed")

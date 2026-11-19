@@ -135,6 +135,11 @@ fn state_file(app_data: &Path, id: &str) -> PathBuf {
 
 // ───── the account ─────
 
+/// The server to offer when nobody is signed in: the one used last, else the build's own (which may be empty).
+fn last_or_default_server(app_data: &Path) -> String {
+    Some(account::last_server(app_data)).filter(|x| !x.is_empty()).unwrap_or_else(|| account::DEFAULT_SERVER.to_string())
+}
+
 /// Signed in or not, and what the sync of the open vault is doing.
 #[tauri::command]
 pub fn account_status(s: St) -> Value {
@@ -144,7 +149,7 @@ pub fn account_status(s: St) -> Value {
     json!({
         "signedIn": acct.is_some(),
         "username": acct.as_ref().map(|a| a.username.clone()),
-        "server": acct.as_ref().map_or_else(|| account::DEFAULT_SERVER.to_string(), |a| a.server.clone()),
+        "server": acct.as_ref().map_or_else(|| last_or_default_server(&s.app_data), |a| a.server.clone()),
         "defaultServer": account::DEFAULT_SERVER,
         "syncOn": sync_on,
         "vaultId": current_entry(&s).map(|e| e.id),
@@ -399,15 +404,16 @@ pub async fn cloud_delete(s: St<'_>, id: String) -> Res<bool> {
     Ok(open && was_on)
 }
 
-/// Removes a vault in the server's trash for good (needs the account password). Files on devices stay. A wrong password
-/// changes nothing here. When it is the open vault, its sync is turned off and its server identity forgotten (as for a delete).
+/// Removes a vault in the server's trash for good. The device token is enough; `password` is only for an older server that
+/// still asks for it. Files on devices stay. When it is the open vault, its sync is turned off and its server identity forgotten
+/// (as for a delete); with no vault open (first launch) there is nothing to turn off.
 /// Returns whether the sync of this device was turned off.
 #[tauri::command]
-pub async fn cloud_purge(s: St<'_>, id: String, password: String) -> Res<bool> {
+pub async fn cloud_purge(s: St<'_>, id: String, password: Option<String>) -> Res<bool> {
     crate::vault::check_id(&id)?;
     let app_data = s.app_data.clone();
     let vid = id.clone();
-    blocking(move || account::purge_vault(&app_data, &vid, &password)).await?;
+    blocking(move || account::purge_vault(&app_data, &vid, password.as_deref())).await?;
     let open = s.reg.lock().map_err(err)?.current.as_deref().is_some_and(|c| is_open_vault(Some(c), &id));
     if !open {
         return Ok(false);
