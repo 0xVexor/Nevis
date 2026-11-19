@@ -17,11 +17,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Version moves forward and the branch contains the base
+      - name: Check release version and source
         env:
           ALLOW_PRERELEASE: '1'
           REQUIRE_AHEAD_OF: origin/${{ github.base_ref }}
         run: node .github/scripts/release-version.cjs
+      - name: Verify release version guards
+        run: node --test .github/scripts/release-version.test.cjs
 
   mcp-spike:
     runs-on: ubuntu-latest

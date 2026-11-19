@@ -1,0 +1,14 @@
+{
+  "version": "1.0.0",
+  "reason": "First public stable release after internal testing; no existing external users. The owner explicitly approved restarting at 1.0.0.",
+  "bases": {
+    "origin/dev": {
+      "version": "1.2.0-beta.7",
+      "commit": "1215e34c4dfe77b5fa78ee817a348d1cc7e5eb91"
+    },
+    "origin/main": {
+      "version": "1.1.0",
+      "commit": "37563f8103519b00ab97b5cce9f2f55cbeae880e"
+    }
+  }
+}
