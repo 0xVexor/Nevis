@@ -1,5 +1,6 @@
 import { setPreference } from '../preferenceEvents'
-import { putFile, urlFor } from '../attachments'
+import { blobFor, putFile } from '../attachments'
+import { readScene, type SceneLoad } from './sceneLoad'
 import { hasArabicScript, loadPersianFont, persianFontCss } from './persianFont'
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types'
 import type { AppState, BinaryFiles, LibraryItems } from '@excalidraw/excalidraw/types'
@@ -18,20 +19,17 @@ export interface SceneData {
   files: BinaryFiles
 }
 
-/** Reads a stored scene (`att:` id of its JSON) and normalises it for the current Excalidraw version. */
-export async function loadScene(id: string): Promise<SceneData | null> {
-  await excalidraw() // also for an empty board: the canvas must not mount before the library and font are ready
-  if (!id) return null
-  const url = await urlFor('att:' + id)
-  if (!url) return null
-  try {
-    const { restore } = await excalidraw()
-    const data = JSON.parse(await (await fetch(url)).text())
-    const restored = restore(data, null, null)
-    return { elements: restored.elements, appState: restored.appState, files: data.files ?? {} }
-  } catch {
-    return null
-  }
+/** Reads a stored scene (`att:` id of its JSON) and normalises it for the current Excalidraw version. The file is read as bytes: the desktop CSP forbids `fetch` of a `blob:` URL. */
+export async function loadScene(id: string): Promise<SceneLoad<SceneData>> {
+  const { restore } = await excalidraw() // also for an empty board: the canvas must not mount before the library and font are ready
+  return readScene(
+    id,
+    (fileId) => blobFor('att:' + fileId),
+    (data) => {
+      const restored = restore(data, null, null)
+      return { elements: restored.elements, appState: restored.appState, files: data.files ?? {} }
+    },
+  )
 }
 
 /** Stores the scene JSON and a picture of it; returns the two file ids, or null for an empty drawing. */

@@ -7,8 +7,9 @@ import { repo, gcFiles } from './store'
 import type { Page } from './repo'
 import type { SaveState } from './PageView'
 import { loadScene, saveScene, type SceneData } from './editor/excalidraw'
+import type { SceneLoad } from './editor/sceneLoad'
 import { t } from './i18n'
-import { Icon, IconButton } from './design-system'
+import { Button, Icon, IconButton } from './design-system'
 import { registerUpdateSave } from './updateSave'
 
 const Canvas = lazy(() => import('./DrawingCanvas')) // the library loads only when a board is opened
@@ -18,7 +19,8 @@ const signature = (elements: readonly ExcalidrawElement[]) => elements.map((e) =
 const boardDoc = (ids: { scene: string; preview: string }) => ({ type: 'doc', content: [{ type: 'drawing', attrs: ids }] })
 
 export function BoardView({ page, onSave, onMeta, onBack, readOnly = false }: { page: Page; onSave: (s: SaveState) => void; onMeta: () => void; onBack?: () => void; readOnly?: boolean }) {
-  const [initial, setInitial] = useState<SceneData | null | undefined>(undefined) // undefined = still loading
+  const [loaded, setLoaded] = useState<SceneLoad<SceneData> | undefined>(undefined) // undefined = still loading
+  const [attempt, setAttempt] = useState(0) // bumped by Retry
   const latest = useRef<SceneData | null>(null) // newest canvas state; read on save so the Excalidraw API is never touched after unmount
   const saved = useRef('') // signature of what is stored
   const timer = useRef(0)
@@ -60,28 +62,33 @@ export function BoardView({ page, onSave, onMeta, onBack, readOnly = false }: { 
     let live = true
     // the live copy: the parent may still hold the page as it was before this board was last saved
     const content = repo.get(page.id)?.content ?? page.content
-    void loadScene(typeof content === 'object' ? (content?.content?.[0]?.attrs?.scene ?? '') : '').then((s) => {
-      if (!live) return
-      saved.current = signature(s?.elements ?? [])
-      setInitial(s)
-    })
+    setLoaded(undefined)
+    void loadScene(typeof content === 'object' ? (content?.content?.[0]?.attrs?.scene ?? '') : '')
+      .catch((error): SceneLoad<SceneData> => (console.error('board load', error), { status: 'unreadable', error }))
+      .then((r) => {
+        if (!live) return
+        saved.current = signature(r.status === 'ok' ? r.scene.elements : [])
+        setLoaded(r)
+      })
     return () => void (live = false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page.id])
+  }, [page.id, attempt])
 
   const run = () => {
     queue.current = queue.current.then(async () => {
       const scene = latest.current
-      if (!scene || signature(scene.elements) === saved.current) return notify.current('saved')
+      const sig = scene && signature(scene.elements) // taken before any await: edits made while saving stay unsaved
+      if (!scene || sig === saved.current) return notify.current('saved')
       try {
         const ids = await saveScene(scene)
         repo.update(page.id, { content: boardDoc(ids ?? { scene: '', preview: '' }) })
-        saved.current = signature(scene.elements)
+        saved.current = sig!
         saveError.current = null
         dirty.current = true
       } catch (e) {
-        saveError.current = e
+        saveError.current = e // saved.current is unchanged, so the next change (or leaving) tries again
         console.error('board save', e)
+        return notify.current('error')
       }
       notify.current('saved')
     })
@@ -137,11 +144,20 @@ export function BoardView({ page, onSave, onMeta, onBack, readOnly = false }: { 
         </IconButton>
       </div>
       <div className="board-stage" dir="ltr">
-        {initial === undefined ? (
+        {loaded === undefined ? (
           <div className="board-loading">{t('Loading…')}</div>
+        ) : loaded.status === 'missing' || loaded.status === 'unreadable' ? (
+          // nothing is mounted, so nothing can be drawn or saved over the stored drawing
+          <div className="board-loading" role="alert" style={{ flexDirection: 'column', gap: 'var(--ds-s3)', textAlign: 'center' }}>
+            {loaded.status === 'missing' && <span>{t('The drawing is still arriving from sync…')}</span>}
+            <span>{t('This drawing could not be loaded. Its file is missing or unreadable; nothing was changed.')}</span>
+            <Button size="sm" onClick={() => setAttempt((n) => n + 1)}>
+              {t('Retry')}
+            </Button>
+          </div>
         ) : (
           <Suspense fallback={<div className="board-loading">{t('Loading…')}</div>}>
-            <Canvas initial={initial} onApi={() => {}} onChange={changed} viewMode={readOnly} />
+            <Canvas initial={loaded.status === 'ok' ? loaded.scene : null} onApi={() => {}} onChange={changed} viewMode={readOnly} />
           </Suspense>
         )}
       </div>

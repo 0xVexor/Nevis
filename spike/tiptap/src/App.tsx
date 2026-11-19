@@ -1546,7 +1546,7 @@ export default function App() {
           </nav>
           {crumbsMenu}
           <span className="spacer" />
-          {current && current.kind !== 'deck' && view === 'page' && <SaveStatus state={save} label={save === 'saving' ? t('Saving…') : t('All changes saved')} />}
+          {current && current.kind !== 'deck' && view === 'page' && <SaveStatus state={save} label={save === 'saving' ? t('Saving…') : save === 'error' ? t('Could not save. Your changes are still here.') : t('All changes saved')} />}
           <div className="tb-group">
             {current && view === 'page' && (
               <>

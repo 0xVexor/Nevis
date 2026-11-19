@@ -91,6 +91,21 @@ export async function urlFor(src: string): Promise<string | null> {
   return u
 }
 
+/**
+ * The bytes of an attachment (`att:<id>`) as a Blob, or null only when the file is really missing.
+ * Read this (not `fetch(await urlFor(..))`) when the content itself is needed: the desktop app's CSP does not allow fetching `blob:` URLs.
+ * A storage failure throws, so callers can tell it from a missing file.
+ */
+export async function blobFor(src: string): Promise<Blob | null> {
+  if (!src.startsWith('att:')) return null
+  const id = src.slice(4)
+  if (isTauri) {
+    const type = types.get(id) ?? (await refreshTypes()).get(id)
+    return type === undefined ? null : readBlob(id, type)
+  }
+  return (await tx<FileRec | undefined>('readonly', (s) => s.get(id)))?.blob ?? null
+}
+
 /** The stored mime type of an attachment (`att:<id>`), or undefined for an address or a missing file. */
 export async function typeFor(src: string): Promise<string | undefined> {
   if (!src.startsWith('att:')) return undefined

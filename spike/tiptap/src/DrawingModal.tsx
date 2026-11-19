@@ -7,6 +7,7 @@ import DrawingCanvas from './DrawingCanvas'
 import { saveScene, type SceneData } from './editor/excalidraw'
 import { t } from './i18n'
 import { Button } from './design-system'
+import { showToast } from './ui'
 
 /** Stored file ids of the finished drawing (both empty for a cleared canvas). */
 export interface DrawingResult {
@@ -35,7 +36,9 @@ function DrawingEditor({ initial, onClose }: { initial: SceneData | null; onClos
         files: api.current.getFiles(),
       })
       onClose(saved ?? { scene: '', preview: '' })
-    } catch {
+    } catch (error) {
+      console.error('[drawing] Could not save drawing', error)
+      showToast(t('The drawing could not be saved. Please try again.')) // the modal stays open with the drawing in it
       setSaving(false)
     }
   }

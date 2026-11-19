@@ -79,7 +79,7 @@ export function RowPeek({
                 <Icon name={mode === 'side' ? 'minimize' : 'panel-right'} size={16} />
               </IconButton>
               <span className="dv-peek-status">
-                <SaveStatus state={save} label={save === 'saving' ? t('Saving…') : t('Saved')} />
+                <SaveStatus state={save} label={save === 'saving' ? t('Saving…') : save === 'error' ? t('Could not save. Your changes are still here.') : t('Saved')} />
               </span>
             </>
           )}
