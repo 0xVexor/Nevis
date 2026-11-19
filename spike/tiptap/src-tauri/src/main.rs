@@ -84,6 +84,9 @@ fn entry_json(e: &Entry) -> Value {
 #[tauri::command]
 fn vault_list(s: St) -> Res<Value> {
     let r = s.reg.lock().map_err(err)?;
+    if r.is_unreadable() {
+        return Err(registry::UNREADABLE.into());
+    }
     Ok(json!({ "vaults": r.vaults.iter().map(entry_json).collect::<Vec<_>>(), "current": r.current }))
 }
 
@@ -452,6 +455,29 @@ fn kv_set(s: St, key: String, value: Value) -> Res<()> {
     Ok(())
 }
 
+/// Merges an edit of a user setting with what is stored now and returns the value the UI must adopt.
+/// `base` is the value the edit started from (null when the key had no file).
+#[tauri::command]
+fn kv_save(s: St, key: String, base: Value, next: Value) -> Res<Value> {
+    let merged = with(&s, |v| {
+        let _guard = vault::commit_lock(&v.root)?;
+        sync::snapshot::save_user_kv(v, &key, &base, &next)
+    })?;
+    s.sync.edited();
+    Ok(merged)
+}
+
+/// Same for the preferences cache (`preferences` key); `base` must be an object ({} when nothing was stored).
+#[tauri::command]
+fn prefs_save(s: St, base: Value, next: Value) -> Res<Value> {
+    let merged = with(&s, |v| {
+        let _guard = vault::commit_lock(&v.root)?;
+        sync::snapshot::save_preferences(v, &base, &next)
+    })?;
+    s.sync.edited();
+    Ok(merged)
+}
+
 // ───── page history ─────
 
 #[tauri::command]
@@ -750,7 +776,7 @@ fn main() {
             vault_backup_save, vault_backup_folder_save, vault_backup_folder_read, vault_backup_export, vault_backup_restore, vault_list, vault_info, vault_create, vault_add, vault_open, vault_close, vault_forget, vault_locate, vault_trash_local, vault_rename,
             db_recover, db_load_all, db_commit, db_get_operation, db_history, db_undo_load, db_undo_save, db_runtime_get, db_runtime_set, db_runtime_delete,
             db_runtime_keys, db_index_rebuild, db_index_candidates, db_index_count,
-            vault_stamp, pages_search_stamp, pages_all, pages_save, document_operation_list, document_operation_find, document_operation_commit, kv_get, kv_set, versions_list, version_add, versions_delete, file_put, file_save_as, file_get, files_list, page_path, page_reveal,
+            vault_stamp, pages_search_stamp, pages_all, pages_save, document_operation_list, document_operation_find, document_operation_commit, kv_get, kv_set, kv_save, prefs_save, versions_list, version_add, versions_delete, file_put, file_save_as, file_get, files_list, page_path, page_reveal,
             index_state, index_update, index_search,
             page_conflicts::page_conflicts_list, page_conflicts::page_conflict_get, page_conflicts::page_conflict_close, page_conflicts::page_conflict_record,
             sync_app::account_status, sync_app::server_health, sync_app::account_register, sync_app::account_login, sync_app::account_recover, sync_app::account_logout, sync_app::account_info,

@@ -188,6 +188,17 @@ fn history_is_trimmed_and_runtime_keys_listed() {
     assert!(runtime_keys(&v.root, "pending:").is_empty());
 }
 
+#[test]
+fn runtime_get_distinguishes_missing_from_unreadable() {
+    let (v, _r) = vault();
+    assert!(runtime_get(&v.root, "cursor:none").unwrap().is_none());
+    runtime_set(&v.root, "cursor:wf", &json!(5)).unwrap();
+    let path = v.root.join(".nevis/workflow-runtime").join(format!("{}.json", enc("cursor:wf").unwrap()));
+    fs::write(&path, b"{ torn").unwrap();
+    assert!(runtime_get(&v.root, "cursor:wf").unwrap_err().starts_with("STORAGE:unreadable_runtime"));
+    assert_eq!(fs::read(&path).unwrap(), b"{ torn"); // not replaced by the read
+}
+
 fn seed_index_vault() -> (Vault, std::path::PathBuf) {
     let (v, root) = vault();
     let cells = |cost: Value, tags: Value, done: Option<bool>, notes: &str| {

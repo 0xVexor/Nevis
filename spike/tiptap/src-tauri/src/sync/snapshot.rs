@@ -1080,7 +1080,7 @@ pub fn save_preferences(v: &Vault, base: &Value, next: &Value) -> Res<Value> {
     let path = v.root.join("kv/preferences.json");
     checked_parents(&v.root, "kv/preferences.json")?;
     let remote: Value = match fs::read(&path) {
-        Ok(b) => serde_json::from_slice(&b).map_err(|_| "SYNC:invalid_preferences")?,
+        Ok(b) => serde_json::from_slice(&b).map_err(|_| "STORAGE:unreadable_setting:preferences")?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => json!({}),
         Err(e) => return Err(err(e)),
     };
@@ -1203,7 +1203,7 @@ pub fn save_user_kv(v: &Vault, key: &str, base: &Value, next: &Value) -> Res<Val
     checked_parents(&v.root, &relative)?;
     let path = v.root.join(&relative);
     let remote: Value = match fs::read(&path) {
-        Ok(b) => serde_json::from_slice(&b).map_err(|_| "STORAGE:unreadable_setting")?,
+        Ok(b) => serde_json::from_slice(&b).map_err(|_| format!("STORAGE:unreadable_setting:{key}"))?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Value::Null,
         Err(e) => return Err(err(e)),
     };
@@ -1273,6 +1273,51 @@ mod user_kv_tests {
             .unwrap()
             .keys()
             .any(|p| p.starts_with("conflicts/")));
+        fs::remove_dir_all(v.root).unwrap();
+    }
+
+    fn temp_vault() -> Vault {
+        Vault::create(std::env::temp_dir().join(format!("userkv-test-{}", uuid::Uuid::new_v4())), "test").unwrap()
+    }
+
+    #[test]
+    fn remote_change_is_kept_when_local_did_not_change_and_a_missing_file_saves() {
+        let v = temp_vault();
+        let first = save_user_kv(&v, "tags", &Value::Null, &json!({"a":1})).unwrap(); // no file yet: base is null
+        assert_eq!(first, json!({"a":1}));
+        write_atomic(&v.root.join("kv/tags.json"), &canonical(&json!({"a":1,"b":2})).unwrap()).unwrap();
+        let merged = save_user_kv(&v, "tags", &json!({"a":1}), &json!({"a":1})).unwrap();
+        assert_eq!(merged, json!({"a":1,"b":2}));
+        fs::remove_dir_all(v.root).unwrap();
+    }
+
+    #[test]
+    fn unreadable_file_is_an_error_and_left_untouched() {
+        let v = temp_vault();
+        let path = v.root.join("kv/srs.json");
+        write_atomic(&path, b"{ broken").unwrap();
+        let e = save_user_kv(&v, "srs", &Value::Null, &json!({"a":1})).unwrap_err();
+        assert_eq!(e, "STORAGE:unreadable_setting:srs");
+        assert_eq!(fs::read(&path).unwrap(), b"{ broken");
+        fs::remove_dir_all(v.root).unwrap();
+    }
+
+    #[test]
+    fn unknown_key_is_rejected() {
+        let v = temp_vault();
+        assert_eq!(save_user_kv(&v, "backupCfg", &Value::Null, &json!({})).unwrap_err(), "SYNC:invalid_user_setting");
+        assert!(!v.root.join("kv/backupCfg.json").exists());
+        fs::remove_dir_all(v.root).unwrap();
+    }
+
+    #[test]
+    fn unreadable_preferences_file_is_an_error_and_left_untouched() {
+        let v = temp_vault();
+        let path = v.root.join("kv/preferences.json");
+        write_atomic(&path, b"nope").unwrap();
+        let p = json!({"not.side":"1"});
+        assert_eq!(save_preferences(&v, &json!({}), &p).unwrap_err(), "STORAGE:unreadable_setting:preferences");
+        assert_eq!(fs::read(&path).unwrap(), b"nope");
         fs::remove_dir_all(v.root).unwrap();
     }
 }
