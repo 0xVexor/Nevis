@@ -2,7 +2,7 @@ import type { DocNode } from './docNode'
 import { htmlToDoc } from './editor/htmlToDoc'
 import { markdownToHtml } from './editor/markdownPaste'
 import { toMarkdown } from './markdown'
-import { allFiles, putFile } from './attachments'
+import { putFile, readAllFiles } from './attachments'
 import { normalizeFa } from './normalize'
 import { STATUS, addTag, frontMatter } from './meta'
 import { repo } from './store'
@@ -438,11 +438,12 @@ export async function buildMarkdownTree(typeOf: (id: string) => string | undefin
 }
 
 /** The zip download: the Markdown tree plus the image files. */
-export async function exportAllZip(): Promise<{ blob: Blob; pages: number; files: number }> {
-  const all = new Map((await allFiles()).map((f) => [f.id, f]))
+export async function exportAllZip(): Promise<{ blob: Blob; pages: number; files: number; missing: number }> {
+  const { files: stored, missing } = await readAllFiles() // a file whose bytes have not arrived from sync is left out, not a failed export
+  const all = new Map(stored.map((f) => [f.id, f]))
   const tree = await buildMarkdownTree((id) => all.get(id)?.type)
   const enc = new TextEncoder()
   const entries: ZipEntry[] = tree.files.map((f) => ({ path: f.path, data: enc.encode(f.text) }))
   for (const a of tree.assets) entries.push({ path: `assets/${a.id}.${a.ext}`, data: new Uint8Array(await all.get(a.id)!.blob.arrayBuffer()) })
-  return { blob: makeZip(entries), pages: tree.files.length, files: tree.assets.length }
+  return { blob: makeZip(entries), pages: tree.files.length, files: tree.assets.length, missing }
 }

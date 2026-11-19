@@ -47,7 +47,9 @@ import { save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { saveBeforeUpdate } from './updateSave'
 import { flushPreferences } from './sharedPreferences'
-import { isTauri, kvGet, kvSet, pageFilePath, revealPageFile } from './db'
+import { useKv } from './useKv'
+import { validateList } from './kvStore'
+import { isTauri, pageFilePath, revealPageFile } from './db'
 import { watchDueCards } from './cardsDue'
 import { normalizeFa } from './normalize'
 import { Brand } from './Brand'
@@ -316,9 +318,11 @@ export default function App() {
     window.addEventListener(PICK_TAG, pick)
     return () => window.removeEventListener(PICK_TAG, pick)
   }, [])
-  const [saved, setSaved] = useState<{ id: string; name: string; query: string }[]>([])
-  useEffect(() => void kvGet<{ id: string; name: string; query: string }[]>('savedSearches').then((s) => setSaved(Array.isArray(s) ? s : [])), [])
-  const saveSaved = (next: { id: string; name: string; query: string }[]) => (setSaved(next), void kvSet('savedSearches', next))
+  type SavedSearch = { id: string; name: string; query: string }
+  // read-only until the stored list was read: a list that could not be read is never saved over
+  const { state: savedState, update: updateSaved, retry: retrySaved } = useKv<SavedSearch[]>('savedSearches', validateList<SavedSearch>, [])
+  const saved = useMemo(() => (savedState.status === 'ready' ? savedState.value : []), [savedState])
+  const saveSaved = (change: (cur: SavedSearch[]) => SavedSearch[]) => updateSaved(change)
   const [newMenu, setNewMenu] = useState<DOMRect | null>(null)
   // dragging a page from the tree shows a Favorites drop zone, so a page can be pinned by dropping it there
   const [dragPage, setDragPage] = useState(false)
@@ -342,6 +346,9 @@ export default function App() {
   }, [view])
   const [folderOpen, setFolderOpen] = useState(false)
   const [toast, setToast] = useState<{ msg: string; undo?: () => void; action?: { label: string; run: () => void } } | null>(null)
+  useEffect(() => {
+    if (savedState.status === 'error') setToast({ msg: t('Your saved searches could not be loaded. Their file is unreadable; nothing was changed.'), action: { label: t('Retry'), run: retrySaved } })
+  }, [savedState.status]) // eslint-disable-line react-hooks/exhaustive-deps
   const [dueCards, setDueCards] = useState(0)
   useEffect(() => watchDueCards(setDueCards, isTauri), [])
   const { open: openShare, menu: shareMenu } = useMenu()
@@ -791,7 +798,10 @@ export default function App() {
   const doExportAll = async () => {
     try {
       const r = await exportAllZip()
-      if (await download(`notes-export-${stamp()}.zip`, r.blob)) setToast({ msg: t('{pages} pages and {files} images exported', { pages: r.pages, files: r.files }) })
+      if (await download(`notes-export-${stamp()}.zip`, r.blob)) {
+        const done = t('{pages} pages and {files} images exported', { pages: r.pages, files: r.files })
+        setToast({ msg: r.missing ? `${done}. ${t('{n} files are not here yet (still arriving from sync) and were left out. Export again once sync is done.', { n: r.missing })}` : done })
+      }
     } catch (e) {
       console.error(e)
       setToast({ msg: t('Export failed') })
@@ -1337,7 +1347,7 @@ export default function App() {
                               {s.name}
                             </span>
                             <span className="acts">
-                              <button title={t('Delete')} onClick={(e) => (e.stopPropagation(), saveSaved(saved.filter((x) => x.id !== s.id)))}>
+                              <button title={t('Delete')} onClick={(e) => (e.stopPropagation(), saveSaved((cur) => cur.filter((x) => x.id !== s.id)))}>
                                 <Icon name="x" size={14} />
                               </button>
                             </span>
@@ -1817,7 +1827,9 @@ export default function App() {
               label: t('Name:'),
               initial: query,
               action: t('Save'),
-              onSubmit: (name) => saveSaved([...saved, { id: crypto.randomUUID(), name: name.trim() || query, query }]),
+              onSubmit: (name) => {
+                if (!saveSaved((cur) => [...cur, { id: crypto.randomUUID(), name: name.trim() || query, query }])) setToast({ msg: t('Saved searches are not loaded, so this search was not saved.') })
+              },
             })
           }
         />

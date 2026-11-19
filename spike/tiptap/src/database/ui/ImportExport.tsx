@@ -306,8 +306,18 @@ function RestoreDialog({ svc, bundle, onClose, notify }: { svc: DatabaseService;
     )
       return
     setBusy(true)
-    // pre-restore snapshot: always before anything changes
-    download(`pre-restore-${Date.now()}.nevis-database.json`, new Blob([JSON.stringify(buildBundle(svc.state))], { type: 'application/json' }))
+    // pre-restore snapshot: always before anything changes, and the restore only runs once it was really saved
+    let saved = false
+    try {
+      saved = await download(`pre-restore-${Date.now()}.nevis-database.json`, new Blob([JSON.stringify(buildBundle(svc.state))], { type: 'application/json' }))
+    } catch (e) {
+      console.error('pre-restore snapshot', e)
+    }
+    if (!saved) {
+      setBusy(false)
+      setErr(t('The snapshot of the current records was not saved, so nothing was restored.'))
+      return
+    }
     const r = await svc.tryExec([{ type: 'backup.restore', payload: { bundle: bundle as unknown as Json, expectedManifestHash: bundle.manifestHash, mode, retainCurrentGrants: true } }])
     setBusy(false)
     if (r.ok) {

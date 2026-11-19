@@ -10,9 +10,10 @@ export class BackupError extends Error {}
 
 /**
  * Saves a file the person asked for. The desktop app asks where to put it (a Save As dialog) and writes it there; the browser
- * uses its own download. Resolves false when the person cancels the dialog, true otherwise.
+ * uses its own download. Resolves true only when the file was saved (or handed to the browser); false when the person cancels the dialog or saving failed.
  */
 export async function download(name: string, blob: Blob): Promise<boolean> {
+  let saved = true
   if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
     try {
       const [{ save }, { invoke }] = await Promise.all([import('@tauri-apps/plugin-dialog'), import('@tauri-apps/api/core')])
@@ -22,7 +23,8 @@ export async function download(name: string, blob: Blob): Promise<boolean> {
       await invoke('file_save_as', new Uint8Array(await blob.arrayBuffer()), { headers: { 'x-path': encodeURIComponent(path) } })
       return true
     } catch (error) {
-      console.error(error) // fall back to the browser download below, so the file is not lost
+      console.error(error)
+      saved = false // not confirmed saved; the browser download below is only a best effort so the file is not lost
     }
   }
   const a = document.createElement('a')
@@ -32,7 +34,7 @@ export async function download(name: string, blob: Blob): Promise<boolean> {
   a.click()
   a.remove()
   setTimeout(() => URL.revokeObjectURL(a.href), 1000)
-  return true
+  return saved
 }
 
 export const toBase64 = (b: Blob) =>

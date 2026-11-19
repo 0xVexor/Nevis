@@ -1,6 +1,6 @@
 // Backup and restore. `format.ts` has the shared bits, `inspect.ts` reads and checks a file without writing,
 // `web.ts` and `tauri.ts` are the two places notes can live. This file is the only one the app imports.
-import { allFiles } from '../attachments'
+import { blobFor } from '../attachments'
 import { freezeStorage, isTauri, thawStorage } from '../db'
 import { t } from '../i18n'
 import { toMarkdown } from '../markdown'
@@ -19,8 +19,8 @@ export type { MergeResult, RestoreTo } from './tauri'
 
 const dataUri = async (src: string) => {
   if (!src.startsWith('att:')) return src
-  const f = (await allFiles()).find((x) => x.id === src.slice(4))
-  return f ? `data:${f.type};base64,${await toBase64(f.blob)}` : ''
+  const blob = await blobFor(src) // one file, not every file of the vault
+  return blob ? `data:${blob.type};base64,${await toBase64(blob)}` : ''
 }
 
 export const pageToMarkdown = async (p: Page) => frontMatter(p) + (await toMarkdown(p.title, p.content, dataUri))
@@ -49,11 +49,13 @@ export async function restoreBackup(repo: PageRepo, plan: BackupPlan, opts: { sa
   let copy: string | undefined
   if (!isTauri && opts.saveCopy !== false) {
     copy = `notes-before-restore-${fileStamp()}.json`
+    let saved = false
     try {
-      download(copy, await buildWeb(repo))
+      saved = await download(copy, await buildWeb(repo))
     } catch (e) {
-      throw new BackupError(t('Could not save a copy of your current notes, so nothing was restored.'))
+      console.error('restore copy', e)
     }
+    if (!saved) throw new BackupError(t('Could not save a copy of your current notes, so nothing was restored.'))
   }
   let result: Restored
   if (isTauri) {

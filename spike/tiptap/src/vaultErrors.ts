@@ -9,5 +9,6 @@ export const explain = (e: unknown) => {
   if (m.includes('VAULT_UNSUPPORTED_FORMAT')) return t('This workspace needs a newer compatible Nevis version. Its files were kept.')
   if (m.includes('VAULT_MISSING')) return t('The vault folder was not found.')
   if (m.includes('VAULT_MISMATCH')) return t('A different vault is in this folder.')
+  if (m.includes('REGISTRY:unreadable')) return t('The list of workspaces could not be read. A copy was saved next to it; nothing was changed. Restart the app or restore config.json.')
   return m
 }

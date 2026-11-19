@@ -1,4 +1,5 @@
-import { kvGet, kvSet, isTauri, storageFrozen } from './db'
+import { kvGet, prefsSave, isTauri, storageFrozen } from './db'
+import { isUnreadable } from './kvStore'
 import { getSettings, reloadSettings } from './settings'
 import { preferenceKey, type Preferences } from './preferencesModel'
 const KEYS = new Set([
@@ -19,6 +20,8 @@ let seen = ''
 let saving: Promise<void> | null = null
 let ready = false
 let applying = false
+let base: Preferences = {} // the stored preferences this device's values descend from ({} when nothing was stored)
+let blocked = false // the stored file could not be read or merged: nothing is saved until it is read again
 const snapshot = (): Preferences =>
   Object.fromEntries([...new Set([...KEYS, ...Object.keys(localStorage).filter(allowed)])].sort().map((k) => [k, k === 'not.settings' ? JSON.stringify(getSettings()) : localStorage.getItem(k)]))
 function report(e: unknown) {
@@ -48,9 +51,19 @@ export async function flushPreferences(): Promise<void> {
   const next = snapshot()
   const key = preferenceKey(next)
   if (key === seen) return
-  saving = kvSet('preferences', next)
-    .then(() => {
-      seen = key
+  if (blocked) return
+  saving = prefsSave(base, next)
+    .then((merged) => {
+      // another device's changes come back merged with ours; adopt them unless something was edited here meanwhile
+      if (preferenceKey(snapshot()) === key) {
+        base = merged
+        apply(merged)
+        seen = preferenceKey(snapshot())
+      } else base = next
+    })
+    .catch((e) => {
+      if (isUnreadable(e)) blocked = true // nothing was written; keep the values in memory
+      throw e
     })
     .finally(() => {
       saving = null
@@ -58,16 +71,31 @@ export async function flushPreferences(): Promise<void> {
   await saving
   return flushPreferences()
 }
-export async function initPreferences() {
-  if (!isTauri) return
+/** Reads the stored preferences (at start and after a sync download) and adopts them. */
+async function loadPreferences() {
   const saved = await kvGet<Preferences>('preferences')
+  base = saved ?? {}
   if (saved) {
     apply(saved)
     seen = preferenceKey(snapshot())
   }
+  blocked = false
+}
+export async function initPreferences() {
+  if (!isTauri) return
+  await loadPreferences()
   ready = true
   await flushPreferences()
   window.setInterval(() => void flushPreferences().catch(report), 1000)
   window.addEventListener('preferences-edit', () => void flushPreferences().catch(report))
   window.addEventListener('pagehide', () => void flushPreferences().catch(report))
+  // a sync download changed the stored file: adopt it, so the next save does not overwrite it
+  window.addEventListener(
+    'external-change',
+    () =>
+      void (saving ?? Promise.resolve())
+        .catch(() => {})
+        .then(loadPreferences)
+        .catch(report),
+  )
 }
