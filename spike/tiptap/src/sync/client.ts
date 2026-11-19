@@ -16,7 +16,7 @@ export interface SyncStatus {
   state: SyncState
   lastAt: number
   error: string
-  /** why it is paused: SIGNED_OUT | NEEDS_CONFIRM (then `error` is the number of held deletions) | VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE */
+  /** why it is paused: SIGNED_OUT | NEEDS_CONFIRM (then `error` is the number of held deletions) | VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE | ACCOUNT_CHANGED (then `error` is the `user@server` the workspace syncs with) */
   reason: string
   /** id of the open workspace (null when none is open) */
   vaultId?: string | null
@@ -85,6 +85,12 @@ export async function saveRecoveryKeyFile(username: string, keyText: string): Pr
 export const syncSet = (on: boolean) => invoke<void>('sync_set', { on })
 /** The server copy of the open workspace is gone: sends the local files to the server again and keeps syncing. */
 export const syncReupload = () => invoke<void>('sync_reupload')
+/** The workspace syncs with another account than the signed-in one: sends it to the signed-in account (everything goes up, nothing is deleted). */
+export const syncAcceptAccount = () => invoke<void>('sync_accept_account')
+/** `user@https://server` as shown to people: without the scheme. */
+export const accountShown = (label: string) => label.replace('@https://', '@')
+/** The account the signed-in person is, as `user@server`. */
+export const signedInShown = (s: { username: string | null; server: string }) => accountShown(`${s.username ?? ''}@${s.server}`)
 export const syncNow = () => invoke<void>('sync_now')
 export const syncHeld = () => invoke<HeldDelete[]>('sync_held')
 /** Confirms exactly the list the person was shown. */

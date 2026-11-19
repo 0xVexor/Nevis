@@ -24,11 +24,14 @@ import {
   cloudRestore,
   cloudTrashed,
   cloudVaults,
+  accountShown,
   formatBytes,
   passwordError,
   purgeError,
   saveRecoveryKeyFile,
   serverHealth,
+  signedInShown,
+  syncAcceptAccount,
   syncConfirm,
   syncError,
   syncHeld,
@@ -48,6 +51,12 @@ const HELD_SHOWN = 10
 /** Sync is working (or about to): the states in which "kept in sync with the server" is true. */
 const isWorking = (s: SyncStatus) => s.syncOn && ['idle', 'syncing', 'pending'].includes(s.state)
 
+/** "This workspace was syncing with {account}. You are signed in as {other}." with each account label passed through `wrap` (isolated left-to-right inside right-to-left text). */
+function changedText<T>(s: SyncStatus, wrap: (label: string) => T): (string | T)[] {
+  const parts = t('This workspace was syncing with {account}. You are signed in as {other}.').split(/(\{account\}|\{other\})/)
+  return parts.map((p) => (p === '{account}' ? wrap(accountShown(s.error)) : p === '{other}' ? wrap(signedInShown(s)) : p))
+}
+
 function statusText(s: SyncStatus): string {
   if (!s.syncOn) return t('Sync is off for this workspace.')
   switch (s.state) {
@@ -65,6 +74,8 @@ function statusText(s: SyncStatus): string {
           return t('{n} deletions are waiting for your OK.').replace('{n}', s.error)
         case 'SIGNED_OUT':
           return t('You are signed out of the server. Sign in again.')
+        case 'ACCOUNT_CHANGED':
+          return changedText(s, (x) => `\u2066${x}\u2069`).join('')
         case 'CLOUD_GONE':
           return t('This workspace is no longer on the server (it was deleted there). The files on this computer are untouched.')
         case 'VAULT_MISSING':
@@ -494,6 +505,60 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
               {t('Sync now')}
             </Button>
           </PreferenceRow>
+        )}
+        {status.syncOn && status.reason === 'ACCOUNT_CHANGED' && (
+          <Notice
+            tone="warn"
+            role="alert"
+            title={t('This workspace syncs with another account')}
+            action={
+              <div className="prefs-actions">
+                <Button
+                  variant="primary"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      await syncAcceptAccount()
+                      refresh()
+                    })
+                  }
+                >
+                  {t('Send this workspace to this account')}
+                </Button>
+                <Button
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      await accountLogout()
+                      refresh()
+                    })
+                  }
+                >
+                  {t('Sign out and use {account}').split(/(\{account\})/).map((p, i) => (p === '{account}' ? <bdi key={i} dir="ltr">{accountShown(status.error)}</bdi> : p))}
+                </Button>
+                <Button
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      await syncSet(false)
+                      await load()
+                      refresh()
+                    })
+                  }
+                >
+                  {t('Turn off sync')}
+                </Button>
+              </div>
+            }
+          >
+            {changedText(status, (x) => (
+              <bdi key={x} dir="ltr">
+                {x}
+              </bdi>
+            ))}
+            <br />
+            {t('Sending it uploads this workspace\'s files to the signed-in account\'s space on its server.')}
+          </Notice>
         )}
         {status.syncOn && status.reason === 'CLOUD_GONE' && (
           <Notice

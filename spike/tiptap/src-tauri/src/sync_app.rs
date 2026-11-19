@@ -19,7 +19,7 @@ pub struct SyncStatus {
     state: &'static str,
     last_at: i64,
     error: String,
-    /// why a sync is paused: VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE | SIGNED_OUT | NEEDS_CONFIRM (then `error` holds the number of held deletions)
+    /// why a sync is paused: VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE | SIGNED_OUT | ACCOUNT_CHANGED (then `error` holds the `user@server` the workspace syncs with) | NEEDS_CONFIRM (then `error` holds the number of held deletions)
     reason: String,
     /// paths the last sync left alone because their names cannot be synced (capped; the UI explains)
     skipped: Vec<String>,
@@ -34,6 +34,36 @@ struct Confirmation {
 }
 
 const SKIPPED_SHOWN: usize = 200;
+
+/// Paused: the workspace's bookkeeping belongs to another account or server than the one signed in.
+const ACCOUNT_CHANGED: &str = "ACCOUNT_CHANGED";
+const ACCOUNT_CHANGED_PREFIX: &str = "ACCOUNT_CHANGED:";
+
+/// How the signed-in account relates to the one a workspace's bookkeeping belongs to.
+#[derive(Debug, PartialEq, Eq)]
+enum AccountDecision {
+    /// the same account on the same server: everything stays as it is
+    Same,
+    /// the bookkeeping names no account yet: it is taken over as it is
+    Adopt,
+    /// another account or server: ask before anything is sent there
+    Changed,
+}
+
+/// `user@server` as the bookkeeping records it (the server is already normalized at sign-in).
+fn account_label(a: &account::Account) -> String {
+    format!("{}@{}", a.username.to_lowercase(), a.server)
+}
+
+fn account_decision(state_account: &str, who: &str) -> AccountDecision {
+    if state_account.is_empty() {
+        AccountDecision::Adopt
+    } else if state_account == who {
+        AccountDecision::Same
+    } else {
+        AccountDecision::Changed
+    }
+}
 
 /// What wakes the sync thread.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -283,6 +313,11 @@ fn set_sync_flag(s: &Store, id: &str, on: bool) -> Res<()> {
     r.save(&s.app_data)
 }
 
+/// Whether the sync of the open vault is paused because another account is signed in than the one it syncs with.
+fn account_changed(ctx: &SyncCtx) -> bool {
+    ctx.status.lock().is_ok_and(|st| st.reason == ACCOUNT_CHANGED)
+}
+
 /// Whether the sync of the open vault is paused because its copy on the server is gone.
 fn cloud_is_gone(ctx: &SyncCtx) -> bool {
     ctx.status.lock().is_ok_and(|st| st.reason == sync::CLOUD_GONE)
@@ -313,6 +348,26 @@ pub fn sync_reupload(s: St) -> Res<()> {
     if !cloud_is_gone(&s.sync.ctx) {
         return Err("the workspace is still on the server".into());
     }
+    forget_server_copy_of(&s.sync.ctx, &id)?;
+    set_sync_flag(&s, &id, true)?;
+    s.sync.wake(Kick::User);
+    Ok(())
+}
+
+/// The workspace was syncing with another account or server and the person chose to send it to the signed-in one: forgets the
+/// old server identity (as `sync_reupload` does), so that every file goes up and nothing is deleted. Only valid while paused as ACCOUNT_CHANGED.
+#[tauri::command]
+pub fn sync_accept_account(s: St) -> Res<()> {
+    let id = with(&s, |v| Ok(v.id()))?;
+    if !account_changed(&s.sync.ctx) {
+        return Err("the workspace syncs with the signed-in account".into());
+    }
+    let acct = account::load(&s.app_data).ok_or("AUTH:signed_out")?;
+    let file = state_file(&s.app_data, &id);
+    let mut state = SyncState::load(&file);
+    forget_server_copy(&mut state);
+    state.account = account_label(&acct);
+    state.save(&file)?;
     forget_server_copy_of(&s.sync.ctx, &id)?;
     set_sync_flag(&s, &id, true)?;
     s.sync.wake(Kick::User);
@@ -470,12 +525,12 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool, downloading: bool) -> Res<(
         let api = if patient { api } else { api.quick() };
         let state_file = state_file(&ctx.app_data, &e.id);
         let mut state = SyncState::load(&state_file);
-        let who = format!("{}@{}", acct.username.to_lowercase(), acct.server);
-        if state.account != who {
-            // another account or server is another cloud: start over, with no `base` there is nothing to delete
-            state.files.clear();
-            state.hub = Default::default();
-            state.account = who;
+        let who = account_label(&acct);
+        match account_decision(&state.account, &who) {
+            AccountDecision::Same => {}
+            AccountDecision::Adopt => state.account = who, // a state from before the field existed, or never synced
+            // another account or server is another cloud: nothing is reset and nothing goes up until the person says so
+            AccountDecision::Changed => return Err(format!("{ACCOUNT_CHANGED}:{}", state.account)),
         }
         if downloading {
             state.reset_local_baseline();
@@ -556,6 +611,10 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool, downloading: bool) -> Res<(
         Err(m) if [VAULT_MISSING, VAULT_MISMATCH, sync::CLOUD_GONE].contains(&m.as_str()) => {
             set("paused", &m, String::new(), false);
             Err(m)
+        }
+        Err(m) if m.starts_with(ACCOUNT_CHANGED_PREFIX) => {
+            set("paused", ACCOUNT_CHANGED, m[ACCOUNT_CHANGED_PREFIX.len()..].to_string(), false);
+            Err(ACCOUNT_CHANGED.into())
         }
         Err(m) if hub::is_network(&m) => {
             set("offline", "NETWORK", m.clone(), false);
@@ -748,6 +807,72 @@ mod tests {
         assert!(ctx.confirm.lock().unwrap().is_empty());
         assert_eq!(*ctx.synced.lock().unwrap(), (String::new(), -1));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_account_decides_whether_a_workspace_may_sync() {
+        use AccountDecision::*;
+        assert_eq!(account_decision("", "me@https://s.example"), Adopt);
+        assert_eq!(account_decision("me@https://s.example", "me@https://s.example"), Same);
+        assert_eq!(account_decision("me@https://s.example", "you@https://s.example"), Changed);
+        assert_eq!(account_decision("me@https://s.example", "me@https://other.example"), Changed);
+        assert_eq!(account_decision("me@https://s.example", "me@http://localhost:3000"), Changed);
+        // the same server typed in any form is one label (sign-in normalizes it); the user name is compared lowercase
+        let label = |u: &str, srv: &str| account_label(&account::Account { server: account::normalize_server(srv).unwrap(), username: u.into(), ..Default::default() });
+        let first = label("Me", "sync.example.com");
+        for same in [label("me", "https://sync.example.com/"), label("ME", " sync.example.com "), label("mE", "https://sync.example.com")] {
+            assert_eq!(account_decision(&first, &same), Same);
+        }
+        assert_eq!(account_decision(&first, &label("me", "sync.example.org")), Changed);
+        assert_eq!(account_decision(&label("me", "http://localhost:3000"), &label("me", "localhost:3000")), Changed); // https vs http is another address
+    }
+
+    #[test]
+    fn signing_out_and_in_again_keeps_the_bookkeeping() {
+        let dir = std::env::temp_dir().join(format!("nevis-relogin-{}-{}", now_ms(), std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let acct = account::Account { server: "https://s.example".into(), username: "Me".into(), ..Default::default() };
+        let mut state = SyncState::default();
+        state.account = account_label(&acct);
+        state.hub.epoch = "e".into();
+        state.hub.seq = 3;
+        state.files.insert("pages/a.json".into(), Default::default());
+        let file = state_file(&dir, "v");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        state.save(&file).unwrap();
+        // signing out (`account::clear`) only removes the credential and account.json, never the sync state; it is not called here
+        // because it also deletes the real credential-store entry of the developer's own app
+        let again = account::Account { username: "me".into(), ..acct }; // sign in again, user name typed in lowercase
+        let loaded = SyncState::load(&file);
+        assert_eq!(account_decision(&loaded.account, &account_label(&again)), AccountDecision::Same);
+        assert_eq!(loaded.hub.epoch, "e");
+        assert_eq!(loaded.hub.seq, 3);
+        assert!(loaded.files.contains_key("pages/a.json"));
+        assert_eq!(loaded.account, state.account);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn accepting_another_account_forgets_the_old_copy_but_turning_sync_off_keeps_it() {
+        let mut state = SyncState::default();
+        state.account = "old@https://s.example".into();
+        state.hub.epoch = "e".into();
+        state.files.insert("pages/a.json".into(), Default::default());
+        // what sync_accept_account does to the state
+        let mut accepted = state.clone();
+        forget_server_copy(&mut accepted);
+        accepted.account = "new@https://s.example".into();
+        assert!(accepted.files.is_empty() && accepted.hub.epoch.is_empty());
+        assert_eq!(account_decision(&accepted.account, "new@https://s.example"), AccountDecision::Same);
+        // sync_set(false) only forgets when the copy is gone, never for ACCOUNT_CHANGED
+        let ctx = SyncCtx {
+            app_data: std::env::temp_dir(),
+            status: Arc::new(Mutex::new(SyncStatus { state: "paused", reason: ACCOUNT_CHANGED.into(), ..Default::default() })),
+            confirm: Default::default(),
+            synced: Arc::new(Mutex::new((String::new(), -1))),
+            app: None,
+        };
+        assert!(account_changed(&ctx) && !cloud_is_gone(&ctx));
     }
 
     #[test]
