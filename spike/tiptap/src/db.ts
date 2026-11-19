@@ -117,6 +117,22 @@ export async function kvSet(key: string, value: unknown) {
   await done(tx)
 }
 
+/**
+ * Saves a user setting merged with what is stored now (another device may have changed it since `base` was read) and returns
+ * the value the screen must adopt. `base` is what the edit started from (null when nothing was stored).
+ * Throws STORAGE:unreadable_setting when the stored file cannot be read; nothing is written then.
+ * A frozen workspace or a browser has no one to merge with: the edit is returned as it is (and not stored while frozen).
+ */
+export async function kvSave<T>(key: string, base: T | null | undefined, next: T): Promise<T> {
+  if (frozen) return next
+  if (inSqlite(key)) return invoke<T>('kv_save', { key, base: base ?? null, next })
+  await kvSet(key, next)
+  return next
+}
+
+/** Same for the preferences cache; the backend wants an object as `base` ({} when nothing was stored). */
+export const prefsSave = (base: Record<string, string | null>, next: Record<string, string | null>) => invoke<Record<string, string | null>>('prefs_save', { base, next })
+
 // ───── page history ─────
 
 export async function listVersions(pageId: string): Promise<DocumentVersion[]> {

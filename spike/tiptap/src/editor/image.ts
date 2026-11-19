@@ -8,7 +8,8 @@ import { isVideo } from '../media/video'
 import { openLightbox } from './lightbox'
 import { t } from '../i18n'
 import { setLabel, svgIcon } from './svgIcons'
-import { promptDialog } from '../dialog'
+import { alertDialog, promptDialog } from '../dialog'
+import { isBlockedHttpUrl } from './imageUrl'
 
 type ImageAlign = 'left' | 'center' | 'right' | 'start' | 'end' // start/end: older pages, logical sides
 const WIDTHS = [25, 50, 75, 100]
@@ -217,6 +218,10 @@ export function pickImages(editor: Editor) {
 export async function insertImageFromUrl(editor: Editor, url?: string | null) {
   const u = (url ?? (await promptDialog({ title: t('Image from the web'), message: t('Image address (URL):'), placeholder: 'https://', ltr: true })) ?? '').trim()
   if (!u) return false
+  if (isBlockedHttpUrl(u)) {
+    await alertDialog({ title: t('Image from the web'), message: t('This address starts with http://, which the app cannot load. Use the https:// address of the image instead.') })
+    return false
+  }
   let src = u
   let alt = decodeURIComponent(u.split('/').pop()?.split('?')[0] ?? '') || ''
   try {

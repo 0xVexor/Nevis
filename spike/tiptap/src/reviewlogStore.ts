@@ -1,6 +1,3 @@
-import { kvGet } from './db'
-import type { ReviewLog } from './reviewlog'
-
 // Storage of the review log (the vault's kv/reviewlog.json).
 
 export const deviceId = () => {
@@ -10,5 +7,3 @@ export const deviceId = () => {
     return 'device'
   }
 }
-
-export const loadLog = async (): Promise<ReviewLog> => (await kvGet<ReviewLog>('reviewlog')) ?? {}

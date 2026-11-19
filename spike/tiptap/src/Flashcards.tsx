@@ -1,20 +1,30 @@
 import { commandHint, commandMatches } from './shortcutCommands'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { kvGet, kvSet } from './db'
 import { repo } from './store'
 import { docToHtml, hydrate } from './render'
 import { FRESH, extractCards, isDue, label, schedule, type Grade, type RawCard, type Rec } from './srs'
 import { bump, countOn, dayKey, lastDays, streak, total, type ReviewLog } from './reviewlog'
-import { deviceId, loadLog } from './reviewlogStore'
+import { deviceId } from './reviewlogStore'
+import { useKv } from './useKv'
 import { t, locale } from './i18n'
 import { PageIcon } from './PageIcon'
-import { Button, Icon, Screen, Stats, dirOf, useUIMotion } from './design-system'
+import { Button, Icon, Notice, Screen, Stats, dirOf, useUIMotion } from './design-system'
 
 type Store = Record<string, Rec>
 type Card = RawCard & { title: string }
 const NEW_PER_SESSION = 20
 const ALL = '__all__'
+
+/** The stored review log / schedule must be an object keyed by day / card; anything else is unreadable, not empty. */
+const validateRecord = <R,>(stored: unknown): R => {
+  if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) throw new Error('The stored data is not an object')
+  return stored as R
+}
+const validateLog = (stored: unknown) => validateRecord<ReviewLog>(stored)
+const validateSrs = (stored: unknown) => validateRecord<Store>(stored)
+const NO_LOG: ReviewLog = {}
+const NO_SRS: Store = {}
 
 /** The four answers, with the colour that names them beside the word (never colour alone). */
 const GRADES: { grade: Grade; name: string; tone: string }[] = [
@@ -32,16 +42,32 @@ const GRADES: { grade: Grade; name: string; tone: string }[] = [
 export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; onOpenPage: (id: string) => void; onClose: () => void }) {
   const motionOf = useUIMotion()
   const [deck, setDeck] = useState<string | null>(pageId ?? null) // null = the list of decks
-  const [srs, setSrs] = useState<Store | null>(null)
   const [queue, setQueue] = useState<string[]>([])
   const [pos, setPos] = useState(0)
   const [shown, setShown] = useState(false)
   const [done, setDone] = useState(0)
   const answerRef = useRef<HTMLDivElement>(null)
-  const [log, setLog] = useState<ReviewLog>({})
   const [day, setDay] = useState<number | null>(null)
-  useEffect(() => void loadLog().then(setLog), [])
-  useEffect(() => void kvGet<Store>('srs').then((s) => setSrs(s ?? {})), [])
+  // null until read: reviews are refused while either file is unread (rating would save over its history), and both are re-read after a sync
+  const { state: logState, update: updateLog, retry: retryLog } = useKv<ReviewLog>('reviewlog', validateLog, NO_LOG)
+  const { state: srsState, update: updateSrs, retry: retrySrs } = useKv<Store>('srs', validateSrs, NO_SRS)
+  const log = logState.status === 'ready' ? logState.value : null
+  const srs = srsState.status === 'ready' ? srsState.value : null
+  const loadFailed = logState.status === 'error' || srsState.status === 'error'
+  const retryLoad = () => (retryLog(), retrySrs())
+  const loadNotice = loadFailed && (
+    <Notice
+      tone="bad"
+      role="alert"
+      action={
+        <Button size="sm" onClick={retryLoad}>
+          {t('Retry')}
+        </Button>
+      }
+    >
+      {t('Your review history could not be loaded. Its file is unreadable; nothing was changed and reviews are paused.')}
+    </Notice>
+  )
 
   const allCards = useMemo(() => {
     const map = new Map<string, Card>()
@@ -93,19 +119,15 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
 
   const rate = useCallback(
     (g: Grade) => {
-      if (!key || !srs) return
-      const next = { ...srs, [key]: schedule(srs[key], g) }
-      setSrs(next)
-      void kvSet('srs', next)
-      const nextLog = bump(log, deviceId(), dayKey(Date.now())) // counts per day and device, so devices can be merged
-      setLog(nextLog)
-      void kvSet('reviewlog', nextLog)
+      if (!key || !srs || !log) return // never rate while the schedule or the history is unread
+      updateSrs((cur) => ({ ...cur, [key]: schedule(cur[key], g) }))
+      updateLog((cur) => bump(cur, deviceId(), dayKey(Date.now()))) // counts per day and device, so devices can be merged
       if (g === 0) setQueue((q) => [...q, key]) // "again" comes back before the session ends
       setPos((p) => p + 1)
       setShown(false)
       setDone((d) => d + 1)
     },
-    [key, srs, log],
+    [key, srs, log, updateSrs, updateLog],
   )
 
   useEffect(() => {
@@ -134,7 +156,7 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
   if (deck === null) {
     const endOfTomorrow = new Date(new Date().setHours(23, 59, 59, 999)).getTime() + 24 * 3600 * 1000
     const dueTomorrow = srs ? [...allCards.keys()].filter((k) => srs[k] && srs[k].due > Date.now() && srs[k].due <= endOfTomorrow).length : 0
-    const chart = lastDays(log, 14, Date.now())
+    const chart = lastDays(log ?? NO_LOG, 14, Date.now())
     const chartMax = Math.max(1, ...chart.map((d) => d.count))
     const chartSum = chart.reduce((a, d) => a + d.count, 0)
     const picked = day === null ? null : chart[day]
@@ -147,6 +169,7 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
     const upcoming = srs ? Math.min(...[...allCards.keys()].map((k) => srs[k]?.due ?? Infinity).filter((d) => d > Date.now()), Infinity) : Infinity
     return (
       <Screen title={t('Flashcards')} description={t('Every toggle block is a card: its title asks, its content answers')}>
+        {loadNotice}
         {!srs ? null : allCards.size === 0 ? (
           <div className="ds-empty ds-empty--framed">
             <Icon name="toggle" />
@@ -192,10 +215,10 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
                   className="fc-facts"
                   label={t('Statistics')}
                   items={[
-                    { label: t('reviewed today'), value: num(countOn(log, dayKey(Date.now()))) },
-                    { label: t('day streak'), value: num(streak(log, Date.now())) },
+                    { label: t('reviewed today'), value: num(countOn(log ?? NO_LOG, dayKey(Date.now()))) },
+                    { label: t('day streak'), value: num(streak(log ?? NO_LOG, Date.now())) },
                     { label: t('due tomorrow'), value: num(dueTomorrow) },
-                    { label: t('reviews in total'), value: num(total(log)) },
+                    { label: t('reviews in total'), value: num(total(log ?? NO_LOG)) },
                   ]}
                 />
               </div>
@@ -291,6 +314,7 @@ export function Flashcards({ pageId, onOpenPage, onClose }: { pageId?: string; o
         <i style={{ inlineSize: pct + '%' }} />
       </div>
 
+      {loadNotice}
       {!srs ? null : !card ? (
         <div className="ds-empty fc-done">
           <Icon name={cards.size === 0 ? 'cards' : 'check-circle'} />

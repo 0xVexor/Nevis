@@ -571,7 +571,13 @@ export class WorkflowEngine {
       if (!trig || trig.type !== 'schedule') continue
       const r = trig.recurrence as unknown as import('../model/types.ts').RepeatSchedule
       const cursorKey = `cursor:${wf.id}:${wf.definitionRevision}`
-      const after = ((await this.runtime.get(cursorKey)) as number | undefined) ?? Date.parse(`${r.startDate}T00:00:00Z`) - 86400000
+      let after: number | undefined
+      try {
+        after = (await this.runtime.get(cursorKey)) as number | undefined
+      } catch {
+        continue // unreadable cursor: skip this schedule, never reset it
+      }
+      after ??= Date.parse(`${r.startDate}T00:00:00Z`) - 86400000
       const occ = repeatOccurrences(r, wf.id, wf.definitionRevision, after, nowMs)
       if (occ.length > 30 && !approveMany) {
         pending += occ.length

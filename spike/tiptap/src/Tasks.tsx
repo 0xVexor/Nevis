@@ -6,9 +6,10 @@ import { AnimatePresence, motion } from 'motion/react'
 import { repo } from './store'
 import { PageIcon } from './PageIcon'
 import type { Page } from './repo'
-import { Button, Checkbox, Icon, IconButton, Screen, useUIMotion } from './design-system'
-import { allTasks, loadInbox, saveInbox, setChecked, type InboxTask, type Task } from './taskData'
+import { Button, Checkbox, Icon, IconButton, Notice, Screen, useUIMotion } from './design-system'
+import { allTasks, INBOX_KEY, setChecked, validateInbox, type InboxTask, type Task } from './taskData'
 import { showToast } from './ui'
+import { useKv } from './useKv'
 import { t, locale } from './i18n'
 
 /** What the right-hand pane shows: everything, the inbox, or the tasks of one page. */
@@ -46,22 +47,18 @@ export function Tasks({ panelHost, index, onOpen, onNewList }: { panelHost: HTML
   const [status, setStatus] = useState<Status>('all')
   const [showDone, setShowDone] = useState(false)
   const [draft, setDraft] = useState('')
-  const [inbox, setInbox] = useState<InboxTask[]>([])
   const [settling, setSettling] = useState<string[]>([])
   const input = useRef<HTMLInputElement>(null)
-  useEffect(() => void loadInbox().then(setInbox), [])
-  const editInbox = (next: InboxTask[]) => (setInbox(next), void saveInbox(next))
+  // read-only until the stored inbox was read: nothing is saved over a file that could not be read
+  const { state: inboxState, update: updateInbox, retry: retryInbox } = useKv<InboxTask[]>(INBOX_KEY, validateInbox, [])
+  const inbox = useMemo(() => (inboxState.status === 'ready' ? inboxState.value : []), [inboxState])
+  const inboxReady = inboxState.status === 'ready'
+  const editInbox = (change: (cur: InboxTask[]) => InboxTask[]) => void updateInbox(change)
   /** Deletes an inbox task; the toast's Undo (or Ctrl+Z) puts it back where it was. */
   const remove = (task: InboxTask) => {
     const at = inbox.findIndex((y) => y.id === task.id)
-    editInbox(inbox.filter((y) => y.id !== task.id))
-    showToast(t('Task deleted'), () =>
-      setInbox((cur) => {
-        const next = [...cur.slice(0, at), task, ...cur.slice(at)]
-        void saveInbox(next)
-        return next
-      }),
-    )
+    editInbox((cur) => cur.filter((y) => y.id !== task.id))
+    showToast(t('Task deleted'), () => editInbox((cur) => [...cur.slice(0, at), task, ...cur.slice(at)]))
   }
   useEffect(() => {
     const bump = () => setTick((n) => n + 1)
@@ -126,14 +123,14 @@ export function Tasks({ panelHost, index, onOpen, onNewList }: { panelHost: HTML
       setSettling((s) => [...s, x.key])
       window.setTimeout(() => setSettling((s) => s.filter((k) => k !== x.key)), SETTLE_MS)
     }
-    if (x.inbox) editInbox(inbox.map((y) => (y.id === x.key ? { ...y, checked: next } : y)))
+    if (x.inbox) editInbox((cur) => cur.map((y) => (y.id === x.key ? { ...y, checked: next } : y)))
     else if (x.task) (setChecked(x.task, next), setTick((n) => n + 1))
   }
   const add = () => {
     const text = draft.trim()
-    if (!text) return
+    if (!text || !inboxReady) return
     setDraft('')
-    editInbox([...inbox, { id: crypto.randomUUID(), text, checked: false }])
+    editInbox((cur) => [...cur, { id: crypto.randomUUID(), text, checked: false }])
     input.current?.focus()
   }
 
@@ -157,8 +154,11 @@ export function Tasks({ panelHost, index, onOpen, onNewList }: { panelHost: HTML
             dir="auto"
             value={x.text}
             aria-label={t('Task')}
-            onChange={(e) => editInbox(inbox.map((y) => (y.id === x.key ? { ...y, text: e.target.value } : y)))}
-            onBlur={() => !x.text.trim() && editInbox(inbox.filter((y) => y.id !== x.key))}
+            onChange={(e) => {
+              const text = e.target.value
+              editInbox((cur) => cur.map((y) => (y.id === x.key ? { ...y, text } : y)))
+            }}
+            onBlur={() => !x.text.trim() && editInbox((cur) => cur.filter((y) => y.id !== x.key))}
           />
           <IconButton label={t('Delete')} className="tk-del" onClick={() => remove(x.inbox!)}>
             <Icon name="trash" size={16} />
@@ -244,7 +244,20 @@ export function Tasks({ panelHost, index, onOpen, onNewList }: { panelHost: HTML
             </div>
           )}
 
-          {canAdd && (
+          {inboxState.status === 'error' && (
+            <Notice
+              tone="bad"
+              role="alert"
+              action={
+                <Button size="sm" onClick={retryInbox}>
+                  {t('Retry')}
+                </Button>
+              }
+            >
+              {t('The inbox could not be loaded. Its file is unreadable; nothing was changed.')}
+            </Notice>
+          )}
+          {canAdd && inboxReady && (
             <form className="tk-add" onSubmit={(e) => (e.preventDefault(), add())}>
               <Icon name="plus" size={18} />
               <input ref={input} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t('Add a task to your inbox')} aria-label={t('New task')} dir="auto" autoComplete="off" />

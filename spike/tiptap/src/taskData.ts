@@ -2,7 +2,7 @@
 // and writes a toggle straight back into the page, so the editor and the Tasks view always agree.
 import type { DocNode } from './docNode'
 import { repo } from './store'
-import { kvGet, kvSet } from './db'
+import { validateList } from './kvStore'
 
 export interface Task {
   pageId: string
@@ -58,11 +58,6 @@ export interface InboxTask {
   checked: boolean
 }
 
-const INBOX_KEY = 'tasksInbox'
+export const INBOX_KEY = 'tasksInbox'
 
-export async function loadInbox(): Promise<InboxTask[]> {
-  const v = await kvGet<InboxTask[]>(INBOX_KEY)
-  return Array.isArray(v) ? v : []
-}
-
-export const saveInbox = (list: InboxTask[]) => kvSet(INBOX_KEY, list)
+export const validateInbox = validateList<InboxTask>

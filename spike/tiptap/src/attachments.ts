@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { isTauri, storageFrozen } from './db'
 import { maybeCompress } from './compress'
 import { optimizeVideo } from './media/video'
+import { settleFiles, type SettledFiles } from './settleFiles'
 
 interface FileRec {
   id: string
@@ -69,10 +70,15 @@ async function readBlob(id: string, type: string): Promise<Blob> {
   return new Blob([await invoke<ArrayBuffer>('file_get', { id })], { type })
 }
 
-export async function allFiles(): Promise<FileRec[]> {
-  if (!isTauri) return tx<FileRec[]>('readonly', (s) => s.getAll())
+/** Every stored file. On desktop a file listed by a sync whose bytes have not arrived yet is skipped and counted in `missing`. */
+export async function readAllFiles(): Promise<SettledFiles<FileRec>> {
+  if (!isTauri) return { files: await tx<FileRec[]>('readonly', (s) => s.getAll()), missing: 0 }
   const metas = await invoke<Omit<FileRec, 'blob'>[]>('files_list')
-  return Promise.all(metas.map(async (m) => ({ ...m, name: decodeURIComponent(m.name), blob: await readBlob(m.id, m.type) })))
+  return settleFiles(metas, async (m) => ({ ...m, name: decodeURIComponent(m.name), blob: await readBlob(m.id, m.type) }))
+}
+
+export async function allFiles(): Promise<FileRec[]> {
+  return (await readAllFiles()).files
 }
 
 export async function urlFor(src: string): Promise<string | null> {
