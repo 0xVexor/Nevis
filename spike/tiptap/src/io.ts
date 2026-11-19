@@ -224,7 +224,18 @@ async function markdownToDoc(md: string, img: (src: string) => Promise<string | 
   return htmlToDoc(dom.body.innerHTML)
 }
 
-const dataUriImage = async (src: string) => (src.startsWith('data:') ? putFile(await (await fetch(src)).blob(), '') : null)
+/** The bytes of a `data:` URI, decoded directly: the desktop CSP does not allow `fetch` of `data:` URLs. */
+function dataUriBlob(src: string): Blob {
+  const comma = src.indexOf(',')
+  const head = src.slice(5, comma)
+  const body = src.slice(comma + 1)
+  const type = head.split(';')[0] || 'text/plain'
+  if (!/;base64$/i.test(head)) return new Blob([decodeURIComponent(body)], { type })
+  const bin = atob(body)
+  return new Blob([Uint8Array.from(bin, (c) => c.charCodeAt(0))], { type })
+}
+
+const dataUriImage = async (src: string) => (src.startsWith('data:') && src.includes(',') ? putFile(dataUriBlob(src), '') : null)
 
 /** Imports .md files as new top-level pages (title/tags/status from the front matter, `[[links]]` resolved). */
 export async function importMarkdown(files: File[], onError?: (name: string, error: unknown) => void): Promise<Page[]> {

@@ -48,7 +48,7 @@ import { bindingHint, matches } from './shortcutBindings'
 import { lazy, Suspense } from 'react'
 const RowProperties = lazy(() => import('./database/ui/RowProperties').then((m) => ({ default: m.RowProperties })))
 
-export type SaveState = 'saved' | 'saving'
+export type SaveState = 'saved' | 'saving' | 'error'
 /** Asks the app to show the pages with a tag; detail is the tag as written. */
 export const PICK_TAG = 'pick-tag'
 

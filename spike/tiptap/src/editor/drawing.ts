@@ -103,9 +103,15 @@ export const DrawingBlock = Node.create({
         try {
           const { excalidraw, loadScene } = await import('./excalidraw')
           await excalidraw() // sets the asset path before the editor module is evaluated
-          const [{ openDrawingEditor }, initial] = await Promise.all([import('../DrawingModal'), loadScene(originalScene)])
+          const [{ openDrawingEditor }, loaded] = await Promise.all([import('../DrawingModal'), loadScene(originalScene)])
           if (!current()) return
-          const r = await openDrawingEditor(initial)
+          if (loaded.status === 'missing' || loaded.status === 'unreadable') {
+            // never open an empty canvas over a drawing that could not be read: saving it would replace the stored one
+            const detail = loaded.status === 'missing' ? tr('The drawing is still arriving from sync…') + ' ' : ''
+            window.dispatchEvent(new CustomEvent('layout-message', { detail: detail + tr('This drawing could not be loaded. Its file is missing or unreadable; nothing was changed.') }))
+            return
+          }
+          const r = await openDrawingEditor(loaded.status === 'ok' ? loaded.scene : null)
           if (!current()) {
             if (r) window.dispatchEvent(new CustomEvent('layout-message', { detail: tr('The drawing changed while it was open. The newer page content was kept.') }))
             return
