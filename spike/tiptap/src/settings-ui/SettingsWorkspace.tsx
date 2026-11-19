@@ -1,4 +1,5 @@
-import { APPEARANCE_PRESETS_ENABLED } from '../releaseFeatures'
+import { APPEARANCE_PRESETS_ENABLED, SYNC_ENABLED } from '../releaseFeatures'
+import { isTauri } from '../db'
 import { createPortal } from 'react-dom'
 import { motion } from 'motion/react'
 import { useUIMotion } from '../design-system/motion'
@@ -19,18 +20,20 @@ import { AccentSwatches } from './AccentSwatches'
 import { TEXT_SIZE_MAX, TEXT_SIZE_MIN } from '../editor/textZoom'
 import { appearancePresets } from '../appearancePresets'
 
-export type Category = 'appearance' | 'editor' | 'language' | 'general' | 'data' | 'database' | 'connections' | 'shortcuts' | 'about'
-const categories: { id: Category; label: string; icon: string; description: string }[] = [
+export type Category = 'appearance' | 'editor' | 'language' | 'general' | 'data' | 'sync' | 'database' | 'connections' | 'shortcuts' | 'about'
+const allCategories: { id: Category; label: string; icon: string; description: string }[] = [
   { id: 'appearance', label: 'Appearance', icon: 'palette', description: 'A workspace that feels like you.' },
   { id: 'editor', label: 'Editor & font', icon: 'type', description: 'Make room for the way you write.' },
   { id: 'language', label: 'Language & layout', icon: 'globe', description: 'Your language. Your direction.' },
   { id: 'general', label: 'General', icon: 'settings', description: 'Small preferences that make a difference.' },
   { id: 'data', label: 'Data & backup', icon: 'download', description: 'A safe place for everything you keep.' },
+  { id: 'sync', label: 'Sync', icon: 'cloud', description: 'Your notes, on every device you own.' },
   { id: 'database', label: 'Database', icon: 'table', description: 'The details behind your connected views.' },
   { id: 'connections', label: 'AI connection', icon: 'globe', description: 'Your knowledge. Your permission.' },
   { id: 'shortcuts', label: 'Shortcuts', icon: 'keyboard', description: 'Find your flow, one shortcut at a time.' },
   { id: 'about', label: 'About', icon: 'info', description: 'A calm home for your ideas.' },
 ]
+const categories = allCategories.filter(c => c.id !== 'sync' || (SYNC_ENABLED && isTauri))
 export function Appearance() {
   const s = useSettings(), l = useLabels()
   return <>
@@ -64,7 +67,7 @@ export function LanguageSettings() {
 }
 export function GeneralSettings() {
   const l = useLabels()
-  return <><SettingGroup title={l('Comfort')}><Toggle label={l('Reduce motion')} hint={l('Keep transitions quiet and immediate.')} setting="reduceMotion" /></SettingGroup><SettingGroup title={l('Everyday preferences')}><Toggle label={l('Card reminders')} hint={l('Keep your review habit in view.')} setting="cardReminders" /><Toggle label={l('Compress images')} hint={l('Use smaller images when adding attachments.')} setting="compressImages" /></SettingGroup></>
+  return <><SettingGroup title={l('Comfort')}><Toggle label={l('Reduce motion')} hint={l('Keep transitions quiet and immediate.')} setting="reduceMotion" /></SettingGroup><SettingGroup title={l('Everyday preferences')}><Toggle label={l('Card reminders')} hint={l('Keep your review habit in view.')} setting="cardReminders" /><Toggle label={l('Compress images and videos')} hint={l('Store pictures, GIFs and videos at a smaller size, keeping their quality. Screenshots and PNGs lose no detail.')} setting="compressImages" /></SettingGroup></>
 }
 export interface WorkspaceProps {
   onLeave?: () => void

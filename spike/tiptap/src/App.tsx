@@ -64,6 +64,7 @@ import { iconNode } from './iconSet'
 import { printPage } from './print'
 import { confirmDialog } from './dialog'
 import { OPEN_PAGE, PAGES_CHANGED } from './editor/pageLink'
+import { SyncIndicator } from './sync/SyncIndicator'
 import { t } from './i18n'
 import { isMac, shortcutHint, shortcutLabel } from './shortcuts'
 import { CompactList, TreeFrame, TreeRow } from './PageTree'
@@ -492,7 +493,23 @@ export default function App() {
     window.addEventListener(APP_TOAST, screenToast)
     window.addEventListener('page-conflict', kept)
     window.addEventListener('storage-error', storageError)
+    // desktop: sync merged edits of two devices into one page (the engine sends the ids of the pages it merged)
+    let closed = false
+    let stopMerged: (() => void) | undefined
+    if (isTauri) {
+      void import('@tauri-apps/api/event')
+        .then(({ listen }) =>
+          listen<{ pageIds: string[] }>('page-auto-merged', (e) => {
+            const id = e.payload.pageIds?.[0]
+            if (id) setToast({ msg: t('Edits from two devices were merged into “{title}”. Both earlier versions are in the page history.', { title: repo.get(id)?.title || t('Untitled') }) })
+          }),
+        )
+        .then((off) => (closed ? off() : (stopMerged = off)))
+        .catch(() => {})
+    }
     return () => {
+      closed = true
+      stopMerged?.()
       window.removeEventListener(OPEN_PAGE, open)
       window.removeEventListener(PAGES_CHANGED, changed)
       window.removeEventListener('external-change', changed)
@@ -774,8 +791,7 @@ export default function App() {
   const doExportAll = async () => {
     try {
       const r = await exportAllZip()
-      download(`notes-export-${stamp()}.zip`, r.blob)
-      setToast({ msg: t('{pages} pages and {files} images exported', { pages: r.pages, files: r.files }) })
+      if (await download(`notes-export-${stamp()}.zip`, r.blob)) setToast({ msg: t('{pages} pages and {files} images exported', { pages: r.pages, files: r.files }) })
     } catch (e) {
       console.error(e)
       setToast({ msg: t('Export failed') })
@@ -1149,6 +1165,7 @@ export default function App() {
         </div>
         <SideTip />
         <div className="side-foot">
+          <SyncIndicator titleOf={(id) => repo.get(id)?.title} onOpenSettings={() => openSettings('sync')} />
           <button aria-label={t('Settings')} className={'row plain' + (view === 'settings' ? ' cur' : '')} onClick={() => (closeOverlays(), setView('settings'))}>
             <span className="ic">
               <Icon name="settings" />

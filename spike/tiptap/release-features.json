@@ -1,4 +1,6 @@
 {
   "slides": false,
-  "appearancePresets": false
+  "appearancePresets": false,
+  "sync": true,
+  "pageState": false
 }

@@ -8,6 +8,17 @@ const cargo = fs.readFileSync(root + 'src-tauri/Cargo.toml', 'utf8');
 const cargoLock = fs.readFileSync(root + 'src-tauri/Cargo.lock', 'utf8');
 function requireThat(value, message) { if (!value) throw new Error(message); }
 const version = app.version;
+// The first public 1.0.0 intentionally replaces internal higher-numbered builds.
+// Match exact pre-reset refs so this exception cannot authorize a later downgrade.
+function approvedInitialReset(base, previous) {
+  const file = 'docs/releases/version-reset-1.0.0.json';
+  if (version !== '1.0.0' || !fs.existsSync(file)) return false;
+  const reset = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const approved = reset.bases?.[base];
+  if (reset.version !== version || !approved || approved.version !== previous) return false;
+  const commit = execFileSync('git', ['rev-parse', base], {encoding:'utf8'}).trim();
+  return approved.commit === commit;
+}
 const stable = /^\d+\.\d+\.\d+$/.test(version);
 const preview = /^\d+\.\d+\.\d+-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*$/.test(version);
 requireThat(stable || (process.env.ALLOW_PRERELEASE === '1' && preview), 'Use X.Y.Z for stable releases, or an allowed X.Y.Z-beta.N prerelease.');
@@ -24,7 +35,7 @@ if (process.env.REQUIRE_VERSION_INCREASE === '1') {
   const nextParts = version.split('.').map(Number);
   const oldParts = previous.split('.').map(Number);
   const different = nextParts.findIndex((n, i) => n !== oldParts[i]);
-  requireThat(different >= 0 && nextParts[different] > oldParts[different], 'A release into main must increase the stable version.');
+  requireThat((different >= 0 && nextParts[different] > oldParts[different]) || approvedInitialReset('origin/main', previous), 'A release into main must increase the stable version.');
 }
 
 // A release branch headed for dev must contain all of dev and move the version forward (catches a stale branch such as beta 9 on a dev at beta 18).
@@ -36,7 +47,7 @@ if (process.env.REQUIRE_AHEAD_OF) {
   const key = (v) => { const [core, pre = ''] = v.split('-'); const n = pre.match(/(\d+)$/); return [...core.split('.').map(Number), pre ? 0 : 1, n ? Number(n[1]) : 0]; };
   const [a, b] = [key(version), key(previous)];
   const at = a.findIndex((n, i) => n !== b[i]);
-  requireThat(at >= 0 && a[at] > b[at], 'Version ' + version + ' must be higher than ' + previous + ' on ' + base + '.');
+  requireThat((at >= 0 && a[at] > b[at]) || approvedInitialReset(base, previous), 'Version ' + version + ' must be higher than ' + previous + ' on ' + base + '.');
 }
 if (version === '1.1.0') {
   const features = JSON.parse(fs.readFileSync(root + 'release-features.json', 'utf8'));

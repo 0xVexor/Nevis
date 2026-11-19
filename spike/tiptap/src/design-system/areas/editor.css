@@ -117,7 +117,7 @@
 /* images */
 .tiptap .img-fig { position: relative; display: block; margin: 10px 0; max-width: 100%; width: fit-content; }
 .tiptap .img-fig.sized { width: auto; }
-.tiptap .img-fig.sized img { width: 100%; }
+.tiptap .img-fig.sized :is(img, video) { width: 100%; }
 .tiptap .img-fig[data-align='center'] { margin-inline: auto; }
 .tiptap .img-fig[data-align='end'] { margin-inline-start: auto; margin-inline-end: 0; }
 .tiptap .img-fig[data-align='start'] { margin-inline-end: auto; margin-inline-start: 0; }
@@ -125,7 +125,7 @@
 .tiptap .img-fig[data-align='left'] { margin-left: 0; margin-right: auto; }
 /* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
 .tiptap .img-fig[data-align='right'] { margin-left: auto; margin-right: 0; }
-.tiptap .img-fig.ProseMirror-selectednode img { outline: 2px solid var(--ds-accent); }
+.tiptap .img-fig.ProseMirror-selectednode :is(img, video) { outline: 2px solid var(--ds-accent); }
 .img-bar { position: absolute; top: 8px; inset-inline-start: 8px; opacity: 0; pointer-events: none; transition: opacity var(--ds-fast); z-index: 3; flex-wrap: nowrap; }
 .img-fig:hover .img-bar, .img-fig.ProseMirror-selectednode .img-bar { opacity: 1; pointer-events: auto; }
 .img-handle { position: absolute; bottom: 8px; inset-inline-end: 8px; width: 16px; height: 16px; border-radius: var(--ds-r-sm); background: var(--ds-accent); border: 2px solid var(--ds-white); cursor: var(--cursor-nwse, nwse-resize); opacity: 0; transition: opacity var(--ds-fast); z-index: 3; touch-action: none; box-shadow: 0 2px 8px var(--ds-accent-line); }

@@ -17,11 +17,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Version moves forward and the branch contains the base
+      - name: Check release version and source
         env:
           ALLOW_PRERELEASE: '1'
           REQUIRE_AHEAD_OF: origin/${{ github.base_ref }}
         run: node .github/scripts/release-version.cjs
+      - name: Verify release version guards
+        run: node --test .github/scripts/release-version.test.cjs
 
   mcp-spike:
     runs-on: ubuntu-latest
@@ -100,3 +102,86 @@ jobs:
         env:
           PLATFORM_RESULT: ${{ needs.app-platforms.result }}
         run: test "$PLATFORM_RESULT" = success
+
+  # The sync server (server/). On pull requests it only does its work when the pull request touches server/; on
+  # pushes to main and dev it always runs.
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Does this change touch the server?
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != "pull_request" ] || git diff --name-only "origin/$BASE...HEAD" | grep -q '^server/'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.scope.outputs.run == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: go.sum matches go.mod
+        if: steps.scope.outputs.run == 'true'
+        run: go mod tidy -diff
+        working-directory: server
+      - if: steps.scope.outputs.run == 'true'
+        run: go vet ./...
+        working-directory: server
+      - name: gofmt
+        if: steps.scope.outputs.run == 'true'
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+        working-directory: server
+      - if: steps.scope.outputs.run == 'true'
+        run: go test -race ./...
+        working-directory: server
+      - name: Smoke test against the real binary
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          go build -o "$RUNNER_TEMP/nevis-server" ./cmd/nevis-server
+          export SESSION_SECRET="$(openssl rand -hex 24)" REGISTRATION=open POW_BITS=12 PORT=3111 DATA_DIR="$RUNNER_TEMP/nevis-data"
+          "$RUNNER_TEMP/nevis-server" &
+          server=$!
+          for i in $(seq 1 50); do curl -fs http://127.0.0.1:3111/v1/health >/dev/null && break; sleep 0.2; done
+          status=0
+          go run ./cmd/smoke http://127.0.0.1:3111 || status=$?
+          kill $server
+          exit $status
+        working-directory: server
+
+  # The desktop sync client against the real Go server: the end-to-end tests of the Rust client (they are ignored in a
+  # plain `cargo test` because they need a server), pointed at a server started from this very commit.
+  sync-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: spike/tiptap/src-tauri
+      - name: Install Linux native dependencies
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - name: Build and start the server
+        run: |
+          go build -o "$RUNNER_TEMP/nevis-server" ./cmd/nevis-server
+          export SESSION_SECRET="$(openssl rand -hex 24)" REGISTRATION=open POW_BITS=12 PORT=3111 DATA_DIR="$RUNNER_TEMP/nevis-data" REGISTER_PER_HOUR=1000
+          nohup "$RUNNER_TEMP/nevis-server" > "$RUNNER_TEMP/server.log" 2>&1 &
+          for i in $(seq 1 50); do curl -fs http://127.0.0.1:3111/v1/health >/dev/null && exit 0; sleep 0.2; done
+          cat "$RUNNER_TEMP/server.log"; exit 1
+        working-directory: server
+      - name: Rust client against the server
+        env:
+          NEVIS_TEST_SERVER: http://127.0.0.1:3111
+        run: cargo test e2e -- --ignored --test-threads=1
+        working-directory: spike/tiptap/src-tauri
+      - name: Server log
+        if: failure()
+        run: cat "$RUNNER_TEMP/server.log"

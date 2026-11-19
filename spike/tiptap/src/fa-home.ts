@@ -1,4 +1,4 @@
-import { HOME_LINES } from './homeLines'
+import { HOME_LINES } from './homeLines.ts'
 
 /** Copy for the shared-foundation Home migration. */
 export const FA_HOME: Record<string, string> = {
