@@ -9,6 +9,7 @@ import { SYNC_ENABLED } from '../releaseFeatures'
 import { ago } from '../ui'
 import type { ConflictMarker } from '../conflict/types'
 import { accountShown, accountStatus, signedInShown, type SyncStatus } from './client'
+import { describeSyncError, isSticky } from './syncErrorText'
 
 const POLL_MS = 20_000
 
@@ -21,7 +22,9 @@ export function describeSync(s: SyncStatus | null): { text: string; tone: Tone }
     // sync is off here, but an account that needs signing in again should not go unnoticed
     return s.signedIn && s.state === 'paused' && s.reason === 'SIGNED_OUT' ? { text: t('Signed out — sign in to sync'), tone: 'attention' } : null
   }
-  switch (s.state) {
+  // a pause that waits for the person stays on screen while a round runs (the backend keeps its reason): no "Syncing…" flicker over it
+  const pausedBy = s.state === 'paused' || (isSticky(s) && (s.state === 'syncing' || s.state === 'pending'))
+  switch (pausedBy ? 'paused' : s.state) {
     case 'idle':
       return { text: s.lastAt ? t('Synced · {time}', { time: ago(s.lastAt) }) : t('Synced'), tone: 'quiet' }
     case 'syncing':
@@ -30,7 +33,7 @@ export function describeSync(s: SyncStatus | null): { text: string; tone: Tone }
     case 'offline':
       return { text: t('Offline — will retry'), tone: 'quiet' }
     case 'error':
-      return { text: s.error || t('Sync failed'), tone: 'error' }
+      return { text: describeSyncError(s, t).text, tone: 'error' }
     case 'paused':
       switch (s.reason) {
         case 'SIGNED_OUT': return { text: t('Signed out — sign in to sync'), tone: 'attention' }
@@ -38,6 +41,7 @@ export function describeSync(s: SyncStatus | null): { text: string; tone: Tone }
         case 'VAULT_MISSING': return { text: t('The vault folder was not found.'), tone: 'attention' }
         case 'VAULT_MISMATCH': return { text: t('A different vault is in this folder.'), tone: 'attention' }
         case 'ACCOUNT_CHANGED': return { text: t('This workspace was syncing with {account}. You are signed in as {other}.', { account: `\u2066${accountShown(s.error)}\u2069`, other: `\u2066${signedInShown(s)}\u2069` }), tone: 'attention' }
+        case 'VAULT_TAKEN': return { text: t('This workspace’s ID is already used by another account on this server (for example a copy of a folder that syncs elsewhere).'), tone: 'attention' }
         case 'CLOUD_GONE': return { text: t('This workspace was deleted on the server'), tone: 'attention' }
         default: return { text: t('Sync is paused'), tone: 'attention' }
       }
