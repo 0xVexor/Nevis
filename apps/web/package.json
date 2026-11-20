@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:engines": "node tests/two-engines.mjs && node tests/two-engines-pages.mjs"
   },
   "dependencies": {
     "@nevis/core": "workspace:*",

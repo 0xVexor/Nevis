@@ -113,4 +113,33 @@ describe('TabCoordinator', () => {
     expect(calls).toBeLessThan(8) // 20, 40, 80, 160 ms ... not 200/20 = 10 rounds
     t.stop()
   })
+
+  it('long-poll: a local write aborts the wait at once and syncs; a stop ends the wait', async () => {
+    const locks = new FakeLocks(), bus = new FakeBus()
+    let cycles = 0, idles = 0, aborted = 0
+    const t = make(locks, bus, async () => { cycles++ }, {
+      intervalMs: 5000, // a poll that ignored the kick would wait this long
+      idle: signal => new Promise<void>(res => { idles++; signal.addEventListener('abort', () => { aborted++; res() }, { once: true }) }),
+    })
+    t.start()
+    await sleep(60)
+    expect([cycles, idles]).toEqual([1, 1]) // one round, then parked in the poll
+    t.notifyLocalChange()
+    await sleep(60)
+    expect(aborted).toBe(1)
+    expect(cycles).toBe(2) // the write was synced without waiting for the poll to end
+    t.stop()
+    await sleep(30)
+    expect(aborted).toBe(2) // stopping ends the poll too
+  })
+
+  it('a poll that returns at once with no news does not become a busy loop', async () => {
+    const locks = new FakeLocks(), bus = new FakeBus()
+    let cycles = 0
+    const t = make(locks, bus, async () => { cycles++ }, { intervalMs: 40, idle: async () => undefined })
+    t.start()
+    await sleep(200)
+    t.stop()
+    expect(cycles).toBeLessThan(10)
+  })
 })

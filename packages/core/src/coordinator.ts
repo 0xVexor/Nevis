@@ -26,6 +26,8 @@ export interface CoordinatorOptions {
   cycle: () => Promise<unknown>
   /** How often the leader syncs when nothing kicks it (the server has no long-poll until M4). */
   intervalMs?: number
+  /** Parks until the server has news (a long-poll); called with a signal that is aborted when this tab writes. Without it the leader polls. */
+  idle?: (signal: AbortSignal) => Promise<unknown>
   onLeaderChange?: (leader: boolean) => void
   /** Another tab committed: reload what this tab shows. */
   onRemoteChange?: (m: ChangedMessage) => void
@@ -106,7 +108,18 @@ export class TabCoordinator {
         }
         if (signal.aborted) break
         const wait = this.failures ? Math.min(MAX_BACKOFF_MS, this.o.intervalMs * 2 ** (this.failures - 1)) : this.o.intervalMs
-        if (!this.kicked) await new Promise<void>(res => {
+        if (!this.kicked && !this.failures && this.o.idle) {
+          // long-poll: a local write (kick) or a stop aborts it at once, so a push is never held up behind the wait
+          const poll = new AbortController()
+          const abort = () => poll.abort()
+          this.wake = abort
+          signal.addEventListener('abort', abort, { once: true })
+          const t0 = Date.now()
+          try { await this.o.idle(poll.signal) } catch (e) { this.failures++; this.o.onError?.(e) }
+          signal.removeEventListener('abort', abort)
+          // a server that answers at once with no news must not make a busy loop
+          if (!this.kicked && !signal.aborted && Date.now() - t0 < 50) await new Promise<void>(r => setTimeout(r, this.o.intervalMs))
+        } else if (!this.kicked) await new Promise<void>(res => {
           const t = setTimeout(done, wait)
           function done() { clearTimeout(t); res() }
           this.wake = done

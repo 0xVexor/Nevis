@@ -30,5 +30,5 @@ export class FaultyNet implements Net {
   }
 
   push: Net['push'] = (ws, envs) => this.go(() => this.inner.push(ws, envs))
-  pull: Net['pull'] = (ws, after, limit) => this.go(() => this.inner.pull(ws, after, limit))
+  pull: Net['pull'] = (ws, after, limit, opts) => this.go(() => this.inner.pull(ws, after, limit, opts))
 }

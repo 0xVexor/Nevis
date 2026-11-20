@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { uuidv7 } from '@nevis/protocol'
 import { AuthError, createWorkspace, deviceLabel, me, signIn, signOut, signUp, workspaces, type Me, type WorkspaceInfo } from './auth'
 import { Lab, type Note, type Status } from './lab'
+import { Workspace } from './workspace'
+import { WorkspaceView } from './WorkspaceView'
 import './style.css'
 
 declare global { interface Window { __lab?: Lab; __labReady?: Promise<void> } }
@@ -15,7 +17,7 @@ function startLab(ws: string, token: string | null): Lab {
   return lab
 }
 
-function Workspace({ lab, started, onSignOut }: { lab: Lab; started: Promise<void>; onSignOut?: () => void }) {
+function LabView({ lab, started, onSignOut }: { lab: Lab; started: Promise<void>; onSignOut?: () => void }) {
   const [status, setStatus] = useState<Status | null>(null)
   const [notes, setNotes] = useState<Note[]>([])
   const [ready, setReady] = useState(false)
@@ -107,13 +109,17 @@ function SignInForm({ onDone }: { onDone: (recoveryKey?: string) => void }) {
 /** Signed in: pick (or create) a workspace, then open it. */
 function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string; onSignedOut: () => void }) {
   const [list, setList] = useState<WorkspaceInfo[] | null>(null)
-  const [open, setOpen] = useState<{ lab: Lab; started: Promise<void> } | null>(null)
+  const [open, setOpen] = useState<{ ws: Workspace } | null>(null)
   const [key, setKey] = useState(recoveryKey)
   useEffect(() => { void workspaces().then(setList, () => setList([])) }, [])
-  const leave = async () => { open?.lab.stop(); await signOut().catch(() => undefined); onSignedOut() }
-  const enter = (id: string) => { const lab = startLab(id, null); setOpen({ lab, started: window.__labReady! }) }
+  const leave = async () => { await open?.ws.stop(); await signOut().catch(() => undefined); onSignedOut() }
+  const enter = (id: string) => {
+    const ws = new Workspace(id, null)
+    ;(window as unknown as { __ws?: Workspace }).__ws = ws
+    void ws.start().then(() => setOpen({ ws }))
+  }
   const make = async () => { const id = uuidv7(); await createWorkspace(id, 'یادداشت‌ها'); enter(id) }
-  if (open) return <Workspace lab={open.lab} started={open.started} onSignOut={() => void leave()} />
+  if (open) return <WorkspaceView ws={open.ws} onSignOut={() => void leave()} />
   return (
     <main dir="rtl">
       <h1>سلام {who.account.username}</h1>
@@ -140,7 +146,7 @@ function Root() {
 const devWs = new URLSearchParams(location.search).get('ws')
 if (devWs) {
   const lab = startLab(devWs, 'dev')
-  createRoot(document.getElementById('root')!).render(<StrictMode><Workspace lab={lab} started={window.__labReady!} /></StrictMode>)
+  createRoot(document.getElementById('root')!).render(<StrictMode><LabView lab={lab} started={window.__labReady!} /></StrictMode>)
 } else {
   createRoot(document.getElementById('root')!).render(<StrictMode><Root /></StrictMode>)
 }

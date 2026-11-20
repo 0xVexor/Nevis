@@ -18,8 +18,7 @@ test('sign up, create a workspace, reload stays signed in, sign out', async ({ p
   await signUp(page, name)
   await expect(page.getByRole('heading', { name: new RegExp(name) })).toBeVisible()
   await page.getByTestId('ws-new').click()
-  await page.evaluate(() => (window as unknown as { __labReady: Promise<void> }).__labReady)
-  await expect(page.getByTestId('status')).toBeVisible()
+  await expect(page.getByTestId('new-page')).toBeVisible()
 
   // the session is a cookie the page's scripts cannot read
   expect(await page.evaluate(() => document.cookie)).not.toContain('nevis_session')

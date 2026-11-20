@@ -1,4 +1,4 @@
-// pnpm converge --replicas 3 --seeds 50 --ops 2000 --server http://localhost:8787 --token dev [--seed N] [--seconds N] [--live]
+// pnpm converge --replicas 3 --seeds 50 --ops 2000 --server http://localhost:8787 --token dev [--seed N] [--from N] [--seconds N] [--live]
 //   with a real account (M4): --user NAME [--password PW] [--invite CODE]   (signs up if the user does not exist)
 //   a device clock two hours ahead, then fixed: --clock-ahead
 import { parseArgs } from 'node:util'
@@ -10,7 +10,7 @@ const { values: v } = parseArgs({
     replicas: { type: 'string', default: '3' }, seeds: { type: 'string', default: '50' }, ops: { type: 'string', default: '2000' },
     server: { type: 'string', default: 'http://localhost:8787' }, token: { type: 'string', default: 'dev' },
     user: { type: 'string' }, password: { type: 'string' }, invite: { type: 'string' }, 'clock-ahead': { type: 'boolean', default: false },
-    seed: { type: 'string' }, seconds: { type: 'string' }, live: { type: 'boolean', default: false }, 'no-crashes': { type: 'boolean', default: false },
+    seed: { type: 'string' }, from: { type: 'string', default: '1' }, seconds: { type: 'string' }, live: { type: 'boolean', default: false }, 'no-crashes': { type: 'boolean', default: false },
   },
 })
 
@@ -37,7 +37,7 @@ const deadline = v.seconds ? started + Number(v.seconds) * 1000 : Infinity
 const results: SeedResult[] = []
 let total = zero()
 let lastLive = 0
-const seeds = v.seed ? [Number(v.seed)] : Array.from({ length: Number(v.seeds) }, (_, i) => i + 1)
+const seeds = v.seed ? [Number(v.seed)] : Array.from({ length: Number(v.seeds) }, (_, i) => Number(v.from) + i)
 
 for (const seed of seeds) {
   if (Date.now() > deadline) break

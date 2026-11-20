@@ -1,8 +1,7 @@
 // The lab: a notes list over the real core, the real IndexedDB store, the real Go server, and several tabs.
-import { Client, SyncEngine, TabCoordinator, httpNet, projectStore, type Projection } from '@nevis/core'
+import { projectStore, type Projection } from '@nevis/core'
 import { uuidv7 } from '@nevis/protocol'
-import { IdbStore } from '@nevis/store-idb'
-import { webChannel, webLocks } from './ports'
+import { SyncRuntime } from './runtime'
 
 export const DEFAULT_WS = '019a8f3c-0000-7000-8000-0000000000a1'
 
@@ -25,53 +24,32 @@ export interface Status {
 
 export class Lab {
   readonly ws: string
-  readonly store: IdbStore
-  client!: Client
-  engine!: SyncEngine
-  coord!: TabCoordinator
-  device = ''
-  offline = false
-  persisted: boolean | null = null
-  lastError = ''
+  private readonly rt: SyncRuntime
   private listeners = new Set<() => void>()
 
   /** `'dev'` = the development token (tests); `null` = the signed-in cookie session. */
-  private readonly token: string | null
-
   constructor(ws: string, token: string | null = 'dev') {
-    this.token = token
     this.ws = ws
-    this.store = new IdbStore({ name: `nevis-${ws}`, onVersionChange: () => { this.lastError = 'a newer tab upgraded the database: reload'; this.coord?.stop(); this.emit() } })
+    this.rt = new SyncRuntime({ ws, token, onChange: () => this.emit() })
   }
 
-  async start() {
-    this.device = (await this.store.run(async tx => {
-      let d = await tx.getMeta('deviceId')
-      if (!d) { d = uuidv7(); await tx.setMeta('deviceId', d) }
-      return d
-    }))
-    // Asked in the background: Firefox may show the person a permission prompt, and the answer can take for ever. The app must
-    // not wait for it (R2: persist() is a heuristic in Safari/Chrome and a prompt in Firefox).
-    void Promise.resolve(navigator.storage?.persist?.()).then(v => { this.persisted = v ?? null; this.emit() }, () => { this.persisted = null })
-    const net = httpNet({ ...(this.token ? { token: this.token } : {}), offline: () => this.offline })
-    this.client = new Client({ store: this.store, ws: this.ws, device: this.device, sv: 1 })
-    this.engine = new SyncEngine({ store: this.store, net, ws: this.ws, device: this.device, sv: 1 })
-    this.coord = new TabCoordinator({
-      ws: this.ws, locks: webLocks, channel: webChannel(`nevis-${this.ws}`), intervalMs: 2000,
-      cycle: async () => { const s = await this.engine.cycle(); this.lastError = ''; if (s.applied || s.pushed) this.emit(); return s },
-      onLeaderChange: () => this.emit(),
-      onRemoteChange: () => this.emit(),
-      onError: e => { this.lastError = String((e as Error).message ?? e); this.emit() },
-    })
-    this.coord.start()
-    this.emit()
-  }
+  get store() { return this.rt.store }
+  get client() { return this.rt.client }
+  get engine() { return this.rt.engine }
+  get coord() { return this.rt.coord }
+  get device() { return this.rt.device }
+  get persisted() { return this.rt.persisted }
+  get lastError() { return this.rt.lastError }
+  get offline() { return this.rt.offline }
+  set offline(v: boolean) { this.rt.offline = v }
+
+  async start() { await this.rt.start() }
 
   subscribe(fn: () => void) { this.listeners.add(fn); return () => void this.listeners.delete(fn) }
   private emit() { for (const f of this.listeners) f() }
 
   /** Stops syncing and releases the leader lock (sign-out). */
-  stop() { this.coord?.stop() }
+  stop() { this.rt.stop() }
 
   private async written() { this.coord.notifyLocalChange(); this.emit() }
 

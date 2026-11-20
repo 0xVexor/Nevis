@@ -12,7 +12,8 @@ export interface PullResult { ops: PullOp[]; head: number; more: boolean }
 /** The network, as the engine sees it. Real HTTP in production; the harness wraps it to inject faults. */
 export interface Net {
   push(ws: string, envs: string[]): Promise<PushResult>
-  pull(ws: string, after: number, limit: number): Promise<PullResult>
+  /** `wait` (seconds, 0..25): hold the request until something newer than `after` exists. `signal` cancels it. */
+  pull(ws: string, after: number, limit: number, opts?: { wait?: number; signal?: AbortSignal }): Promise<PullResult>
 }
 
 export class NetError extends Error {
@@ -60,6 +61,20 @@ export class SyncEngine {
     await this.pull(s)
     await this.applyInbox(s)
     return s
+  }
+
+  /** Parks in a long-poll until the server has something newer than the cursor (or `signal` aborts, or 25 s pass). Returns true if there is
+   *  news. It stores nothing: the next `cycle` pulls it. A write on this device aborts it so that the push is not held up. */
+  async listen(signal: AbortSignal): Promise<boolean> {
+    const { store, net, ws } = this.o
+    const after = Number((await store.run(tx => tx.getMeta('cursor'))) ?? 0)
+    try {
+      const page = await net.pull(ws, after, 1, { wait: 25, signal })
+      return page.ops.length > 0
+    } catch (e) {
+      if (signal.aborted) return false
+      throw e
+    }
   }
 
   /** After a `clock_ahead` refusal: once the device clock is right again, rebuild the ops that carry a future HLC. */

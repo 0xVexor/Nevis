@@ -1,5 +1,5 @@
 // Random operations on a replica: registers (including set elements), Yjs paragraphs edited through Yjs' own API, events.
-import { loadDoc } from '@nevis/core'
+import { DocHandle } from '@nevis/core'
 import * as Y from 'yjs'
 import { int, pick, type Rng } from './rng'
 import type { Replica } from './replica'
@@ -34,10 +34,11 @@ async function setFields(rep: Replica, rng: Rng, w: World) {
 
 async function yEdit(rep: Replica, rng: Rng, w: World) {
   const doc = pick(rng, w.docs)
-  const y = await rep.store.run(tx => loadDoc(tx, doc))
+  // Through the real DocHandle (the one the app uses): open from the store, edit, flush, close. The timer never fires (the
+  // test flushes by hand), so a run is reproducible from its seed.
+  const h = await DocHandle.open({ client: rep.client, doc, schedule: () => () => {} })
+  const y = h.ydoc
   y.clientID = 1 + int(rng, 2 ** 30)
-  const updates: Uint8Array[] = []
-  y.on('update', (u: Uint8Array) => updates.push(u))
   const frag = y.getXmlFragment('body')
   y.transact(() => {
     const n = frag.length
@@ -58,7 +59,12 @@ async function yEdit(rep: Replica, rng: Rng, w: World) {
     if (r < 0.75 || t.length === 0) t.insert(int(rng, t.length + 1), `${word(rng)} `)
     else { const from = int(rng, t.length); t.delete(from, 1 + int(rng, Math.min(5, t.length - from))) }
   })
-  if (updates.length) rep.record(await rep.client.writeYUpdate(doc, Y.mergeUpdates(updates)))
+  const before = h.unsaved
+  await h.close() // flush: one transaction with the outbox row, as on pagehide
+  if (before) { // the flush wrote ONE op (merged updates): it is the newest outbox row
+    const rows = await rep.store.run(tx => tx.listOutbox(1e9))
+    rep.record(rows[rows.length - 1]!.op)
+  }
 }
 
 async function event(rep: Replica, rng: Rng, w: World) {
