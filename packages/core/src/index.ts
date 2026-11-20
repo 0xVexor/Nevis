@@ -1,0 +1,8 @@
+export type { DocState, DocUpdate, EventRow, FieldRow, InboxRow, OutboxRow, QuarantineRow, Store, Tx } from './store'
+export { MemoryStore } from './memoryStore'
+export { nextHlc, observeHlc } from './clock'
+export { COMPACT_AFTER, compactDoc, loadDoc } from './docs'
+export { KIND_FIELD, applyEnvelope, type Applied } from './apply'
+export { Client, type ClientOptions } from './client'
+export { NetError, SyncEngine, type CycleStats, type EngineHooks, type EngineOptions, type Net, type PullOp, type PullResult, type PushResult } from './engine'
+export { projectStore, type Projection } from './projection'
