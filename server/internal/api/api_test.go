@@ -60,6 +60,7 @@ func (e *env) do(t *testing.T, method, path string, body string) (int, map[strin
 	t.Helper()
 	req, _ := http.NewRequest(method, e.srv.URL+path, bytes.NewBufferString(body))
 	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Nevis-Proto", "1")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)

@@ -27,6 +27,18 @@ CREATE TABLE IF NOT EXISTS op (ws TEXT NOT NULL, seq INTEGER NOT NULL, op_id TEX
   PRIMARY KEY (ws, seq), UNIQUE (ws, op_id));
 CREATE INDEX IF NOT EXISTS op_doc ON op (ws, doc, seq);
 CREATE TABLE IF NOT EXISTS purged (ws TEXT NOT NULL, doc TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (ws, doc));
+CREATE TABLE IF NOT EXISTS account (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, pass_hash TEXT NOT NULL,
+  recovery_hash TEXT NOT NULL, created_at INTEGER NOT NULL, used_bytes INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS member (ws TEXT NOT NULL, account TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('owner','editor','viewer')),
+  PRIMARY KEY (ws, account));
+CREATE INDEX IF NOT EXISTS member_account ON member (account);
+CREATE TABLE IF NOT EXISTS device (id TEXT PRIMARY KEY, account TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL,
+  created_at INTEGER NOT NULL, last_seen INTEGER, revoked_at INTEGER);
+CREATE INDEX IF NOT EXISTS device_account ON device (account);
+CREATE TABLE IF NOT EXISTS session (token_hash TEXT PRIMARY KEY, account TEXT NOT NULL, device TEXT NOT NULL,
+  created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS session_device ON session (device);
+CREATE TABLE IF NOT EXISTS pow_used (nonce TEXT PRIMARY KEY, at INTEGER NOT NULL);
 `
 
 // Errors the API turns into HTTP answers.
@@ -34,14 +46,23 @@ var (
 	ErrOpConflict  = errors.New("op_conflict")
 	ErrClockAhead  = errors.New("clock_ahead")
 	ErrNoWorkspace = errors.New("no_such_workspace")
+	ErrQuota       = errors.New("quota_exceeded")
+	ErrSvTooOld    = errors.New("sv_too_old")
 )
 
 const MaxSkew = 10 * time.Minute
+
+// SvError is a push from a writer whose schema version is below the workspace's `min_sv`.
+type SvError struct{ MinSV int }
+
+func (e *SvError) Error() string   { return ErrSvTooOld.Error() }
+func (e *SvError) Is(t error) bool { return t == ErrSvTooOld }
 
 type Store struct {
 	w   *sql.DB // the one writer
 	r   *sql.DB // readers
 	now func() time.Time
+	waiters
 }
 
 // Open opens (creating it if needed) the database in dir.
@@ -75,7 +96,7 @@ func Open(dir string) (*Store, error) {
 		return nil, err
 	}
 	r.SetMaxOpenConns(8)
-	return &Store{w: w, r: r, now: time.Now}, nil
+	return &Store{w: w, r: r, now: time.Now, waiters: waiters{m: map[string]map[chan struct{}]struct{}{}}}, nil
 }
 
 func (s *Store) Close() error { return errors.Join(s.w.Close(), s.r.Close()) }
@@ -89,7 +110,16 @@ type Result struct {
 
 // Push stores a batch atomically. `by` is the authenticated account. `create` lets an unknown workspace be created (dev mode).
 // The whole batch is refused (nothing stored) on a clock too far ahead or on an op id that is already there with other bytes.
-func (s *Store) Push(ctx context.Context, ws, by string, envs []*envelope.Envelope, create bool) ([]Result, int64, error) {
+type PushOptions struct {
+	// Create lets an unknown workspace be created by its first push (dev mode only).
+	Create bool
+	// AccountID and QuotaBytes: the pusher's account and its storage limit (0 = unlimited). The bytes of new ops are counted.
+	AccountID  string
+	QuotaBytes int64
+}
+
+func (s *Store) Push(ctx context.Context, ws, by string, envs []*envelope.Envelope, o PushOptions) ([]Result, int64, error) {
+	create := o.Create
 	limit := s.now().Add(MaxSkew).UnixMilli()
 	for _, e := range envs {
 		if e.HLCMs > limit {
@@ -102,7 +132,8 @@ func (s *Store) Push(ctx context.Context, ws, by string, envs []*envelope.Envelo
 	}
 	defer tx.Rollback()
 	var head int64
-	err = tx.QueryRowContext(ctx, `SELECT head FROM workspace WHERE id = ?`, ws).Scan(&head)
+	var minSV int
+	err = tx.QueryRowContext(ctx, `SELECT head, min_sv FROM workspace WHERE id = ?`, ws).Scan(&head, &minSV)
 	if errors.Is(err, sql.ErrNoRows) {
 		if !create {
 			return nil, 0, ErrNoWorkspace
@@ -110,11 +141,17 @@ func (s *Store) Push(ctx context.Context, ws, by string, envs []*envelope.Envelo
 		if _, err = tx.ExecContext(ctx, `INSERT INTO workspace (id, name, head, created_at) VALUES (?, ?, 0, ?)`, ws, ws, s.now().UnixMilli()); err != nil {
 			return nil, 0, err
 		}
-		head = 0
+		head, minSV = 0, 1
 	} else if err != nil {
 		return nil, 0, err
 	}
+	for _, e := range envs {
+		if e.SV < minSV {
+			return nil, 0, &SvError{MinSV: minSV}
+		}
+	}
 	out := make([]Result, 0, len(envs))
+	var added int64
 	for _, e := range envs {
 		var seq int64
 		var sum []byte
@@ -139,13 +176,29 @@ func (s *Store) Push(ctx context.Context, ws, by string, envs []*envelope.Envelo
 			ws, head, e.Op, e.Doc, e.Dev, by, e.SV, e.KID, len(e.P), e.SHA256[:], string(e.Raw), s.now().UnixMilli()); err != nil {
 			return nil, 0, err
 		}
+		added += int64(len(e.P))
 		out = append(out, Result{Op: e.Op, Seq: head, Status: "ok"})
+	}
+	if o.AccountID != "" && added > 0 {
+		var used int64
+		if err := tx.QueryRowContext(ctx, `SELECT used_bytes FROM account WHERE id = ?`, o.AccountID).Scan(&used); err != nil {
+			return nil, 0, err
+		}
+		if o.QuotaBytes > 0 && used+added > o.QuotaBytes {
+			return nil, 0, ErrQuota
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE account SET used_bytes = used_bytes + ? WHERE id = ?`, added, o.AccountID); err != nil {
+			return nil, 0, err
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE workspace SET head = ? WHERE id = ?`, head, ws); err != nil {
 		return nil, 0, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, 0, err
+	}
+	if head > 0 && len(out) > 0 {
+		s.notify(ws)
 	}
 	return out, head, nil
 }
