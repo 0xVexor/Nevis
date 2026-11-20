@@ -70,9 +70,14 @@ export interface TrashedVault extends ServerVault {
 
 export const accountStatus = () => invoke<SyncStatus>('account_status')
 export const serverHealth = (server: string) => invoke<ServerHealth>('server_health', { server })
-export const accountRegister = (server: string, username: string, password: string, invite: string) => invoke<string>('account_register', { server, username, password, invite })
-export const accountLogin = (server: string, username: string, password: string) => invoke<void>('account_login', { server, username, password })
-export const accountRecover = (server: string, username: string, recoveryKey: string, newPassword: string) => invoke<string>('account_recover', { server, username, recoveryKey, newPassword })
+export const accountRegister = (server: string, username: string, password: string, invite: string) => tooManyAttempts(invoke<string>('account_register', { server, username, password, invite }))
+/** Sign-in, sign-up and recovery answer 429 when someone tries too often: say that, not 'the server asked to slow down'. */
+const tooManyAttempts = <T,>(p: Promise<T>): Promise<T> =>
+  p.catch((e) => {
+    throw String(e).startsWith('HUB:rate_limited') || String(e).startsWith('Error: HUB:rate_limited') ? 'HUB:too_many_attempts' : e
+  })
+export const accountLogin = (server: string, username: string, password: string) => tooManyAttempts(invoke<void>('account_login', { server, username, password }))
+export const accountRecover = (server: string, username: string, recoveryKey: string, newPassword: string) => tooManyAttempts(invoke<string>('account_recover', { server, username, recoveryKey, newPassword }))
 export const accountLogout = () => invoke<void>('account_logout')
 export const accountInfo = () => invoke<AccountInfo>('account_info')
 export const accountRevokeDevice = (id: string) => invoke<void>('account_revoke_device', { id })
