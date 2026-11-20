@@ -1,0 +1,50 @@
+{
+  "queue OFF, 2.7 s composition": {
+    "name": "queue OFF, 2.7 s composition",
+    "hold": false,
+    "stepMs": 900,
+    "holdMax": 0,
+    "after": "سلmerge ام دنیکتاب hello اmerge ، این یژاژدنیا ک سژاژmer۱۲۳ geکتاب  ند آزکتاب مایشژای اsynworld c س۱۲۳ تmerhello hello gسلام e ژ",
+    "committedOnce": 2,
+    "zheCount": 6,
+    "endedBeforeCommit": 0,
+    "startedBeforeCommit": 3,
+    "stillComposingBeforeCommit": true
+  },
+  "queue ON (cap 2 s), 1.5 s composition": {
+    "name": "queue ON (cap 2 s), 1.5 s composition",
+    "hold": true,
+    "stepMs": 500,
+    "holdMax": 0,
+    "after": "سلام دنworld یا،گربه  این یsync ک۱۲۳  سwکتاب orld ند آزمایشی merge اسworld syncworld  تژاژ",
+    "committedOnce": 1,
+    "zheCount": 2,
+    "endedBeforeCommit": 0,
+    "startedBeforeCommit": 1,
+    "stillComposingBeforeCommit": true
+  },
+  "queue ON (cap 2 s), 2.7 s composition": {
+    "name": "queue ON (cap 2 s), 2.7 s composition",
+    "hold": true,
+    "stepMs": 900,
+    "holdMax": 0,
+    "after": "سلام دنیا۱۲۳ ، اmergeسلام می‌خواهم  ژاژکتmeworld نوشتن دنیا ۱۲۳ merge rhello ge اببرنامه  ین یک سنگربه د آزمبرناsync مه ایشی استژاژ",
+    "committedOnce": 2,
+    "zheCount": 4,
+    "endedBeforeCommit": 0,
+    "startedBeforeCommit": 1,
+    "stillComposingBeforeCommit": true
+  },
+  "queue ON (cap 10 s), 2.7 s composition": {
+    "name": "queue ON (cap 10 s), 2.7 s composition",
+    "hold": true,
+    "stepMs": 900,
+    "holdMax": 10000,
+    "after": "sync سلامhe۱۲۳ llo meنوشتن rge کتگربه اب  دنhello یاworld ، این ککworld تابhello  تاب یک سند آزممی‌world می‌خواهم خواهم ایشی استژاژ",
+    "committedOnce": 1,
+    "zheCount": 2,
+    "endedBeforeCommit": 0,
+    "startedBeforeCommit": 1,
+    "stillComposingBeforeCommit": true
+  }
+}

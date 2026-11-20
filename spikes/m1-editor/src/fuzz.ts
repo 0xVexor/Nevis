@@ -1,0 +1,205 @@
+// Randomised two-replica editing through the REAL editors (ProseMirror transactions through y-tiptap), with delayed,
+// reordered and duplicated delivery. Runs in a browser page (the editor needs a DOM): window.__fuzz(seed, steps, withUndo).
+import { TextSelection } from '@tiptap/pm/state'
+import { prosemirrorJSONToYXmlFragment } from '@tiptap/y-tiptap'
+import * as Y from 'yjs'
+import { BODY, attrValues, isBlockId, normalize, project, schema, type PMJson } from '@nevis/schema'
+import { createEditor, setDir, DIRS } from './editor'
+import { Relay } from './relay'
+
+export function mulberry32(seed: number) {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+const FA = ['سلام', 'دنیا', 'نوشتن', 'کتاب', 'می‌خواهم', '۱۲۳', 'گربه', 'برنامه', 'یادداشت']
+const EN = ['hello', 'world', 'sync', 'merge', '42', 'Nevis']
+const pick = <T,>(rng: () => number, a: readonly T[]): T => a[Math.floor(rng() * a.length)]!
+const word = (rng: () => number) => (rng() < 0.6 ? pick(rng, FA) : pick(rng, EN))
+
+let counter = 0
+const bid = () => `01930000-0000-7000-8000-${String(++counter).padStart(12, '0')}`
+const para = (text: string, dir = 'auto'): PMJson => ({ type: 'paragraph', attrs: { blockId: bid(), dir }, content: [{ type: 'text', text }] })
+
+export function initialJson(): PMJson {
+  const cell = (t: string): PMJson => ({ type: 'tableCell', attrs: { blockId: bid(), colspan: 1, rowspan: 1 }, content: [para(t)] })
+  const item = (t: string): PMJson => ({ type: 'listItem', attrs: { blockId: bid() }, content: [para(t)] })
+  return {
+    type: 'doc',
+    content: [
+      para('سلام دنیا، این یک سند آزمایشی است'),
+      para('mixed متن مخلوط 123 and English', 'rtl'),
+      { type: 'bulletList', attrs: { blockId: bid() }, content: [item('اول'), item('دوم'), item('سوم')] },
+      para('left to right paragraph', 'ltr'),
+      { type: 'table', attrs: { blockId: bid(), dir: 'rtl' }, content: [{ type: 'tableRow', attrs: { blockId: bid() }, content: [cell('الف'), cell('ب')] }, { type: 'tableRow', attrs: { blockId: bid() }, content: [cell('ج'), cell('د')] }] },
+      para('پایان'),
+    ],
+  }
+}
+
+/** The first place two JSON values differ, for the report. */
+export function firstDiff(a: unknown, b: unknown, path = ''): string | null {
+  if (JSON.stringify(a) === JSON.stringify(b)) return null
+  if (typeof a !== 'object' || typeof b !== 'object' || !a || !b) return `${path}: ${JSON.stringify(a)?.slice(0, 80)} vs ${JSON.stringify(b)?.slice(0, 80)}`
+  const ka = new Set([...Object.keys(a as object), ...Object.keys(b as object)])
+  for (const k of ka) { const d = firstDiff((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k], `${path}/${k}`); if (d) return d }
+  return path
+}
+
+export interface FuzzResult {
+  seed: number
+  steps: number
+  withUndo: boolean
+  docsEqual: boolean
+  viewChecks: number
+  viewMismatches: number
+  fixedByRerender: number
+  rangeErrors: number
+  otherErrors: number
+  errorSample: string[]
+  idsOk: boolean
+  nullAttrs: number
+  sizeA: number
+  ms: number
+  mismatchSample: string[]
+  /** view differed from the Y.Doc for a moment and agreed after one event-loop turn */
+  transient: number
+}
+
+const settle = (ms = 0) => new Promise<void>(r => setTimeout(r, ms))
+
+export async function runFuzz(seed: number, steps = 500, withUndo = false, checkEvery = 5): Promise<FuzzResult> {
+  const t0 = performance.now()
+  const rng = mulberry32(seed)
+  const a = new Y.Doc(), b = new Y.Doc()
+  prosemirrorJSONToYXmlFragment(schema, normalize(initialJson()), a.getXmlFragment(BODY))
+  Y.applyUpdate(b, Y.encodeStateAsUpdate(a))
+  const relay = new Relay(a, b)
+  const ed = { A: createEditor(a), B: createEditor(b) }
+  const docs = { A: a, B: b }
+  const res: FuzzResult = { seed, steps, withUndo, docsEqual: false, viewChecks: 0, viewMismatches: 0, fixedByRerender: 0, rangeErrors: 0, otherErrors: 0, errorSample: [], idsOk: false, nullAttrs: 0, sizeA: 0, ms: 0, mismatchSample: [], transient: 0 }
+
+  const checkViews = async () => {
+    for (const side of ['A', 'B'] as const) {
+      res.viewChecks++
+      let want = JSON.stringify(project(docs[side]))
+      let got = JSON.stringify(normalize(ed[side].getJSON() as PMJson))
+      if (want !== got) {
+        // the binding writes the editor's own follow-up transactions (block ids) to the Y.Doc a moment later: look again
+        await settle(80)
+        want = JSON.stringify(project(docs[side]))
+        got = JSON.stringify(normalize(ed[side].getJSON() as PMJson))
+        if (want === got) { res.transient++; continue }
+      }
+      if (want !== got) {
+        res.viewMismatches++
+        if (res.mismatchSample.length < 3) res.mismatchSample.push(firstDiff(project(docs[side]), normalize(ed[side].getJSON() as PMJson)) ?? '?')
+        // can a fresh view on the same Y.Doc show what the document says? (ROADMAP M1: rerender fixes it)
+        const fresh = createEditor(docs[side])
+        if (JSON.stringify(normalize(fresh.getJSON() as PMJson)) === want) res.fixedByRerender++
+        fresh.destroy()
+      }
+    }
+  }
+
+  const blockStarts = (e: (typeof ed)['A']) => {
+    const out: { from: number; to: number }[] = []
+    e.state.doc.descendants((node, pos) => { if (node.isTextblock) out.push({ from: pos + 1, to: pos + 1 + node.content.size }) })
+    return out
+  }
+
+  const op = (side: 'A' | 'B') => {
+    const e = ed[side]
+    const blocks = blockStarts(e)
+    if (!blocks.length) return
+    const blk = pick(rng, blocks)
+    const pos = blk.from + Math.floor(rng() * (blk.to - blk.from + 1))
+    e.view.dispatch(e.state.tr.setSelection(TextSelection.near(e.state.doc.resolve(pos))).setMeta('addToHistory', false))
+    const r = rng()
+    const kinds = withUndo ? 11 : 9
+    const k = Math.floor(r * kinds)
+    switch (k) {
+      case 0: case 1: case 2: e.view.dispatch(e.state.tr.insertText(word(rng) + ' ')); break
+      case 3: { const to = Math.min(blk.to, pos + 1 + Math.floor(rng() * 4)); if (to > pos) e.view.dispatch(e.state.tr.delete(pos, to)); break }
+      case 4: e.commands.splitBlock(); break
+      case 5: e.view.dispatch(e.state.tr.setSelection(TextSelection.near(e.state.doc.resolve(blk.from)))); e.commands.joinBackward(); break
+      case 6: rng() < 0.5 ? e.commands.liftListItem('listItem') : e.commands.sinkListItem('listItem'); break
+      case 7: {
+        const top = e.state.doc.childCount
+        if (top < 2) break
+        const i = Math.floor(rng() * top), j = Math.floor(rng() * top)
+        if (i === j) break
+        let from = 0
+        for (let n = 0; n < i; n++) from += e.state.doc.child(n).nodeSize
+        const node = e.state.doc.child(i)
+        let target = 0
+        for (let n = 0; n < j + (j > i ? 1 : 0); n++) target += e.state.doc.child(n).nodeSize
+        const tr = e.state.tr
+        tr.delete(from, from + node.nodeSize)
+        tr.insert(tr.mapping.map(target), node)
+        e.view.dispatch(tr)
+        break
+      }
+      case 8: rng() < 0.7 ? setDir(e, pick(rng, DIRS)) : e.commands.addRowAfter(); break
+      case 9: e.commands.undo(); break
+      case 10: e.commands.redo(); break
+    }
+  }
+
+  for (let s = 0; s < steps; s++) {
+    const side = rng() < 0.5 ? 'A' : 'B'
+    try { op(side) } catch (err) {
+      if (err instanceof RangeError) res.rangeErrors++
+      else { res.otherErrors++; if (res.errorSample.length < 3) res.errorSample.push(String((err as Error).message ?? err).slice(0, 160)) }
+    }
+    if (rng() < 0.5) {
+      try { relay.deliverRandom(rng) } catch (err) { res.otherErrors++; if (res.errorSample.length < 3) res.errorSample.push('deliver: ' + String(err).slice(0, 160)) }
+    }
+    if (s % checkEvery === 0) await checkViews()
+  }
+  relay.flush()
+  relay.flush()
+  await settle()
+  relay.flush()
+  await checkViews()
+
+  const pa = project(a), pb = project(b)
+  res.docsEqual = JSON.stringify(pa) === JSON.stringify(pb)
+  const ids: string[] = []
+  const walk = (n: PMJson) => { if (n.attrs && 'blockId' in n.attrs) ids.push(String(n.attrs.blockId)); n.content?.forEach(walk) }
+  walk(pa)
+  res.idsOk = ids.every(isBlockId) && new Set(ids).size === ids.length
+  for (const [, v] of attrValues(pa)) if (v === null || v === undefined) res.nullAttrs++
+  res.sizeA = Y.encodeStateAsUpdate(a).length
+  ed.A.destroy(); ed.B.destroy()
+  res.ms = Math.round(performance.now() - t0)
+  return res
+}
+
+/** ROADMAP M1 criterion 7: 100 paragraphs, 30 undo/redo cycles; size of the encoded state. */
+export function runSizeTest(): { paragraphs: number; cycles: number; bytes: number; bytesBefore: number } {
+  const rng = mulberry32(7)
+  const doc = new Y.Doc()
+  const json: PMJson = { type: 'doc', content: Array.from({ length: 100 }, (_, i) => para(`پاراگراف شمارهٔ ${i} با کمی متن فارسی و English`)) }
+  prosemirrorJSONToYXmlFragment(schema, normalize(json), doc.getXmlFragment(BODY))
+  const bytesBefore = Y.encodeStateAsUpdate(doc).length
+  const e = createEditor(doc)
+  for (let c = 0; c < 30; c++) {
+    for (let k = 0; k < 3; k++) {
+      const blocks: { from: number; to: number }[] = []
+      e.state.doc.descendants((node, pos) => { if (node.isTextblock) blocks.push({ from: pos + 1, to: pos + 1 + node.content.size }) })
+      const blk = pick(rng, blocks)
+      e.view.dispatch(e.state.tr.insertText(word(rng) + ' ', blk.from + Math.floor(rng() * (blk.to - blk.from + 1))))
+    }
+    for (let k = 0; k < 3; k++) e.commands.undo()
+    for (let k = 0; k < 3; k++) e.commands.redo()
+  }
+  const bytes = Y.encodeStateAsUpdate(doc).length
+  e.destroy()
+  return { paragraphs: 100, cycles: 30, bytes, bytesBefore }
+}

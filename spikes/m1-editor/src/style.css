@@ -1,0 +1,16 @@
+body { font-family: "Vazirmatn", system-ui, sans-serif; margin: 0; padding: 12px; background: #fcfcfb; color: #222923; }
+main { max-width: 1400px; margin: 0 auto; }
+h1 { font-size: 20px; margin: 0 0 8px; }
+.controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; padding: 8px 10px; background: #eef2ee; border-radius: 8px; margin-bottom: 10px; font-size: 13px; }
+[data-testid="converged"][data-ok="true"] { color: #087f74; }
+[data-testid="converged"][data-ok="false"] { color: #b3402e; }
+.panes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pane { border: 1px solid #d7ddd7; border-radius: 8px; padding: 8px; background: #fff; }
+.pane h3 { margin: 0 0 4px; font-size: 14px; }
+.bar { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.bar button { font: inherit; font-size: 12px; padding: 2px 8px; }
+.editor .ProseMirror { min-height: 220px; outline: none; padding: 6px; line-height: 1.8; }
+.ProseMirror table { border-collapse: collapse; margin: 6px 0; width: 100%; }
+.ProseMirror td, .ProseMirror th { border: 1px solid #c8cfc8; padding: 4px 6px; vertical-align: top; }
+.ProseMirror ul, .ProseMirror ol { padding-inline-start: 24px; }
+pre { font-size: 11px; background: #f3f5f3; padding: 8px; border-radius: 6px; max-height: 280px; overflow: auto; direction: ltr; text-align: left; }

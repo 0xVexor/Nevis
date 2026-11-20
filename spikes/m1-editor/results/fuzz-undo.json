@@ -1,0 +1,42 @@
+{
+  "steps": 500,
+  "seeds": 200,
+  "docsEqual": 200,
+  "failedSeeds": [],
+  "seedsWithViewMismatch": 0,
+  "seedsWithViewMismatchNotFixedByRerender": 0,
+  "viewMismatchRatePerCheck": 0,
+  "transientViewMismatches": 0,
+  "rangeErrors": 0,
+  "otherErrors": 1,
+  "errorSamples": [
+    "Cannot read properties of undefined (reading '_item')"
+  ],
+  "mismatchSamples": [],
+  "idsNotOk": [],
+  "nullAttrs": 0,
+  "maxSizeBytes": 76416,
+  "ms": 13502,
+  "results": [
+    {
+      "seed": 34,
+      "steps": 500,
+      "withUndo": true,
+      "docsEqual": true,
+      "viewChecks": 202,
+      "viewMismatches": 0,
+      "fixedByRerender": 0,
+      "rangeErrors": 0,
+      "otherErrors": 1,
+      "errorSample": [
+        "Cannot read properties of undefined (reading '_item')"
+      ],
+      "idsOk": true,
+      "nullAttrs": 0,
+      "sizeA": 37030,
+      "ms": 71,
+      "mismatchSample": [],
+      "transient": 0
+    }
+  ]
+}

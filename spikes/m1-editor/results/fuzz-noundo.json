@@ -1,0 +1,19 @@
+{
+  "steps": 500,
+  "seeds": 200,
+  "docsEqual": 200,
+  "failedSeeds": [],
+  "seedsWithViewMismatch": 0,
+  "seedsWithViewMismatchNotFixedByRerender": 0,
+  "viewMismatchRatePerCheck": 0,
+  "transientViewMismatches": 0,
+  "rangeErrors": 0,
+  "otherErrors": 0,
+  "errorSamples": [],
+  "mismatchSamples": [],
+  "idsNotOk": [],
+  "nullAttrs": 0,
+  "maxSizeBytes": 115416,
+  "ms": 13956,
+  "results": []
+}
