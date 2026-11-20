@@ -1,0 +1,197 @@
+// Package store is the server's log: an append-only list of opaque envelopes per workspace with a server-assigned `seq`.
+// All writes go through ONE connection and one transaction per push, so the order in which transactions commit is the order of
+// `seq`, and a reader can never see a higher `seq` while a lower one is still to come (ADR-0005, ADR-0006). The package never
+// looks inside an op's payload.
+package store
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"net/url"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/nevis-app/nevis/server/internal/envelope"
+	_ "modernc.org/sqlite"
+)
+
+const schema = `
+CREATE TABLE IF NOT EXISTS workspace (id TEXT PRIMARY KEY, name TEXT NOT NULL, head INTEGER NOT NULL DEFAULT 0,
+  min_sv INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS op (ws TEXT NOT NULL, seq INTEGER NOT NULL, op_id TEXT NOT NULL, doc TEXT NOT NULL, dev TEXT NOT NULL,
+  by_account TEXT NOT NULL, sv INTEGER NOT NULL, kid INTEGER NOT NULL, size INTEGER NOT NULL,
+  env_sha256 BLOB NOT NULL, env TEXT NOT NULL, received_at INTEGER NOT NULL,
+  PRIMARY KEY (ws, seq), UNIQUE (ws, op_id));
+CREATE INDEX IF NOT EXISTS op_doc ON op (ws, doc, seq);
+CREATE TABLE IF NOT EXISTS purged (ws TEXT NOT NULL, doc TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (ws, doc));
+`
+
+// Errors the API turns into HTTP answers.
+var (
+	ErrOpConflict  = errors.New("op_conflict")
+	ErrClockAhead  = errors.New("clock_ahead")
+	ErrNoWorkspace = errors.New("no_such_workspace")
+)
+
+const MaxSkew = 10 * time.Minute
+
+type Store struct {
+	w   *sql.DB // the one writer
+	r   *sql.DB // readers
+	now func() time.Time
+}
+
+// Open opens (creating it if needed) the database in dir.
+func Open(dir string) (*Store, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(dir, "nevis.db")
+	dsn := func(extra ...string) string {
+		q := url.Values{}
+		q.Add("_pragma", "journal_mode(WAL)")
+		q.Add("_pragma", "synchronous(NORMAL)")
+		q.Add("_pragma", "busy_timeout(5000)")
+		for _, e := range extra {
+			q.Add("_pragma", e)
+		}
+		return "file:" + path + "?" + q.Encode()
+	}
+	w, err := sql.Open("sqlite", dsn()+"&_txlock=immediate")
+	if err != nil {
+		return nil, err
+	}
+	w.SetMaxOpenConns(1)
+	if _, err := w.Exec(schema); err != nil {
+		w.Close()
+		return nil, fmt.Errorf("create schema: %w", err)
+	}
+	r, err := sql.Open("sqlite", dsn("query_only(1)"))
+	if err != nil {
+		w.Close()
+		return nil, err
+	}
+	r.SetMaxOpenConns(8)
+	return &Store{w: w, r: r, now: time.Now}, nil
+}
+
+func (s *Store) Close() error { return errors.Join(s.w.Close(), s.r.Close()) }
+
+// Status of one pushed op.
+type Result struct {
+	Op     string `json:"op"`
+	Seq    int64  `json:"seq"`
+	Status string `json:"status"`
+}
+
+// Push stores a batch atomically. `by` is the authenticated account. `create` lets an unknown workspace be created (dev mode).
+// The whole batch is refused (nothing stored) on a clock too far ahead or on an op id that is already there with other bytes.
+func (s *Store) Push(ctx context.Context, ws, by string, envs []*envelope.Envelope, create bool) ([]Result, int64, error) {
+	limit := s.now().Add(MaxSkew).UnixMilli()
+	for _, e := range envs {
+		if e.HLCMs > limit {
+			return nil, 0, ErrClockAhead
+		}
+	}
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer tx.Rollback()
+	var head int64
+	err = tx.QueryRowContext(ctx, `SELECT head FROM workspace WHERE id = ?`, ws).Scan(&head)
+	if errors.Is(err, sql.ErrNoRows) {
+		if !create {
+			return nil, 0, ErrNoWorkspace
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO workspace (id, name, head, created_at) VALUES (?, ?, 0, ?)`, ws, ws, s.now().UnixMilli()); err != nil {
+			return nil, 0, err
+		}
+		head = 0
+	} else if err != nil {
+		return nil, 0, err
+	}
+	out := make([]Result, 0, len(envs))
+	for _, e := range envs {
+		var seq int64
+		var sum []byte
+		err := tx.QueryRowContext(ctx, `SELECT seq, env_sha256 FROM op WHERE ws = ? AND op_id = ?`, ws, e.Op).Scan(&seq, &sum)
+		switch {
+		case err == nil:
+			if string(sum) != string(e.SHA256[:]) {
+				return nil, 0, ErrOpConflict // the same op id with other bytes: a bug in the client, never accepted silently
+			}
+			out = append(out, Result{Op: e.Op, Seq: seq, Status: "dup"})
+			continue
+		case !errors.Is(err, sql.ErrNoRows):
+			return nil, 0, err
+		}
+		var gone int
+		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM purged WHERE ws = ? AND doc = ?`, ws, e.Doc).Scan(&gone); err == nil {
+			out = append(out, Result{Op: e.Op, Seq: 0, Status: "purged"})
+			continue
+		}
+		head++
+		if _, err := tx.ExecContext(ctx, `INSERT INTO op (ws, seq, op_id, doc, dev, by_account, sv, kid, size, env_sha256, env, received_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+			ws, head, e.Op, e.Doc, e.Dev, by, e.SV, e.KID, len(e.P), e.SHA256[:], string(e.Raw), s.now().UnixMilli()); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, Result{Op: e.Op, Seq: head, Status: "ok"})
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE workspace SET head = ? WHERE id = ?`, head, ws); err != nil {
+		return nil, 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, 0, err
+	}
+	return out, head, nil
+}
+
+// PulledOp is one row of a pull.
+type PulledOp struct {
+	Seq int64
+	By  string
+	RT  int64
+	Env string
+}
+
+// Pull returns the ops after `after`, at most `limit`, and the head, both read from ONE snapshot: `more` is exact and a
+// reader never sees a gap that a later commit fills. An unknown workspace is empty when `create` is set (dev mode).
+func (s *Store) Pull(ctx context.Context, ws string, after int64, limit int, create bool) ([]PulledOp, int64, bool, error) {
+	tx, err := s.r.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, 0, false, err
+	}
+	defer tx.Rollback()
+	var head int64
+	if err := tx.QueryRowContext(ctx, `SELECT head FROM workspace WHERE id = ?`, ws).Scan(&head); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			if create {
+				return nil, 0, false, nil
+			}
+			return nil, 0, false, ErrNoWorkspace
+		}
+		return nil, 0, false, err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT seq, by_account, received_at, env FROM op WHERE ws = ? AND seq > ? ORDER BY seq LIMIT ?`, ws, after, limit)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	defer rows.Close()
+	var ops []PulledOp
+	for rows.Next() {
+		var o PulledOp
+		if err := rows.Scan(&o.Seq, &o.By, &o.RT, &o.Env); err != nil {
+			return nil, 0, false, err
+		}
+		ops = append(ops, o)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, false, err
+	}
+	more := len(ops) > 0 && ops[len(ops)-1].Seq < head
+	return ops, head, more, nil
+}
