@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { DatabaseView } from './DatabaseView'
 import { EditorPane } from './EditorPane'
 import { PageTreeView } from './PageTreeView'
 import type { Workspace, WsStatus } from './workspace'
@@ -25,6 +26,7 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
 
   const page = selected ? ws.tree.byId.get(selected)?.page : undefined
   const create = async (parent: string) => { const id = await ws.newPage(parent); setSelected(id) }
+  const createDb = async () => { const id = await ws.newDatabase(''); setSelected(id) }
   return (
     <div className="app" dir="rtl">
       <header className="top">
@@ -40,6 +42,7 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
         <nav className="side">
           <div className="row">
             <button data-testid="new-page" onClick={() => void create('')}>صفحهٔ تازه</button>
+            <button data-testid="new-database" onClick={() => void createDb()}>پایگاه‌داده</button>
             <button onClick={() => setShowTrash(s => !s)} data-testid="trash-toggle">سطل زباله ({ws.tree.trash.length})</button>
           </div>
           <PageTreeView ws={ws} selected={selected} onSelect={id => { setSelected(id); setShowTrash(false) }} />
@@ -60,7 +63,7 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
                 <button onClick={() => void ws.outdent(page.id)}>برگشت</button>
                 <button onClick={() => { void ws.trash(page.id); setSelected('') }}>حذف</button>
               </div>
-              <EditorPane key={page.id} ws={ws} id={page.id} title={page.title} />
+              {page.type === 'database' ? <DatabaseView key={page.id} ws={ws} id={page.id} /> : <EditorPane key={page.id} ws={ws} id={page.id} title={page.title} />}
             </>
           ) : <p className="small">یک صفحه را انتخاب یا بسازید.</p>}
         </main>

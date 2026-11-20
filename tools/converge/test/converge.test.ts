@@ -64,7 +64,9 @@ describe('convergence against the real server', () => {
   it('without any faults every op is delivered once and nothing is lost', async () => {
     const r = await runSeed(9001, { server: base, token: 'dev', replicas: 2, ops: 300, faults: { loseRequest: 0, loseResponse: 0, duplicate: 0 }, crashes: false })
     expect(r.reason).toBeUndefined()
-    expect(r.stats.serverHead).toBe(300)
+    // the exact count is checked inside runSeed ("log has N ops, devices produced M"): the M7 setup and multi-op domain calls make
+    // the number of ops differ from the number of attempted operations, so only a sanity bound is asserted here
+    expect(r.stats.serverHead).toBeGreaterThan(300)
     expect(r.stats.lostRequests + r.stats.lostResponses + r.stats.duplicates).toBe(0)
   })
 })

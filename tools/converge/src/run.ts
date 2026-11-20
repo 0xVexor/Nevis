@@ -1,11 +1,12 @@
 // One seed: N replicas of the core against the REAL Go server, a random run with faults and crashes, then a check that
 // everything converged and that every operation committed on a device is in the server's log exactly once.
-import { MemoryStore, SyncEngine, projectStore, type Net, type Projection } from '@nevis/core'
+import { MemoryStore, SyncEngine, buildTree, projectStore, readStructured, type Net, type Projection } from '@nevis/core'
 import { UuidGenerator } from '@nevis/protocol'
 import { createWorkspace } from './account'
 import { httpNet } from './http'
 import { randomOp, type World } from './ops'
 import { Replica, type CrashPoint } from './replica'
+import { derived, setupStructured, type StructuredWorld } from './structured'
 import { int, mulberry32, pick, seededBytes } from './rng'
 
 export interface Options {
@@ -37,6 +38,8 @@ export interface Stats {
   quarantined: number
   /** pushes the server refused with `422 clock_ahead` */
   clockAheadRefusals: number
+  /** how many times each structured op (M7) really wrote something */
+  structured: Record<string, number>
 }
 
 export interface SeedResult { seed: number; ok: boolean; reason?: string; stats: Stats; ms: number }
@@ -62,15 +65,19 @@ export async function runSeed(seed: number, o: Options): Promise<SeedResult> {
   const net: Net = httpNet(o.server, token)
   const idGen = new UuidGenerator(() => base + tick, seededBytes(rng))
   const ws = idGen.next()
-  const world: World = { entities: Array.from({ length: 20 }, () => idGen.next()), docs: Array.from({ length: 5 }, () => idGen.next()) }
+  const world: World = { entities: Array.from({ length: 20 }, () => idGen.next()), docs: Array.from({ length: 5 }, () => idGen.next()), pages: [], structured: { dbs: [], tags: [], searches: [], counts: {} } }
+  world.pages = [...world.entities]
   const skews = Array.from({ length: o.replicas }, () => int(rng, 6000) - 3000) // each device's clock is a little off, within 10 minutes
   const ahead = Array.from({ length: o.replicas }, () => 0) // extra offset: a clock that ran fast
   if (o.clockAhead) ahead[0] = 2 * 3_600_000
   if (o.account) await createWorkspace(o.server, token, ws)
   const reps = Array.from({ length: o.replicas }, (_, i) => new Replica(`R${i + 1}`, ws, net, rng, o.faults ?? defaultFaults, () => base + tick + skews[i]! + ahead[i]! - (rng() < 0.02 ? int(rng, 2000) : 0)))
-  const stats: Stats = { seed, ops: 0, syncs: 0, netErrors: 0, lostRequests: 0, lostResponses: 0, duplicates: 0, offlineRefusals: 0, crashes: { afterLocalCommit: 0, afterPush: 0, afterPull: 0 }, serverHead: 0, dupStatuses: 0, quarantined: 0, clockAheadRefusals: 0 }
+  const stats: Stats = { seed, ops: 0, syncs: 0, netErrors: 0, lostRequests: 0, lostResponses: 0, duplicates: 0, offlineRefusals: 0, crashes: { afterLocalCommit: 0, afterPush: 0, afterPull: 0 }, serverHead: 0, dupStatuses: 0, quarantined: 0, clockAheadRefusals: 0, structured: {} }
 
   try {
+    world.structured = await setupStructured(reps, rng, world.pages)
+    stats.structured = world.structured.counts
+    for (const d of world.structured.dbs) world.docs.push(...d.rows)
     for (let i = 0; i < o.ops; i++) {
       tick += int(rng, 4)
       const rep = pick(rng, reps)
@@ -107,6 +114,12 @@ export async function runSeed(seed: number, o: Options): Promise<SeedResult> {
     const projections = await Promise.all(reps.map(r => projectStore(r.store)))
     for (let i = 1; i < projections.length; i++) if (!same(projections[0]!, projections[i]!)) return fail(seed, stats, reps, t0, `replicas ${reps[0]!.name} and ${reps[i]!.name} differ at ${diff(projections[0], projections[i])}`)
 
+    // 1b. the DERIVED data (databases, rows, options, tags, tree order...) is equal too, and the page tree has no cycle
+    const dv = await Promise.all(reps.map(r => derived(r)))
+    for (let i = 1; i < dv.length; i++) if (dv[0] !== dv[i]) return fail(seed, stats, reps, t0, `derived projections of ${reps[0]!.name} and ${reps[i]!.name} differ`)
+    const tree = buildTree((await readStructured(reps[0]!.store)).pages)
+    for (const id of tree.parentOf.keys()) { const seen = new Set<string>(); for (let cur = id; cur !== ''; cur = tree.parentOf.get(cur)!) { if (seen.has(cur)) return fail(seed, stats, reps, t0, `the page tree has a cycle through ${cur}`); seen.add(cur) } }
+
     // 2. the server's log holds every op committed on a device exactly once, and nothing else
     const log: string[] = []
     for (let after = 0; ;) {
@@ -129,6 +142,7 @@ export async function runSeed(seed: number, o: Options): Promise<SeedResult> {
     await new SyncEngine({ store: fresh, net: direct, ws, device, sv: 1, now: () => base + tick }).cycle()
     if (!same(projections[0]!, await projectStore(fresh))) return fail(seed, stats, reps, t0, 'a fresh device reading the log differs from the replicas')
 
+    if ((await derived({ store: fresh })) !== dv[0]) return fail(seed, stats, reps, t0, 'the derived data of a fresh device differs from the replicas')
     for (const r of reps) stats.quarantined += (await r.store.run(tx => tx.listQuarantine())).length
     if (stats.quarantined) return fail(seed, stats, reps, t0, `${stats.quarantined} op(s) were quarantined`)
     return { seed, ok: true, stats: collect(stats, reps), ms: Date.now() - t0 }

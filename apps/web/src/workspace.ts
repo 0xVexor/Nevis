@@ -1,6 +1,6 @@
 // The notes app's state for one workspace in one tab: the page tree, the open documents, and the actions on them.
 // All writes go through the core client (one committed transaction each); this class only decides WHAT to write.
-import { DocHandle, buildTree, createPage, isInside, movePage, readPages, renamePage, restorePage, trashPage, type PageNode, type PageTree } from '@nevis/core'
+import { DocHandle, buildTree, createDatabase, createPage, isInside, movePage, readStructured, renamePage, restorePage, trashPage, type Client, type PageNode, type PageTree, type Structured } from '@nevis/core'
 import { SyncRuntime } from './runtime'
 
 export interface WsStatus {
@@ -21,6 +21,8 @@ const TITLE_THROTTLE_MS = 400
 export class Workspace {
   readonly rt: SyncRuntime
   tree: PageTree = buildTree([])
+  /** everything structured (databases, rows, tags...) as of the last reload */
+  data: Structured = { pages: [], databases: new Map(), tags: [], savedSearches: [], settings: {}, pageTags: new Map() }
   private readonly handles = new Map<string, DocHandle>()
   private readonly titles = new Map<string, { value: string; timer: ReturnType<typeof setTimeout> | null }>()
   private readonly listeners = new Set<() => void>()
@@ -52,7 +54,8 @@ export class Workspace {
     this.reloading = (async () => {
       do {
         this.again = false
-        this.tree = buildTree(await readPages(this.rt.store))
+        this.data = await readStructured(this.rt.store)
+        this.tree = buildTree(this.data.pages)
         this.emit()
       } while (this.again)
     })().finally(() => { this.reloading = null })
@@ -68,6 +71,20 @@ export class Workspace {
 
   private fail(e: unknown) { this.rt.lastError = String((e as Error).message ?? e); this.emit() }
   private async wrote(id: string) { this.rt.written({ ents: [id] }); await this.reload() }
+
+  /** Runs a write on the client (a domain function of the core), tells the other tabs and refreshes the view. */
+  async mutate<T>(ents: string[], fn: (c: Client) => Promise<T>): Promise<T> {
+    const out = await fn(this.rt.client)
+    this.rt.written({ ents })
+    await this.reload()
+    return out
+  }
+
+  async newDatabase(parent = ''): Promise<string> {
+    const sibs = this.children(parent)
+    const { id } = await this.mutate([], c => createDatabase(c, { parent, before: sibs.length ? sibs[sibs.length - 1]!.page.sortKey : null }))
+    return id
+  }
 
   // ---- pages ----
   children(parent: string): PageNode[] { return parent === '' ? this.tree.roots : (this.tree.byId.get(parent)?.children ?? []) }

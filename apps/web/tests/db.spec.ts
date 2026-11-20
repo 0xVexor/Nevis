@@ -1,0 +1,70 @@
+import { expect, test, type Page } from '@playwright/test'
+
+// ROADMAP M7: a database "کتاب‌ها" in the real app: properties of several types, a select option, cells (with Persian digits),
+// reload: everything persisted and read back typed.
+const pw = 'correct horse battery'
+test.setTimeout(90_000)
+
+async function signUpAndOpen(page: Page) {
+  const name = `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+  await page.goto('/')
+  await page.getByRole('button', { name: 'حساب ندارم' }).click()
+  await page.locator('input[name=username]').fill(name)
+  await page.locator('input[name=password]').fill(pw)
+  await page.getByTestId('auth-submit').click()
+  await expect(page.getByTestId('recovery')).toBeVisible()
+  await page.getByTestId('ws-new').click()
+  await expect(page.getByTestId('new-database')).toBeVisible()
+  return name
+}
+const cell = (page: Page, prop: string, row: number) => page.locator(`[data-testid=cell][data-prop="${prop}"][data-row="${row}"]`)
+
+test('a database: columns of several types, an option, rows, Persian digits in a number cell; reload keeps it all', async ({ page }) => {
+  await signUpAndOpen(page)
+  await page.getByTestId('new-database').click()
+  await expect(page.getByTestId('db-view')).toBeVisible()
+  await page.getByTestId('db-title').fill('کتاب‌ها')
+  for (const [name, type] of [['قیمت', 'number'], ['ژانر', 'select'], ['خوانده', 'checkbox'], ['تاریخ', 'date']] as const) {
+    await page.getByTestId('db-prop-name').fill(name)
+    await page.getByTestId('db-prop-type').selectOption(type)
+    await page.getByTestId('db-add-prop').click()
+    await expect(page.locator(`th[data-prop="${name}"]`)).toBeVisible()
+  }
+  // a select option, added from the table
+  await page.locator('th[data-prop="ژانر"]').getByTestId('opt-name').fill('رمان')
+  await page.locator('th[data-prop="ژانر"]').getByTestId('opt-add').click()
+  await expect(cell(page, 'ژانر', 0)).toHaveCount(0) // no row yet
+  await page.getByTestId('db-add-row').click()
+  await expect(page.getByTestId('db-row')).toHaveCount(1)
+
+  await cell(page, 'نام', 0).locator('input').fill('بوف کور')
+  await cell(page, 'نام', 0).locator('input').blur()
+  await cell(page, 'قیمت', 0).locator('input').fill('۱۲٫۵')
+  await cell(page, 'قیمت', 0).locator('input').blur()
+  await expect(cell(page, 'قیمت', 0).locator('input')).toHaveValue('12.5') // normalized to ASCII digits
+  await cell(page, 'ژانر', 0).locator('select').selectOption({ label: 'رمان' })
+  await cell(page, 'خوانده', 0).locator('input').check()
+  await cell(page, 'تاریخ', 0).locator('input').fill('۱۴۰۵/۰۸/۲۹')
+  await cell(page, 'تاریخ', 0).locator('input').blur()
+  await expect(cell(page, 'تاریخ', 0).locator('input')).toHaveValue('۱۴۰۵/۰۸/۲۹') // shown in the Persian calendar
+
+  // an invalid number is refused (shown as an error, nothing written)
+  await cell(page, 'قیمت', 0).locator('input').fill('1/2')
+  await cell(page, 'قیمت', 0).locator('input').blur()
+  await expect(cell(page, 'قیمت', 0).getByRole('alert')).toBeVisible()
+  await cell(page, 'قیمت', 0).locator('input').fill('12.5')
+  await cell(page, 'قیمت', 0).locator('input').blur()
+  await page.waitForFunction(() => document.querySelector('[data-testid=outbox]')?.textContent === '0')
+
+  await page.reload()
+  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await page.getByTestId('page-row').first().getByRole('button').nth(1).click()
+  await expect(page.getByTestId('db-title')).toHaveValue('کتاب‌ها')
+  await expect(page.getByTestId('db-row')).toHaveCount(1)
+  await expect(cell(page, 'نام', 0).locator('input')).toHaveValue('بوف کور')
+  await expect(cell(page, 'قیمت', 0).locator('input')).toHaveValue('12.5')
+  await expect(cell(page, 'ژانر', 0).locator('select')).toHaveValue(/.+/)
+  await expect(cell(page, 'ژانر', 0).locator('select option:checked')).toHaveText('رمان')
+  await expect(cell(page, 'خوانده', 0).locator('input')).toBeChecked()
+  await expect(cell(page, 'تاریخ', 0).locator('input')).toHaveValue('۱۴۰۵/۰۸/۲۹')
+})

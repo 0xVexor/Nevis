@@ -16,6 +16,8 @@ export interface PageRow {
   createdAt: number
   /** HLC of the `parent` register: decides which page of a cycle goes to the root. */
   parentHlc: string
+  /** the `$kind` of the record: a page or a database (both are nodes of the page tree) */
+  type?: 'page' | 'database'
 }
 
 export interface PageNode { page: PageRow; children: PageNode[]; depth: number }

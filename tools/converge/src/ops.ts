@@ -8,13 +8,16 @@ const FA = ['سلام', 'دنیا', 'می‌خواهم', 'نوشتن', 'کتاب
 const EN = ['hello', 'world', 'sync', 'merge', 'Nevis', '42']
 const word = (rng: Rng) => (rng() < 0.6 ? pick(rng, FA) : pick(rng, EN))
 
-export interface World { entities: string[]; docs: string[] }
+import { structuredOp, type StructuredWorld } from './structured'
+
+export interface World { entities: string[]; docs: string[]; /** page-like ids for tree moves and tags: the 20 pages and every database */ pages: string[]; structured: StructuredWorld }
 
 export async function randomOp(rep: Replica, rng: Rng, w: World): Promise<void> {
   const r = rng()
-  if (r < 0.5) return setFields(rep, rng, w)
-  if (r < 0.88) return yEdit(rep, rng, w)
-  return event(rep, rng, w)
+  if (r < 0.30) return setFields(rep, rng, w)
+  if (r < 0.50) return yEdit(rep, rng, w)
+  if (r < 0.55) return event(rep, rng, w)
+  return structuredOp({ rep, rng, w: w.structured, pages: w.pages, docs: w.docs })
 }
 
 async function setFields(rep: Replica, rng: Rng, w: World) {

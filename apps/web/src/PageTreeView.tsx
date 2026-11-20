@@ -15,7 +15,7 @@ export function PageTreeView({ ws, selected, onSelect }: Props) {
       <li key={id}>
         <div className={`row ${id === selected ? 'sel' : ''}`} data-testid="page-row" data-id={id}>
           <button className="twist" aria-label="باز/بسته" onClick={() => toggle(id)} disabled={!n.children.length}>{n.children.length ? (expanded ? '▾' : '◂') : '·'}</button>
-          <button className="title" onClick={() => onSelect(id)}>{n.page.title || 'بدون عنوان'}</button>
+          <button className="title" onClick={() => onSelect(id)}>{n.page.type === 'database' ? '▦ ' : ''}{n.page.title || 'بدون عنوان'}</button>
         </div>
         {expanded && n.children.length > 0 && <ul>{n.children.map(row)}</ul>}
       </li>

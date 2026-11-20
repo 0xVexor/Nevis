@@ -13,3 +13,10 @@ export { FUTURE_MARGIN_MS, rebuildFutureOps } from './clockRepair'
 export { buildTree, isInside, type PageNode, type PageRow, type PageTree } from './tree'
 export { PAGE_KIND, createPage, movePage, readPages, renamePage, restorePage, sortKeyBetween, trashPage, type NewPage } from './pages'
 export { DocHandle, REMOTE, type Cancel, type DocHandleOptions } from './docHandle'
+export { normalizeDecimal, compareDecimal, toAsciiDigits } from './decimal'
+export { normalizeDate, formatDateFa, gregorianToJalali, jalaliToGregorian, validGregorian } from './dates'
+export {
+  InvalidCell, KINDS, PROP_TYPES, VIEW_TYPES, addOption, addProperty, backlinks, cellFields, createDatabase, createRow, createSavedSearch, createTag, createView, readStructured, removeOption,
+  renameProperty, renameView, setCell, setMembers, setPropertyConfig, setSetting, setViewConfig, tagPage, titleProperty, trashProperty, trashRow, trashView, updateOption, updateSavedSearch, updateTag,
+  type CellValue, type DatabaseModel, type NewDatabase, type OptionModel, type PropType, type PropertyModel, type RowModel, type SavedSearchModel, type Structured, type TagModel, type ViewModel, type ViewType,
+} from './records'

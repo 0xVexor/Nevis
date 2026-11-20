@@ -44,6 +44,12 @@ try {
     await page.getByTestId('new-page').click()
     await page.waitForFunction(() => document.querySelector('[data-testid=title]')?.value === '') // the NEW page is selected (else the fill renames the old one)
     await page.getByTestId('title').fill('صفحهٔ وب')
+    // the database the desktop made: the web adds a select option of its own
+    await page.getByTestId('page-row').nth(1).getByRole('button').nth(1).click()
+    await page.locator('th[data-prop="ژانر"]').getByTestId('opt-name').waitFor()
+    await page.locator('th[data-prop="ژانر"]').getByTestId('opt-name').fill('گزینهٔ وب')
+    await page.locator('th[data-prop="ژانر"]').getByTestId('opt-add').click()
+    await page.locator('th[data-prop="ژانر"] .optadd').getByText('گزینهٔ وب').waitFor()
     await page.waitForFunction(() => document.querySelector('[data-testid=outbox]')?.textContent === '0', null, { timeout: 15000 })
     await page.waitForTimeout(500)
   } finally { await browser.close() }
@@ -51,10 +57,11 @@ try {
   const b = await runApp(['--sync'], appEnv(sb, { NEVIS_SERVER: srv.url, NEVIS_USER: user, NEVIS_PHASE: 'b', NEVIS_WS: ws }), 120_000)
   const res = /RESULT (.+)/.exec(b.out)?.[1]
   if (b.code !== 0 || !res) throw new Error(`desktop phase b failed:\n${b.out}`)
-  const { titles, text } = JSON.parse(res)
+  const { titles, text, options } = JSON.parse(res)
+  if (!(options.includes('گزینهٔ دسکتاپ') && options.includes('گزینهٔ وب'))) throw new Error(`select options after the restart: ${JSON.stringify(options)}`)
   if (!titles.includes('از دسکتاپ') || !titles.includes('صفحهٔ وب')) throw new Error(`titles: ${JSON.stringify(titles)}`)
   if (!text.some(t => t.includes('متن دسکتاپ') && t.includes('متن وب'))) throw new Error(`body text: ${JSON.stringify(text)}`)
-  console.log(`desktop restarted without signing in and holds both sides: ${JSON.stringify(titles)}`)
+  console.log(`desktop restarted without signing in and holds both sides: ${JSON.stringify(titles)}, select options ${JSON.stringify(options)}`)
   ok = true
 } finally { srv.stop() }
 process.exitCode = ok ? 0 : 1

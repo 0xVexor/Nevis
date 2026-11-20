@@ -1,6 +1,7 @@
 // `Nevis --sync`: one side of the desktop <-> web convergence test (scripts/converge.mjs drives the other side with a browser).
 //  phase a: sign up as a device, make a workspace, write a page (title + body) and push it; prints `WS <id>`.
 //  phase b: NO sign-in (the token must come from the keychain/file after a restart): pull, print the pages and the body text.
+import { addOption, addProperty } from '@nevis/core'
 import { createEditor } from '@nevis/editor'
 import { uuidv7 } from '@nevis/protocol'
 import { createWorkspace, me, signUp } from './auth'
@@ -35,6 +36,10 @@ async function main() {
     const ed = createEditor(h.ydoc, host)
     ed.commands.insertContent('متن دسکتاپ')
     await ws.flushAll()
+    // a database with a select column and one option (the web adds another while the desktop is closed)
+    const dbId = await ws.newDatabase('')
+    const prop = await ws.mutate([], c => addProperty(c, dbId, { name: 'ژانر', type: 'select' }))
+    await ws.mutate([prop], c => addOption(c, prop, { name: 'گزینهٔ دسکتاپ' }))
     await settle(ws)
     await ws.stop()
     await invoke('app_exit', { code: 0, report: `WS ${id}` })
@@ -44,14 +49,16 @@ async function main() {
     await ws.start()
     await settle(ws)
     const titles = ws.tree.roots.map(n => n.page.title)
+    const options = [...ws.data.databases.values()].flatMap(d => d.properties.flatMap(p => p.options.map(o => o.name))).sort()
     const text: string[] = []
     for (const n of ws.tree.roots) {
+      if (n.page.type === 'database') continue
       const h = await ws.openDoc(n.page.id)
       const host = document.createElement('div'); document.body.append(host)
       text.push(createEditor(h.ydoc, host).getText())
     }
     await ws.stop()
-    await invoke('app_exit', { code: 0, report: `RESULT ${JSON.stringify({ titles, text })}` })
+    await invoke('app_exit', { code: 0, report: `RESULT ${JSON.stringify({ titles, text, options })}` })
   }
 }
 main().catch(async e => { await invoke('app_exit', { code: 2, report: `sync crashed: ${String((e as Error)?.stack ?? e)}` }) })

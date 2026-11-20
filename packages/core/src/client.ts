@@ -13,6 +13,8 @@ export interface ClientOptions {
   sv: number
   now?: () => number
   newId?: () => string
+  /** the random source of sort-key suffixes (a seeded one makes a harness run reproducible) */
+  rnd?: () => number
 }
 
 export class Client {
@@ -22,6 +24,7 @@ export class Client {
   readonly sv: number
   private readonly now: () => number
   private readonly newId: () => string
+  readonly rnd: () => number
   constructor(o: ClientOptions) {
     this.store = o.store
     this.ws = o.ws
@@ -29,6 +32,7 @@ export class Client {
     this.sv = o.sv
     this.now = o.now ?? Date.now
     this.newId = o.newId ?? uuidv7
+    this.rnd = o.rnd ?? Math.random
   }
 
   /** A fresh id / the current time, for helpers that build entities on this client. */
@@ -42,13 +46,25 @@ export class Client {
     return env.op
   }
 
+  private async writeRec(tx: Tx, ent: string, set: Record<string, Json>, kind?: string): Promise<string> {
+    const h = await nextHlc(tx, this.device, this.now())
+    if (kind !== undefined) await tx.putFieldIfNewer(ent, KIND_FIELD, JSON.stringify(kind), h)
+    for (const [f, v] of Object.entries(set)) await tx.putFieldIfNewer(ent, f, JSON.stringify(v), h)
+    return this.emit(tx, ent, encodeRec({ ...(kind !== undefined ? { kind } : {}), set, h }), h)
+  }
+
   /** Writes some fields of an entity. `kind` only the first time. Returns the op id. */
   async setFields(ent: string, set: Record<string, Json>, kind?: string): Promise<string> {
+    return this.store.run(tx => this.writeRec(tx, ent, set, kind))
+  }
+
+  /** Several entities in ONE local transaction (a database with its first property and view): a crash never leaves half of it.
+   *  Each entity is still its own op, so other devices may see them one by one and must tolerate that. */
+  async setFieldsMany(items: { ent: string; set: Record<string, Json>; kind?: string }[]): Promise<string[]> {
     return this.store.run(async tx => {
-      const h = await nextHlc(tx, this.device, this.now())
-      if (kind !== undefined) await tx.putFieldIfNewer(ent, KIND_FIELD, JSON.stringify(kind), h)
-      for (const [f, v] of Object.entries(set)) await tx.putFieldIfNewer(ent, f, JSON.stringify(v), h)
-      return this.emit(tx, ent, encodeRec({ ...(kind !== undefined ? { kind } : {}), set, h }), h)
+      const ops: string[] = []
+      for (const it of items) ops.push(await this.writeRec(tx, it.ent, it.set, it.kind))
+      return ops
     })
   }
 

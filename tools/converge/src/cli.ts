@@ -4,6 +4,7 @@
 import { parseArgs } from 'node:util'
 import { deviceToken } from './account'
 import { runSeed, type SeedResult, type Stats } from './run'
+import { EXPECTED_OPS } from './structured'
 
 const { values: v } = parseArgs({
   options: {
@@ -17,10 +18,10 @@ const { values: v } = parseArgs({
 const opts: Parameters<typeof runSeed>[1] = { server: v.server!, token: v.token!, replicas: Number(v.replicas), ops: Number(v.ops), crashes: !v['no-crashes'], clockAhead: v['clock-ahead'] }
 const sum = (a: Stats, b: Stats): Stats => ({
   ...a, ops: a.ops + b.ops, syncs: a.syncs + b.syncs, netErrors: a.netErrors + b.netErrors, lostRequests: a.lostRequests + b.lostRequests, lostResponses: a.lostResponses + b.lostResponses,
-  duplicates: a.duplicates + b.duplicates, offlineRefusals: a.offlineRefusals + b.offlineRefusals, serverHead: a.serverHead + b.serverHead, clockAheadRefusals: a.clockAheadRefusals + b.clockAheadRefusals, dupStatuses: a.dupStatuses + b.dupStatuses,
+  duplicates: a.duplicates + b.duplicates, offlineRefusals: a.offlineRefusals + b.offlineRefusals, serverHead: a.serverHead + b.serverHead, clockAheadRefusals: a.clockAheadRefusals + b.clockAheadRefusals, dupStatuses: a.dupStatuses + b.dupStatuses, structured: Object.fromEntries([...new Set([...Object.keys(a.structured), ...Object.keys(b.structured)])].map(k => [k, (a.structured[k] ?? 0) + (b.structured[k] ?? 0)])),
   crashes: { afterLocalCommit: a.crashes.afterLocalCommit + b.crashes.afterLocalCommit, afterPush: a.crashes.afterPush + b.crashes.afterPush, afterPull: a.crashes.afterPull + b.crashes.afterPull },
 })
-const zero = (): Stats => ({ seed: 0, ops: 0, syncs: 0, netErrors: 0, lostRequests: 0, lostResponses: 0, duplicates: 0, offlineRefusals: 0, crashes: { afterLocalCommit: 0, afterPush: 0, afterPull: 0 }, serverHead: 0, dupStatuses: 0, quarantined: 0, clockAheadRefusals: 0 })
+const zero = (): Stats => ({ seed: 0, ops: 0, syncs: 0, netErrors: 0, lostRequests: 0, lostResponses: 0, duplicates: 0, offlineRefusals: 0, crashes: { afterLocalCommit: 0, afterPush: 0, afterPull: 0 }, serverHead: 0, dupStatuses: 0, quarantined: 0, clockAheadRefusals: 0, structured: {} })
 
 try {
   const r = await fetch(`${opts.server}/v1/health`)
@@ -54,5 +55,8 @@ console.log(`\n${results.length} seeds, ${total.ops} operations, ${total.serverH
 console.log(`faults: ${total.lostRequests} lost requests, ${total.lostResponses} lost answers, ${total.duplicates} repeated requests, ${total.offlineRefusals} offline refusals`)
 if (opts.clockAhead) console.log(`clock: ${total.clockAheadRefusals} pushes refused with 422 clock_ahead, repaired once the clock was fixed`)
 console.log(`crashes: ${total.crashes.afterLocalCommit} after a local commit, ${total.crashes.afterPush} after a push (before the outbox row was removed), ${total.crashes.afterPull} after a pull (before applying)`)
+const missing = EXPECTED_OPS.filter(n => !((total.structured[n] ?? 0) > 0))
+console.log(`structured ops that wrote something (M7): ${EXPECTED_OPS.map(n => `${n} ${total.structured[n] ?? 0}`).join(', ')}`)
+if (missing.length && results.length * opts.ops >= 20_000) { console.log(`COVERAGE: these ops never ran: ${missing.join(', ')}`); failed.push({ seed: 0, ok: false, stats: total, ms: 0, reason: 'coverage' }) }
 console.log(failed.length ? `converged: NO (${failed.length} failed: ${failed.map(f => f.seed).join(', ')})` : 'converged: yes')
 process.exit(failed.length ? 1 : 0)

@@ -24,11 +24,13 @@ export class Replica {
   readonly ws: string
   private readonly clock: () => number
   private readonly ids: UuidGenerator
+  private readonly rng: Rng
 
   constructor(name: string, ws: string, inner: Net, rng: Rng, faults: FaultConfig, clock: () => number) {
     this.name = name
     this.ws = ws
     this.clock = clock
+    this.rng = rng
     this.ids = new UuidGenerator(() => this.clock(), seededBytes(rng))
     this.device = this.ids.next()
     this.net = new FaultyNet(inner, rng, faults)
@@ -37,7 +39,7 @@ export class Replica {
 
   /** New in-memory objects on the same committed store. */
   build() {
-    this.client = new Client({ store: this.store, ws: this.ws, device: this.device, sv: 1, now: this.clock, newId: () => this.ids.next() })
+    this.client = new Client({ store: this.store, ws: this.ws, device: this.device, sv: 1, now: this.clock, newId: () => this.ids.next(), rnd: () => this.rng() })
     this.engine = new SyncEngine({
       store: this.store, net: this.net, ws: this.ws, device: this.device, sv: 1, now: this.clock,
       hooks: {
