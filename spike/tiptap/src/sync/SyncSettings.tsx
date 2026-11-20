@@ -6,6 +6,7 @@ import { Button, Dialog, Field, Notice, PreferenceGroup, PreferenceRow } from '.
 import { Switch } from '../design-system/controls'
 import { isTauri, vaultList } from '../db'
 import { t } from '../i18n'
+import { confirmDialog } from '../dialog'
 import { PurgeDialog } from './PurgeDialog'
 import {
   accountChangePassword,
@@ -35,6 +36,7 @@ import {
   syncConfirm,
   syncError,
   syncHeld,
+  syncNewIdentity,
   syncNow,
   syncReupload,
   syncSet,
@@ -45,6 +47,7 @@ import {
   type SyncStatus,
   type TrashedVault,
 } from './client'
+import { describeSyncError, isSticky, needsSignIn } from './syncErrorText'
 
 const HELD_SHOWN = 10
 
@@ -57,8 +60,32 @@ function changedText<T>(s: SyncStatus, wrap: (label: string) => T): (string | T)
   return parts.map((p) => (p === '{account}' ? wrap(accountShown(s.error)) : p === '{other}' ? wrap(signedInShown(s)) : p))
 }
 
+/** Text for a pause the person has to act on; null for a reason without one. */
+function pauseText(s: SyncStatus): string | null {
+  switch (s.reason) {
+    case 'NEEDS_CONFIRM':
+      return t('{n} deletions are waiting for your OK.').replace('{n}', s.error)
+    case 'SIGNED_OUT':
+      return t('You are signed out of the server. Sign in again.')
+    case 'ACCOUNT_CHANGED':
+      return changedText(s, (x) => `\u2066${x}\u2069`).join('')
+    case 'VAULT_TAKEN':
+      return t('This workspace’s ID is already used by another account on this server (for example a copy of a folder that syncs elsewhere).')
+    case 'CLOUD_GONE':
+      return t('This workspace is no longer on the server (it was deleted there). The files on this computer are untouched.')
+    case 'VAULT_MISSING':
+      return t('The vault folder was not found.')
+    case 'VAULT_MISMATCH':
+      return t('A different vault is in this folder.')
+    default:
+      return null
+  }
+}
+
 function statusText(s: SyncStatus): string {
   if (!s.syncOn) return t('Sync is off for this workspace.')
+  // a sticky pause wins over "Syncing…": the backend keeps its reason while a round runs
+  if ((s.state === 'syncing' || s.state === 'pending') && isSticky(s)) return pauseText(s) ?? t('Sync is paused')
   switch (s.state) {
     case 'syncing':
       return t('Syncing…')
@@ -69,27 +96,9 @@ function statusText(s: SyncStatus): string {
     case 'idle':
       return s.lastAt ? t('Up to date. Last sync: {time}').replace('{time}', new Date(s.lastAt).toLocaleTimeString()) : t('Up to date.')
     case 'paused':
-      switch (s.reason) {
-        case 'NEEDS_CONFIRM':
-          return t('{n} deletions are waiting for your OK.').replace('{n}', s.error)
-        case 'SIGNED_OUT':
-          return t('You are signed out of the server. Sign in again.')
-        case 'ACCOUNT_CHANGED':
-          return changedText(s, (x) => `\u2066${x}\u2069`).join('')
-        case 'CLOUD_GONE':
-          return t('This workspace is no longer on the server (it was deleted there). The files on this computer are untouched.')
-        case 'VAULT_MISSING':
-          return t('The vault folder was not found.')
-        case 'VAULT_MISMATCH':
-          return t('A different vault is in this folder.')
-        default:
-          return t('Sync is paused')
-      }
-    case 'error': {
-      // never the raw code or the technical lines behind it
-      const m = syncError(s.error)
-      return /^(HUB|AUTH|NETWORK):|\n/.test(m) ? t('Sync failed') : m
-    }
+      return pauseText(s) ?? t('Sync is paused')
+    case 'error':
+      return describeSyncError(s, t).text
     default:
       return t('Sync is off for this workspace.')
   }
@@ -169,7 +178,9 @@ function SignIn({ status, onDone, onKey }: { status: SyncStatus; onDone: () => v
   const defaultServer = status.defaultServer
   const [server, setServer] = useState(status.server || '')
   const [customServer, setCustomServer] = useState(false)
-  const [username, setUsername] = useState('')
+  // the login is no longer accepted (password changed elsewhere, device revoked): the same form, with the account filled in
+  const again = status.signedIn
+  const [username, setUsername] = useState(status.username ?? '')
   const [password, setPassword] = useState('')
   const [invite, setInvite] = useState('')
   const [health, setHealth] = useState<ServerHealth | null>(null)
@@ -220,9 +231,32 @@ function SignIn({ status, onDone, onKey }: { status: SyncStatus; onDone: () => v
   const registration = health?.registration
   return (
     <PreferenceGroup title={t('Your server')} hint={t('Sync keeps your workspaces the same on all your devices. Files are sent only to the server shown below, and only for workspaces with sync turned on.')}>
-      <Notice tone="info" title={t('Sign in to send this workspace to your server')}>
-        {t('This workspace is only on this computer. After you sign in, you can send it to your server and keep it synced.')}
-      </Notice>
+      {again ? (
+        <Notice
+          tone="warn"
+          role="alert"
+          title={t('You are signed out of the server. Sign in again.')}
+          action={
+            <Button
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  await accountLogout()
+                  onDone()
+                })
+              }
+            >
+              {t('Sign out')}
+            </Button>
+          }
+        >
+          {t('The password was changed or this device was removed. Your files on this computer are untouched.')}
+        </Notice>
+      ) : (
+        <Notice tone="info" title={t('Sign in to send this workspace to your server')}>
+          {t('This workspace is only on this computer. After you sign in, you can send it to your server and keep it synced.')}
+        </Notice>
+      )}
       {showServerField ? (
         <PreferenceRow wide label={t('Server address')} hint={t('For example sync.example.com')}>
           <Field ltr value={server} placeholder="sync.example.com" aria-label={t('Server address')} onChange={(e) => setServer(e.target.value)} onBlur={() => server.trim() && void check()} />
@@ -281,7 +315,7 @@ function SignIn({ status, onDone, onKey }: { status: SyncStatus; onDone: () => v
             <Button variant="primary" disabled={busy || !serverUsed.trim() || !username || !password} onClick={() => void signIn()}>
               {t('Sign in')}
             </Button>
-            {registration !== 'closed' && (
+            {registration !== 'closed' && !again && (
               <Button disabled={busy || !serverUsed.trim() || !username || !password} onClick={() => void register()}>
                 {t('Create account')}
               </Button>
@@ -561,6 +595,50 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
             {t('Sending it uploads this workspace\'s files to the signed-in account\'s space on its server.')}
           </Notice>
         )}
+        {status.syncOn && status.reason === 'VAULT_TAKEN' && (
+          <Notice
+            tone="warn"
+            role="alert"
+            title={t('This workspace’s ID is used by another account')}
+            action={
+              <div className="prefs-actions">
+                <Button
+                  variant="primary"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      const ok = await confirmDialog({
+                        title: t('Sync it as a new workspace'),
+                        message: t('It gets a new identity and is uploaded as a separate workspace of this account.'),
+                        confirmLabel: t('Sync it as a new workspace'),
+                      })
+                      if (!ok) return
+                      await syncNewIdentity()
+                      // the open workspace now has a new id: the app reloads so every screen and save uses it
+                      window.location.reload()
+                    })
+                  }
+                >
+                  {t('Sync it as a new workspace')}
+                </Button>
+                <Button
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      await syncSet(false)
+                      await load()
+                      refresh()
+                    })
+                  }
+                >
+                  {t('Turn off sync')}
+                </Button>
+              </div>
+            }
+          >
+            {t('This workspace’s ID is already used by another account on this server (for example a copy of a folder that syncs elsewhere).')}
+          </Notice>
+        )}
         {status.syncOn && status.reason === 'CLOUD_GONE' && (
           <Notice
             tone="warn"
@@ -635,7 +713,7 @@ function SignedIn({ status, refresh, onKey }: { status: SyncStatus; refresh: () 
               </Button>
             }
           >
-            {t('Many files, or a whole side, would be deleted by this sync. They are kept aside for 30 days. Allow them only if that is what you meant.')}
+            {t('Many files, or a whole side, would be deleted by this sync. They are kept aside for 7 days. Allow them only if that is what you meant.')}
             {held.length > 0 && (
               <ul dir="ltr" style={{ textAlign: 'left' }}>
                 {held.slice(0, HELD_SHOWN).map((d) => (
@@ -889,7 +967,7 @@ export function SyncSettings() {
   const onKey = (text: string, username: string) => setKey({ text, username })
   return (
     <>
-      {status.signedIn ? <SignedIn status={status} refresh={refresh} onKey={onKey} /> : <SignIn status={status} onDone={refresh} onKey={onKey} />}
+      {!needsSignIn(status) ? <SignedIn status={status} refresh={refresh} onKey={onKey} /> : <SignIn status={status} onDone={refresh} onKey={onKey} />}
       {key && <RecoveryKeyDialog keyText={key.text} username={key.username} onClose={() => setKey(null)} />}
     </>
   )

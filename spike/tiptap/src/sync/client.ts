@@ -3,6 +3,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { t } from '../i18n'
 import { explain } from '../vaultErrors'
+import { codeMessage } from './syncErrorText'
 
 export type SyncState = 'off' | 'idle' | 'pending' | 'syncing' | 'paused' | 'error' | 'offline'
 
@@ -16,7 +17,11 @@ export interface SyncStatus {
   state: SyncState
   lastAt: number
   error: string
-  /** why it is paused: SIGNED_OUT | NEEDS_CONFIRM (then `error` is the number of held deletions) | VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE | ACCOUNT_CHANGED (then `error` is the `user@server` the workspace syncs with) */
+  /** code of the first error of the last round (`HUB:quota_exceeded`, `NETWORK:…`); '' when none. Absent in older backends. */
+  errorCode?: string
+  /** the path the first error concerns; '' when none */
+  errorPath?: string
+  /** why it is paused: SIGNED_OUT | NEEDS_CONFIRM (then `error` is the number of held deletions) | VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE | VAULT_TAKEN | ACCOUNT_CHANGED (then `error` is the `user@server` the workspace syncs with) */
   reason: string
   /** id of the open workspace (null when none is open) */
   vaultId?: string | null
@@ -91,6 +96,9 @@ export const syncAcceptAccount = () => invoke<void>('sync_accept_account')
 export const accountShown = (label: string) => label.replace('@https://', '@')
 /** The account the signed-in person is, as `user@server`. */
 export const signedInShown = (s: { username: string | null; server: string }) => accountShown(`${s.username ?? ''}@${s.server}`)
+/** The workspace's id is used by another account on the server: gives it a new identity and uploads it as a separate workspace (only while the reason is VAULT_TAKEN). */
+/** Gives the open workspace a new id (the old one belongs to another account); resolves with the new id. The app must reload after it. */
+export const syncNewIdentity = () => invoke<string>('sync_new_identity')
 export const syncNow = () => invoke<void>('sync_now')
 export const syncHeld = () => invoke<HeldDelete[]>('sync_held')
 /** Confirms exactly the list the person was shown. */
@@ -113,29 +121,8 @@ export const formatBytes = (n = 0) => (n < 1024 * 1024 ? Math.max(1, Math.round(
 export function syncError(e: unknown): string {
   const raw = String(e)
   const code = raw.split('\n')[0].replace(/^Error:\s*/, '')
-  const known: Record<string, string> = {
-    'AUTH:unauthorized': t('You are signed out of the server. Sign in again.'),
-    'AUTH:signed_out': t('You are signed out of the server. Sign in again.'),
-    'HUB:bad_credentials': t('The user name or password is wrong.'),
-    'HUB:username_taken': t('This user name is taken.'),
-    'HUB:bad_username': t('Use 3 to 32 letters, digits, dots, dashes or underscores for the user name.'),
-    'HUB:weak_password': t('The password is too short or too weak.'),
-    'HUB:registration_closed': t('This server does not take new accounts.'),
-    'HUB:bad_invite': t('The invite code is wrong.'),
-    'HUB:invite_used': t('This invite code has been used up.'),
-    'HUB:bad_recovery_key': t('The recovery key is wrong.'),
-    'HUB:rate_limited': t('Too many attempts. Wait a little and try again.'),
-    'HUB:quota_exceeded': t('The storage of this account on the server is full.'),
-    'HUB:not_nevis': t('This address answers, but it is not a Nevis sync server.'),
-    'HUB:insecure_server': t('Use an https:// address. Plain http:// works only for this computer.'),
-    'HUB:not_in_trash': t('This workspace is not in the server trash.'),
-    'HUB:vault_deleted': t('This workspace is in the server trash. Restore it from there, then sync again.'),
-    'HUB:no_such_vault': t('This workspace is not on the server (any more).'),
-    'HUB:bad_server': t('This server address is not valid.'),
-  }
-  if (known[code]) return known[code]
-  if (code.startsWith('NETWORK:')) return t('The server cannot be reached. Check the address and your connection.')
-  if (code.startsWith('HUB:http_')) return t('The server answered with an error ({code}).').replace('{code}', code.slice('HUB:http_'.length))
+  const known = codeMessage(code, t)
+  if (known) return known
   return explain(code)
 }
 
