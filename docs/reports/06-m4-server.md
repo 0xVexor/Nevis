@@ -19,7 +19,7 @@
 - `tools/nevis-log` (`pnpm nevis-log --server URL --user NAME [--ws ID]`): ورود به‌عنوان دستگاه، کشیدن لاگ، و چاپ خوانا (decode در کلاینت؛ سرور payload را نمی‌بیند). بدون `--ws` فهرست workspaceها. توجه: برای `yupd` فقط محتوای **همان update** نشان داده می‌شود نه سند کامل.
 - `tools/converge --user/--password` (حساب واقعی) و `--clock-ahead`.
 - `apps/web`: `auth.ts` (کلاینت کوکی؛ PoW با `crypto.subtle`)، `main.tsx` (فرم ورود/ثبت‌نام فارسی، نمایش یک‌بارهٔ کلید بازیابی، فهرست فضاهای کار، فضای کار تازه، خروج). مسیر `?ws=<id>` هنوز با `DEV_TOKEN` بدون ورود کار می‌کند (آزمون‌های Playwright قدیمی).
-- `server/scripts/demo.sh`: build وب + سرور و اجرای یک سرور same-origin روی ۸۷۸۸.
+- `server/scripts/demo.sh`: build وب + سرور و اجرای یک سرور same-origin روی ۸۷۸۸. `server/cmd/smoke` (`go run ./cmd/smoke URL`): ثبت‌نام/ورود با PoW، ساخت workspace، push یک op، pull و مقایسه؛ شکست = exit ۱ (روی سرور واقعی اجرا و سبز شد).
 
 ## نتایج (اجرا شده)
 - `go test -race ./...` سبز؛ `go vet` تمیز. TS: protocol ۶۵، schema ۲۵، m1-editor ۶، core ۲۶، store-idb ۱۰، converge ۴ — همه سبز. Playwright ۳ موتور: ۲۲ سبز، ۲ skip عمدی (`engines.spec` فقط Chromium).
@@ -28,9 +28,11 @@
 
 ## کار نمی‌کند / آزموده نشده / انحراف از ROADMAP
 - **iPhone/Safari واقعی و ماندگاری ۲۴ ساعته** آزموده نشده (چک‌لیست مالک).
-- `go run ./server/cmd/smoke` ساخته **نشد**: `nevis-log` + converge با حساب واقعی + آزمون‌های Go همان پوشش را می‌دهند. دمو با curl هم جایگزین شد با `demo.sh` (یک سرور کامل) — اگر curl-script خواستید، اضافه می‌شود.
 - در dev، پروکسی Vite باید Host را عوض نکند (`changeOrigin: false`) وگرنه محافظ CSRF (Origin==Host) درست ۴۰۳ می‌دهد؛ پشت reverse proxy واقعی هم همین الزام است. در `vite.config.ts` اعمال شد.
-- لاگ کنسول مرورگر یک 401 (پرسش `/v1/me` پیش از ورود) نشان می‌دهد؛ طبیعی است.
+- لاگ کنسول مرورگر یک 401 دارد (پرسش `/v1/me` پیش از ورود) که طبیعی است. 404 قبلی `/favicon.ico` بود و با `<link rel=icon href="data:,">` رفع شد.
+- **یافتهٔ مهم (WebKit):** WebKit کوکی `Secure` را روی `http://localhost` ذخیره نمی‌کند (Chromium و Firefox می‌کنند)؛ پس ثبت‌نام در Safari روی `demo.sh` ساده شکست می‌خورد. راه‌حل: متغیر صریح `INSECURE_COOKIES=1` (جدا از `DEV_MODE`؛ هشدار لاگ می‌دهد؛ فقط دمو محلی) که `demo.sh` می‌گذارد. با آن WebKit و Chromium هر دو روی ۸۷۸۸ ثبت‌نام و سینک می‌کنند (`node apps/web/tests/prod-csp.mjs URL webkit`). سرور واقعی باید پشت HTTPS و بدون این متغیر باشد.
+- `X-Forwarded-For` را سرور نادیده می‌گیرد (limiter فقط از `RemoteAddr`)؛ پس جعل ممکن نیست. پشت reverse proxy همهٔ کلاینت‌ها یک IP می‌شوند (limiter مشترک)؛ `TRUST_PROXY` در صورت نیاز در M15.
+- با خروج، `Lab.stop()` coordinator را می‌ایستاند، ولی داده‌های محلی IndexedDB پاک نمی‌شوند (دستگاه مشترک: تصمیم در M5/M15).
 - ورود/خروج در UI فعلاً بخشی از «آزمایشگاه M3» است؛ UI نهایی در M5/M8.
 - گذرواژه فراموش‌شده فقط با کلید بازیابی؛ UI بازیابی ساخته نشد (API هست).
 

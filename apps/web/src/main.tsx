@@ -110,7 +110,7 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
   const [open, setOpen] = useState<{ lab: Lab; started: Promise<void> } | null>(null)
   const [key, setKey] = useState(recoveryKey)
   useEffect(() => { void workspaces().then(setList, () => setList([])) }, [])
-  const leave = async () => { await signOut().catch(() => undefined); onSignedOut() }
+  const leave = async () => { open?.lab.stop(); await signOut().catch(() => undefined); onSignedOut() }
   const enter = (id: string) => { const lab = startLab(id, null); setOpen({ lab, started: window.__labReady! }) }
   const make = async () => { const id = uuidv7(); await createWorkspace(id, 'یادداشت‌ها'); enter(id) }
   if (open) return <Workspace lab={open.lab} started={open.started} onSignOut={() => void leave()} />

@@ -70,6 +70,9 @@ export class Lab {
   subscribe(fn: () => void) { this.listeners.add(fn); return () => void this.listeners.delete(fn) }
   private emit() { for (const f of this.listeners) f() }
 
+  /** Stops syncing and releases the leader lock (sign-out). */
+  stop() { this.coord?.stop() }
+
   private async written() { this.coord.notifyLocalChange(); this.emit() }
 
   async notes(): Promise<Note[]> {

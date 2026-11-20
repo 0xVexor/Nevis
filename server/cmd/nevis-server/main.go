@@ -56,11 +56,16 @@ func main() {
 	if devMode && secret == "" {
 		secret = "development-secret-development-secret"
 	}
+	// Safari (and iOS) refuse a Secure cookie on plain http, even on localhost: a local demo needs this switch; never set it on a real server.
+	insecure := devMode || os.Getenv("INSECURE_COOKIES") == "1"
+	if insecure && !devMode {
+		log.Warn("INSECURE_COOKIES=1: the session cookie is sent over plain http; use only for a local demo")
+	}
 	bits, _ := strconv.Atoi(env("POW_BITS", "18"))
 	quota, _ := strconv.Atoi(env("QUOTA_MB", "1024"))
 	handler := api.New(st, api.Config{
 		DevMode: devMode, DevToken: os.Getenv("DEV_TOKEN"), Secret: secret, Registration: reg, InviteCodes: invites, PowBits: bits,
-		QuotaBytes: int64(quota) << 20, WebDir: os.Getenv("WEB_DIR"), InsecureCookies: devMode, Log: log,
+		QuotaBytes: int64(quota) << 20, WebDir: os.Getenv("WEB_DIR"), InsecureCookies: insecure, Log: log,
 	})
 	addr := net.JoinHostPort(env("LISTEN_HOST", "127.0.0.1"), env("PORT", "8787"))
 	srv := &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 60 * time.Second, WriteTimeout: 60 * time.Second}
