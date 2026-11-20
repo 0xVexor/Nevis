@@ -2,6 +2,7 @@
 // everything converged and that every operation committed on a device is in the server's log exactly once.
 import { MemoryStore, SyncEngine, projectStore, type Net, type Projection } from '@nevis/core'
 import { UuidGenerator } from '@nevis/protocol'
+import { createWorkspace } from './account'
 import { httpNet } from './http'
 import { randomOp, type World } from './ops'
 import { Replica, type CrashPoint } from './replica'
@@ -14,6 +15,10 @@ export interface Options {
   ops: number
   faults?: { loseRequest: number; loseResponse: number; duplicate: number }
   crashes?: boolean
+  /** a real account (M4): the token of a device; the workspace is created through the API */
+  account?: { token: string }
+  /** replica R1's clock runs two hours ahead for the first 40% of the run, then is fixed (ADR-0005: `422 clock_ahead`) */
+  clockAhead?: boolean
   onTick?: (s: Stats) => void
 }
 
@@ -30,6 +35,8 @@ export interface Stats {
   serverHead: number
   dupStatuses: number
   quarantined: number
+  /** pushes the server refused with `422 clock_ahead` */
+  clockAheadRefusals: number
 }
 
 export interface SeedResult { seed: number; ok: boolean; reason?: string; stats: Stats; ms: number }
@@ -51,13 +58,17 @@ export async function runSeed(seed: number, o: Options): Promise<SeedResult> {
   const rng = mulberry32(seed)
   const base = Date.now()
   let tick = 0
-  const net: Net = httpNet(o.server, o.token)
+  const token = o.account?.token ?? o.token
+  const net: Net = httpNet(o.server, token)
   const idGen = new UuidGenerator(() => base + tick, seededBytes(rng))
   const ws = idGen.next()
   const world: World = { entities: Array.from({ length: 20 }, () => idGen.next()), docs: Array.from({ length: 5 }, () => idGen.next()) }
   const skews = Array.from({ length: o.replicas }, () => int(rng, 6000) - 3000) // each device's clock is a little off, within 10 minutes
-  const reps = Array.from({ length: o.replicas }, (_, i) => new Replica(`R${i + 1}`, ws, net, rng, o.faults ?? defaultFaults, () => base + tick + skews[i]! - (rng() < 0.02 ? int(rng, 2000) : 0)))
-  const stats: Stats = { seed, ops: 0, syncs: 0, netErrors: 0, lostRequests: 0, lostResponses: 0, duplicates: 0, offlineRefusals: 0, crashes: { afterLocalCommit: 0, afterPush: 0, afterPull: 0 }, serverHead: 0, dupStatuses: 0, quarantined: 0 }
+  const ahead = Array.from({ length: o.replicas }, () => 0) // extra offset: a clock that ran fast
+  if (o.clockAhead) ahead[0] = 2 * 3_600_000
+  if (o.account) await createWorkspace(o.server, token, ws)
+  const reps = Array.from({ length: o.replicas }, (_, i) => new Replica(`R${i + 1}`, ws, net, rng, o.faults ?? defaultFaults, () => base + tick + skews[i]! + ahead[i]! - (rng() < 0.02 ? int(rng, 2000) : 0)))
+  const stats: Stats = { seed, ops: 0, syncs: 0, netErrors: 0, lostRequests: 0, lostResponses: 0, duplicates: 0, offlineRefusals: 0, crashes: { afterLocalCommit: 0, afterPush: 0, afterPull: 0 }, serverHead: 0, dupStatuses: 0, quarantined: 0, clockAheadRefusals: 0 }
 
   try {
     for (let i = 0; i < o.ops; i++) {
@@ -65,6 +76,7 @@ export async function runSeed(seed: number, o: Options): Promise<SeedResult> {
       const rep = pick(rng, reps)
       await randomOp(rep, rng, world)
       stats.ops++
+      if (o.clockAhead && i === Math.floor(o.ops * 0.4)) ahead[0] = 0 // the person fixes the clock
       if (o.crashes !== false && rng() < 0.02) rep.crash('afterLocalCommit')
       if (rng() < 0.12) {
         const s = pick(rng, reps)
@@ -79,7 +91,7 @@ export async function runSeed(seed: number, o: Options): Promise<SeedResult> {
 
     // quiet down: everyone online, no faults, no crashes; sync until nothing is left to send or apply
     for (const r of reps) { r.net.offline = false; r.net.enabled = false; r.crashNext = null }
-    const direct = httpNet(o.server, o.token)
+    const direct = httpNet(o.server, token)
     let head = 0
     for (let round = 0; round < 40; round++) {
       for (const r of reps) await r.sync()
@@ -105,7 +117,9 @@ export async function runSeed(seed: number, o: Options): Promise<SeedResult> {
     const produced = reps.flatMap(r => r.produced)
     if (new Set(log).size !== log.length) return fail(seed, stats, reps, t0, 'an op is in the server log twice')
     const inLog = new Set(log)
-    const missing = produced.filter(op => !inLog.has(op))
+    // the ops rebuilt after a clock repair have new ids (by design), so only the OTHER replicas' ops are matched by id there
+    const strict = (o.clockAhead ? reps.slice(1) : reps).flatMap(r => r.produced)
+    const missing = strict.filter(op => !inLog.has(op))
     if (missing.length) return fail(seed, stats, reps, t0, `${missing.length} op(s) committed on a device are not in the log (first ${missing[0]})`)
     if (log.length !== produced.length) return fail(seed, stats, reps, t0, `log has ${log.length} ops, devices produced ${produced.length}`)
 
@@ -131,6 +145,7 @@ function collect(stats: Stats, reps: Replica[]): Stats {
     s.lostResponses += r.net.counts.lostResponses
     s.duplicates += r.net.counts.duplicates
     s.offlineRefusals += r.net.counts.offlineRefusals
+    s.clockAheadRefusals += r.clockAheadRefusals
   }
   return s
 }

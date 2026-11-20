@@ -1,0 +1,170 @@
+[
+ {
+  "status": 400,
+  "code": "bad_challenge",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 400,
+  "code": "bad_envelope",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 400,
+  "code": "bad_invite",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 400,
+  "code": "bad_pow",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 400,
+  "code": "bad_request",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 400,
+  "code": "bad_username",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 400,
+  "code": "challenge_expired",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 400,
+  "code": "weak_password",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 401,
+  "code": "bad_credentials",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 401,
+  "code": "bad_recovery_key",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 401,
+  "code": "unauthorized",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 403,
+  "code": "csrf",
+  "retryable": false,
+  "note": "a state-changing request without Nevis-Proto, or with a foreign Origin"
+ },
+ {
+  "status": 403,
+  "code": "forbidden",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 403,
+  "code": "registration_closed",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 404,
+  "code": "no_such_device",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 404,
+  "code": "no_such_workspace",
+  "retryable": false,
+  "note": "also for a workspace the caller is not a member of (existence is not revealed)"
+ },
+ {
+  "status": 404,
+  "code": "not_found",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 405,
+  "code": "method_not_allowed",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 409,
+  "code": "op_conflict",
+  "retryable": false,
+  "note": "an op id sent again with different bytes; the whole batch is refused"
+ },
+ {
+  "status": 409,
+  "code": "too_many_workspaces",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 409,
+  "code": "username_taken",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 409,
+  "code": "workspace_exists",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 413,
+  "code": "too_large",
+  "retryable": false,
+  "note": ""
+ },
+ {
+  "status": 422,
+  "code": "clock_ahead",
+  "retryable": false,
+  "note": "a device clock more than 10 minutes ahead; the whole batch is refused and the client keeps its ops (ADR-0005)"
+ },
+ {
+  "status": 426,
+  "code": "upgrade_required",
+  "retryable": false,
+  "note": "Nevis-Proto below minProto, or a push with sv below the workspace minSv (extra: minProto / minSv)"
+ },
+ {
+  "status": 429,
+  "code": "rate_limited",
+  "retryable": true,
+  "note": "Retry-After says when to try again"
+ },
+ {
+  "status": 500,
+  "code": "internal",
+  "retryable": true,
+  "note": "the server failed; safe to retry"
+ },
+ {
+  "status": 507,
+  "code": "quota_exceeded",
+  "retryable": false,
+  "note": "the account storage is full"
+ }
+]

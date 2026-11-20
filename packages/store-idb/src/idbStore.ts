@@ -105,6 +105,12 @@ function makeTx(t: IDBTransaction): Tx {
       await req(s('fields').put({ ent, f, val, hlc }))
       return true
     },
+    rekeyField: async (ent, f, from, to) => {
+      const cur = (await req(s('fields').get([ent, f]))) as { val: string; hlc: string } | undefined
+      if (!cur || cur.hlc !== from) return false
+      await req(s('fields').put({ ent, f, val: cur.val, hlc: to }))
+      return true
+    },
     entityFields: async ent => {
       const rows = (await req(s('fields').index('byEnt').getAll(ent))) as { f: string; val: string; hlc: string }[]
       return Object.fromEntries(rows.map(r => [r.f, { val: r.val, hlc: r.hlc } as FieldRow]))
@@ -122,6 +128,12 @@ function makeTx(t: IDBTransaction): Tx {
     putEvent: async e => {
       if ((await req(s('events').get(e.id))) !== undefined) return false
       await req(s('events').put(e))
+      return true
+    },
+    rekeyEvent: async (id, to) => {
+      const e = (await req(s('events').get(id))) as EventRow | undefined
+      if (!e) return false
+      await req(s('events').put({ ...e, hlc: to }))
       return true
     },
     allEvents: async () => (await req(s('events').getAll())) as EventRow[],

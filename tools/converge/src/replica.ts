@@ -20,6 +20,7 @@ export class Replica {
   crashNext: CrashPoint | null = null
   readonly crashes: Record<CrashPoint, number> = { afterLocalCommit: 0, afterPush: 0, afterPull: 0 }
   readonly produced: string[] = []
+  clockAheadRefusals = 0
   readonly ws: string
   private readonly clock: () => number
   private readonly ids: UuidGenerator
@@ -59,7 +60,7 @@ export class Replica {
       return 'ok'
     } catch (e) {
       if (e instanceof CrashSignal) { this.crash(e.message as CrashPoint); return 'crash' }
-      if (e instanceof NetError) return 'neterror'
+      if (e instanceof NetError) { if (e.code === 'clock_ahead') this.clockAheadRefusals++; return 'neterror' }
       throw e
     }
   }

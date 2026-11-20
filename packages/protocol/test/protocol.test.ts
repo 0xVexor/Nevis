@@ -126,3 +126,19 @@ describe('payload frames', () => {
     expect(() => decodeRec(bad)).toThrow()
   })
 })
+
+describe('error catalog (shared with the Go server)', () => {
+  it('is well formed: unique codes, real statuses, retryable only where retrying can help', async () => {
+    const { ERRORS, ERROR_CODES, isRetryableCode } = await import('../src')
+    expect(ERRORS.length).toBeGreaterThanOrEqual(25)
+    expect(ERROR_CODES.size).toBe(ERRORS.length)
+    for (const e of ERRORS) {
+      expect(e.status).toBeGreaterThanOrEqual(400)
+      expect(e.code).toMatch(/^[a-z][a-z_]+$/)
+      if (e.retryable) expect(e.status === 429 || e.status >= 500).toBe(true) // never retry a 4xx that will fail again
+      if (e.status === 429 || e.status === 500) expect(e.retryable).toBe(true)
+      expect(isRetryableCode(e.code)).toBe(e.retryable)
+    }
+    expect(isRetryableCode('some_code_nobody_made')).toBe(false)
+  })
+})

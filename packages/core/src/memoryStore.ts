@@ -59,11 +59,24 @@ export class MemoryStore implements Store {
         this.mapSet(m, f, { val, hlc }, undo)
         return true
       },
+      rekeyField: async (ent, f, from, to) => {
+        const m = this.fields.get(ent)
+        const cur = m?.get(f)
+        if (!m || !cur || cur.hlc !== from) return false
+        this.mapSet(m, f, { val: cur.val, hlc: to }, undo)
+        return true
+      },
       entityFields: async ent => Object.fromEntries(this.fields.get(ent) ?? []),
       entities: async () => [...this.fields.keys()],
       putEvent: async e => {
         if (this.eventRows.has(e.id)) return false
         this.mapSet(this.eventRows, e.id, e, undo)
+        return true
+      },
+      rekeyEvent: async (id, to) => {
+        const e = this.eventRows.get(id)
+        if (!e) return false
+        this.mapSet(this.eventRows, id, { ...e, hlc: to }, undo)
         return true
       },
       allEvents: async () => [...this.eventRows.values()],

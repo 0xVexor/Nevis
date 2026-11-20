@@ -16,10 +16,14 @@ export interface Tx {
   getField(ent: string, f: string): Promise<FieldRow | undefined>
   /** Writes the register when `hlc` is greater than the stored one (or there is none). Returns whether it wrote. */
   putFieldIfNewer(ent: string, f: string, val: string, hlc: string): Promise<boolean>
+  /** Changes the HLC of a register from `fromHlc` to `toHlc`, only if it still holds `fromHlc` (the clock-ahead repair). */
+  rekeyField(ent: string, f: string, fromHlc: string, toHlc: string): Promise<boolean>
   entityFields(ent: string): Promise<Record<string, FieldRow>>
   entities(): Promise<string[]>
   // events (immutable)
   putEvent(e: EventRow): Promise<boolean>
+  /** Gives an event a new HLC (the clock-ahead repair). */
+  rekeyEvent(id: string, toHlc: string): Promise<boolean>
   allEvents(): Promise<EventRow[]>
   // documents (Yjs V1)
   getDocState(doc: string): Promise<DocState | undefined>

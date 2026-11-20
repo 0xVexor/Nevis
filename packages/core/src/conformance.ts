@@ -40,6 +40,19 @@ export function storeConformance({ describe, it, expect }: Harness, name: string
       expect(await s.run(tx => tx.entities())).toEqual(['e'])
     })
 
+    it('rekey: a register or an event moves to a new HLC only from the HLC it holds', async () => {
+      const s = await factory()
+      await s.run(tx => tx.putFieldIfNewer('e', 'f', '"v"', 'h9'))
+      expect(await s.run(tx => tx.rekeyField('e', 'f', 'h8', 'h2'))).toBe(false)
+      expect(await s.run(tx => tx.rekeyField('e', 'f', 'h9', 'h2'))).toBe(true)
+      expect(await s.run(tx => tx.getField('e', 'f'))).toEqual({ val: '"v"', hlc: 'h2' })
+      expect(await s.run(tx => tx.rekeyField('e', 'nope', 'h9', 'h2'))).toBe(false)
+      await s.run(tx => tx.putEvent({ id: 'x', ent: 'c', kind: 'review', hlc: 'h9', body: '{}' }))
+      expect(await s.run(tx => tx.rekeyEvent('x', 'h3'))).toBe(true)
+      expect(await s.run(tx => tx.rekeyEvent('nope', 'h3'))).toBe(false)
+      expect((await s.run(tx => tx.allEvents()))[0]!.hlc).toBe('h3')
+    })
+
     it('events: inserted once, never changed', async () => {
       const s = await factory()
       const e = { id: 'x', ent: 'card', kind: 'review', hlc: 'h1', body: '{"r":3}' }

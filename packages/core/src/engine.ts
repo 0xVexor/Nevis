@@ -2,6 +2,7 @@
 // The three steps are separate transactions, so a crash between any two leaves a state the next round simply continues from.
 import { EnvelopeError, FrameError, encodeEnvelope, parseEnvelope } from '@nevis/protocol'
 import { applyEnvelope } from './apply'
+import { rebuildFutureOps } from './clockRepair'
 import type { Store } from './store'
 
 export interface PushResult { results: { op: string; seq: number; status: 'ok' | 'dup' | 'purged' }[]; head: number }
@@ -54,10 +55,22 @@ export class SyncEngine {
   /** Push everything pending, pull everything new, apply it. */
   async cycle(): Promise<CycleStats> {
     const s: CycleStats = { pushed: 0, dup: 0, pulled: 0, applied: 0, held: 0, quarantined: 0 }
+    await this.repairClock()
     await this.push(s)
     await this.pull(s)
     await this.applyInbox(s)
     return s
+  }
+
+  /** After a `clock_ahead` refusal: once the device clock is right again, rebuild the ops that carry a future HLC. */
+  async repairClock(): Promise<number> {
+    const { store, device, now } = this.o
+    if ((await store.run(tx => tx.getMeta('clockAhead'))) !== '1') return 0
+    const n = await rebuildFutureOps(store, device, now())
+    // nothing is left in the future relative to a correct clock: the flag goes. (If the clock is STILL ahead, the ops are not
+    // in the future relative to it, the push is refused again and the flag comes back: the person has to fix the clock.)
+    await store.run(tx => tx.setMeta('clockAhead', '0'))
+    return n
   }
 
   async push(s: CycleStats = { pushed: 0, dup: 0, pulled: 0, applied: 0, held: 0, quarantined: 0 }) {
@@ -65,7 +78,14 @@ export class SyncEngine {
     for (;;) {
       const rows = await store.run(tx => tx.listOutbox(this.o.batch))
       if (!rows.length) return
-      const res = await net.push(ws, rows.map(r => r.env))
+      let res: PushResult
+      try {
+        res = await net.push(ws, rows.map(r => r.env))
+      } catch (e) {
+        // the server refused the batch because this device's clock is ahead: remember it, keep every op, repair when the clock is right
+        if (e instanceof NetError && e.code === 'clock_ahead') await store.run(tx => tx.setMeta('clockAhead', '1'))
+        throw e
+      }
       const sent = new Set(rows.map(r => r.op))
       const done: string[] = []
       for (const r of res.results) {

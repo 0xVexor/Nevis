@@ -13,7 +13,8 @@
     "converge": "pnpm --filter @nevis/converge converge",
     "test:go": "cd server && go test ./... -race",
     "test:long": "SEEDS=200 OPS=2000 pnpm --filter @nevis/converge test",
-    "test:all": "pnpm test && pnpm test:go"
+    "test:all": "pnpm test && pnpm test:go",
+    "nevis-log": "pnpm --filter @nevis/nevis-log start"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",
