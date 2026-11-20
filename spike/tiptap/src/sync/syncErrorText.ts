@@ -50,6 +50,7 @@ export function codeMessage(code: string, tr: Translate): string | null {
     'HUB:invite_used': 'This invite code has been used up.',
     'HUB:bad_recovery_key': 'The recovery key is wrong.',
     'HUB:rate_limited': 'The server asked to slow down. It will continue by itself.',
+    'HUB:too_many_attempts': 'Too many attempts. Wait a little and try again.',
     'HUB:too_many_uploads': 'Too many unfinished uploads. They clear by themselves; try again in a few minutes.',
     'HUB:quota_exceeded': 'The storage of this account on the server is full.',
     'HUB:not_nevis': 'This address answers, but it is not a Nevis sync server.',
