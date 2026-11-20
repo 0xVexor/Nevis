@@ -81,12 +81,16 @@ func (s *Store) ReceiveBlob(ctx context.Context, userID string, v *Vault, sha st
 	if err != nil {
 		return BlobResult{}, err
 	}
+	var credit int64 // a row without its file (a database restored from a backup) is absent: the bytes are taken again
 	if have != nil {
 		// the upload is a sign of life: housekeeping must not take the blob before the commit that follows it
 		if _, err := s.DB.ExecContext(ctx, "UPDATE blobs SET created_at = ? WHERE vault_id = ? AND sha256 = ?", s.ms(), v.ID, sha); err != nil {
 			return BlobResult{}, err
 		}
-		return BlobResult{Complete: true, Existed: true, Size: have.Size, MD5: have.MD5}, nil
+		if s.Blobs.Has(v.ID, sha) {
+			return BlobResult{Complete: true, Existed: true, Size: have.Size, MD5: have.MD5}, nil
+		}
+		credit = have.Size
 	}
 	if rng == nil {
 		rng = &Range{Start: 0, End: int64(len(body)) - 1, Total: int64(len(body))}
@@ -96,7 +100,7 @@ func (s *Store) ReceiveBlob(ctx context.Context, userID string, v *Vault, sha st
 	}
 	// the declared size counts against the quota from the first piece until the blob is recorded or given up
 	key := v.ID + "/" + sha
-	known, err := s.reserve(ctx, userID, key, rng.Total)
+	known, err := s.reserve(ctx, userID, key, rng.Total, credit, rng.Start == 0 && rng.End+1 == rng.Total)
 	if err != nil {
 		return BlobResult{}, err
 	}

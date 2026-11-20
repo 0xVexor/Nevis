@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/0xVexor/Nevis/server/internal/apierr"
 	"github.com/0xVexor/Nevis/server/internal/auth"
@@ -52,12 +54,7 @@ func (s *Server) putBlob(w http.ResponseWriter, r *http.Request, p *auth.Princip
 	if err != nil {
 		return err
 	}
-	declared := r.ContentLength
-	if declared < 0 { // chunked: the limit below is all that is known
-		declared = blobLimit
-	}
-	s.limitRead(w, s.Timeouts.transfer(declared))
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, blobLimit))
+	body, err := io.ReadAll(http.MaxBytesReader(w, s.readIdle(w, r), blobLimit))
 	if err != nil {
 		return err
 	}
@@ -91,7 +88,7 @@ func (s *Server) headBlob(w http.ResponseWriter, r *http.Request, p *auth.Princi
 	if err != nil {
 		return err
 	}
-	if b == nil {
+	if b == nil || !s.Vaults.Blobs.Has(v.ID, sha) { // a row whose file is gone is not a blob
 		// how far a half-finished upload got, so that the client can resume from there
 		w.Header().Set("X-Received", strconv.FormatInt(s.Vaults.Received(v.ID, sha), 10))
 		w.WriteHeader(http.StatusNotFound)
@@ -144,11 +141,17 @@ func (s *Server) sendBlob(w http.ResponseWriter, vaultID, sha string, r *http.Re
 	defer f.Close()
 	h := w.Header()
 	h.Set("Content-Type", "application/octet-stream")
-	h.Set("Content-Length", strconv.FormatInt(info.Size, 10))
 	h.Set("X-Md5", info.MD5)
 	h.Set("X-Sha256", sha)
-	s.limitWrite(w, s.Timeouts.transfer(info.Size))
+	// A single range (`bytes=N-`, `bytes=N-M`, `bytes=-N`) answers 206 so that an interrupted download resumes where
+	// it stopped; an unsatisfiable one answers 416. A multi-range request is answered with the whole body (200)
+	// rather than a multipart one, which no client of this API asks for.
+	if strings.Contains(r.Header.Get("Range"), ",") {
+		r.Header.Del("Range")
+	}
+	// No modification time: the headers of a whole-body answer stay what they were (no Last-Modified, no ETag).
+	// ServeContent sets Content-Length and Accept-Ranges itself. The write deadline moves with every chunk sent.
+	http.ServeContent(s.writeIdle(w), r, "", time.Time{}, f)
 	// the headers are out: a download the client abandoned halfway is its own business, not an error to answer
-	_, _ = io.Copy(w, f)
 	return nil
 }
