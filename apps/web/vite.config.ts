@@ -9,7 +9,7 @@ const server = { target: process.env.NEVIS_SERVER ?? 'http://127.0.0.1:8787', ch
 const https = process.env.NEVIS_TLS_CERT && process.env.NEVIS_TLS_KEY ? { cert: readFileSync(process.env.NEVIS_TLS_CERT), key: readFileSync(process.env.NEVIS_TLS_KEY) } : undefined
 export default defineConfig({
   plugins: [react()],
-  build: { rollupOptions: { input: { index: 'index.html', bench: 'bench.html', conformance: 'conformance.html' } } },
+  build: { rollupOptions: { input: { index: 'index.html', bench: 'bench.html', conformance: 'conformance.html', 'desktop-selftest': 'desktop-selftest.html', 'desktop-bench': 'desktop-bench.html', 'desktop-typing': 'desktop-typing.html', 'desktop-sync': 'desktop-sync.html' } } },
   server: { port: 5174, strictPort: true, host: true, https, proxy: { '/v1': server } },
   preview: { port: 5174, strictPort: true, host: true, https, proxy: { '/v1': server } },
 })

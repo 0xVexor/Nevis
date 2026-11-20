@@ -1,6 +1,6 @@
 # وضعیت
 
-آخرین به‌روزرسانی: 2026-11-21، پایان M5.
+آخرین به‌روزرسانی: 2026-11-21، پایان M6.
 
 | بخش | وضعیت | امتحان کنید |
 |---|---|---|
@@ -12,10 +12,11 @@
 | M3 IndexedDB + leader چندتب + crash | خودکار سبز (`m3`)؛ iPhone و آزمون ۷ روزه با مالک | `docs/reports/05-m3-idb-leader-crash.md`، `docs/checklists/M3.md` |
 | M4 سرور واقعی + ورود وب | خودکار سبز (`m4`)؛ چک‌لیست iPhone/Safari با مالک | `server/scripts/demo.sh` → http://localhost:8788؛ `docs/reports/06-m4-server.md`، `docs/checklists/M4.md` |
 | M5 برش عمودی وب (صفحه + Yjs + سینک) | خودکار سبز (`m5`)؛ Safari/iPhone و IME با مالک | `server/scripts/demo.sh` → http://localhost:8788؛ `docs/reports/07-m5-web-vertical-slice.md`، `docs/checklists/M5.md` |
-| M6 … M16 | در انتظار | `docs/ROADMAP.md` |
+| M6 دسکتاپ Tauri + SQLite | خودکار سبز روی macOS (`m6`)؛ Windows، keychain واقعی و رابط عادی اپ با مالک | `corepack pnpm --filter @nevis/desktop tauri dev`؛ `docs/reports/08-m6-desktop.md`، `docs/checklists/M6.md` |
+| M7 … M16 | در انتظار | `docs/ROADMAP.md` |
 
 ## کار مالک الان
-- چک‌لیست‌های `docs/checklists/M1.md`، `M3.md`، `M4.md`، `M5.md` روی Safari macOS و iPhone (HTTPS: `docs/dev-https.md`).
+- چک‌لیست‌های `docs/checklists/M1.md`، `M3.md`، `M4.md`، `M5.md`، `M6.md` روی Safari macOS و iPhone (HTTPS: `docs/dev-https.md`).
 - `docs/OPEN-QUESTIONS.md` (به‌ویژه ۱: سینک پس‌زمینه، ۲: E2EE، ۸: نام پیش از M6).
 - معمار: اصلاح ADR-0003 بند ۱۳ (سقف hold ۱۰ ثانیه) و ADR-0001 بند ۶ (`persist()` نباید await شود).
 

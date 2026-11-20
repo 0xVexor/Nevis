@@ -16,6 +16,8 @@
     "@nevis/protocol": "workspace:*",
     "@nevis/schema": "workspace:*",
     "@nevis/store-idb": "workspace:*",
+    "@nevis/store-tauri": "workspace:*",
+    "@tauri-apps/api": "2.12.4",
     "@tiptap/core": "3.35.0",
     "@tiptap/pm": "3.35.0",
     "react": "19.3.1",

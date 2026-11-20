@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { uuidv7 } from '@nevis/protocol'
 import { AuthError, createWorkspace, deviceLabel, me, signIn, signOut, signUp, workspaces, type Me, type WorkspaceInfo } from './auth'
 import { Lab, type Note, type Status } from './lab'
+import { appInfo, isDesktop, onWindowFlush, setServer } from './desktop'
 import { Workspace } from './workspace'
 import { WorkspaceView } from './WorkspaceView'
 import './style.css'
@@ -117,6 +118,8 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
     const ws = new Workspace(id, null)
     ;(window as unknown as { __ws?: Workspace }).__ws = ws
     void ws.start().then(() => setOpen({ ws }))
+    // desktop: closing the window writes what is still waiting and pushes the outbox first (at most 5 s, ADR-0007 §7)
+    if (isDesktop) void onWindowFlush(async () => { await ws.flushAll(); await Promise.race([ws.rt.engine.cycle().catch(() => undefined), new Promise(r => setTimeout(r, 4000))]) })
   }
   const make = async () => { const id = uuidv7(); await createWorkspace(id, 'یادداشت‌ها'); enter(id) }
   if (open) return <WorkspaceView ws={open.ws} onSignOut={() => void leave()} />
@@ -133,11 +136,34 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
   )
 }
 
+/** Desktop only: which server this app talks to (the one address JavaScript may name; Rust checks it). */
+function ServerForm({ onDone }: { onDone: () => void }) {
+  const [err, setErr] = useState('')
+  const submit = async (ev: FormEvent<HTMLFormElement>) => {
+    ev.preventDefault()
+    try { await setServer(String(new FormData(ev.currentTarget).get('server') ?? '')); onDone() } catch (e) { setErr(String(e)) }
+  }
+  return (
+    <main dir="rtl">
+      <h1>آدرس سرور</h1>
+      <form onSubmit={e => void submit(e)} data-testid="server-form">
+        <label>آدرس سرور شما <input name="server" dir="ltr" placeholder="https://notes.example.com" required /></label>
+        <button type="submit">ادامه</button>
+        {err && <p className="err" role="alert">{err}</p>}
+      </form>
+    </main>
+  )
+}
+
 function Root() {
-  const [state, setState] = useState<'loading' | 'out' | { me: Me; recoveryKey?: string }>('loading')
-  const refresh = (recoveryKey?: string) => me().then(m => setState(m ? { me: m, recoveryKey } : 'out'), () => setState('out'))
+  const [state, setState] = useState<'loading' | 'server' | 'out' | { me: Me; recoveryKey?: string }>('loading')
+  const refresh = async (recoveryKey?: string) => {
+    if (isDesktop && !(await appInfo()).server) { setState('server'); return }
+    await me().then(m => setState(m ? { me: m, recoveryKey } : 'out'), () => setState('out'))
+  }
   useEffect(() => { void refresh() }, [])
   if (state === 'loading') return <main><p>در حال باز کردن…</p></main>
+  if (state === 'server') return <ServerForm onDone={() => void refresh()} />
   if (state === 'out') return <SignInForm onDone={k => void refresh(k)} />
   return <Home who={state.me} recoveryKey={state.recoveryKey} onSignedOut={() => setState('out')} />
 }

@@ -1,8 +1,9 @@
 // The sync runtime of one workspace in one tab: the IndexedDB store, the client (local writes), the engine (push/pull/apply), and the
 // tab coordinator (one leader per workspace talks to the server, with a long-poll). Shared by the real app and the test lab.
-import { Client, SyncEngine, TabCoordinator, httpNet, type ChangedMessage, type CycleStats } from '@nevis/core'
+import { Client, SyncEngine, TabCoordinator, httpNet, type ChangedMessage, type CycleStats, type Store } from '@nevis/core'
 import { uuidv7 } from '@nevis/protocol'
 import { IdbStore } from '@nevis/store-idb'
+import { desktopFetch, isDesktop, openDesktopStore } from './desktop'
 import { webChannel, webLocks } from './ports'
 
 /** The schema version of this build (ADR-0002); a document from a newer one is not opened for editing. */
@@ -22,7 +23,7 @@ export interface RuntimeOptions {
 
 export class SyncRuntime {
   readonly ws: string
-  readonly store: IdbStore
+  readonly store: Store
   client!: Client
   engine!: SyncEngine
   coord!: TabCoordinator
@@ -37,7 +38,10 @@ export class SyncRuntime {
   constructor(o: RuntimeOptions) {
     this.o = o
     this.ws = o.ws
-    this.store = new IdbStore({ name: `nevis-${o.ws}`, onVersionChange: () => { this.lastError = 'a newer tab upgraded the database: reload'; this.coord?.stop(); this.o.onChange?.() } })
+    // Desktop: SQLite in Rust (one window, so no other tab can upgrade it). Web: IndexedDB.
+    this.store = isDesktop
+      ? openDesktopStore(o.ws)
+      : new IdbStore({ name: `nevis-${o.ws}`, onVersionChange: () => { this.lastError = 'a newer tab upgraded the database: reload'; this.coord?.stop(); this.o.onChange?.() } })
   }
 
   /** A switch for tests: refuse every request as if the network were down. */
@@ -52,8 +56,9 @@ export class SyncRuntime {
     })
     // Asked in the background: Firefox may show the person a permission prompt, and the answer can take for ever. The app must
     // not wait for it (R2: persist() is a heuristic in Safari/Chrome and a prompt in Firefox).
-    void Promise.resolve(navigator.storage?.persist?.()).then(v => { this.persisted = v ?? null; this.o.onChange?.() }, () => { this.persisted = null })
-    const net = httpNet({ ...(this.o.token ? { token: this.o.token } : {}), offline: () => this._offline })
+    if (isDesktop) this.persisted = true // a file in the app data folder: the browser cannot evict it
+    else void Promise.resolve(navigator.storage?.persist?.()).then(v => { this.persisted = v ?? null; this.o.onChange?.() }, () => { this.persisted = null })
+    const net = httpNet({ ...(this.o.token ? { token: this.o.token } : {}), ...(isDesktop ? { fetch: desktopFetch } : {}), offline: () => this._offline })
     this.client = new Client({ store: this.store, ws: this.ws, device: this.device, sv: SV })
     this.engine = new SyncEngine({ store: this.store, net, ws: this.ws, device: this.device, sv: SV })
     this.coord = new TabCoordinator({

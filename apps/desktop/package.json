@@ -1,0 +1,20 @@
+{
+  "name": "@nevis/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "build:web": "pnpm --filter web build",
+    "test:conformance": "node scripts/selftest.mjs",
+    "bench:ipc": "node scripts/bench.mjs",
+    "test:kill": "node scripts/kill.mjs",
+    "test:converge": "node scripts/converge.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.12.4"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4"
+  }
+}
