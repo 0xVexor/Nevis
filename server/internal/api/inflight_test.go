@@ -102,7 +102,9 @@ func TestInFlightUploadQuota(t *testing.T) {
 				t.Fatalf("upload %d: %d %v", i, r.status, r.body)
 			}
 		}
-		quotaRefused(t, firstPiece(f, strings.Repeat("z", 20)))
+		if r := firstPiece(f, strings.Repeat("z", 20)); r.status != 429 || r.body.str("error") != "too_many_uploads" {
+			t.Fatalf("%d %v", r.status, r.body)
+		}
 		bob := f.register("bob")
 		bv := f.newVault(bob.token, "b")
 		r := f.call("PUT", fmt.Sprintf("/v1/vaults/%s/blobs/%s", bv, sha(a)), opts{token: bob.token, raw: []byte(a[:10]),
@@ -163,6 +165,56 @@ func TestDeadlines(t *testing.T) {
 		}
 		if f.store.Blobs.Received(f.v, sha("slow")) != 0 {
 			t.Fatal("a stalled upload left bytes behind")
+		}
+	})
+
+	t.Run("lets an upload that trickles in steadily finish", func(t *testing.T) {
+		// 6 pieces 100 ms apart: 600 ms in all, twice the 300 ms idle window, but never idle for that long
+		conn, err := net.Dial("tcp", srv.Listener.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+		fmt.Fprintf(conn, "PUT %s HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer %s\r\nContent-Length: 6\r\n\r\n", blobPath("tttttt"), f.a.token)
+		for range 6 {
+			time.Sleep(100 * time.Millisecond)
+			fmt.Fprint(conn, "t")
+		}
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		res, err := http.ReadResponse(bufio.NewReader(conn), nil)
+		if err != nil {
+			t.Fatalf("the server did not answer: %v", err)
+		}
+		defer res.Body.Close()
+		if res.StatusCode != 201 {
+			t.Fatalf("%d", res.StatusCode)
+		}
+	})
+
+	t.Run("cuts off a steady trickle at the ceiling", func(t *testing.T) {
+		capped := f.serve(Timeouts{TransferBase: 300 * time.Millisecond, TransferMax: 500 * time.Millisecond})
+		conn, err := net.Dial("tcp", capped.Listener.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+		fmt.Fprintf(conn, "PUT %s HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer %s\r\nContent-Length: 100\r\n\r\n", blobPath("endless"), f.a.token)
+		go func() {
+			for range 30 {
+				time.Sleep(100 * time.Millisecond)
+				if _, err := fmt.Fprint(conn, "e"); err != nil {
+					return
+				}
+			}
+		}()
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		res, err := http.ReadResponse(bufio.NewReader(conn), nil)
+		if err != nil {
+			t.Fatalf("the server did not answer: %v", err)
+		}
+		defer res.Body.Close()
+		if res.StatusCode != 408 {
+			t.Fatalf("%d", res.StatusCode)
 		}
 	})
 

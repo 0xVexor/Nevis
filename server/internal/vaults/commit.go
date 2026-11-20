@@ -10,6 +10,7 @@ import (
 	"regexp"
 
 	"github.com/0xVexor/Nevis/server/internal/apierr"
+	"github.com/0xVexor/Nevis/server/internal/storage"
 )
 
 var hex64 = regexp.MustCompile(`^[0-9a-f]{64}$`)
@@ -94,6 +95,7 @@ type batch struct {
 	now          int64
 	seq          int64
 	allowDeletes bool
+	blobs        *storage.Blobs // to tell a recorded blob from one whose file is gone
 }
 
 func (b *batch) write(ctx context.Context, tx *sql.Tx, path string, m Meta) error {
@@ -168,6 +170,9 @@ func (b *batch) applyPut(ctx context.Context, tx *sql.Tx, op opIn, row *File) (R
 	if err != nil {
 		return nil, err
 	}
+	if !b.blobs.Has(b.vault, op.SHA256) { // a row restored from a backup without its file is no blob
+		return refuse("blob_missing", ""), nil
+	}
 	var clash string
 	err = tx.QueryRowContext(ctx, "SELECT path FROM files WHERE vault_id = ? AND path_ci = ? AND path <> ?", b.vault, foldCase(op.Path), op.Path).Scan(&clash)
 	if err == nil {
@@ -222,7 +227,7 @@ func (s *Store) Commit(ctx context.Context, v *Vault, device string, in CommitIn
 			out = prior
 			return err
 		}
-		b := &batch{vault: v.ID, device: device, now: s.ms()}
+		b := &batch{vault: v.ID, device: device, now: s.ms(), blobs: s.Blobs}
 		if err := tx.QueryRowContext(ctx, "SELECT seq FROM vaults WHERE id = ?", v.ID).Scan(&b.seq); err != nil {
 			return err
 		}
@@ -344,7 +349,7 @@ func (s *Store) Restore(ctx context.Context, v *Vault, device, path string, rev 
 		if err != nil {
 			return err
 		}
-		b := &batch{vault: v.ID, device: device, now: s.ms(), allowDeletes: true}
+		b := &batch{vault: v.ID, device: device, now: s.ms(), allowDeletes: true, blobs: s.Blobs}
 		if err := tx.QueryRowContext(ctx, "SELECT seq FROM vaults WHERE id = ?", v.ID).Scan(&b.seq); err != nil {
 			return err
 		}
