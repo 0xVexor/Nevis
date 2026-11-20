@@ -1,18 +1,21 @@
-import { StrictMode, useEffect, useState } from 'react'
+import { StrictMode, useEffect, useState, type FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
-import { DEFAULT_WS, Lab, type Note, type Status } from './lab'
+import { uuidv7 } from '@nevis/protocol'
+import { AuthError, createWorkspace, deviceLabel, me, signIn, signOut, signUp, workspaces, type Me, type WorkspaceInfo } from './auth'
+import { Lab, type Note, type Status } from './lab'
 import './style.css'
 
 declare global { interface Window { __lab?: Lab; __labReady?: Promise<void> } }
 
-const ws = new URLSearchParams(location.search).get('ws') ?? DEFAULT_WS
-const lab = new Lab(ws)
-window.__lab = lab
-// started once, outside React (StrictMode runs effects twice in development, which would create two coordinators)
-const started = lab.start()
-window.__labReady = started
+function startLab(ws: string, token: string | null): Lab {
+  const lab = new Lab(ws, token)
+  window.__lab = lab
+  // started once, outside React (StrictMode runs effects twice in development, which would create two coordinators)
+  window.__labReady = lab.start()
+  return lab
+}
 
-function App() {
+function Workspace({ lab, started, onSignOut }: { lab: Lab; started: Promise<void>; onSignOut?: () => void }) {
   const [status, setStatus] = useState<Status | null>(null)
   const [notes, setNotes] = useState<Note[]>([])
   const [ready, setReady] = useState(false)
@@ -29,6 +32,7 @@ function App() {
   return (
     <main dir="rtl">
       <h1>M3 — آزمایشگاه ذخیره‌سازی</h1>
+      {onSignOut && <button data-testid="signout" onClick={onSignOut}>خروج</button>}
       <div className="bar" data-testid="status">
         <span data-testid="leader" data-leader={status.leader}>{status.leader ? '★ این تب leader است' : 'این تب leader نیست'}</span>
         <span>outbox: <b data-testid="outbox">{status.outbox}</b></span>
@@ -62,4 +66,81 @@ function App() {
   )
 }
 
-createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>)
+
+const errText = (e: unknown): string => {
+  if (e instanceof AuthError) {
+    const m: Record<string, string> = { bad_credentials: 'نام کاربری یا گذرواژه درست نیست', rate_limited: 'تلاش بیش از حد؛ کمی بعد دوباره امتحان کنید', username_taken: 'این نام کاربری گرفته شده', registration_closed: 'این سرور حساب تازه نمی‌پذیرد', bad_invite: 'کد دعوت درست نیست', weak_password: 'گذرواژه ضعیف است' }
+    return m[e.code] ?? e.message
+  }
+  return 'سرور در دسترس نیست'
+}
+
+function SignInForm({ onDone }: { onDone: (recoveryKey?: string) => void }) {
+  const [mode, setMode] = useState<'in' | 'up'>('in')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const submit = async (ev: FormEvent<HTMLFormElement>) => {
+    ev.preventDefault()
+    const f = new FormData(ev.currentTarget)
+    const u = String(f.get('username') ?? '').trim(), p = String(f.get('password') ?? ''), inv = String(f.get('invite') ?? '')
+    setBusy(true); setErr('')
+    try {
+      if (mode === 'in') { await signIn(u, p, deviceLabel()); onDone() }
+      else { const r = await signUp(u, p, deviceLabel(), inv); onDone(r.recoveryKey) }
+    } catch (e) { setErr(errText(e)) } finally { setBusy(false) }
+  }
+  return (
+    <main dir="rtl">
+      <h1>{mode === 'in' ? 'ورود' : 'ساخت حساب'}</h1>
+      <form onSubmit={e => void submit(e)} data-testid="auth-form">
+        <label>نام کاربری <input name="username" autoComplete="username" required dir="ltr" /></label>
+        <label>گذرواژه <input name="password" type="password" autoComplete={mode === 'in' ? 'current-password' : 'new-password'} required dir="ltr" /></label>
+        {mode === 'up' && <label>کد دعوت (اگر لازم است) <input name="invite" dir="ltr" /></label>}
+        <button type="submit" disabled={busy} data-testid="auth-submit">{busy ? '…' : mode === 'in' ? 'ورود' : 'ساخت حساب'}</button>
+        {err && <p className="err" role="alert" data-testid="auth-error">{err}</p>}
+      </form>
+      <button type="button" onClick={() => { setMode(mode === 'in' ? 'up' : 'in'); setErr('') }}>{mode === 'in' ? 'حساب ندارم' : 'حساب دارم'}</button>
+    </main>
+  )
+}
+
+/** Signed in: pick (or create) a workspace, then open it. */
+function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string; onSignedOut: () => void }) {
+  const [list, setList] = useState<WorkspaceInfo[] | null>(null)
+  const [open, setOpen] = useState<{ lab: Lab; started: Promise<void> } | null>(null)
+  const [key, setKey] = useState(recoveryKey)
+  useEffect(() => { void workspaces().then(setList, () => setList([])) }, [])
+  const leave = async () => { await signOut().catch(() => undefined); onSignedOut() }
+  const enter = (id: string) => { const lab = startLab(id, null); setOpen({ lab, started: window.__labReady! }) }
+  const make = async () => { const id = uuidv7(); await createWorkspace(id, 'یادداشت‌ها'); enter(id) }
+  if (open) return <Workspace lab={open.lab} started={open.started} onSignOut={() => void leave()} />
+  return (
+    <main dir="rtl">
+      <h1>سلام {who.account.username}</h1>
+      {key && <div className="recovery" data-testid="recovery"><p>کلید بازیابی شما (فقط یک بار نشان داده می‌شود؛ جایی امن نگه دارید):</p><code dir="ltr">{key}</code> <button onClick={() => setKey(undefined)}>نوشتم</button></div>}
+      {list === null ? <p>در حال بارگذاری…</p> : (
+        <ul data-testid="ws-list">{list.map(w => <li key={w.id}><button onClick={() => enter(w.id)}>{w.name}</button> <span className="small">{w.role}</span></li>)}</ul>
+      )}
+      <button data-testid="ws-new" onClick={() => void make()}>فضای کار تازه</button>
+      <button data-testid="signout" onClick={() => void leave()}>خروج</button>
+    </main>
+  )
+}
+
+function Root() {
+  const [state, setState] = useState<'loading' | 'out' | { me: Me; recoveryKey?: string }>('loading')
+  const refresh = (recoveryKey?: string) => me().then(m => setState(m ? { me: m, recoveryKey } : 'out'), () => setState('out'))
+  useEffect(() => { void refresh() }, [])
+  if (state === 'loading') return <main><p>در حال باز کردن…</p></main>
+  if (state === 'out') return <SignInForm onDone={k => void refresh(k)} />
+  return <Home who={state.me} recoveryKey={state.recoveryKey} onSignedOut={() => setState('out')} />
+}
+
+// Tests and the old lab: `?ws=<id>` opens that workspace at once with the development token (no sign-in).
+const devWs = new URLSearchParams(location.search).get('ws')
+if (devWs) {
+  const lab = startLab(devWs, 'dev')
+  createRoot(document.getElementById('root')!).render(<StrictMode><Workspace lab={lab} started={window.__labReady!} /></StrictMode>)
+} else {
+  createRoot(document.getElementById('root')!).render(<StrictMode><Root /></StrictMode>)
+}

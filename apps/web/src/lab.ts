@@ -35,7 +35,11 @@ export class Lab {
   lastError = ''
   private listeners = new Set<() => void>()
 
-  constructor(ws: string) {
+  /** `'dev'` = the development token (tests); `null` = the signed-in cookie session. */
+  private readonly token: string | null
+
+  constructor(ws: string, token: string | null = 'dev') {
+    this.token = token
     this.ws = ws
     this.store = new IdbStore({ name: `nevis-${ws}`, onVersionChange: () => { this.lastError = 'a newer tab upgraded the database: reload'; this.coord?.stop(); this.emit() } })
   }
@@ -49,7 +53,7 @@ export class Lab {
     // Asked in the background: Firefox may show the person a permission prompt, and the answer can take for ever. The app must
     // not wait for it (R2: persist() is a heuristic in Safari/Chrome and a prompt in Firefox).
     void Promise.resolve(navigator.storage?.persist?.()).then(v => { this.persisted = v ?? null; this.emit() }, () => { this.persisted = null })
-    const net = httpNet({ token: 'dev', offline: () => this.offline })
+    const net = httpNet({ ...(this.token ? { token: this.token } : {}), offline: () => this.offline })
     this.client = new Client({ store: this.store, ws: this.ws, device: this.device, sv: 1 })
     this.engine = new SyncEngine({ store: this.store, net, ws: this.ws, device: this.device, sv: 1 })
     this.coord = new TabCoordinator({

@@ -3,7 +3,8 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 // The Go server is reached through the dev server (same origin): no CORS, and the page stays a secure context on localhost.
-const server = process.env.NEVIS_SERVER ?? 'http://127.0.0.1:8787'
+// Host must reach the server unchanged: its CSRF guard compares the Origin header with Host (a reverse proxy in production must do the same).
+const server = { target: process.env.NEVIS_SERVER ?? 'http://127.0.0.1:8787', changeOrigin: false, xfwd: true }
 // HTTPS for a phone on the same network (docs/dev-https.md): NEVIS_TLS_CERT=/path/cert.pem NEVIS_TLS_KEY=/path/key.pem
 const https = process.env.NEVIS_TLS_CERT && process.env.NEVIS_TLS_KEY ? { cert: readFileSync(process.env.NEVIS_TLS_CERT), key: readFileSync(process.env.NEVIS_TLS_KEY) } : undefined
 export default defineConfig({
