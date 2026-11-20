@@ -3,10 +3,17 @@
   "private": true,
   "version": "0.0.0",
   "packageManager": "pnpm@12.21.0",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "typecheck": "pnpm -r --if-present typecheck",
-    "test": "pnpm -r --if-present test"
+    "test": "pnpm -r --if-present test",
+    "dev:server": "cd server && DEV_MODE=1 DEV_TOKEN=dev PORT=8787 go run ./cmd/nevis-server",
+    "converge": "pnpm --filter @nevis/converge converge",
+    "test:go": "cd server && go test ./... -race",
+    "test:long": "SEEDS=200 OPS=2000 pnpm --filter @nevis/converge test",
+    "test:all": "pnpm test && pnpm test:go"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",

@@ -2,6 +2,7 @@ packages:
   - "packages/*"
   - "apps/*"
   - "spikes/*"
+  - "tools/*"
 minimumReleaseAgeExclude:
   - "@tiptap/core@3.35.0"
   - "@tiptap/extension-blockquote@3.35.0"

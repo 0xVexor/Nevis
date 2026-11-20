@@ -1,0 +1,21 @@
+{
+  "name": "@nevis/converge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "converge": "tsx src/cli.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nevis/core": "workspace:*",
+    "@nevis/protocol": "workspace:*",
+    "yjs": "13.6.33"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "tsx": "4.23.15",
+    "vitest": "5.1.1"
+  }
+}
