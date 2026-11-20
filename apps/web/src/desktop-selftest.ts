@@ -38,6 +38,13 @@ async function main() {
       must((await appInfo()).hasToken, 'Rust holds no token after sign-up')
       must((await me())?.account.username.startsWith('st'), 'me() failed with the stored token')
     })
+    await check('JavaScript cannot obtain a token through net_request (sign-in/sign-up/recover paths are closed to it)', async () => {
+      for (const path of ['/v1/auth/signin', '/v1/auth/signup', '/v1/auth/recover']) {
+        let out: unknown = null
+        try { out = await invoke('net_request', { method: 'POST', path, body: JSON.stringify({ username: `st${run.toString(36)}`, password: 'correct horse battery', client: 'device', deviceName: 'attack' }), requestId: null }) } catch { out = null }
+        must(out === null, `net_request answered ${path}: ${JSON.stringify(out).slice(0, 80)}`)
+      }
+    })
     await check('a desktop device syncs through Rust: its change reaches a second device, and back', async () => {
       const ws = uuidv7(), page = uuidv7()
       await createWorkspace(ws, 'selftest')

@@ -28,6 +28,7 @@ export const desktopFetch = (async (input: RequestInfo | URL, init?: RequestInit
     return new Response(r.text, { status: r.status })
   } catch (e) {
     if (signal?.aborted) throw new DOMException('aborted', 'AbortError')
+    void invoke('app_log', { line: `NETFAIL ${String(input)} ${String(e)}` })
     throw new TypeError(String(e))
   } finally {
     signal?.removeEventListener('abort', cancel)

@@ -55,3 +55,33 @@ pub fn from_env() -> Box<dyn TokenStore> {
         _ => Box::new(Keychain),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The REAL keychain (keyring 4 under its default `v1` feature). Ignored by default: the first run on a Mac may ask for
+    /// permission. Run once by hand: `cargo test -- --ignored keychain`.
+    #[test]
+    #[ignore]
+    fn keychain_set_get_delete_round_trip() {
+        let k = Keychain;
+        let server = format!("http://nevis-test-{}.invalid", std::process::id());
+        assert_eq!(k.get(&server), None);
+        k.set(&server, "tok-123").expect("set");
+        assert_eq!(k.get(&server).as_deref(), Some("tok-123"), "get returned nothing right after set: every restart would sign the user out");
+        k.delete(&server);
+        assert_eq!(k.get(&server), None);
+    }
+
+    #[test]
+    fn file_backend_round_trip() {
+        let p = std::env::temp_dir().join(format!("nevis-tokens-{}", std::process::id()));
+        let f = FileTokens(p.clone());
+        f.set("http://a", "1").unwrap(); f.set("http://b", "2").unwrap(); f.set("http://a", "3").unwrap();
+        assert_eq!(f.get("http://a").as_deref(), Some("3"));
+        f.delete("http://a");
+        assert_eq!((f.get("http://a"), f.get("http://b").as_deref()), (None, Some("2")));
+        std::fs::remove_file(p).ok();
+    }
+}

@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "tauri": "tauri",
-    "build:web": "pnpm --filter web build",
+    "build:web": "vite build --config ../web/vite.config.ts --root ../web",
     "test:conformance": "node scripts/selftest.mjs",
     "bench:ipc": "node scripts/bench.mjs",
     "test:kill": "node scripts/kill.mjs",
-    "test:converge": "node scripts/converge.mjs"
+    "test:converge": "node scripts/converge.mjs",
+    "test:ui": "node scripts/ui.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.4"

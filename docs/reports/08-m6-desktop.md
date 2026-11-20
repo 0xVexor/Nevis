@@ -2,7 +2,7 @@
 
 - تاریخ: 2026-11-21 · تگ: `m6` · commit: `git log m6`
 - هدف: همان اپ M5 در یک پنجرهٔ دسکتاپ با دادهٔ SQLite بومی، شبکه و توکن دستگاه در Rust.
-- وضعیت: **بخش خودکار روی macOS کامل و سبز.** Windows اصلاً ساخته و اندازه‌گیری نشد (فقط macOS در دسترس بود). رفتار keychain واقعی، رابط عادی اپ (فرم سرور، ورود، بستن پنجره) و تایپ فارسی واقعی با مالک است (`docs/checklists/M6.md`).
+- وضعیت: **بخش خودکار روی macOS کامل و سبز.** Windows اصلاً ساخته و اندازه‌گیری نشد (فقط macOS در دسترس بود). تعداد پرسش‌های keychain در اپ امضانشده، تایپ فارسی واقعی (IME) و ظاهر پنجره با مالک است (`docs/checklists/M6.md`).
 
 ## چه ساخته شد
 **Rust (`apps/desktop/src-tauri`)**
@@ -21,18 +21,20 @@
 ## نتایج (اجرا شده روی macOS، 2026-11-21)
 | معیار ROADMAP | نتیجه |
 |---|---|
-| conformance سبز | `node apps/desktop/scripts/selftest.mjs`: **۱۰/۱۰** conformance روی SQLite داخل خود اپ + ۵ بررسی دیگر = **۱۵/۱۵** |
+| conformance سبز | `node apps/desktop/scripts/selftest.mjs`: **۱۰/۱۰** conformance روی SQLite داخل خود اپ + ۶ بررسی دیگر = **۱۶/۱۶** |
 | p95 `store_commit` < ۵۰ms | تایپ ۱۰ کلید/ثانیه، ۶۰ ثانیه، ادیتور واقعی + DocHandle (۳۰۰ms throttle): `store_commit` **p50 ۳ms، p95 ۵ms، max ۱۰ms** (n=۱۷۸)؛ کل `run` (خواندن‌ها + commit) p50 ۱۳ms، p95 ۱۷ms، max ۴۷ms. batch ۲۰ نوشتن: commit p95 ۳ms، کل p95 ۲۸ms. (`performance.now()` در WebKit با دقت ~۱ms؛ **فقط macOS**.) go/no-go: عبور با فاصلهٔ زیاد |
 | kill حین تایپ → ≤ ۳۰۰ms | `node apps/desktop/scripts/kill.mjs 10`: ۱۰ بار SIGKILL در لحظهٔ تصادفی؛ بیشترین از دست رفتن **۲۰۰ms** تایپ (۴ نویسه)؛ ۱۰/۱۰ در پنجره |
 | دسکتاپ و وب روی یک حساب همگرا | `node apps/desktop/scripts/converge.mjs`: دسکتاپ صفحه و متن می‌نویسد؛ Chromium وارد می‌شود، می‌بیند، متن و صفحه اضافه می‌کند؛ دسکتاپ **دوباره راه‌اندازی بدون ورود** (توکن از store) هر دو طرف را دارد |
-| توکن در هیچ پاسخ IPC به JS نیست | (۱) خود `selftest`: پاسخ ثبت‌نام کلید `token` ندارد، `hasToken` درست، `me()` با توکن نگه‌داشته‌شده کار می‌کند، و شمارندهٔ پاسخ‌های مسدودشده ۰ است؛ (۲) `cargo test`: `strip_token` و `guard`. **محدودیت:** روی تک‌تک پاسخ‌های همهٔ فرمان‌ها یک ضبط‌کنندهٔ کامل نیست؛ فقط فرمان‌های شبکه/ورود از `guard` رد می‌شوند (فرمان‌های store اصلاً به توکن دسترسی ندارند) |
-| `cargo test` | ۹ آزمون (اتمی بودن batch و rollback با drift، LWW شرطی، شمارندهٔ `k`، ترتیب outbox، ماندگاری بعد از بستن فایل، مسیر/آدرس مجاز، توکن) |
+| توکن در هیچ پاسخ IPC به JS نیست | (۱) `selftest`: پاسخ ثبت‌نام کلید `token` ندارد؛ `hasToken` درست؛ `me()` با توکن نگه‌داشته‌شده کار می‌کند؛ **حمله:** JS با `net_request` به `/v1/auth/signin|signup|recover` (با رمز درست) درخواست می‌دهد و **رد می‌شود** (این مسیرها فقط برای `auth_signin`/`auth_signup` در Rust باز است)؛ شمارندهٔ پاسخ‌های مسدودشده ۰. (۲) `guard` هر پاسخی را که توکن ذخیره‌شده را داشته باشد یا **هر شیء JSON با کلید `token` در سطح بالا** مسدود می‌کند (توکن تازه همان ذخیره‌شده نیست). (۳) `cargo test`: `strip_token`، `guard`، مسیرهای بسته. **محدودیت:** ضبط‌کنندهٔ کامل پاسخ همهٔ فرمان‌ها نیست؛ فرمان‌های store اصلاً به توکن دسترسی ندارند |
+| رابط عادی اپ و بستن پنجره | `node apps/desktop/scripts/ui.mjs`: داخل خود WebView و با UI واقعی (`--ui-test`): فرم آدرس سرور ← ثبت‌نام از فرم ← فضای کار ← صفحه ← تایپ و **بستن پنجره فوراً** (داخل پنجرهٔ ۳۰۰ms) ← اپ خودش خارج می‌شود (۲۵ تا ۴۰ms بعد از بستن؛ حد ۵s) ← اجرای دوم: بدون فرم سرور و ورود، فهرست فضاها، متن هست، «خروج» ← اجرای سوم: فرم ورود. **کنترل منفی:** با غیرفعال کردن ثبت flush، اجرای دوم شکست خورد (متن گم شد)؛ پس آزمون واقعاً flush را می‌سنجد |
+| keychain واقعی | `cargo test -- --ignored keychain`: set ← get ← delete روی keychain macOS با موفقیت؛ توکن در `AppState` cache می‌شود (فقط یک خواندن keychain per سرور) |
+| `cargo test` | ۱۱ آزمون + ۱ ignored (keychain واقعی) (اتمی بودن batch و rollback با drift، LWW شرطی، شمارندهٔ `k`، ترتیب outbox، ماندگاری بعد از بستن فایل، مسیر/آدرس مجاز، توکن) |
 | web | typecheck و آزمون همهٔ بسته‌ها سبز؛ Playwright سه موتور ۳۴ سبز و ۲ skip عمدی (بدون پسرفت از تغییر `runtime/auth/main`) |
 
 ## کار نمی‌کند / آزموده نشده (صادقانه)
 - **Windows:** ساخته و اجرا نشد؛ اعداد IPC و مشکلات build ویندوز ثبت نشد.
-- **keychain واقعی:** آزمون‌های خودکار با پشتیبان فایل اجرا شدند. رفتار `keyring` روی macOS (پرسش رمز بعد از هر build، «Always Allow») و ورود دوباره بدون رمز با keychain واقعی با مالک است (چک‌لیست ۲، ۳، ۹).
-- **رابط عادی اپ** (فرم آدرس سرور، فرم ورود، فهرست فضاها در WebView) و **بستن پنجره با flush** در اپ واقعی اجرا نشد: محیط من امکان screenshot/کلیک روی پنجره نداشت. کد آن‌ها تایپ‌چک شده و مسیر ثبت‌نام/سینک/صفحه با `--sync` اجرا می‌شود، ولی خود UI و رویداد `CloseRequested` فقط با چک‌لیست (۱، ۸) تأیید می‌شوند.
+- **تعداد پرسش‌های keychain در اپ امضانشده** (بعد از هر build تازه؟ «Always Allow») و ورود دوباره **با keychain واقعی در اپ**: آزمون‌های خودکار اپ با پشتیبان فایل اجرا شدند؛ خود `Keychain` فقط در `cargo test -- --ignored` اجرا شد (چک‌لیست ۲، ۳).
+- **ظاهر واقعی پنجره** را ندیدم (محیط من screenshot نمی‌گیرد)؛ رفتار UI از داخل با DOM آزموده شد (ui.mjs) نه با چشم.
 - **سینک وقتی پنجره پنهان است** (ADR-0007 بند ۷) اندازه‌گیری نشد.
 - **سطل زباله، زیرصفحه و جابه‌جایی** در دسکتاپ فقط از راه همان کد مشترک با وب آزموده می‌شوند (آزمون Playwright وب)؛ آزمون خودکار روی خود دسکتاپ ندارند.
 - `TauriStore` فقط در برابر یک نویسندهٔ واحد درست است؛ اگر دو پنجره/فرایند به یک فایل بنویسند (اپ دوم باز شود) drift رخ می‌دهد و Rust batch را رد می‌کند (خطا، نه خرابی داده). قفل تک‌نمونه (single instance) ساخته نشد.
@@ -61,5 +63,6 @@ node apps/desktop/scripts/selftest.mjs        # build + conformance در اپ (N
 node apps/desktop/scripts/bench.mjs 60        # IPC
 node apps/desktop/scripts/kill.mjs 10         # kill حین تایپ
 node apps/desktop/scripts/converge.mjs        # دسکتاپ + وب روی یک حساب
+node apps/desktop/scripts/ui.mjs              # UI واقعی + بستن پنجره + ورود دوباره
 ```
-(پکیج `@nevis/desktop` همین‌ها را با `test:conformance`، `bench:ipc`، `test:kill` و `tauri` هم در `package.json` دارد؛ `test:converge` را اضافه کنید یا مستقیم `node` بزنید.)
+(پکیج `@nevis/desktop` همین‌ها را با `test:conformance`، `bench:ipc`، `test:kill`، `test:converge`، `test:ui` و `tauri` هم دارد. `tauri dev` اجرا نشد؛ مسیر امتحان‌شده: `cargo build --features custom-protocol` + اجرای باینری.)

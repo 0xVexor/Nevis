@@ -24,14 +24,18 @@ const toB64 = (b: Uint8Array): string => {
 const fromB64 = (s: string): Uint8Array => Uint8Array.from(atob(s), c => c.charCodeAt(0))
 const key = (ent: string, f: string) => `${ent}\u0000${f}`
 
+// One queue per workspace FILE for the whole page, not per instance: signing out and entering the same workspace again makes a
+// second TauriStore on the same file while the first one may still be finishing a transaction, and `Store`'s contract says
+// transactions never overlap. (Drift checks cover conditional writes only; `setMeta` of the cursor is unconditional.)
+const queues = new Map<string, Promise<unknown>>()
+
 export class TauriStore implements Store {
-  private queue: Promise<unknown> = Promise.resolve()
   private readonly o: TauriStoreOptions
   constructor(o: TauriStoreOptions) { this.o = o }
 
   run<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
-    const next = this.queue.then(() => this.exec(fn))
-    this.queue = next.catch(() => undefined)
+    const next = (queues.get(this.o.ws) ?? Promise.resolve()).then(() => this.exec(fn))
+    queues.set(this.o.ws, next.catch(() => undefined))
     return next
   }
 

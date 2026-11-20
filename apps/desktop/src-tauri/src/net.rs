@@ -1,15 +1,24 @@
 //! The network of the desktop app (ADR-0007): requests are made HERE, with the device token from the keychain added here.
 //! JavaScript names a path under `/v1/` and a body. It cannot choose the host, cannot send its own `Authorization`, and never
 //! sees the token: not in a request, not in a response (`strip_token` for sign-in, `guard` as a last line for everything).
-use crate::secrets::TokenStore;
 use serde::Serialize;
 use serde_json::Value;
 
 #[derive(Serialize, Debug)]
 pub struct NetResponse { pub status: u16, pub text: String }
 
-/// Only `/v1/...`, no way out of that prefix.
+/// Endpoints that issue a device token: only `auth_signin`/`auth_signup` may reach them (the token must stay in Rust).
+const TOKEN_ISSUING: [&str; 3] = ["/v1/auth/signin", "/v1/auth/signup", "/v1/auth/recover"];
+
+/// Only `/v1/...`, no way out of that prefix, and not the token-issuing endpoints.
 pub fn check_path(path: &str) -> Result<(), String> {
+    let route = path.split('?').next().unwrap_or(path).trim_end_matches('/');
+    if TOKEN_ISSUING.iter().any(|p| route.eq_ignore_ascii_case(p)) { return Err(format!("path not allowed: {path}")); }
+    check_path_inside_v1(path)
+}
+
+/// What Rust's own sign-in/sign-up use: still only `/v1/...`, but the token-issuing endpoints are the point.
+pub fn check_path_inside_v1(path: &str) -> Result<(), String> {
     let ok = path.starts_with("/v1/") && !path.contains("..") && !path.contains('\\') && !path.contains("//") && !path.contains('@') && !path.chars().any(|c| c.is_control() || c == ' ');
     if ok { Ok(()) } else { Err(format!("path not allowed: {path}")) }
 }
@@ -32,18 +41,19 @@ pub fn strip_token(text: &str) -> (Option<String>, String) {
     }
 }
 
-/// Refuses to hand JavaScript anything that contains the current token.
-pub fn guard(tokens: &dyn TokenStore, server: &str, out: &str) -> Result<(), String> {
-    match tokens.get(server) {
-        Some(t) if !t.is_empty() && out.contains(&t) => Err("blocked: the response contained the device token".into()),
-        _ => Ok(()),
+/// Refuses to hand JavaScript a response that holds the current token, OR any JSON object with a top-level `token` (a freshly
+/// issued token is not the stored one, so comparing with the stored token alone would let it through).
+pub fn guard(token: Option<&str>, out: &str) -> Result<(), String> {
+    if matches!(token, Some(t) if !t.is_empty() && out.contains(t)) { return Err("blocked: the response contained the device token".into()); }
+    if let Ok(Value::Object(m)) = serde_json::from_str::<Value>(out) {
+        if m.contains_key("token") { return Err("blocked: the response carried a token".into()); }
     }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::secrets::FileTokens;
 
     #[test]
     fn paths_stay_under_v1() {
@@ -67,13 +77,18 @@ mod tests {
         assert!(!rest.contains("SECRET-123") && rest.contains("recoveryKey"));
     }
     #[test]
-    fn the_guard_blocks_a_response_containing_the_token() {
-        let p = std::env::temp_dir().join(format!("nevis-tok-{}", std::process::id()));
-        let tokens = FileTokens(p.clone());
-        tokens.set("http://s", "SECRET-123").unwrap();
-        assert!(guard(&tokens, "http://s", r#"{"x":"SECRET-123"}"#).is_err());
-        assert!(guard(&tokens, "http://s", r#"{"x":"fine"}"#).is_ok());
-        tokens.delete("http://s");
-        std::fs::remove_file(p).ok();
+    fn token_issuing_endpoints_are_closed_to_javascript() {
+        for bad in ["/v1/auth/signin", "/v1/auth/signup", "/v1/auth/recover", "/v1/auth/signin/", "/v1/auth/SignIn?x=1"] {
+            assert!(check_path(bad).is_err(), "{bad}");
+        }
+        assert!(check_path("/v1/auth/challenge").is_ok());
+        assert!(check_path("/v1/me").is_ok());
+    }
+    #[test]
+    fn the_guard_blocks_the_stored_token_and_any_new_one() {
+        assert!(guard(Some("SECRET-123"), r#"{"x":"SECRET-123"}"#).is_err());
+        assert!(guard(Some("SECRET-123"), r#"{"x":"fine"}"#).is_ok());
+        assert!(guard(None, r#"{"token":"a-brand-new-one","account":{}}"#).is_err());
+        assert!(guard(None, r#"{"account":{"token":"nested is not a session token"}}"#).is_ok());
     }
 }
