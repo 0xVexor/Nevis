@@ -12,6 +12,7 @@
     "test:e2e": "playwright test ime"
   },
   "dependencies": {
+    "@nevis/editor": "workspace:*",
     "@nevis/schema": "workspace:*",
     "@tiptap/core": "3.35.0",
     "@tiptap/extension-collaboration": "3.35.0",

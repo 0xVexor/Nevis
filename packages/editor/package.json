@@ -1,0 +1,18 @@
+{
+  "name": "@nevis/editor",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc -p tsconfig.json" },
+  "dependencies": {
+    "@nevis/schema": "workspace:*",
+    "@tiptap/core": "3.35.0",
+    "@tiptap/extension-collaboration": "3.35.0",
+    "@tiptap/pm": "3.35.0",
+    "@tiptap/y-tiptap": "3.3.1",
+    "yjs": "13.6.33"
+  },
+  "devDependencies": { "@types/node": "24.10.1" }
+}
