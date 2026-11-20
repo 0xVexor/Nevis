@@ -68,6 +68,11 @@ try {
   await a.getByTestId('new-page').click(); await a.getByTestId('title').fill('صفحهٔ کروم')
   await b.getByTestId('new-page').click(); await b.getByTestId('title').fill('صفحهٔ وب‌کیت')
   await sleep(700)
+  // guard: while offline the two sides must really differ, else the "convergence" below proves nothing
+  const [ta, tb] = [await text(a), await text(b)]
+  if (ta.includes('ویرایش‌وب‌کیت') || tb.includes('ویرایش‌کروم')) throw new Error('an edit crossed while both were offline')
+  if ((await rows(a)) !== 2 || (await rows(b)) !== 2) throw new Error(`offline lists should have 2 pages each, got ${await rows(a)} and ${await rows(b)}`)
+  if ((await a.getByTestId('outbox').innerText()) === '0' || (await b.getByTestId('outbox').innerText()) === '0') throw new Error('nothing waiting to send while offline')
   await ca.setOffline(false); await cb.setOffline(false)
   const t0 = Date.now()
   await until(async () => (await rows(a)) === 3 && (await rows(b)) === 3, 5000, 'both lists reach 3 pages within 5 s')

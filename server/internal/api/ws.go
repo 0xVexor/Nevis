@@ -135,7 +135,8 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request, p *store.Principal
 		return
 	}
 	key := "push:" + p.AccountID + p.Username
-	if ok, retry := s.limiter.Hit(key, 3000, time.Minute); !ok {
+	// The development token is a test harness (DEV_MODE only): thousands of pushes in a minute are its normal load.
+	if ok, retry := s.limiter.Hit(key, 3000, time.Minute); !ok && !p.Dev {
 		failErr(w, apierr.RateLimited(retry))
 		return
 	}

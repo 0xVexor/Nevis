@@ -473,3 +473,25 @@ func pushOp(ws string, n int, p string) string {
 	hlc := fmt.Sprintf("%012x-0000-%s", time.Now().UnixMilli(), "019a8f3c-0004-7c3e-8f00-000000000001")
 	return fmt.Sprintf(`{"v":1,"op":"019a8f3c-%04x-7c3e-8f00-%012x","ws":%q,"doc":"019a8f3c-0003-7c3e-8f00-%012x","dev":"019a8f3c-0004-7c3e-8f00-000000000001","t":%q,"sv":1,"kid":0,"p":%q}`, n>>16&0xffff|0x2000, n, ws, n%7, hlc, p)
 }
+
+func TestPushLimiterAppliesToAccountsButNotToTheDevToken(t *testing.T) {
+	m := newM4(t, func(c *Config) { c.DevMode = true; c.DevToken = "dev" })
+	push := func(h map[string]string, ws string) int {
+		return m.do(t, "POST", "/v1/ws/"+ws+"/ops", map[string]any{"ops": []any{}}, merge(h, map[string]string{"Nevis-Proto": "1"})).code
+	}
+	dev := bearer("dev")
+	for i := 0; i < 3100; i++ {
+		if c := push(dev, "00000000-0000-7000-8000-000000000001"); c != 200 {
+			t.Fatalf("dev push %d got %d", i, c)
+		}
+	}
+	tok := m.signup(t, "limited", "device").body["token"].(string)
+	id := m.do(t, "POST", "/v1/ws", map[string]any{"name": "w"}, merge(bearer(tok), map[string]string{"Nevis-Proto": "1"})).body["id"].(string)
+	got429 := false
+	for i := 0; i < 3100 && !got429; i++ {
+		got429 = push(bearer(tok), id) == 429
+	}
+	if !got429 {
+		t.Fatal("an account was never rate limited")
+	}
+}
