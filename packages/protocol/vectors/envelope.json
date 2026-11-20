@@ -1,0 +1,137 @@
+[
+ {
+  "name": "minimal valid",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":0,\"p\":\"AQB7fQ\"}",
+  "valid": true
+ },
+ {
+  "name": "valid with cov (snapshot op)",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":0,\"p\":\"AQB7fQ\",\"cov\":1234}",
+  "valid": true
+ },
+ {
+  "name": "valid encrypted with nonce",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":2,\"p\":\"AQB7fQ\",\"n\":\"AAAAAAAAAAAAAAAA\"}",
+  "valid": true
+ },
+ {
+  "name": "valid empty payload",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":0,\"p\":\"\"}",
+  "valid": true
+ },
+ {
+  "name": "valid Persian-free ascii payload bytes",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":0,\"p\":\"AQB7InRpdGxlIjoi2LPZhNin2YUifX0\"}",
+  "valid": true
+ },
+ {
+  "name": "unknown field",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":0,\"p\":\"AQB7fQ\",\"extra\":1}",
+  "valid": false
+ },
+ {
+  "name": "duplicate key",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"sv\":1,\"kid\":0,\"p\":\"AQB7fQ\"}",
+  "valid": false
+ },
+ {
+  "name": "float sv",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1.5,\"kid\":0,\"p\":\"AQB7fQ\"}",
+  "valid": false
+ },
+ {
+  "name": "exponent number",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1e0,\"kid\":0,\"p\":\"AQB7fQ\"}",
+  "valid": false
+ },
+ {
+  "name": "number beyond 2^53",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":9007199254740993,\"kid\":0,\"p\":\"AQB7fQ\"}",
+  "valid": false
+ },
+ {
+  "name": "negative zero kid",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":-0,\"p\":\"AQB7fQ\"}",
+  "valid": false
+ },
+ {
+  "name": "v is 2",
+  "json": "{\"v\":2,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":0,\"p\":\"AQB7fQ\"}",
+  "valid": false
+ },
+ {
+  "name": "op is not a uuid",
+  "json": "{\"v\":1,\"op\":\"not-a-uuid\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":0,\"p\":\"AQB7fQ\"}",
+  "valid": false
+ },
+ {
+  "name": "op is uppercase",
+  "json": "{\"v\":1,\"op\":\"019A8F3C-2B10-7C3E-8F00-1A2B3C4D5E6F\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":0,\"p\":\"AQB7fQ\"}",
+  "valid": false
+ },
+ {
+  "name": "t is not an hlc",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"2026-11-20T00:00:00Z\",\"sv\":1,\"kid\":0,\"p\":\"AQB7fQ\"}",
+  "valid": false
+ },
+ {
+  "name": "t has a short counter",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-00-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":0,\"p\":\"AQB7fQ\"}",
+  "valid": false
+ },
+ {
+  "name": "p has padding",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":0,\"p\":\"AQB7fQ==\"}",
+  "valid": false
+ },
+ {
+  "name": "p has a plus sign",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":0,\"p\":\"AQ+7fQ\"}",
+  "valid": false
+ },
+ {
+  "name": "p has an impossible length",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":0,\"p\":\"A\"}",
+  "valid": false
+ },
+ {
+  "name": "n with kid 0",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":0,\"p\":\"AQB7fQ\",\"n\":\"AAAA\"}",
+  "valid": false
+ },
+ {
+  "name": "sv is zero",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":0,\"kid\":0,\"p\":\"AQB7fQ\"}",
+  "valid": false
+ },
+ {
+  "name": "kid is negative",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":-1,\"p\":\"AQB7fQ\"}",
+  "valid": false
+ },
+ {
+  "name": "null field",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":null,\"p\":\"AQB7fQ\"}",
+  "valid": false
+ },
+ {
+  "name": "byte order mark",
+  "json": "﻿{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":0,\"p\":\"AQB7fQ\"}",
+  "valid": false
+ },
+ {
+  "name": "lone high surrogate escape",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d\\ud800\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":0,\"p\":\"AQB7fQ\"}",
+  "valid": false
+ },
+ {
+  "name": "not an object",
+  "json": "[1,2,3]",
+  "valid": false
+ },
+ {
+  "name": "trailing garbage",
+  "json": "{\"v\":1,\"op\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e6f\",\"ws\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e01\",\"doc\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e02\",\"dev\":\"019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"t\":\"019a8f3c2b10-0000-019a8f3c-2b10-7c3e-8f00-1a2b3c4d5e03\",\"sv\":1,\"kid\":0,\"p\":\"AQB7fQ\"} x",
+  "valid": false
+ }
+]

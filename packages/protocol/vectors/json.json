@@ -1,0 +1,117 @@
+[
+ {
+  "name": "empty object",
+  "text": "{}",
+  "valid": true
+ },
+ {
+  "name": "nested ok",
+  "text": "{\"a\":[1,2,{\"b\":\"x\"}],\"c\":null,\"d\":true}",
+  "valid": true
+ },
+ {
+  "name": "persian and zwnj",
+  "text": "{\"t\":\"می‌خواهم\"}",
+  "valid": true
+ },
+ {
+  "name": "surrogate pair ok",
+  "text": "{\"e\":\"\\ud83d\\ude00\"}",
+  "valid": true
+ },
+ {
+  "name": "max safe integer",
+  "text": "{\"n\":9007199254740991}",
+  "valid": true
+ },
+ {
+  "name": "negative max safe",
+  "text": "{\"n\":-9007199254740991}",
+  "valid": true
+ },
+ {
+  "name": "duplicate key",
+  "text": "{\"a\":1,\"a\":2}",
+  "valid": false
+ },
+ {
+  "name": "duplicate key nested",
+  "text": "{\"a\":{\"b\":1,\"b\":2}}",
+  "valid": false
+ },
+ {
+  "name": "float",
+  "text": "{\"n\":1.0}",
+  "valid": false
+ },
+ {
+  "name": "float small",
+  "text": "{\"n\":0.5}",
+  "valid": false
+ },
+ {
+  "name": "exponent",
+  "text": "{\"n\":1e3}",
+  "valid": false
+ },
+ {
+  "name": "beyond safe integer",
+  "text": "{\"n\":9007199254740992}",
+  "valid": false
+ },
+ {
+  "name": "negative zero",
+  "text": "{\"n\":-0}",
+  "valid": false
+ },
+ {
+  "name": "leading zero",
+  "text": "{\"n\":01}",
+  "valid": false
+ },
+ {
+  "name": "lone high surrogate escape",
+  "text": "{\"s\":\"\\ud800\"}",
+  "valid": false
+ },
+ {
+  "name": "lone low surrogate escape",
+  "text": "{\"s\":\"\\udc00x\"}",
+  "valid": false
+ },
+ {
+  "name": "BOM",
+  "text": "﻿{}",
+  "valid": false
+ },
+ {
+  "name": "trailing comma",
+  "text": "{\"a\":1,}",
+  "valid": false
+ },
+ {
+  "name": "single quotes",
+  "text": "{'a':1}",
+  "valid": false
+ },
+ {
+  "name": "unterminated string",
+  "text": "{\"a\":\"x",
+  "valid": false
+ },
+ {
+  "name": "control char in string",
+  "text": "{\"a\":\"x\ny\"}",
+  "valid": false
+ },
+ {
+  "name": "deep nesting 70",
+  "text": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+  "valid": false
+ },
+ {
+  "name": "deep nesting 60",
+  "text": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+  "valid": true
+ }
+]
