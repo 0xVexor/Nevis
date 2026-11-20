@@ -352,6 +352,12 @@ fn tombstone_key(p: &str) -> Option<String> {
     }
 }
 
+/// Attachments (and their sidecars). The app has no way to delete one, so one that is missing here was lost or never
+/// came with an older copy of the folder: its deletion in the cloud (7-day sync trash, no UI) is never done unasked.
+fn is_attachment(p: &str) -> bool {
+    p.starts_with("files/")
+}
+
 /// Whether the app writes a tombstone when it deletes this file.
 fn deletion_is_tombstoned_by_app(p: &str) -> bool {
     tombstone_key(p).is_some()
@@ -395,7 +401,9 @@ fn scan(root: &Path, cache: &BTreeMap<String, Entry>) -> Res<(BTreeMap<String, L
             };
             let rel = if cfg!(windows) { relative.replace('\\', "/") } else { relative.to_string() };
             if e.file_type().map_err(err)?.is_symlink() {
-                return Err(format!("HUB:unsafe_path\npath={rel}\ndetail=symlink"));
+                // never followed (it could point out of the vault); like an odd name it is left alone and the rest syncs
+                unknown.insert(rel);
+                continue;
             }
             let Ok(meta) = e.metadata() else {
                 unknown.insert(rel);
@@ -717,7 +725,18 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
         state.confirmed.clear();
     }
     if let Ok(canonical) = fs::canonicalize(root) {
-        state.local_root = canonical.to_string_lossy().into_owned();
+        let here = canonical.to_string_lossy().into_owned();
+        // One state file belongs to one vault id, so a COPY of the folder (a backup opened later, a copy-pasted folder) is
+        // synced with the bookkeeping of the original and everything that happened after the copy was taken is misread
+        // (a page deleted elsewhere is uploaded again, a newer attachment looks deleted here). A copy is told from a move
+        // by the old folder: it still exists with the same vault id. Then the files here are a fresh baseline (nothing is
+        // deleted, local-only files upload, and the tombstone listing holds back what other devices deleted). A plain move
+        // (the old folder is gone, e.g. the person located the vault again) keeps the bookkeeping, or pages deleted here
+        // and not yet synced would come back.
+        if !state.local_root.is_empty() && state.local_root != here && Path::new(&state.local_root).is_dir() && crate::vault::probe(Path::new(&state.local_root), &vault.id()) == "ok" {
+            state.reset_local_baseline();
+        }
+        state.local_root = here;
     }
     // pages that have a state take in what local writers put into their JSON since the last projection
     let migrate_pages = pages::enabled() && remote.page_state_supported()?;
@@ -743,7 +762,8 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
     let mut listed = remote.list()?;
     // one odd local file name (macOS "Icon\r"...) must not stop the sync of everything else: it is reported and left alone
     let odd = |p: &String| path_problem(p).is_some() || p.contains('\u{fffd}');
-    rep.skipped_paths = local.keys().chain(unknown.iter()).filter(|p| odd(p)).cloned().collect();
+    let is_link = |p: &String| fs::symlink_metadata(root.join(p)).is_ok_and(|m| m.file_type().is_symlink());
+    rep.skipped_paths = local.keys().chain(unknown.iter()).filter(|p| odd(p) || is_link(p)).cloned().collect();
     local.retain(|p, _| !odd(p));
     unknown.extend(rep.skipped_paths.iter().cloned());
     // a remote path this client refuses (another client's idea of a name...) is reported and left alone, like a local one:
@@ -808,7 +828,7 @@ pub fn sync_once(vault: &Vault, remote: &mut dyn Remote, state: &mut SyncState, 
     // (only for files the app tombstones when it deletes them: history trims and the trash are deleted without one)
     let unconfirmed: BTreeSet<String> = pending
         .iter()
-        .filter(|d| d.side == "local" && tombstone_key(&d.path).is_some_and(|k| !tombstones.contains(&k)))
+        .filter(|d| d.side == "local" && (tombstone_key(&d.path).is_some_and(|k| !tombstones.contains(&k)) || is_attachment(&d.path)))
         .map(|d| d.path.clone())
         .collect();
     let mut held: Vec<HeldDelete> = vec![];
@@ -1156,6 +1176,8 @@ pub fn stamp_now() -> i64 {
 
 #[cfg(test)]
 mod tests {
+    #[path = "older_copy.rs"]
+    mod older_copy;
     use super::*;
     use serde_json::{json, Value};
     use std::cell::RefCell;

@@ -250,6 +250,13 @@ pub fn delete_vault(app_data: &Path, id: &str) -> Res<()> {
     api.send(|c| c.delete(&url)).map(|_| ())
 }
 
+/// Tells the server the new display name of a vault (the name on the account page of the other devices).
+pub fn rename_vault(app_data: &Path, id: &str, name: &str) -> Res<()> {
+    let api = api(app_data)?.quick();
+    let url = api.url(&format!("/v1/vaults/{id}"));
+    api.send(|c| c.patch(&url).json(&json!({ "name": name }))).map(|_| ())
+}
+
 /// The body of a purge request: no password key unless one is given (the server accepts the device token alone for a vault in
 /// the trash; an older server still wants the password).
 fn purge_body(password: Option<&str>) -> Value {

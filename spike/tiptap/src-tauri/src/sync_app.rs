@@ -19,8 +19,12 @@ pub struct SyncStatus {
     state: &'static str,
     last_at: i64,
     error: String,
-    /// why a sync is paused: VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE | SIGNED_OUT | ACCOUNT_CHANGED (then `error` holds the `user@server` the workspace syncs with) | NEEDS_CONFIRM (then `error` holds the number of held deletions)
+    /// why a sync is paused: VAULT_MISSING | VAULT_MISMATCH | CLOUD_GONE | VAULT_TAKEN | SIGNED_OUT | ACCOUNT_CHANGED (then `error` holds the `user@server` the workspace syncs with) | NEEDS_CONFIRM (then `error` holds the number of held deletions)
     reason: String,
+    /// the code of the first error (`HUB:quota_exceeded`, `AUTH:unauthorized`, `NETWORK:offline`...), without any technical text; empty when none
+    error_code: String,
+    /// the vault path the first error is about (`pages/x.json`); empty when it is not about one file
+    error_path: String,
     /// paths the last sync left alone because their names cannot be synced (capped; the UI explains)
     skipped: Vec<String>,
 }
@@ -187,6 +191,8 @@ pub fn account_status(s: St) -> Value {
         "lastAt": st.last_at,
         "error": st.error,
         "reason": st.reason,
+        "errorCode": st.error_code,
+        "errorPath": st.error_path,
         "skippedPaths": st.skipped,
     })
 }
@@ -318,6 +324,17 @@ fn account_changed(ctx: &SyncCtx) -> bool {
     ctx.status.lock().is_ok_and(|st| st.reason == ACCOUNT_CHANGED)
 }
 
+/// Whether the sync of the open vault is paused because another account on the server already has a vault with its id.
+fn vault_is_taken(ctx: &SyncCtx) -> bool {
+    ctx.status.lock().is_ok_and(|st| st.reason == hub::VAULT_TAKEN)
+}
+
+/// Pauses that nothing but the person (or a changed folder) can end: a round that runs meanwhile keeps showing them, so that
+/// the notice and its buttons do not vanish every time the sync looks again.
+fn lasting_pause(reason: &str) -> bool {
+    [VAULT_MISSING, VAULT_MISMATCH, sync::CLOUD_GONE, hub::VAULT_TAKEN, ACCOUNT_CHANGED, "SIGNED_OUT"].contains(&reason)
+}
+
 /// Whether the sync of the open vault is paused because its copy on the server is gone.
 fn cloud_is_gone(ctx: &SyncCtx) -> bool {
     ctx.status.lock().is_ok_and(|st| st.reason == sync::CLOUD_GONE)
@@ -372,6 +389,90 @@ pub fn sync_accept_account(s: St) -> Res<()> {
     set_sync_flag(&s, &id, true)?;
     s.sync.wake(Kick::User);
     Ok(())
+}
+
+/// Writes the id `new` into the marker of the vault folder in place of `old`; every other field of the marker stays.
+pub(crate) fn rewrite_marker_id(root: &Path, old: &str, new: &str) -> Res<()> {
+    let path = crate::vault::marker_path(root);
+    let mut meta: Value = serde_json::from_slice(&std::fs::read(&path).map_err(err)?).map_err(err)?;
+    if meta["id"].as_str() != Some(old) {
+        return Err(VAULT_MISMATCH.into()); // the folder is not the vault we think it is: not touched
+    }
+    meta["id"] = Value::String(new.to_string());
+    write_atomic(&path, meta.to_string().as_bytes())
+}
+
+/// Another account already has a workspace with the id of this one (a copied folder, or a workspace that was sent to another
+/// account): gives the open workspace a new id, so that it goes up as a new workspace of the signed-in account. The files stay as
+/// they are; the sync bookkeeping of the old id is left behind (it described another cloud copy) and a fresh one is started.
+/// Only valid while paused as VAULT_TAKEN. Returns the new id.
+#[tauri::command]
+pub fn sync_new_identity(s: St) -> Res<String> {
+    if !vault_is_taken(&s.sync.ctx) {
+        return Err("the workspace id is not taken on the server".into());
+    }
+    let acct = account::load(&s.app_data).ok_or("AUTH:signed_out")?;
+    let old = current_entry(&s).ok_or("no vault is open")?;
+    let new_id = uuid::Uuid::new_v4().to_string();
+    let root = PathBuf::from(&old.path);
+    // the registry, then the open vault (the order `activate` takes them in), held for the whole change: no command reaches a
+    // vault whose marker and registry entry disagree
+    let mut r = s.reg.lock().map_err(err)?;
+    let mut open = crate::lock_vault(&s)?;
+    if open.as_ref().map(|v| v.id()).as_deref() != Some(old.id.as_str()) {
+        return Err(VAULT_MISMATCH.into());
+    }
+    s.mcp.stop();
+    *s.index.lock().map_err(err)? = None; // the search index keeps a file of the vault open
+    *open = None; // lets go of the folder: the open vault would refuse a marker with another id
+    let change = (|| -> Res<Vault> {
+        rewrite_marker_id(&root, &old.id, &new_id)?;
+        let reopened = Vault::open_as(root.clone(), &new_id).and_then(|v| {
+            let mut fresh = SyncState::default();
+            fresh.account = account_label(&acct);
+            fresh.save(&state_file(&s.app_data, &new_id))?;
+            let before = r.clone();
+            let e = r.vaults.iter_mut().find(|e| e.id == old.id).ok_or("unknown vault")?;
+            *e = Entry { id: new_id.clone(), sync: true, ..e.clone() };
+            r.current = Some(new_id.clone());
+            if let Err(m) = r.save(&s.app_data) {
+                *r = before;
+                return Err(m);
+            }
+            Ok(v)
+        });
+        if reopened.is_err() {
+            let _ = rewrite_marker_id(&root, &new_id, &old.id); // back to what it was
+        }
+        reopened
+    })();
+    match change {
+        Ok(v) => *open = Some(v),
+        Err(m) => {
+            *open = Vault::open_as(root, &old.id).ok();
+            return Err(m);
+        }
+    }
+    drop(open);
+    drop(r);
+    if let Some(policy) = crate::mcp_relay::autostart_get(&s.app_data, &old.id) {
+        let _ = crate::mcp_relay::autostart_set(&s.app_data, &new_id, &policy); // best effort: the AI connection keeps its policy
+    }
+    if let Ok(mut c) = s.sync.ctx.confirm.lock() {
+        c.remove(&old.id);
+    }
+    if let Ok(mut synced) = s.sync.ctx.synced.lock() {
+        *synced = (String::new(), -1);
+    }
+    if let Ok(mut st) = s.sync.ctx.status.lock() {
+        *st = SyncStatus { state: "pending", ..Default::default() }; // the notice is answered; the next round tells the rest
+    }
+    if let Some(app) = &s.sync.ctx.app {
+        let _ = app.emit("vault-identity-changed", json!({ "oldId": old.id, "newId": new_id }));
+    }
+    emit_status(&s.sync.ctx);
+    s.sync.wake(Kick::User);
+    Ok(new_id)
 }
 
 #[tauri::command]
@@ -508,6 +609,7 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool, downloading: bool) -> Res<(
         if let Ok(mut st) = ctx.status.lock() {
             st.state = state;
             st.reason = reason.to_string();
+            (st.error_code, st.error_path) = if reason == ACCOUNT_CHANGED { Default::default() } else { hub::error_fields(&error) };
             st.error = error;
             if done {
                 st.last_at = now_ms();
@@ -515,7 +617,11 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool, downloading: bool) -> Res<(
         }
         emit_status(ctx);
     };
-    set("syncing", "", String::new(), false);
+    // a pause that does not end by itself stays as it is while the round looks again: its notice (and the guards of the
+    // buttons that answer it) must not blink out; the round's result replaces it
+    if !ctx.status.lock().is_ok_and(|st| st.state == "paused" && lasting_pause(&st.reason)) {
+        set("syncing", "", String::new(), false);
+    }
     let result: Res<sync::Report> = (|| {
         // The vault must be there and be the one we think it is. A folder that vanished is never a reason to
         // delete the server's copy, and nothing is created here.
@@ -597,7 +703,7 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool, downloading: bool) -> Res<(
                 if rep.held > 0 {
                     m = format!("{m}; {} deletions held back", rep.held);
                 }
-                let (state, reason) = if hub::is_network(&m) { ("offline", "NETWORK") } else if hub::is_auth(&m) { ("paused", "SIGNED_OUT") } else { ("error", "ERROR") };
+                let (state, reason) = classify_errors(&rep);
                 set(state, reason, m.clone(), false);
                 Err(m)
             } else if rep.held > 0 {
@@ -608,7 +714,7 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool, downloading: bool) -> Res<(
                 Ok(())
             }
         }
-        Err(m) if [VAULT_MISSING, VAULT_MISMATCH, sync::CLOUD_GONE].contains(&m.as_str()) => {
+        Err(m) if [VAULT_MISSING, VAULT_MISMATCH, sync::CLOUD_GONE, hub::VAULT_TAKEN].contains(&m.as_str()) => {
             set("paused", &m, String::new(), false);
             Err(m)
         }
@@ -631,6 +737,24 @@ fn run_sync(ctx: &SyncCtx, e: &Entry, patient: bool, downloading: bool) -> Res<(
     }
 }
 
+/// What a round that finished with errors shows. The errors are of single files, so one file's trouble is not "offline":
+/// - any refused token: signed out;
+/// - only network errors and nothing else went through: offline (nothing reached the server);
+/// - only "slow down" answers of the server: pending, it is only waiting;
+/// - anything else: an error.
+fn classify_errors(rep: &sync::Report) -> (&'static str, &'static str) {
+    let all = |f: fn(&str) -> bool| rep.errors.iter().all(|e| f(e));
+    if rep.errors.iter().any(|e| hub::is_auth(e)) {
+        ("paused", "SIGNED_OUT")
+    } else if all(hub::is_network) && rep.uploaded + rep.downloaded + rep.deleted == 0 {
+        ("offline", "NETWORK")
+    } else if all(hub::is_rate_limited) {
+        ("pending", "")
+    } else {
+        ("error", "ERROR")
+    }
+}
+
 /// How long to wait before trying again after the n-th failure in a row: 3, 6, 12, then 20 seconds. Short on purpose: the
 /// network of a person who is offline comes and goes, and the first moment it is back is when their notes should move.
 fn backoff(fails: u32) -> Duration {
@@ -640,6 +764,7 @@ fn backoff(fails: u32) -> Duration {
 fn sync_thread(app: AppHandle, rx: Receiver<Kick>) {
     let mut fails = 0u32;
     let mut retry_at = Instant::now();
+    let mut pause_until = Instant::now();
     loop {
         // an edit, the server, or the person wakes us at once; the long wait is only a safety net (it also catches changes
         // made by another program, such as an AI tool writing to the vault)
@@ -673,6 +798,9 @@ fn sync_thread(app: AppHandle, rx: Receiver<Kick>) {
         if fails > 0 && !urgent && Instant::now() < retry_at {
             continue;
         }
+        if !urgent && Instant::now() < pause_until {
+            continue;
+        }
         let s = app.state::<Store>();
         let ctx = s.sync.ctx.clone();
         let entry = current_entry(&s);
@@ -680,6 +808,12 @@ fn sync_thread(app: AppHandle, rx: Receiver<Kick>) {
         match entry {
             Some(e) if ready => match run_sync(&ctx, &e, fails == 0, false) {
                 Ok(()) => fails = 0,
+                // the server only asked for fewer requests (and the round already waited as long as it said): look again in a
+                // while with the same patience, not in the quick mode of a network that is down
+                Err(_) if ctx.status.lock().is_ok_and(|st| st.state == "pending" && st.error_code == "HUB:rate_limited") => {
+                    fails = 0;
+                    pause_until = Instant::now() + Duration::from_secs(30);
+                }
                 Err(_) => {
                     fails += 1;
                     retry_at = Instant::now() + backoff(fails);
@@ -873,6 +1007,39 @@ mod tests {
             app: None,
         };
         assert!(account_changed(&ctx) && !cloud_is_gone(&ctx));
+    }
+
+    #[test]
+    fn a_new_identity_changes_only_the_id_in_the_marker_and_only_of_the_vault_it_was_asked_for() {
+        let root = std::env::temp_dir().join(format!("nevis-newid-{}-{}", now_ms(), std::process::id()));
+        let v = Vault::create(root.clone(), "Mine").unwrap();
+        let old = v.id();
+        drop(v);
+        assert_eq!(rewrite_marker_id(&root, "00000000-0000-4000-8000-000000000000", "x").unwrap_err(), VAULT_MISMATCH);
+        let new = uuid::Uuid::new_v4().to_string();
+        rewrite_marker_id(&root, &old, &new).unwrap();
+        let v = Vault::open_as(root.clone(), &new).unwrap();
+        assert_eq!(v.name(), "Mine");
+        assert_eq!(Vault::open_as(root.clone(), &old).err().as_deref(), Some(VAULT_MISMATCH));
+        drop(v);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_round_that_looks_again_keeps_the_pause_notices_and_errors_are_told_apart() {
+        for r in [VAULT_MISSING, VAULT_MISMATCH, sync::CLOUD_GONE, hub::VAULT_TAKEN, ACCOUNT_CHANGED, "SIGNED_OUT"] {
+            assert!(lasting_pause(r), "{r}");
+        }
+        assert!(!lasting_pause("NEEDS_CONFIRM") && !lasting_pause("NETWORK") && !lasting_pause("ERROR"));
+        let rep = |errors: &[&str], uploaded| sync::Report { errors: errors.iter().map(|e| e.to_string()).collect(), uploaded, ..Default::default() };
+        let net = "Upload(\"pages/a.json\"): NETWORK:error sending request";
+        let big = "Upload(\"files/b\"): HUB:too_large\nhttp=413";
+        let slow = "Upload(\"pages/c.json\"): HUB:rate_limited\nhttp=429";
+        assert_eq!(classify_errors(&rep(&[net, net], 0)), ("offline", "NETWORK"));
+        assert_eq!(classify_errors(&rep(&[net], 3)), ("error", "ERROR")); // other files went through: the network is there
+        assert_eq!(classify_errors(&rep(&[net, big], 0)), ("error", "ERROR")); // one stuck file is not "offline"
+        assert_eq!(classify_errors(&rep(&[slow, slow], 0)), ("pending", ""));
+        assert_eq!(classify_errors(&rep(&[slow, "x: AUTH:unauthorized"], 0)), ("paused", "SIGNED_OUT"));
     }
 
     #[test]

@@ -205,10 +205,23 @@ fn vault_rename(s: St, id: String, name: String) -> Res<()> {
         Vault::open_as(PathBuf::from(&e.path), &id)?.rename(&name)?;
     }
     let mut r = s.reg.lock().map_err(err)?;
+    let mut synced = false;
     if let Some(x) = r.vaults.iter_mut().find(|x| x.id == id) {
-        x.name = name;
+        synced = x.sync;
+        x.name = name.clone();
     }
-    r.save(&s.app_data)
+    r.save(&s.app_data)?;
+    drop(r);
+    // the name on the account page of the other devices: best effort, off this thread, and never a reason to fail the rename
+    if synced && sync::account::load(&s.app_data).is_some() {
+        let app_data = s.app_data.clone();
+        std::thread::spawn(move || {
+            if let Err(m) = sync::account::rename_vault(&app_data, &id, &name) {
+                eprintln!("the vault name was not sent to the sync server: {}", m.lines().next().unwrap_or(""));
+            }
+        });
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -781,7 +794,7 @@ fn main() {
             page_conflicts::page_conflicts_list, page_conflicts::page_conflict_get, page_conflicts::page_conflict_close, page_conflicts::page_conflict_record,
             sync_app::account_status, sync_app::server_health, sync_app::account_register, sync_app::account_login, sync_app::account_recover, sync_app::account_logout, sync_app::account_info,
             sync_app::account_revoke_device, sync_app::account_change_password, sync_app::account_new_recovery_key, sync_app::account_delete, sync_app::save_text_file,
-            sync_app::sync_set, sync_app::sync_reupload, sync_app::sync_accept_account, sync_app::sync_now, sync_app::sync_confirm, sync_app::sync_held, sync_app::cloud_trashed, sync_app::cloud_restore, sync_app::cloud_delete, sync_app::cloud_purge, sync_app::cloud_vaults, sync_app::cloud_download
+            sync_app::sync_set, sync_app::sync_reupload, sync_app::sync_accept_account, sync_app::sync_new_identity, sync_app::sync_now, sync_app::sync_confirm, sync_app::sync_held, sync_app::cloud_trashed, sync_app::cloud_restore, sync_app::cloud_delete, sync_app::cloud_purge, sync_app::cloud_vaults, sync_app::cloud_download
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nevis");

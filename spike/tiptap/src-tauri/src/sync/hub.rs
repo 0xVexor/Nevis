@@ -34,12 +34,118 @@ pub fn is_auth(m: &str) -> bool {
     m.contains(AUTH)
 }
 
+/// The failure of a single file's transfer that only says "wait": the server asked for fewer requests.
+pub fn is_rate_limited(m: &str) -> bool {
+    m.contains("HUB:rate_limited")
+}
+
+/// What a sync error says in a form the interface can show without the technical text: the code of the first error
+/// (`HUB:quota_exceeded`, `AUTH:unauthorized`, `NETWORK:timeout`...) and the vault path it concerns (`pages/x.json`, or empty).
+/// Only fixed words and the vault's own relative path come out: never an address, a token or the text of another program.
+pub fn error_fields(text: &str) -> (String, String) {
+    let first = text.split("; ").next().unwrap_or("");
+    let prefixes = [("HUB:", 0), ("AUTH:", 1), (NETWORK, 2)];
+    let Some((at, prefix, kind)) = prefixes.iter().filter_map(|(p, k)| first.find(p).map(|i| (i, *p, *k))).min() else {
+        return (String::new(), path_of(first));
+    };
+    let rest = &first[at + prefix.len()..];
+    let word: String = rest.chars().take_while(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_').collect();
+    let code = match kind {
+        2 if rest.starts_with("stalled") => "NETWORK:stalled".to_string(),
+        2 if rest.contains("timed out") => "NETWORK:timeout".to_string(),
+        2 => "NETWORK:offline".to_string(),
+        _ if word.is_empty() => String::new(),
+        _ => format!("{prefix}{word}"),
+    };
+    (code, path_of(first))
+}
+
+/// The path an error is about: `path=<p>` (the server's refusals) or the `Upload("<p>")` of the sync's own errors.
+fn path_of(error: &str) -> String {
+    let from_line = error.lines().find_map(|l| l.strip_prefix("path="));
+    let from_action = error.split_once("(\"").filter(|(name, _)| !name.is_empty() && name.chars().all(|c| c.is_ascii_alphabetic())).and_then(|(_, rest)| rest.split_once("\")")).map(|(p, _)| p);
+    let p = from_line.or(from_action).unwrap_or("");
+    let safe = !p.is_empty() && p.len() <= 300 && !p.starts_with('/') && !p.contains("..") && !p.contains("://") && !p.contains('\\') && !p.chars().any(char::is_control);
+    if safe { p.to_string() } else { String::new() }
+}
+
+/// The vault id is already used by another account on this server (a copied workspace folder, or a workspace sent to
+/// another account): the workspace pauses until the person gives it a new identity.
+pub const VAULT_TAKEN: &str = "VAULT_TAKEN";
+
 const API_VERSION: &str = "1";
 /// Contents up to this size travel in one request; bigger ones in pieces that can be resumed.
 const SINGLE: usize = 2 << 20;
 const PIECE: usize = 1 << 20;
+/// Small JSON calls: the whole request, answer included, must be done in this time.
+const JSON_TIMEOUT: Duration = Duration::from_secs(60);
+/// A blob download is given up on when no byte arrives for this long (however long the whole transfer takes).
+const IDLE_TIMEOUT: Duration = Duration::from_secs(45);
+/// The slowest link a blob transfer is still given time for: its ceiling is `JSON_TIMEOUT` plus the size at this speed.
+/// It only bounds a transfer that stalls without ever closing; downloads are cut by `IDLE_TIMEOUT` much earlier.
+const SLOWEST_BYTES_PER_SECOND: u64 = 8 << 10;
+const LONGEST_TRANSFER: Duration = Duration::from_secs(3 * 3600);
+/// How often a request that was answered 429/503 waits for what `Retry-After` says (the server's limit is per minute),
+/// and the longest single wait.
+const RATE_WAITS: u32 = 3;
+const LONGEST_RETRY_AFTER: Duration = Duration::from_secs(65);
+/// A download that stopped halfway is continued (or restarted) this many times.
+const DOWNLOAD_TRIES: u32 = 3;
+
+/// The time one request carrying `size` bytes may take in all: what a person on a slow link still needs, not a guess at "fast".
+fn transfer_ceiling(size: u64) -> Duration {
+    (JSON_TIMEOUT + Duration::from_secs(size / SLOWEST_BYTES_PER_SECOND)).min(LONGEST_TRANSFER)
+}
+
+/// Reads the rest of a body, giving up when nothing arrives for `idle`. (reqwest's blocking client only has a timeout for
+/// the whole request, which a big download on a slow but steady link would exceed.) The reading happens on a helper thread
+/// that ends with the request's own ceiling at the latest. What was read before a failure stays in `into`.
+fn read_idle(mut r: Response, idle: Duration, into: &mut Vec<u8>) -> Res<()> {
+    use std::io::Read;
+    let (tx, rx) = std::sync::mpsc::sync_channel::<Res<Vec<u8>>>(4);
+    std::thread::spawn(move || {
+        let mut buf = vec![0u8; 64 << 10];
+        loop {
+            let msg = match r.read(&mut buf) {
+                Ok(n) => Ok(buf[..n].to_vec()),
+                Err(e) => Err(format!("{NETWORK}{e}")),
+            };
+            let end = !matches!(&msg, Ok(c) if !c.is_empty());
+            if tx.send(msg).is_err() || end {
+                return;
+            }
+        }
+    });
+    loop {
+        match rx.recv_timeout(idle) {
+            Ok(Ok(chunk)) if chunk.is_empty() => return Ok(()),
+            Ok(Ok(chunk)) => into.extend_from_slice(&chunk),
+            Ok(Err(e)) => return Err(e),
+            Err(_) => return Err(format!("{NETWORK}stalled: nothing received for {} s", idle.as_secs())),
+        }
+    }
+}
+
+/// Whether a 206 answer continues at byte `from` (`Content-Range: bytes <from>-<to>/<total>`).
+fn starts_at(r: &Response, from: usize) -> bool {
+    r.headers().get("content-range").and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("bytes ")).and_then(|v| v.split('-').next()).and_then(|v| v.trim().parse::<usize>().ok()) == Some(from)
+}
+
+fn retry_after(r: &Response) -> Option<Duration> {
+    r.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse::<u64>().ok()).map(|s| Duration::from_secs(s).min(LONGEST_RETRY_AFTER))
+}
 
 // ───── HTTP ─────
+
+fn client(timeout: Duration) -> Res<Client> {
+    Client::builder()
+        .connect_timeout(Duration::from_secs(10)) // a connection that does not open in 10 s is a dead one
+        .timeout(timeout)
+        .tcp_keepalive(Duration::from_secs(30))
+        .user_agent(concat!("Nevis/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(err)
+}
 
 #[derive(Clone)]
 pub struct Api {
@@ -47,18 +153,21 @@ pub struct Api {
     base: String,
     token: Option<String>,
     attempts: u32,
+    /// how long a download may go without receiving a byte
+    idle: Duration,
 }
 
 impl Api {
     pub fn new(base: &str, token: Option<String>) -> Res<Api> {
-        let http = Client::builder()
-            .connect_timeout(Duration::from_secs(10)) // a connection that does not open in 10 s is a dead one
-            .timeout(Duration::from_secs(60))
-            .tcp_keepalive(Duration::from_secs(30))
-            .user_agent(concat!("Nevis/", env!("CARGO_PKG_VERSION")))
-            .build()
-            .map_err(err)?;
-        Ok(Api { http, base: base.trim_end_matches('/').to_string(), token, attempts: 4 })
+        Ok(Api { http: client(JSON_TIMEOUT)?, base: base.trim_end_matches('/').to_string(), token, attempts: 4, idle: IDLE_TIMEOUT })
+    }
+
+    /// Other limits than the real ones, so that a test of what happens on a slow or stalled link does not take minutes.
+    #[cfg(test)]
+    pub fn with_timeouts(mut self, json: Duration, idle: Duration) -> Api {
+        self.http = client(json).unwrap();
+        self.idle = idle;
+        self
     }
 
     /// One attempt per request: for checks that run in the background and must not hold anything up when the network is bad.
@@ -71,28 +180,39 @@ impl Api {
         format!("{}{path}", self.base)
     }
 
-    /// Sends the request and returns whatever the server answered. Lost connections and busy servers (429, 502-504) are retried.
+    /// Sends the request and returns whatever the server answered. Lost connections and bad gateways (502-504) are retried
+    /// shortly; a server that says "too many requests" or "busy" (429, 503) is waited for as long as it asks (`Retry-After`,
+    /// at most 65 s: its limit is per minute), a few times, so that a big first sync slows down instead of failing.
     pub fn send_any(&self, build: impl Fn(&Client) -> RequestBuilder) -> Res<Response> {
-        for attempt in 0..self.attempts {
+        let (mut attempt, mut waits) = (0u32, 0u32);
+        loop {
             let mut rb = build(&self.http).header("x-nevis-api", API_VERSION);
             if let Some(t) = &self.token {
                 rb = rb.bearer_auth(t);
             }
-            let last = attempt + 1 == self.attempts;
+            let last = attempt + 1 >= self.attempts;
             match rb.send() {
                 Ok(r) => {
-                    if matches!(r.status().as_u16(), 429 | 502 | 503 | 504) && !last {
-                        let wait = r.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok()).map_or(500u64 << attempt, |s| s.min(8) * 1000);
-                        std::thread::sleep(Duration::from_millis(wait));
+                    let code = r.status().as_u16();
+                    if matches!(code, 429 | 503) && self.attempts > 1 && waits < RATE_WAITS {
+                        waits += 1;
+                        std::thread::sleep(retry_after(&r).unwrap_or(Duration::from_secs(2u64 << waits)));
+                        continue;
+                    }
+                    if matches!(code, 502 | 504) && !last {
+                        std::thread::sleep(Duration::from_millis(500u64 << attempt));
+                        attempt += 1;
                         continue;
                     }
                     return Ok(r);
                 }
                 Err(e) if last => return Err(format!("{NETWORK}{}", e.without_url())),
-                Err(_) => std::thread::sleep(Duration::from_millis(400u64 << attempt)),
+                Err(_) => {
+                    std::thread::sleep(Duration::from_millis(400u64 << attempt));
+                    attempt += 1;
+                }
             }
         }
-        Err(format!("{NETWORK}no attempt was made"))
     }
 
     /// Like `send_any`, but anything but 2xx is an error (see `status_error`).
@@ -281,7 +401,12 @@ impl Hub {
                 if must_exist || !self.cache.epoch.is_empty() {
                     return Err(CLOUD_GONE.into()); // it was there (or is being downloaded) and is gone: the user decides, nothing is created or deleted
                 }
-                self.api.post("/v1/vaults", &json!({ "id": self.vault, "name": name }))?;
+                match self.api.post("/v1/vaults", &json!({ "id": self.vault, "name": name })) {
+                    Ok(_) => {}
+                    // somebody else's vault has this id (it is hidden from us, so /state said "no such vault")
+                    Err(e) if e.lines().next() == Some("HUB:vault_taken") => return Err(VAULT_TAKEN.into()),
+                    Err(e) => return Err(e),
+                }
                 out.created = true;
                 self.api.get(&self.v("/state"))?
             }
@@ -392,7 +517,8 @@ impl Hub {
     fn put_blob(&self, sha: &str, bytes: &[u8]) -> Res<()> {
         let url = self.api.url(&self.v(&format!("/blobs/{sha}")));
         if bytes.len() <= SINGLE {
-            self.api.send(|c| c.put(&url).header("content-type", "application/octet-stream").body(bytes.to_vec()))?;
+            let ceiling = transfer_ceiling(bytes.len() as u64);
+            self.api.send(|c| c.put(&url).timeout(ceiling).header("content-type", "application/octet-stream").body(bytes.to_vec()))?;
             return Ok(());
         }
         let head = self.api.send_any(|c| c.head(&url))?;
@@ -408,7 +534,8 @@ impl Hub {
             }
             let end = (at + PIECE).min(bytes.len());
             let range = format!("bytes {at}-{}/{}", end - 1, bytes.len());
-            let r = self.api.send_any(|c| c.put(&url).header("content-type", "application/octet-stream").header("content-range", range.clone()).body(bytes[at..end].to_vec()))?;
+            let ceiling = transfer_ceiling((end - at) as u64);
+            let r = self.api.send_any(|c| c.put(&url).timeout(ceiling).header("content-type", "application/octet-stream").header("content-range", range.clone()).body(bytes[at..end].to_vec()))?;
             match r.status().as_u16() {
                 200 | 201 => return Ok(()),
                 202 => at = end,
@@ -494,11 +621,48 @@ impl Remote for Hub {
         Ok(self.cache.files.iter().map(|(p, f)| self.remote_file(p, f)).collect())
     }
 
+    /// Reads the contents of one revision. A transfer is only given up on when nothing arrives for a while (not after a fixed
+    /// time, so that a slow but steady link gets through), and one that broke off halfway is asked to continue (`Range`);
+    /// a server that does not do ranges (the Nevis server does not yet) answers with everything, which then replaces the part.
     fn download(&mut self, f: &RemoteFile) -> Res<Vec<u8>> {
         let (rev, _) = split_id(&f.id)?;
         let url = self.api.url(&self.v(&format!("/rev/{rev}")));
-        let r = self.api.send(|c| c.get(&url))?;
-        r.bytes().map(|b| b.to_vec()).map_err(|e| format!("{NETWORK}{e}"))
+        let ceiling = transfer_ceiling(self.cache.files.get(&f.path).map_or(0, |h| h.size));
+        let mut got: Vec<u8> = Vec::new();
+        let mut failure = String::new();
+        for _ in 0..DOWNLOAD_TRIES {
+            let from = got.len();
+            let r = self.api.send_any(|c| {
+                let rb = c.get(&url).timeout(ceiling);
+                if from > 0 { rb.header("range", format!("bytes={from}-")) } else { rb }
+            })?;
+            let status = r.status().as_u16();
+            if from > 0 && status != 206 {
+                got.clear(); // the server sent everything again (or refused the range): start over with that
+            }
+            if status == 416 {
+                continue;
+            }
+            if !r.status().is_success() {
+                return Err(status_error(r, true));
+            }
+            if status == 206 && !starts_at(&r, from) {
+                got.clear();
+                continue;
+            }
+            match read_idle(r, self.api.idle, &mut got) {
+                Ok(()) => {
+                    if !f.md5.is_empty() && hex(&md5::Md5::digest(&got)) != f.md5 && from > 0 {
+                        got.clear(); // a continued download that does not add up: once more from the start
+                        failure = "HUB:download_mismatch".into();
+                        continue;
+                    }
+                    return Ok(got);
+                }
+                Err(e) => failure = e,
+            }
+        }
+        Err(failure)
     }
 
     /// Reads the tombstones page by page (`snapshot=1&deleted=1`). A server from before that flag ignores it and answers
@@ -631,6 +795,50 @@ mod tests {
         server.join().unwrap();
         assert!(!message.contains("password") && !message.contains("token") && !message.contains("secret") && !message.contains("user"));
         message
+    }
+
+    #[test]
+    fn errors_are_reduced_to_a_code_and_a_vault_path_without_addresses() {
+        let f = |m: &str| error_fields(m);
+        assert_eq!(f("Upload(\"pages/a.json\"): HUB:rate_limited\nhttp=429\nendpoint=http://10.0.0.1:3142/v1/vaults/x/blobs"), ("HUB:rate_limited".into(), "pages/a.json".into()));
+        assert_eq!(f("HUB:conflict\npath=files/b.png\ndetail=x\nendpoint=http://h/v1/commit; Upload(\"pages/z.json\"): HUB:too_large"), ("HUB:conflict".into(), "files/b.png".into()));
+        assert_eq!(f("Download(\"pages/a.json\"): NETWORK:error sending request for url (http://secret.example/x?token=1)"), ("NETWORK:offline".into(), "pages/a.json".into()));
+        assert_eq!(f("NETWORK:stalled: nothing received for 45 s"), ("NETWORK:stalled".into(), String::new()));
+        assert_eq!(f("AUTH:unauthorized\nhttp=401"), ("AUTH:unauthorized".into(), String::new()));
+        assert_eq!(f("Upload(\"../../etc/passwd\"): HUB:quota_exceeded"), ("HUB:quota_exceeded".into(), String::new()));
+        assert_eq!(f("user@https://server"), (String::new(), String::new()));
+        assert_eq!(f(""), (String::new(), String::new()));
+    }
+
+    /// Answers `first` once, then 200 `{}`; returns the address and the instant of each request.
+    fn answers_then_ok(first: &'static str) -> (String, std::sync::Arc<std::sync::Mutex<Vec<std::time::Instant>>>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let times = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = times.clone();
+        std::thread::spawn(move || {
+            for (i, stream) in listener.incoming().flatten().enumerate() {
+                let mut s = stream;
+                let _ = s.read(&mut [0; 4096]);
+                log.lock().unwrap().push(std::time::Instant::now());
+                let _ = if i == 0 { write!(s, "{first}") } else { write!(s, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}") };
+            }
+        });
+        (base, times)
+    }
+
+    #[test]
+    fn a_busy_server_is_waited_for_as_long_as_it_says() {
+        for first in ["HTTP/1.1 429 Too Many Requests\r\nRetry-After: 2\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", "HTTP/1.1 503 Service Unavailable\r\nRetry-After: 2\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"] {
+            let (base, times) = answers_then_ok(first);
+            assert!(Api::new(&base, None).unwrap().get("/x").is_ok());
+            let t = times.lock().unwrap().clone();
+            assert!(t[1] - t[0] >= Duration::from_millis(1900), "the retry came after {:?}", t[1] - t[0]);
+        }
+        // a background check (one attempt) does not wait
+        let (base, _) = answers_then_ok("HTTP/1.1 429 Too Many Requests\r\nRetry-After: 2\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        assert_eq!(Api::new(&base, None).unwrap().quick().get("/x").unwrap_err().lines().next(), Some("HUB:http_429"));
     }
 
     #[test]
@@ -856,6 +1064,8 @@ mod e2e {
     use crate::sync::{sync_once, Report, SyncState};
     use crate::vault::Vault;
     use std::path::PathBuf;
+
+    mod server_limits_e2e;
 
     const P1: &str = "11111111-1111-4111-8111-111111111111";
     const P2: &str = "22222222-2222-4222-8222-222222222222";
