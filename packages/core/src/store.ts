@@ -1,6 +1,7 @@
 // The one storage interface of the core (ADR-0001). An adapter only keeps these tables and runs a function in ONE atomic
 // transaction; the only logic an adapter may hold is "write a register if its HLC is newer" (so that it is atomic).
 export interface FieldRow { val: string; hlc: string }
+export interface FieldEntry extends FieldRow { ent: string; f: string }
 export interface EventRow { id: string; ent: string; kind: string; hlc: string; body: string }
 export interface OutboxRow { op: string; env: string; created: number }
 export interface InboxRow { seq: number; env: string }
@@ -20,6 +21,8 @@ export interface Tx {
   rekeyField(ent: string, f: string, fromHlc: string, toHlc: string): Promise<boolean>
   entityFields(ent: string): Promise<Record<string, FieldRow>>
   entities(): Promise<string[]>
+  /** Every register of every entity in ONE read (the page list at startup; a read per entity is too slow at 10 000 pages). */
+  allFields(): Promise<FieldEntry[]>
   // events (immutable)
   putEvent(e: EventRow): Promise<boolean>
   /** Gives an event a new HLC (the clock-ahead repair). */

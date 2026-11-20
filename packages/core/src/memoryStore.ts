@@ -68,6 +68,7 @@ export class MemoryStore implements Store {
       },
       entityFields: async ent => Object.fromEntries(this.fields.get(ent) ?? []),
       entities: async () => [...this.fields.keys()],
+      allFields: async () => [...this.fields].flatMap(([ent, m]) => [...m].map(([f, r]) => ({ ent, f, val: r.val, hlc: r.hlc }))),
       putEvent: async e => {
         if (this.eventRows.has(e.id)) return false
         this.mapSet(this.eventRows, e.id, e, undo)

@@ -38,6 +38,9 @@ export function storeConformance({ describe, it, expect }: Harness, name: string
       await s.run(tx => tx.putFieldIfNewer('e', 'g', '1', 'h1'))
       expect(Object.keys(await s.run(tx => tx.entityFields('e'))).sort()).toEqual(['f', 'g'])
       expect(await s.run(tx => tx.entities())).toEqual(['e'])
+      await s.run(tx => tx.putFieldIfNewer('e2', 'f', '2', 'h1'))
+      const all = (await s.run(tx => tx.allFields())).map(r => `${r.ent}/${r.f}=${r.val}@${r.hlc}`).sort()
+      expect(all).toEqual(['e/f="c"@h3', 'e/g=1@h1', 'e2/f=2@h1'])
     })
 
     it('rekey: a register or an event moves to a new HLC only from the HLC it holds', async () => {

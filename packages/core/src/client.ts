@@ -31,6 +31,10 @@ export class Client {
     this.newId = o.newId ?? uuidv7
   }
 
+  /** A fresh id / the current time, for helpers that build entities on this client. */
+  newIdFor(): string { return this.newId() }
+  nowMs(): number { return this.now() }
+
   private async emit(tx: Tx, doc: string, frame: Uint8Array, hlc: string): Promise<string> {
     const env: Envelope = { v: 1, op: this.newId(), ws: this.ws, doc, dev: this.device, t: hlc, sv: this.sv, kid: 0, p: b64urlEncode(frame) }
     const text = encodeEnvelope(env)

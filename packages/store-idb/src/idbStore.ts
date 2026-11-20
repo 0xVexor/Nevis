@@ -3,7 +3,7 @@
 // Rules this file keeps (R2 §5, the Safari auto-commit trap): inside a transaction only IndexedDB requests are awaited, so
 // the transaction never has an idle moment in which the browser may commit it; a connection that has become invalid is
 // reopened; a newer tab that upgrades the database makes this one close instead of blocking it.
-import type { DocState, DocUpdate, EventRow, FieldRow, InboxRow, OutboxRow, QuarantineRow, Store, Tx } from '@nevis/core'
+import type { DocState, DocUpdate, EventRow, FieldEntry, FieldRow, InboxRow, OutboxRow, QuarantineRow, Store, Tx } from '@nevis/core'
 
 export const DB_VERSION = 1
 const STORES = ['meta', 'fields', 'events', 'doc_state', 'doc_seq', 'doc_update', 'outbox', 'inbox', 'quarantine'] as const
@@ -115,6 +115,7 @@ function makeTx(t: IDBTransaction): Tx {
       const rows = (await req(s('fields').index('byEnt').getAll(ent))) as { f: string; val: string; hlc: string }[]
       return Object.fromEntries(rows.map(r => [r.f, { val: r.val, hlc: r.hlc } as FieldRow]))
     },
+    allFields: async () => (await req(s('fields').getAll())) as FieldEntry[],
     entities: async () => {
       const out: string[] = []
       await new Promise<void>((ok, bad) => {
