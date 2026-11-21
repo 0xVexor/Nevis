@@ -4,7 +4,7 @@ import * as Y from 'yjs'
 import { Client, MemoryBlobStore, MemoryStore, createPage } from '@nevis/core'
 import { SV, uuidv7 } from '@nevis/protocol'
 import { normalize, writeBody, type PMJson } from '@nevis/schema'
-import { exportBundle } from './index'
+import { exportBundle } from './bundle'
 
 export interface LegacyPage {
   id: string
