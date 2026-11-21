@@ -36,7 +36,27 @@ type Store struct {
 	locks         [64]sync.Mutex
 }
 
+var (
+	sharedMu sync.Mutex
+	shared   = map[string]*Store{}
+)
+
+// New returns THE blob store of a data directory: one instance per directory for the whole process, so that the HTTP handlers and the
+// garbage collector take the same per-blob locks.
 func New(dataDir string) (*Store, error) {
+	sharedMu.Lock()
+	defer sharedMu.Unlock()
+	if b, ok := shared[dataDir]; ok {
+		return b, nil
+	}
+	b, err := open(dataDir)
+	if err == nil {
+		shared[dataDir] = b
+	}
+	return b, err
+}
+
+func open(dataDir string) (*Store, error) {
 	b := &Store{root: filepath.Join(dataDir, "blobs"), staging: filepath.Join(dataDir, "staging")}
 	for _, d := range []string{b.root, b.staging} {
 		if err := os.MkdirAll(d, 0o755); err != nil {

@@ -76,7 +76,7 @@ async function main() {
       const blobs = openDesktopBlobs(ws)
       const dev = uuidv7()
       const sync = new BlobSync({ ws, blobs, net: desktopBlobNet(), pieceSize: 1 << 20, verifyTtlMs: 0 })
-      const client = new Client({ store, ws, device: dev, sv: SV, blobs })
+      const client = new Client({ store, ws, device: dev, sv: SV })
       const engine = new SyncEngine({ store, net, ws, device: dev, sv: SV, gate: sync })
       await blobs.put(hash, data, 'image/png')
       must((await blobs.meta(hash))?.remote === false, 'a new file must not be marked as on the server')

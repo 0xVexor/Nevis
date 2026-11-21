@@ -47,16 +47,21 @@ export function hashesIn(payload: Uint8Array, hashes: string[]): string[] {
   return hashes.filter(h => s.includes(h))
 }
 
-/** Every attachment-looking name (64 hex characters) in `text`: for the reference report, which reads whole documents. */
+/** Every attachment-looking name (64 hex characters) in `payload`. A name is a run of exactly 64 hex characters, or a longer run (a name
+ *  next to hex-looking bytes): every 64-window of a run up to 200 characters is taken; longer runs are not names of anything. Used both to
+ *  find what an op refers to (the outbox gate) and what a whole document refers to (the report for the server's collection). */
 export function hexNamesIn(payload: Uint8Array, into: Set<string>): void {
-  let run = 0
+  let start = -1
+  const flush = (end: number) => {
+    const len = end - start
+    if (start >= 0 && len >= 64 && len <= 200) { let s = ''; for (let j = start; j < end; j++) s += String.fromCharCode(payload[j]!); for (let k = 0; k + 64 <= len; k++) into.add(s.slice(k, k + 64)) }
+    start = -1
+  }
   for (let i = 0; i < payload.length; i++) {
     const c = payload[i]!
-    if ((c >= 48 && c <= 57) || (c >= 97 && c <= 102)) {
-      run++
-      if (run >= 64) { let s = ''; for (let j = i - 63; j <= i; j++) s += String.fromCharCode(payload[j]!); into.add(s) }
-    } else run = 0
+    if ((c >= 48 && c <= 57) || (c >= 97 && c <= 102)) { if (start < 0) start = i } else flush(i)
   }
+  flush(payload.length)
 }
 
 /** A BlobStore in memory: for tests and for the harness. */

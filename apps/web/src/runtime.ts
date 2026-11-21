@@ -74,7 +74,7 @@ export class SyncRuntime {
     const net = httpNet({ ...(this.o.token ? { token: this.o.token } : {}), ...(isDesktop ? { fetch: desktopFetch } : {}), offline: () => this._offline })
     const blobNet = isDesktop ? desktopBlobNet(() => this._offline) : httpBlobNet({ ...(this.o.token ? { token: this.o.token } : {}), offline: () => this._offline })
     this.blobSync = new BlobSync({ ws: this.ws, blobs: this.blobs, net: blobNet, onChange: () => this.o.onChange?.(), onUploaded: () => this.coord?.kick() })
-    this.client = new Client({ store: this.store, ws: this.ws, device: this.device, sv: SV, blobs: this.blobs })
+    this.client = new Client({ store: this.store, ws: this.ws, device: this.device, sv: SV })
     this.engine = new SyncEngine({ store: this.store, net, ws: this.ws, device: this.device, sv: SV, gate: this.blobSync })
     this.attachments = {
       maxBytes: MAX_ATTACHMENT_BYTES,

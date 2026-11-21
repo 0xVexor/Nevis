@@ -65,7 +65,7 @@ describe('50 MB blob against the real server', () => {
     known.push(hash)
     const store = new MemoryStore(), blobs = new MemoryBlobStore(), device = uuidv7()
     const sync = new BlobSync({ ws, blobs, net: httpBlobNet({ base, token: 'dev' }), pieceSize: 2 << 20, verifyTtlMs: 0 })
-    const client = new Client({ store, ws, device, sv: SV, blobs })
+    const client = new Client({ store, ws, device, sv: SV })
     const engine = new SyncEngine({ store, net: httpNet({ base, token: 'dev' }), ws, device, sv: SV, gate: sync })
     await blobs.put(hash, data, 'application/octet-stream')
     await client.setFields(uuidv7(), { blob: hash }, 'page')

@@ -222,17 +222,33 @@ func (s *Server) blobRefs(w http.ResponseWriter, r *http.Request, p *store.Princ
 	}
 }
 
-// CollectBlobs removes the blobs whose probation is over (see store.ReportRefs) and returns how many went. main calls it on a timer;
-// the files go after the rows, so a crash in between leaves orphan bytes the API can no longer see, never a row without bytes.
+// CollectBlobs removes the blobs whose probation is over (see store.ReportRefs) and returns how many went. main calls it on a timer.
+// The rows go first, then each file under the blob's lock, and only if no row has come back meanwhile: a re-upload of the same content
+// that slipped in between must not lose its bytes (HEAD would say "stored" while GET found nothing).
 func CollectBlobs(ctx context.Context, st *store.Store, dataDir string) (int, error) {
 	bs, err := blobs.New(dataDir)
 	if err != nil {
 		return 0, err
 	}
-	gone, err := st.CollectBlobs(ctx)
-	for _, b := range gone {
-		_ = bs.Remove(b.WS, b.Hash)
-	}
+	n, err := collectBlobs(ctx, st, bs, nil)
 	_, _ = bs.SweepStaging(time.Now(), 48*time.Hour)
-	return len(gone), err
+	return n, err
+}
+
+// afterRows (tests only) runs between the deletion of the rows and the removal of the files.
+func collectBlobs(ctx context.Context, st *store.Store, bs *blobs.Store, afterRows func()) (int, error) {
+	gone, err := st.CollectBlobs(ctx)
+	if afterRows != nil {
+		afterRows()
+	}
+	removed := 0
+	for _, b := range gone {
+		unlock := bs.Lock(b.WS, b.Hash)
+		if _, back, e := st.BlobSize(ctx, b.WS, b.Hash); e == nil && !back {
+			_ = bs.Remove(b.WS, b.Hash)
+			removed++
+		}
+		unlock()
+	}
+	return removed, err
 }

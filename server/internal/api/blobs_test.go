@@ -6,10 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/nevis-app/nevis/server/internal/blobs"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 type blobEnv struct {
@@ -234,3 +236,36 @@ func TestBlobReferenceReportsNeedWriteAccessAndTellIfTheyWereComplete(t *testing
 }
 
 func code2(r resp) string { return code(r) }
+
+// A re-upload of the same content that lands between the collection's row deletion and its file removal must keep its bytes.
+func TestCollectDoesNotRemoveTheFileOfAReUploadThatRacedIt(t *testing.T) {
+	var dir string
+	e := newBlobEnv(t, func(c *Config) { dir = c.DataDir })
+	_ = dir
+	data := []byte("raced")
+	sha := sum(data)
+	if r := e.put(t, sha, data, 0, len(data)); r.code != 200 {
+		t.Fatal(r.code)
+	}
+	now := time.Now().Add(31 * 24 * time.Hour)
+	e.st.SetClock(func() time.Time { return now })
+	bs, err := blobs.New(e.conf.DataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := collectBlobs(t.Context(), e.st, bs, func() {
+		e.st.SetClock(time.Now) // the upload is "now"
+		if r := e.put(t, sha, data, 0, len(data)); r.code != 200 {
+			t.Errorf("re-upload during the collection: %d", r.code)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("the file of a blob that came back was removed (%d)", n)
+	}
+	if c, _, body := e.rawDo(t, "GET", "/v1/ws/"+e.ws+"/blobs/"+sha, nil, e.tok, nil); c != 200 || string(body) != "raced" {
+		t.Fatalf("HEAD says stored but GET answers %d", c)
+	}
+}

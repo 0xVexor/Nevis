@@ -10,8 +10,8 @@ import (
 
 // The garbage-collection safety property (ROADMAP M9: "GC never deletes a referenced blob"). A random history of uploads, pushes that
 // add or drop references, reports from devices that are sometimes behind, HEADs and time passing; at every collection nothing the log
-// still refers to may be gone. The assumptions the design rests on are explicit here: (1) the client HEADs a blob right before it
-// pushes an op that refers to it; (2) some device that has pulled everything reports the references at least every 20 days while the
+// still refers to may be gone. The assumptions the design rests on are explicit here: (1) the client HEADs EVERY attachment name an op holds right
+// before it pushes that op (whatever its local row says: uploaded, downloaded or pending), and uploads again if the server lacks it; (2) some device that has pulled everything reports the references at least every 20 days while the
 // app is in use (the client does it after every sync that changed them). Stale reports are
 // part of the history: a report from a device that has not pulled everything may keep a blob, never condemn one.
 func TestCollectNeverRemovesAReferencedBlob(t *testing.T) {

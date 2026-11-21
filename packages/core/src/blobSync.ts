@@ -80,11 +80,13 @@ export class BlobSync implements OutboxGate {
     return out
   }
 
-  /** A blob may be referenced when the server has it (checked, not assumed: a device that was offline for weeks may find it collected),
-   *  or when it can never be uploaded at all (the page must not stay stuck for ever: it shows "missing" on the other devices). */
+  /** A name in an op is released when: this device holds no file of that name (not an attachment here, or from another workspace: nothing
+   *  to upload); or the file can never be uploaded (the page must not stay stuck for ever: it shows "missing" elsewhere); or the server
+   *  HAS it, which is ASKED, not assumed from the local row: the device may have downloaded it long ago, or uploaded it and then slept
+   *  for weeks while the server collected it. A file the server lacks is uploaded again from the local bytes and the op waits. */
   private async isReady(hash: string): Promise<boolean> {
     const m = await this.o.blobs.meta(hash)
-    if (!m || m.failed) return true // nothing local to wait for
+    if (!m || m.failed) return true
     if (!m.remote) return false
     const at = this.verified.get(hash)
     if (at !== undefined && this.o.now() - at < this.o.verifyTtlMs) return true

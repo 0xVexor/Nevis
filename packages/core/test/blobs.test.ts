@@ -66,7 +66,7 @@ function device(server: FakeServer, o: { pieceSize?: number } = {}) {
   const blobs = new MemoryBlobStore()
   const id = uuidv7()
   const sync = new BlobSync({ ws, blobs, net: server, pieceSize: o.pieceSize ?? 1 << 20, verifyTtlMs: 0 })
-  const client = new Client({ store, ws, device: id, sv: SV, blobs })
+  const client = new Client({ store, ws, device: id, sv: SV })
   const engine = new SyncEngine({ store, net: server, ws, device: id, sv: SV, gate: sync })
   const outbox = async () => (await store.run(tx => tx.listOutbox(1000)))
   return { store, blobs, sync, client, engine, outbox }
@@ -165,6 +165,29 @@ describe('the outbox gate (ROADMAP M9: an op never reaches the server before its
     await d.engine.cycle()
     expect(server.log.length).toBe(1)
     expect(server.violations).toEqual([])
+  })
+
+  it('a name the device only holds as a DOWNLOADED file (remote = true) is checked too: the server dropped it, a new op names it again -> held, re-uploaded from local bytes, then sent', async () => {
+    const server = new FakeServer()
+    const a = device(server)
+    const hash = await attach(a, server, uuidv7(), 50_000, 11)
+    await a.sync.uploadPending()
+    const b = device(server)
+    await b.sync.fetch(hash, 'image/png') // b holds it as a downloaded file: remote = true, never pending
+    expect((await b.blobs.meta(hash))!.remote).toBe(true)
+    server.complete.delete(hash) // 30 days later the server collected it
+    server.known.push(hash)
+    const page = uuidv7()
+    await b.client.setFields(page, { blob: hash }, 'page') // the user pastes the picture back in
+    expect((await b.outbox())[0]!.blobs).toEqual([hash]) // the gate is recorded although nothing was pending
+    await b.engine.cycle()
+    expect(server.log.length).toBe(0) // held: the server does not have it
+    expect((await b.blobs.meta(hash))!.remote).toBe(false)
+    await b.sync.uploadPending()
+    await b.engine.cycle()
+    expect(server.log.length).toBe(1)
+    expect(server.violations).toEqual([])
+    expect(server.complete.has(hash)).toBe(true)
   })
 
   it('a file the server can never take does not hold the page for ever (and says why)', async () => {
