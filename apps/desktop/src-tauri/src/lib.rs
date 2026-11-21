@@ -1,4 +1,5 @@
 //! Nevis desktop (ADR-0013): the web bundle in a Tauri 2 window, SQLite for the local store, the network and the device token in Rust.
+pub mod blobs;
 pub mod net;
 pub mod secrets;
 pub mod store;
@@ -109,6 +110,23 @@ impl AppState {
         out
     }
 
+    /// A request with a raw (binary) body and the answer's status, headers and bytes: for attachments. The path rules are the same as
+    /// for every other request; JavaScript still never sees the token.
+    async fn raw_request(&self, method: &str, path: &str, body: Option<Vec<u8>>, range: Option<String>) -> Result<(u16, reqwest::header::HeaderMap, Vec<u8>), String> {
+        net::check_path(path)?;
+        let server = self.server()?;
+        let m = reqwest::Method::from_bytes(method.as_bytes()).map_err(|_| "bad method".to_string())?;
+        let mut rq = self.http.request(m, format!("{server}{path}")).header("Nevis-Proto", "1");
+        if let Some(t) = self.token(&server) { rq = rq.bearer_auth(t); }
+        if let Some(r) = range { rq = rq.header("Range", r); }
+        if let Some(b) = body { rq = rq.header("Content-Type", "application/octet-stream").body(b); }
+        let res = rq.send().await.map_err(|_| "unreachable".to_string())?;
+        let status = res.status().as_u16();
+        let headers = res.headers().clone();
+        let bytes = res.bytes().await.map_err(|_| "unreachable".to_string())?.to_vec();
+        Ok((status, headers, bytes))
+    }
+
     /// A response for JavaScript: refuse it if it holds the token.
     fn deliver(&self, r: NetResponse) -> Result<NetResponse, String> {
         let server = self.server()?;
@@ -151,6 +169,103 @@ async fn store_read(state: State<'_, AppState>, ws: String, req: Read) -> Result
 async fn net_request(state: State<'_, AppState>, method: String, path: String, body: Option<String>, request_id: Option<String>) -> Result<NetResponse, String> {
     let r = state.request(&method, &path, body, request_id).await?;
     state.deliver(r)
+}
+
+// ---- attachments (ROADMAP M9). Bytes cross the IPC as RAW bodies and responses (no base64, no JSON) ----
+
+fn header(req: &tauri::ipc::Request<'_>, name: &str) -> Result<String, String> {
+    req.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string).ok_or_else(|| format!("missing header {name}"))
+}
+fn raw_body(req: &tauri::ipc::Request<'_>) -> Result<Vec<u8>, String> {
+    match req.body() { tauri::ipc::InvokeBody::Raw(b) => Ok(b.clone()), _ => Err("expected a raw body".into()) }
+}
+
+/// Stores a file: the bytes (headers: ws, hash, mime, remote) are checked against the hash, written whole, THEN the row is inserted.
+#[tauri::command]
+async fn blob_put(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Result<Value, String> {
+    let (ws, hash, mime) = (header(&request, "ws")?, header(&request, "hash")?, blobs::clean_mime(&header(&request, "mime").unwrap_or_default()));
+    let remote = header(&request, "remote").map(|v| v == "1").unwrap_or(false);
+    let bytes = raw_body(&request)?;
+    let s = state.store(&ws)?;
+    let dir = state.data_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        blobs::write_file(&dir, &ws, &hash, &bytes).map_err(|e| e.message())?;
+        s.lock().unwrap().blob_insert(&hash, bytes.len() as i64, &mime, remote).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+/// The bytes of a file, or the error `not_found`.
+#[tauri::command]
+async fn blob_get(state: State<'_, AppState>, ws: String, hash: String) -> Result<tauri::ipc::Response, String> {
+    state.store(&ws)?; // validates the workspace id
+    let dir = state.data_dir.clone();
+    let bytes = tauri::async_runtime::spawn_blocking(move || blobs::read_file(&dir, &ws, &hash)).await.map_err(|e| e.to_string())?;
+    bytes.map(tauri::ipc::Response::new).ok_or_else(|| "not_found".to_string())
+}
+
+#[tauri::command]
+async fn blob_meta(state: State<'_, AppState>, ws: String, hash: String) -> Result<Value, String> {
+    if !blobs::valid_hash(&hash) { return Err("bad attachment name".into()); }
+    let s = state.store(&ws)?;
+    tauri::async_runtime::spawn_blocking(move || s.lock().unwrap().blob_meta(&hash).map(|r| r.unwrap_or(Value::Null)).map_err(|e| e.to_string())).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn blob_list(state: State<'_, AppState>, ws: String, pending: bool) -> Result<Value, String> {
+    let s = state.store(&ws)?;
+    tauri::async_runtime::spawn_blocking(move || s.lock().unwrap().blob_list(pending).map(Value::Array).map_err(|e| e.to_string())).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn blob_set(state: State<'_, AppState>, ws: String, hash: String, remote: Option<bool>, failed: Option<String>) -> Result<(), String> {
+    if !blobs::valid_hash(&hash) { return Err("bad attachment name".into()); }
+    let s = state.store(&ws)?;
+    tauri::async_runtime::spawn_blocking(move || s.lock().unwrap().blob_set(&hash, remote, failed.as_deref()).map_err(|e| e.to_string())).await.map_err(|e| e.to_string())?
+}
+
+/// Removes the row first, then the file (a crash in between leaves a file nobody names, never a row without bytes).
+#[tauri::command]
+async fn blob_delete(state: State<'_, AppState>, ws: String, hash: String) -> Result<(), String> {
+    if !blobs::valid_hash(&hash) { return Err("bad attachment name".into()); }
+    let s = state.store(&ws)?;
+    let dir = state.data_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || { s.lock().unwrap().blob_remove(&hash).map_err(|e| e.to_string())?; blobs::remove_file(&dir, &ws, &hash); Ok(()) }).await.map_err(|e| e.to_string())?
+}
+
+/// HEAD of a file on the server: `{status, size, received}` (size from `Nevis-Size`, received from `Nevis-Received`).
+#[tauri::command]
+async fn blob_head(state: State<'_, AppState>, ws: String, hash: String) -> Result<Value, String> {
+    state.store(&ws)?;
+    if !blobs::valid_hash(&hash) { return Err("bad attachment name".into()); }
+    let (status, h, _) = state.raw_request("HEAD", &format!("/v1/ws/{ws}/blobs/{hash}"), None, None).await?;
+    let num = |n: &str| h.get(n).and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok());
+    Ok(json!({ "status": status, "size": num("nevis-size"), "received": num("nevis-received") }))
+}
+
+/// One piece of an upload (headers: ws, hash, offset, total; the body is the piece). The answer is the server's JSON.
+#[tauri::command]
+async fn blob_put_piece(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Result<NetResponse, String> {
+    let (ws, hash) = (header(&request, "ws")?, header(&request, "hash")?);
+    let (offset, total): (u64, u64) = (header(&request, "offset")?.parse().map_err(|_| "bad offset")?, header(&request, "total")?.parse().map_err(|_| "bad total")?);
+    state.store(&ws)?;
+    if !blobs::valid_hash(&hash) { return Err("bad attachment name".into()); }
+    let (status, _, bytes) = state.raw_request("PUT", &format!("/v1/ws/{ws}/blobs/{hash}?offset={offset}&total={total}"), Some(raw_body(&request)?), None).await?;
+    state.deliver(NetResponse { status, text: String::from_utf8_lossy(&bytes).to_string() })
+}
+
+/// A byte range of a file on the server. The answer is raw bytes: `status` (u16 BE), the file's total size (u64 BE), then the body (the
+/// bytes of the range, or the server's JSON error).
+#[tauri::command]
+async fn blob_get_range(state: State<'_, AppState>, ws: String, hash: String, start: u64, end: u64) -> Result<tauri::ipc::Response, String> {
+    state.store(&ws)?;
+    if !blobs::valid_hash(&hash) { return Err("bad attachment name".into()); }
+    let (status, h, body) = state.raw_request("GET", &format!("/v1/ws/{ws}/blobs/{hash}"), None, Some(format!("bytes={start}-{end}"))).await?;
+    let total = h.get("content-range").and_then(|v| v.to_str().ok()).and_then(|v| v.rsplit('/').next()).and_then(|v| v.parse::<u64>().ok()).unwrap_or(body.len() as u64);
+    let mut out = Vec::with_capacity(10 + body.len());
+    out.extend_from_slice(&status.to_be_bytes());
+    out.extend_from_slice(&total.to_be_bytes());
+    out.extend_from_slice(&body);
+    Ok(tauri::ipc::Response::new(out))
 }
 
 #[tauri::command]
@@ -257,7 +372,7 @@ pub fn run() {
                 });
             }
         })
-        .invoke_handler(tauri::generate_handler![app_info, server_set, store_commit, store_read, net_request, net_cancel, auth_signin, auth_signup, auth_signout, flush_ready, flush_done, app_log, ui_close, app_exit])
+        .invoke_handler(tauri::generate_handler![app_info, server_set, store_commit, store_read, net_request, net_cancel, blob_put, blob_get, blob_meta, blob_list, blob_set, blob_delete, blob_head, blob_put_piece, blob_get_range, auth_signin, auth_signup, auth_signout, flush_ready, flush_done, app_log, ui_close, app_exit])
         .run(tauri::generate_context!())
         .expect("error while running Nevis");
 }

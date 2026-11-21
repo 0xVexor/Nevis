@@ -171,7 +171,7 @@ function makeTx(read: Read, ops: Record<string, unknown>[]): Tx {
       return [...s]
     },
 
-    addOutbox: async row => { addedOutbox.push({ ...row }); ops.push({ t: 'addOutbox', op: row.op, env: row.env, created: row.created }) },
+    addOutbox: async row => { addedOutbox.push({ ...row }); ops.push({ t: 'addOutbox', op: row.op, env: row.env, created: row.created, ...(row.blobs?.length ? { blobs: row.blobs } : {}) }) },
     listOutbox: async limit => {
       const committed = (await read({ t: 'listOutbox', limit: limit + deletedOutbox.size })) as OutboxRow[]
       return [...committed.filter(r => !deletedOutbox.has(r.op)), ...addedOutbox.filter(r => !deletedOutbox.has(r.op))].slice(0, limit)

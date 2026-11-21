@@ -1,5 +1,6 @@
 // The conformance suite every `Store` adapter must pass (ADR-0001 §2): same semantics on memory, IndexedDB and SQLite.
 // Import it from a test file: `runStoreConformance('name', () => new MyStore())`.
+import { sha256Hex, type BlobStore } from './blobs'
 import type { Store } from './store'
 
 /** The few test-framework pieces the suite needs, so it runs under vitest AND in a plain browser page. */
@@ -90,6 +91,14 @@ export function storeConformance({ describe, it, expect }: Harness, name: string
       expect((await s.run(tx => tx.listOutbox(10))).map(r => r.op)).toEqual(['a'])
     })
 
+    it('outbox: the attachments an op waits for (the gate) come back as written, and a row without any has none', async () => {
+      const s = await factory()
+      const h = 'a'.repeat(64)
+      await s.run(async tx => { await tx.addOutbox({ op: 'g', env: 'G', created: 1, blobs: [h, 'b'.repeat(64)] }); await tx.addOutbox({ op: 'n', env: 'N', created: 2 }) })
+      const rows = await s.run(tx => tx.listOutbox(10))
+      expect(rows.map(r => [r.op, r.blobs ?? []])).toEqual([['g', [h, 'b'.repeat(64)]], ['n', []]])
+    })
+
     it('inbox: a seq is inserted once, listed in order after a cursor, deleted by seq', async () => {
       const s = await factory()
       expect(await s.run(tx => tx.putInbox({ seq: 5, env: 'e5' }))).toBe(true)
@@ -144,6 +153,64 @@ export function storeConformance({ describe, it, expect }: Harness, name: string
         await tx.setMeta('n', String(n + 1))
       })))
       expect(await s.run(tx => tx.getMeta('n'))).toBe('20')
+    })
+  })
+}
+
+/** The conformance suite every `BlobStore` adapter must pass (memory, IndexedDB, the desktop's files + SQLite). The bytes given to `put`
+ *  always match their hash: the desktop adapter checks it (a name means its content) and refuses anything else. */
+export function blobStoreConformance({ describe, it, expect }: Harness, name: string, factory: () => BlobStore | Promise<BlobStore>) {
+  const read = async (b: Blob | undefined) => (b ? new Uint8Array(await b.arrayBuffer()) : undefined)
+  const data = (n: number, seed: number) => { const a = new Uint8Array(n); for (let i = 0; i < n; i++) a[i] = (i * 31 + seed) & 255; return a }
+  const file = async (n: number, seed: number) => { const bytes = data(n, seed); return { bytes, blob: new Blob([bytes]), hash: await sha256Hex(bytes) } }
+  const absent = '2'.repeat(64)
+  describe(`BlobStore conformance: ${name}`, () => {
+    it('put keeps bytes and a row (not yet on the server); the same hash again changes nothing', async () => {
+      const s = await factory()
+      const f = await file(1000, 1)
+      const m = await s.put(f.hash, f.blob, 'image/png')
+      expect([m.hash, m.size, m.mime, m.remote, m.failed]).toEqual([f.hash, 1000, 'image/png', false, ''])
+      expect(await read(await s.get(f.hash))).toEqual(f.bytes)
+      await s.setRemote(f.hash, true)
+      const again = await s.put(f.hash, f.blob, 'text/plain') // a second put of a stored hash is ignored, remote stays true
+      expect([again.size, again.mime, again.remote]).toEqual([1000, 'image/png', true])
+      expect((await s.meta(f.hash))!.remote).toBe(true)
+      expect(await s.meta(absent)).toBeUndefined()
+      expect(await s.get(absent)).toBeUndefined()
+    })
+    it('a blob of 3 MB comes back byte for byte (the bytes are not changed by the adapter)', async () => {
+      const s = await factory()
+      const f = await file(3 << 20, 7)
+      await s.put(f.hash, f.blob, 'application/octet-stream')
+      const back = await read(await s.get(f.hash))
+      expect(back!.length).toBe(3 << 20)
+      expect(back![12345]).toBe(f.bytes[12345]!)
+      expect(back![(3 << 20) - 1]).toBe(f.bytes[(3 << 20) - 1]!)
+      expect(await sha256Hex(back!)).toBe(f.hash)
+    })
+    it('pending lists, oldest first, only what is neither on the server nor failed; putRemote stores a downloaded file as remote', async () => {
+      const s = await factory()
+      const [a, b, c, d] = [await file(10, 1), await file(11, 2), await file(12, 3), await file(13, 4)]
+      await s.put(a!.hash, a!.blob, ''); await s.put(b!.hash, b!.blob, ''); await s.put(c!.hash, c!.blob, '')
+      await s.putRemote(d!.hash, d!.blob, 'image/gif')
+      expect((await s.pending()).map(m => m.hash)).toEqual([a!.hash, b!.hash, c!.hash])
+      await s.setRemote(a!.hash, true)
+      await s.setFailed(b!.hash, 'blob_too_large')
+      expect((await s.pending()).map(m => m.hash)).toEqual([c!.hash])
+      await s.setRemote(a!.hash, false) // collected on the server
+      expect((await s.pending()).map(m => m.hash)).toEqual([a!.hash, c!.hash])
+      expect((await s.meta(b!.hash))!.failed).toBe('blob_too_large')
+      expect((await s.meta(d!.hash))!.remote).toBe(true)
+      expect((await s.all()).length).toBe(4)
+    })
+    it('delete removes the bytes and the row', async () => {
+      const s = await factory()
+      const f = await file(5, 9)
+      await s.put(f.hash, f.blob, '')
+      await s.delete(f.hash)
+      expect(await s.meta(f.hash)).toBeUndefined()
+      expect(await s.get(f.hash)).toBeUndefined()
+      await s.delete(f.hash) // twice is fine
     })
   })
 }

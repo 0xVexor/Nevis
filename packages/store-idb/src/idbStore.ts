@@ -167,10 +167,10 @@ function makeTx(t: IDBTransaction): Tx {
       return [...new Set([...a, ...b])]
     },
 
-    addOutbox: async row => { await req(s('outbox').put({ op: row.op, env: row.env, created: row.created })) },
+    addOutbox: async row => { await req(s('outbox').put({ op: row.op, env: row.env, created: row.created, ...(row.blobs?.length ? { blobs: row.blobs } : {}) })) },
     listOutbox: async limit => {
-      const rows = (await req(s('outbox').getAll(null, limit))) as { op: string; env: string; created: number }[]
-      return rows.map(r => ({ op: r.op, env: r.env, created: r.created }) as OutboxRow)
+      const rows = (await req(s('outbox').getAll(null, limit))) as { op: string; env: string; created: number; blobs?: string[] }[]
+      return rows.map(r => ({ op: r.op, env: r.env, created: r.created, ...(r.blobs?.length ? { blobs: r.blobs } : {}) }) as OutboxRow)
     },
     deleteOutbox: async ops => {
       const idx = s('outbox').index('byOp')

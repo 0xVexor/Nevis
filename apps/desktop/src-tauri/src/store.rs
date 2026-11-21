@@ -47,7 +47,7 @@ pub enum Op {
     BumpMaxSv { doc: String, sv: i64 },
     AppendDocUpdate { doc: String, upd: String, k: i64 },
     DeleteDocUpdates { doc: String, through: i64 },
-    AddOutbox { op: String, env: String, created: i64 },
+    AddOutbox { op: String, env: String, created: i64, #[serde(default)] blobs: Option<Vec<String>> },
     DeleteOutbox { ops: Vec<String> },
     PutInbox { seq: i64, env: String, inserted: bool },
     DeleteInbox { seqs: Vec<i64> },
@@ -98,9 +98,13 @@ impl Store {
              CREATE TABLE IF NOT EXISTS doc_update (doc TEXT NOT NULL, k INTEGER NOT NULL, upd BLOB NOT NULL, PRIMARY KEY (doc, k)) WITHOUT ROWID;
              CREATE TABLE IF NOT EXISTS outbox (id INTEGER PRIMARY KEY AUTOINCREMENT, op TEXT NOT NULL UNIQUE, env TEXT NOT NULL, created INTEGER NOT NULL);
              CREATE TABLE IF NOT EXISTS inbox (seq INTEGER PRIMARY KEY, env TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS blob (hash TEXT PRIMARY KEY, n INTEGER NOT NULL, size INTEGER NOT NULL, mime TEXT NOT NULL, remote INTEGER NOT NULL, failed TEXT NOT NULL) WITHOUT ROWID;
              CREATE TABLE IF NOT EXISTS quarantine (seq INTEGER PRIMARY KEY, env TEXT NOT NULL, reason TEXT NOT NULL);",
         )?;
         let s = Store { conn };
+        // M9: the attachments an outbox row waits for (the gate). A database made before M9 has no such column.
+        let has_blobs: bool = s.conn.prepare("PRAGMA table_info(outbox)")?.query_map([], |r| r.get::<_, String>(1))?.filter_map(|r| r.ok()).any(|c| c == "blobs");
+        if !has_blobs { s.conn.execute("ALTER TABLE outbox ADD COLUMN blobs TEXT", [])?; }
         if s.meta("storeVersion")?.is_none() {
             s.conn.execute("INSERT INTO meta (k, v) VALUES ('storeVersion', ?1)", [STORE_VERSION])?;
         }
@@ -110,6 +114,38 @@ impl Store {
     fn meta(&self, k: &str) -> Res<Option<String>> {
         Ok(self.conn.query_row("SELECT v FROM meta WHERE k = ?1", [k], |r| r.get(0)).optional()?)
     }
+
+    // ---- attachments: the rows (the bytes are files, see blobs.rs) ----
+    fn blob_json(r: &rusqlite::Row) -> rusqlite::Result<serde_json::Value> {
+        Ok(serde_json::json!({ "hash": r.get::<_, String>(0)?, "size": r.get::<_, i64>(1)?, "mime": r.get::<_, String>(2)?, "remote": r.get::<_, i64>(3)? != 0, "failed": r.get::<_, String>(4)? }))
+    }
+    pub fn blob_meta(&self, hash: &str) -> Res<Option<serde_json::Value>> {
+        Ok(self.conn.query_row("SELECT hash, size, mime, remote, failed FROM blob WHERE hash = ?1", [hash], Self::blob_json).optional()?)
+    }
+    /// Inserts the row of a stored file, or (when there is one) only raises `remote`. Returns the row.
+    pub fn blob_insert(&mut self, hash: &str, size: i64, mime: &str, remote: bool) -> Res<serde_json::Value> {
+        let tx = self.conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let have: Option<i64> = tx.query_row("SELECT remote FROM blob WHERE hash = ?1", [hash], |r| r.get(0)).optional()?;
+        match have {
+            Some(r) => { if remote && r == 0 { tx.execute("UPDATE blob SET remote = 1 WHERE hash = ?1", [hash])?; } }
+            None => { tx.execute("INSERT INTO blob (hash, n, size, mime, remote, failed) VALUES (?1, (SELECT COALESCE(MAX(n), 0) + 1 FROM blob), ?2, ?3, ?4, '')", params![hash, size, mime, remote as i64])?; }
+        }
+        let row = tx.query_row("SELECT hash, size, mime, remote, failed FROM blob WHERE hash = ?1", [hash], Self::blob_json)?;
+        tx.commit()?;
+        Ok(row)
+    }
+    pub fn blob_set(&self, hash: &str, remote: Option<bool>, failed: Option<&str>) -> Res<()> {
+        if let Some(r) = remote { self.conn.execute("UPDATE blob SET remote = ?2 WHERE hash = ?1", params![hash, r as i64])?; }
+        if let Some(f) = failed { self.conn.execute("UPDATE blob SET failed = ?2 WHERE hash = ?1", params![hash, f])?; }
+        Ok(())
+    }
+    pub fn blob_list(&self, pending_only: bool) -> Res<Vec<serde_json::Value>> {
+        let sql = if pending_only { "SELECT hash, size, mime, remote, failed FROM blob WHERE remote = 0 AND failed = '' ORDER BY n" } else { "SELECT hash, size, mime, remote, failed FROM blob ORDER BY n" };
+        let mut st = self.conn.prepare(sql)?;
+        let rows = st.query_map([], Self::blob_json)?.collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+    pub fn blob_remove(&self, hash: &str) -> Res<()> { self.conn.execute("DELETE FROM blob WHERE hash = ?1", [hash])?; Ok(()) }
 
     fn blob(s: &str) -> Res<Vec<u8>> { B64.decode(s).map_err(|e| StoreError::Bad(format!("base64: {e}"))) }
 
@@ -158,7 +194,11 @@ impl Store {
                 arr(c, "SELECT doc FROM doc_state UNION SELECT doc FROM doc_seq", [], |r| Ok(json!(r.get::<_, String>(0)?)))?
             }
             Read::ListOutbox { limit } => {
-                arr(c, "SELECT op, env, created FROM outbox ORDER BY id LIMIT ?1", [limit], |r| Ok(json!({ "op": r.get::<_, String>(0)?, "env": r.get::<_, String>(1)?, "created": r.get::<_, i64>(2)? })))?
+                arr(c, "SELECT op, env, created, blobs FROM outbox ORDER BY id LIMIT ?1", [limit], |r| {
+                    let mut row = json!({ "op": r.get::<_, String>(0)?, "env": r.get::<_, String>(1)?, "created": r.get::<_, i64>(2)? });
+                    if let Some(b) = r.get::<_, Option<String>>(3)? { if let Ok(v) = serde_json::from_str::<Value>(&b) { row["blobs"] = v; } }
+                    Ok(row)
+                })?
             }
             Read::HasInbox { seq } => json!(c.query_row("SELECT 1 FROM inbox WHERE seq = ?1", [seq], |_| Ok(())).optional()?.is_some()),
             Read::ListInbox { after, limit } => {
@@ -221,8 +261,9 @@ fn apply(tx: &rusqlite::Transaction, op: &Op) -> Res<()> {
             tx.execute("INSERT INTO doc_update (doc, k, upd) VALUES (?1, ?2, ?3)", params![doc, k, Store::blob(upd)?])?;
         }
         Op::DeleteDocUpdates { doc, through } => { tx.execute("DELETE FROM doc_update WHERE doc = ?1 AND k <= ?2", params![doc, through])?; }
-        Op::AddOutbox { op, env, created } => {
-            tx.execute("INSERT INTO outbox (op, env, created) VALUES (?1, ?2, ?3) ON CONFLICT(op) DO UPDATE SET env = excluded.env, created = excluded.created", params![op, env, created])?;
+        Op::AddOutbox { op, env, created, blobs } => {
+            let blobs_json = match blobs { Some(b) if !b.is_empty() => Some(serde_json::to_string(b).unwrap_or_default()), _ => None };
+            tx.execute("INSERT INTO outbox (op, env, created, blobs) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(op) DO UPDATE SET env = excluded.env, created = excluded.created, blobs = excluded.blobs", params![op, env, created, blobs_json])?;
         }
         Op::DeleteOutbox { ops } => { for o in ops { tx.execute("DELETE FROM outbox WHERE op = ?1", [o])?; } }
         Op::PutInbox { seq, env, inserted } => {

@@ -1,19 +1,25 @@
 // The desktop shell's side of the web bundle (ADR-0013): when the page runs inside Tauri, the store is SQLite in Rust and every
 // request to the server is made by Rust, which adds the device token itself. This file is the only place that knows about Tauri.
-import { TauriStore } from '@nevis/store-tauri'
-import type { Store } from '@nevis/core'
+import { TauriBlobStore, TauriStore, tauriBlobNet, type RawInvoke } from '@nevis/store-tauri'
+import type { BlobNet, BlobStore, Store } from '@nevis/core'
 
-type Internals = { invoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> }
+type Internals = { invoke(cmd: string, args?: unknown, options?: { headers?: Record<string, string> }): Promise<unknown> }
 const internals = (): Internals => (window as unknown as { __TAURI_INTERNALS__: Internals }).__TAURI_INTERNALS__
 
 export const isDesktop: boolean = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 export const invoke = (cmd: string, args: Record<string, unknown> = {}): Promise<unknown> => internals().invoke(cmd, args)
+/** Like `invoke`, for the commands whose body or answer is raw bytes (attachments). */
+export const invokeRaw: RawInvoke = (cmd, args, options) => internals().invoke(cmd, args, options)
 
 export interface AppInfo { mode: 'normal' | 'selftest' | 'bench' | 'typing' | 'sync'; env: { user: string | null; ws: string | null; phase: string | null }; dataDir: string; server: string | null; hasToken: boolean; blocked: number; verify: boolean; benchSeconds: number }
 export const appInfo = (): Promise<AppInfo> => invoke('app_info') as Promise<AppInfo>
 export const setServer = (url: string): Promise<string> => invoke('server_set', { url }) as Promise<string>
 
 export const openDesktopStore = (ws: string, onCommit?: (ms: number, ops: number) => void): Store => new TauriStore({ ws, invoke, onCommit })
+
+/** The attachments of the desktop: files in the app data folder, rows in the workspace's SQLite, requests made by Rust. */
+export const openDesktopBlobs = (ws: string): BlobStore => new TauriBlobStore({ ws, invoke: invokeRaw })
+export const desktopBlobNet = (offline?: () => boolean): BlobNet => tauriBlobNet({ invoke: invokeRaw, ...(offline ? { offline } : {}) })
 
 let seq = 0
 /** `fetch` for `/v1/...` paths, made by Rust. Aborting cancels the request in Rust (the long-poll must not outlive sign-out). */

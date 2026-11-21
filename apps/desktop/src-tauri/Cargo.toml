@@ -19,6 +19,7 @@ rusqlite = { version = "0.43", features = ["bundled"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 base64 = "0.22"
+sha2 = "0.10"
 keyring = "4"
 
 [features]

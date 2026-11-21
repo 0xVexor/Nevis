@@ -3,15 +3,16 @@
 //  2. the sandbox of the network commands (a path outside /v1/ is refused);
 //  3. with a server (NEVIS_SERVER): sign up as a device, the token stays in Rust, and a client syncs through Rust to the server and
 //     back to a second device (the two ends of one account converge).
-import { Client, MemoryStore, SyncEngine, httpNet, storeConformance } from '@nevis/core'
+import { BlobSync, Client, MemoryBlobStore, MemoryStore, SyncEngine, blobStoreConformance, httpNet, sha256Hex, storeConformance } from '@nevis/core'
 import { uuidv7, SV } from '@nevis/protocol'
 import { createWorkspace, me, signUp, workspaces } from './auth'
-import { appInfo, desktopFetch, invoke, isDesktop, openDesktopStore } from './desktop'
+import { appInfo, desktopBlobNet, desktopFetch, invoke, isDesktop, openDesktopBlobs, openDesktopStore } from './desktop'
 import { harness, runAll, type Result } from './harness'
 
 let n = 0
 const run = Date.now()
 storeConformance(harness, 'TauriStore (SQLite over IPC)', () => openDesktopStore(`selftest-${run}-${++n}`))
+blobStoreConformance(harness, 'TauriBlobStore (files + SQLite over raw IPC)', () => openDesktopBlobs(`selftest-blobs-${run}-${++n}`))
 
 const extra: Result[] = []
 async function check(name: string, fn: () => Promise<void>) {
@@ -63,6 +64,40 @@ async function main() {
       await eb.cycle(); await ea.cycle()
       must((await a.store.run(tx => tx.getField(page, 'count')))?.val === '7', 'the desktop did not get the change back')
       must((await a.store.run(tx => tx.listOutbox(10))).length === 0, 'the outbox was not emptied')
+    })
+    await check('an attachment goes through Rust: files on disk, gated outbox, resumed upload, verified download on a second device', async () => {
+      const ws = uuidv7(), page = uuidv7()
+      await createWorkspace(ws, 'selftest-blobs')
+      const net = httpNet({ fetch: desktopFetch })
+      const bytes = new Uint8Array(5 << 20).map((_, i) => (i * 31 + 7) & 255) // 5 MB
+      const data = new Blob([bytes])
+      const hash = await sha256Hex(data)
+      const store = openDesktopStore(ws)
+      const blobs = openDesktopBlobs(ws)
+      const dev = uuidv7()
+      const sync = new BlobSync({ ws, blobs, net: desktopBlobNet(), pieceSize: 1 << 20, verifyTtlMs: 0 })
+      const client = new Client({ store, ws, device: dev, sv: SV, blobs })
+      const engine = new SyncEngine({ store, net, ws, device: dev, sv: SV, gate: sync })
+      await blobs.put(hash, data, 'image/png')
+      must((await blobs.meta(hash))?.remote === false, 'a new file must not be marked as on the server')
+      await client.setFields(page, { blob: hash }, 'page')
+      await engine.cycle()
+      must((await store.run(tx => tx.listOutbox(10))).length === 1, 'the op left before its file was uploaded (the gate failed)')
+      // a wrong hash is refused by Rust itself, nothing is kept
+      let refused = false
+      try { await blobs.put('f'.repeat(64), new Blob(['not that']), 'x/y') } catch { refused = true }
+      must(refused && !(await blobs.meta('f'.repeat(64))), 'Rust kept bytes that do not match their hash')
+      await sync.uploadPending()
+      must((await blobs.meta(hash))?.remote === true, 'the file was not marked uploaded')
+      await engine.cycle()
+      must((await store.run(tx => tx.listOutbox(10))).length === 0, 'the op did not go after the upload')
+      // a second device, with its own memory, downloads it in ranges and verifies it
+      const other = new BlobSync({ ws, blobs: new MemoryBlobStore(), net: desktopBlobNet() })
+      const got = await other.fetch(hash, 'image/png')
+      must(!!got && got.size === bytes.length && (await sha256Hex(got)) === hash, 'the downloaded file is not identical')
+      // and what Rust holds reads back identical
+      const back = await blobs.get(hash)
+      must(!!back && (await sha256Hex(back)) === hash, 'the file read back from disk differs')
     })
     await check('no response was ever blocked for holding the token', async () => { must((await appInfo()).blocked === 0, 'the guard blocked a response') })
   }
