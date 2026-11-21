@@ -63,7 +63,7 @@ test('create a page, write Persian and English, reload: it is all still there; r
   await page.getByTestId('trash-toggle').click()
   await expect(page.getByTestId('trash')).toContainText('بازار وکیل')
   await page.getByTestId('trash').getByRole('button', { name: 'بازیابی' }).click()
-  await page.getByTestId('trash-toggle').click()
+  await page.getByTestId('nav-home').click() // the tree belongs to Home and the pages
   await expect(page.getByTestId('page-row')).toHaveCount(2)
 })
 

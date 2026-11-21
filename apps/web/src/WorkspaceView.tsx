@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { allBlocksTemplate } from '@nevis/editor'
 import { Button, Toast } from './ds'
 import { DatabaseView } from './DatabaseView'
@@ -19,6 +19,8 @@ import { Settings } from './views/Settings'
 import { Graph } from './views/Graph'
 import { Tasks } from './screens/Tasks'
 import { Templates } from './views/Templates'
+import { Files } from './views/Files'
+import { Databases, Drawings } from './views/Databases'
 
 /** The app: a header with the sync status, a sidebar (navigation, new, tree, trash) and the screen of the current route. */
 export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: () => void }) {
@@ -29,7 +31,11 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
   const [palette, setPalette] = useState(false)
   const [history, setHistory] = useState(false)
   const [navOpen, setNavOpen] = useState(false)
+  const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null)
+  useEffect(() => { const f = (e: Event) => setToast((e as CustomEvent<{ msg: string; undo?: () => void }>).detail); window.addEventListener('app-toast', f); return () => window.removeEventListener('app-toast', f) }, [])
   const selected = route.name === 'page' ? route.id : ''
+  const lastPage = useRef('') // the page the graph centres on when it is opened from elsewhere
+  if (selected) lastPage.current = selected
   const select = (id: string) => { go({ name: 'page', id }); setShowTrash(false); setNavOpen(false) }
 
   const create = async (parent: string) => { const id = await ws.newPage(parent); select(id) }
@@ -71,7 +77,10 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
     if (route.name === 'all') return <div data-testid="all-pages"><PagesTable pages={legacyPages(ws).filter(p => !p.deletedAt)} onOpen={select} onStatus={(id, st) => void ws.setMeta(id, { status: st ?? '' })} onClose={() => undefined} /></div>
     if (route.name === 'templates') return <Templates ws={ws} />
     if (route.name === 'settings') return <Settings ws={ws} />
-    if (route.name === 'graph') return <Graph ws={ws} />
+    if (route.name === 'databases') return <Databases ws={ws} />
+    if (route.name === 'drawings') return <Drawings ws={ws} />
+    if (route.name === 'files') return <Files ws={ws} />
+    if (route.name === 'graph') return <Graph ws={ws} currentId={lastPage.current || undefined} />
     if (route.name === 'cards') return <Flashcards ws={ws} />
     if (route.name === 'tasks') return <Tasks ws={ws} />
     if (route.name === 'trash') return <div data-testid="trash"><Trash items={legacyPages(ws).filter(p => p.deletedAt)} days={30} onRestore={id => void ws.restore(id)} onPurge={page => { if (confirm(`«${page.title || 'بدون عنوان'}» برای همیشه حذف شود؟ این کار در هیچ دستگاهی قابل بازگشت نیست.`)) void ws.purge(page.id) }} onEmpty={() => { if (confirm('همهٔ صفحه‌های سطل برای همیشه حذف شوند؟ این کار قابل بازگشت نیست.')) void ws.emptyTrash() }} /></div>
@@ -89,6 +98,7 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
       {history && route.name === 'page' && <History ws={ws} id={route.id} title={ws.tree.byId.get(route.id)?.page.title ?? ''} onClose={() => setHistory(false)} />}
       {palette && <Palette ws={ws} onClose={() => setPalette(false)} onNewPage={() => void create('')} onNewDatabase={() => void createDb()} />}
       {ws.notice && <Toast msg={ws.notice} onClose={() => ws.notify('')} />}
+      {toast && <Toast msg={toast.msg} action={toast.undo ? t('Undo') : undefined} actionHint="Ctrl+Z" onAction={toast.undo} onClose={() => setToast(null)} />}
     </>
   )
 }

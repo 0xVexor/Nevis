@@ -89,6 +89,7 @@ test('trash and restore, the tree, a deep link and the back button', async ({ pa
   await page.getByTestId('trash-toggle').click()
   await expect(page.getByTestId('trash')).toContainText('برای حذف')
   await page.getByTestId('trash').getByRole('button', { name: 'بازیابی' }).click()
+  await page.getByTestId('nav-home').click()
   await expect(page.getByTestId('page-row')).toHaveCount(1)
   expect(url).toMatch(/#\/page\//)
   await page.getByTestId('page-row').first().dblclick()
@@ -133,6 +134,7 @@ test('10 000 pages: Home, the palette and the "all pages" table touch only what 
   expect(await page.locator('.ds-command-dialog .ds-command-result').count()).toBeLessThanOrEqual(30)
   // the sidebar tree renders only the roots that are expanded: 3000 roots, but the DOM holds 50 + the open ones? (it holds the roots: bounded by the tree view)
   await page.keyboard.press('Escape') // close the palette: it covers the sidebar
+  await page.getByTestId('nav-home').click() // the tree is on Home
   // 3000 FLAT roots: the sidebar holds the first 200 and a "show more" button, not 3000 rows
   expect(await page.getByTestId('page-row').count()).toBeLessThanOrEqual(200)
   await expect(page.getByTestId('tree-more')).toBeVisible()

@@ -7,9 +7,11 @@ import { extractPage, type Hit, type PageLinkRef, type PageTask, type SearchDoc 
 
 const INDEX_KEY = 'derived_search'
 const PAGES_KEY = 'derived_pages'
+/** The shape of what is kept per page: bump it when a field is added, so a saved copy without it is rebuilt. (2: drawings.) */
+const SHAPE = 2
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-interface PageInfo { title: string; links: PageLinkRef[]; tasks: PageTask[]; /** the first ~160 characters of the text */ excerpt?: string; /** when this device last saw the page change (0 = not known) */ at?: number; /** the flashcards of the page (toggle blocks) */ cards?: RawCard[]; /** words in the text */ words?: number }
+interface PageInfo { title: string; links: PageLinkRef[]; tasks: PageTask[]; /** the first ~160 characters of the text */ excerpt?: string; /** when this device last saw the page change (0 = not known) */ at?: number; /** the flashcards of the page (toggle blocks) */ cards?: RawCard[]; /** words in the text */ words?: number; /** the drawing blocks of the page */ drawings?: { blockId: string; filled: boolean }[] }
 
 export class SearchService {
   private worker: Worker
@@ -47,8 +49,8 @@ export class SearchService {
     let loaded = false
     if (text && meta) {
       try {
-        const j = JSON.parse(meta) as { norm: number; pages: Record<string, PageInfo> }
-        if (j.norm === NORM_VERSION && await this.call<boolean>({ t: 'load', text })) { this.info = new Map(Object.entries(j.pages)); loaded = true }
+        const j = JSON.parse(meta) as { norm: number; shape?: number; pages: Record<string, PageInfo> }
+        if (j.norm === NORM_VERSION && j.shape === SHAPE && await this.call<boolean>({ t: 'load', text })) { this.info = new Map(Object.entries(j.pages)); loaded = true }
       } catch { /* damaged: rebuild */ }
     }
     this.rebuilt = !loaded
@@ -88,12 +90,12 @@ export class SearchService {
       const batch = todo.slice(i, i + 40)
       const docs: SearchDoc[] = []
       for (const p of batch) {
-        let text = '', links: PageLinkRef[] = [], tasks: PageTask[] = [], cards: RawCard[] = []
+        let text = '', links: PageLinkRef[] = [], tasks: PageTask[] = [], cards: RawCard[] = [], drawings: { blockId: string; filled: boolean }[] = []
         if (p.type !== 'database') {
-          try { const json = project(await this.store.run(tx => loadDoc(tx, p.id))); const ex = extractPage(json); text = ex.text; links = ex.links; tasks = ex.tasks; cards = extractCards(p.id, json) } catch { /* unreadable page: indexed by title only */ }
+          try { const json = project(await this.store.run(tx => loadDoc(tx, p.id))); const ex = extractPage(json); text = ex.text; links = ex.links; tasks = ex.tasks; drawings = ex.drawings; cards = extractCards(p.id, json) } catch { /* unreadable page: indexed by title only */ }
         }
         const prev = this.info.get(p.id)
-        this.info.set(p.id, { title: p.title, links, tasks, cards, words: text.trim() ? text.trim().split(/\s+/).length : 0, excerpt: text.replace(/\s+/g, ' ').trim().slice(0, 160), at: dirty.has(p.id) || p.title !== prev?.title ? Date.now() : (prev?.at ?? 0) })
+        this.info.set(p.id, { title: p.title, links, tasks, cards, drawings, words: text.trim() ? text.trim().split(/\s+/).length : 0, excerpt: text.replace(/\s+/g, ' ').trim().slice(0, 160), at: dirty.has(p.id) || p.title !== prev?.title ? Date.now() : (prev?.at ?? 0) })
         docs.push({ id: p.id, title: p.title, body: text })
       }
       await this.call({ t: 'add', docs })
@@ -113,7 +115,7 @@ export class SearchService {
 
   async save(): Promise<void> {
     const text = await this.call<string>({ t: 'dump' })
-    const meta = JSON.stringify({ norm: NORM_VERSION, pages: Object.fromEntries(this.info) })
+    const meta = JSON.stringify({ norm: NORM_VERSION, shape: SHAPE, pages: Object.fromEntries(this.info) })
     await this.store.run(async tx => { await tx.setMeta(INDEX_KEY, text); await tx.setMeta(PAGES_KEY, meta) })
   }
 
@@ -145,6 +147,11 @@ export class SearchService {
   cards(): RawCard[] {
     const alive = new Set(this.pages.filter(p => !p.trashed).map(p => p.id))
     return [...this.info].filter(([src]) => alive.has(src)).flatMap(([, i]) => i.cards ?? [])
+  }
+  /** Every drawing block of every live page. */
+  drawings(): { page: string; drawing: { blockId: string; filled: boolean } }[] {
+    const alive = new Set(this.pages.filter(p => !p.trashed).map(p => p.id))
+    return [...this.info].filter(([src]) => alive.has(src)).flatMap(([src, i]) => (i.drawings ?? []).map(drawing => ({ page: src, drawing })))
   }
   tasks(): { page: string; task: PageTask }[] {
     const alive = new Set(this.pages.filter(p => !p.trashed).map(p => p.id))

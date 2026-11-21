@@ -85,7 +85,7 @@ export function SettingsWorkspace({ embedded = false, panelHost, initialCategory
   const motionOf = useUIMotion(), [category, setCategory] = useState<Category>(initialCategory), [reset, setReset] = useState(false)
   const s = useSettings(), l = useLabels(), current = categories.find(c => c.id === category)!
   const Main = embedded ? 'div' : 'main'
-  const navigation = <nav className="prefs-categories" aria-label={l('Settings')}>{categories.map(c => <Button key={c.id} className="prefs-nav-button" variant="ghost" aria-current={category === c.id ? 'page' : undefined} onClick={() => { setCategory(c.id); setReset(false); if (embedded) document.querySelector('.prefs-embedded .prefs-main')?.scrollTo(0, 0); else window.scrollTo(0, 0) }} icon={<Icon name={c.icon} />}><span>{l(c.label)}</span></Button>)}</nav>
+  const navigation = <nav className="prefs-categories" aria-label={l('Settings')}>{categories.map(c => <Button key={c.id} className="prefs-nav-button" variant="ghost" data-testid={`settings-tab-${c.id}`} aria-current={category === c.id ? 'page' : undefined} onClick={() => { setCategory(c.id); setReset(false); if (embedded) document.querySelector('.prefs-embedded .prefs-main')?.scrollTo(0, 0); else window.scrollTo(0, 0) }} icon={<Icon name={c.icon} />}><span>{l(c.label)}</span></Button>)}</nav>
   return <div className={"prefs-shell" + (embedded ? " prefs-embedded" : "")}>
     {panelHost && createPortal(navigation, panelHost)}
     {panelHost === undefined && <aside className="prefs-nav">

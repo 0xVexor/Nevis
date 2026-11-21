@@ -39,5 +39,5 @@ ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 @media (max-width: 700px) { .db-board-col { flex-basis: 78vw } }
 
 .plain .ds-row { width: 100%; box-sizing: border-box; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; padding: 6px 8px; border-radius: 8px } .plain .ds-row:hover { background: var(--ds-sunk, #eff1ee) }
-.dbtable input, .dbtable select, .viewbar select, .db-board-card select, .viewbar button, .main input:not([type=checkbox]):not([type=color]):not([type=range]) { background: var(--ds-raised, #fff); color: var(--ds-text, inherit); border: 1px solid var(--ds-line, #d0d7de); border-radius: 6px }
+.dbtable input, .dbtable select, .viewbar select, .db-board-card select, .viewbar button, .viewbar input, .db-board-card input { background: var(--ds-raised, #fff); color: var(--ds-text, inherit); border: 1px solid var(--ds-line, #d0d7de); border-radius: 6px }
 .viewtabs button { border: 0 !important; background: none !important }

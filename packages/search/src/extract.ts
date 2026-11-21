@@ -3,7 +3,9 @@
 export interface PMNode { type: string; attrs?: Record<string, unknown>; content?: PMNode[]; text?: string }
 export interface PageTask { blockId: string; text: string; checked: boolean; due: string }
 export interface PageLinkRef { dst: string; blockId: string }
-export interface Extracted { text: string; links: PageLinkRef[]; tasks: PageTask[] }
+/** A drawing block of a page (`filled`: something was drawn). */
+export interface PageDrawing { blockId: string; filled: boolean }
+export interface Extracted { text: string; links: PageLinkRef[]; tasks: PageTask[]; drawings: PageDrawing[] }
 
 const BLOCK_TEXT = new Set(['mathBlock', 'mermaid'])
 
@@ -20,9 +22,11 @@ export function extractPage(doc: PMNode): Extracted {
   const lines: string[] = []
   const links: PageLinkRef[] = []
   const tasks: PageTask[] = []
+  const drawings: PageDrawing[] = []
   const walk = (n: PMNode, block: string) => {
     const id = typeof n.attrs?.blockId === 'string' && n.attrs.blockId ? n.attrs.blockId : block
     if (n.type === 'pageLink' && typeof n.attrs?.dstId === 'string' && n.attrs.dstId) links.push({ dst: n.attrs.dstId, blockId: block })
+    if (n.type === 'drawing') drawings.push({ blockId: id, filled: !!(n.attrs?.scene || n.attrs?.sceneBlob) })
     if (n.type === 'taskItem') {
       const own = (n.content ?? []).filter(c => c.type === 'paragraph').map(textOf).join(' ').trim()
       tasks.push({ blockId: id, text: own, checked: n.attrs?.checked === true, due: String(n.attrs?.due ?? '') })
@@ -34,5 +38,5 @@ export function extractPage(doc: PMNode): Extracted {
   }
   const walkInline = (n: PMNode, block: string) => { if (n.type === 'pageLink' && typeof n.attrs?.dstId === 'string' && n.attrs.dstId) links.push({ dst: n.attrs.dstId, blockId: block }); for (const c of n.content ?? []) walkInline(c, block) }
   walk(doc, '')
-  return { text: lines.filter(Boolean).join('\n'), links, tasks }
+  return { text: lines.filter(Boolean).join('\n'), links, tasks, drawings }
 }

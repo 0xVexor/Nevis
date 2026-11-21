@@ -15,6 +15,8 @@ const CRUMB: Partial<Record<Name, { label: string; icon?: string }>> = {
 }
 
 export interface TopbarProps {
+  /** the screen fills the window: there is no side panel to toggle */
+  noPanel?: boolean
   routeName: Name
   crumbs: Page[]
   current: Page | null
@@ -42,7 +44,7 @@ export function Topbar(p: TopbarProps) {
   const here = CRUMB[p.routeName]
   return (
     <header className="topbar">
-      <IconButton label={t('Pages')} data-testid="panel-toggle" aria-expanded={p.panelOpen} aria-controls="workspace-context" onClick={p.onTogglePanel}><Icon name="panel-left" size={17} className="ds-flip" /></IconButton>
+      {!p.noPanel && <IconButton label={t('Pages')} data-testid="panel-toggle" aria-expanded={p.panelOpen} aria-controls="workspace-context" onClick={p.onTogglePanel}><Icon name="panel-left" size={17} className="ds-flip" /></IconButton>}
       <div className="nav-hist">
         <IconButton label={t('Back  Alt+←')} disabled={!p.nav.canBack} onClick={p.nav.back}><Icon name="arrow-left" size={17} className="ds-flip" /></IconButton>
         <IconButton label={t('Forward  Alt+→')} disabled={!p.nav.canForward} onClick={p.nav.forward}><Icon name="arrow-right" size={17} className="ds-flip" /></IconButton>

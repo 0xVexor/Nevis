@@ -39,7 +39,6 @@ export interface ShellProps {
   onNewPage: (parent: string) => void
   onNewDatabase: () => void
   onNewAllBlocks: () => void
-  onNewFolder?: () => void
   onNewTodo?: () => void
   onOpen: (id: string) => void
   onSignOut?: () => void
@@ -54,7 +53,7 @@ export interface ShellProps {
   save?: 'idle' | 'saving' | 'saved' | 'error'
 }
 
-export function AppShell({ ws, route, status, children, onSearch, onNewPage, onNewDatabase, onNewAllBlocks, onNewFolder, onNewTodo, onOpen, onSignOut, onWorkspaces, onHistory, dueCards = 0, pageTools, save = 'saved' }: ShellProps) {
+export function AppShell({ ws, route, status, children, onSearch, onNewPage, onNewDatabase, onNewAllBlocks, onNewTodo, onOpen, onSignOut, onWorkspaces, onHistory, dueCards = 0, pageTools, save = 'saved' }: ShellProps) {
   const settings = useSettings()
   const [rowMenu, setRowMenu] = useState<{ id: string; rect: DOMRect } | null>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
@@ -124,6 +123,8 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
   ]
   const panelKind = route.name === 'tasks' || route.name === 'settings' ? 'host' : 'vault'
   const toggleFullScreen = () => void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => undefined)
+  // The side panel belongs to Home, a page, Tasks and Settings; every other screen fills the window (as in the old app)
+  const overlay = !['home', 'page', 'tasks', 'settings'].includes(route.name)
   const iconsOnly = settings.sidebar === 'icons' || narrow
   const onPage = route.name === 'page' && !!current
   useEffect(() => {
@@ -147,18 +148,19 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
         route={route} status={status} dueCards={dueCards} trashCount={ws.tree.trash.length} iconsOnly={iconsOnly} narrow={narrow}
         width={railW} defaultWidth={settings.sidebar === 'compact' ? 148 : 176} onWidth={setRailW}
         onGo={goTo} onSearch={onSearch} searchHint={isMac ? '⌘K' : 'Ctrl K'}
-        onNewPage={() => onNewPage('')} onNewDatabase={onNewDatabase} onNewAllBlocks={onNewAllBlocks} onNewFolder={onNewFolder ?? (() => onNewPage(''))} onNewTodo={onNewTodo ?? (() => onNewPage(''))}
+        onNewPage={() => onNewPage('')} onNewDatabase={onNewDatabase} onNewAllBlocks={onNewAllBlocks} onNewTodo={onNewTodo ?? (() => void ws.newTodoList(t('New list')).then(open))}
         onOpenSettings={() => goTo('settings')} onSignOut={onSignOut} workspaceName="" onWorkspaces={onWorkspaces ?? (() => undefined)}
       />
-      <ContextPanel
+      {!overlay && <ContextPanel
         title={t(PANEL_TITLES[route.name] ?? 'Pages')} kind={panelKind} open={panelOpen} narrow={narrow} width={sideW} onWidth={setSideW} onClose={() => setDrawer(false)} setHost={setHost}
         pages={pages} index={index} currentId={currentId} rowProps={rowProps} settings={settings} onSettings={updateSettings}
         onReveal={() => { if (currentId) { setSelected(currentId); setCollapsed(c => { const n = new Set(c); for (let p = byId.get(currentId); p; p = p.parentId ? byId.get(p.parentId) : undefined) n.delete(p.id); return n }) } }}
+        tools={route.name === 'tasks' ? <IconButton label={t('New list')} onClick={() => void ws.newTodoList(t('New list')).then(id => go({ name: 'page', id }))}><Icon name="plus" size={15} /></IconButton> : undefined}
         onOpen={open} onExpandAll={() => setCollapsed(new Set())} onCollapseAll={() => setCollapsed(new Set(boxes()))} treeFrame={treeFrame}
-      />
+      />}
       <main className={'main' + (drawerOpen && !reader && onPage ? ' drawer-open' : '')}>
         <Topbar
-          routeName={route.name} crumbs={crumbs} current={current} panelOpen={panelOpen} onTogglePanel={togglePanel} onHome={() => goTo('home')} onOpen={open} nav={nav}
+          noPanel={overlay} routeName={route.name} crumbs={crumbs} current={current} panelOpen={panelOpen} onTogglePanel={togglePanel} onHome={() => goTo('home')} onOpen={open} nav={nav}
           save={status && status.unsaved > 0 ? 'saving' : save} dark={dark} onToggleDark={() => updateSettings({ theme: dark ? 'light' : 'dark' })}
           fullScreen={fullScreen} onToggleFullScreen={toggleFullScreen} onFavorite={id => void ws.setMeta(id, { favorite: !byId.get(id)?.favorite })}
           shareItems={currentId ? shareItems(currentId) : undefined} onHistory={undefined}

@@ -4,7 +4,8 @@ import type { Page, Task } from './model'
 import type { Workspace } from '../workspace'
 
 /** Every page and database of the workspace (trashed ones carry `deletedAt`), siblings numbered in their order. */
-export function legacyPages(ws: Workspace): Page[] {
+/** `hideInbox`: the Inbox is a page the tree and the lists do not show (the Tasks screen reads its checklist directly). */
+export function legacyPages(ws: Workspace, hideInbox = true): Page[] {
   const rows: PageRow[] = ws.data.pages
   const byParent = new Map<string, PageRow[]>()
   for (const p of rows) { const l = byParent.get(p.parent) ?? []; l.push(p); byParent.set(p.parent, l) }
@@ -12,10 +13,11 @@ export function legacyPages(ws: Workspace): Page[] {
   for (const l of byParent.values()) { l.sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : a.id < b.id ? -1 : 1)); l.forEach((p, i) => rank.set(p.id, i)) }
   const known = new Set(rows.map(p => p.id))
   const tagName = new Map(ws.data.tags.map(t => [t.id, t.name]))
-  return rows.map(p => {
+  const inbox = typeof ws.data.settings.inbox === 'string' ? ws.data.settings.inbox : ''
+  return rows.filter(p => p.id !== inbox || !hideInbox).map(p => {
     const text = ws.search.excerptOf(p.id)
     return {
-      id: p.id, icon: p.icon || undefined, status: (p.status || undefined) as Page['status'], favorite: !!p.favorite, cover: coverOf(p.cover), tags: (ws.data.pageTags.get(p.id) ?? []).map(i => tagName.get(i) ?? '').filter(Boolean), words: ws.search.wordsOf(p.id), parentId: p.parent && known.has(p.parent) ? p.parent : null, title: p.title, sort: rank.get(p.id) ?? 0,
+      kind: ws.isTodoList(p.id) ? 'todo' : undefined, id: p.id, icon: p.icon || undefined, status: (p.status || undefined) as Page['status'], favorite: !!p.favorite, cover: coverOf(p.cover), tags: (ws.data.pageTags.get(p.id) ?? []).map(i => tagName.get(i) ?? '').filter(Boolean), words: ws.search.wordsOf(p.id), parentId: p.parent && known.has(p.parent) ? p.parent : null, title: p.title, sort: rank.get(p.id) ?? 0,
       content: { type: 'doc', content: text ? [{ type: 'paragraph', content: [{ type: 'text', text }] }] : [] },
       updatedAt: ws.search.touchedAt(p.id) || p.createdAt, deletedAt: p.trashed ? p.createdAt : null,
     } satisfies Page

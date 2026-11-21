@@ -7,6 +7,7 @@ import { Button, Icon, Screen } from '../ds'
 import { Glyph } from '../ds/iconSet'
 import { go } from '../router'
 import { t } from '../i18n'
+import { getTemplates, templateDoc } from '../shell/oldTemplates'
 import type { Workspace } from '../workspace'
 
 const today = () => formatDateFa(new Date().toISOString().slice(0, 10))
@@ -32,7 +33,7 @@ function outline(doc: unknown): Block[] {
   })
 }
 
-interface Choice { id: string; title: string; hint: string; icon: ReactNode; action: string; pageTitle?: string; blocks?: Block[]; make: () => { title: string; content: unknown } | null | 'database' }
+interface Choice { id: string; title: string; hint: string; icon: ReactNode; action: string; pageTitle?: string; blocks?: Block[]; make: () => { title: string; content: unknown; icon?: string } | null | 'database' }
 const Line = ({ width }: { width: number }) => <i className="tpl-line" style={{ inlineSize: width + '%' }} />
 
 function PaperBlock({ block: b }: { block: Block }) {
@@ -53,11 +54,13 @@ export function Templates({ ws }: { ws: Workspace }) {
   const meeting = meetingNotesTemplate(today()), tasks = taskListTemplate(), daily = dailyNoteTemplate(today()), all = allBlocksTemplate()
   const empty: Choice[] = [
     { id: 'blank', title: t('Blank page'), hint: t('Start from scratch'), icon: <Icon name="file-text" />, action: t('Create page'), make: () => null },
+    { id: 'drawing', title: t('Drawing'), hint: t('A blank whiteboard for sketches and diagrams.'), icon: <Icon name="pencil" />, action: t('Create drawing'), make: () => ({ title: '', content: { type: 'doc', content: [{ type: 'drawing' }] } }) },
     { id: 'database', title: t('Database'), hint: t('Tables, views, forms and dashboards in one database.'), icon: <Icon name="database" />, action: t('Create database'), make: () => 'database' },
   ]
+  const GLYPH: Record<string, string> = { lecture: 'graduation', chapter: 'book', exercise: 'target', meeting: 'users', todo: 'list' } // the old gallery's icons
+  const fromOld: Choice[] = getTemplates().map(tp => { const doc = templateDoc(tp); return { id: tp.id, title: tp.title, hint: tp.desc, icon: <Glyph name={GLYPH[tp.id] ?? 'page'} size={18} />, action: t('Use template'), pageTitle: tp.pageTitle.replace(/[\s—–-]+$/, ''), blocks: outline(doc), make: () => ({ title: tp.pageTitle, content: doc, icon: tp.icon }) } })
   const ready: Choice[] = [
-    { id: 'meeting', title: t('Meeting notes'), hint: 'دستور جلسه، تصمیم‌ها و اقدام‌ها', icon: <Glyph name="users" size={18} />, action: t('Use template'), pageTitle: 'یادداشت جلسه', blocks: outline(meeting), make: () => ({ title: 'یادداشت جلسه', content: meeting }) },
-    { id: 'tasks', title: t('To-do list'), hint: 'فهرست کار با تیک', icon: <Glyph name="checklist" size={18} />, action: t('Use template'), pageTitle: 'فهرست کارها', blocks: outline(tasks), make: () => ({ title: 'فهرست کارها', content: tasks }) },
+    ...fromOld,
     { id: 'daily', title: t('Daily note'), hint: 'برنامه و یادداشت امروز', icon: <Glyph name="calendar" size={18} />, action: t('Use template'), pageTitle: today(), blocks: outline(daily), make: () => ({ title: today(), content: daily }) },
     { id: 'all-blocks', title: t('All blocks sample'), hint: 'یک نمونه از هر بلوک', icon: <Glyph name="templates" size={18} />, action: t('Use template'), pageTitle: 'همهٔ بلوک‌ها', blocks: outline(all), make: () => ({ title: 'همهٔ بلوک‌ها', content: all }) },
   ]
@@ -68,7 +71,9 @@ export function Templates({ ws }: { ws: Workspace }) {
   const pick = async (c: Choice) => {
     const made = c.make()
     if (made === 'database') { go({ name: 'page', id: await ws.newDatabase('') }); return }
-    go({ name: 'page', id: made ? await ws.newTemplatePage(made.title, made.content) : await ws.newPage('') })
+    const id = made ? await ws.newTemplatePage(made.title, made.content) : await ws.newPage('')
+    if (made?.icon) await ws.setMeta(id, { icon: made.icon })
+    go({ name: 'page', id })
   }
   const move = (e: ReactKeyboardEvent) => {
     const i = choices.findIndex(c => c.id === current)

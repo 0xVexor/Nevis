@@ -48,7 +48,6 @@ export interface RailProps {
   onNewPage: () => void
   onNewDatabase: () => void
   onNewAllBlocks: () => void
-  onNewFolder: () => void
   onNewTodo: () => void
   onOpenSettings: () => void
   onSignOut?: () => void
@@ -103,7 +102,6 @@ export function Rail(p: RailProps) {
         {newMenu && (
           <Menu anchor={newMenu} onClose={() => setNewMenu(null)} items={[
             { label: t('New page'), testid: 'new-page', icon: <Icon name="file" size={16} />, onSelect: p.onNewPage },
-            { label: t('New folder'), testid: 'new-folder', icon: <Icon name="folder" size={16} />, onSelect: p.onNewFolder },
             { label: t('New database'), testid: 'new-database', icon: <Icon name="table" size={16} />, onSelect: p.onNewDatabase },
             { label: t('New to-do list'), testid: 'new-todo', icon: <Icon name="checklist" size={16} />, onSelect: p.onNewTodo },
             { label: t('All blocks sample'), testid: 'new-all-blocks', icon: <Icon name="blocks" size={16} />, onSelect: p.onNewAllBlocks },

@@ -16,5 +16,8 @@ export const SCREENS = {
   graph: { old: oldNav('graph'), new: newNav('nav-graph'), wait: 2500 },
   all: { old: oldNav('all'), new: newNav('nav-all') },
   settings: { old: oldNav('settings'), new: newNav('nav-settings') },
+  databases: { old: oldNav('databases'), new: newNav('nav-databases') },
+  drawings: { old: oldNav('drawings'), new: newNav('nav-drawings') },
+  files: { old: oldNav('files'), new: newNav('nav-files') },
   trash: { old: oldNav('trash'), new: newNav('trash-toggle') },
 }

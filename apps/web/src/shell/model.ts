@@ -25,6 +25,8 @@ export interface Page {
   words?: number
   /** present when the page is a database (the tree shows it as a page) */
   database?: object
+  /** set on the pages that are a database (the databases list reads it) */
+  dbHost?: string
 }
 
 export interface Task { pageId: string; index: number; text: string; checked: boolean; depth: number }

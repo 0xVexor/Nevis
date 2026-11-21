@@ -65,13 +65,15 @@ test('search finds every spelling, both digit systems and ي/ی; links, backlink
   await page.evaluate(() => (window as unknown as { __editor: { chain: () => { focus: () => { toggleTaskList: () => { run: () => void } } } } }).__editor.chain().focus().toggleTaskList().run())
   await page.keyboard.type('خرید نان')
   await page.getByTestId('nav-all').click()
-  await page.getByTestId('page-row').filter({ hasText: 'برنامه' }).first().dblclick().catch(() => undefined)
+  await expect(page.getByTestId('all-pages-row').filter({ hasText: 'برنامه' }).first()).toBeVisible() // the table lists it (the sidebar tree belongs to Home and pages)
   await page.evaluate(id => { location.hash = `#/page/${id}` }, target)
   await expect(page.getByTestId('backlink')).toHaveText('یادداشت', { timeout: 30_000 })
   await page.getByTestId('title').fill('برنامهٔ تازه')
   await expect(page.getByTestId('backlink')).toHaveText('یادداشت') // by id: the rename changes nothing about the link
   await page.evaluate(() => { location.hash = '#/graph' })
-  await expect(page.getByTestId('graph-node')).toHaveCount(2)
+  // the map is drawn on a canvas (as in the old app): its counters say what is drawn — two linked pages, one link
+  await expect(page.getByTestId('graph')).toContainText(/صفحه\s*۲/)
+  await expect(page.getByTestId('graph')).toContainText(/پیوند\s*۱/)
   await page.getByTestId('nav-tasks').click()
   await expect(page.getByTestId('task-row')).toHaveCount(1, { timeout: 30_000 })
   await expect(page.getByTestId('task-row')).toContainText('خرید نان')

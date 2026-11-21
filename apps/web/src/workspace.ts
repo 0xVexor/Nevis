@@ -1,7 +1,7 @@
 // The notes app's state for one workspace in one tab: the page tree, the open documents, and the actions on them.
 // All writes go through the core client (one committed transaction each); this class only decides WHAT to write.
 import { normalizeFa } from '@nevis/editor'
-import { AUTO_AFTER_MS, DocHandle, addVersion, foldSchedules, loadDoc, readVersions, thinVersions, type Version, reviewCard, reviewTimes, type Grade, type Rec, type BlobStatus, buildTree, createDatabase, createPage, isInside, movePage, readStructured, renamePage, restorePage, setPageMeta, createTag, tagPage, trashPage, type Client, type PageNode, type PageRow, type PageTree, type Structured } from '@nevis/core'
+import { AUTO_AFTER_MS, DocHandle, addVersion, foldSchedules, loadDoc, readVersions, thinVersions, type Version, reviewCard, reviewTimes, type Grade, type Rec, type BlobStatus, buildTree, createDatabase, createPage, isInside, movePage, readStructured, renamePage, restorePage, setPageMeta, createTag, tagPage, trashPage, setSetting, type Client, type PageNode, type PageRow, type PageTree, type Structured } from '@nevis/core'
 import { exportBundle, importBundle, mdFileName, toMarkdown, type ImportResult } from '@nevis/bundle'
 import * as Y from 'yjs'
 import { BODY, project, writeBody, type PMJson } from '@nevis/schema'
@@ -101,7 +101,7 @@ export class Workspace {
   }
 
   private fail(e: unknown) { this.rt.lastError = String((e as Error).message ?? e); this.emit() }
-  private async wrote(id: string) { this.rt.written({ ents: [id] }); await this.reload() }
+  async wrote(id: string) { this.rt.written({ ents: [id] }); await this.reload() }
 
   /** Runs a write on the client (a domain function of the core), tells the other tabs and refreshes the view. */
   async mutate<T>(ents: string[], fn: (c: Client) => Promise<T>): Promise<T> {
@@ -281,6 +281,68 @@ export class Workspace {
       })
       await h.flush()
     } finally { await this.closeDoc(page) }
+  }
+  /** The Inbox of the Tasks screen: an ordinary page (so it merges, syncs and exports like any other) that the settings name and the tree hides. */
+  inboxId(): string | undefined { const v = this.data.settings.inbox; return typeof v === 'string' && this.data.pages.some(p => p.id === v) ? v : undefined }
+  async ensureInbox(): Promise<string> {
+    const have = this.inboxId(); if (have) return have
+    const id = await createPage(this.rt.client, { parent: '', title: 'صندوق ورودی' })
+    await this.mutate([this.ws], c => setSetting(c, 'inbox', id))
+    await this.wrote(id)
+    return id
+  }
+  /** A to-do list: a page the settings mark as a list (one register per list, so two devices never overwrite each other). */
+  isTodoList(id: string): boolean { return this.data.settings[`list:${id}`] === true }
+  async newTodoList(title: string): Promise<string> {
+    const id = await this.newPage('', title)
+    await this.mutate([this.ws], c => setSetting(c, `list:${id}`, true))
+    return id
+  }
+  /** Adds a checklist item at the end of a page: into its last checklist, or a new one. One Yjs transaction. */
+  async appendTask(page: string, text: string): Promise<void> {
+    const h = await this.openDoc(page)
+    try {
+      h.ydoc.transact(() => {
+        const frag = h.ydoc.getXmlFragment(BODY)
+        const last = frag.length ? frag.get(frag.length - 1) : null
+        const item = new Y.XmlElement('taskItem'); item.setAttribute('checked', false as never)
+        const para = new Y.XmlElement('paragraph'); para.insert(0, [new Y.XmlText(text)]); item.insert(0, [para])
+        if (last && 'nodeName' in last && last.nodeName === 'taskList') (last as Y.XmlElement).insert((last as Y.XmlElement).length, [item])
+        else { const list = new Y.XmlElement('taskList'); list.insert(0, [item]); frag.insert(frag.length, [list]) }
+      })
+      await h.flush()
+    } finally { await this.closeDoc(page) }
+  }
+  /** Removes a checklist item (found by its block id) from a page. */
+  async removeTask(page: string, blockId: string): Promise<void> {
+    const h = await this.openDoc(page)
+    try {
+      h.ydoc.transact(() => {
+        const walk = (n: Y.XmlFragment | Y.XmlElement): boolean => {
+          const kids = n.toArray() as (Y.XmlElement | Y.XmlText)[]
+          for (let i = 0; i < kids.length; i++) {
+            const c = kids[i]!
+            if (!('nodeName' in c)) continue
+            if (c.nodeName === 'taskItem' && c.getAttribute('blockId') === blockId) { n.delete(i, 1); return true }
+            if (walk(c)) return true
+          }
+          return false
+        }
+        walk(h.ydoc.getXmlFragment(BODY))
+      })
+      await h.flush()
+    } finally { await this.closeDoc(page) }
+  }
+  /** A copy of a page (title, look and body) under `parent`, with the id the caller already handed out. */
+  async duplicatePage(id: string, parent: string, newId: string): Promise<void> {
+    const src = this.data.pages.find(p => p.id === id); if (!src) return
+    const h = await this.openDoc(id); let json: PMJson
+    try { json = project(h.ydoc) } finally { await this.closeDoc(id) }
+    await createPage(this.rt.client, { parent, title: src.title }, newId)
+    await this.setMeta(newId, { icon: src.icon ?? '', cover: src.cover ?? null, status: src.status ?? '' })
+    for (const tid of this.data.pageTags.get(id) ?? []) await tagPage(this.rt.client, newId, tid, true)
+    await this.writeBody(newId, json)
+    await this.wrote(newId)
   }
   /** Adds a tag to a page (creating the tag the first time its name is used) or removes it. */
   async tagPageByName(id: string, name: string, on: boolean) {
