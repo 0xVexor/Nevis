@@ -130,7 +130,11 @@ func (s *Server) signup(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if ok, retry := s.limiter.Hit("signup:"+clientIP(r), maxSignupIP, signupWindow); !ok {
+	limit := maxSignupIP
+	if s.SignupsPerHour > 0 {
+		limit = s.SignupsPerHour
+	}
+	if ok, retry := s.limiter.Hit("signup:"+clientIP(r), limit, signupWindow); !ok {
 		failErr(w, apierr.RateLimited(retry))
 		return
 	}

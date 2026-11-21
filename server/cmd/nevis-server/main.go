@@ -64,7 +64,7 @@ func main() {
 	bits, _ := strconv.Atoi(env("POW_BITS", "18"))
 	quota, _ := strconv.Atoi(env("QUOTA_MB", "1024"))
 	handler := api.New(st, api.Config{
-		DevMode: devMode, DevToken: os.Getenv("DEV_TOKEN"), Secret: secret, Registration: reg, InviteCodes: invites, PowBits: bits,
+		DevMode: devMode, DevToken: os.Getenv("DEV_TOKEN"), Secret: secret, Registration: reg, InviteCodes: invites, PowBits: bits, SignupsPerHour: envInt("SIGNUPS_PER_HOUR"),
 		QuotaBytes: int64(quota) << 20, WebDir: os.Getenv("WEB_DIR"), InsecureCookies: insecure, Log: log,
 	})
 	addr := net.JoinHostPort(env("LISTEN_HOST", "127.0.0.1"), env("PORT", "8787"))
@@ -82,4 +82,13 @@ func main() {
 	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutdown)
+}
+
+// envInt reads a non-negative integer setting; unset or invalid means 0 (the default).
+func envInt(name string) int {
+	n, err := strconv.Atoi(os.Getenv(name))
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
 }

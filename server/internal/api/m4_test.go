@@ -495,3 +495,14 @@ func TestPushLimiterAppliesToAccountsButNotToTheDevToken(t *testing.T) {
 		t.Fatal("an account was never rate limited")
 	}
 }
+
+func TestSignupLimitIsConfigurable(t *testing.T) {
+	m := newM4(t, func(c *Config) { c.SignupsPerHour = 3 })
+	codes := []int{}
+	for i := 0; i < 5; i++ {
+		codes = append(codes, m.signup(t, "limit"+string(rune('a'+i)), "device").code)
+	}
+	if codes[2] != 200 || codes[3] != 429 || codes[4] != 429 {
+		t.Fatalf("with a limit of 3 the 4th and 5th sign-up must be refused: %v", codes)
+	}
+}

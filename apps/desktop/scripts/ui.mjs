@@ -1,6 +1,7 @@
 // pnpm --filter desktop test:ui — the REAL UI of the app, driven from inside its WebView (`--ui-test`), and the window close.
 //  launch 1: server form -> sign up through the form -> workspace -> page -> type -> close the window AT ONCE (the flush on close
 //            must save text typed inside the 300 ms throttle); the process must exit by itself within 5.5 s.
+//  launch 4: restart; the "all blocks" page is made and every block renders in the desktop WebView (its own CSP);
 //  launch 2: restart (no server form, no sign-in): the workspace list; the page has the text; sign out.
 //  launch 3: restart after sign-out: the sign-in form.
 import { spawn } from 'node:child_process'
@@ -27,6 +28,9 @@ try {
   console.log(`launch 1: signed up through the form, typed, closed at once; the app exited ${t.ms} ms after the close`)
   if (t.ms > 5500) throw new Error(`closing took ${t.ms} ms (limit 5 s + slack)`)
 
+  const d = await runApp(['--ui-test'], appEnv(sb, { NEVIS_UI_CFG: cfg(4) }), 180_000)
+  console.log(d.out.trim().split('\n').filter(l => /UI-PHASE|failed/.test(l)).join('\n'))
+  if (d.code !== 0) throw new Error(`launch 4 (all blocks) failed (code ${d.code}):\n${d.out}`)
   const b = await runApp(['--ui-test'], appEnv(sb, { NEVIS_UI_CFG: cfg(2) }), 90_000)
   console.log(b.out.trim().split('\n').filter(l => /UI-PHASE|failed/.test(l)).join('\n'))
   if (b.code !== 0) throw new Error(`launch 2 failed (code ${b.code}):\n${b.out}`)

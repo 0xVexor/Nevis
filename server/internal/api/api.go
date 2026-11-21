@@ -37,6 +37,8 @@ type Config struct {
 	InviteCodes  map[string]bool
 	// PowBits is the difficulty of the sign-up proof of work (0 = off).
 	PowBits int
+	// SignupsPerHour limits sign-ups from one address (0 = the default, 30). Raised only for automated test runs.
+	SignupsPerHour int
 	// QuotaBytes is the storage limit per account (0 = none).
 	QuotaBytes int64
 	// WebDir, when set, is the built web app, served from this origin under a strict Content-Security-Policy.

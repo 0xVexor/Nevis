@@ -8,7 +8,7 @@
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json",
     "test:e2e": "playwright test",
-    "test:engines": "node tests/two-engines.mjs && node tests/two-engines-pages.mjs && node tests/two-engines-db.mjs"
+    "test:engines": "node tests/two-engines.mjs && node tests/two-engines-pages.mjs && node tests/two-engines-db.mjs && node tests/two-engines-blocks.mjs"
   },
   "dependencies": {
     "@fontsource/vazirmatn": "5.3.0",

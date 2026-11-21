@@ -22,6 +22,8 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
       handle = h
       if (h.needsUpdate) { setState('needs-update'); return } // ADR-0003 §6: a newer schema is not edited by an older client
       ed = createEditor(h.ydoc, host.current!, { pages: () => ws.pageList(), onOpenPage: pid => ws.onOpenPage?.(pid), notify: m => ws.notify(m) })
+      const tpl = ws.takeTemplate(id)
+      if (tpl && ed.isEmpty) ed.commands.setContent(tpl as never)
       ;(window as unknown as { __editor?: Editor }).__editor = ed
       setEditor(ed); setState('ready')
     })

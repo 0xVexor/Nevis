@@ -116,3 +116,11 @@ test('every block can be inserted from the slash menu; they render, persist and 
   expect(find(await docJson(page), 'mathBlock')[0]!.attrs!.latex).toBe('x^2 + \\frac{a}{b}')
   expect(find(await docJson(page), 'codeBlock')[0]!.attrs!.language).toBe('javascript')
 })
+
+test('the drag handle appears next to a block on hover (blocks are moved with the official TipTap drag-handle extension)', async ({ page }) => {
+  await signUpAndOpen(page)
+  await page.getByTestId('new-all-blocks').click()
+  await expect(body(page).locator('.callout')).toBeVisible({ timeout: 30_000 })
+  await body(page).locator('.callout').hover()
+  await expect(page.locator('.drag-handle')).toBeVisible()
+})

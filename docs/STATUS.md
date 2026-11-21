@@ -1,6 +1,6 @@
 # وضعیت
 
-آخرین به‌روزرسانی: 2026-11-21، پایان M7.
+آخرین به‌روزرسانی: 2026-11-21، پایان M8a.
 
 | بخش | وضعیت | امتحان کنید |
 |---|---|---|
@@ -14,10 +14,11 @@
 | M5 برش عمودی وب (صفحه + Yjs + سینک) | خودکار سبز (`m5`)؛ Safari/iPhone و IME با مالک | `server/scripts/demo.sh` → http://localhost:8788؛ `docs/reports/07-m5-web-vertical-slice.md`، `docs/checklists/M5.md` |
 | M6 دسکتاپ Tauri + SQLite | خودکار سبز روی macOS (`m6`)؛ Windows، keychain واقعی و رابط عادی اپ با مالک | `corepack pnpm --filter @nevis/desktop tauri dev`؛ `docs/reports/08-m6-desktop.md`، `docs/checklists/M6.md` |
 | M7 دادهٔ ساختاریافته (پایگاه‌داده، نما، تنظیمات) | خودکار سبز (`m7`)؛ چک‌لیست با مالک | وب: «پایگاه‌داده» در نوار کنار؛ `docs/reports/09-m7-structured-data.md`، `docs/formats/records-v1.md`، `docs/checklists/M7.md` |
-| M8a … M16 | در انتظار | `docs/ROADMAP.md` |
+| M8a ادیتور کامل (همهٔ بلوک‌ها، `SV = 2`) | خودکار سبز (`m8a`)؛ Safari/iPhone/IME/paste از Word با مالک | «نمونهٔ همهٔ بلوک‌ها» در نوار کنار؛ `docs/reports/10-m8a-editor.md`، `docs/formats/golden-fixtures.md`، `docs/checklists/M8a.md` |
+| M8b … M16 | در انتظار | `docs/ROADMAP.md` |
 
 ## کار مالک الان
-- چک‌لیست‌های `docs/checklists/M1.md`، `M3.md`، `M4.md`، `M5.md`، `M6.md`، `M7.md` روی Safari macOS و iPhone (HTTPS: `docs/dev-https.md`).
+- چک‌لیست‌های `docs/checklists/M1.md`، `M3.md`، `M4.md`، `M5.md`، `M6.md`، `M7.md`، `M8a.md` روی Safari macOS و iPhone (HTTPS: `docs/dev-https.md`).
 - `docs/OPEN-QUESTIONS.md` (به‌ویژه ۱: سینک پس‌زمینه، ۲: E2EE، ۸: نام پیش از M6).
 - معمار: اصلاح ADR-0003 بند ۱۳ (سقف hold ۱۰ ثانیه) و ADR-0001 بند ۶ (`persist()` نباید await شود).
 

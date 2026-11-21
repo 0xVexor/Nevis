@@ -23,8 +23,21 @@ function excalidrawAssets() {
     },
   }
 }
+// Excalidraw ALSO lists a CDN as the last place to look for a font (`https://esm.sh/@excalidraw/excalidraw@x/dist/prod/`). Under our content
+// security policy that is a blocked request and a violation report for every font, and it is a hard-coded third-party address in the bundle.
+// Rewritten at build time to our own origin: the base becomes `<origin>/excalidraw-assets/#...` (a URL fragment in a base is dropped when
+// a relative path is resolved against it), so the fallback is the same place as the first choice.
+function excalidrawNoCdn() {
+  return {
+    name: 'nevis-excalidraw-no-cdn',
+    transform(code: string, id: string) {
+      if (!id.includes('excalidraw') || !code.includes('https://esm.sh/')) return null
+      return { code: code.split('https://esm.sh/').join('${globalThis.location?.origin ?? ""}/excalidraw-assets/#'), map: null }
+    },
+  }
+}
 export default defineConfig({
-  plugins: [react(), excalidrawAssets()],
+  plugins: [react(), excalidrawAssets(), excalidrawNoCdn()],
   build: { rollupOptions: { input: { index: 'index.html', bench: 'bench.html', conformance: 'conformance.html', 'desktop-selftest': 'desktop-selftest.html', 'desktop-bench': 'desktop-bench.html', 'desktop-typing': 'desktop-typing.html', 'desktop-sync': 'desktop-sync.html' } } },
   server: { port: 5174, strictPort: true, host: true, https, proxy: { '/v1': server } },
   preview: { port: 5174, strictPort: true, host: true, https, proxy: { '/v1': server } },

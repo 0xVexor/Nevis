@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { allBlocksTemplate } from '@nevis/editor'
 import { DatabaseView } from './DatabaseView'
 import { EditorPane } from './EditorPane'
 import { PageTreeView } from './PageTreeView'
@@ -27,6 +28,7 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
 
   const page = selected ? ws.tree.byId.get(selected)?.page : undefined
   const create = async (parent: string) => { const id = await ws.newPage(parent); setSelected(id) }
+  const createAllBlocks = async () => { const id = await ws.newTemplatePage('همهٔ بلوک‌ها', allBlocksTemplate()); setSelected(id) }
   const createDb = async () => { const id = await ws.newDatabase(''); setSelected(id) }
   return (
     <div className="app" dir="rtl">
@@ -45,6 +47,7 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
           <div className="row">
             <button data-testid="new-page" onClick={() => void create('')}>صفحهٔ تازه</button>
             <button data-testid="new-database" onClick={() => void createDb()}>پایگاه‌داده</button>
+            <button data-testid="new-all-blocks" onClick={() => void createAllBlocks()}>نمونهٔ همهٔ بلوک‌ها</button>
             <button onClick={() => setShowTrash(s => !s)} data-testid="trash-toggle">سطل زباله ({ws.tree.trash.length})</button>
           </div>
           <PageTreeView ws={ws} selected={selected} onSelect={id => { setSelected(id); setShowTrash(false) }} />

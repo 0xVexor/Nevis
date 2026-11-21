@@ -35,6 +35,21 @@
         // close at ONCE: well inside the 300 ms throttle, so only the flush on close can save this text
         await log('CLOSING')
         await inv('ui_close')
+      } else if (phase === 4) {
+        // the all-blocks page in the REAL desktop WebView and under its CSP: KaTeX, Mermaid, code highlighting, Excalidraw from our own assets
+        await wait(() => tid('ws-list'), 'the workspace list after a restart')
+        tid('ws-list').querySelector('button').click()
+        await wait(() => tid('new-all-blocks'), 'the workspace view')
+        tid('new-all-blocks').click()
+        await wait(() => document.querySelector('.math-block .katex'), 'a rendered formula', 60000)
+        await wait(() => document.querySelector('.mermaid-block svg'), 'a rendered diagram', 60000)
+        await wait(() => document.querySelector('.code-block .hljs-keyword'), 'highlighted code', 20000)
+        document.querySelector('.drawing-block .drawing-edit').click()
+        await wait(() => document.querySelector('.drawing-overlay .excalidraw'), 'the drawing editor', 90000)
+        document.querySelector('[data-testid=drawing-save]').click()
+        await wait(() => !document.querySelector('.drawing-overlay'), 'the drawing editor closing')
+        await sleep(800) // let the page reach the store before the window goes
+        await inv('app_exit', { code: 0, report: 'UI-PHASE-4 ok: every block rendered in the desktop WebView under its CSP' })
       } else if (phase === 2) {
         // restart: no server form, no sign-in form: straight to the workspace list, then the page with its text
         await wait(() => tid('ws-list') || tid('auth-form') || tid('server-form'), 'a first screen')

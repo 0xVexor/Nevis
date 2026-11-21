@@ -30,6 +30,7 @@ export class Workspace {
   notice = ''
   /** the view that shows pages sets this: a page link was clicked */
   onOpenPage: ((id: string) => void) | null = null
+  private readonly templates = new Map<string, unknown>()
   private noticeTimer: ReturnType<typeof setTimeout> | null = null
   private readonly reopens = new Map<string, number>()
   private readonly titles = new Map<string, { value: string; timer: ReturnType<typeof setTimeout> | null }>()
@@ -103,6 +104,14 @@ export class Workspace {
     await this.wrote(id)
     return id
   }
+
+  /** A new page whose body starts from a template (a NEW id: building a document from JSON is allowed only for those, ADR-0003 §7). */
+  async newTemplatePage(title: string, content: unknown): Promise<string> {
+    const id = await this.newPage('', title)
+    this.templates.set(id, content)
+    return id
+  }
+  takeTemplate(id: string): unknown { const c = this.templates.get(id); this.templates.delete(id); return c }
 
   /** The title is written at most every 400 ms while it is being typed. */
   setTitle(id: string, value: string) {
