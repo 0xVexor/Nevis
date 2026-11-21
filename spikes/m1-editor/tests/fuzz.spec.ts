@@ -56,6 +56,8 @@ for (const withUndo of [false, true]) {
     expect(s.failedSeeds, 'Y.Doc projections differ').toEqual([])
     expect(s.idsNotOk, 'block ids not unique/valid').toEqual([])
     expect(s.nullAttrs).toBe(0)
+    // a caught RangeError is an operation that did NOT happen: thousands of them once made a bad insert path look clean
+    expect(s.rangeErrors, 'operations that threw a RangeError').toBe(0)
     // (b) view != own Y.Doc: seeds with a mismatch that a re-render does not fix
     const limit = withUndo ? 0.05 : 0.01
     if (process.env.FUZZ_PASTE) { console.log('PASTE-STRESS (informational, not asserted)', s.seedsWithViewMismatch, 'of', s.seeds); return }

@@ -153,3 +153,31 @@ test('dragging a block with its handle moves it; the new order is saved and surv
   await expect(body(page)).toContainText('اول')
   expect(await order()).toEqual(['دوم', 'سوم', 'اول'])
 })
+
+test('/ typed AFTER text on the same line: the slash text goes, the line stays, the block comes after it, and nothing throws', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', e => errors.push(String(e)))
+  await signUpAndOpen(page)
+  await page.getByTestId('new-page').click()
+  await page.waitForFunction(() => !!(window as unknown as { __editor?: unknown }).__editor)
+  await body(page).click()
+  await page.keyboard.type('متن /callout')
+  await expect(page.locator('.floating-menu .row').first()).toBeVisible()
+  await page.keyboard.press('Enter')
+  await expect(body(page).locator('.callout')).toBeVisible()
+  const doc = await docJson(page)
+  expect(doc.content!.map(n => n.type)).toEqual(['paragraph', 'callout', ...(doc.content!.length > 2 ? ['paragraph'] : [])].slice(0, doc.content!.length))
+  expect(doc.content![0]!.content![0]!.text).toBe('متن ') // the line keeps its text; "/callout" is gone
+  expect(JSON.stringify(doc)).not.toContain('/callout')
+  expect(errors).toEqual([])
+  // and in the middle of a table cell: the block is added after the cell's line, the table keeps its shape
+  await slash(page, 'table')
+  const before = find(await docJson(page), 'tableCell').length
+  await body(page).locator('td').first().click()
+  await page.keyboard.type('x /toggle')
+  await expect(page.locator('.floating-menu .row').first()).toBeVisible()
+  await page.keyboard.press('Enter')
+  await expect(body(page).locator('td .toggle')).toBeVisible()
+  expect(find(await docJson(page), 'tableCell').length).toBe(before)
+  expect(errors).toEqual([])
+})

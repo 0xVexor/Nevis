@@ -4,7 +4,7 @@ import { TextSelection } from '@tiptap/pm/state'
 import { prosemirrorJSONToYXmlFragment } from '@tiptap/y-tiptap'
 import * as Y from 'yjs'
 import { BODY, attrValues, isBlockId, normalize, project, schema, type PMJson } from '@nevis/schema'
-import { createEditor, setDir, DIRS } from './editor'
+import { createEditor, setDir, DIRS, insertCallout, insertImagePlaceholder, insertLayout, insertMathBlock, insertMathInline, insertToggle } from './editor'
 import { Relay } from './relay'
 
 export function mulberry32(seed: number) {
@@ -160,7 +160,7 @@ export async function runFuzz(seed: number, steps = 500, withUndo = false, check
       case 9: e.commands.undo(); break
       case 10: e.commands.redo(); break
       case 11: { // at a RANDOM caret (inside text, a cell, a list item...): the command itself must put the block on an empty line
-        const c = [() => e.commands.insertCallout(pick(rng, ['bulb', 'warning', 'info'])), () => e.commands.insertToggle(), () => e.commands.insertLayout(rng() < 0.5 ? 2 : 3), () => e.commands.insertMathInline('y^2'), () => e.commands.insertMathBlock('z'), () => e.commands.insertImagePlaceholder('جا')]; pick(rng, c)(); break }
+        const c = [() => insertCallout(e, pick(rng, ['bulb', 'warning', 'info'])), () => insertToggle(e), () => insertLayout(e, rng() < 0.5 ? 2 : 3), () => insertMathInline(e, 'y^2'), () => insertMathBlock(e, 'z'), () => insertImagePlaceholder(e, 'جا')]; pick(rng, c)(); break }
       case 12: { // delete a whole top-level block
         const top = e.state.doc.childCount
         if (top < 3) break

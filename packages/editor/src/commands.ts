@@ -1,28 +1,16 @@
-// Editor commands: inserting the blocks, direction, alignment, table layout. (Ported from the old editor's extensions.ts and slash.ts,
+// Editor commands: direction, alignment, table layout, column widths. (Inserting blocks is in insert.ts, as plain functions.) (Ported from the old editor's extensions.ts and slash.ts,
 // with the attribute changes of the new schema: '' instead of null, `icon` instead of `emoji`, `dir` on the layout group.)
 import { Extension, type CommandProps } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { DIR_TYPES } from '@nevis/schema'
-import { optionsOf } from './options'
-import { S } from './strings'
 
-const para = { type: 'paragraph' }
 const DIR_NODES: readonly string[] = DIR_TYPES
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     nevis: {
-      insertCallout: (icon?: string) => ReturnType
-      insertToggle: () => ReturnType
-      insertLayout: (count: 2 | 3) => ReturnType
       unwrapLayout: () => ReturnType
       setColumnWidths: (widths: number[]) => ReturnType
-      insertMathBlock: (latex?: string) => ReturnType
-      insertMathInline: (latex?: string) => ReturnType
-      insertMermaid: (code?: string) => ReturnType
-      insertDrawing: () => ReturnType
-      insertImagePlaceholder: (alt?: string) => ReturnType
-      insertPageLink: (dstId: string, label: string) => ReturnType
       setDirection: (dir: 'auto' | 'rtl' | 'ltr') => ReturnType
       setTableDirection: (dir: 'auto' | 'rtl' | 'ltr') => ReturnType
       setTableWidth: (percent: number) => ReturnType
@@ -41,33 +29,7 @@ const ancestor = (state: CommandProps['state'], name: string) => {
 export const NevisCommands = Extension.create({
   name: 'nevisCommands',
   addCommands() {
-    // A BLOCK is never put into the middle of a text block, and never REPLACES or DELETES an empty paragraph: ProseMirror would split and re-fit
-    // the surrounding structure (cells, items, callouts), and under concurrent edits that left a stored Y.Doc that every editor shows differently
-    // (found by the fuzz: 8-19% of seeds when a block replaced / removed a paragraph at a random caret). So: on an EMPTY line the block goes
-    // right BEFORE it (the empty line stays below the block, ready to type in); on a line with text, Enter is pressed at the end of the line first
-    // and the block goes onto the new empty paragraph. Separate steps, not one transaction (measured).
-    const insert = (content: Record<string, unknown>) => ({ state, chain, editor }: CommandProps) => {
-      const type = state.schema.nodes[String(content.type)]
-      const { $from } = state.selection
-      if (!type || 'node' in state.selection || !$from.parent.isTextblock) return chain().focus().insertContent(content).run()
-      if ($from.parent.content.size === 0 && $from.depth > 0) {
-        const parent = $from.node($from.depth - 1), i = $from.index($from.depth - 1)
-        const mustStartWithParagraph = i === 0 && ['listItem', 'taskItem', 'toggle'].includes(parent.type.name)
-        if (!mustStartWithParagraph && parent.canReplaceWith(i, i, type)) return chain().focus().insertContentAt($from.before($from.depth), content).run()
-      }
-      chain().focus().setTextSelection($from.end()).run()
-      editor.commands.splitBlock()
-      return editor.chain().focus().insertContent(content).run()
-    }
-    // an INLINE node goes at the caret, in the text
-    const insertInline = (content: Record<string, unknown>[]) => ({ chain }: CommandProps) => chain().focus().insertContent(content).run()
     return {
-      insertCallout: (icon = 'bulb') => insert({ type: 'callout', attrs: { icon }, content: [para] }),
-      insertToggle: () => insert({ type: 'toggle', attrs: { open: true }, content: [para, para] }),
-      insertLayout: count => ({ state, editor, chain }) => {
-        if (ancestor(state, 'layoutColumn')) { optionsOf(editor).notify?.(S.layoutNested); return false }
-        return chain().focus().insertContent({ type: 'layoutGroup', content: Array.from({ length: count }, () => ({ type: 'layoutColumn', content: [para] })) }).run()
-      },
       unwrapLayout: () => ({ state, tr, dispatch }) => {
         const g = ancestor(state, 'layoutGroup')
         if (!g) return false
@@ -85,12 +47,6 @@ export const NevisCommands = Extension.create({
         dispatch?.(tr)
         return true
       },
-      insertMathBlock: (latex = '') => insert({ type: 'mathBlock', attrs: { latex } }),
-      insertMathInline: (latex = '') => insertInline([{ type: 'mathInline', attrs: { latex } }]),
-      insertMermaid: (code = '') => insert({ type: 'mermaid', attrs: { code } }),
-      insertDrawing: () => insert({ type: 'drawing', attrs: { scene: '' } }),
-      insertImagePlaceholder: (alt = '') => insert({ type: 'image', attrs: { src: '', alt } }),
-      insertPageLink: (dstId, label) => ({ chain }) => chain().focus().insertContent([{ type: 'pageLink', attrs: { dstId, label } }, { type: 'text', text: ' ' }]).run(),
 
       setDirection: dir => ({ state, tr, dispatch }) => {
         const { from, to } = state.selection

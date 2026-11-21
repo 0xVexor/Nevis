@@ -22,5 +22,9 @@
 - `docs/OPEN-QUESTIONS.md` (به‌ویژه ۱: سینک پس‌زمینه، ۲: E2EE، ۸: نام پیش از M6).
 - معمار: اصلاح ADR-0003 بند ۱۳ (سقف hold ۱۰ ثانیه) و ADR-0001 بند ۶ (`persist()` نباید await شود).
 
+## باگ‌های باز
+- paste چندبلوکی در مکان تصادفی: در آزمون فشار ۰٪ (بدون undo) و ۱٫۳٪ (با undo) ناهماهنگی view/Y.Doc؛ علت ریشه‌ای بررسی نشده (`docs/reports/10-m8a-editor.md`).
+- paste در Firefox و درگ HTML5 در WebKit/Firefox را آزمون خودکار نمی‌تواند بسنجد (چک‌لیست M8a).
+
 ## منبع قدیمی (مرجع)
 ریپوی قدیمی: `/Users/wrangler/Developer/Projects/Nevis`، شاخهٔ `feature/web`.
