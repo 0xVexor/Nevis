@@ -9,11 +9,17 @@ import { prosemirrorJSONToYXmlFragment } from '@tiptap/y-tiptap'
 import * as Y from 'yjs'
 import { SV } from '@nevis/protocol'
 import { BODY, normalize, project, schema } from '../src'
-import { fixtures } from '../test/fixtures'
+import { allFixtures as fixtures, fixturesV2 } from '../test/fixtures'
+
+// Each schema version captures only the fixtures it INTRODUCED; older ones keep their stored files (never rewritten).
+const introduced: Record<number, string[]> = { 1: Object.keys(fixtures).filter(n => !(n in fixturesV2)), 2: Object.keys(fixturesV2) }
+const current = introduced[SV]
+if (!current) throw new Error(`say which fixtures SV ${SV} introduces (the table above)`)
 
 const dir = join(import.meta.dirname, '..', 'fixtures', `sv${SV}`)
 mkdirSync(dir, { recursive: true })
-for (const [name, json] of Object.entries(fixtures)) {
+for (const name of current) {
+  const json = fixtures[name]!
   const doc = new Y.Doc()
   prosemirrorJSONToYXmlFragment(schema, normalize(json), doc.getXmlFragment(BODY))
   const update = Y.encodeStateAsUpdate(doc)

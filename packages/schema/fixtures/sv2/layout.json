@@ -1,0 +1,175 @@
+{
+ "name": "layout",
+ "sv": 2,
+ "update": "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",
+ "sha256": "5b639eabbae65f762f15b0e676aa8f3ecaf98cd3ad088666d9e85d2d6f0062c2",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "layoutGroup",
+    "attrs": {
+     "dir": "rtl",
+     "blockId": "01930000-0000-7000-8000-000000000056"
+    },
+    "content": [
+     {
+      "type": "layoutColumn",
+      "attrs": {
+       "blockId": "01930000-0000-7000-8000-000000000058",
+       "width": 0
+      },
+      "content": [
+       {
+        "type": "paragraph",
+        "attrs": {
+         "dir": "auto",
+         "blockId": "01930000-0000-7000-8000-000000000057",
+         "textAlign": ""
+        },
+        "content": [
+         {
+          "type": "text",
+          "text": "ستون راست"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "layoutColumn",
+      "attrs": {
+       "blockId": "01930000-0000-7000-8000-000000000063",
+       "width": 0
+      },
+      "content": [
+       {
+        "type": "paragraph",
+        "attrs": {
+         "dir": "auto",
+         "blockId": "01930000-0000-7000-8000-000000000059",
+         "textAlign": ""
+        },
+        "content": [
+         {
+          "type": "text",
+          "text": "ستون چپ"
+         }
+        ]
+       },
+       {
+        "type": "bulletList",
+        "attrs": {
+         "blockId": "01930000-0000-7000-8000-000000000060"
+        },
+        "content": [
+         {
+          "type": "listItem",
+          "attrs": {
+           "dir": "auto",
+           "blockId": "01930000-0000-7000-8000-000000000061"
+          },
+          "content": [
+           {
+            "type": "paragraph",
+            "attrs": {
+             "dir": "auto",
+             "blockId": "01930000-0000-7000-8000-000000000062",
+             "textAlign": ""
+            },
+            "content": [
+             {
+              "type": "text",
+              "text": "x"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "layoutGroup",
+    "attrs": {
+     "dir": "auto",
+     "blockId": "01930000-0000-7000-8000-000000000064"
+    },
+    "content": [
+     {
+      "type": "layoutColumn",
+      "attrs": {
+       "blockId": "01930000-0000-7000-8000-000000000066",
+       "width": 20
+      },
+      "content": [
+       {
+        "type": "paragraph",
+        "attrs": {
+         "dir": "auto",
+         "blockId": "01930000-0000-7000-8000-000000000065",
+         "textAlign": ""
+        },
+        "content": [
+         {
+          "type": "text",
+          "text": "الف"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "layoutColumn",
+      "attrs": {
+       "blockId": "01930000-0000-7000-8000-000000000068",
+       "width": 50
+      },
+      "content": [
+       {
+        "type": "paragraph",
+        "attrs": {
+         "dir": "auto",
+         "blockId": "01930000-0000-7000-8000-000000000067",
+         "textAlign": ""
+        },
+        "content": [
+         {
+          "type": "text",
+          "text": "ب"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "layoutColumn",
+      "attrs": {
+       "blockId": "01930000-0000-7000-8000-000000000070",
+       "width": 30
+      },
+      "content": [
+       {
+        "type": "paragraph",
+        "attrs": {
+         "dir": "auto",
+         "blockId": "01930000-0000-7000-8000-000000000069",
+         "textAlign": ""
+        },
+        "content": [
+         {
+          "type": "text",
+          "text": "ج"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

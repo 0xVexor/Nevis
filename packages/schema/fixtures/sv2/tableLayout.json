@@ -1,0 +1,55 @@
+{
+ "name": "tableLayout",
+ "sv": 2,
+ "update": "ARLLjPG0DAAHAQRib2R5AwV0YWJsZQcAy4zxtAwAAwh0YWJsZVJvdwcAy4zxtAwBAwl0YWJsZUNlbGwHAMuM8bQMAgMJcGFyYWdyYXBoBwDLjPG0DAMGBADLjPG0DAQBYSgAy4zxtAwDA2RpcgF3BGF1dG8oAMuM8bQMAwdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDg0KADLjPG0DAMJdGV4dEFsaWduAXcAKADLjPG0DAIDZGlyAXcDbHRyKADLjPG0DAIHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDA4MygAy4zxtAwCB2NvbHNwYW4BfQEoAMuM8bQMAgdyb3dzcGFuAX0BKADLjPG0DAEHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDA4MigAy4zxtAwAA2RpcgF3A3J0bCgAy4zxtAwAB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwODEoAMuM8bQMAAp0YWJsZUFsaWduAXcGY2VudGVyKADLjPG0DAAKdGFibGVXaWR0aAF9iwEA",
+ "sha256": "4f982339b25192b199c2e7e11c0dcf9fcb91d6a73777dd51b073f2c0362fc702",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "table",
+    "attrs": {
+     "dir": "rtl",
+     "blockId": "01930000-0000-7000-8000-000000000081",
+     "tableAlign": "center",
+     "tableWidth": 75
+    },
+    "content": [
+     {
+      "type": "tableRow",
+      "attrs": {
+       "blockId": "01930000-0000-7000-8000-000000000082"
+      },
+      "content": [
+       {
+        "type": "tableCell",
+        "attrs": {
+         "dir": "ltr",
+         "blockId": "01930000-0000-7000-8000-000000000083",
+         "colspan": 1,
+         "rowspan": 1
+        },
+        "content": [
+         {
+          "type": "paragraph",
+          "attrs": {
+           "dir": "auto",
+           "blockId": "01930000-0000-7000-8000-000000000084",
+           "textAlign": ""
+          },
+          "content": [
+           {
+            "type": "text",
+            "text": "a"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

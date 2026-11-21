@@ -18,6 +18,7 @@ const all: Golden[] = readdirSync(root).filter(d => /^sv\d+$/.test(d)).sort().fl
 describe('golden fixtures', () => {
   it('exist for sv1 (captured before the first schema change) and are not more than the current SV', () => {
     expect(all.filter(g => g.sv === 1).length).toBeGreaterThanOrEqual(12)
+    expect(all.filter(g => g.sv === 2).length).toBeGreaterThanOrEqual(12) // the blocks of M8a
     for (const n of ['real-m5-store', 'real-m5-merged']) expect(all.some(g => g.sv === 1 && g.name === n), `the realistic sv1 fixture ${n}`).toBe(true)
     for (const g of all) expect(g.sv).toBeLessThanOrEqual(SV)
   })

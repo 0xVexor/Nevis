@@ -6,11 +6,15 @@ import Link from '@tiptap/extension-link'
 import { BulletList, OrderedList, ListItem, TaskList, TaskItem } from '@tiptap/extension-list'
 import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
 import StarterKit from '@tiptap/starter-kit'
+import { blockNodes } from './blocks'
+import { isSafeHref } from './safeHref'
 
 /** Nodes that carry a stable `blockId`. */
-export const BLOCK_TYPES = ['paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'taskList', 'taskItem', 'blockquote', 'codeBlock', 'table', 'tableRow', 'tableHeader', 'tableCell'] as const
+export const BLOCK_TYPES = ['paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'taskList', 'taskItem', 'blockquote', 'codeBlock', 'table', 'tableRow', 'tableHeader', 'tableCell', 'callout', 'toggle', 'layoutGroup', 'layoutColumn', 'mathBlock', 'mermaid', 'drawing', 'image'] as const
 /** Nodes that carry a text direction. */
-export const DIR_TYPES = ['paragraph', 'heading', 'table'] as const
+export const DIR_TYPES = ['paragraph', 'heading', 'table', 'blockquote', 'listItem', 'taskItem', 'tableCell', 'tableHeader', 'layoutGroup'] as const
+/** Nodes whose text can be aligned by physical side (left / center / right / justify); '' = natural (follows the direction). */
+export const ALIGN_TYPES = ['paragraph', 'heading', 'codeBlock'] as const
 
 const Attrs = Extension.create({
   name: 'nevisAttrs',
@@ -37,6 +41,23 @@ const Attrs = Extension.create({
           },
         },
       },
+      {
+        types: [...ALIGN_TYPES],
+        attributes: {
+          textAlign: {
+            default: '',
+            parseHTML: (el: HTMLElement) => (['left', 'center', 'right', 'justify'].includes(el.style.textAlign) ? el.style.textAlign : ''),
+            renderHTML: (attrs: Record<string, unknown>) => (attrs.textAlign ? { style: `text-align: ${attrs.textAlign as string}` } : {}),
+          },
+        },
+      },
+      {
+        types: ['table'],
+        attributes: {
+          tableAlign: { default: '', parseHTML: (el: HTMLElement) => el.getAttribute('data-table-align') ?? '', renderHTML: (a: Record<string, unknown>) => (a.tableAlign ? { 'data-table-align': a.tableAlign as string } : {}) },
+          tableWidth: { default: 0, parseHTML: (el: HTMLElement) => Math.max(0, Math.trunc(Number(el.getAttribute('data-table-width')) || 0)), renderHTML: (a: Record<string, unknown>) => (a.tableWidth ? { 'data-table-width': String(a.tableWidth) } : {}) },
+        },
+      },
       { types: ['taskItem'], attributes: { due: { default: '' } } },
     ]
   },
@@ -50,7 +71,7 @@ export const schemaExtensions: AnyExtension[] = [
   StarterKit.configure({
     heading: { levels: [1, 2, 3] },
     // not part of the schema contract, or behaviour that belongs to the editor (history comes from Yjs)
-    undoRedo: false, strike: false, underline: false, horizontalRule: false, dropcursor: false, gapcursor: false, trailingNode: false, listKeymap: false,
+    undoRedo: false, horizontalRule: false, dropcursor: false, gapcursor: false, trailingNode: false, listKeymap: false,
     bulletList: false, orderedList: false, listItem: false, link: false,
     codeBlock: false,
   }),
@@ -61,10 +82,11 @@ export const schemaExtensions: AnyExtension[] = [
   TaskList,
   TaskItem.configure({ nested: true }),
   CodeBlock.extend({ addAttributes: () => ({ language: { default: '' } }) }),
-  Link.extend({ addAttributes: () => ({ href: { default: '' }, target: { default: '' }, rel: { default: '' }, class: { default: '' } }) }).configure({ openOnClick: false, autolink: false }),
+  Link.extend({ addAttributes: () => ({ href: { default: '' }, target: { default: '' }, rel: { default: '' }, class: { default: '' } }) }).configure({ openOnClick: false, autolink: false, isAllowedUri: (url: string) => isSafeHref(url) }),
   Table.configure({ resizable: false }),
   TableRow,
   Header,
   Cell,
+  ...blockNodes,
   Attrs,
 ]

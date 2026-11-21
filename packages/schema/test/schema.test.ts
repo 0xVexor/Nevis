@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { prosemirrorJSONToYXmlFragment } from '@tiptap/y-tiptap'
 import * as Y from 'yjs'
 import { BODY, attrValues, isBlockId, normalize, project, schema, uuidv7, type PMJson } from '../src'
-import { fixtures } from './fixtures'
+import { allFixtures as fixtures, fixturesV2 } from './fixtures'
 
 const toDoc = (json: PMJson) => {
   const doc = new Y.Doc()
@@ -18,7 +18,7 @@ describe('schema contract', () => {
     expect(schema.nodes.heading!.spec.attrs).toBeDefined()
   })
 
-  it('has exactly 10 fixtures', () => expect(names.length).toBe(10))
+  it('has the 10 sv1 fixtures and the sv2 ones', () => expect([names.length, Object.keys(fixturesV2).length]).toEqual([10 + Object.keys(fixturesV2).length, 12]))
 
   it.each(names)('round trip through Yjs keeps %s identical (defaults filled in)', name => {
     const input = normalize(fixtures[name]!)

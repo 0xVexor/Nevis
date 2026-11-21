@@ -1,0 +1,54 @@
+{
+ "name": "alignment",
+ "sv": 2,
+ "update": "AROTt6+zCgAHAQRib2R5AwlwYXJhZ3JhcGgHAJO3r7MKAAYEAJO3r7MKAQbZiNiz2LcoAJO3r7MKAANkaXIBdwRhdXRvKACTt6+zCgAHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDA3OCgAk7evswoACXRleHRBbGlnbgF3BmNlbnRlcoeTt6+zCgADB2hlYWRpbmcHAJO3r7MKCAYEAJO3r7MKCRHYqtuM2KrYsSDYsdin2LPYqigAk7evswoIA2RpcgF3A3J0bCgAk7evswoIB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwNzkoAJO3r7MKCAl0ZXh0QWxpZ24BdwVyaWdodCgAk7evswoIBWxldmVsAX0Ch5O3r7MKCAMJY29kZUJsb2NrBwCTt6+zChcGBACTt6+zChgBeCgAk7evswoXB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwODAoAJO3r7MKFwl0ZXh0QWxpZ24BdwRsZWZ0KACTt6+zChcIbGFuZ3VhZ2UBdwJ0cwA=",
+ "sha256": "03bf13c880a981f08df3972ee0b8f9e288cacc448cea3cd1571acda37963eb01",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "paragraph",
+    "attrs": {
+     "dir": "auto",
+     "blockId": "01930000-0000-7000-8000-000000000078",
+     "textAlign": "center"
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "وسط"
+     }
+    ]
+   },
+   {
+    "type": "heading",
+    "attrs": {
+     "dir": "rtl",
+     "blockId": "01930000-0000-7000-8000-000000000079",
+     "textAlign": "right",
+     "level": 2
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "تیتر راست"
+     }
+    ]
+   },
+   {
+    "type": "codeBlock",
+    "attrs": {
+     "blockId": "01930000-0000-7000-8000-000000000080",
+     "textAlign": "left",
+     "language": "ts"
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "x"
+     }
+    ]
+   }
+  ]
+ }
+}

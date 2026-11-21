@@ -1,0 +1,18 @@
+{
+ "name": "drawing",
+ "sv": 2,
+ "update": "AQPDgO3wCwAHAQRib2R5AwdkcmF3aW5nKADDgO3wCwAHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDA3NCgAw4Dt8AsABXNjZW5lAXc9eyJlbGVtZW50cyI6W3sidHlwZSI6InJlY3RhbmdsZSIsIngiOjEsInkiOjJ9XSwiYXBwU3RhdGUiOnt9fQA=",
+ "sha256": "9d9bdc46dd4e63b9bc95be9e31990b165606df6c08cb39d1d87cc864316c9f43",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "drawing",
+    "attrs": {
+     "blockId": "01930000-0000-7000-8000-000000000074",
+     "scene": "{\"elements\":[{\"type\":\"rectangle\",\"x\":1,\"y\":2}],\"appState\":{}}"
+    }
+   }
+  ]
+ }
+}

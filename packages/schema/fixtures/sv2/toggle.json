@@ -1,0 +1,116 @@
+{
+ "name": "toggle",
+ "sv": 2,
+ "update": "ASn33MeyDwAHAQRib2R5AwZ0b2dnbGUHAPfcx7IPAAMJcGFyYWdyYXBoBwD33MeyDwEGBAD33MeyDwIR2LnZhtmI2KfZhiDYqNin2LIoAPfcx7IPAQNkaXIBdwRhdXRvKAD33MeyDwEHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDA0OCgA99zHsg8BCXRleHRBbGlnbgF3AIf33MeyDwEDCXBhcmFncmFwaAcA99zHsg8PBgQA99zHsg8QCNiv2LHZiNmGKAD33MeyDw8DZGlyAXcEYXV0bygA99zHsg8PB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwNDkoAPfcx7IPDwl0ZXh0QWxpZ24BdwAoAPfcx7IPAAdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDQ3KAD33MeyDwAEb3BlbgF4h/fcx7IPAAMGdG9nZ2xlBwD33MeyDxoDCXBhcmFncmFwaAcA99zHsg8bBgQA99zHsg8cE9i52YbZiNin2YYg2KjYs9iq2YcoAPfcx7IPGwNkaXIBdwRhdXRvKAD33MeyDxsHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDA1MSgA99zHsg8bCXRleHRBbGlnbgF3AIf33MeyDxsDCXBhcmFncmFwaAcA99zHsg8qBgQA99zHsg8rCtm+2YbZh9in2YYoAPfcx7IPKgNkaXIBdwRhdXRvKAD33MeyDyoHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDA1MigA99zHsg8qCXRleHRBbGlnbgF3AIf33MeyDyoDCmJ1bGxldExpc3QHAPfcx7IPNAMIbGlzdEl0ZW0HAPfcx7IPNQMJcGFyYWdyYXBoBwD33MeyDzYGBAD33MeyDzcG2KfZhNmBKAD33MeyDzYDZGlyAXcEYXV0bygA99zHsg82B2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwNTUoAPfcx7IPNgl0ZXh0QWxpZ24BdwAoAPfcx7IPNQNkaXIBdwRhdXRvKAD33MeyDzUHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDA1NCgA99zHsg80B2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwNTMoAPfcx7IPGgdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDUwKAD33MeyDxoEb3BlbgF5AA==",
+ "sha256": "c702630d2882835f33e5497ca501676ccdd9867c96c9e82177bf90e89f184793",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "toggle",
+    "attrs": {
+     "blockId": "01930000-0000-7000-8000-000000000047",
+     "open": true
+    },
+    "content": [
+     {
+      "type": "paragraph",
+      "attrs": {
+       "dir": "auto",
+       "blockId": "01930000-0000-7000-8000-000000000048",
+       "textAlign": ""
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "عنوان باز"
+       }
+      ]
+     },
+     {
+      "type": "paragraph",
+      "attrs": {
+       "dir": "auto",
+       "blockId": "01930000-0000-7000-8000-000000000049",
+       "textAlign": ""
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "درون"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "toggle",
+    "attrs": {
+     "blockId": "01930000-0000-7000-8000-000000000050",
+     "open": false
+    },
+    "content": [
+     {
+      "type": "paragraph",
+      "attrs": {
+       "dir": "auto",
+       "blockId": "01930000-0000-7000-8000-000000000051",
+       "textAlign": ""
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "عنوان بسته"
+       }
+      ]
+     },
+     {
+      "type": "paragraph",
+      "attrs": {
+       "dir": "auto",
+       "blockId": "01930000-0000-7000-8000-000000000052",
+       "textAlign": ""
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "پنهان"
+       }
+      ]
+     },
+     {
+      "type": "bulletList",
+      "attrs": {
+       "blockId": "01930000-0000-7000-8000-000000000053"
+      },
+      "content": [
+       {
+        "type": "listItem",
+        "attrs": {
+         "dir": "auto",
+         "blockId": "01930000-0000-7000-8000-000000000054"
+        },
+        "content": [
+         {
+          "type": "paragraph",
+          "attrs": {
+           "dir": "auto",
+           "blockId": "01930000-0000-7000-8000-000000000055",
+           "textAlign": ""
+          },
+          "content": [
+           {
+            "type": "text",
+            "text": "الف"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

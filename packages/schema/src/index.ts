@@ -5,7 +5,8 @@ import type * as Y from 'yjs'
 import { BlockIdentity } from './blockIdentity'
 import { schemaExtensions } from './extensions'
 
-export { BLOCK_TYPES, DIR_TYPES } from './extensions'
+export { ALIGN_TYPES, BLOCK_TYPES, DIR_TYPES } from './extensions'
+export { MAX_DRAWING_SCENE, MAX_SOURCE } from './blocks'
 export { SV } from '@nevis/protocol'
 export { isBlockId, uuidv7 } from './ids'
 export { BlockIdentity } from './blockIdentity'
@@ -51,3 +52,4 @@ export function dropDefaults(json: PMJson, sch: Schema = schema): PMJson {
   return out
 }
 export { auditSchema } from './audit'
+export { isSafeHref } from './safeHref'

@@ -1,0 +1,18 @@
+{
+ "name": "mermaid",
+ "sv": 2,
+ "update": "AQO+xv2ECQAHAQRib2R5AwdtZXJtYWlkKAC+xv2ECQAHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDA3MygAvsb9hAkABGNvZGUBdyhncmFwaCBURAogIEFb2LTYsdmI2LldIC0tPiBCW9m+2KfbjNin2YZdAA==",
+ "sha256": "6de7a2d617f834ce5937da248528e9a75cef21d7cd51d5c26ee57441c9148e8a",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "mermaid",
+    "attrs": {
+     "blockId": "01930000-0000-7000-8000-000000000073",
+     "code": "graph TD\n  A[شروع] --> B[پایان]"
+    }
+   }
+  ]
+ }
+}

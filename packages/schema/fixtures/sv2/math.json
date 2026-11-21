@@ -1,0 +1,42 @@
+{
+ "name": "math",
+ "sv": 2,
+ "update": "AQ380Yr+AwAHAQRib2R5AwltYXRoQmxvY2soAPzRiv4DAAdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDcxKAD80Yr+AwAFbGF0ZXgBdxRFID0gbWNeMiBcZnJhY3thfXtifYf80Yr+AwADCXBhcmFncmFwaAcA/NGK/gMDBgQA/NGK/gMEFdmIINiv2LHZiNmG4oCM2K7Yt9uMIIf80Yr+AwQDCm1hdGhJbmxpbmUoAPzRiv4DEAVsYXRleAF3A3heMof80Yr+AxAGBAD80Yr+AxIJINiq2YXYp9mFKAD80Yr+AwMDZGlyAXcEYXV0bygA/NGK/gMDB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwNzIoAPzRiv4DAwl0ZXh0QWxpZ24BdwAA",
+ "sha256": "74ee6e75b8f91de8c97573c25e07d7190b2f19be4bb216a6881bd77bb1d6ca93",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "mathBlock",
+    "attrs": {
+     "blockId": "01930000-0000-7000-8000-000000000071",
+     "latex": "E = mc^2 \\frac{a}{b}"
+    }
+   },
+   {
+    "type": "paragraph",
+    "attrs": {
+     "dir": "auto",
+     "blockId": "01930000-0000-7000-8000-000000000072",
+     "textAlign": ""
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "و درون‌خطی "
+     },
+     {
+      "type": "mathInline",
+      "attrs": {
+       "latex": "x^2"
+      }
+     },
+     {
+      "type": "text",
+      "text": " تمام"
+     }
+    ]
+   }
+  ]
+ }
+}

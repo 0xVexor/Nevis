@@ -36,3 +36,29 @@ export const fixtures: Record<string, PMJson> = {
     ],
   },
 }
+
+// ---- sv2 (M8a): the blocks ported from the old editor. Appended AFTER the sv1 fixtures so that their ids do not move. ----
+const col = (content: PMJson[], width = 0): PMJson => ({ type: 'layoutColumn', attrs: { blockId: id(), width }, content })
+const lst = (items: string[]): PMJson => ({ type: 'bulletList', attrs: { blockId: id() }, content: items.map(x => ({ type: 'listItem', attrs: { blockId: id() }, content: [p([t(x)])] })) })
+
+export const fixturesV2: Record<string, PMJson> = {
+  callout: { type: 'doc', content: [{ type: 'callout', attrs: { blockId: id(), icon: 'warning' }, content: [p([t('هشدار مهم')]), lst(['یک', 'دو'])] }, { type: 'callout', attrs: { blockId: id(), icon: 'bulb' }, content: [p([t('ایده')])] }] },
+  toggle: { type: 'doc', content: [{ type: 'toggle', attrs: { blockId: id(), open: true }, content: [p([t('عنوان باز')]), p([t('درون')])] }, { type: 'toggle', attrs: { blockId: id(), open: false }, content: [p([t('عنوان بسته')]), p([t('پنهان')]), lst(['الف'])] }] },
+  layout: {
+    type: 'doc',
+    content: [
+      { type: 'layoutGroup', attrs: { blockId: id(), dir: 'rtl' }, content: [col([p([t('ستون راست')])]), col([p([t('ستون چپ')]), lst(['x'])])] },
+      { type: 'layoutGroup', attrs: { blockId: id(), dir: 'auto' }, content: [col([p([t('الف')])], 20), col([p([t('ب')])], 50), col([p([t('ج')])], 30)] },
+    ],
+  },
+  math: { type: 'doc', content: [{ type: 'mathBlock', attrs: { blockId: id(), latex: 'E = mc^2 \\frac{a}{b}' } }, p([t('و درون‌خطی '), { type: 'mathInline', attrs: { latex: 'x^2' } }, t(' تمام')])] },
+  mermaid: { type: 'doc', content: [{ type: 'mermaid', attrs: { blockId: id(), code: 'graph TD\n  A[شروع] --> B[پایان]' } }] },
+  drawing: { type: 'doc', content: [{ type: 'drawing', attrs: { blockId: id(), scene: '{"elements":[{"type":"rectangle","x":1,"y":2}],"appState":{}}' } }] },
+  image: { type: 'doc', content: [{ type: 'image', attrs: { blockId: id(), src: '', alt: 'جای عکس', title: '', width: 0, align: '', motion: '' } }, { type: 'image', attrs: { blockId: id(), src: 'https://example.com/a.png', alt: 'عکس', title: 'عنوان', width: 400, align: 'center', motion: '' } }] },
+  pageLink: { type: 'doc', content: [p([t('نگاه کنید به '), { type: 'pageLink', attrs: { dstId: '01930000-0000-7000-8000-00000000abcd', label: 'صفحهٔ دیگر' } }, t('.')])] },
+  alignment: { type: 'doc', content: [{ type: 'paragraph', attrs: { blockId: id(), dir: 'auto', textAlign: 'center' }, content: [t('وسط')] }, { type: 'heading', attrs: { blockId: id(), dir: 'rtl', level: 2, textAlign: 'right' }, content: [t('تیتر راست')] }, { type: 'codeBlock', attrs: { blockId: id(), language: 'ts', textAlign: 'left' }, content: [t('x')] }] },
+  tableLayout: { type: 'doc', content: [{ type: 'table', attrs: { blockId: id(), dir: 'rtl', tableAlign: 'center', tableWidth: 75 }, content: [{ type: 'tableRow', attrs: { blockId: id() }, content: [{ type: 'tableCell', attrs: { blockId: id(), colspan: 1, rowspan: 1, dir: 'ltr' }, content: [p([t('a')])] }] }] }] },
+  containerDir: { type: 'doc', content: [{ type: 'blockquote', attrs: { blockId: id(), dir: 'rtl' }, content: [p([t('نقل')])] }, { type: 'bulletList', attrs: { blockId: id() }, content: [{ type: 'listItem', attrs: { blockId: id(), dir: 'ltr' }, content: [p([t('item')])] }] }] },
+  marksV2: { type: 'doc', content: [p([t('خط‌خورده', [{ type: 'strike' }]), t(' و '), t('زیرخط', [{ type: 'underline' }])])] },
+}
+export const allFixtures: Record<string, PMJson> = { ...fixtures, ...fixturesV2 }

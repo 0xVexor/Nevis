@@ -1,0 +1,43 @@
+{
+ "name": "marksV2",
+ "sv": 2,
+ "update": "AQzX5rySDwAHAQRib2R5AwlwYXJhZ3JhcGgHANfmvJIPAAYGANfmvJIPAQZzdHJpa2UCe32E1+a8kg8CEdiu2LfigIzYrtmI2LHYr9mHhtfmvJIPCgZzdHJpa2UEbnVsbITX5rySDwsEINmIIIbX5rySDw4JdW5kZXJsaW5lAnt9hNfmvJIPDwrYstuM2LHYrti3htfmvJIPFAl1bmRlcmxpbmUEbnVsbCgA1+a8kg8AA2RpcgF3BGF1dG8oANfmvJIPAAdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDkwKADX5rySDwAJdGV4dEFsaWduAXcAAA==",
+ "sha256": "227153c73f36c035b65049dd75f7a1e8466418e30dfe937be2e4ad629a9d8836",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "paragraph",
+    "attrs": {
+     "dir": "auto",
+     "blockId": "01930000-0000-7000-8000-000000000090",
+     "textAlign": ""
+    },
+    "content": [
+     {
+      "type": "text",
+      "marks": [
+       {
+        "type": "strike"
+       }
+      ],
+      "text": "خط‌خورده"
+     },
+     {
+      "type": "text",
+      "text": " و "
+     },
+     {
+      "type": "text",
+      "marks": [
+       {
+        "type": "underline"
+       }
+      ],
+      "text": "زیرخط"
+     }
+    ]
+   }
+  ]
+ }
+}

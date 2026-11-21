@@ -1,0 +1,35 @@
+{
+ "name": "image",
+ "sv": 2,
+ "update": "ARCn6tXfBQAHAQRib2R5AwVpbWFnZSgAp+rV3wUAB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwNzUoAKfq1d8FAANzcmMBdwAoAKfq1d8FAANhbHQBdw3YrNin24wg2LnaqdizKACn6tXfBQAFdGl0bGUBdwAoAKfq1d8FAAV3aWR0aAF9ACgAp+rV3wUABWFsaWduAXcAKACn6tXfBQAGbW90aW9uAXcAh6fq1d8FAAMFaW1hZ2UoAKfq1d8FCAdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDc2KACn6tXfBQgDc3JjAXcZaHR0cHM6Ly9leGFtcGxlLmNvbS9hLnBuZygAp+rV3wUIA2FsdAF3Bti52qnYsygAp+rV3wUIBXRpdGxlAXcK2LnZhtmI2KfZhigAp+rV3wUIBXdpZHRoAX2QBigAp+rV3wUIBWFsaWduAXcGY2VudGVyKACn6tXfBQgGbW90aW9uAXcAAA==",
+ "sha256": "225d4aa144bd327902b9f1340bfe197660b1a008d587c4d0dfe7bd3d934d76dd",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "image",
+    "attrs": {
+     "blockId": "01930000-0000-7000-8000-000000000075",
+     "src": "",
+     "alt": "جای عکس",
+     "title": "",
+     "width": 0,
+     "align": "",
+     "motion": ""
+    }
+   },
+   {
+    "type": "image",
+    "attrs": {
+     "blockId": "01930000-0000-7000-8000-000000000076",
+     "src": "https://example.com/a.png",
+     "alt": "عکس",
+     "title": "عنوان",
+     "width": 400,
+     "align": "center",
+     "motion": ""
+    }
+   }
+  ]
+ }
+}

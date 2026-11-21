@@ -69,10 +69,10 @@ describe('DocHandle', () => {
     await h1.close(); await h2.close()
   })
 
-  it('a document with changes from a newer schema (sv 2) is not opened for editing', async () => {
+  it('a document with changes from a newer schema (SV + 1) is not opened for editing', async () => {
     const a = setup()
     const peer = new Y.Doc(); type(peer, 'from the future')
-    const e: Envelope = { v: 1, op: uuidv7(), ws: a.ws, doc: a.doc, dev: uuidv7(), t: formatHlc({ ms: 5, counter: 0 }, uuidv7()), sv: 2, kid: 0, p: b64urlEncode(encodeYUpdate(Y.encodeStateAsUpdate(peer))) }
+    const e: Envelope = { v: 1, op: uuidv7(), ws: a.ws, doc: a.doc, dev: uuidv7(), t: formatHlc({ ms: 5, counter: 0 }, uuidv7()), sv: SV + 1, kid: 0, p: b64urlEncode(encodeYUpdate(Y.encodeStateAsUpdate(peer))) }
     expect(await a.store.run(tx => applyEnvelope(tx, JSON.parse(encodeEnvelope(e)) as Envelope, { device: a.client.device, sv: SV, now: 10 }))).toBe('held')
     const h = await DocHandle.open({ client: a.client, doc: a.doc })
     expect(h.needsUpdate).toBe(true)

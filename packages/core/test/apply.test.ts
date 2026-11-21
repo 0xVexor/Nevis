@@ -80,9 +80,9 @@ describe('events and documents', () => {
 
   it('an op from a newer schema is held, and the document learns it needs an update', async () => {
     const s = new MemoryStore(), doc = uuidv7()
-    const r = await s.run(tx => applyEnvelope(tx, env(doc, DEV_B, hlc(1, 0, DEV_B), encodeRec({ set: { a: 1 }, h: hlc(1, 0, DEV_B) }), 2), ctx))
+    const r = await s.run(tx => applyEnvelope(tx, env(doc, DEV_B, hlc(1, 0, DEV_B), encodeRec({ set: { a: 1 }, h: hlc(1, 0, DEV_B) }), SV + 1), ctx))
     expect(r).toBe('held')
-    expect((await s.run(tx => tx.getDocState(doc)))!.maxSv).toBe(2)
+    expect((await s.run(tx => tx.getDocState(doc)))!.maxSv).toBe(SV + 1)
     expect(await s.run(tx => tx.entities())).toEqual([])
   })
 })

@@ -1,0 +1,36 @@
+{
+ "name": "pageLink",
+ "sv": 2,
+ "update": "AQv/iuyBDgAHAQRib2R5AwlwYXJhZ3JhcGgHAP+K7IEOAAYEAP+K7IEOARfZhtqv2KfZhyDaqdmG24zYryDYqNmHIIf/iuyBDgEDCHBhZ2VMaW5rKAD/iuyBDg8FZHN0SWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMGFiY2QoAP+K7IEODwVsYWJlbAF3E9i12YHYrdmH2ZQg2K/bjNqv2LGH/4rsgQ4PBgQA/4rsgQ4SAS4oAP+K7IEOAANkaXIBdwRhdXRvKAD/iuyBDgAHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDA3NygA/4rsgQ4ACXRleHRBbGlnbgF3AAA=",
+ "sha256": "ce50631ca129a4071ab5505e93f005e9637ad931c20bbf0ebdf6da9fe7add3df",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "paragraph",
+    "attrs": {
+     "dir": "auto",
+     "blockId": "01930000-0000-7000-8000-000000000077",
+     "textAlign": ""
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "نگاه کنید به "
+     },
+     {
+      "type": "pageLink",
+      "attrs": {
+       "dstId": "01930000-0000-7000-8000-00000000abcd",
+       "label": "صفحهٔ دیگر"
+      }
+     },
+     {
+      "type": "text",
+      "text": "."
+     }
+    ]
+   }
+  ]
+ }
+}

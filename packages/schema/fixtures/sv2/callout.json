@@ -1,0 +1,111 @@
+{
+ "name": "callout",
+ "sv": 2,
+ "update": "ASba68lgAAcBBGJvZHkDB2NhbGxvdXQHANrryWAAAwlwYXJhZ3JhcGgHANrryWABBgQA2uvJYAIR2YfYtNiv2KfYsSDZhdmH2YUoANrryWABA2RpcgF3BGF1dG8oANrryWABB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwMzkoANrryWABCXRleHRBbGlnbgF3AIfa68lgAQMKYnVsbGV0TGlzdAcA2uvJYA8DCGxpc3RJdGVtBwDa68lgEAMJcGFyYWdyYXBoBwDa68lgEQYEANrryWASBNuM2qkoANrryWARA2RpcgF3BGF1dG8oANrryWARB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwNDIoANrryWARCXRleHRBbGlnbgF3ACgA2uvJYBADZGlyAXcEYXV0bygA2uvJYBAHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDA0MYfa68lgEAMIbGlzdEl0ZW0HANrryWAaAwlwYXJhZ3JhcGgHANrryWAbBgQA2uvJYBwE2K/ZiCgA2uvJYBsDZGlyAXcEYXV0bygA2uvJYBsHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDA0NCgA2uvJYBsJdGV4dEFsaWduAXcAKADa68lgGgNkaXIBdwRhdXRvKADa68lgGgdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDQzKADa68lgDwdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDQwKADa68lgAAdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDM4KADa68lgAARpY29uAXcHd2FybmluZ4fa68lgAAMHY2FsbG91dAcA2uvJYCcDCXBhcmFncmFwaAcA2uvJYCgGBADa68lgKQjYp9uM2K/ZhygA2uvJYCgDZGlyAXcEYXV0bygA2uvJYCgHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDA0NigA2uvJYCgJdGV4dEFsaWduAXcAKADa68lgJwdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDQ1KADa68lgJwRpY29uAXcEYnVsYgA=",
+ "sha256": "2f2948f46ca6957fcce76793065ca03a31153d11e7e7dc160b1542fa7f490976",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "callout",
+    "attrs": {
+     "blockId": "01930000-0000-7000-8000-000000000038",
+     "icon": "warning"
+    },
+    "content": [
+     {
+      "type": "paragraph",
+      "attrs": {
+       "dir": "auto",
+       "blockId": "01930000-0000-7000-8000-000000000039",
+       "textAlign": ""
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "هشدار مهم"
+       }
+      ]
+     },
+     {
+      "type": "bulletList",
+      "attrs": {
+       "blockId": "01930000-0000-7000-8000-000000000040"
+      },
+      "content": [
+       {
+        "type": "listItem",
+        "attrs": {
+         "dir": "auto",
+         "blockId": "01930000-0000-7000-8000-000000000041"
+        },
+        "content": [
+         {
+          "type": "paragraph",
+          "attrs": {
+           "dir": "auto",
+           "blockId": "01930000-0000-7000-8000-000000000042",
+           "textAlign": ""
+          },
+          "content": [
+           {
+            "type": "text",
+            "text": "یک"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "listItem",
+        "attrs": {
+         "dir": "auto",
+         "blockId": "01930000-0000-7000-8000-000000000043"
+        },
+        "content": [
+         {
+          "type": "paragraph",
+          "attrs": {
+           "dir": "auto",
+           "blockId": "01930000-0000-7000-8000-000000000044",
+           "textAlign": ""
+          },
+          "content": [
+           {
+            "type": "text",
+            "text": "دو"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "callout",
+    "attrs": {
+     "blockId": "01930000-0000-7000-8000-000000000045",
+     "icon": "bulb"
+    },
+    "content": [
+     {
+      "type": "paragraph",
+      "attrs": {
+       "dir": "auto",
+       "blockId": "01930000-0000-7000-8000-000000000046",
+       "textAlign": ""
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "ایده"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}
