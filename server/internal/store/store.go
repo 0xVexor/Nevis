@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS session (token_hash TEXT PRIMARY KEY, account TEXT NO
   created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS session_device ON session (device);
 CREATE TABLE IF NOT EXISTS pow_used (nonce TEXT PRIMARY KEY, at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS blob (ws TEXT NOT NULL, hash TEXT NOT NULL, size INTEGER NOT NULL, account TEXT NOT NULL,
+  created_at INTEGER NOT NULL, grace_from INTEGER, PRIMARY KEY (ws, hash)) WITHOUT ROWID;
 `
 
 // Errors the API turns into HTTP answers.
@@ -98,6 +100,9 @@ func Open(dir string) (*Store, error) {
 	r.SetMaxOpenConns(8)
 	return &Store{w: w, r: r, now: time.Now, waiters: waiters{m: map[string]map[chan struct{}]struct{}{}}}, nil
 }
+
+// SetClock replaces the clock (tests move it to prove the 30-day rules).
+func (s *Store) SetClock(now func() time.Time) { s.now = now }
 
 func (s *Store) Close() error { return errors.Join(s.w.Close(), s.r.Close()) }
 

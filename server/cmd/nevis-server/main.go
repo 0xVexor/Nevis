@@ -30,7 +30,8 @@ func env(k, def string) string {
 
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	st, err := store.Open(env("DATA_DIR", "./data"))
+	dataDir := env("DATA_DIR", "./data")
+	st, err := store.Open(dataDir)
 	if err != nil {
 		log.Error("open store", "err", err)
 		os.Exit(1)
@@ -63,10 +64,29 @@ func main() {
 	}
 	bits, _ := strconv.Atoi(env("POW_BITS", "18"))
 	quota, _ := strconv.Atoi(env("QUOTA_MB", "1024"))
+	maxBlob, _ := strconv.Atoi(env("MAX_BLOB_MB", "100"))
 	handler := api.New(st, api.Config{
 		DevMode: devMode, DevToken: os.Getenv("DEV_TOKEN"), Secret: secret, Registration: reg, InviteCodes: invites, PowBits: bits, SignupsPerHour: envInt("SIGNUPS_PER_HOUR"),
-		QuotaBytes: int64(quota) << 20, WebDir: os.Getenv("WEB_DIR"), InsecureCookies: insecure, Log: log,
+		QuotaBytes: int64(quota) << 20, DataDir: dataDir, MaxBlobBytes: int64(maxBlob) << 20, WebDir: os.Getenv("WEB_DIR"), InsecureCookies: insecure, Log: log,
 	})
+	gcCtx, stopGC := context.WithCancel(context.Background())
+	defer stopGC()
+	go func() { // attachments nobody refers to for 30 days (store.BlobGraceMs) are removed; a referenced one never is
+		t := time.NewTicker(time.Hour)
+		defer t.Stop()
+		for {
+			if n, err := api.CollectBlobs(gcCtx, st, dataDir); err != nil {
+				log.Error("blob gc", "err", err)
+			} else if n > 0 {
+				log.Info("blob gc", "removed", n)
+			}
+			select {
+			case <-t.C:
+			case <-gcCtx.Done():
+				return
+			}
+		}
+	}()
 	addr := net.JoinHostPort(env("LISTEN_HOST", "127.0.0.1"), env("PORT", "8787"))
 	srv := &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 60 * time.Second, WriteTimeout: 60 * time.Second}
 	go func() {

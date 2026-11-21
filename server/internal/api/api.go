@@ -11,6 +11,7 @@ import (
 
 	"github.com/nevis-app/nevis/server/internal/apierr"
 	"github.com/nevis-app/nevis/server/internal/auth"
+	"github.com/nevis-app/nevis/server/internal/blobs"
 	"github.com/nevis-app/nevis/server/internal/store"
 )
 
@@ -41,6 +42,10 @@ type Config struct {
 	SignupsPerHour int
 	// QuotaBytes is the storage limit per account (0 = none).
 	QuotaBytes int64
+	// DataDir holds the blob files (DATA_DIR/blobs, DATA_DIR/staging). Empty = the blob endpoints answer 501 (some unit tests).
+	DataDir string
+	// MaxBlobBytes is the largest single attachment (0 = the default, 100 MB).
+	MaxBlobBytes int64
 	// WebDir, when set, is the built web app, served from this origin under a strict Content-Security-Policy.
 	WebDir string
 	// InsecureCookies lets the session cookie travel over plain http (development on localhost only).
@@ -57,6 +62,7 @@ type Server struct {
 	st      *store.Store
 	mux     *http.ServeMux
 	limiter *auth.Limiter
+	blobs   *blobs.Store
 }
 
 func New(st *store.Store, cfg Config) http.Handler {
@@ -69,7 +75,17 @@ func New(st *store.Store, cfg Config) http.Handler {
 	if cfg.Cost == (auth.Cost{}) {
 		cfg.Cost = auth.DefaultCost
 	}
+	if cfg.MaxBlobBytes == 0 {
+		cfg.MaxBlobBytes = 100 << 20
+	}
 	s := &Server{Config: cfg, st: st, mux: http.NewServeMux(), limiter: auth.NewLimiter(cfg.Now)}
+	if cfg.DataDir != "" {
+		b, err := blobs.New(cfg.DataDir)
+		if err != nil {
+			panic("blob store: " + err.Error())
+		}
+		s.blobs = b
+	}
 	s.routes()
 	return s.middleware(s.mux)
 }
@@ -88,6 +104,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /v1/devices/{id}", s.authed(s.revokeDevice))
 	s.mux.HandleFunc("POST /v1/ws/{ws}/ops", s.authed(s.push))
 	s.mux.HandleFunc("GET /v1/ws/{ws}/ops", s.authed(s.pull))
+	s.mux.HandleFunc("PUT /v1/ws/{ws}/blobs/{sha}", s.authed(s.putBlob))
+	s.mux.HandleFunc("HEAD /v1/ws/{ws}/blobs/{sha}", s.authed(s.headBlob))
+	s.mux.HandleFunc("GET /v1/ws/{ws}/blobs/{sha}", s.authed(s.getBlob))
+	s.mux.HandleFunc("POST /v1/ws/{ws}/blobs/refs", s.authed(s.blobRefs))
 	if s.WebDir != "" {
 		s.mux.HandleFunc("/", s.webApp)
 	}
