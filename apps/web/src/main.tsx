@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { StrictMode, useEffect, useState, type FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import { uuidv7 } from '@nevis/protocol'
@@ -8,6 +9,9 @@ import { installTranslator } from './i18n'
 import { apply as applyDeviceSettings } from './deviceSettings'
 import { Workspace } from './workspace'
 import { WorkspaceView } from './WorkspaceView'
+import { Brand } from './shell/Brand'
+import { BrandMark } from './shell/BrandMark'
+import { Button } from './ds'
 import 'katex/dist/katex.min.css'
 import '@nevis/editor/editor.css'
 import './app.css'
@@ -102,17 +106,30 @@ function SignInForm({ onDone }: { onDone: (recoveryKey?: string) => void }) {
     } catch (e) { setErr(errText(e)) } finally { setBusy(false) }
   }
   return (
-    <main dir="rtl">
+    <Frame>
       <h1>{mode === 'in' ? 'ورود' : 'ساخت حساب'}</h1>
-      <form onSubmit={e => void submit(e)} data-testid="auth-form">
-        <label>نام کاربری <input name="username" autoComplete="username" required dir="ltr" /></label>
-        <label>گذرواژه <input name="password" type="password" autoComplete={mode === 'in' ? 'current-password' : 'new-password'} required dir="ltr" /></label>
-        {mode === 'up' && <label>کد دعوت (اگر لازم است) <input name="invite" dir="ltr" /></label>}
-        <button type="submit" disabled={busy} data-testid="auth-submit">{busy ? '…' : mode === 'in' ? 'ورود' : 'ساخت حساب'}</button>
+      <p>{mode === 'in' ? 'با حساب خود وارد شوید تا یادداشت‌هایتان همگام شود.' : 'یک حساب بسازید؛ یادداشت‌ها روی دستگاه شما می‌مانند و با سرور خودتان همگام می‌شوند.'}</p>
+      <form onSubmit={e => void submit(e)} data-testid="auth-form" className="onb-panel">
+        <label className="onb-field"><span>نام کاربری</span><input className="ds-field" name="username" autoComplete="username" required dir="ltr" /></label>
+        <label className="onb-field"><span>گذرواژه</span><input className="ds-field" name="password" type="password" autoComplete={mode === 'in' ? 'current-password' : 'new-password'} required dir="ltr" /></label>
+        {mode === 'up' && <label className="onb-field"><span>کد دعوت (اگر لازم است)</span><input className="ds-field" name="invite" dir="ltr" /></label>}
         {err && <p className="err" role="alert" data-testid="auth-error">{err}</p>}
+        <div className="onb-actions">
+          <Button type="button" variant="ghost" onClick={() => { setMode(mode === 'in' ? 'up' : 'in'); setErr('') }}>{mode === 'in' ? 'حساب ندارم' : 'حساب دارم'}</Button>
+          <Button type="submit" variant="primary" disabled={busy} data-testid="auth-submit">{busy ? '…' : mode === 'in' ? 'ورود' : 'ساخت حساب'}</Button>
+        </div>
       </form>
-      <button type="button" onClick={() => { setMode(mode === 'in' ? 'up' : 'in'); setErr('') }}>{mode === 'in' ? 'حساب ندارم' : 'حساب دارم'}</button>
-    </main>
+    </Frame>
+  )
+}
+
+/** The old app's first-run frame (`onb`): the brand at the top, one centered panel. */
+function Frame({ children, wide }: { children: ReactNode; wide?: boolean }) {
+  return (
+    <div className="onb" dir="rtl">
+      <header className="onb-top"><span className="onb-brand"><BrandMark size={20} /><Brand /></span><span className="onb-top-end" /></header>
+      <main className="onb-stage"><section className={'onb-panel' + (wide ? ' onb-panel--wide' : '')}>{children}</section></main>
+    </div>
   )
 }
 
@@ -143,16 +160,19 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
   }
   if (open) return <WorkspaceView ws={open.ws} onSignOut={() => void leave()} />
   return (
-    <main dir="rtl">
+    <Frame wide>
       <h1>سلام {who.account.username}</h1>
-      {key && <div className="recovery" data-testid="recovery"><p>کلید بازیابی شما (فقط یک بار نشان داده می‌شود؛ جایی امن نگه دارید):</p><code dir="ltr">{key}</code> <button onClick={() => setKey(undefined)}>نوشتم</button></div>}
+      <p>فضای کاری را باز کنید یا یکی بسازید.</p>
+      {key && <div className="recovery onb-key" data-testid="recovery"><p>کلید بازیابی شما (فقط یک بار نشان داده می‌شود؛ جایی امن نگه دارید):</p><code dir="ltr">{key}</code> <Button size="sm" onClick={() => setKey(undefined)}>نوشتم</Button></div>}
       {list === null ? <p>در حال بارگذاری…</p> : (
-        <ul data-testid="ws-list">{list.map(w => <li key={w.id}><button onClick={() => enter(w.id)}>{w.name}</button> <span className="small">{w.role}</span></li>)}</ul>
+        <ul data-testid="ws-list" className="onb-list">{list.map(w => <li key={w.id} className="onb-row onb-row--gap"><Button onClick={() => enter(w.id)}>{w.name}</Button> <span className="small">{w.role}</span></li>)}</ul>
       )}
-      <button data-testid="ws-new" onClick={() => void make()}>فضای کار تازه</button>
-      <label>ورود از باندل <input type="file" accept=".zip" data-testid="ws-import" onChange={e => { const f = e.target.files?.[0]; if (f) void importFile(f) }} /></label>
-      <button data-testid="signout" onClick={() => void leave()}>خروج</button>
-    </main>
+      <div className="onb-actions">
+        <Button variant="primary" data-testid="ws-new" onClick={() => void make()}>فضای کار تازه</Button>
+        <label className="ds-btn ds-btn--ghost">ورود از باندل <input type="file" accept=".zip" data-testid="ws-import" hidden onChange={e => { const f = e.target.files?.[0]; if (f) void importFile(f) }} /></label>
+        <Button variant="ghost" data-testid="signout" onClick={() => void leave()}>خروج</Button>
+      </div>
+    </Frame>
   )
 }
 
@@ -164,14 +184,15 @@ function ServerForm({ onDone }: { onDone: () => void }) {
     try { await setServer(String(new FormData(ev.currentTarget).get('server') ?? '')); onDone() } catch (e) { setErr(String(e)) }
   }
   return (
-    <main dir="rtl">
+    <Frame>
       <h1>آدرس سرور</h1>
-      <form onSubmit={e => void submit(e)} data-testid="server-form">
-        <label>آدرس سرور شما <input name="server" dir="ltr" placeholder="https://notes.example.com" required /></label>
-        <button type="submit">ادامه</button>
+      <p>نِویس با سرور خودتان همگام می‌شود؛ آدرس آن را بنویسید.</p>
+      <form onSubmit={e => void submit(e)} data-testid="server-form" className="onb-panel">
+        <label className="onb-field"><span>آدرس سرور شما</span><input className="ds-field" name="server" dir="ltr" placeholder="https://notes.example.com" required /></label>
         {err && <p className="err" role="alert">{err}</p>}
+        <div className="onb-actions"><Button type="submit" variant="primary">ادامه</Button></div>
       </form>
-    </main>
+    </Frame>
   )
 }
 

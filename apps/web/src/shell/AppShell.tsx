@@ -1,7 +1,7 @@
 // The frame of the app, as the old app drew it: an icon rail (`nav.side`), the Pages panel (`aside.context-panel`) with the page tree,
 // and the main column (`header.topbar` + `.scroller`). Markup and class names are the old ones, so the copied stylesheets (ds/areas) apply
 // as they did there; only the data comes from the new layer (shell/adapt.ts).
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Button, Icon, IconButton, Menu, SaveStatus, WorkspaceHeader, type MenuItem } from '../ds'
 import { t } from '../i18n'
 import { go, type Route } from '../router'
@@ -47,7 +47,15 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   const [selected, setSelected] = useState<string | null>(null)
   const [rootCap, setRootCap] = useState(ROOT_CAP)
-  const [navOpen, setNavOpen] = useState(false)
+  // The Pages panel: beside the content on a wide window; on a narrow one (the old app's 760 px) a drawer over it, closed until asked for.
+  const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 760px)').matches)
+  const [wide, setWide] = useState(true)
+  const [drawer, setDrawer] = useState(false)
+  useEffect(() => { const m = matchMedia('(max-width: 760px)'); const f = () => setNarrow(m.matches); m.addEventListener('change', f); return () => m.removeEventListener('change', f) }, [])
+  const panelOpen = narrow ? drawer : wide
+  const togglePanel = () => (narrow ? setDrawer(o => !o) : setWide(o => !o))
+  const navOpen = false
+  const setNavOpen = (_: boolean | ((o: boolean) => boolean)) => { setDrawer(false) } // choosing something closes the drawer
   const device = useDeviceSettings()
   const dark = device.theme === 'dark' || (device.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
   const currentId = route.name === 'page' ? route.id : ''
@@ -88,7 +96,7 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
   const crumbIcon = (r: Route['name']) => ({ templates: 'templates', tasks: 'tasks', cards: 'cards', graph: 'graph', all: 'table', settings: 'settings', trash: 'trash' } as Record<string, string>)[r]
 
   return (
-    <div className={'app' + (navOpen ? ' nav-open' : '')} dir="rtl">
+    <div className="app" dir="rtl">
       <nav className="side" aria-label={t('Workspace navigation')} data-rail="" data-icons="">
         <div className="ws"><WorkspaceHeader mark={<BrandMark />} name={<Brand />} revealLabel={t('Expand navigation rail')} expanded={false} /></div>
         <div className="side-scroll">
@@ -123,7 +131,8 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
         </div>
       </nav>
 
-      <aside id="workspace-context" className="context-panel" aria-label={t('Pages')}>
+      {narrow && drawer && <div className="context-backdrop" aria-hidden="true" onClick={() => setDrawer(false)} />}
+      <aside id="workspace-context" className="context-panel" aria-label={t('Pages')} hidden={!panelOpen}>
         <header className="context-heading">
           <h2>{t('Pages')}</h2>
           <div className="context-tools" role="group" aria-label={t('Panel tools')}>
@@ -150,7 +159,7 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
 
       <main className="main">
         <header className="topbar">
-          <IconButton label={t('Menu')} className="nav-toggle" onClick={() => setNavOpen(o => !o)}><Icon name="list" /></IconButton>
+          <IconButton label={t('Pages')} data-testid="panel-toggle" aria-expanded={panelOpen} aria-controls="workspace-context" onClick={togglePanel}><Icon name="panel-left" size={17} className="ds-flip" /></IconButton>
           <nav className="crumbs">
             <IconButton className="crumb-home" label={t('Home')} onClick={() => go({ name: 'home' })}><Icon name="home" size={15} /></IconButton>
             {route.name !== 'page' && route.name !== 'home' && (

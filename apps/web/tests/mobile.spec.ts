@@ -20,23 +20,24 @@ test('at phone width: the drawer, a new page, writing Persian, Settings, no side
   const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   expect(await overflow(), 'the page scrolls sideways at 390 px').toBeLessThanOrEqual(1)
 
-  // the sidebar is a drawer: closed at first, opened by the menu button
-  await expect(page.locator('.side')).not.toBeInViewport()
-  await page.getByRole('button', { name: 'منو' }).tap()
+  // the old shell keeps its icon rail at phone width; the Pages panel is a drawer, closed until the top bar's button opens it
   await expect(page.locator('.side')).toBeInViewport()
+  await expect(page.locator('#workspace-context')).toBeHidden()
+  await page.getByTestId('panel-toggle').tap()
+  await expect(page.locator('#workspace-context')).toBeVisible()
+  await page.locator('.context-backdrop').tap({ position: { x: 20, y: 300 } }).catch(() => undefined)
+  await page.getByTestId('new-menu').tap()
   await page.getByTestId('new-page').tap()
-  await expect(page.locator('.side')).not.toBeInViewport() // choosing something closes it
+  await page.waitForFunction(() => location.hash.startsWith('#/page/'))
   await page.getByTestId('title').fill('یادداشت موبایل')
   await page.getByTestId('editor').locator('.ProseMirror').tap()
   await page.keyboard.type('سلام از آیفون')
   await expect(page.getByTestId('editor').locator('.ProseMirror')).toContainText('سلام از آیفون')
   expect(await overflow()).toBeLessThanOrEqual(1)
 
-  await page.getByRole('button', { name: 'منو' }).tap()
   await page.getByTestId('nav-settings').tap()
   await expect(page.getByTestId('settings')).toBeVisible()
   expect(await overflow()).toBeLessThanOrEqual(1)
-  await page.getByRole('button', { name: 'منو' }).tap()
   await page.getByTestId('nav-all').tap()
   await expect(page.getByTestId('all-pages-row')).toHaveCount(1)
   expect(await overflow()).toBeLessThanOrEqual(1)

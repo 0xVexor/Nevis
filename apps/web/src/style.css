@@ -8,7 +8,7 @@ ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 .editor .ProseMirror { min-height: 50vh; outline: none; padding: 6px 0; line-height: 1.9; }
 .ProseMirror ul, .ProseMirror ol { padding-inline-start: 24px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; } .cards .ds-card { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; text-align: start; padding: 14px; font: inherit; color: inherit; cursor: pointer; }
-.dstable { width: 100%; border-collapse: collapse; margin: 10px 0; } .dstable th, .dstable td { text-align: start; padding: 6px 8px; border-bottom: 1px solid var(--ds-line, #e3e8e3); } .dstable .ds-row { border: 0; background: none; font: inherit; color: inherit; cursor: pointer; padding: 0; }
+.dstable { width: 100%; border-collapse: collapse; margin: 10px 0; } .dstable th, .dstable td { text-align: start; padding: 6px 8px; border-bottom: 1px solid var(--ds-line, #e3e8e3); } .dstable .ds-row { border: 0; background: none; font: inherit; color: inherit; cursor: pointer; padding: 4px 0; min-block-size: 32px; }
 .pager { display: flex; gap: 10px; align-items: center; }
 .shortcuts { display: grid; gap: 4px; margin: 0; } .shortcuts div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--ds-line, #e3e8e3); padding: 3px 0; } .shortcuts dd { margin: 0; color: var(--ds-text-2, #58625b); }
 
