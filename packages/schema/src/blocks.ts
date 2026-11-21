@@ -7,8 +7,10 @@
 //  - layout `widths` (a JSON array on the group) -> an integer `width` on each column (0 = an equal share), so concurrent edits of two
 //    columns merge; `direction` (null | rtl | ltr) -> the standard `dir` of the group;
 //  - drawing `scene` is a JSON STRING (<= 256 KB, enforced where it is written) and the old `preview` (a data URL) is dropped: the
-//    preview is drawn from the scene on screen;
-//  - image `src` is only ever empty (a placeholder) or an https URL until attachments exist (M9); `width` 0 = natural, `align`
+//    preview is drawn from the scene on screen. SV 3 (M9): a scene may instead live in an attachment, named by `sceneBlob` (its
+//    SHA-256); an SV 2 page keeps its inline `scene`, which is read as before and moved to an attachment only when it is next EDITED;
+//  - image `src` is '' (a placeholder) or an https URL; SV 3 (M9) adds `blob` (the SHA-256 of an attachment, '' = none; wins over
+//    `src`), `mime` and `size`. `width` 0 = natural, `align`
 //    '' | start | center | end (logical), `motion` '' | loop;
 //  - page link `id` -> `dstId`, `label` null -> '' (a cache of the target's title);
 //  - `textAlign`, `tableAlign` null -> '', `tableWidth` null -> 0.
@@ -73,20 +75,33 @@ export const Mermaid = Node.create({
   renderText: ({ node }) => String(node.attrs.code),
 })
 
+/** An attachment is named by the SHA-256 of its bytes: 64 lowercase hex digits. Anything else in a `blob` attribute is ignored. */
+export const BLOB_HASH = /^[0-9a-f]{64}$/
+export const isBlobHash = (v: unknown): v is string => typeof v === 'string' && BLOB_HASH.test(v)
+
 export const Drawing = Node.create({
   name: 'drawing', group: 'block', atom: true, selectable: true,
-  addAttributes: () => ({ scene: str('scene') }),
+  addAttributes: () => ({ scene: str('scene'), sceneBlob: str('scene-blob') }),
   parseHTML: () => [{ tag: 'div[data-type="drawing"]' }],
   renderHTML: ({ HTMLAttributes }) => ['div', mergeAttributes({ 'data-type': 'drawing' }, HTMLAttributes)],
 })
 
-/** `src` is '' (a placeholder) or an https URL until M9 brings attachments; the editor never puts a `data:` URL here. */
+/** `blob` names an attachment (SV 3); `src` is '' (a placeholder) or an https URL; the editor never puts a `data:` URL in either. */
 export const Image = Node.create({
   name: 'image', group: 'block', atom: true, selectable: true, draggable: true,
-  addAttributes: () => ({ src: { ...str('src'), parseHTML: (el: HTMLElement) => safeImageSrc(el.getAttribute('data-src') ?? el.getAttribute('src') ?? '') }, alt: str('alt'), title: str('title'), width: int('width', 'w'), align: str('align'), motion: str('motion') }),
+  addAttributes: () => ({ blob: str('blob'), mime: str('mime'), size: int('size'), src: { ...str('src'), parseHTML: (el: HTMLElement) => safeImageSrc(el.getAttribute('data-src') ?? el.getAttribute('src') ?? '') }, alt: str('alt'), title: str('title'), width: int('width', 'w'), align: str('align'), motion: str('motion') }),
   parseHTML: () => [{ tag: 'figure[data-type="image"]' }, { tag: 'img[src]', getAttrs: el => ({ src: safeImageSrc((el as HTMLElement).getAttribute('src') ?? ''), alt: (el as HTMLElement).getAttribute('alt') ?? '', title: (el as HTMLElement).getAttribute('title') ?? '' }) }],
   renderHTML: ({ node, HTMLAttributes }) => ['figure', mergeAttributes({ 'data-type': 'image' }, HTMLAttributes), ['img', { src: String(node.attrs.src), alt: String(node.attrs.alt) }]],
   renderText: ({ node }) => String(node.attrs.alt),
+})
+
+/** A file attached to the page (SV 3, M9): shown as a card with its name and size, opened by downloading it. */
+export const FileBlock = Node.create({
+  name: 'file', group: 'block', atom: true, selectable: true, draggable: true,
+  addAttributes: () => ({ blob: str('blob'), name: str('name'), mime: str('mime'), size: int('size') }),
+  parseHTML: () => [{ tag: 'div[data-type="file"]' }],
+  renderHTML: ({ node, HTMLAttributes }) => ['div', mergeAttributes({ 'data-type': 'file' }, HTMLAttributes), String(node.attrs.name)],
+  renderText: ({ node }) => String(node.attrs.name),
 })
 
 /** A link to another page. `dstId` is the target's id (what is stable); `label` is a cache of its title for showing and for text. */
@@ -98,4 +113,4 @@ export const PageLink = Node.create({
   renderText: ({ node }) => String(node.attrs.label),
 })
 
-export const blockNodes = [Callout, Toggle, LayoutGroup, LayoutColumn, MathBlock, MathInline, Mermaid, Drawing, Image, PageLink]
+export const blockNodes = [Callout, Toggle, LayoutGroup, LayoutColumn, MathBlock, MathInline, Mermaid, Drawing, Image, FileBlock, PageLink]

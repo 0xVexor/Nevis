@@ -40,7 +40,7 @@ export async function rebuildFutureOps(store: Store, device: string, now: number
       framed.set(data, 1)
       const rebuilt = encodeEnvelope({ ...env, op: newId(), t: h, p: b64urlEncode(framed) })
       await tx.deleteOutbox([row.op])
-      await tx.addOutbox({ op: parseEnvelope(rebuilt).op, env: rebuilt, created: row.created })
+      await tx.addOutbox({ op: parseEnvelope(rebuilt).op, env: rebuilt, created: row.created, ...(row.blobs?.length ? { blobs: row.blobs } : {}) }) // the gate is kept: the same content
     }
     return future.length
   })

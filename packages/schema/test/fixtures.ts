@@ -61,4 +61,19 @@ export const fixturesV2: Record<string, PMJson> = {
   containerDir: { type: 'doc', content: [{ type: 'blockquote', attrs: { blockId: id(), dir: 'rtl' }, content: [p([t('نقل')])] }, { type: 'bulletList', attrs: { blockId: id() }, content: [{ type: 'listItem', attrs: { blockId: id(), dir: 'ltr' }, content: [p([t('item')])] }] }] },
   marksV2: { type: 'doc', content: [p([t('خط‌خورده', [{ type: 'strike' }]), t(' و '), t('زیرخط', [{ type: 'underline' }])])] },
 }
-export const allFixtures: Record<string, PMJson> = { ...fixtures, ...fixturesV2 }
+
+// ---- sv3 (M9): attachments. Appended AFTER the sv2 fixtures so that their ids do not move. ----
+const H1 = 'a'.repeat(64)
+const H2 = 'b0'.repeat(32)
+export const fixturesV3: Record<string, PMJson> = {
+  attachments: {
+    type: 'doc',
+    content: [
+      { type: 'image', attrs: { blockId: id(), blob: H1, mime: 'image/png', size: 2048, src: '', alt: 'عکس پیوست', title: '', width: 50, align: 'center', motion: '' } },
+      { type: 'file', attrs: { blockId: id(), blob: H2, name: 'گزارش.pdf', mime: 'application/pdf', size: 1048576 } },
+      { type: 'drawing', attrs: { blockId: id(), scene: '', sceneBlob: H2 } },
+      p([t('متن بعد از پیوست‌ها')]),
+    ],
+  },
+}
+export const allFixtures: Record<string, PMJson> = { ...fixtures, ...fixturesV2, ...fixturesV3 }

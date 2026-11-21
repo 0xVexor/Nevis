@@ -3,7 +3,9 @@
 export interface FieldRow { val: string; hlc: string }
 export interface FieldEntry extends FieldRow { ent: string; f: string }
 export interface EventRow { id: string; ent: string; kind: string; hlc: string; body: string }
-export interface OutboxRow { op: string; env: string; created: number }
+/** `blobs`: the attachments this op refers to that were NOT yet on the server when it was written (the outbox gate, ADR-0005): the op
+ *  is not sent until each of them is. Absent = none. */
+export interface OutboxRow { op: string; env: string; created: number; blobs?: string[] }
 export interface InboxRow { seq: number; env: string }
 export interface QuarantineRow { seq: number; env: string; reason: string }
 export interface DocUpdate { k: number; upd: Uint8Array }

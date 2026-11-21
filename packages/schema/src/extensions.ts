@@ -10,7 +10,7 @@ import { blockNodes } from './blocks'
 import { isSafeHref } from './safeHref'
 
 /** Nodes that carry a stable `blockId`. */
-export const BLOCK_TYPES = ['paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'taskList', 'taskItem', 'blockquote', 'codeBlock', 'table', 'tableRow', 'tableHeader', 'tableCell', 'callout', 'toggle', 'layoutGroup', 'layoutColumn', 'mathBlock', 'mermaid', 'drawing', 'image'] as const
+export const BLOCK_TYPES = ['paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'taskList', 'taskItem', 'blockquote', 'codeBlock', 'table', 'tableRow', 'tableHeader', 'tableCell', 'callout', 'toggle', 'layoutGroup', 'layoutColumn', 'mathBlock', 'mermaid', 'drawing', 'image', 'file'] as const
 /** Nodes that carry a text direction. */
 export const DIR_TYPES = ['paragraph', 'heading', 'table', 'blockquote', 'listItem', 'taskItem', 'tableCell', 'tableHeader', 'layoutGroup'] as const
 /** Nodes whose text can be aligned by physical side (left / center / right / justify); '' = natural (follows the direction). */

@@ -3,7 +3,7 @@
 import { EnvelopeError, FrameError, encodeEnvelope, parseEnvelope } from '@nevis/protocol'
 import { applyEnvelope } from './apply'
 import { rebuildFutureOps } from './clockRepair'
-import type { Store } from './store'
+import type { Store, OutboxRow } from './store'
 
 export interface PushResult { results: { op: string; seq: number; status: 'ok' | 'dup' | 'purged' }[]; head: number }
 export interface PullOp { seq: number; by: string; rt: number; /** the envelope as JSON text */ env: string }
@@ -20,12 +20,23 @@ export class NetError extends Error {
   readonly status: number
   readonly code: string
   readonly retryable: boolean
-  constructor(status: number, code: string, retryable: boolean, message = code) {
+  /** the rest of the server's error object (`received` of an out-of-order piece, `maxBytes` of a file that is too large) */
+  readonly details: Record<string, unknown>
+  constructor(status: number, code: string, retryable: boolean, message = code, details: Record<string, unknown> = {}) {
     super(message)
     this.status = status
     this.code = code
     this.retryable = retryable
+    this.details = details
   }
+}
+
+/** The outbox gate (ADR-0005): which rows may be sent now. Rows that refer to an attachment the server does not have yet are held back,
+ *  and so are the LATER rows of the same document (a peer must never receive an update whose dependency is missing). Other
+ *  documents go on. The gate also asks the server whether a blob it believes uploaded is still there (a long-offline device may have
+ *  seen it collected) and holds the row if not. */
+export interface OutboxGate {
+  ready(rows: OutboxRow[]): Promise<OutboxRow[]>
 }
 
 /** The server said THIS op is invalid for good (envelope validation), not that the request or the app version is wrong. */
@@ -45,6 +56,8 @@ export interface EngineOptions {
   sv: number
   now?: () => number
   hooks?: EngineHooks
+  /** attachments: rows that point at a file the server lacks are held back (absent = no attachments in this client) */
+  gate?: OutboxGate
   batch?: number
   /** a batch stops before its envelopes exceed this many characters (the server refuses a body over 4 MB with a permanent 413) */
   maxBatchChars?: number
@@ -53,7 +66,7 @@ export interface EngineOptions {
 export interface CycleStats { pushed: number; dup: number; pulled: number; applied: number; held: number; quarantined: number; /** ops the server refused for good (moved to quarantine, not retried) */ rejected: number }
 
 export class SyncEngine {
-  private readonly o: Required<Omit<EngineOptions, 'hooks'>> & { hooks: EngineHooks }
+  private readonly o: Required<Omit<EngineOptions, 'hooks' | 'gate'>> & { hooks: EngineHooks; gate?: OutboxGate }
   constructor(o: EngineOptions) {
     this.o = { now: Date.now, batch: 500, maxBatchChars: 3_000_000, hooks: {}, ...o }
   }
@@ -96,7 +109,18 @@ export class SyncEngine {
   async push(s: CycleStats = { pushed: 0, dup: 0, pulled: 0, applied: 0, held: 0, quarantined: 0, rejected: 0 }) {
     const { store, net, ws } = this.o
     for (;;) {
-      const all = await store.run(tx => tx.listOutbox(this.o.batch))
+      let all = await store.run(tx => tx.listOutbox(this.o.batch))
+      if (this.o.gate && all.length) {
+        // held rows must not starve the ones behind them: look further down the outbox when the first window yielded nothing to send
+        let window = this.o.batch
+        let ready = await this.o.gate.ready(all)
+        while (!ready.length && all.length >= window && window < 8 * this.o.batch) {
+          window *= 4
+          all = await store.run(tx => tx.listOutbox(window))
+          ready = await this.o.gate.ready(all)
+        }
+        all = ready.slice(0, this.o.batch)
+      }
       // bounded by SIZE as well as by count: three legal 1.4M ops together are over the 4 MB the server accepts, and a 413 is permanent
       let chars = 0
       const rows = all.filter((r, i) => { chars += r.env.length; return i === 0 || chars <= this.o.maxBatchChars })
