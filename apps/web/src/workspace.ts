@@ -1,6 +1,7 @@
 // The notes app's state for one workspace in one tab: the page tree, the open documents, and the actions on them.
 // All writes go through the core client (one committed transaction each); this class only decides WHAT to write.
-import { DocHandle, buildTree, createDatabase, createPage, isInside, movePage, readStructured, renamePage, restorePage, trashPage, type Client, type PageNode, type PageTree, type Structured } from '@nevis/core'
+import { normalizeFa } from '@nevis/editor'
+import { DocHandle, buildTree, createDatabase, createPage, isInside, movePage, readStructured, renamePage, restorePage, trashPage, type Client, type PageNode, type PageRow, type PageTree, type Structured } from '@nevis/core'
 import { SyncRuntime } from './runtime'
 
 export interface WsStatus {
@@ -165,6 +166,38 @@ export class Workspace {
     this.handles.set(id, h)
     return h
   }
+  /** The newest pages and databases (not trashed), without sorting the whole list: one pass keeping the best `n`. */
+  recent(n: number): PageRow[] {
+    const top: PageRow[] = []
+    for (const p of this.data.pages) {
+      if (p.trashed) continue
+      if (top.length < n || p.createdAt > top[top.length - 1]!.createdAt) {
+        let i = top.length
+        while (i > 0 && top[i - 1]!.createdAt < p.createdAt) i--
+        top.splice(i, 0, p)
+        if (top.length > n) top.pop()
+      }
+    }
+    return top
+  }
+  /** Pages and databases whose title contains `query` (Persian-aware), at most `limit`; one pass, no index (search is M10). */
+  searchTitles(query: string, limit: number): PageRow[] {
+    const q = normalizeFa(query).trim()
+    const out: PageRow[] = []
+    for (const p of this.data.pages) {
+      if (p.trashed) continue
+      if (!q || normalizeFa(p.title).includes(q)) { out.push(p); if (out.length >= limit) break }
+    }
+    return out
+  }
+  /** One screenful of the "all pages" table: filtered, newest first, `size` rows from `offset`; `total` is the number of matches. */
+  pageSlice(query: string, offset: number, size: number): { rows: PageRow[]; total: number } {
+    const q = normalizeFa(query).trim()
+    const rows = this.data.pages.filter(p => !p.trashed && (!q || normalizeFa(p.title).includes(q)))
+    rows.sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : -1))
+    return { rows: rows.slice(offset, offset + size), total: rows.length }
+  }
+
   /** Pages and databases a link may point to. */
   pageList(): { id: string; title: string }[] { return this.data.pages.filter(p => !p.trashed).map(p => ({ id: p.id, title: p.title })) }
   notify(message: string) {

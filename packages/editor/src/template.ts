@@ -38,3 +38,36 @@ export function allBlocksTemplate(): J {
     ],
   }
 }
+
+// ---- the other templates of the gallery ----
+export function meetingNotesTemplate(date: string): J {
+  return {
+    type: 'doc',
+    content: [
+      { type: 'heading', attrs: { level: 1 }, content: [t('یادداشت جلسه')] },
+      p(t('تاریخ: ', [{ type: 'bold' }]), date),
+      p(t('حاضران: ', [{ type: 'bold' }])),
+      { type: 'heading', attrs: { level: 2 }, content: [t('دستور جلسه')] },
+      { type: 'orderedList', content: [li(''), li('')] },
+      { type: 'heading', attrs: { level: 2 }, content: [t('تصمیم‌ها')] },
+      { type: 'callout', attrs: { icon: 'check' }, content: [p('')] },
+      { type: 'heading', attrs: { level: 2 }, content: [t('اقدام‌ها')] },
+      { type: 'taskList', content: [{ type: 'taskItem', content: [p('')] }, { type: 'taskItem', content: [p('')] }] },
+    ],
+  }
+}
+export function taskListTemplate(): J {
+  return { type: 'doc', content: [{ type: 'heading', attrs: { level: 1 }, content: [t('فهرست کارها')] }, { type: 'taskList', content: ['', '', ''].map(() => ({ type: 'taskItem', content: [p('')] })) }] }
+}
+export function dailyNoteTemplate(date: string): J {
+  return {
+    type: 'doc',
+    content: [
+      { type: 'heading', attrs: { level: 1 }, content: [t(date)] },
+      { type: 'heading', attrs: { level: 2 }, content: [t('برنامهٔ امروز')] },
+      { type: 'taskList', content: [{ type: 'taskItem', content: [p('')] }] },
+      { type: 'heading', attrs: { level: 2 }, content: [t('یادداشت‌ها')] },
+      p(''),
+    ],
+  }
+}

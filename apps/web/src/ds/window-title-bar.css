@@ -1,0 +1,16 @@
+.ds-window-bar {
+  display: flex;
+  align-items: stretch;
+  min-block-size: var(--ds-s8);
+  border-block-end: 1px solid var(--ds-line);
+  background: var(--ds-raised);
+  color: var(--ds-text);
+  user-select: none;
+}
+
+.ds-window-drag { flex: 1; display: flex; align-items: center; min-inline-size: 0; padding-inline: var(--ds-s4); }
+.ds-window-identity { display: flex; align-items: center; gap: var(--ds-s2); font-size: var(--ds-text-caption); font-weight: 600; pointer-events: none; }
+.ds-window-identity svg { inline-size: var(--ds-s4); block-size: var(--ds-s4); color: var(--ds-accent); }
+.ds-window-actions { display: flex; align-items: center; gap: var(--ds-s1); padding-inline: var(--ds-s2); }
+.ds-window-actions .ds-icon-btn { inline-size: var(--ds-s8); block-size: var(--ds-control-sm); }
+.ds-window-close:hover { background: color-mix(in oklab, var(--ds-bad) 12%, var(--ds-raised)); color: var(--ds-bad); }

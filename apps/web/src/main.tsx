@@ -4,13 +4,24 @@ import { uuidv7 } from '@nevis/protocol'
 import { AuthError, createWorkspace, deviceLabel, me, signIn, signOut, signUp, workspaces, type Me, type WorkspaceInfo } from './auth'
 import { Lab, type Note, type Status } from './lab'
 import { appInfo, isDesktop, onWindowFlush, setServer } from './desktop'
+import { installTranslator } from './i18n'
+import { apply as applyDeviceSettings } from './deviceSettings'
 import { Workspace } from './workspace'
 import { WorkspaceView } from './WorkspaceView'
+import './ds/tokens.css'
+import './ds/components.css'
+import './ds/navigation.css'
+import './ds/preferences.css'
+import './ds/home.css'
+import './ds/commands.css'
 import '@fontsource/vazirmatn/400.css'
 import '@fontsource/vazirmatn/700.css'
 import 'katex/dist/katex.min.css'
 import '@nevis/editor/editor.css'
 import './style.css'
+
+installTranslator()
+applyDeviceSettings()
 
 declare global { interface Window { __lab?: Lab; __labReady?: Promise<void> } }
 
