@@ -282,3 +282,9 @@ export const updateSavedSearch = (c: Client, id: string, patch: { name?: string;
 
 /** Synced settings of the workspace: the entity id is the workspace id, one register per setting. */
 export const setSetting = (c: Client, key: string, value: Json) => c.setFields(c.ws, { [key]: value }, KINDS.settings)
+
+/** Moves a card on a board: the select value and the position change in ONE op (the way `movePage` writes parent and sortKey), so they win or lose
+ *  together. `before`/`after` are the sort keys of the neighbours in the target column; `option` '' = the "no value" column. */
+export async function moveCard(c: Client, row: string, prop: string, option: string, before: string | null, after: string | null): Promise<string> {
+  return c.setFields(row, { [`c:${prop}`]: option === '' ? null : option, sortKey: sortKeyBetween(before, after, c.rnd) })
+}

@@ -2,7 +2,8 @@
 // one place a document may be built from JSON (ADR-0003 §7); block ids are left empty and assigned by the identity plugin.
 type J = { type: string; attrs?: Record<string, unknown>; content?: J[]; text?: string; marks?: { type: string; attrs?: Record<string, unknown> }[] }
 const t = (text: string, marks?: J['marks']): J => ({ type: 'text', text, ...(marks ? { marks } : {}) })
-const p = (...c: (J | string)[]): J => ({ type: 'paragraph', content: c.map(x => (typeof x === 'string' ? t(x) : x)) })
+/** A paragraph; an empty string is NOT a text node (ProseMirror refuses empty text), so `p('')` is an empty paragraph. */
+const p = (...c: (J | string)[]): J => { const content = c.filter(x => x !== '').map(x => (typeof x === 'string' ? t(x) : x)); return content.length ? { type: 'paragraph', content } : { type: 'paragraph' } }
 const li = (s: string): J => ({ type: 'listItem', content: [p(s)] })
 const cell = (s: string, header = false): J => ({ type: header ? 'tableHeader' : 'tableCell', content: [p(s)] })
 const row = (...c: J[]): J => ({ type: 'tableRow', content: c })

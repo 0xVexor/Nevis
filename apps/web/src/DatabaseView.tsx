@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { InvalidCell, addOption, addProperty, cellFields, createRow, formatDateFa, normalizeDate, normalizeDecimal, removeOption, renameProperty, setCell, setMembers, trashProperty, trashRow, PROP_TYPES, titleProperty, type CellValue, type DatabaseModel, type PropertyModel, type PropType, type RowModel } from '@nevis/core'
+import { InvalidCell, addOption, addProperty, createRow, createView, formatDateFa, patchViewConfig, readViewConfig, removeOption, renameProperty, setCell, setMembers, setViewConfig, trashProperty, trashRow, trashView, viewRows, PROP_TYPES, titleProperty, type CellValue, type DatabaseModel, type PropertyModel, type PropType, type RowModel, type ViewModel } from '@nevis/core'
+import { BoardView } from './BoardView'
 import type { Workspace } from './workspace'
 
 const TYPE_FA: Record<PropType, string> = { text: 'متن', number: 'عدد', date: 'تاریخ', select: 'انتخاب', multiSelect: 'چندانتخابی', relation: 'ارتباط', checkbox: 'تیک', url: 'پیوند' }
@@ -102,16 +103,58 @@ function OptionAdder({ ws, p }: { ws: Workspace; p: PropertyModel }) {
   )
 }
 
-/** The editable table view of one database (M7: minimal; the full UI comes with M8b). */
+/** The views of a database: tabs, a new view, sort, hidden columns, and the group-by of a board. Everything is written to the view's `config` (one op). */
+function ViewBar({ ws, db, view, active, onActive }: { ws: Workspace; db: DatabaseModel; view: ViewModel; active: string; onActive: (id: string) => void }) {
+  const views = db.views.filter(v => !v.trashed)
+  const config = readViewConfig(view.config, db.properties)
+  const props = db.properties.filter(p => !p.trashed)
+  const save = (patch: Parameters<typeof patchViewConfig>[1]) => ws.mutate([view.id], c => setViewConfig(c, view.id, patchViewConfig(view.config, patch)))
+  const sort = config.sort[0]
+  const [hidden, setHidden] = useOptimistic(config.hidden) // what was just chosen shows at once; the stored value takes over when it is read back
+  return (
+    <div className="viewbar" data-testid="viewbar">
+      <div role="tablist" className="viewtabs">
+        {views.map(v => <button key={v.id} role="tab" aria-selected={v.id === active} className={v.id === active ? 'on' : ''} data-testid="view-tab" data-type={v.type} onClick={() => onActive(v.id)}>{v.name || 'نما'} <small>{v.type === 'board' ? '▦' : '☷'}</small></button>)}
+        <button data-testid="new-view-table" title="نمای جدول تازه" onClick={() => void ws.mutate([], c => createView(c, db.id, { name: 'جدول', type: 'table' })).then(onActive)}>＋ جدول</button>
+        <button data-testid="new-view-board" title="نمای برد تازه" onClick={() => void ws.mutate([], c => createView(c, db.id, { name: 'برد', type: 'board', config: patchViewConfig(undefined, { groupBy: props.find(p => p.type === 'select')?.id ?? '' }) })).then(onActive)}>＋ برد</button>
+        {views.length > 1 && <button className="tiny" title="حذف این نما" onClick={() => { void ws.mutate([view.id], c => trashView(c, view.id)); onActive('') }}>✕</button>}
+      </div>
+      <label>مرتب‌سازی
+        <select data-testid="sort-prop" value={sort?.prop ?? ''} onChange={e => save({ sort: e.target.value ? [{ prop: e.target.value, dir: sort?.dir ?? 'asc' }] : [] })}>
+          <option value="">—</option>{props.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </label>
+      {sort && <button data-testid="sort-dir" onClick={() => save({ sort: [{ prop: sort.prop, dir: sort.dir === 'asc' ? 'desc' : 'asc' }] })}>{sort.dir === 'asc' ? '↑ صعودی' : '↓ نزولی'}</button>}
+      {view.type === 'board' && (
+        <label>گروه‌بندی
+          <select data-testid="group-by" value={config.groupBy} onChange={e => save({ groupBy: e.target.value })}>
+            <option value="">—</option>{props.filter(p => p.type === 'select').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </label>
+      )}
+      {view.type === 'table' && (
+        <details className="hidecols"><summary>ستون‌ها</summary>
+          {props.map(p => <label key={p.id} className="chip"><input type="checkbox" data-testid="col-toggle" checked={!hidden.includes(p.id)} onChange={e => { const next = e.target.checked ? hidden.filter(h => h !== p.id) : [...hidden, p.id]; setHidden(next, () => save({ hidden: next })) }} />{p.name}</label>)}
+        </details>
+      )}
+    </div>
+  )
+}
+
+/** The editable table view of one database (M7), with the views, sort, hidden columns and boards of M8b. */
 export function DatabaseView({ ws, id }: { ws: Workspace; id: string }) {
   const db = ws.data.databases.get(id)
   const [propName, setPropName] = useState('')
   const [propType, setPropType] = useState<PropType>('text')
   const [title, setTitle] = useState(db?.title ?? '')
+  const [activeView, setActiveView] = useState('')
   useEffect(() => setTitle(ws.data.databases.get(id)?.title ?? ''), [id]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!db) return <p className="small">در حال بارگذاری…</p>
-  const props = db.properties.filter(p => !p.trashed)
-  const rows = db.rows.filter(r => !r.trashed)
+  const views = db.views.filter(v => !v.trashed)
+  const view = views.find(v => v.id === activeView) ?? views[0]
+  const config = readViewConfig(view?.config, db.properties)
+  const props = db.properties.filter(p => !p.trashed && !(view?.type === 'table' && config.hidden.includes(p.id)))
+  const rows = viewRows(db.rows, db.properties, config)
   const addProp = async () => {
     const name = propName.trim()
     if (!name) return
@@ -128,6 +171,8 @@ export function DatabaseView({ ws, id }: { ws: Workspace; id: string }) {
         <button data-testid="db-add-prop" onClick={() => void addProp()}>ستون تازه</button>
         <button data-testid="db-add-row" onClick={() => void ws.mutate([id], c => createRow(c, db))}>ردیف تازه</button>
       </div>
+      {view && <ViewBar ws={ws} db={db} view={view} active={view.id} onActive={setActiveView} />}
+      {view?.type === 'board' ? <BoardView ws={ws} db={db} config={config} rows={rows} titleProp={tp} /> : (
       <div className="tablewrap">
         <table className="dbtable" data-testid="db-table">
           <thead>
@@ -152,7 +197,7 @@ export function DatabaseView({ ws, id }: { ws: Workspace; id: string }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </div>)}
     </section>
   )
 }

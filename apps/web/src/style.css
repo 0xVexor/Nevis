@@ -30,11 +30,14 @@ ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 .shortcuts { display: grid; gap: 4px; margin: 0; } .shortcuts div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--ds-line, #e3e8e3); padding: 3px 0; } .shortcuts dd { margin: 0; color: var(--ds-text-2, #58625b); }
 @media (max-width: 700px) {
   .nav-toggle { display: inline-flex; }
-  .cols { grid-template-columns: 1fr; position: relative; }
+  .cols { grid-template-columns: 1fr; position: relative; overflow: hidden; }
+  .main { min-width: 0; }
   .side { position: absolute; inset-block: 0; inset-inline-start: 0; width: min(86vw, 320px); z-index: 20; transform: translateX(110%); transition: transform .15s; box-shadow: 0 0 24px rgba(0,0,0,.25); }
   [dir=ltr] .side, html[dir=ltr] .side { transform: translateX(-110%); }
   .nav-open .side { transform: none; }
   .main { padding: 8px 12px; }
+  /* a thumb needs room: the tree's small buttons grow */
+  .tree .twist { width: 32px; min-height: 32px; } .tree .title { min-height: 32px; }
 }
 
 /* M7: the minimal table view of a database */
@@ -50,3 +53,14 @@ ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 .tiny { font-size: 11px; padding: 0 4px }
 .colname { font-weight: 600; border: none; background: transparent; width: 8em }
 .notice { background: #fff8c5; padding: 2px 8px; border-radius: 4px }
+
+/* M8b: database views */
+.viewbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; font-size: .85rem }
+.viewtabs { display: flex; gap: 2px; border-bottom: 1px solid var(--ds-line, #d0d7de); flex-wrap: wrap }
+.viewtabs button { border: 0; background: none; font: inherit; color: inherit; padding: 4px 10px; cursor: pointer; border-bottom: 2px solid transparent } .viewtabs button.on { border-bottom-color: var(--ds-accent, #087f74); font-weight: 600 }
+.hidecols { position: relative } .hidecols summary { cursor: pointer }
+.board { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start }
+.board-col { flex: 0 0 240px; background: var(--ds-sunk, #eff1ee); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 6px; min-height: 80px } .board-col.over { outline: 2px dashed var(--ds-accent, #087f74) }
+.board-col h3 { margin: 0; font-size: .85rem; padding: 4px 8px; border-radius: 6px }
+.board-card { background: var(--ds-raised, #fff); border: 1px solid var(--ds-line, #d0d7de); border-radius: 8px; padding: 8px; cursor: grab; display: flex; flex-direction: column; gap: 4px } .board-card select { font-size: .75rem; opacity: .8 }
+@media (max-width: 700px) { .board-col { flex-basis: 78vw } }

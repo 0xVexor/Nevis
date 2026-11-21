@@ -16,7 +16,8 @@ export { DocHandle, REMOTE, type Cancel, type DocHandleOptions } from './docHand
 export { normalizeDecimal, compareDecimal, toAsciiDigits } from './decimal'
 export { normalizeDate, formatDateFa, gregorianToJalali, jalaliToGregorian, validGregorian } from './dates'
 export {
-  InvalidCell, KINDS, PROP_TYPES, VIEW_TYPES, addOption, addProperty, backlinks, cellFields, createDatabase, createRow, createSavedSearch, createTag, createView, readStructured, removeOption,
+  InvalidCell, KINDS, PROP_TYPES, VIEW_TYPES, moveCard, addOption, addProperty, backlinks, cellFields, createDatabase, createRow, createSavedSearch, createTag, createView, readStructured, removeOption,
   renameProperty, renameView, setCell, setMembers, setPropertyConfig, setSetting, setViewConfig, tagPage, titleProperty, trashProperty, trashRow, trashView, updateOption, updateSavedSearch, updateTag,
   type CellValue, type DatabaseModel, type NewDatabase, type OptionModel, type PropType, type PropertyModel, type RowModel, type SavedSearchModel, type Structured, type TagModel, type ViewModel, type ViewType,
 } from './records'
+export { DEFAULT_VIEW_CONFIG, VIEW_CONFIG_VERSION, boardColumns, patchViewConfig, readViewConfig, viewRows, type BoardColumn, type SortRule, type ViewConfig } from './viewConfig'
