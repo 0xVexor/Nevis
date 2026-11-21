@@ -1,0 +1,117 @@
+// The drawing block: the scene is a JSON string in the node (<= 256 KB until attachments exist in M9). The preview is drawn FROM the
+// scene on screen (no stored picture); editing opens Excalidraw full-screen, loaded on first use. Fonts and assets come from the app's
+// own origin (`./excalidraw-assets/`, copied by the web build): nothing loads from a CDN, so it works offline and under both CSPs.
+import type { NodeViewRendererProps } from '@tiptap/core'
+import type { Node as PMNode } from '@tiptap/pm/model'
+import { Drawing as DrawingSpec } from '@nevis/schema'
+import { optionsOf } from '../options'
+import { readScene, writeScene } from '../scene'
+import { S } from '../strings'
+
+// Excalidraw's hand-drawn fonts have no Persian letters; its font stack ends in the family "Xiaolai", so Vazirmatn is registered under
+// that name for Arabic-script code points only: Persian looks the same everywhere and Latin text keeps the hand-drawn font.
+const FONT_FILE = 'fonts/Vazirmatn/Vazirmatn-arabic-400.woff2'
+const RANGE = 'U+0600-06FF,U+0750-077F,U+FB50-FDFF,U+FE70-FEFF,U+200C-200D'
+const assetBase = () => new URL('./excalidraw-assets/', document.baseURI).href
+let font: Promise<void> | null = null
+const loadPersianFont = () => (font ??= (async () => { document.fonts.add(await new FontFace('Xiaolai', `url(${assetBase()}${FONT_FILE})`, { unicodeRange: RANGE }).load()) })().catch(() => undefined))
+
+type Lib = typeof import('@excalidraw/excalidraw')
+let lib: Promise<Lib> | null = null
+const loadExcalidraw = () => (lib ??= (async () => {
+  ;(window as unknown as { EXCALIDRAW_ASSET_PATH?: string }).EXCALIDRAW_ASSET_PATH = assetBase()
+  await loadPersianFont()
+  await import('@excalidraw/excalidraw/index.css')
+  return import('@excalidraw/excalidraw')
+})())
+
+const restoreScene = (L: Lib) => (data: unknown) => {
+  const d = data as { elements?: unknown[]; appState?: Record<string, unknown> }
+  return L.restore({ elements: (d.elements ?? []) as never, appState: (d.appState ?? {}) as never, files: {} }, null, null)
+}
+
+async function preview(host: HTMLElement, json: string) {
+  host.textContent = ''
+  if (!json) { host.classList.add('empty'); host.textContent = '✎'; return }
+  host.classList.remove('empty', 'error')
+  try {
+    const L = await loadExcalidraw()
+    const r = readScene(json, restoreScene(L))
+    if (r.status !== 'ok') { host.classList.add('error'); host.textContent = S.formulaError; return }
+    const svg = await L.exportToSvg({ elements: r.scene.elements.filter(e => !e.isDeleted), appState: { ...r.scene.appState, exportBackground: false }, files: null })
+    svg.removeAttribute('width'); svg.removeAttribute('height'); svg.style.maxWidth = '100%'; svg.style.height = 'auto'
+    host.append(svg)
+  } catch { host.classList.add('error'); host.textContent = S.formulaError }
+}
+
+/** The full-screen editor. Resolves with the new scene JSON, or null if cancelled or refused. */
+async function edit(json: string, notify: (m: string) => void): Promise<string | null> {
+  const L = await loadExcalidraw()
+  const React = await import('react')
+  const { createRoot } = await import('react-dom/client')
+  const loaded = readScene(json, restoreScene(L))
+  if (loaded.status === 'unreadable') { notify(S.formulaError); return null } // never save over a scene that could not be read
+  const initial = loaded.status === 'ok' ? loaded.scene : { elements: [], appState: {}, files: {} }
+  return new Promise(resolve => {
+    const overlay = document.createElement('div')
+    overlay.className = 'drawing-overlay'
+    overlay.setAttribute('dir', 'ltr')
+    const bar = document.createElement('div'); bar.className = 'drawing-bar'
+    const mount = document.createElement('div'); mount.className = 'drawing-canvas'
+    const save = document.createElement('button'); save.type = 'button'; save.textContent = S.save; save.dataset.testid = 'drawing-save'
+    const cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = S.cancel
+    bar.append(cancel, save); overlay.append(bar, mount); document.body.append(overlay)
+    const root = createRoot(mount)
+    let latest: { elements: readonly unknown[]; appState: Record<string, unknown> } = { elements: initial.elements, appState: initial.appState as Record<string, unknown> }
+    const close = (v: string | null) => { root.unmount(); overlay.remove(); resolve(v) }
+    cancel.onclick = () => close(null)
+    save.onclick = () => {
+      const out = writeScene({ type: 'excalidraw', version: 2, source: 'nevis', elements: latest.elements.filter(e => !(e as { isDeleted?: boolean }).isDeleted), appState: { viewBackgroundColor: String(latest.appState.viewBackgroundColor ?? '#ffffff') } })
+      if (!out.ok) { notify(S.tooLargeDrawing); return } // stay open: the person can delete something and try again
+      close(out.json)
+    }
+    root.render(React.createElement(L.Excalidraw, {
+      initialData: { elements: initial.elements as never, appState: initial.appState as never },
+      langCode: 'fa-IR', UIOptions: { tools: { image: false } },
+      onChange: (elements: readonly unknown[], appState: Record<string, unknown>) => { latest = { elements, appState } },
+    } as never))
+  })
+}
+
+export const Drawing = DrawingSpec.extend({
+  addNodeView() {
+    return ({ node, editor, getPos }: NodeViewRendererProps) => {
+      let cur = node
+      const dom = document.createElement('div')
+      dom.className = 'drawing-block'
+      dom.contentEditable = 'false'
+      const view = document.createElement('div')
+      view.className = 'drawing-preview'
+      const btn = document.createElement('button')
+      btn.type = 'button'; btn.className = 'drawing-edit'; btn.textContent = S.editDrawing; btn.dataset.testid = 'drawing-edit'
+      btn.onmousedown = e => e.preventDefault()
+      dom.append(view, btn)
+      let busy = false
+      const open = async () => {
+        if (busy || !editor.isEditable) return
+        busy = true
+        try {
+          const next = await edit(String(cur.attrs.scene), m => optionsOf(editor).notify?.(m))
+          const pos = getPos()
+          if (next !== null && pos != null && next !== cur.attrs.scene) editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...cur.attrs, scene: next }))
+        } finally { busy = false }
+      }
+      btn.onclick = () => void open()
+      view.ondblclick = () => void open()
+      void preview(view, String(node.attrs.scene))
+      return {
+        dom,
+        update: (n: PMNode) => { if (n.type !== cur.type) return false; const changed = n.attrs.scene !== cur.attrs.scene; cur = n; if (changed) void preview(view, String(n.attrs.scene)); return true },
+        stopEvent: (e: Event) => e.type === 'dblclick' || (e.target as HTMLElement).closest('button') !== null,
+        ignoreMutation: () => true,
+        selectNode: () => dom.classList.add('selected'),
+        deselectNode: () => dom.classList.remove('selected'),
+      }
+    }
+  },
+})

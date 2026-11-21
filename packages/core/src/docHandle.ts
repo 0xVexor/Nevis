@@ -40,6 +40,8 @@ export class DocHandle {
   private pending: Uint8Array[] = []
   private cancelTimer: Cancel | null = null
   private writing: Promise<void> = Promise.resolve()
+  /** updates taken out of `pending` whose write has not finished: they are NOT saved yet */
+  private inFlight = 0
   private lastK = 0
   private lastState: Uint8Array | null = null
   private closed = false
@@ -100,6 +102,7 @@ export class DocHandle {
     if (!this.pending.length || this.needsUpdate) return
     const batch = this.pending
     this.pending = []
+    this.inFlight = batch.length
     try {
       await this.client.writeYUpdate(this.doc, batch.length === 1 ? batch[0]! : Y.mergeUpdates(batch))
       this.onLocalWrite?.(this.doc)
@@ -113,11 +116,13 @@ export class DocHandle {
       this.pending = [...batch, ...this.pending] // nothing was written: keep it and try again soon
       if (!this.closed && !this.cancelTimer) this.cancelTimer = this.schedule(() => { this.cancelTimer = null; void this.flush() }, Math.max(this.throttleMs, 1000))
       this.onError?.(e)
+    } finally {
+      this.inFlight = 0
     }
   }
 
   /** How many local updates are waiting to be written (for the "not saved yet" indicator). */
-  get unsaved(): number { return this.pending.length }
+  get unsaved(): number { return this.pending.length + this.inFlight }
 
   async close(): Promise<void> {
     await this.flush()

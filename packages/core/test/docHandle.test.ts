@@ -97,3 +97,22 @@ describe('DocHandle', () => {
 
   it('REMOTE is the origin the handle skips', () => { expect(typeof REMOTE).toBe('symbol') })
 })
+
+describe('unsaved counts a write that is still in flight', () => {
+  it('while the store is writing, `unsaved` is not 0 (a reload at that moment would lose the edit)', async () => {
+    const { client } = setup()
+    const h = await DocHandle.open({ client, doc: uuidv7(), schedule: () => () => {} })
+    let release!: () => void
+    const gate = new Promise<void>(r => { release = r })
+    const real = client.store.run.bind(client.store)
+    ;(client.store as { run: typeof real }).run = (async (fn: Parameters<typeof real>[0]) => { await gate; return real(fn) }) as typeof real
+    type(h.ydoc, 'abc')
+    expect(h.unsaved).toBe(1)
+    const flushing = h.flush()
+    await new Promise(r => setTimeout(r, 10))
+    expect(h.unsaved, 'taken out of the queue but not written yet').toBe(1)
+    release()
+    await flushing
+    expect(h.unsaved).toBe(0)
+  })
+})

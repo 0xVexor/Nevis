@@ -26,6 +26,11 @@ export class Workspace {
   private readonly handles = new Map<string, DocHandle>()
   /** documents whose last edit was too large to save: read-only until reopened from the store (what came after it was never saved) */
   readonly diverged = new Set<string>()
+  /** a short message for the person (from the editor: an image placeholder, a drawing that was too large) */
+  notice = ''
+  /** the view that shows pages sets this: a page link was clicked */
+  onOpenPage: ((id: string) => void) | null = null
+  private noticeTimer: ReturnType<typeof setTimeout> | null = null
   private readonly reopens = new Map<string, number>()
   private readonly titles = new Map<string, { value: string; timer: ReturnType<typeof setTimeout> | null }>()
   private readonly listeners = new Set<() => void>()
@@ -151,6 +156,15 @@ export class Workspace {
     this.handles.set(id, h)
     return h
   }
+  /** Pages and databases a link may point to. */
+  pageList(): { id: string; title: string }[] { return this.data.pages.filter(p => !p.trashed).map(p => ({ id: p.id, title: p.title })) }
+  notify(message: string) {
+    this.notice = message
+    this.emit()
+    if (this.noticeTimer) clearTimeout(this.noticeTimer)
+    this.noticeTimer = setTimeout(() => { this.notice = ''; this.emit() }, 6000)
+  }
+
   /** A new count for the editor's `key`, so that it is rebuilt from what the store holds. */
   reopenCount(id: string): number { return this.reopens.get(id) ?? 0 }
   async reopenDoc(id: string) {

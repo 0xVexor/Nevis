@@ -37,6 +37,13 @@ export function initialJson(): PMJson {
       { type: 'bulletList', attrs: { blockId: bid() }, content: [item('اول'), item('دوم'), item('سوم')] },
       para('left to right paragraph', 'ltr'),
       { type: 'table', attrs: { blockId: bid(), dir: 'rtl' }, content: [{ type: 'tableRow', attrs: { blockId: bid() }, content: [cell('الف'), cell('ب')] }, { type: 'tableRow', attrs: { blockId: bid() }, content: [cell('ج'), cell('د')] }] },
+      // M8a: the blocks of the old editor (not the drawing: it only loads Excalidraw when it is shown)
+      { type: 'callout', attrs: { blockId: bid(), icon: 'info' }, content: [para('کادر نکته'), { type: 'bulletList', attrs: { blockId: bid() }, content: [item('داخل کادر')] }] },
+      { type: 'toggle', attrs: { blockId: bid(), open: true }, content: [para('عنوان بازشو'), para('محتوای بازشو')] },
+      { type: 'layoutGroup', attrs: { blockId: bid(), dir: 'auto' }, content: [{ type: 'layoutColumn', attrs: { blockId: bid(), width: 0 }, content: [para('ستون یک')] }, { type: 'layoutColumn', attrs: { blockId: bid(), width: 0 }, content: [para('ستون دو'), para('خط دوم')] }] },
+      { type: 'mathBlock', attrs: { blockId: bid(), latex: 'x^2' } },
+      { type: 'mermaid', attrs: { blockId: bid(), code: 'graph TD\n A-->B' } },
+      { type: 'image', attrs: { blockId: bid(), src: '', alt: 'جای تصویر', title: '', width: 0, align: '', motion: '' } },
       para('پایان'),
     ],
   }
@@ -98,7 +105,7 @@ export async function runFuzz(seed: number, steps = 500, withUndo = false, check
       }
       if (want !== got) {
         res.viewMismatches++
-        if (res.mismatchSample.length < 3) res.mismatchSample.push(firstDiff(project(docs[side]), normalize(ed[side].getJSON() as PMJson)) ?? '?')
+        if (res.mismatchSample.length < 3) res.mismatchSample.push((firstDiff(project(docs[side]), normalize(ed[side].getJSON() as PMJson)) ?? '?').slice(0, 60) + ' LAST-OPS ' + log.join(','))
         // can a fresh view on the same Y.Doc show what the document says? (ROADMAP M1: rerender fixes it)
         const fresh = createEditor(docs[side])
         if (JSON.stringify(normalize(fresh.getJSON() as PMJson)) === want) res.fixedByRerender++
@@ -113,6 +120,7 @@ export async function runFuzz(seed: number, steps = 500, withUndo = false, check
     return out
   }
 
+  const log: string[] = []
   const op = (side: 'A' | 'B') => {
     const e = ed[side]
     const blocks = blockStarts(e)
@@ -121,8 +129,10 @@ export async function runFuzz(seed: number, steps = 500, withUndo = false, check
     const pos = blk.from + Math.floor(rng() * (blk.to - blk.from + 1))
     e.view.dispatch(e.state.tr.setSelection(TextSelection.near(e.state.doc.resolve(pos))).setMeta('addToHistory', false))
     const r = rng()
-    const kinds = withUndo ? 11 : 9
-    const k = Math.floor(r * kinds)
+    // 0-8 text and structure, 9-10 undo/redo, 11-16 the M8a blocks
+    const pool = withUndo ? [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] : [0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16]
+    const k = pool[Math.floor(r * pool.length)]!
+    log.push(`${side}${k}`); if (log.length > 14) log.shift()
     switch (k) {
       case 0: case 1: case 2: e.view.dispatch(e.state.tr.insertText(word(rng) + ' ')); break
       case 3: { const to = Math.min(blk.to, pos + 1 + Math.floor(rng() * 4)); if (to > pos) e.view.dispatch(e.state.tr.delete(pos, to)); break }
@@ -148,6 +158,32 @@ export async function runFuzz(seed: number, steps = 500, withUndo = false, check
       case 8: rng() < 0.7 ? setDir(e, pick(rng, DIRS)) : e.commands.addRowAfter(); break
       case 9: e.commands.undo(); break
       case 10: e.commands.redo(); break
+      case 11: { // the real flow: a new empty line (Enter at the end of a block), then the slash command replaces it
+        e.view.dispatch(e.state.tr.setSelection(TextSelection.near(e.state.doc.resolve(blk.to))))
+        e.commands.splitBlock()
+        const c = [() => e.commands.insertCallout(pick(rng, ['bulb', 'warning', 'info'])), () => e.commands.insertToggle(), () => e.commands.insertLayout(rng() < 0.5 ? 2 : 3), () => e.commands.insertMathInline('y^2'), () => e.commands.insertMathBlock('z'), () => e.commands.insertImagePlaceholder('جا')]; pick(rng, c)(); break }
+      case 12: { // delete a whole top-level block
+        const top = e.state.doc.childCount
+        if (top < 3) break
+        const i = Math.floor(rng() * top)
+        let from = 0
+        for (let n = 0; n < i; n++) from += e.state.doc.child(n).nodeSize
+        e.view.dispatch(e.state.tr.delete(from, from + e.state.doc.child(i).nodeSize))
+        break
+      }
+      case 13: { // change an attribute of a callout, toggle, column group, table or text alignment
+        const found: { pos: number; node: ReturnType<typeof e.state.doc.nodeAt> }[] = []
+        e.state.doc.descendants((n, pos) => { if (['callout', 'toggle', 'layoutColumn', 'table', 'paragraph', 'image', 'mathBlock'].includes(n.type.name)) found.push({ pos, node: n }) })
+        if (!found.length) break
+        const t = pick(rng, found)
+        const a = t.node!.attrs
+        const patch = t.node!.type.name === 'callout' ? { icon: pick(rng, ['bulb', 'warning', 'flame', 'pin']) } : t.node!.type.name === 'toggle' ? { open: !a.open } : t.node!.type.name === 'layoutColumn' ? { width: Math.floor(rng() * 4) * 10 } : t.node!.type.name === 'table' ? { tableAlign: pick(rng, ['', 'left', 'center', 'right']), tableWidth: pick(rng, [0, 50, 75]) } : t.node!.type.name === 'image' ? { width: pick(rng, [0, 25, 50]), align: pick(rng, ['', 'start', 'center', 'end']) } : t.node!.type.name === 'mathBlock' ? { latex: word(rng) } : { textAlign: pick(rng, ['', 'center', 'right']) }
+        e.view.dispatch(e.state.tr.setNodeMarkup(t.pos, undefined, { ...a, ...patch }))
+        break
+      }
+      case 14: e.commands.setColumnWidths([0, 0].concat(rng() < 0.5 ? [] : [0]).map(() => Math.floor(rng() * 5) * 10)); break
+      case 15: e.commands.setTextAlign(pick(rng, ['left', 'center', 'right', 'justify'] as const)); break
+      case 16: e.commands.setDirection(pick(rng, DIRS)); break
     }
   }
 

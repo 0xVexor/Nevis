@@ -64,6 +64,13 @@ const Attrs = Extension.create({
 })
 
 // prosemirror-tables defaults `colwidth` to null; column widths are out of scope for the schema's first version.
+/** The code block's language: a non-null string ('' = none), read back from `<pre><code class="language-x">` (pasted Markdown fences and web pages). */
+export const codeLanguage = {
+  default: '',
+  rendered: false,
+  parseHTML: (el: HTMLElement) => /language-([\w+#-]+)/.exec(el.firstElementChild?.getAttribute('class') ?? '')?.[1] ?? '',
+}
+
 const Cell = TableCell.extend({ addAttributes: () => ({ colspan: { default: 1 }, rowspan: { default: 1 } }) })
 const Header = TableHeader.extend({ addAttributes: () => ({ colspan: { default: 1 }, rowspan: { default: 1 } }) })
 
@@ -81,7 +88,7 @@ export const schemaExtensions: AnyExtension[] = [
   ListItem,
   TaskList,
   TaskItem.configure({ nested: true }),
-  CodeBlock.extend({ addAttributes: () => ({ language: { default: '' } }) }),
+  CodeBlock.extend({ addAttributes: () => ({ language: codeLanguage }) }),
   Link.extend({ addAttributes: () => ({ href: { default: '' }, target: { default: '' }, rel: { default: '' }, class: { default: '' } }) }).configure({ openOnClick: false, autolink: false, isAllowedUri: (url: string) => isSafeHref(url) }),
   Table.configure({ resizable: false }),
   TableRow,

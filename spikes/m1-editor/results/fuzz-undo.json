@@ -1,25 +1,25 @@
 {
   "steps": 500,
-  "seeds": 200,
-  "docsEqual": 200,
+  "seeds": 300,
+  "docsEqual": 300,
   "failedSeeds": [],
   "seedsWithViewMismatch": 0,
   "seedsWithViewMismatchNotFixedByRerender": 0,
   "viewMismatchRatePerCheck": 0,
-  "transientViewMismatches": 0,
+  "transientViewMismatches": 20,
   "rangeErrors": 0,
-  "otherErrors": 1,
+  "otherErrors": 2,
   "errorSamples": [
-    "Cannot read properties of undefined (reading '_item')"
+    "Cannot read properties of undefined (reading 'client')"
   ],
   "mismatchSamples": [],
   "idsNotOk": [],
   "nullAttrs": 0,
-  "maxSizeBytes": 76416,
-  "ms": 13502,
+  "maxSizeBytes": 110443,
+  "ms": 41155,
   "results": [
     {
-      "seed": 34,
+      "seed": 241,
       "steps": 500,
       "withUndo": true,
       "docsEqual": true,
@@ -29,12 +29,32 @@
       "rangeErrors": 0,
       "otherErrors": 1,
       "errorSample": [
-        "Cannot read properties of undefined (reading '_item')"
+        "Cannot read properties of undefined (reading 'client')"
       ],
       "idsOk": true,
       "nullAttrs": 0,
-      "sizeA": 37030,
-      "ms": 71,
+      "sizeA": 110183,
+      "ms": 232,
+      "mismatchSample": [],
+      "transient": 1
+    },
+    {
+      "seed": 297,
+      "steps": 500,
+      "withUndo": true,
+      "docsEqual": true,
+      "viewChecks": 202,
+      "viewMismatches": 0,
+      "fixedByRerender": 0,
+      "rangeErrors": 0,
+      "otherErrors": 1,
+      "errorSample": [
+        "Cannot read properties of undefined (reading 'client')"
+      ],
+      "idsOk": true,
+      "nullAttrs": 0,
+      "sizeA": 32245,
+      "ms": 156,
       "mismatchSample": [],
       "transient": 0
     }

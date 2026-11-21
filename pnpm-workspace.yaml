@@ -4,6 +4,10 @@ packages:
   - "spikes/*"
   - "tools/*"
 minimumReleaseAgeExclude:
+  - "@tiptap/extension-node-range@3.35.0"
+  - "@tiptap/extension-drag-handle@3.35.0"
+  - "@tiptap/extension-code-block-lowlight@3.35.0"
+  - "@tiptap/suggestion@3.35.0"
   - "@tiptap/core@3.35.0"
   - "@tiptap/extension-blockquote@3.35.0"
   - "@tiptap/extension-bold@3.35.0"

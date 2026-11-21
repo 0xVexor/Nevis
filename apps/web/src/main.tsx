@@ -6,6 +6,10 @@ import { Lab, type Note, type Status } from './lab'
 import { appInfo, isDesktop, onWindowFlush, setServer } from './desktop'
 import { Workspace } from './workspace'
 import { WorkspaceView } from './WorkspaceView'
+import '@fontsource/vazirmatn/400.css'
+import '@fontsource/vazirmatn/700.css'
+import 'katex/dist/katex.min.css'
+import '@nevis/editor/editor.css'
 import './style.css'
 
 declare global { interface Window { __lab?: Lab; __labReady?: Promise<void> } }

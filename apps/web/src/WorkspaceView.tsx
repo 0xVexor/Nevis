@@ -12,6 +12,7 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
   const [selected, setSelected] = useState('')
   const [showTrash, setShowTrash] = useState(false)
   useEffect(() => {
+    ws.onOpenPage = id => { if (ws.tree.byId.has(id)) setSelected(id); else ws.notify('صفحه پیدا نشد') }
     const refresh = () => { redraw(n => n + 1); void ws.status().then(setStatus) }
     const off = ws.subscribe(refresh)
     const t = setInterval(refresh, 1000)
@@ -36,6 +37,7 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
         <span>آخرین همگام‌سازی: {ago(status?.lastSyncAt ?? 0)}</span>
         <span title="navigator.storage.persist()">ماندگار: {String(status?.persisted)}</span>
         {status?.lastError && <span className="err" data-testid="sync-error">{status.lastError}</span>}
+        {ws.notice && <span className="notice" role="status" data-testid="notice">{ws.notice}</span>}
         {onSignOut && <button data-testid="signout" onClick={onSignOut}>خروج</button>}
       </header>
       <div className="cols">

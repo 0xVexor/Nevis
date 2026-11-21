@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, copyFileSync, readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
@@ -7,8 +8,23 @@ import { defineConfig } from 'vite'
 const server = { target: process.env.NEVIS_SERVER ?? 'http://127.0.0.1:8787', changeOrigin: false, xfwd: true }
 // HTTPS for a phone on the same network (docs/dev-https.md): NEVIS_TLS_CERT=/path/cert.pem NEVIS_TLS_KEY=/path/key.pem
 const https = process.env.NEVIS_TLS_CERT && process.env.NEVIS_TLS_KEY ? { cert: readFileSync(process.env.NEVIS_TLS_CERT), key: readFileSync(process.env.NEVIS_TLS_KEY) } : undefined
+// Excalidraw loads its fonts at run time. They come from OUR origin (`/excalidraw-assets/`), never from a CDN: the app works offline and under
+// both content security policies. The files are copied from node_modules into `public/` (not committed) when the dev server or a build starts.
+function excalidrawAssets() {
+  return {
+    name: 'nevis-excalidraw-assets',
+    buildStart() {
+      // direct paths (the packages' `exports` maps do not expose their folders)
+      const from = join(import.meta.dirname, '../../packages/editor/node_modules/@excalidraw/excalidraw/dist/prod/fonts')
+      const to = join(import.meta.dirname, 'public/excalidraw-assets/fonts')
+      if (existsSync(from)) cpSync(from, to, { recursive: true })
+      mkdirSync(join(to, 'Vazirmatn'), { recursive: true })
+      copyFileSync(join(import.meta.dirname, 'node_modules/@fontsource/vazirmatn/files/vazirmatn-arabic-400-normal.woff2'), join(to, 'Vazirmatn/Vazirmatn-arabic-400.woff2'))
+    },
+  }
+}
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), excalidrawAssets()],
   build: { rollupOptions: { input: { index: 'index.html', bench: 'bench.html', conformance: 'conformance.html', 'desktop-selftest': 'desktop-selftest.html', 'desktop-bench': 'desktop-bench.html', 'desktop-typing': 'desktop-typing.html', 'desktop-sync': 'desktop-sync.html' } } },
   server: { port: 5174, strictPort: true, host: true, https, proxy: { '/v1': server } },
   preview: { port: 5174, strictPort: true, host: true, https, proxy: { '/v1': server } },

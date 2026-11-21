@@ -13,6 +13,7 @@
 //  - page link `id` -> `dstId`, `label` null -> '' (a cache of the target's title);
 //  - `textAlign`, `tableAlign` null -> '', `tableWidth` null -> 0.
 import { Node, mergeAttributes } from '@tiptap/core'
+import { safeImageSrc } from './safeHref'
 
 const str = (name: string, attr = name) => ({ default: '', parseHTML: (el: HTMLElement) => el.getAttribute(`data-${attr}`) ?? '', renderHTML: (a: Record<string, unknown>) => (a[name] ? { [`data-${attr}`]: String(a[name]) } : {}) })
 const int = (name: string, attr = name) => ({ default: 0, parseHTML: (el: HTMLElement) => Math.max(0, Math.trunc(Number(el.getAttribute(`data-${attr}`)) || 0)), renderHTML: (a: Record<string, unknown>) => (a[name] ? { [`data-${attr}`]: String(a[name]) } : {}) })
@@ -82,8 +83,8 @@ export const Drawing = Node.create({
 /** `src` is '' (a placeholder) or an https URL until M9 brings attachments; the editor never puts a `data:` URL here. */
 export const Image = Node.create({
   name: 'image', group: 'block', atom: true, selectable: true, draggable: true,
-  addAttributes: () => ({ src: str('src'), alt: str('alt'), title: str('title'), width: int('width', 'w'), align: str('align'), motion: str('motion') }),
-  parseHTML: () => [{ tag: 'figure[data-type="image"]' }, { tag: 'img[src]', getAttrs: el => ({ src: (el as HTMLElement).getAttribute('src') ?? '', alt: (el as HTMLElement).getAttribute('alt') ?? '', title: (el as HTMLElement).getAttribute('title') ?? '' }) }],
+  addAttributes: () => ({ src: { ...str('src'), parseHTML: (el: HTMLElement) => safeImageSrc(el.getAttribute('data-src') ?? el.getAttribute('src') ?? '') }, alt: str('alt'), title: str('title'), width: int('width', 'w'), align: str('align'), motion: str('motion') }),
+  parseHTML: () => [{ tag: 'figure[data-type="image"]' }, { tag: 'img[src]', getAttrs: el => ({ src: safeImageSrc((el as HTMLElement).getAttribute('src') ?? ''), alt: (el as HTMLElement).getAttribute('alt') ?? '', title: (el as HTMLElement).getAttribute('title') ?? '' }) }],
   renderHTML: ({ node, HTMLAttributes }) => ['figure', mergeAttributes({ 'data-type': 'image' }, HTMLAttributes), ['img', { src: String(node.attrs.src), alt: String(node.attrs.alt) }]],
   renderText: ({ node }) => String(node.attrs.alt),
 })

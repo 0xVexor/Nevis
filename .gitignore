@@ -8,3 +8,4 @@ test-results/
 coverage/
 target/
 gen/
+apps/web/public/excalidraw-assets/
