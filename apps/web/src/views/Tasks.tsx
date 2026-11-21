@@ -1,3 +1,5 @@
+import { t } from '../i18n'
+import { Screen } from '../ds'
 import { useState } from 'react'
 import { go } from '../router'
 import type { Workspace } from '../workspace'
@@ -9,8 +11,7 @@ export function Tasks({ ws }: { ws: Workspace }) {
   const all = ws.search.tasks()
   const list = all.filter(t => show === 'all' || (show === 'open') === !t.task.checked).sort((a, b) => (a.task.due || '9') < (b.task.due || '9') ? -1 : 1)
   return (
-    <section className="screen" data-testid="tasks" dir="rtl">
-      <h1>کارها</h1>
+    <Screen title={t('Tasks')} width="narrow"><div data-testid="tasks" dir="rtl">
       <div role="group" aria-label="نمایش">
         {([['open', 'باز'], ['done', 'انجام‌شده'], ['all', 'همه']] as const).map(([v, l]) => <button key={v} type="button" aria-pressed={show === v} onClick={() => setShow(v)}>{l}</button>)}
       </div>
@@ -23,6 +24,6 @@ export function Tasks({ ws }: { ws: Workspace }) {
           ))}
         </ul>
       )}
-    </section>
+    </div></Screen>
   )
 }

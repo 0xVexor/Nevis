@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/core'
-import { DIRS, createEditor, setDir, type Dir } from '@nevis/editor'
+import { createEditor } from '@nevis/editor'
+import { dirOf } from './ds'
+import { t } from './i18n'
 import type { DocHandle } from '@nevis/core'
 import type { Workspace } from './workspace'
 
@@ -32,26 +34,27 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
 
   const diverged = ws.diverged.has(id)
   useEffect(() => { editor?.setEditable(!diverged) }, [editor, diverged])
-  if (state === 'needs-update') return <section className="pane"><p role="alert" data-testid="needs-update">این صفحه با نسخهٔ تازه‌تری از برنامه ساخته شده؛ به‌روزرسانی لازم است.</p></section>
+  if (state === 'needs-update') return <div className="page-cols"><div className="page"><p role="alert" className="pg-note" data-testid="needs-update">این صفحه با نسخهٔ تازه‌تری از برنامه ساخته شده؛ به‌روزرسانی لازم است.</p></div></div>
   return (
-    <section className="pane">
-      <input className="page-title" data-testid="title" value={name} placeholder="بدون عنوان" onChange={e => { setName(e.target.value); ws.setTitle(id, e.target.value) }} />
-      {editor && (
-        <div className="bar" role="toolbar">
-          <button onClick={() => editor.chain().focus().toggleBold().run()}>پررنگ</button>
-          <button onClick={() => editor.chain().focus().toggleItalic().run()}>کج</button>
-          <button onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>تیتر</button>
-          <button onClick={() => editor.chain().focus().toggleBulletList().run()}>فهرست</button>
-          {DIRS.map(d => <button key={d} onClick={() => { setDir(editor, d as Dir); editor.commands.focus() }}>{d}</button>)}
-          <button onClick={() => editor.chain().focus().undo().run()}>واگرد</button>
-        </div>
-      )}
-      {diverged && (
-        <p role="alert" className="err" data-testid="too-large">
-          آخرین ویرایش بیش از حد بزرگ بود و ذخیره نشد؛ هر چه بعد از آن نوشته شود هم ذخیره نمی‌شود. <button onClick={() => void ws.reopenDoc(id)}>باز کردن دوباره از آخرین نسخهٔ ذخیره‌شده</button>
-        </p>
-      )}
-      <div className="editor" data-testid="editor" ref={host} />
-    </section>
+    <div className="page-cols">
+      <div className="page">
+        <header className="pg-head">
+          <div className="pg-title-row" dir={dirOf(name)}>
+            <textarea
+              className="pg-title" data-testid="title" rows={1} dir={name.trim() ? 'auto' : undefined} aria-label={t('Page title')} placeholder={t('Untitled')} value={name}
+              ref={el => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' } }}
+              onChange={e => { const v = e.target.value.replace(/\n/g, ' '); setName(v); ws.setTitle(id, v) }}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); editor?.commands.focus('start') } }}
+            />
+          </div>
+        </header>
+        {diverged && (
+          <p role="alert" className="err" data-testid="too-large">
+            آخرین ویرایش بیش از حد بزرگ بود و ذخیره نشد؛ هر چه بعد از آن نوشته شود هم ذخیره نمی‌شود. <button onClick={() => void ws.reopenDoc(id)}>باز کردن دوباره از آخرین نسخهٔ ذخیره‌شده</button>
+          </p>
+        )}
+        <div className="ec editor" data-testid="editor" ref={host} />
+      </div>
+    </div>
   )
 }

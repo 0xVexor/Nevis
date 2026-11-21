@@ -32,12 +32,12 @@ ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 .viewtabs { display: flex; gap: 2px; border-bottom: 1px solid var(--ds-line, #d0d7de); flex-wrap: wrap }
 .viewtabs button { border: 0; background: none; font: inherit; color: inherit; padding: 4px 10px; cursor: pointer; border-bottom: 2px solid transparent } .viewtabs button.on { border-bottom-color: var(--ds-accent, #087f74); font-weight: 600 }
 .hidecols { position: relative } .hidecols summary { cursor: pointer }
-.board { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start }
-.board-col { flex: 0 0 240px; background: var(--ds-sunk, #eff1ee); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 6px; min-height: 80px } .board-col.over { outline: 2px dashed var(--ds-accent, #087f74) }
-.board-col h3 { margin: 0; font-size: .85rem; padding: 4px 8px; border-radius: 6px; color: #1f2328 } /* a pastel column colour with DARK text: readable in both themes */
-.board-card { background: var(--ds-raised, #fff); border: 1px solid var(--ds-line, #d0d7de); border-radius: 8px; padding: 8px; cursor: grab; display: flex; flex-direction: column; gap: 4px } .board-card select { font-size: .75rem; opacity: .8 }
-@media (max-width: 700px) { .board-col { flex-basis: 78vw } }
+.db-board { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start }
+.db-board-col { flex: 0 0 240px; background: var(--ds-sunk, #eff1ee); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 6px; min-height: 80px } .db-board-col.over { outline: 2px dashed var(--ds-accent, #087f74) }
+.db-board-col h3 { margin: 0; font-size: .85rem; padding: 4px 8px; border-radius: 6px; color: #1f2328 } /* a pastel column colour with DARK text: readable in both themes */
+.db-board-card { background: var(--ds-raised, #fff); border: 1px solid var(--ds-line, #d0d7de); border-radius: 8px; padding: 8px; cursor: grab; display: flex; flex-direction: column; gap: 4px } .db-board-card select { font-size: .75rem; opacity: .8 }
+@media (max-width: 700px) { .db-board-col { flex-basis: 78vw } }
 
 .plain .ds-row { width: 100%; box-sizing: border-box; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; padding: 6px 8px; border-radius: 8px } .plain .ds-row:hover { background: var(--ds-sunk, #eff1ee) }
-.dbtable input, .dbtable select, .viewbar select, .board-card select, .viewbar button, .main input:not([type=checkbox]):not([type=color]):not([type=range]) { background: var(--ds-raised, #fff); color: var(--ds-text, inherit); border: 1px solid var(--ds-line, #d0d7de); border-radius: 6px }
+.dbtable input, .dbtable select, .viewbar select, .db-board-card select, .viewbar button, .main input:not([type=checkbox]):not([type=color]):not([type=range]) { background: var(--ds-raised, #fff); color: var(--ds-text, inherit); border: 1px solid var(--ds-line, #d0d7de); border-radius: 6px }
 .viewtabs button { border: 0 !important; background: none !important }

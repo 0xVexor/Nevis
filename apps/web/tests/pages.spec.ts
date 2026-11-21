@@ -49,14 +49,16 @@ test('create a page, write Persian and English, reload: it is all still there; r
   await expect(body(page)).toContainText('سلام دنیا. hello world ۱۲۳')
 
   // a child page; the parent can be expanded
-  await page.getByTestId('page-actions').getByRole('button', { name: 'زیرصفحه' }).click()
+  await page.getByTestId('page-row').first().hover()
+  await page.getByTestId('page-row').first().getByRole('button', { name: 'زیرصفحه جدید' }).click()
   await expect(page.getByTestId('title')).toHaveValue('') // the new page is selected (else the fill would rename the parent)
   await page.getByTestId('title').fill('بازار وکیل')
   await page.waitForTimeout(600)
   await expect(page.getByTestId('page-row')).toHaveCount(2) // the old tree shows a page's children open
 
   // trash the child, then restore it
-  await page.getByRole('button', { name: 'حذف' }).click()
+  await page.getByTestId('page-row').nth(1).click({ button: 'right' })
+  await page.getByTestId('menu-delete').click()
   await expect(page.getByTestId('page-row')).toHaveCount(1)
   await page.getByTestId('trash-toggle').click()
   await expect(page.getByTestId('trash')).toContainText('بازار وکیل')

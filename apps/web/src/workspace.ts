@@ -1,7 +1,8 @@
 // The notes app's state for one workspace in one tab: the page tree, the open documents, and the actions on them.
 // All writes go through the core client (one committed transaction each); this class only decides WHAT to write.
 import { normalizeFa } from '@nevis/editor'
-import { DocHandle, type BlobStatus, buildTree, createDatabase, createPage, isInside, movePage, readStructured, renamePage, restorePage, trashPage, type Client, type PageNode, type PageRow, type PageTree, type Structured } from '@nevis/core'
+import { AUTO_AFTER_MS, DocHandle, addVersion, foldSchedules, loadDoc, readVersions, thinVersions, type Version, reviewCard, reviewTimes, type Grade, type Rec, type BlobStatus, buildTree, createDatabase, createPage, isInside, movePage, readStructured, renamePage, restorePage, trashPage, type Client, type PageNode, type PageRow, type PageTree, type Structured } from '@nevis/core'
+import { project, writeBody, type PMJson } from '@nevis/schema'
 import { SyncRuntime } from './runtime'
 import { SearchService } from './search/service'
 
@@ -120,6 +121,47 @@ export class Workspace {
     this.templates.set(id, content)
     return id
   }
+  /** Replaces the body of a page with `json` (the Home note: a draft that becomes a page on its first words, then keeps being saved). */
+  async writeBody(id: string, json: PMJson): Promise<void> {
+    const h = await this.openDoc(id)
+    try { writeBody(h.ydoc, json); await h.flush() } finally { await this.closeDoc(id) }
+  }
+  /** The schedule of every reviewed card and the times of all reviews (a fold over the review events). */
+  async reviewData(): Promise<{ recs: Map<string, Rec>; times: number[] }> {
+    const events = await this.rt.store.run(tx => tx.allEvents())
+    return { recs: foldSchedules(events), times: reviewTimes(events) }
+  }
+  async rateCard(card: string, grade: Grade, durationMs: number) {
+    await reviewCard(this.rt.client, card, grade, Date.now(), durationMs)
+    this.rt.written({ ents: [card] })
+  }
+  // ---- page history (versions are events about the page; see packages/core/src/versions.ts) ----
+  private readonly versionTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  /** The page as it is stored now, as JSON text. */
+  private async bodyJson(id: string): Promise<string> { return JSON.stringify(project(await this.rt.store.run(tx => loadDoc(tx, id)))) }
+  /** The versions to show: thinned by the rule of ROADMAP M11, newest first. */
+  async versions(id: string): Promise<Version[]> {
+    return thinVersions(readVersions(await this.rt.store.run(tx => tx.allEvents()), id), Date.now())
+  }
+  /** Saves the page's current state as a version (a manual one is kept for ever). Nothing is written if it equals the newest version. */
+  async saveVersion(id: string, manual = false, label = ''): Promise<boolean> {
+    const json = await this.bodyJson(id)
+    const last = readVersions(await this.rt.store.run(tx => tx.allEvents()), id)[0]
+    if (!manual && last?.json === json) return false
+    if (!(await addVersion(this.rt.client, id, json, { at: Date.now(), manual, label }))) return false
+    this.rt.written({ ents: [id] })
+    return true
+  }
+  /** Restoring is an ordinary edit: the current state is saved as a version first, then the old body is written in one transaction. */
+  async restoreVersion(id: string, version: Version) {
+    await this.saveVersion(id, true, 'قبل از بازگردانی')
+    await this.writeBody(id, JSON.parse(version.json) as PMJson)
+  }
+  /** A version 5 minutes after the last edit of a page. */
+  private scheduleVersion(id: string) {
+    clearTimeout(this.versionTimers.get(id))
+    this.versionTimers.set(id, setTimeout(() => { this.versionTimers.delete(id); void this.saveVersion(id).catch(() => undefined) }, AUTO_AFTER_MS))
+  }
   takeTemplate(id: string): unknown { const c = this.templates.get(id); this.templates.delete(id); return c }
 
   /** The title is written at most every 400 ms while it is being typed. */
@@ -170,7 +212,7 @@ export class Workspace {
   async openDoc(id: string): Promise<DocHandle> {
     const have = this.handles.get(id)
     if (have) return have
-    const h = await DocHandle.open({ client: this.rt.client, doc: id, onLocalWrite: d => { this.rt.written({ docs: [d] }); this.search.dirty([d]) }, onError: e => this.fail(e), onTooLarge: () => { this.diverged.add(id); this.emit() } })
+    const h = await DocHandle.open({ client: this.rt.client, doc: id, onLocalWrite: d => { this.rt.written({ docs: [d] }); this.search.dirty([d]); this.scheduleVersion(d) }, onError: e => this.fail(e), onTooLarge: () => { this.diverged.add(id); this.emit() } })
     this.handles.set(id, h)
     return h
   }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { formatSize } from '@nevis/editor'
 import { me, type Me } from '../auth'
-import { PreferenceGroup, PreferenceRow, RangeControl, SegmentedChoice } from '../ds'
+import { PreferenceGroup, PreferenceRow, RangeControl, SegmentedChoice, Screen } from '../ds'
 import { setDeviceSettings, useDeviceSettings } from '../deviceSettings'
 import { t } from '../i18n'
 import { readSynced, writeSynced } from '../workspaceSettings'
@@ -17,8 +17,7 @@ export function Settings({ ws }: { ws: Workspace }) {
   useEffect(() => { let dead = false; void me().then(m => { if (!dead) setAccount(m) }, () => undefined); return () => { dead = true } }, [])
   const files = ws.rt.blobStatus()
   return (
-    <section className="screen" data-testid="settings" dir="rtl">
-      <h1>{t('Settings')}</h1>
+    <Screen title={t('Settings')} width="narrow"><div data-testid="settings" dir="rtl">
       <div data-testid="settings-device">
         <PreferenceGroup title={t('This device')}>
           <PreferenceRow label={t('Theme')}>
@@ -52,6 +51,6 @@ export function Settings({ ws }: { ws: Workspace }) {
       <PreferenceGroup title={t('Keyboard shortcuts')}>
         <dl className="shortcuts">{SHORTCUTS.map(([what, keys]) => <div key={what}><dt>{what}</dt><dd dir="ltr">{keys}</dd></div>)}</dl>
       </PreferenceGroup>
-    </section>
+    </div></Screen>
   )
 }

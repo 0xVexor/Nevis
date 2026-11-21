@@ -1,3 +1,5 @@
+import { t } from '../i18n'
+import { Screen } from '../ds'
 import { useMemo } from 'react'
 import { go } from '../router'
 import type { Workspace } from '../workspace'
@@ -27,8 +29,7 @@ export function Graph({ ws }: { ws: Workspace }) {
   }, [ws.data, ws.search.ready])
   const at = new Map(nodes.map(n => [n.id, n]))
   return (
-    <section className="screen" data-testid="graph" dir="rtl">
-      <h1>گراف</h1>
+    <Screen title={t('Graph')} width="wide"><div data-testid="graph" dir="rtl">
       {!nodes.length ? <p data-testid="graph-empty">هنوز پیوندی بین صفحه‌ها نیست. با «[[» از یک صفحه به صفحهٔ دیگر پیوند بدهید.</p> : (
         <svg viewBox="0 0 640 420" width="100%" role="img" aria-label="گراف صفحه‌ها" style={{ maxWidth: 800, background: 'var(--ds-surface, transparent)' }}>
           {edges.map((e, i) => <line key={i} x1={at.get(e.from)!.x} y1={at.get(e.from)!.y} x2={at.get(e.to)!.x} y2={at.get(e.to)!.y} stroke="currentColor" opacity=".35" />)}
@@ -40,6 +41,6 @@ export function Graph({ ws }: { ws: Workspace }) {
           ))}
         </svg>
       )}
-    </section>
+    </div></Screen>
   )
 }

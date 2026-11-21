@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { formatDateFa } from '@nevis/core'
-import { Button, Icon, Row, SearchField } from '../ds'
+import { Button, Icon, Row, SearchField, Screen } from '../ds'
 import { go } from '../router'
 import { t } from '../i18n'
 import type { Workspace } from '../workspace'
@@ -16,8 +16,7 @@ export function AllPages({ ws, calendar }: { ws: Workspace; calendar: 'jalali' |
   const { rows, total } = useMemo(() => ws.pageSlice(query, offset, SIZE), [ws, ws.data, query, offset])
   const pages = Math.max(1, Math.ceil(total / SIZE))
   return (
-    <section className="screen" data-testid="all-pages" dir="rtl">
-      <h1>{t('All pages')}</h1>
+    <Screen title={t('All pages')} width="wide"><div data-testid="all-pages" dir="rtl">
       <SearchField value={query} onChange={setQuery} label={t('Search')} placeholder={t('Search')} clearLabel={t('Clear')} />
       <table className="dstable" data-testid="all-pages-table">
         <thead><tr><th>{t('Page title')}</th><th>{t('Type')}</th><th>{t('Created')}</th></tr></thead>
@@ -36,6 +35,6 @@ export function AllPages({ ws, calendar }: { ws: Workspace; calendar: 'jalali' |
         <span>{Math.floor(offset / SIZE) + 1} {t('of')} {pages} ({total})</span>
         <Button size="sm" disabled={offset + SIZE >= total} onClick={() => setOffset(o => o + SIZE)}>{t('Next')}</Button>
       </div>
-    </section>
+    </div></Screen>
   )
 }

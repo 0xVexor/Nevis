@@ -7,4 +7,6 @@ export const FA_NEW: Record<string, string> = {
   'Sign out': 'خروج', Online: 'آنلاین', Offline: 'آفلاین', 'Not sent yet': 'ارسال‌نشده', 'Last sync': 'آخرین همگام‌سازی', Commands: 'دستورها', Pages: 'صفحه‌ها', 'No results': 'نتیجه‌ای نیست',
   Table: 'جدول', Board: 'برد', 'Group by': 'گروه‌بندی بر اساس', 'New view': 'نمای تازه', 'No group': 'بدون گروه', 'Blank page': 'صفحهٔ خالی', 'All blocks sample': 'نمونهٔ همهٔ بلوک‌ها', 'Meeting notes': 'یادداشت جلسه', 'Task list': 'فهرست کارها', 'Daily note': 'یادداشت روزانه',
   'Use template': 'استفاده از قالب', 'Keyboard shortcuts': 'میانبرهای صفحه‌کلید', Search: 'جست‌وجو', 'Show all': 'نمایش همه',
+  'Save a version now': 'ذخیرهٔ یک نسخه همین حالا',
+  'A version is saved automatically 5 minutes after you stop editing.': 'پنج دقیقه بعد از آخرین ویرایش، یک نسخه خودکار ذخیره می‌شود.',
 }

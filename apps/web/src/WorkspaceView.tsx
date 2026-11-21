@@ -6,6 +6,8 @@ import { EditorPane } from './EditorPane'
 import { AppShell } from './shell/AppShell'
 import { HomeRoute } from './screens/HomeRoute'
 import { Trash } from './screens/Trash'
+import { Flashcards } from './screens/Flashcards'
+import { History } from './screens/History'
 import { legacyPages } from './shell/adapt'
 import { t } from './i18n'
 import { go, useRoute } from './router'
@@ -26,6 +28,7 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
   const [status, setStatus] = useState<WsStatus | null>(null)
   const [showTrash, setShowTrash] = useState(false)
   const [palette, setPalette] = useState(false)
+  const [history, setHistory] = useState(false)
   const [navOpen, setNavOpen] = useState(false)
   const selected = route.name === 'page' ? route.id : ''
   const select = (id: string) => { go({ name: 'page', id }); setShowTrash(false); setNavOpen(false) }
@@ -62,15 +65,7 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
       if (!page) return <p className="small screen">{ws.data.pages.find(p => p.id === selected)?.trashed ? 'این صفحه در سطل زباله است (از نوار کنار بازگردانی کنید).' : 'صفحه پیدا نشد.'}</p>
       return (
         <>
-          <div className="bar" data-testid="page-actions">
-            <Button size="sm" onClick={() => void create(page.id)}>زیرصفحه</Button>
-            <Button size="sm" onClick={() => void ws.moveUp(page.id)}>بالا</Button>
-            <Button size="sm" onClick={() => void ws.moveDown(page.id)}>پایین</Button>
-            <Button size="sm" onClick={() => void ws.indent(page.id)}>تورفتگی</Button>
-            <Button size="sm" onClick={() => void ws.outdent(page.id)}>برگشت</Button>
-            <Button size="sm" variant="danger" onClick={() => { void ws.trash(page.id); go({ name: 'home' }) }}>حذف</Button>
-          </div>
-          {page.type === 'database' ? <DatabaseView key={page.id} ws={ws} id={page.id} /> : <EditorPane key={`${page.id}:${ws.reopenCount(page.id)}`} ws={ws} id={page.id} title={page.title} />}
+          {page.type === 'database' ? <div className="page-cols"><div className="page"><DatabaseView key={page.id} ws={ws} id={page.id} /></div></div> : <EditorPane key={`${page.id}:${ws.reopenCount(page.id)}`} ws={ws} id={page.id} title={page.title} />}
           {page.type !== 'database' && <Backlinks ws={ws} id={page.id} />}
         </>
       )
@@ -79,6 +74,7 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
     if (route.name === 'templates') return <Templates ws={ws} />
     if (route.name === 'settings') return <Settings ws={ws} />
     if (route.name === 'graph') return <Graph ws={ws} />
+    if (route.name === 'cards') return <Flashcards ws={ws} />
     if (route.name === 'tasks') return <Tasks ws={ws} />
     if (route.name === 'trash') return <div data-testid="trash"><Trash items={legacyPages(ws).filter(p => p.deletedAt)} days={30} onRestore={id => void ws.restore(id)} onPurge={() => ws.notify('الان فقط بازگردانی ممکن است؛ حذف دائمی به‌زودی می‌آید')} onEmpty={() => ws.notify('الان فقط بازگردانی ممکن است؛ حذف دائمی به‌زودی می‌آید')} /></div>
     return <HomeRoute ws={ws} onOpen={select} onNewPage={() => void create('')} onTemplate={() => go({ name: 'templates' })} />
@@ -88,10 +84,11 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
     <>
       <AppShell
         ws={ws} route={route} status={status} onSearch={() => setPalette(true)} onNewPage={p => void create(p)} onNewDatabase={() => void createDb()} onNewAllBlocks={() => void createAllBlocks()}
-        onOpen={select} onSignOut={onSignOut}
+        onOpen={select} onSignOut={onSignOut} onHistory={() => setHistory(true)}
       >
         {screen}
       </AppShell>
+      {history && route.name === 'page' && <History ws={ws} id={route.id} title={ws.tree.byId.get(route.id)?.page.title ?? ''} onClose={() => setHistory(false)} />}
       {palette && <Palette ws={ws} onClose={() => setPalette(false)} onNewPage={() => void create('')} onNewDatabase={() => void createDb()} />}
       {ws.notice && <Toast msg={ws.notice} onClose={() => ws.notify('')} />}
     </>

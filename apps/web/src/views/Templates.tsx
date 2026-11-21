@@ -1,6 +1,6 @@
 import { allBlocksTemplate, dailyNoteTemplate, meetingNotesTemplate, taskListTemplate } from '@nevis/editor'
 import { formatDateFa } from '@nevis/core'
-import { Card, Icon } from '../ds'
+import { Card, Icon, Screen } from '../ds'
 import { go } from '../router'
 import { t } from '../i18n'
 import type { Workspace } from '../workspace'
@@ -23,8 +23,7 @@ export function Templates({ ws }: { ws: Workspace }) {
     go({ name: 'page', id })
   }
   return (
-    <section className="screen" data-testid="templates" dir="rtl">
-      <h1>{t('Templates')}</h1>
+    <Screen title={t('Templates')} width="narrow"><div data-testid="templates" dir="rtl">
       <div className="cards">
         {TEMPLATES.map(tpl => (
           <Card key={tpl.id} as="button" interactive data-testid={`template-${tpl.id}`} onClick={() => void use(tpl)}>
@@ -32,6 +31,6 @@ export function Templates({ ws }: { ws: Workspace }) {
           </Card>
         ))}
       </div>
-    </section>
+    </div></Screen>
   )
 }

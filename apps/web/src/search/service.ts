@@ -1,6 +1,6 @@
 // Search, backlinks and tasks of one workspace: DERIVED data (ADR-0010). The index is built from the pages in a Worker, kept in this
 // device's store (`derived_search`, never synced) tagged with NORM_VERSION, and rebuilt whenever that does not match.
-import { loadDoc, type PageRow, type Store } from '@nevis/core'
+import { extractCards, loadDoc, type PageRow, type RawCard, type Store } from '@nevis/core'
 import { project } from '@nevis/schema'
 import { NORM_VERSION } from '@nevis/text-fa'
 import { extractPage, type Hit, type PageLinkRef, type PageTask, type SearchDoc } from '@nevis/search'
@@ -9,7 +9,7 @@ const INDEX_KEY = 'derived_search'
 const PAGES_KEY = 'derived_pages'
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-interface PageInfo { title: string; links: PageLinkRef[]; tasks: PageTask[]; /** the first ~160 characters of the text */ excerpt?: string; /** when this device last saw the page change (0 = not known) */ at?: number }
+interface PageInfo { title: string; links: PageLinkRef[]; tasks: PageTask[]; /** the first ~160 characters of the text */ excerpt?: string; /** when this device last saw the page change (0 = not known) */ at?: number; /** the flashcards of the page (toggle blocks) */ cards?: RawCard[] }
 
 export class SearchService {
   private worker: Worker
@@ -88,12 +88,12 @@ export class SearchService {
       const batch = todo.slice(i, i + 40)
       const docs: SearchDoc[] = []
       for (const p of batch) {
-        let text = '', links: PageLinkRef[] = [], tasks: PageTask[] = []
+        let text = '', links: PageLinkRef[] = [], tasks: PageTask[] = [], cards: RawCard[] = []
         if (p.type !== 'database') {
-          try { const ex = extractPage(project(await this.store.run(tx => loadDoc(tx, p.id)))); text = ex.text; links = ex.links; tasks = ex.tasks } catch { /* unreadable page: indexed by title only */ }
+          try { const json = project(await this.store.run(tx => loadDoc(tx, p.id))); const ex = extractPage(json); text = ex.text; links = ex.links; tasks = ex.tasks; cards = extractCards(p.id, json) } catch { /* unreadable page: indexed by title only */ }
         }
         const prev = this.info.get(p.id)
-        this.info.set(p.id, { title: p.title, links, tasks, excerpt: text.replace(/\s+/g, ' ').trim().slice(0, 160), at: dirty.has(p.id) || p.title !== prev?.title ? Date.now() : (prev?.at ?? 0) })
+        this.info.set(p.id, { title: p.title, links, tasks, cards, excerpt: text.replace(/\s+/g, ' ').trim().slice(0, 160), at: dirty.has(p.id) || p.title !== prev?.title ? Date.now() : (prev?.at ?? 0) })
         docs.push({ id: p.id, title: p.title, body: text })
       }
       await this.call({ t: 'add', docs })
@@ -139,6 +139,11 @@ export class SearchService {
     const out: { from: string; to: string }[] = []
     for (const [src, i] of this.info) if (alive.has(src)) for (const l of i.links) if (alive.has(l.dst) && l.dst !== src) out.push({ from: src, to: l.dst })
     return out
+  }
+  /** Every flashcard of every live page. */
+  cards(): RawCard[] {
+    const alive = new Set(this.pages.filter(p => !p.trashed).map(p => p.id))
+    return [...this.info].filter(([src]) => alive.has(src)).flatMap(([, i]) => i.cards ?? [])
   }
   tasks(): { page: string; task: PageTask }[] {
     const alive = new Set(this.pages.filter(p => !p.trashed).map(p => p.id))

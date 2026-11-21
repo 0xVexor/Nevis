@@ -2,12 +2,12 @@
 // and needs nothing from the server.
 import { useSyncExternalStore } from 'react'
 
-export type Route = { name: 'home' | 'all' | 'templates' | 'settings' | 'graph' | 'tasks' | 'trash' } | { name: 'page'; id: string }
+export type Route = { name: 'home' | 'all' | 'templates' | 'settings' | 'graph' | 'tasks' | 'trash' | 'cards' } | { name: 'page'; id: string }
 
 export function parse(hash: string): Route {
   const [, a, b] = /^#\/?([^/]*)\/?(.*)$/.exec(hash) ?? []
   if (a === 'page' && b) return { name: 'page', id: decodeURIComponent(b) }
-  if (a === 'all' || a === 'templates' || a === 'settings' || a === 'graph' || a === 'tasks' || a === 'trash') return { name: a }
+  if (a === 'all' || a === 'templates' || a === 'settings' || a === 'graph' || a === 'tasks' || a === 'trash' || a === 'cards') return { name: a }
   return { name: 'home' }
 }
 export const href = (r: Route): string => (r.name === 'page' ? `#/page/${encodeURIComponent(r.id)}` : `#/${r.name}`)

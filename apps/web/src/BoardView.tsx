@@ -23,13 +23,13 @@ export function BoardView({ ws, db, config, rows, titleProp }: { ws: Workspace; 
   }
   const label = (r: RowModel) => (titleProp ? String(r.cells[titleProp.id] ?? '') : '') || 'بدون عنوان'
   return (
-    <div className="board" data-testid="board">
+    <div className="db-board" data-testid="board">
       {cols.map(col => (
-        <section key={col.id || 'none'} className={'board-col' + (over === col.id ? ' over' : '')} data-testid="board-col" data-option={col.id}
+        <section key={col.id || 'none'} className={'db-board-col' + (over === col.id ? ' over' : '')} data-testid="board-col" data-option={col.id}
           onDragOver={e => { e.preventDefault(); setOver(col.id) }} onDragLeave={() => setOver(o => (o === col.id ? null : o))} onDrop={e => drop(col.id, col, e)}>
           <h3 style={{ background: COLOR[col.color] ?? COLOR.gray }}>{col.id === '' ? 'بدون مقدار' : col.name} <span className="small">{col.rows.length}</span></h3>
           {col.rows.map(r => (
-            <article key={r.id} className="board-card" draggable data-testid="board-card" data-id={r.id} onDragStart={e => { e.dataTransfer.setData('text/plain', r.id); e.dataTransfer.effectAllowed = 'move' }}>
+            <article key={r.id} className="db-board-card" draggable data-testid="board-card" data-id={r.id} onDragStart={e => { e.dataTransfer.setData('text/plain', r.id); e.dataTransfer.effectAllowed = 'move' }}>
               <span dir="auto">{label(r)}</span>
               <select aria-label="انتقال به" value={col.id} onChange={e => void move(r.id, e.target.value, null)}>
                 <option value="">بدون مقدار</option>

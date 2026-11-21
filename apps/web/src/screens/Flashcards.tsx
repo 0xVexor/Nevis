@@ -1,0 +1,169 @@
+// Flashcards, drawn as the old app drew them (same markup and classes: fc-today, fc-section, fc-review, fc-card...). The cards are the toggle
+// blocks of the pages; the schedule is a fold over the review events (packages/core/src/cards.ts), so a review on another device counts here.
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { intervalLabel, isDue, type Grade, type RawCard, type Rec } from '@nevis/core'
+import { Button, Icon, Screen, Stats, dirOf } from '../ds'
+import { locale, t } from '../i18n'
+import { go } from '../router'
+import type { Workspace } from '../workspace'
+
+const GRADES: { grade: Grade; name: string; tone: string }[] = [
+  { grade: 0, name: 'Again', tone: 'again' }, { grade: 1, name: 'Hard', tone: 'hard' }, { grade: 2, name: 'Good', tone: 'good' }, { grade: 3, name: 'Easy', tone: 'easy' },
+]
+const DAY = 86_400_000
+const dayKey = (ms: number) => { const d = new Date(ms); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}` }
+const ALL = 'all'
+
+export function Flashcards({ ws }: { ws: Workspace }) {
+  const [data, setData] = useState<{ recs: Map<string, Rec>; times: number[] } | null>(null)
+  const [deck, setDeck] = useState<string | null>(null)
+  const [queue, setQueue] = useState<RawCard[]>([])
+  const [pos, setPos] = useState(0)
+  const [done, setDone] = useState(0)
+  const [shown, setShown] = useState(false)
+  const started = useRef(0)
+  const reload = useCallback(() => ws.reviewData().then(setData), [ws])
+  useEffect(() => { void reload() }, [reload, ws.data])
+  const cards = ws.search.cards()
+  const titleOf = useMemo(() => new Map(ws.data.pages.map(p => [p.id, p.title])), [ws.data])
+  const now = Date.now()
+  const recs = data?.recs ?? new Map<string, Rec>()
+  const dueOf = (list: RawCard[]) => list.filter(c => isDue(recs.get(c.id), now))
+  const due = dueOf(cards)
+  const num = (n: number) => n.toLocaleString(locale())
+
+  const start = (id: string) => {
+    const list = (id === ALL ? cards : cards.filter(c => c.pageId === id))
+    const q = dueOf(list).sort((a, b) => (recs.get(a.id)?.due ?? 0) - (recs.get(b.id)?.due ?? 0))
+    setQueue(q); setPos(0); setDone(0); setShown(false); setDeck(id); started.current = Date.now()
+  }
+  const card = deck !== null ? queue[pos] : undefined
+  const rate = useCallback(async (grade: Grade) => {
+    if (!card) return
+    await ws.rateCard(card.id, grade, Date.now() - started.current)
+    await reload()
+    setQueue(q => (grade === 0 ? [...q, card] : q)) // a card you missed comes back before the session ends
+    setPos(p => p + 1); setDone(d => d + 1); setShown(false); started.current = Date.now()
+  }, [card, ws, reload])
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (deck === null || !card || e.target instanceof HTMLInputElement) return
+      if (!shown && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); setShown(true) }
+      else if (shown && ['1', '2', '3', '4'].includes(e.key)) { e.preventDefault(); void rate((Number(e.key) - 1) as Grade) }
+      else if (e.key === 'Escape') setDeck(null)
+    }
+    addEventListener('keydown', key)
+    return () => removeEventListener('keydown', key)
+  }, [deck, card, shown, rate])
+
+  if (deck === null) {
+    const decks = [...new Set(cards.map(c => c.pageId))].map(id => {
+      const list = cards.filter(c => c.pageId === id)
+      return { id, title: titleOf.get(id) || t('Untitled'), total: list.length, learned: list.filter(c => recs.has(c.id) && !isDue(recs.get(c.id), now)).length, due: dueOf(list).length }
+    })
+    const next = due[0]
+    const minutes = Math.max(1, Math.round((due.length * 8) / 60))
+    const endOfTomorrow = new Date(new Date().setHours(23, 59, 59, 999)).getTime() + DAY
+    const dueTomorrow = cards.filter(c => { const r = recs.get(c.id); return r && r.due > now && r.due <= endOfTomorrow }).length
+    const upcoming = Math.min(...cards.map(c => recs.get(c.id)?.due ?? Infinity).filter(d => d > now), Infinity)
+    const times = data?.times ?? []
+    const perDay = new Map<string, number>()
+    for (const ms of times) perDay.set(dayKey(ms), (perDay.get(dayKey(ms)) ?? 0) + 1)
+    const chart = Array.from({ length: 14 }, (_, i) => { const d = now - (13 - i) * DAY; return { day: d, count: perDay.get(dayKey(d)) ?? 0 } })
+    const chartMax = Math.max(1, ...chart.map(d => d.count))
+    let streak = 0
+    for (let off = perDay.has(dayKey(now)) ? 0 : 1; perDay.has(dayKey(now - off * DAY)); off++) streak++
+    return (
+      <Screen title={t('Flashcards')} description={t('Every toggle block is a card: its title asks, its content answers')}>
+        <div data-testid="flashcards">
+          {cards.length === 0 ? (
+            <div className="ds-empty ds-empty--framed" data-testid="no-cards"><Icon name="toggle" /><b>{t('No cards yet')}</b><span>{t('Add a toggle to any page with /toggle. Write the question as its title and the answer inside.')}</span></div>
+          ) : (
+            <>
+              <section className="fc-today" aria-labelledby="fc-today">
+                <div className="fc-stack" data-empty={!due.length || undefined} aria-hidden="true">
+                  <span className="fc-stack-card" /><span className="fc-stack-card" />
+                  <span className="fc-stack-card fc-stack-top">{due.length > 0 && next ? <><small dir="auto">{titleOf.get(next.pageId) || t('Untitled')}</small><b dir="auto">{next.question}</b></> : <Icon name="check-circle" size={28} />}</span>
+                </div>
+                <div className="fc-today-text">
+                  <h2 id="fc-today" data-testid="fc-due">{due.length === 0 ? t('You are up to date') : due.length === 1 ? t('1 card is waiting') : t('{n} cards are waiting', { n: num(due.length) })}</h2>
+                  <p>{due.length > 0 ? t('About {m} min. Cards you miss come back before the session ends.', { m: num(minutes) }) : Number.isFinite(upcoming) ? t('Next card is due {when}.', { when: new Date(upcoming).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' }) }) : t('Nothing is scheduled yet')}</p>
+                  {due.length > 0 && <Button variant="primary" className="fc-start" data-testid="fc-start" onClick={() => start(ALL)}>{t('Start review')}</Button>}
+                  <Stats className="fc-facts" label={t('Statistics')} items={[
+                    { label: t('reviewed today'), value: num(perDay.get(dayKey(now)) ?? 0) }, { label: t('day streak'), value: num(streak) },
+                    { label: t('due tomorrow'), value: num(dueTomorrow) }, { label: t('reviews in total'), value: num(times.length) },
+                  ]} />
+                </div>
+              </section>
+              <section className="fc-section" aria-labelledby="fc-decks">
+                <h2 id="fc-decks">{t('Decks')}</h2>
+                <div className="ds-list ds-list--framed">
+                  {decks.map(d => {
+                    const pct = d.total ? Math.round((d.learned / d.total) * 100) : 0
+                    return (
+                      <div key={d.id} className="ds-list-row fc-deck" dir={dirOf(d.title)}>
+                        <span className="fc-deck-ic"><Icon name="cards" /></span>
+                        <span className="ds-list-main"><b dir="auto">{d.title}</b><small>{t(d.total === 1 ? '1 card, {m} learned' : '{n} cards, {m} learned', { n: num(d.total), m: num(d.learned) })}</small></span>
+                        <span className="ds-progress fc-meter" role="progressbar" aria-label={t('Learned')} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><i style={{ inlineSize: pct + '%' }} /></span>
+                        <span className="fc-due" data-zero={!d.due || undefined}>{d.due ? t('{n} due', { n: num(d.due) }) : t('Up to date')}</span>
+                        <Button size="sm" variant={d.due ? 'default' : 'ghost'} onClick={() => start(d.id)}>{t('Review')}</Button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+              <section className="fc-section" aria-labelledby="fc-days">
+                <div className="fc-chart-head"><h2 id="fc-days">{t('Last 14 days')}</h2><span>{t('{n} reviews in these 14 days', { n: num(chart.reduce((a, d) => a + d.count, 0)) })}</span></div>
+                <div className="fc-days" role="list" aria-label={t('Reviews per day')}>
+                  {chart.map((d, i) => <span key={d.day} role="listitem" className="fc-day" data-today={i === chart.length - 1 || undefined} style={{ '--level': d.count ? 0.25 + 0.75 * (d.count / chartMax) : 0 } as CSSProperties} aria-label={t('{n} reviews on {day}', { n: num(d.count), day: new Date(d.day).toLocaleDateString(locale(), { weekday: 'long', month: 'short', day: 'numeric' }) })} />)}
+                </div>
+              </section>
+            </>
+          )}
+        </div>
+      </Screen>
+    )
+  }
+
+  const left = Math.max(0, queue.length - pos)
+  const total = done + left
+  const pct = total ? Math.round((done / total) * 100) : 0
+  const rec = card ? recs.get(card.id) : undefined
+  const deckTitle = deck === ALL ? t('All decks') : titleOf.get(deck) || t('Untitled')
+  return (
+    <div className="fc-review" data-testid="fc-review">
+      <div className="fc-top">
+        <Button variant="ghost" size="sm" icon={<Icon name="arrow-left" size={16} className="ds-flip" />} onClick={() => setDeck(null)}>{t('Decks')}</Button>
+        <b className="fc-top-title" dir="auto">{deckTitle}</b>
+        {card && <span className="fc-top-count">{t('{n} of {m}', { n: num(done + 1), m: num(total) })}</span>}
+      </div>
+      <div className="ds-progress fc-top-progress" role="progressbar" aria-label={t('Session progress')} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><i style={{ inlineSize: pct + '%' }} /></div>
+      {!card ? (
+        <div className="ds-empty fc-done" data-testid="fc-done">
+          <Icon name="check-circle" /><b>{t('All done for now')}</b>
+          <span>{done ? t(done === 1 ? 'You reviewed 1 card.' : 'You reviewed {n} cards.', { n: num(done) }) : ''}</span>
+          <Button variant="primary" onClick={() => setDeck(null)}>{t('Back to decks')}</Button>
+        </div>
+      ) : (
+        <div className="fc-stage">
+          <article className="fc-card" aria-live="polite">
+            <button type="button" className="fc-source" onClick={() => go({ name: 'page', id: card.pageId })} dir="auto" title={t('Open the page')}>{titleOf.get(card.pageId) || t('Untitled')}<Icon name="arrow-up-right" size={13} className="ds-flip" /></button>
+            <h2 className="fc-q" dir="auto" data-testid="fc-question" data-long={card.question.length > 90 || undefined}>{card.question}</h2>
+            {shown && <div className="fc-a-wrap"><div className="fc-a tiptap" data-testid="fc-answer">{card.answer.split('\n').map((l, i) => <p key={i} dir="auto">{l}</p>)}</div></div>}
+          </article>
+          {!shown ? (
+            <Button variant="primary" className="fc-show" data-testid="fc-show" onClick={() => setShown(true)}>{t('Show answer')}</Button>
+          ) : (
+            <div className="fc-grades" role="group" aria-label={t('How well did you know it?')}>
+              {GRADES.map(({ grade, name, tone }) => (
+                <button key={grade} type="button" className="fc-grade" data-tone={tone} data-testid={`fc-grade-${grade}`} onClick={() => void rate(grade)}>
+                  <span className="fc-grade-name"><i aria-hidden="true" />{t(name)}</span><small>{intervalLabel(rec, grade, Date.now())}</small>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

@@ -1,6 +1,6 @@
 import { getSchema } from '@tiptap/core'
 import type { Schema } from '@tiptap/pm/model'
-import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap'
+import { prosemirrorJSONToYXmlFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap'
 import type * as Y from 'yjs'
 import { BlockIdentity } from './blockIdentity'
 import { schemaExtensions } from './extensions'
@@ -23,6 +23,15 @@ export type PMJson = { type: string; attrs?: Record<string, unknown>; content?: 
 /** The page as ProseMirror JSON, defaults filled in. Convergence is always judged on this, never on bytes (ADR-0003 §8). */
 export function project(doc: Y.Doc): PMJson {
   return yXmlFragmentToProseMirrorRootNode(doc.getXmlFragment(BODY), schema).toJSON() as PMJson
+}
+
+/** Replaces the whole body of a document with `json` (one Yjs transaction). For writing a draft or a template into a page. */
+export function writeBody(doc: Y.Doc, json: PMJson): void {
+  doc.transact(() => {
+    const frag = doc.getXmlFragment(BODY)
+    frag.delete(0, frag.length)
+    prosemirrorJSONToYXmlFragment(schema, normalize(json), frag)
+  })
 }
 
 /** The JSON a node would have after a round trip through the schema (defaults filled in). */

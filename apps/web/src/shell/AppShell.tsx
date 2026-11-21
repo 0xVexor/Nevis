@@ -21,6 +21,7 @@ const RAIL: RailItem[] = [
   { id: 'home', label: 'Home', icon: 'home', route: 'home', testid: 'nav-home' },
   { id: 'templates', label: 'Templates', icon: 'templates', route: 'templates', testid: 'nav-templates' },
   { id: 'tasks', label: 'Tasks', icon: 'tasks', route: 'tasks', testid: 'nav-tasks' },
+  { id: 'cards', label: 'Flashcards', icon: 'cards', route: 'cards', testid: 'nav-cards' },
   { id: 'graph', label: 'Graph', icon: 'graph', route: 'graph', testid: 'nav-graph' },
   { id: 'all', label: 'All pages', icon: 'table', route: 'all', testid: 'nav-all' },
 ]
@@ -36,9 +37,11 @@ export interface ShellProps {
   onNewAllBlocks: () => void
   onOpen: (id: string) => void
   onSignOut?: () => void
+  /** the page's history (the clock in the top bar) */
+  onHistory?: () => void
 }
 
-export function AppShell({ ws, route, status, children, onSearch, onNewPage, onNewDatabase, onNewAllBlocks, onOpen, onSignOut }: ShellProps) {
+export function AppShell({ ws, route, status, children, onSearch, onNewPage, onNewDatabase, onNewAllBlocks, onOpen, onSignOut, onHistory }: ShellProps) {
   const [newMenu, setNewMenu] = useState<DOMRect | null>(null)
   const [rowMenu, setRowMenu] = useState<{ id: string; rect: DOMRect } | null>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
@@ -74,15 +77,15 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
   }
   const menuItems = (id: string): MenuItem[] => [
     { label: t('Open'), icon: <Icon name="external-link" size={16} />, onSelect: () => open(id) },
-    { label: t('New subpage'), icon: <Icon name="plus" size={16} />, onSelect: () => onNewPage(id) },
+    { label: t('New subpage'), testid: 'menu-subpage', icon: <Icon name="plus" size={16} />, onSelect: () => onNewPage(id) },
     { label: t('Move up'), icon: <Icon name="arrow-up" size={16} />, onSelect: () => void ws.moveUp(id) },
     { label: t('Move down'), icon: <Icon name="arrow-down" size={16} />, onSelect: () => void ws.moveDown(id) },
     { label: t('Indent'), icon: <Icon name="arrow-right" size={16} className="ds-flip" />, onSelect: () => void ws.indent(id) },
     { label: t('Outdent'), icon: <Icon name="arrow-left" size={16} className="ds-flip" />, onSelect: () => void ws.outdent(id) },
-    { label: t('Delete'), icon: <Icon name="trash" size={16} />, onSelect: () => { void ws.trash(id); if (id === currentId) go({ name: 'home' }) } },
+    { label: t('Delete'), testid: 'menu-delete', icon: <Icon name="trash" size={16} />, onSelect: () => { void ws.trash(id); if (id === currentId) go({ name: 'home' }) } },
   ]
-  const crumbLabel = (r: Route['name']) => ({ home: 'Home', templates: 'Templates', tasks: 'Tasks', graph: 'Graph', all: 'All pages', settings: 'Settings', trash: 'Trash', page: '' } as Record<string, string>)[r] ?? ''
-  const crumbIcon = (r: Route['name']) => ({ templates: 'templates', tasks: 'tasks', graph: 'graph', all: 'table', settings: 'settings', trash: 'trash' } as Record<string, string>)[r]
+  const crumbLabel = (r: Route['name']) => ({ home: 'Home', templates: 'Templates', tasks: 'Tasks', cards: 'Flashcards', graph: 'Graph', all: 'All pages', settings: 'Settings', trash: 'Trash', page: '' } as Record<string, string>)[r] ?? ''
+  const crumbIcon = (r: Route['name']) => ({ templates: 'templates', tasks: 'tasks', cards: 'cards', graph: 'graph', all: 'table', settings: 'settings', trash: 'trash' } as Record<string, string>)[r]
 
   return (
     <div className={'app' + (navOpen ? ' nav-open' : '')} dir="rtl">
@@ -169,6 +172,7 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
           {status?.files.error === 'blob_too_large' && <span className="err sync-chip" data-testid="files-too-large">فایلی از حد مجاز سرور بزرگ‌تر است و فقط روی این دستگاه می‌ماند.</span>}
           {status?.lastError && <span className="err sync-chip" data-testid="sync-error">{status.lastError}</span>}
           <div className="tb-group">
+            {route.name === 'page' && onHistory && <IconButton label={t('Version history')} data-testid="open-history" onClick={onHistory}><Icon name="history" size={17} /></IconButton>}
             <IconButton label={dark ? t('Light mode') : t('Dark mode')} onClick={() => setDeviceSettings({ theme: dark ? 'light' : 'dark' })}><Icon name={dark ? 'sun' : 'moon'} size={17} /></IconButton>
           </div>
         </header>

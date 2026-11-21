@@ -282,6 +282,9 @@ importers:
       '@nevis/protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@nevis/text-fa':
+        specifier: workspace:*
+        version: link:../text-fa
       fractional-indexing:
         specifier: 4.0.0
         version: 4.0.0
