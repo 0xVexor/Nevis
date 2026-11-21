@@ -33,7 +33,7 @@ describe('view config: versioned and tolerant', () => {
 describe('what a view shows', () => {
   const props = [prop('t', 'text'), prop('n', 'number'), prop('s', 'select', [{ id: 'o1', name: 'یک', color: '', sortKey: 'a' }, { id: 'o2', name: 'دو', color: '', sortKey: 'b' }]), prop('c', 'checkbox')]
   const rows = [row('r1', { t: 'ب', n: '10', s: 'o2', c: true }), row('r2', { t: 'الف', n: '9.5', s: 'o1', c: false }), row('r3', { t: null, n: null, s: null, c: false }), row('r4', { t: 'پ', n: '-2', s: 'gone', c: true })]
-  const cfg = (over: Partial<ReturnType<typeof readViewConfig>> = {}) => ({ v: 1, groupBy: '', sort: [], hidden: [], ...over })
+  const cfg = (over: Partial<ReturnType<typeof readViewConfig>> = {}) => ({ v: 1, groupBy: '', sort: [], hidden: [], filter: [], ...over })
   it('sorts numbers exactly, text in Persian order, selects by option order, checkboxes false before true; empty last; desc reverses', () => {
     const ids = (c: ReturnType<typeof cfg>) => viewRows(rows, props, c).map(r => r.id)
     expect(ids(cfg({ sort: [{ prop: 'n', dir: 'asc' }] }))).toEqual(['r4', 'r2', 'r1', 'r3'])
