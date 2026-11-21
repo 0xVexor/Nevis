@@ -87,6 +87,9 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
         <span>{t('Not sent yet')}: <b data-testid="outbox">{status?.outbox ?? 0}</b>{status && status.unsaved > 0 ? ` (+${status.unsaved} ذخیره‌نشده)` : ''}</span>
         <span>{t('Last sync')}: {ago(status?.lastSyncAt ?? 0)}</span>
         <span title="navigator.storage.persist()">ماندگار: {String(status?.persisted)}</span>
+        {status && status.files.pending > 0 && <span data-testid="files">{`فایل‌ها: ${status.files.pending} در انتظار آپلود`}{status.files.uploading && status.files.total ? ` (${Math.round(100 * status.files.sent / status.files.total)}٪)` : ''}</span>}
+        {status?.files.error === 'quota' && <span className="err" data-testid="files-quota">فضای حساب شما پر است؛ فایل‌ها روی این دستگاه می‌مانند و چیزی از دست نمی‌رود، اما تا آزاد شدن فضا همگام نمی‌شوند.</span>}
+        {status?.files.error === 'blob_too_large' && <span className="err" data-testid="files-too-large">فایلی از حد مجاز سرور بزرگ‌تر است و فقط روی این دستگاه می‌ماند.</span>}
         {status?.lastError && <span className="err" data-testid="sync-error">{status.lastError}</span>}
         {onSignOut && <Button size="sm" data-testid="signout" onClick={onSignOut}>{t('Sign out')}</Button>}
       </header>

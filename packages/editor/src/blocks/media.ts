@@ -1,7 +1,8 @@
 // Image (a placeholder or an https URL until attachments exist in M9) and page link (an inline chip).
 import type { NodeViewRendererProps } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
-import { Image as ImageSpec, PageLink as PageLinkSpec, safeImageSrc } from '@nevis/schema'
+import { Image as ImageSpec, PageLink as PageLinkSpec, isBlobHash, safeImageSrc } from '@nevis/schema'
+import { sniffBlob, whenAvailable } from '../attachments'
 import { optionsOf } from '../options'
 import { S } from '../strings'
 
@@ -39,12 +40,52 @@ export const Image = ImageSpec.extend({
         return row
       }
 
+      // An attached image (`blob`): its bytes come from this device or the server, and are drawn from an object URL made HERE after the
+      // bytes were looked at (only PNG, JPEG, GIF, WebP, AVIF are shown as pictures). Until they are there the block says so: a page can
+      // arrive before its files, and nothing here ever writes to the page because bytes are missing.
+      let blobState: 'loading' | 'ready' | 'notimage' = 'loading'
+      let objectUrl: string | null = null
+      let watching = ''
+      let stop: (() => void) | null = null
+      const release = () => { stop?.(); stop = null; watching = ''; if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null } blobState = 'loading' }
+      const watch = (hash: string, mime: string) => {
+        if (watching === hash) return
+        release()
+        watching = hash
+        stop = whenAvailable(editor, hash, mime, b => {
+          void sniffBlob(b).then(type => {
+            if (watching !== hash) return
+            if (objectUrl) URL.revokeObjectURL(objectUrl)
+            objectUrl = type ? URL.createObjectURL(new Blob([b], { type })) : null
+            blobState = type ? 'ready' : 'notimage'
+            draw()
+          })
+        }, () => { if (blobState !== 'loading') { blobState = 'loading'; draw() } })
+      }
+
       const draw = () => {
         frame.textContent = ''
         const a = cur.attrs
-        const src = safeImageSrc(String(a.src)) // re-checked at render: a synced page is untrusted data
         dom.dataset.align = String(a.align)
         frame.style.width = Number(a.width) > 0 ? `${Number(a.width)}%` : ''
+        if (isBlobHash(a.blob)) {
+          watch(String(a.blob), String(a.mime))
+          if (blobState === 'ready' && objectUrl) {
+            const img = document.createElement('img')
+            img.src = objectUrl; img.alt = String(a.alt); img.title = String(a.title); img.decoding = 'async'; img.draggable = false
+            frame.append(img)
+          } else {
+            const ph = document.createElement('div')
+            ph.className = 'image-placeholder'
+            ph.dataset.state = blobState === 'notimage' ? 'notimage' : 'missing'
+            ph.textContent = blobState === 'notimage' ? S.notAnImage : S.fileMissing
+            frame.append(ph)
+          }
+          drawBar()
+          return
+        }
+        release()
+        const src = safeImageSrc(String(a.src)) // re-checked at render: a synced page is untrusted data
         if (src) {
           const img = document.createElement('img')
           img.src = src; img.alt = String(a.alt); img.title = String(a.title)
@@ -57,6 +98,10 @@ export const Image = ImageSpec.extend({
           frame.append(ph)
           if (editor.isEditable) frame.append(placeholderEditor())
         }
+        drawBar()
+      }
+      const drawBar = () => {
+        const a = cur.attrs
         bar.textContent = ''
         if (!editor.isEditable) return
         for (const [label, w] of WIDTHS) { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.className = Number(a.width) === w ? 'on' : ''; b.onclick = () => set({ width: w }); bar.append(b) }
@@ -69,6 +114,7 @@ export const Image = ImageSpec.extend({
       return {
         dom,
         update: (n: PMNode) => { if (n.type !== cur.type) return false; cur = n; draw(); return true },
+        destroy: release,
         stopEvent: (e: Event) => bar.contains(e.target as Node) || (e.target as HTMLElement).closest?.('.image-url') !== null,
         ignoreMutation: () => true,
         selectNode: () => dom.classList.add('selected'),

@@ -12,9 +12,9 @@ export function readScene<S>(json: string, restore: (data: unknown) => S): Scene
 }
 
 export type SceneSave = { ok: true; json: string } | { ok: false; reason: 'too_large' | 'unserializable'; size?: number }
-/** The string to store, or why it must not be (over the size an op may carry, or not serializable). */
-export function writeScene(scene: unknown): SceneSave {
+/** The string to store, or why it must not be (over `max`: the 256 KB an inline scene may have, or what an attachment may hold; or not serializable). */
+export function writeScene(scene: unknown, max: number = MAX_DRAWING_SCENE): SceneSave {
   let json: string
   try { json = JSON.stringify(scene) } catch { return { ok: false, reason: 'unserializable' } }
-  return json.length > MAX_DRAWING_SCENE ? { ok: false, reason: 'too_large', size: json.length } : { ok: true, json }
+  return json.length > max ? { ok: false, reason: 'too_large', size: json.length } : { ok: true, json }
 }

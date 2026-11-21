@@ -4,6 +4,10 @@
 // 50 MB file is never held as an ArrayBuffer here (WebKit cannot take large ArrayBuffers in IndexedDB reliably).
 //
 // One `put` is one readwrite transaction over both stores, so the row can never exist without its bytes.
+//
+// Some WebKit configurations (Playwright's WebKit, and Safari in some private modes) refuse to store a Blob in IndexedDB: the
+// transaction aborts with an empty error. Then the same bytes are stored as an ArrayBuffer instead (`ab` in the row) and read back as
+// a Blob. A full disk (QuotaExceededError) is never retried: it is the person's to fix, and it is reported as it is.
 import type { BlobMeta, BlobStore } from '@nevis/core'
 
 export const BLOB_DB_VERSION = 1
@@ -12,10 +16,14 @@ export interface IdbBlobStoreOptions {
   /** the database name, `nevis-<workspaceId>-blobs` */
   name: string
   indexedDB?: IDBFactory
+  /** store the bytes as an ArrayBuffer even where a Blob works (tests the fallback) */
+  forceBuffer?: boolean
 }
 
 interface Row extends BlobMeta {
   n: number
+  /** the bytes are stored as an ArrayBuffer, not a Blob (see above) */
+  ab?: true
   /** 1 while the file waits to be uploaded (not on the server, not failed): the index that `pending` reads */
   pend: 0 | 1
 }
@@ -52,7 +60,17 @@ export class IdbBlobStore implements BlobStore {
   private next(): number { return Date.now() * 1000 + (this.seq++ % 1000) }
 
   private async write(hash: string, data: Blob, mime: string, remote: boolean): Promise<BlobMeta> {
+    if (!this.o.forceBuffer) {
+      try { return await this.writeAs(hash, data, mime, remote, false) } catch (e) {
+        if (e instanceof DOMException && e.name === 'QuotaExceededError') throw e
+      }
+    }
+    return this.writeAs(hash, data, mime, remote, true)
+  }
+
+  private async writeAs(hash: string, data: Blob, mime: string, remote: boolean, asBuffer: boolean): Promise<BlobMeta> {
     const db = await this.open()
+    const value: Blob | ArrayBuffer = asBuffer ? await data.arrayBuffer() : data
     const tx = db.transaction(['bytes', 'meta'], 'readwrite')
     const meta = tx.objectStore('meta')
     const have = (await req(meta.get(hash))) as Row | undefined
@@ -61,8 +79,8 @@ export class IdbBlobStore implements BlobStore {
       await done(tx)
       return metaOf({ ...have, remote: have.remote || remote })
     }
-    const row: Row = { hash, size: data.size, mime, remote, failed: '', n: this.next(), pend: remote ? 0 : 1 }
-    tx.objectStore('bytes').put(data, hash)
+    const row: Row = { hash, size: data.size, mime, remote, failed: '', n: this.next(), pend: remote ? 0 : 1, ...(asBuffer ? { ab: true as const } : {}) }
+    tx.objectStore('bytes').put(value, hash)
     meta.put(row)
     await done(tx) // a quota error surfaces here: nothing was written
     return metaOf(row)
@@ -81,7 +99,7 @@ export class IdbBlobStore implements BlobStore {
     const db = await this.open()
     const tx = db.transaction(['bytes', 'meta'])
     const [m, b] = await Promise.all([req(tx.objectStore('meta').get(hash)), req(tx.objectStore('bytes').get(hash))])
-    return m && b ? (b as Blob) : undefined
+    return m && b ? (b instanceof Blob ? b : new Blob([b as ArrayBuffer])) : undefined
   }
 
   async pending(): Promise<BlobMeta[]> {

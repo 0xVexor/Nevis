@@ -1,9 +1,13 @@
-// The drawing block: the scene is a JSON string in the node (<= 256 KB until attachments exist in M9). The preview is drawn FROM the
+// The drawing block: the scene is a JSON string, either in the node (`scene`, <= 256 KB: pages written before SV 3 and editors with no
+// attachments) or in an attachment (`sceneBlob`, SV 3: no such limit). An inline scene is moved to an attachment only when it is next EDITED,
+// never on open. A scene whose attachment has not arrived is shown as "still arriving" and can be neither edited nor overwritten. The preview is drawn FROM the
 // scene on screen (no stored picture); editing opens Excalidraw full-screen, loaded on first use. Fonts and assets come from the app's
 // own origin (`./excalidraw-assets/`, copied by the web build): nothing loads from a CDN, so it works offline and under both CSPs.
 import type { NodeViewRendererProps } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
-import { Drawing as DrawingSpec } from '@nevis/schema'
+import { Drawing as DrawingSpec, MAX_DRAWING_SCENE, isBlobHash } from '@nevis/schema'
+import type { Editor } from '@tiptap/core'
+import { whenAvailable } from '../attachments'
 import { optionsOf } from '../options'
 import { readScene, writeScene } from '../scene'
 import { S } from '../strings'
@@ -44,8 +48,11 @@ async function preview(host: HTMLElement, json: string) {
   } catch { host.classList.add('error'); host.textContent = S.formulaError }
 }
 
+/** A scene stored as an attachment may be as large as an attachment; an inline one is limited by the op size. */
+const MAX_ATTACHED_SCENE = 64 * 1024 * 1024
+
 /** The full-screen editor. Resolves with the new scene JSON, or null if cancelled or refused. */
-async function edit(json: string, notify: (m: string) => void): Promise<string | null> {
+async function edit(json: string, notify: (m: string) => void, max: number): Promise<string | null> {
   const L = await loadExcalidraw()
   const React = await import('react')
   const { createRoot } = await import('react-dom/client')
@@ -66,7 +73,7 @@ async function edit(json: string, notify: (m: string) => void): Promise<string |
     const close = (v: string | null) => { root.unmount(); overlay.remove(); resolve(v) }
     cancel.onclick = () => close(null)
     save.onclick = () => {
-      const out = writeScene({ type: 'excalidraw', version: 2, source: 'nevis', elements: latest.elements.filter(e => !(e as { isDeleted?: boolean }).isDeleted), appState: { viewBackgroundColor: String(latest.appState.viewBackgroundColor ?? '#ffffff') } })
+      const out = writeScene({ type: 'excalidraw', version: 2, source: 'nevis', elements: latest.elements.filter(e => !(e as { isDeleted?: boolean }).isDeleted), appState: { viewBackgroundColor: String(latest.appState.viewBackgroundColor ?? '#ffffff') } }, max)
       if (!out.ok) { notify(S.tooLargeDrawing); return } // stay open: the person can delete something and try again
       close(out.json)
     }
@@ -92,21 +99,50 @@ export const Drawing = DrawingSpec.extend({
       btn.onmousedown = e => e.preventDefault()
       dom.append(view, btn)
       let busy = false
+      /** the scene JSON now: '' (empty), the text, or null (its attachment has not arrived) */
+      const sceneNow = async (): Promise<string | null> => {
+        const hash = String(cur.attrs.sceneBlob)
+        if (!isBlobHash(hash)) return String(cur.attrs.scene)
+        const b = await optionsOf(editor).attachments?.open(hash, 'application/json').catch(() => null)
+        return b ? b.text() : null
+      }
       const open = async () => {
         if (busy || !editor.isEditable) return
         busy = true
         try {
-          const next = await edit(String(cur.attrs.scene), m => optionsOf(editor).notify?.(m))
+          const json = await sceneNow()
+          if (json === null) { optionsOf(editor).notify?.(S.drawingMissing); return } // never edit or save over a scene that is not here
+          const port = optionsOf(editor).attachments
+          const next = await edit(json, m => optionsOf(editor).notify?.(m), port ? MAX_ATTACHED_SCENE : MAX_DRAWING_SCENE)
           const pos = getPos()
-          if (next !== null && pos != null && next !== cur.attrs.scene) editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...cur.attrs, scene: next }))
-        } finally { busy = false }
+          if (next === null || pos == null || next === json) return
+          let attrs: Record<string, unknown>
+          if (port) {
+            const ref = await port.add(new Blob([next], { type: 'application/json' }), 'drawing.json', 'application/json')
+            attrs = { ...cur.attrs, scene: '', sceneBlob: ref.blob }
+          } else attrs = { ...cur.attrs, scene: next }
+          const now = getPos()
+          if (now != null) editor.view.dispatch(editor.state.tr.setNodeMarkup(now, undefined, attrs))
+        } catch (e) { optionsOf(editor).notify?.(S.attachFailed); console.error(e) } finally { busy = false }
       }
       btn.onclick = () => void open()
       view.ondblclick = () => void open()
-      void preview(view, String(node.attrs.scene))
+      let stopWatch: (() => void) | null = null
+      let shown = ''
+      const refresh = () => {
+        const key = `${String(cur.attrs.sceneBlob)}|${String(cur.attrs.scene)}`
+        if (key === shown) return
+        shown = key
+        stopWatch?.(); stopWatch = null
+        const hash = String(cur.attrs.sceneBlob)
+        if (!isBlobHash(hash)) { void preview(view, String(cur.attrs.scene)); return }
+        stopWatch = whenAvailable(editor as Editor, hash, 'application/json', b => void b.text().then(t => void preview(view, t)), () => { view.textContent = S.drawingMissing; view.classList.add('empty') })
+      }
+      refresh()
       return {
         dom,
-        update: (n: PMNode) => { if (n.type !== cur.type) return false; const changed = n.attrs.scene !== cur.attrs.scene; cur = n; if (changed) void preview(view, String(n.attrs.scene)); return true },
+        update: (n: PMNode) => { if (n.type !== cur.type) return false; cur = n; refresh(); return true },
+        destroy: () => { stopWatch?.() },
         stopEvent: (e: Event) => e.type === 'dblclick' || (e.target as HTMLElement).closest('button') !== null,
         ignoreMutation: () => true,
         selectNode: () => dom.classList.add('selected'),

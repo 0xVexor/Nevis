@@ -5,6 +5,7 @@ import { PluginKey } from '@tiptap/pm/state'
 import Suggestion from '@tiptap/suggestion'
 import { normalizeFa } from './findNormalize'
 import { insertPageLink, insertCallout, insertDrawing, insertImagePlaceholder, insertLayout, insertMathBlock, insertMathInline, insertMermaid, insertTable, insertToggle } from './insert'
+import { pickAndAttach } from './attach'
 import { Menu, type MenuItem } from './menu'
 import { optionsOf } from './options'
 import { S } from './strings'
@@ -31,7 +32,9 @@ export const SLASH_ITEMS: SlashItem[] = [
   { id: 'mathInline', title: 'فرمول درون‌خطی', hint: 'فرمول میان متن', keywords: 'inline math formula فرمول', run: e => void insertMathInline(e) },
   { id: 'mermaid', title: 'نمودار', hint: 'نمودار با Mermaid', keywords: 'mermaid diagram flowchart نمودار', run: e => void insertMermaid(e) },
   { id: 'drawing', title: 'نقاشی', hint: 'بوم نقاشی', keywords: 'drawing excalidraw sketch نقاشی بوم', run: e => void insertDrawing(e) },
-  { id: 'image', title: 'تصویر', hint: 'تصویر با نشانی https', keywords: 'image picture photo تصویر عکس', run: e => void insertImagePlaceholder(e) },
+  { id: 'image', title: 'تصویر', hint: 'تصویر از دستگاه (یا نشانی https)', keywords: 'image picture photo تصویر عکس', run: e => void (optionsOf(e).attachments ? pickAndAttach(e, true) : insertImagePlaceholder(e)) },
+  { id: 'imageUrl', title: 'تصویر از اینترنت', hint: 'تصویر با نشانی https', keywords: 'image url link web تصویر نشانی اینترنت', run: e => void insertImagePlaceholder(e) },
+  { id: 'file', title: 'فایل', hint: 'پیوست کردن فایل', keywords: 'file attachment pdf upload فایل پیوست', run: e => void (optionsOf(e).attachments ? pickAndAttach(e, false) : optionsOf(e).notify?.('پیوست فایل در این‌جا فعال نیست')) },
   { id: 'pageLink', title: 'پیوند به صفحه', hint: 'مثل [[', keywords: 'link page wiki لینک صفحه پیوند', run: e => void e.chain().focus().insertContent('[[').run() },
 ]
 

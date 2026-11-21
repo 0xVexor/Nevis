@@ -50,7 +50,7 @@ const BLOCKS: { id: string; query: string; type: string; check?: (n: Json) => bo
   { id: 'math', query: 'latex', type: 'mathBlock' },
   { id: 'mermaid', query: 'mermaid', type: 'mermaid' },
   { id: 'drawing', query: 'excalidraw', type: 'drawing' },
-  { id: 'image', query: 'image', type: 'image', check: n => n.attrs?.src === '' },
+  { id: 'imageUrl', query: 'url', type: 'image', check: n => n.attrs?.src === '' && n.attrs?.blob === '' },
 ]
 
 test('every block can be inserted from the slash menu; they render, persist and come back after a reload', async ({ page }) => {
@@ -96,7 +96,9 @@ test('every block can be inserted from the slash menu; they render, persist and 
   await expect(page.locator('.drawing-overlay .excalidraw')).toBeVisible({ timeout: 60_000 })
   await page.getByTestId('drawing-save').click()
   await expect(page.locator('.drawing-overlay')).toHaveCount(0)
-  expect(String(find(await docJson(page), 'drawing')[0]!.attrs!.scene)).toContain('"elements"')
+  // SV 3: the scene is an attachment (no 256 KB limit); the inline `scene` is emptied
+  await expect.poll(async () => String(find(await docJson(page), 'drawing')[0]!.attrs!.sceneBlob)).toMatch(/^[0-9a-f]{64}$/)
+  expect(find(await docJson(page), 'drawing')[0]!.attrs!.scene).toBe('')
 
   // code: choose a language, type code: highlighted
   await body(page).locator('.code-block pre').click()

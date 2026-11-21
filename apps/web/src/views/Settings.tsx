@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react'
+import { formatSize } from '@nevis/editor'
+import { me, type Me } from '../auth'
 import { PreferenceGroup, PreferenceRow, RangeControl, SegmentedChoice } from '../ds'
 import { setDeviceSettings, useDeviceSettings } from '../deviceSettings'
 import { t } from '../i18n'
@@ -10,6 +13,9 @@ const SHORTCUTS: [string, string][] = [['جست‌وجو و دستورها', 'Ct
 export function Settings({ ws }: { ws: Workspace }) {
   const device = useDeviceSettings()
   const synced = readSynced(ws)
+  const [account, setAccount] = useState<Me | null>(null)
+  useEffect(() => { let dead = false; void me().then(m => { if (!dead) setAccount(m) }, () => undefined); return () => { dead = true } }, [])
+  const files = ws.rt.blobStatus()
   return (
     <section className="screen" data-testid="settings" dir="rtl">
       <h1>{t('Settings')}</h1>
@@ -32,6 +38,17 @@ export function Settings({ ws }: { ws: Workspace }) {
           </PreferenceRow>
         </PreferenceGroup>
       </div>
+      {account && (
+        <div data-testid="settings-storage">
+          <PreferenceGroup title="فضای ذخیره‌سازی حساب">
+            <PreferenceRow label="فضای مصرف‌شده (متن و فایل‌ها)">
+              <span data-testid="quota-used">{formatSize(account.usedBytes)}{account.quotaBytes > 0 ? ` از ${formatSize(account.quotaBytes)}` : ''}</span>
+              {account.quotaBytes > 0 && <progress max={account.quotaBytes} value={account.usedBytes} aria-label="فضای مصرف‌شده" />}
+            </PreferenceRow>
+            {files.pending > 0 && <PreferenceRow label="فایل‌های منتظر آپلود"><span data-testid="quota-pending">{files.pending}</span></PreferenceRow>}
+          </PreferenceGroup>
+        </div>
+      )}
       <PreferenceGroup title={t('Keyboard shortcuts')}>
         <dl className="shortcuts">{SHORTCUTS.map(([what, keys]) => <div key={what}><dt>{what}</dt><dd dir="ltr">{keys}</dd></div>)}</dl>
       </PreferenceGroup>

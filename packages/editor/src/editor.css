@@ -46,3 +46,12 @@
 .math-block, .math-inline, .katex, .mermaid-block svg { direction: ltr; unicode-bidi: isolate }
 .floating-bar input, .find-bar input, .floating-menu { background: var(--ds-raised, #fff); color: var(--ds-text, inherit) }
 .callout, .layout-column, .ProseMirror th { color: var(--ds-text, inherit) }
+
+/* attachments (M9) */
+.file-block { margin: .6rem 0; display: flex; gap: .5rem; align-items: center }
+.file-card { display: flex; gap: .6rem; align-items: center; flex: 1; min-width: 0; text-align: start; padding: .6rem .8rem; border: 1px solid var(--ed-border); border-radius: 8px; background: var(--ed-soft); color: inherit; font: inherit; cursor: pointer }
+.file-block[data-state=missing] .file-card { opacity: .7 }
+.file-icon { font-size: 1.3rem } .file-text { display: flex; flex-direction: column; min-width: 0 } .file-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap } .file-meta { color: var(--ed-muted); font-size: .85em }
+.file-remove { border: 0; background: transparent; color: var(--ed-muted); cursor: pointer; font: inherit }
+.file-block.selected .file-card { outline: 2px solid var(--ed-accent, currentColor) }
+.image-placeholder[data-state=missing] { opacity: .75 }

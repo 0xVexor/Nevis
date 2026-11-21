@@ -7,8 +7,10 @@ import { BlockIdentity, schemaExtensions } from '@nevis/schema'
 import { Callout, LayoutColumn, LayoutGroup, Toggle } from './blocks/containers'
 import { CodeBlock } from './blocks/code'
 import { Drawing } from './blocks/drawing'
+import { FileBlock } from './blocks/file'
 import { Image, PageLink } from './blocks/media'
 import { MathBlock, MathInline, Mermaid } from './blocks/rendered'
+import { AttachFiles } from './attach'
 import { NevisCommands } from './commands'
 import { HeadingDir } from './direction'
 import { FindInPage } from './find'
@@ -18,7 +20,7 @@ import { MarkdownPaste } from './paste'
 import { PageLinkSuggest, SlashMenu } from './slash'
 import { S } from './strings'
 
-const WITH_VIEWS: AnyExtension[] = [Callout, Toggle, LayoutGroup, LayoutColumn, MathBlock, MathInline, Mermaid, Drawing, Image, PageLink, CodeBlock]
+const WITH_VIEWS: AnyExtension[] = [Callout, Toggle, LayoutGroup, LayoutColumn, MathBlock, MathInline, Mermaid, Drawing, Image, FileBlock, PageLink, CodeBlock]
 const viewNames = new Set(WITH_VIEWS.map(e => e.name))
 
 /** Every extension of the editor, without the collaboration binding (added by `createEditor`). */
@@ -29,7 +31,7 @@ export function editorExtensions(options: EditorOptions = {}): AnyExtension[] {
     BlockIdentity,
     ...WITH_VIEWS,
     NevisOptions.configure(options),
-    NevisCommands, HeadingDir, MarkdownPaste, SlashMenu, PageLinkSuggest, FloatingBars, FindInPage,
+    NevisCommands, HeadingDir, AttachFiles, MarkdownPaste, SlashMenu, PageLinkSuggest, FloatingBars, FindInPage,
     Placeholder.configure({ placeholder: ({ node }) => (node.type.name === 'paragraph' ? S.slash.placeholder : ''), showOnlyCurrent: true }),
     DragHandle.configure({ render: handle }),
   ]

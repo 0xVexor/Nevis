@@ -1,5 +1,6 @@
 // What the app gives the editor (the editor package knows nothing about stores, pages or attachments).
 import { Extension, type Editor } from '@tiptap/core'
+import type { AttachmentsPort } from './attachments'
 
 export interface PageRef { id: string; title: string }
 export interface EditorOptions {
@@ -9,6 +10,8 @@ export interface EditorOptions {
   onOpenPage?: (id: string) => void
   /** a short message for the person (an image placeholder, a drawing that was too large) */
   notify?: (message: string) => void
+  /** images and files stored with the page (absent: the editor shows https images only and the attach commands are off) */
+  attachments?: AttachmentsPort
 }
 
 export const NevisOptions = Extension.create<EditorOptions, EditorOptions>({

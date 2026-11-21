@@ -1,7 +1,7 @@
 // The notes app's state for one workspace in one tab: the page tree, the open documents, and the actions on them.
 // All writes go through the core client (one committed transaction each); this class only decides WHAT to write.
 import { normalizeFa } from '@nevis/editor'
-import { DocHandle, buildTree, createDatabase, createPage, isInside, movePage, readStructured, renamePage, restorePage, trashPage, type Client, type PageNode, type PageRow, type PageTree, type Structured } from '@nevis/core'
+import { DocHandle, type BlobStatus, buildTree, createDatabase, createPage, isInside, movePage, readStructured, renamePage, restorePage, trashPage, type Client, type PageNode, type PageRow, type PageTree, type Structured } from '@nevis/core'
 import { SyncRuntime } from './runtime'
 
 export interface WsStatus {
@@ -15,6 +15,8 @@ export interface WsStatus {
   lastSyncAt: number
   persisted: boolean | null
   lastError: string
+  /** attachments: files waiting to upload, progress, and why uploading stopped */
+  files: BlobStatus
 }
 
 const TITLE_THROTTLE_MS = 400
@@ -240,6 +242,7 @@ export class Workspace {
       lastSyncAt: this.rt.lastSyncAt,
       persisted: this.rt.persisted,
       lastError: this.rt.lastError,
+      files: { ...this.rt.blobStatus(), pending: (await this.rt.blobs.pending()).length },
     }
   }
 
