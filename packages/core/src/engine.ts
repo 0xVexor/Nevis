@@ -28,6 +28,9 @@ export class NetError extends Error {
   }
 }
 
+/** The server said THIS op is invalid for good (envelope validation), not that the request or the app version is wrong. */
+const isBadOp = (e: NetError) => e.status === 400 && e.code === 'bad_envelope'
+
 /** Test hooks that let the harness stop the engine at the awkward moments (a crash). */
 export interface EngineHooks {
   afterPush?: () => void | Promise<void>
@@ -43,6 +46,8 @@ export interface EngineOptions {
   now?: () => number
   hooks?: EngineHooks
   batch?: number
+  /** a batch stops before its envelopes exceed this many characters (the server refuses a body over 4 MB with a permanent 413) */
+  maxBatchChars?: number
 }
 
 export interface CycleStats { pushed: number; dup: number; pulled: number; applied: number; held: number; quarantined: number; /** ops the server refused for good (moved to quarantine, not retried) */ rejected: number }
@@ -50,7 +55,7 @@ export interface CycleStats { pushed: number; dup: number; pulled: number; appli
 export class SyncEngine {
   private readonly o: Required<Omit<EngineOptions, 'hooks'>> & { hooks: EngineHooks }
   constructor(o: EngineOptions) {
-    this.o = { now: Date.now, batch: 500, hooks: {}, ...o }
+    this.o = { now: Date.now, batch: 500, maxBatchChars: 3_000_000, hooks: {}, ...o }
   }
 
   /** Push everything pending, pull everything new, apply it. */
@@ -91,7 +96,10 @@ export class SyncEngine {
   async push(s: CycleStats = { pushed: 0, dup: 0, pulled: 0, applied: 0, held: 0, quarantined: 0, rejected: 0 }) {
     const { store, net, ws } = this.o
     for (;;) {
-      const rows = await store.run(tx => tx.listOutbox(this.o.batch))
+      const all = await store.run(tx => tx.listOutbox(this.o.batch))
+      // bounded by SIZE as well as by count: three legal 1.4M ops together are over the 4 MB the server accepts, and a 413 is permanent
+      let chars = 0
+      const rows = all.filter((r, i) => { chars += r.env.length; return i === 0 || chars <= this.o.maxBatchChars })
       if (!rows.length) return
       let res: PushResult
       try {
@@ -99,8 +107,10 @@ export class SyncEngine {
       } catch (e) {
         // the server refused the batch because this device's clock is ahead: remember it, keep every op, repair when the clock is right
         if (e instanceof NetError && e.code === 'clock_ahead') await store.run(tx => tx.setMeta('clockAhead', '1'))
-        // a permanent 400 means SOME op of the batch can never be accepted: without this, that one op blocks the whole outbox for ever
-        if (e instanceof NetError && e.status === 400 && !e.retryable && rows.length > 0) { await this.pushOneByOne(rows, s); continue }
+        // `bad_envelope` means SOME op of the batch can never be accepted: without this, that one op blocks the whole outbox for ever.
+        // Only that code: `bad_request` is about the batch, 426 (`upgrade_required`, sv below the workspace minSv) means the app must be
+        // updated and the ops are KEPT, 409/413/422 are other situations. None of those may drain the outbox into quarantine.
+        if (e instanceof NetError && isBadOp(e) && rows.length > 0) { await this.pushOneByOne(rows, s); continue }
         throw e
       }
       const sent = new Set(rows.map(r => r.op))
@@ -129,7 +139,7 @@ export class SyncEngine {
         if (res.results.some(x => x.op === r.op)) { res.results.some(x => x.status === 'dup') ? s.dup++ : s.pushed++; await store.run(tx => tx.deleteOutbox([r.op])) }
         else throw new NetError(502, 'incomplete_push_answer', true)
       } catch (e) {
-        if (!(e instanceof NetError && e.status === 400 && !e.retryable)) throw e
+        if (!(e instanceof NetError && isBadOp(e))) throw e
         await store.run(async tx => {
           const n = Number((await tx.getMeta('rejectedCount')) ?? 0) + 1
           await tx.setMeta('rejectedCount', String(n))

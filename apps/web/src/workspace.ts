@@ -24,6 +24,9 @@ export class Workspace {
   /** everything structured (databases, rows, tags...) as of the last reload */
   data: Structured = { pages: [], databases: new Map(), tags: [], savedSearches: [], settings: {}, pageTags: new Map() }
   private readonly handles = new Map<string, DocHandle>()
+  /** documents whose last edit was too large to save: read-only until reopened from the store (what came after it was never saved) */
+  readonly diverged = new Set<string>()
+  private readonly reopens = new Map<string, number>()
   private readonly titles = new Map<string, { value: string; timer: ReturnType<typeof setTimeout> | null }>()
   private readonly listeners = new Set<() => void>()
   private reloading: Promise<void> | null = null
@@ -144,9 +147,18 @@ export class Workspace {
   async openDoc(id: string): Promise<DocHandle> {
     const have = this.handles.get(id)
     if (have) return have
-    const h = await DocHandle.open({ client: this.rt.client, doc: id, onLocalWrite: d => this.rt.written({ docs: [d] }), onError: e => this.fail(e) })
+    const h = await DocHandle.open({ client: this.rt.client, doc: id, onLocalWrite: d => this.rt.written({ docs: [d] }), onError: e => this.fail(e), onTooLarge: () => { this.diverged.add(id); this.emit() } })
     this.handles.set(id, h)
     return h
+  }
+  /** A new count for the editor's `key`, so that it is rebuilt from what the store holds. */
+  reopenCount(id: string): number { return this.reopens.get(id) ?? 0 }
+  async reopenDoc(id: string) {
+    await this.closeDoc(id)
+    this.diverged.delete(id)
+    this.reopens.set(id, this.reopenCount(id) + 1)
+    this.rt.lastError = ''
+    this.emit()
   }
   async closeDoc(id: string) {
     const h = this.handles.get(id)

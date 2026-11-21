@@ -96,3 +96,22 @@ test('signing out stops the sync and shows the sign-in form', async ({ page }) =
   await page.getByTestId('signout').click()
   await expect(page.getByTestId('auth-form')).toBeVisible()
 })
+
+test('an edit too large for one op is refused with a visible message; the page turns read-only and reopens from what was saved', async ({ page }) => {
+  await signUpAndOpen(page)
+  await page.getByTestId('new-page').click()
+  await body(page).click()
+  await page.keyboard.type('متن سالم')
+  await page.waitForTimeout(700)
+  await page.evaluate(() => (window as unknown as { __editor: { commands: { insertContent: (s: string) => void } } }).__editor.commands.insertContent('x'.repeat(1_700_000)))
+  await expect(page.getByTestId('too-large')).toBeVisible({ timeout: 15_000 })
+  await expect(body(page)).toHaveAttribute('contenteditable', 'false') // later typing would depend on the refused edit
+  await page.getByTestId('too-large').getByRole('button').click()
+  await expect(page.getByTestId('too-large')).toHaveCount(0)
+  await expect(body(page)).toContainText('متن سالم')
+  await expect(body(page)).not.toContainText('xxxxxxxxxx')
+  await body(page).click()
+  await page.keyboard.type(' ادامه')
+  await expect(body(page)).toContainText('ادامه')
+  await page.waitForFunction(() => document.querySelector('[data-testid=outbox]')?.textContent === '0', null, { timeout: 15_000 }) // nothing stuck behind it
+})

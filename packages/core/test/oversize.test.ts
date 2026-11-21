@@ -75,6 +75,75 @@ describe('an op that can never be accepted must not block the outbox', () => {
     expect(h.diverged).toBe(true)
     expect(h.unsaved).toBe(0) // dropped: no retry loop
     expect((await store.run(tx => tx.listOutbox(10))).length).toBe(0)
+  })
+
+  it('after a refused edit NOTHING typed later is saved (it depends on the refused edit): a fresh handle on the same store shows the earlier text only', async () => {
+    const store = new MemoryStore()
+    const client = new Client({ store, ws, device: uuidv7(), sv: SV })
+    const doc = uuidv7()
+    const h = await DocHandle.open({ client, doc, schedule: () => () => {} })
+    h.ydoc.getText('t').insert(0, 'before ')
+    await h.flush()
+    h.ydoc.getText('t').insert(h.ydoc.getText('t').length, 'x'.repeat(MAX_P_CHARS)) // refused
+    await h.flush()
+    expect(h.diverged).toBe(true)
+    h.ydoc.getText('t').insert(h.ydoc.getText('t').length, ' LATER') // would depend on the refused edit
+    await h.flush()
+    expect(h.unsaved).toBe(0)
+    const fresh = await DocHandle.open({ client, doc, schedule: () => () => {} })
+    expect(fresh.ydoc.getText('t').toString()).toBe('before ')
+    expect((await store.run(tx => tx.listOutbox(10))).length).toBe(1) // only the first, good edit
     void Y
+  })
+})
+
+describe('what must NOT be mistaken for a bad op', () => {
+  const setup = async () => {
+    const store = new MemoryStore(), device = uuidv7()
+    const c = new Client({ store, ws, device, sv: SV })
+    await c.setFields(uuidv7(), { a: 1 }, 'page')
+    await c.setFields(uuidv7(), { a: 2 }, 'page')
+    return { store, device }
+  }
+  const failing = (e: NetError): Net => ({ push: async () => { throw e }, pull: async () => ({ ops: [], head: 0, more: false }) })
+
+  it('426 upgrade_required (sv below the workspace minSv): the ops are KEPT until the app is updated, not quarantined', async () => {
+    const { store, device } = await setup()
+    await expect(new SyncEngine({ store, net: failing(new NetError(426, 'upgrade_required', false)), ws, device, sv: SV }).cycle()).rejects.toThrow()
+    expect((await store.run(tx => tx.listOutbox(10))).length).toBe(2)
+    expect(await store.run(tx => tx.listQuarantine())).toEqual([])
+  })
+  it('400 bad_request (about the batch) and 409 op_conflict: rethrown, nothing is quarantined', async () => {
+    for (const e of [new NetError(400, 'bad_request', false), new NetError(409, 'op_conflict', false), new NetError(422, 'clock_ahead', false)]) {
+      const { store, device } = await setup()
+      await expect(new SyncEngine({ store, net: failing(e), ws, device, sv: SV }).cycle()).rejects.toThrow()
+      expect((await store.run(tx => tx.listOutbox(10))).length, e.code).toBe(2)
+      expect(await store.run(tx => tx.listQuarantine()), e.code).toEqual([])
+    }
+  })
+})
+
+describe('a batch is bounded by size (the server refuses a body over 4 MB with a permanent 413)', () => {
+  it('three legal 1.4M-char ops are sent in separate batches and all arrive', async () => {
+    const store = new MemoryStore(), device = uuidv7()
+    const c = new Client({ store, ws, device, sv: SV })
+    for (let i = 0; i < 3; i++) await c.setFields(uuidv7(), { big: 'x'.repeat(1_000_000) }, 'page') // ~1.33M chars of p each: legal
+    const sizes: number[] = []
+    const log: string[] = []
+    const net: Net = {
+      async push(_w, envs) {
+        const total = envs.reduce((n, e) => n + e.length, 0)
+        sizes.push(total)
+        if (total > 4 * 1024 * 1024) throw new NetError(413, 'too_large', false)
+        const results = envs.map(e => { const op = parseEnvelope(e).op; log.push(op); return { op, seq: log.length, status: 'ok' as const } })
+        return { results, head: log.length }
+      },
+      async pull() { return { ops: [], head: log.length, more: false } },
+    }
+    const s = await new SyncEngine({ store, net, ws, device, sv: SV }).cycle()
+    expect(s.pushed).toBe(3)
+    expect(Math.max(...sizes)).toBeLessThanOrEqual(4 * 1024 * 1024)
+    expect(sizes.length).toBeGreaterThanOrEqual(2) // really split
+    expect((await store.run(tx => tx.listOutbox(10))).length).toBe(0)
   })
 })

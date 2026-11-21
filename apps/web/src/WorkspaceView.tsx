@@ -63,7 +63,7 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
                 <button onClick={() => void ws.outdent(page.id)}>برگشت</button>
                 <button onClick={() => { void ws.trash(page.id); setSelected('') }}>حذف</button>
               </div>
-              {page.type === 'database' ? <DatabaseView key={page.id} ws={ws} id={page.id} /> : <EditorPane key={page.id} ws={ws} id={page.id} title={page.title} />}
+              {page.type === 'database' ? <DatabaseView key={page.id} ws={ws} id={page.id} /> : <EditorPane key={`${page.id}:${ws.reopenCount(page.id)}`} ws={ws} id={page.id} title={page.title} />}
             </>
           ) : <p className="small">یک صفحه را انتخاب یا بسازید.</p>}
         </main>

@@ -28,6 +28,8 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
     return () => { dead = true; ed?.destroy(); if (handle) void ws.closeDoc(id) }
   }, [ws, id])
 
+  const diverged = ws.diverged.has(id)
+  useEffect(() => { editor?.setEditable(!diverged) }, [editor, diverged])
   if (state === 'needs-update') return <section className="pane"><p role="alert" data-testid="needs-update">این صفحه با نسخهٔ تازه‌تری از برنامه ساخته شده؛ به‌روزرسانی لازم است.</p></section>
   return (
     <section className="pane">
@@ -41,6 +43,11 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
           {DIRS.map(d => <button key={d} onClick={() => { setDir(editor, d as Dir); editor.commands.focus() }}>{d}</button>)}
           <button onClick={() => editor.chain().focus().undo().run()}>واگرد</button>
         </div>
+      )}
+      {diverged && (
+        <p role="alert" className="err" data-testid="too-large">
+          آخرین ویرایش بیش از حد بزرگ بود و ذخیره نشد؛ هر چه بعد از آن نوشته شود هم ذخیره نمی‌شود. <button onClick={() => void ws.reopenDoc(id)}>باز کردن دوباره از آخرین نسخهٔ ذخیره‌شده</button>
+        </p>
       )}
       <div className="editor" data-testid="editor" ref={host} />
     </section>

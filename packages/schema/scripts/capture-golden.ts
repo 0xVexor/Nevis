@@ -3,7 +3,7 @@
 // Files are written with the "do not overwrite" flag: a stored fixture is never regenerated, by this script or by a test. A test
 // checks each file against its recorded SHA-256, so a silent rewrite fails. docs/formats/golden-fixtures.md says what they assert.
 import { createHash } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { prosemirrorJSONToYXmlFragment } from '@tiptap/y-tiptap'
 import * as Y from 'yjs'
@@ -18,6 +18,8 @@ for (const [name, json] of Object.entries(fixtures)) {
   prosemirrorJSONToYXmlFragment(schema, normalize(json), doc.getXmlFragment(BODY))
   const update = Y.encodeStateAsUpdate(doc)
   const rec = { name, sv: SV, update: Buffer.from(update).toString('base64'), sha256: createHash('sha256').update(update).digest('hex'), projection: project(doc) }
-  writeFileSync(join(dir, `${name}.json`), JSON.stringify(rec, null, 1) + '\n', { flag: 'wx' })
+  const file = join(dir, `${name}.json`)
+  if (existsSync(file)) { console.log('skipped (already captured, never rewritten)', name); continue }
+  writeFileSync(file, JSON.stringify(rec, null, 1) + '\n', { flag: 'wx' })
   console.log('captured', name, update.length, 'bytes')
 }

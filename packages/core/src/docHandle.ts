@@ -57,7 +57,7 @@ export class DocHandle {
     this.onError = o.onError
     this.onTooLarge = o.onTooLarge
     this.ydoc.on('update', (u: Uint8Array, origin: unknown) => {
-      if (origin === REMOTE || this.needsUpdate) return
+      if (origin === REMOTE || this.needsUpdate || this.diverged) return // after a refused edit, later edits depend on it: none may be saved
       this.pending.push(u)
       if (!this.cancelTimer) this.cancelTimer = this.schedule(() => { this.cancelTimer = null; void this.flush() }, this.throttleMs)
     })
