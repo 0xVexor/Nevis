@@ -11,11 +11,11 @@ const row = (id: string, cells: RowModel['cells'], sortKey = id): RowModel => ({
 describe('view config: versioned and tolerant', () => {
   const props = [prop('t', 'text'), prop('s', 'select', [{ id: 'o1', name: 'الف', color: 'red', sortKey: 'a' }]), prop('n', 'number')]
   it('anything unreadable is the default; nothing throws', () => {
-    for (const raw of [undefined, null, 5, 'x', [], true, { sort: 3 }, { groupBy: 7, hidden: 'x', sort: [1, null, {}] }]) expect(readViewConfig(raw as never, props)).toEqual({ v: 1, groupBy: '', sort: [], hidden: [] })
+    for (const raw of [undefined, null, 5, 'x', [], true, { sort: 3 }, { groupBy: 7, hidden: 'x', sort: [1, null, {}] }]) expect(readViewConfig(raw as never, props)).toEqual({ v: 1, groupBy: '', sort: [], hidden: [], filter: [] })
   })
   it('a groupBy that is gone, trashed or not a select is "no grouping"; sort and hidden drop what no longer exists', () => {
     const cfg = readViewConfig({ v: 1, groupBy: 'n', sort: [{ prop: 'n', dir: 'desc' }, { prop: 'gone', dir: 'asc' }, { prop: 't', dir: 'sideways' }], hidden: ['t', 'gone', 5] }, props)
-    expect(cfg).toEqual({ v: 1, groupBy: '', sort: [{ prop: 'n', dir: 'desc' }, { prop: 't', dir: 'asc' }], hidden: ['t'] })
+    expect(cfg).toEqual({ v: 1, groupBy: '', sort: [{ prop: 'n', dir: 'desc' }, { prop: 't', dir: 'asc' }], hidden: ['t'], filter: [] })
     expect(readViewConfig({ groupBy: 's' }, props).groupBy).toBe('s')
     expect(readViewConfig({ groupBy: 's' }, [{ ...props[1]!, trashed: true }]).groupBy).toBe('')
   })
@@ -72,10 +72,33 @@ describe('moving a card is ONE op', () => {
     await moveCard(c, r, sel, b, null, null)
     expect((await store.run(tx => tx.listOutbox(1000))).length).toBe(before + 1)
     const m = (await readStructured(store)).databases.get(db.id)!
-    const cols = boardColumns(m.rows, m.properties, { v: 1, groupBy: sel, sort: [], hidden: [] })
+    const cols = boardColumns(m.rows, m.properties, { v: 1, groupBy: sel, sort: [], hidden: [], filter: [] })
     expect(cols.find(x => x.id === b)!.rows.map(x => x.id)).toEqual([r])
     expect(cols.find(x => x.id === a)!.rows).toEqual([])
     await moveCard(c, r, sel, '', null, null) // back to "no value"
-    expect(boardColumns((await readStructured(store)).databases.get(db.id)!.rows, m.properties, { v: 1, groupBy: sel, sort: [], hidden: [] })[0]!.rows.map(x => x.id)).toEqual([r])
+    expect(boardColumns((await readStructured(store)).databases.get(db.id)!.rows, m.properties, { v: 1, groupBy: sel, sort: [], hidden: [], filter: [] })[0]!.rows.map(x => x.id)).toEqual([r])
+  })
+})
+
+describe('filter', () => {
+  const props = [
+    { id: 'n', name: 'نام', type: 'text', options: [], trashed: false, isTitle: true },
+    { id: 'p', name: 'قیمت', type: 'number', options: [], trashed: false, isTitle: false },
+    { id: 's', name: 'وضعیت', type: 'select', options: [{ id: 'o1', name: 'تمام', color: '', sortKey: 'a' }], trashed: false, isTitle: false },
+  ] as never[]
+  const row = (id: string, cells: Record<string, unknown>) => ({ id, db: 'd', sortKey: id, trashed: false, createdAt: 0, cells, title: '' }) as never
+  const rows = [row('1', { n: 'کتاب', p: '10', s: 'o1' }), row('2', { n: 'قلم', p: '25' }), row('3', { n: 'کتابچه', p: '7' })]
+  const run = (filter: unknown[]) => viewRows(rows, props, readViewConfig({ v: 1, filter } as never, props)).map(r => r.id)
+  it('every rule must hold; text contains, numbers compare exactly, select and empty work', () => {
+    expect(run([{ prop: 'n', op: 'contains', value: 'کتاب' }])).toEqual(['1', '3'])
+    expect(run([{ prop: 'n', op: 'contains', value: 'کتاب' }, { prop: 'p', op: 'gt', value: '8' }])).toEqual(['1'])
+    expect(run([{ prop: 's', op: 'is', value: 'o1' }])).toEqual(['1'])
+    expect(run([{ prop: 's', op: 'empty', value: '' }])).toEqual(['2', '3'])
+    expect(run([{ prop: 'p', op: 'lt', value: '10' }])).toEqual(['3'])
+  })
+  it('a rule on a property that is gone, or with an unknown operator, is ignored when the config is read; unknown fields survive a patch', () => {
+    expect(run([{ prop: 'gone', op: 'is', value: 'x' }, { prop: 'n', op: 'nope', value: 'x' }])).toEqual(['1', '2', '3'])
+    const kept = patchViewConfig({ v: 1, future: 5 } as never, { filter: [{ prop: 'n', op: 'is', value: 'x' }] }) as { future: number; filter: unknown[] }
+    expect(kept.future).toBe(5); expect(kept.filter).toHaveLength(1)
   })
 })

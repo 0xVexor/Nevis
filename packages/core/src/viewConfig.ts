@@ -9,6 +9,10 @@ import type { CellValue, PropertyModel, RowModel } from './records'
 
 export const VIEW_CONFIG_VERSION = 1
 export interface SortRule { prop: string; dir: 'asc' | 'desc' }
+/** One condition of a view's filter; all of a view's rules must hold. `value` is the text typed (a number, a date, or an option id for select). */
+export type FilterOp = 'contains' | 'not_contains' | 'is' | 'is_not' | 'gt' | 'lt' | 'empty' | 'not_empty' | 'checked' | 'unchecked'
+export interface FilterRule { prop: string; op: FilterOp; value: string }
+const FILTER_OPS: readonly string[] = ['contains', 'not_contains', 'is', 'is_not', 'gt', 'lt', 'empty', 'not_empty', 'checked', 'unchecked']
 export interface ViewConfig {
   v: number
   /** board: the select property whose options are the columns ('' = none) */
@@ -16,28 +20,33 @@ export interface ViewConfig {
   sort: SortRule[]
   /** property ids not shown */
   hidden: string[]
+  /** conditions a row must meet to be shown (all of them) */
+  filter: FilterRule[]
 }
-export const DEFAULT_VIEW_CONFIG: ViewConfig = { v: VIEW_CONFIG_VERSION, groupBy: '', sort: [], hidden: [] }
+export const DEFAULT_VIEW_CONFIG: ViewConfig = { v: VIEW_CONFIG_VERSION, groupBy: '', sort: [], hidden: [], filter: [] }
 
 const isObj = (x: unknown): x is Record<string, Json> => !!x && typeof x === 'object' && !Array.isArray(x)
 
 export function readViewConfig(raw: Json | undefined, props: readonly PropertyModel[] = []): ViewConfig {
-  if (!isObj(raw)) return { ...DEFAULT_VIEW_CONFIG, sort: [], hidden: [] }
+  if (!isObj(raw)) return { ...DEFAULT_VIEW_CONFIG, sort: [], hidden: [], filter: [] }
   const live = new Map(props.filter(p => !p.trashed).map(p => [p.id, p]))
   const groupBy = typeof raw.groupBy === 'string' && live.get(raw.groupBy)?.type === 'select' ? raw.groupBy : ''
   const sort: SortRule[] = []
   if (Array.isArray(raw.sort)) for (const r of raw.sort) if (isObj(r) && typeof r.prop === 'string' && live.has(r.prop)) sort.push({ prop: r.prop, dir: r.dir === 'desc' ? 'desc' : 'asc' })
   const hidden = Array.isArray(raw.hidden) ? raw.hidden.filter((h): h is string => typeof h === 'string' && live.has(h)) : []
-  return { v: typeof raw.v === 'number' ? raw.v : VIEW_CONFIG_VERSION, groupBy, sort, hidden }
+  const filter: FilterRule[] = []
+  if (Array.isArray(raw.filter)) for (const r of raw.filter) if (isObj(r) && typeof r.prop === 'string' && live.has(r.prop) && typeof r.op === 'string' && FILTER_OPS.includes(r.op)) filter.push({ prop: r.prop, op: r.op as FilterOp, value: typeof r.value === 'string' ? r.value : '' })
+  return { v: typeof raw.v === 'number' ? raw.v : VIEW_CONFIG_VERSION, groupBy, sort, hidden, filter }
 }
 
 /** The config to store after changing some fields: the fields this build does not know are kept as they were (a newer build wrote them). */
-export function patchViewConfig(raw: Json | undefined, patch: Partial<Pick<ViewConfig, 'groupBy' | 'sort' | 'hidden'>>): Json {
+export function patchViewConfig(raw: Json | undefined, patch: Partial<Pick<ViewConfig, 'groupBy' | 'sort' | 'hidden' | 'filter'>>): Json {
   const base = isObj(raw) ? { ...raw } : {}
   const next: Record<string, Json> = { ...base, v: Math.max(VIEW_CONFIG_VERSION, typeof base.v === 'number' ? base.v : 0) }
   if (patch.groupBy !== undefined) next.groupBy = patch.groupBy
   if (patch.sort !== undefined) next.sort = patch.sort.map(s => ({ prop: s.prop, dir: s.dir }))
   if (patch.hidden !== undefined) next.hidden = [...patch.hidden]
+  if (patch.filter !== undefined) next.filter = patch.filter.map(f => ({ prop: f.prop, op: f.op, value: f.value }))
   return next
 }
 
@@ -57,11 +66,34 @@ function compareCells(p: PropertyModel, a: CellValue | undefined, b: CellValue |
 }
 
 /** Rows in the order of the view: its sort rules, then the rows' own order (sortKey, id) so equal rows keep a stable place. Trashed rows are left out. */
+/** Does a row meet one condition? A rule that names a property that is gone never reaches here (it is dropped when the config is read). */
+export function matchRule(p: PropertyModel, v: CellValue | undefined, rule: FilterRule): boolean {
+  const empty = isEmpty(v)
+  const q = rule.value.trim()
+  switch (rule.op) {
+    case 'empty': return empty
+    case 'not_empty': return !empty
+    case 'checked': return v === true
+    case 'unchecked': return v !== true
+    case 'gt': return !empty && p.type === 'number' && compareDecimal(text(v), q) > 0
+    case 'lt': return !empty && p.type === 'number' && compareDecimal(text(v), q) < 0
+    case 'is': case 'is_not': {
+      const has = p.type === 'select' ? v === q : Array.isArray(v) ? v.includes(q) : p.type === 'number' ? !empty && compareDecimal(text(v), q) === 0 : text(v).trim() === q
+      return rule.op === 'is' ? has : !has
+    }
+    case 'contains': case 'not_contains': {
+      const has = Array.isArray(v) ? v.includes(q) : text(v).toLowerCase().includes(q.toLowerCase())
+      return rule.op === 'contains' ? has : !has
+    }
+  }
+}
+
 export function viewRows(rows: readonly RowModel[], props: readonly PropertyModel[], config: ViewConfig): RowModel[] {
   const by = new Map(props.map(p => [p.id, p]))
-  const out = rows.filter(r => !r.trashed)
+  let out = rows.filter(r => !r.trashed)
+  for (const rule of config.filter ?? []) { const p = by.get(rule.prop); if (p) out = out.filter(r => matchRule(p, r.cells[p.id], rule)) }
   if (!config.sort.length) return out
-  return out.sort((x, y) => {
+  return [...out].sort((x, y) => {
     for (const s of config.sort) {
       const p = by.get(s.prop)
       if (!p) continue

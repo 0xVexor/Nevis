@@ -19,7 +19,7 @@ await page.waitForTimeout(1200)
 // a database with a board
 await createNew(page, 'new-database')
 await page.getByTestId('db-title').fill('کتاب‌ها')
-for (const [n, t] of [['وضعیت', 'select'], ['قیمت', 'number']]) { await page.getByTestId('db-prop-name').fill(n); await page.getByTestId('db-prop-type').selectOption(t); await page.getByTestId('db-add-prop').click(); await page.locator(`th[data-prop="${n}"]`).waitFor() }
+for (const [n, t] of [['وضعیت', 'select'], ['قیمت', 'number']]) { if (!(await page.getByTestId('db-prop-name').isVisible())) await page.getByTestId('chip-props').click(); await page.getByTestId('db-prop-name').fill(n); await page.getByTestId('db-prop-type').selectOption(t); await page.getByTestId('db-add-prop').click(); await page.keyboard.press('Escape'); await page.locator('.ds-pop').first().waitFor({ state: 'detached' }); await page.locator(`th[data-prop="${n}"]`).waitFor() }
 for (const o of ['در انتظار', 'در حال انجام', 'تمام']) { await page.locator('th[data-prop="وضعیت"]').getByTestId('opt-name').fill(o); await page.locator('th[data-prop="وضعیت"]').getByTestId('opt-add').click(); await page.waitForTimeout(150) }
 for (let i = 0; i < 3; i++) { await page.getByTestId('db-add-row').click(); await page.waitForTimeout(150); await page.locator(`[data-testid=cell][data-prop="نام"][data-row="${i}"] input`).fill(['الف', 'ب', 'ج'][i]); await page.locator(`[data-testid=cell][data-prop="نام"][data-row="${i}"] input`).blur() }
 await page.locator('[data-testid=cell][data-prop="وضعیت"][data-row="0"] select').selectOption({ label: 'در انتظار' })
@@ -34,7 +34,7 @@ for (const scheme of ['light', 'dark']) {
   await page.getByTestId('page-row').first().dblclick(); await page.waitForTimeout(2500); await page.screenshot({ path: `${out}/${scheme}-allblocks.png` })
   await page.evaluate(() => document.querySelector('.callout')?.scrollIntoView()); await page.waitForTimeout(400); await page.screenshot({ path: `${out}/${scheme}-callout.png` })
   await page.getByTestId('page-row').nth(1).dblclick(); await page.waitForTimeout(600); await page.screenshot({ path: `${out}/${scheme}-table.png` })
-  await page.getByTestId('new-view-board').click(); await page.waitForTimeout(500); await page.screenshot({ path: `${out}/${scheme}-board.png` })
+  await page.getByTestId('add-view').click(); await page.getByTestId('new-view-board').click(); await page.waitForTimeout(500); await page.screenshot({ path: `${out}/${scheme}-board.png` })
   await page.keyboard.press('Control+k'); await page.locator('.ds-command-dialog input').first().fill('كتاب'); await page.waitForTimeout(400); await page.screenshot({ path: `${out}/${scheme}-palette.png` }); await page.keyboard.press('Escape')
   await page.getByTestId('nav-settings').click(); await page.waitForTimeout(300); await page.screenshot({ path: `${out}/${scheme}-settings.png` })
   await page.getByTestId('nav-home').click()

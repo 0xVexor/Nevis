@@ -1,3 +1,4 @@
+import { addProp } from './db-helpers'
 import { expect, test, type Page } from '@playwright/test'
 import { createNew, appReady } from './shell-helpers'
 
@@ -24,7 +25,7 @@ const head = (page: Page) => page.evaluate(async () => { const r = await fetch(`
 
 async function seed(page: Page) {
   for (const [n, t] of [['وضعیت', 'select'], ['قیمت', 'number']] as const) {
-    await page.getByTestId('db-prop-name').fill(n); await page.getByTestId('db-prop-type').selectOption(t); await page.getByTestId('db-add-prop').click()
+    await addProp(page, n, t)
     await page.locator(`th[data-prop="${n}"]`).waitFor()
   }
   for (const o of ['در انتظار', 'در حال انجام', 'تمام']) {
@@ -45,24 +46,30 @@ async function seed(page: Page) {
 test('table view: sort by a number (exact), hide a column, and the view config survives a reload', async ({ page }) => {
   await open(page)
   await seed(page)
+  await page.getByTestId('chip-sort').click()
   await page.getByTestId('sort-prop').selectOption({ label: 'قیمت' })
   await expect.poll(async () => (await page.locator('[data-testid=cell][data-prop="نام"] input').evaluateAll(els => els.map(e => (e as HTMLInputElement).value)))).toEqual(['ب', 'ج', 'الف']) // 5, 12.5, 30
   await page.getByTestId('sort-dir').click()
   await expect.poll(async () => (await page.locator('[data-testid=cell][data-prop="نام"] input').evaluateAll(els => els.map(e => (e as HTMLInputElement).value)))).toEqual(['الف', 'ج', 'ب'])
-  await page.locator('.hidecols summary').click()
+  await page.keyboard.press('Escape')
+  await page.locator('.ds-pop').first().waitFor({ state: 'detached' })
+  await page.getByTestId('chip-props').click()
   await page.getByTestId('col-toggle').nth(1).uncheck() // the status column
+  await page.keyboard.press('Escape')
+  await page.locator('.ds-pop').first().waitFor({ state: 'detached' })
   await expect(page.locator('th[data-prop="وضعیت"]')).toHaveCount(0)
   await settled(page)
   await page.reload()
   await page.getByTestId('ws-list').getByRole('button').first().click()
   await page.getByTestId('page-row').first().dblclick()
   await expect(page.locator('th[data-prop="وضعیت"]')).toHaveCount(0)
-  await expect(page.getByTestId('sort-dir')).toContainText('نزولی')
+  await expect(page.locator('.dv-conditions')).toContainText('نزولی')
 })
 
 test('board view: columns are the options; dragging a card moves it as ONE op; the table shows the same data', async ({ page, browserName }) => {
   await open(page)
   await seed(page)
+  await page.getByTestId('add-view').click()
   await page.getByTestId('new-view-board').click()
   await expect(page.getByTestId('board')).toBeVisible()
   await expect(page.getByTestId('board-col')).toHaveCount(4) // no value + three options

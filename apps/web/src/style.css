@@ -66,3 +66,10 @@ ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 .dbtable th input.colname { border-color: transparent; background: transparent; font: inherit; font-weight: 550; }
 .db-empty { margin: var(--ds-s4); }
 .db-foot { padding: var(--ds-s3) var(--ds-s4); background: var(--ds-sunk); border-block-start: 1px solid var(--ds-line); color: var(--ds-text-3); font-size: var(--ds-text-caption, .78rem); }
+
+.vh { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; margin: 0; opacity: 0; cursor: inherit; }
+.ds-icon-btn:has(> .vh) { position: relative; }
+.dv-cond { display: flex; flex-wrap: wrap; gap: var(--ds-s2); align-items: center; margin-block-end: var(--ds-s2); }
+.dv-cond :is(input, select) { block-size: 32px; padding-inline: var(--ds-s2); border: 1px solid var(--ds-line); border-radius: var(--ds-r-md, 8px); background: var(--ds-raised); color: var(--ds-text); font: inherit; font-size: var(--ds-text-small, .85rem); }
+.dv-proplist :is(input[type=text], select), .dv-pair :is(input, select), .ds-pop select { block-size: 32px; padding-inline: var(--ds-s2); border: 1px solid var(--ds-line); border-radius: var(--ds-r-md, 8px); background: var(--ds-raised); color: var(--ds-text); font: inherit; }
+.dv-new > .ds-btn:only-child { inline-size: auto; }

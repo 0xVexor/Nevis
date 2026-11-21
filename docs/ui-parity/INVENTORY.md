@@ -31,11 +31,11 @@ Done for a screen = screenshot pair with the same data shows no difference the o
 Screenshot pairs checked and matching the old app (differences only in data such as times): shell, Home, page (header, properties, drawer, reader, toolbar, find), Settings (all tabs), Tasks (inbox, lists), Templates (old five + drawing), Flashcards (empty state), All pages, Graph, Files, Drawings, Databases (list), mobile width (Home).
 
 Known differences, kept honest:
-- Database page and board: old frame, header row and empty state, but not the old toolbar (filter, group, view types calendar/chart/form/dashboard, properties panel). The old database UI (~10k lines) sits on a different engine; it is a separate piece of work.
+- Database page: old frame and old toolbar (view tabs, search, filter, sort, group, properties panel, New). Not done: calendar, chart, form, dashboard and map views, the old column menu and the row peek: the old database UI (~10k lines) sits on a different engine and the data model here has table and board only.
 - Drawings list shows a pencil instead of a thumbnail (the picture is not stored apart from its scene).
 - Databases list preview is a short summary (properties, first rows), not the old live preview.
 - Flashcard review mode, History and Trash were compared only in their empty/first-round form.
 - Sync tab in Settings is minimal; the AI connection tab waits for M14; slides are not part of this app.
 - Copied files carry `@ts-nocheck` (graph, Explorer, Drawings, Databases, Toolbar): they ran as written in the old app; the new strict index checks are not applied to them.
 
-Tests: Playwright 133 passed across Chromium (47), Firefox and WebKit (86); `pnpm check` clean. New: tests/screens.spec.ts (inbox tasks, files/drawings/databases, find in page and toolbar).
+Tests: Playwright 133 passed on three engines (11 skipped on purpose), core unit tests 112, `pnpm test:engines` green; `pnpm check` clean. New: tests/screens.spec.ts (inbox tasks, files/drawings/databases, find in page and toolbar).

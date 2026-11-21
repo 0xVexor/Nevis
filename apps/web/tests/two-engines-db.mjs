@@ -30,7 +30,7 @@ try {
   await createNew(a, 'new-database')
   await a.getByTestId('db-title').fill('کتاب‌ها')
   for (const [n, t] of [['الف', 'text'], ['ب', 'text'], ['ژانر', 'select']]) {
-    await a.getByTestId('db-prop-name').fill(n); await a.getByTestId('db-prop-type').selectOption(t); await a.getByTestId('db-add-prop').click()
+    if (!(await a.getByTestId('db-prop-name').isVisible())) await a.getByTestId('chip-props').click(); await a.getByTestId('db-prop-name').fill(n); await a.getByTestId('db-prop-type').selectOption(t); await a.getByTestId('db-add-prop').click(); await a.locator(`th[data-prop="${n}"]`).waitFor(); await a.keyboard.press('Escape'); await a.locator('.ds-pop').first().waitFor({ state: 'detached' })
     await a.locator(`th[data-prop="${n}"]`).waitFor()
   }
   await a.getByTestId('db-add-row').click()

@@ -1,3 +1,4 @@
+import { addProp } from './db-helpers'
 import { expect, test, type Page } from '@playwright/test'
 import { createNew, appReady } from './shell-helpers'
 
@@ -26,9 +27,7 @@ test('a database: columns of several types, an option, rows, Persian digits in a
   await expect(page.getByTestId('db-view')).toBeVisible()
   await page.getByTestId('db-title').fill('کتاب‌ها')
   for (const [name, type] of [['قیمت', 'number'], ['ژانر', 'select'], ['خوانده', 'checkbox'], ['تاریخ', 'date']] as const) {
-    await page.getByTestId('db-prop-name').fill(name)
-    await page.getByTestId('db-prop-type').selectOption(type)
-    await page.getByTestId('db-add-prop').click()
+    await addProp(page, name, type)
     await expect(page.locator(`th[data-prop="${name}"]`)).toBeVisible()
   }
   // a select option, added from the table
@@ -76,9 +75,7 @@ test.describe('a browser west of UTC', () => {
   test('a date cell keeps its day (stored 2026-11-20, shown 29 Aban 1405) and the stored form is the Gregorian day typed', async ({ page }) => {
     await signUpAndOpen(page)
     await createNew(page, 'new-database')
-    await page.getByTestId('db-prop-name').fill('تاریخ')
-    await page.getByTestId('db-prop-type').selectOption('date')
-    await page.getByTestId('db-add-prop').click()
+    await addProp(page, 'تاریخ', 'date')
     await page.getByTestId('db-add-row').click()
     expect(await page.evaluate(() => new Date(2026, 10, 20).getTimezoneOffset())).toBeGreaterThan(0) // really west of UTC
     await cell(page, 'تاریخ', 0).locator('input').fill('2026-11-20')

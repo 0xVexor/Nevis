@@ -1,3 +1,4 @@
+import { addProp } from './db-helpers'
 import { expect, test, type Page } from '@playwright/test'
 import { createNew, appReady } from './shell-helpers'
 
@@ -188,10 +189,11 @@ test('dark mode: text keeps WCAG AA contrast (4.5:1) on the callout, the table h
   expect(await ratio('.ds-command-dialog .ds-command-result'), 'palette').toBeGreaterThanOrEqual(AA)
   await page.keyboard.press('Escape')
   await createNew(page, 'new-database')
-  await page.getByTestId('db-prop-name').fill('وضعیت'); await page.getByTestId('db-prop-type').selectOption('select'); await page.getByTestId('db-add-prop').click()
+  await addProp(page, 'وضعیت', 'select')
   await page.locator('th[data-prop="وضعیت"]').getByTestId('opt-name').fill('الف'); await page.locator('th[data-prop="وضعیت"]').getByTestId('opt-add').click()
+  await page.getByTestId('add-view').click()
   await page.getByTestId('new-view-board').click()
   await expect(page.getByTestId('board-col').first()).toBeVisible()
   expect(await ratio('.db-board-col h3'), 'board column header').toBeGreaterThanOrEqual(AA)
-  expect(await ratio('.dbtable th, .viewbar'), 'database chrome').toBeGreaterThanOrEqual(AA)
+  expect(await ratio('.dbtable th, .dv-bar'), 'database chrome').toBeGreaterThanOrEqual(AA)
 })
