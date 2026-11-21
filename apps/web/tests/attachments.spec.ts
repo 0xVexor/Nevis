@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { expect, test, type Page } from '@playwright/test'
+import { createNew, appReady } from './shell-helpers'
 
 // ROADMAP M9 in the real app, against the real Go server: images and files go into a page, live on this device first, upload in the
 // background, and the op that names them waits for them. Chromium, WebKit and Firefox.
@@ -21,11 +22,11 @@ async function signUp(page: Page, name = `a${Date.now().toString(36)}${Math.rand
   await page.getByTestId('auth-submit').click()
   await expect(page.getByTestId('recovery')).toBeVisible()
   await page.getByTestId('ws-new').click()
-  await expect(page.getByTestId('new-page')).toBeVisible()
+  await appReady(page)
   return name
 }
 async function newPage(page: Page) {
-  await page.getByTestId('new-page').click()
+  await createNew(page, 'new-page')
   await expect(body(page)).toBeVisible()
   await page.waitForFunction(() => !!(window as unknown as { __editor?: unknown }).__editor)
 }
@@ -73,7 +74,7 @@ test('an image picked from the slash menu shows at once, uploads in the backgrou
   expect(await serverHas(page, await myWorkspace(page), sha(PNG))).toBe(200)
   await page.reload()
   await page.getByTestId('ws-list').getByRole('button').first().click()
-  await page.getByTestId('page-row').first().getByRole('button').nth(1).click()
+  await page.getByTestId('page-row').first().click()
   await expect(page.locator('.image-block img')).toBeVisible()
   expect(await page.locator('.image-block img').evaluate((i: HTMLImageElement) => i.naturalWidth)).toBe(1)
 })
@@ -123,7 +124,7 @@ test('offline: the image is kept and shown here, the op waits; online: it upload
     await b.getByTestId('auth-submit').click()
     await b.getByTestId('ws-list').getByRole('button').first().click()
     await expect(b.getByTestId('page-row')).toHaveCount(1, { timeout: 30_000 })
-    await b.getByTestId('page-row').first().getByRole('button').nth(1).click()
+    await b.getByTestId('page-row').first().click()
     const img = b.locator('.image-block img')
     await expect(img).toBeVisible({ timeout: 30_000 })
     expect(await img.evaluate((i: HTMLImageElement) => i.naturalWidth)).toBe(1)

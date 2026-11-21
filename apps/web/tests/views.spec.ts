@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { createNew, appReady } from './shell-helpers'
 
 // ROADMAP M8b: the database views on the M7 model: tabs, sort, hidden columns, a board whose cards are moved by dragging (one op), the view config saved.
 const pw = 'correct horse battery'
@@ -13,7 +14,7 @@ async function open(page: Page) {
   await page.getByTestId('auth-submit').click()
   await expect(page.getByTestId('recovery')).toBeVisible()
   await page.getByTestId('ws-new').click()
-  await page.getByTestId('new-database').click()
+  await createNew(page, 'new-database')
   await expect(page.getByTestId('db-view')).toBeVisible()
 }
 const cell = (page: Page, prop: string, row: number) => page.locator(`[data-testid=cell][data-prop="${prop}"][data-row="${row}"]`)
@@ -54,7 +55,7 @@ test('table view: sort by a number (exact), hide a column, and the view config s
   await settled(page)
   await page.reload()
   await page.getByTestId('ws-list').getByRole('button').first().click()
-  await page.getByTestId('page-row').first().getByRole('button').nth(1).click()
+  await page.getByTestId('page-row').first().click()
   await expect(page.locator('th[data-prop="وضعیت"]')).toHaveCount(0)
   await expect(page.getByTestId('sort-dir')).toContainText('نزولی')
 })

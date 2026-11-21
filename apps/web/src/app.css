@@ -1,0 +1,50 @@
+/* The old app's stylesheet, import order included ("Aurora Paper": tokens first, print last). Copied, not rewritten. */
+@import '@fontsource/instrument-sans/400.css';
+@import '@fontsource/instrument-sans/500.css';
+@import '@fontsource/instrument-sans/600.css';
+@import '@fontsource/instrument-sans/700.css';
+@import '@fontsource/newsreader/400.css';
+@import '@fontsource/newsreader/500.css';
+@import '@fontsource/vazirmatn/400.css';
+@import '@fontsource/vazirmatn/500.css';
+@import '@fontsource/vazirmatn/700.css';
+@import '@fontsource/vazirmatn/800.css';
+
+/* Nevis "Aurora Paper" design system — see docs/design-language.md. Order matters: tokens first, print last. */
+@import './ds/areas/tokens.css';
+@import './ds/areas/base.css';
+@import './ds/areas/shell.css';
+@import './ds/areas/page.css';
+@import './ds/areas/editor.css';
+@import './ds/areas/overlays.css';
+@import './ds/areas/views.css';
+@import './ds/areas/settings.css';
+@import './ds/areas/panels.css';
+@import './ds/areas/page-meta.css';
+@import './ds/areas/palette.css';
+@import './ds/areas/bubbles.css';
+@import './ds/areas/content.css';
+@import './ds/areas/explorer.css';
+@import './ds/areas/databases.css';
+@import './ds/areas/scrollbars.css';
+@import './ds/areas/updates.css';
+@import './ds/areas/sync-indicator.css';
+@import './ds/areas/layout.css';
+/* New design system (docs/design-system.md). Everything is prefixed ds-, so it never touches the legacy styles above. */
+@import './ds/tokens.css';
+@import './ds/components.css';
+@import './ds/navigation.css';
+@import './ds/preferences.css';
+@import './ds/home.css';
+
+@import './ds/areas/templates.css';
+@import './ds/areas/tasks.css';
+@import './ds/areas/flashcards.css';
+@import './ds/areas/pages-table.css';
+@import './ds/areas/drawings.css';
+@import './ds/areas/graph.css';
+@import './ds/areas/preferences-workspace.css';
+@import './ds/areas/onboarding.css';
+@import './ds/areas/reader.css';
+@import './ds/areas/toolbar.css';
+@import './ds/areas/print.css';

@@ -9,7 +9,7 @@ const INDEX_KEY = 'derived_search'
 const PAGES_KEY = 'derived_pages'
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-interface PageInfo { title: string; links: PageLinkRef[]; tasks: PageTask[] }
+interface PageInfo { title: string; links: PageLinkRef[]; tasks: PageTask[]; /** the first ~160 characters of the text */ excerpt?: string; /** when this device last saw the page change (0 = not known) */ at?: number }
 
 export class SearchService {
   private worker: Worker
@@ -80,6 +80,7 @@ export class SearchService {
     const gone = [...this.info.keys()].filter(id => !live.has(id))
     if (gone.length) { await this.call({ t: 'remove', ids: gone }); for (const id of gone) this.info.delete(id) }
     const todo = this.stale()
+    const dirty = new Set(this.dirtyDocs)
     this.dirtyDocs.clear()
     if (!todo.length) { this.finish(gone.length > 0); return }
     this.progress = { done: 0, total: todo.length }
@@ -91,7 +92,8 @@ export class SearchService {
         if (p.type !== 'database') {
           try { const ex = extractPage(project(await this.store.run(tx => loadDoc(tx, p.id)))); text = ex.text; links = ex.links; tasks = ex.tasks } catch { /* unreadable page: indexed by title only */ }
         }
-        this.info.set(p.id, { title: p.title, links, tasks })
+        const prev = this.info.get(p.id)
+        this.info.set(p.id, { title: p.title, links, tasks, excerpt: text.replace(/\s+/g, ' ').trim().slice(0, 160), at: dirty.has(p.id) || p.title !== prev?.title ? Date.now() : (prev?.at ?? 0) })
         docs.push({ id: p.id, title: p.title, body: text })
       }
       await this.call({ t: 'add', docs })
@@ -121,6 +123,10 @@ export class SearchService {
     const alive = new Set(this.pages.filter(p => !p.trashed).map(p => p.id))
     return hits.filter(h => alive.has(h.id)).slice(0, limit)
   }
+
+  /** The first characters of a page's text, and when this device last saw it change (0 = not known). */
+  excerptOf(id: string): string { return this.info.get(id)?.excerpt ?? '' }
+  touchedAt(id: string): number { return this.info.get(id)?.at ?? 0 }
 
   /** Pages that link to `id`: by the target's id, so a rename of `id` changes nothing here. */
   backlinks(id: string): string[] {

@@ -23,6 +23,8 @@ export type MenuItem =
       disabled?: boolean
       raw?: boolean
       onSelect?: () => void
+      /** a stable hook for automated tests */
+      testid?: string
       /** submenu; opens on hover or focus */
       items?: MenuItem[]
     }
@@ -78,6 +80,7 @@ function Items({ items, onPick }: { items: MenuItem[]; onPick: () => void }) {
             key={n}
             {...(it.items ? { tabIndex: 0, 'aria-haspopup': 'menu' as const } : { type: 'button' as const })}
             role="menuitem"
+            data-testid={it.testid}
             className="ds-menu-item"
             data-danger={it.danger || undefined}
             disabled={it.items ? undefined : it.disabled}

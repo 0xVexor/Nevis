@@ -1,0 +1,9 @@
+/* Workspace search now lives in ../commands.css; slash and reader styles remain here. */
+
+/* ───────── slash menu ───────── */
+
+/* A small picture of what the highlighted "/" command writes, beside the menu (see editor/slashPreview.ts) */
+.slash-preview { position: fixed; z-index: calc(var(--ds-z-float) + 1); inline-size: 224px; padding: var(--ds-s2); border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); box-shadow: var(--ds-shadow-pop); pointer-events: none; animation: ds-pop var(--ds-fast) var(--ds-ease); }
+.slash-preview svg { display: block; inline-size: 100%; block-size: auto; border-radius: var(--ds-r); background: var(--ds-bg); }
+@media (prefers-reduced-motion: reduce) { .slash-preview { animation: none; } }
+.palette mark { background: color-mix(in oklab, var(--ds-accent) 20%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; font-weight: inherit; }

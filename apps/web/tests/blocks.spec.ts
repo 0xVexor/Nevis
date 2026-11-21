@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { createNew, appReady } from './shell-helpers'
 
 // ROADMAP M8a: every block of the old editor, inserted from the slash menu in the real app, rendered, saved, and read back after a reload.
 const pw = 'correct horse battery'
@@ -13,7 +14,7 @@ async function signUpAndOpen(page: Page) {
   await page.getByTestId('auth-submit').click()
   await expect(page.getByTestId('recovery')).toBeVisible()
   await page.getByTestId('ws-new').click()
-  await expect(page.getByTestId('new-page')).toBeVisible()
+  await appReady(page)
   return name
 }
 const body = (page: Page) => page.getByTestId('editor').locator('.ProseMirror')
@@ -55,7 +56,7 @@ const BLOCKS: { id: string; query: string; type: string; check?: (n: Json) => bo
 
 test('every block can be inserted from the slash menu; they render, persist and come back after a reload', async ({ page }) => {
   await signUpAndOpen(page)
-  await page.getByTestId('new-page').click()
+  await createNew(page, 'new-page')
   await expect(body(page)).toBeVisible()
   await page.waitForFunction(() => !!(window as unknown as { __editor?: unknown }).__editor)
   for (const b of BLOCKS) {
@@ -112,7 +113,7 @@ test('every block can be inserted from the slash menu; they render, persist and 
   await expect.poll(async () => page.evaluate(async () => { const st = await (window as unknown as { __ws: { status: () => Promise<{ outbox: number; unsaved: number }> } }).__ws.status(); return st.outbox === 0 && st.unsaved === 0 }), { timeout: 30_000 }).toBe(true)
   await page.reload()
   await page.getByTestId('ws-list').getByRole('button').first().click()
-  await page.getByTestId('page-row').first().getByRole('button').nth(1).click()
+  await page.getByTestId('page-row').first().click()
   await expect(body(page).locator('.math-block .katex')).toBeVisible({ timeout: 15_000 })
   expect((await docJson(page)).content!.map(c => c.type)).toEqual(before)
   expect(find(await docJson(page), 'mathBlock')[0]!.attrs!.latex).toBe('x^2 + \\frac{a}{b}')
@@ -121,7 +122,7 @@ test('every block can be inserted from the slash menu; they render, persist and 
 
 test('the drag handle appears next to a block on hover (blocks are moved with the official TipTap drag-handle extension)', async ({ page }) => {
   await signUpAndOpen(page)
-  await page.getByTestId('new-all-blocks').click()
+  await createNew(page, 'new-all-blocks')
   await expect(body(page).locator('.callout')).toBeVisible({ timeout: 30_000 })
   await body(page).locator('.callout').hover()
   await expect(page.locator('.drag-handle')).toBeVisible()
@@ -131,7 +132,7 @@ test('dragging a block with its handle moves it; the new order is saved and surv
   // HTML5 drag-and-drop through scripted mouse events is reliable in Chromium only; WebKit and Firefox are covered by the owner's checklist.
   test.skip(browserName !== 'chromium', 'scripted HTML5 drag-and-drop is only reliable in Chromium')
   await signUpAndOpen(page)
-  await page.getByTestId('new-page').click()
+  await createNew(page, 'new-page')
   await page.waitForFunction(() => !!(window as unknown as { __editor?: unknown }).__editor)
   await page.evaluate(() => (window as unknown as { __editor: { commands: { setContent: (c: unknown) => void } } }).__editor.commands.setContent({
     type: 'doc', content: ['اول', 'دوم', 'سوم'].map(t => ({ type: 'paragraph', content: [{ type: 'text', text: t }] })),
@@ -151,7 +152,7 @@ test('dragging a block with its handle moves it; the new order is saved and surv
   await expect.poll(async () => page.evaluate(async () => { const st = await (window as unknown as { __ws: { status: () => Promise<{ outbox: number; unsaved: number }> } }).__ws.status(); return st.outbox === 0 && st.unsaved === 0 }), { timeout: 30_000 }).toBe(true)
   await page.reload()
   await page.getByTestId('ws-list').getByRole('button').first().click()
-  await page.getByTestId('page-row').first().getByRole('button').nth(1).click()
+  await page.getByTestId('page-row').first().click()
   await expect(body(page)).toContainText('اول')
   expect(await order()).toEqual(['دوم', 'سوم', 'اول'])
 })
@@ -160,7 +161,7 @@ test('/ typed AFTER text on the same line: the slash text goes, the line stays, 
   const errors: string[] = []
   page.on('pageerror', e => errors.push(String(e)))
   await signUpAndOpen(page)
-  await page.getByTestId('new-page').click()
+  await createNew(page, 'new-page')
   await page.waitForFunction(() => !!(window as unknown as { __editor?: unknown }).__editor)
   await body(page).click()
   await page.keyboard.type('متن /callout')

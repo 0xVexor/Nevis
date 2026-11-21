@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { createNew, appReady } from './shell-helpers'
 
 // ROADMAP M8a: paste from Markdown, from a web page / Word / an AI chat. Pasted content is untrusted: nothing that runs, nothing huge.
 const pw = 'correct horse battery'
@@ -16,7 +17,7 @@ async function open(page: Page) {
   await page.getByTestId('auth-submit').click()
   await expect(page.getByTestId('recovery')).toBeVisible()
   await page.getByTestId('ws-new').click()
-  await page.getByTestId('new-page').click()
+  await createNew(page, 'new-page')
   await page.waitForFunction(() => !!(window as unknown as { __editor?: unknown }).__editor)
   await page.getByTestId('editor').locator('.ProseMirror').click()
 }

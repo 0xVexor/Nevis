@@ -6,6 +6,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium, firefox, webkit } from '@playwright/test'
+import { createNew } from './shell-helpers.ts'
 
 const root = new URL('../../..', import.meta.url).pathname
 execFileSync(join(root, 'apps/web/node_modules/.bin/vite'), ['build', '--logLevel', 'error'], { cwd: join(root, 'apps/web'), stdio: 'inherit' })
@@ -37,7 +38,7 @@ try {
     await p.getByTestId('auth-submit').click()
     await p.getByTestId('recovery').waitFor()
     await p.getByTestId('ws-new').click()
-    await p.getByTestId('new-all-blocks').click()
+    await createNew(p, 'new-all-blocks')
     await p.locator('.math-block .katex').waitFor({ timeout: 30000 })
     await p.locator('.mermaid-block svg').waitFor({ timeout: 30000 })
     await p.locator('.code-block .hljs-keyword').first().waitFor({ timeout: 15000 })

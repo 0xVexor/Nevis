@@ -1,44 +1,17 @@
 /* The shell (M8b): the design system's tokens (--ds-*) carry the colours, so the theme, the accent and the text size set in Settings reach everything. */
-body { font-family: "Vazirmatn", system-ui, sans-serif; margin: 0; background: var(--ds-bg, #fcfcfb); color: var(--ds-text, #222923); }
 h1 { font-size: 1.5rem; margin: 0 0 .6rem; } h2 { font-size: 1.05rem; margin: 1.2rem 0 .4rem; color: var(--ds-text-2, #58625b); }
 .err { color: var(--ds-danger, #b3402e); }
-.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
 ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 .small { font-size: .8rem; color: var(--ds-text-3, #6a736a); }
-.app { display: flex; flex-direction: column; height: 100vh; }
-.top { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 6px 12px; background: var(--ds-side, #f3f4f2); border-bottom: 1px solid var(--ds-line, #d7ddd7); font-size: .8rem; }
-.cols { display: grid; grid-template-columns: var(--sidebar-width, 264px) 1fr; flex: 1; min-height: 0; }
-.side { overflow: auto; background: var(--ds-side, #f3f4f2); border-inline-end: 1px solid var(--ds-line, #d7ddd7); padding: 8px; }
-.side .ds-row { width: 100%; box-sizing: border-box; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; padding: 6px 8px; border-radius: 8px; }
-.side .ds-row:hover { background: var(--ds-sunk, #eff1ee); }
-.side hr { border: 0; border-top: 1px solid var(--ds-line, #d7ddd7); margin: 8px 0; }
-.side ul { list-style: none; padding: 0; margin: 0; } .side ul ul { padding-inline-start: 14px; } .side li { border: 0; padding: 0; }
-.tree .row { display: flex; align-items: center; margin: 0; } .tree .row.sel { background: var(--ds-accent-soft, #e1efe9); border-radius: 6px; }
-.tree .twist { border: 0; background: none; width: 20px; padding: 0; cursor: pointer; color: inherit; }
-.tree .title { border: 0; background: none; text-align: start; flex: 1; cursor: pointer; padding: 3px 4px; font: inherit; color: inherit; }
-.main { overflow: auto; padding: 10px 22px; }
 .screen { max-width: 920px; margin: 0 auto; padding-block: 8px; }
 .page-title { width: 100%; font: inherit; font-size: 1.6rem; font-weight: 600; border: 0; border-bottom: 1px solid var(--ds-line, #e3e8e3); padding: 4px 0; background: transparent; color: inherit; }
 .editor .ProseMirror { min-height: 50vh; outline: none; padding: 6px 0; line-height: 1.9; }
-.main .bar { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
-.trash { margin-top: 8px; border-top: 1px dashed var(--ds-line, #c8cfc8); padding-top: 6px; }
 .ProseMirror ul, .ProseMirror ol { padding-inline-start: 24px; }
-.nav-toggle { display: none; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; } .cards .ds-card { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; text-align: start; padding: 14px; font: inherit; color: inherit; cursor: pointer; }
 .dstable { width: 100%; border-collapse: collapse; margin: 10px 0; } .dstable th, .dstable td { text-align: start; padding: 6px 8px; border-bottom: 1px solid var(--ds-line, #e3e8e3); } .dstable .ds-row { border: 0; background: none; font: inherit; color: inherit; cursor: pointer; padding: 0; }
 .pager { display: flex; gap: 10px; align-items: center; }
 .shortcuts { display: grid; gap: 4px; margin: 0; } .shortcuts div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--ds-line, #e3e8e3); padding: 3px 0; } .shortcuts dd { margin: 0; color: var(--ds-text-2, #58625b); }
-@media (max-width: 700px) {
-  .nav-toggle { display: inline-flex; }
-  .cols { grid-template-columns: 1fr; position: relative; overflow: hidden; }
-  .main { min-width: 0; }
-  .side { position: absolute; inset-block: 0; inset-inline-start: 0; width: min(86vw, 320px); z-index: 20; transform: translateX(110%); transition: transform .15s; box-shadow: 0 0 24px rgba(0,0,0,.25); }
-  [dir=ltr] .side, html[dir=ltr] .side { transform: translateX(-110%); }
-  .nav-open .side { transform: none; }
-  .main { padding: 8px 12px; }
-  /* a thumb needs room: the tree's small buttons grow */
-  .tree .twist { width: 32px; min-height: 32px; } .tree .title { min-height: 32px; }
-}
+
 
 /* M7: the minimal table view of a database */
 .tablewrap { overflow: auto; margin-top: 8px }

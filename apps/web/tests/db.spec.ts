@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { createNew, appReady } from './shell-helpers'
 
 // ROADMAP M7: a database "کتاب‌ها" in the real app: properties of several types, a select option, cells (with Persian digits),
 // reload: everything persisted and read back typed.
@@ -14,14 +15,14 @@ async function signUpAndOpen(page: Page) {
   await page.getByTestId('auth-submit').click()
   await expect(page.getByTestId('recovery')).toBeVisible()
   await page.getByTestId('ws-new').click()
-  await expect(page.getByTestId('new-database')).toBeVisible()
+  await appReady(page)
   return name
 }
 const cell = (page: Page, prop: string, row: number) => page.locator(`[data-testid=cell][data-prop="${prop}"][data-row="${row}"]`)
 
 test('a database: columns of several types, an option, rows, Persian digits in a number cell; reload keeps it all', async ({ page }) => {
   await signUpAndOpen(page)
-  await page.getByTestId('new-database').click()
+  await createNew(page, 'new-database')
   await expect(page.getByTestId('db-view')).toBeVisible()
   await page.getByTestId('db-title').fill('کتاب‌ها')
   for (const [name, type] of [['قیمت', 'number'], ['ژانر', 'select'], ['خوانده', 'checkbox'], ['تاریخ', 'date']] as const) {
@@ -58,7 +59,7 @@ test('a database: columns of several types, an option, rows, Persian digits in a
 
   await page.reload()
   await page.getByTestId('ws-list').getByRole('button').first().click()
-  await page.getByTestId('page-row').first().getByRole('button').nth(1).click()
+  await page.getByTestId('page-row').first().click()
   await expect(page.getByTestId('db-title')).toHaveValue('کتاب‌ها')
   await expect(page.getByTestId('db-row')).toHaveCount(1)
   await expect(cell(page, 'نام', 0).locator('input')).toHaveValue('بوف کور')
@@ -74,7 +75,7 @@ test.describe('a browser west of UTC', () => {
   test.use({ timezoneId: 'America/Los_Angeles' })
   test('a date cell keeps its day (stored 2026-11-20, shown 29 Aban 1405) and the stored form is the Gregorian day typed', async ({ page }) => {
     await signUpAndOpen(page)
-    await page.getByTestId('new-database').click()
+    await createNew(page, 'new-database')
     await page.getByTestId('db-prop-name').fill('تاریخ')
     await page.getByTestId('db-prop-type').selectOption('date')
     await page.getByTestId('db-add-prop').click()

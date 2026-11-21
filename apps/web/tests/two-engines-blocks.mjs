@@ -1,6 +1,7 @@
 // ROADMAP M8a demo, automated: the "all blocks" page on ONE account in Chromium and WebKit; both OFFLINE: one types in the callout, the
 // other edits a table cell and adds a row; online again, the pages are identical and hold both edits. Offline phase guarded (as in M5/M7).
 import { chromium, webkit } from '@playwright/test'
+import { createNew } from './shell-helpers.ts'
 
 const BASE = process.env.BASE ?? 'http://localhost:5174'
 const name = `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
@@ -22,7 +23,7 @@ try {
   await a.getByTestId('auth-submit').click()
   await a.getByTestId('recovery').waitFor()
   await a.getByTestId('ws-new').click()
-  await a.getByTestId('new-all-blocks').click()
+  await createNew(a, 'new-all-blocks')
   await a.locator('.callout').waitFor({ timeout: 30000 })
   await a.locator('.mermaid-block svg').waitFor({ timeout: 30000 })
   await until(async () => (await status(a)) === 0, 20000, 'A synced')
@@ -33,7 +34,7 @@ try {
   await b.getByTestId('auth-submit').click()
   await b.getByTestId('ws-list').getByRole('button').first().click()
   await until(async () => (await b.getByTestId('page-row').count()) === 1, 15000, 'B sees the page')
-  await b.getByTestId('page-row').first().getByRole('button').nth(1).click()
+  await b.getByTestId('page-row').first().click()
   await b.locator('.callout').waitFor({ timeout: 30000 })
   await b.locator('.math-block .katex').waitFor({ timeout: 30000 })
   if (ids(await doc(a)) !== ids(await doc(b))) throw new Error('the two devices differ before the offline phase')

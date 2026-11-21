@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { createNew, appReady } from './shell-helpers'
 
 // ROADMAP M8b: the main paths of the app (create a page, the tree, a database, trash, settings), device settings that never reach the log,
 // the command palette, and 10 000 pages that are never all rendered.
@@ -14,7 +15,7 @@ async function signUpAndOpen(page: Page) {
   await page.getByTestId('auth-submit').click()
   await expect(page.getByTestId('recovery')).toBeVisible()
   await page.getByTestId('ws-new').click()
-  await expect(page.getByTestId('new-page')).toBeVisible()
+  await appReady(page)
   return name
 }
 type W = { __ws: { status: () => Promise<{ outbox: number; unsaved: number }>; ws: string } }
@@ -59,7 +60,7 @@ test('device settings never reach the outbox or the server; a synced setting is 
 
 test('the palette (Ctrl+K, a physical key) finds a page by a Persian-normalised title and runs commands', async ({ page }) => {
   await signUpAndOpen(page)
-  await page.getByTestId('new-page').click()
+  await createNew(page, 'new-page')
   await page.getByTestId('title').fill('کتابخانهٔ من')
   await page.waitForTimeout(600)
   await page.getByTestId('nav-home').click()
@@ -78,7 +79,7 @@ test('the palette (Ctrl+K, a physical key) finds a page by a Persian-normalised 
 
 test('trash and restore, the tree, a deep link and the back button', async ({ page }) => {
   await signUpAndOpen(page)
-  await page.getByTestId('new-page').click()
+  await createNew(page, 'new-page')
   await page.getByTestId('title').fill('برای حذف')
   await page.waitForTimeout(600)
   const url = page.url()
@@ -89,7 +90,7 @@ test('trash and restore, the tree, a deep link and the back button', async ({ pa
   await page.getByTestId('trash').getByRole('button', { name: 'بازگردانی' }).click()
   await expect(page.getByTestId('page-row')).toHaveCount(1)
   expect(url).toMatch(/#\/page\//)
-  await page.getByTestId('page-row').first().getByRole('button').nth(1).click()
+  await page.getByTestId('page-row').first().click()
   await expect(page).toHaveURL(url) // the restored page has its old link
   await page.reload() // the deep link: the hash survives a reload and opens the page
   await page.getByTestId('ws-list').getByRole('button').first().click()
@@ -104,7 +105,7 @@ test('a template makes a page with its blocks; the database and the sync status 
   await expect(page.getByTestId('editor').locator('.ProseMirror')).toContainText('دستور جلسه', { timeout: 20_000 })
   await expect(page.getByTestId('editor').locator('.callout')).toBeVisible()
   await expect(page.getByTestId('net')).toBeVisible()
-  await page.getByTestId('new-database').click()
+  await createNew(page, 'new-database')
   await expect(page.getByTestId('db-view')).toBeVisible()
 })
 
@@ -118,7 +119,7 @@ test('10 000 pages: Home, the palette and the "all pages" table touch only what 
   await page.reload()
   await page.getByTestId('ws-list').getByRole('button').first().click()
   await page.getByTestId('nav-home').click()
-  await expect(page.getByTestId('recent').locator('li')).toHaveCount(8)
+  await expect(page.locator('.home-page')).toHaveCount(3) // the old Home: the last page and three recent ones, never the 3000
   await page.getByTestId('nav-all').click()
   await expect(page.getByTestId('all-pages-row')).toHaveCount(50)
   await expect(page.getByTestId('pager')).toContainText('3000')
@@ -143,7 +144,7 @@ test('dark mode: text keeps WCAG AA contrast (4.5:1) on the callout, the table h
   await page.evaluate(() => localStorage.setItem('nevis.device', JSON.stringify({ theme: 'dark' })))
   await page.reload()
   await page.getByTestId('ws-list').getByRole('button').first().click()
-  await page.getByTestId('new-all-blocks').click()
+  await createNew(page, 'new-all-blocks')
   await expect(page.locator('.callout')).toBeVisible({ timeout: 30_000 })
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toContain('dark')
 
@@ -182,7 +183,7 @@ test('dark mode: text keeps WCAG AA contrast (4.5:1) on the callout, the table h
   await expect(page.locator('.ds-command-dialog .ds-command-result').first()).toBeVisible()
   expect(await ratio('.ds-command-dialog .ds-command-result'), 'palette').toBeGreaterThanOrEqual(AA)
   await page.keyboard.press('Escape')
-  await page.getByTestId('new-database').click()
+  await createNew(page, 'new-database')
   await page.getByTestId('db-prop-name').fill('وضعیت'); await page.getByTestId('db-prop-type').selectOption('select'); await page.getByTestId('db-add-prop').click()
   await page.locator('th[data-prop="وضعیت"]').getByTestId('opt-name').fill('الف'); await page.locator('th[data-prop="وضعیت"]').getByTestId('opt-add').click()
   await page.getByTestId('new-view-board').click()

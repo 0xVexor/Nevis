@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { createNew, appReady } from './shell-helpers'
 
 // Sign-in with a real account, in each engine: the cookie must be set, survive a reload, be shared by a second tab, and go on signout.
 const user = () => `u${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
@@ -18,7 +19,7 @@ test('sign up, create a workspace, reload stays signed in, sign out', async ({ p
   await signUp(page, name)
   await expect(page.getByRole('heading', { name: new RegExp(name) })).toBeVisible()
   await page.getByTestId('ws-new').click()
-  await expect(page.getByTestId('new-page')).toBeVisible()
+  await appReady(page)
 
   // the session is a cookie the page's scripts cannot read
   expect(await page.evaluate(() => document.cookie)).not.toContain('nevis_session')

@@ -3,6 +3,7 @@
 //  1: both go offline, edit the SAME page's text and make separate pages, come back online: the page list and the text are
 //     identical on both within 5 s. Run outside the Playwright runner (two different engines; see engines.spec.ts).
 import { chromium, webkit } from '@playwright/test'
+import { createNew } from './shell-helpers.ts'
 
 const BASE = process.env.BASE ?? 'http://localhost:5174'
 const name = `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
@@ -12,7 +13,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
 const body = p => p.getByTestId('editor').locator('.ProseMirror')
 const text = p => body(p).innerText()
 const rows = p => p.getByTestId('page-row').count()
-const select = (p, i) => p.getByTestId('page-row').nth(i).getByRole('button').nth(1).click()
+const select = (p, i) => p.getByTestId('page-row').nth(i).click()
 async function until(fn, ms, what) {
   const t0 = Date.now()
   for (;;) { if (await fn()) return Date.now() - t0; if (Date.now() - t0 > ms) throw new Error(`timeout: ${what}`); await sleep(20) }
@@ -31,7 +32,7 @@ try {
   await a.getByTestId('auth-submit').click()
   await a.getByTestId('recovery').waitFor()
   await a.getByTestId('ws-new').click()
-  await a.getByTestId('new-page').click()
+  await createNew(a, 'new-page')
   await a.getByTestId('title').fill('مشترک')
   await body(a).click()
   await a.keyboard.type('شروع')
@@ -65,8 +66,8 @@ try {
     || (await a.getByTestId('net').innerText()).includes('آفلاین'), 15000, 'A notices offline').catch(() => {})
   await body(a).click(); await a.keyboard.type(' ویرایش‌کروم')
   await body(b).click(); await b.keyboard.type(' ویرایش‌وب‌کیت')
-  await a.getByTestId('new-page').click(); await a.getByTestId('title').fill('صفحهٔ کروم')
-  await b.getByTestId('new-page').click(); await b.getByTestId('title').fill('صفحهٔ وب‌کیت')
+  await createNew(a, 'new-page'); await a.getByTestId('title').fill('صفحهٔ کروم')
+  await createNew(b, 'new-page'); await b.getByTestId('title').fill('صفحهٔ وب‌کیت')
   await sleep(700)
   // guard: while offline the two sides must really differ, else the "convergence" below proves nothing
   const [ta, tb] = [await text(a), await text(b)]

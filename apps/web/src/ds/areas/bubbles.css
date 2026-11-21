@@ -1,0 +1,27 @@
+/* ───────── lists ───────── */
+.tiptap ul:not([data-type='taskList']) { list-style: none; padding-inline-start: 1.5em; }
+.tiptap ul:not([data-type='taskList']) > li { position: relative; }
+.tiptap ul:not([data-type='taskList']) > li::before { content: ''; position: absolute; inset-inline-start: -1.15em; top: 0.72em; width: 0.42em; height: 0.42em; border-radius: 50%; background: var(--ds-accent); box-shadow: 0 0 0 3px var(--ds-accent-soft); }
+.tiptap ul:not([data-type='taskList']) ul:not([data-type='taskList']) > li::before { width: 0.4em; height: 0.4em; border: 2px solid var(--ds-accent); background: transparent; box-shadow: none; }
+.tiptap ul:not([data-type='taskList']) ul:not([data-type='taskList']) ul:not([data-type='taskList']) > li::before { width: 0.36em; height: 0.36em; border: 0; border-radius: 2px; background: var(--ds-accent); transform: rotate(45deg); }
+.tiptap ol > li::marker { color: var(--ds-accent); font-weight: 800; font-variant-numeric: tabular-nums; }
+.tiptap li > ul, .tiptap li > ol { margin-top: 2px; }
+
+/* checklist: the tick sits on top of the gradient */
+.tiptap ul[data-type='taskList'] li > label input:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E"), var(--ds-accent);
+  background-size: 13px 13px, cover;
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center;
+}
+
+/* tags: a round "+" that turns into a field */
+
+/* "link to page" picker */
+.plp { width: 300px; }
+.plp-search { display: flex; align-items: center; gap: var(--ds-s2); margin: var(--ds-s2) var(--ds-s2) var(--ds-s1); padding: 0 var(--ds-s3); height: var(--ds-control); border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-bg); color: var(--ds-text-2); }
+.plp-search:focus-within { border-color: var(--ds-accent); box-shadow: 0 0 0 3px var(--ds-accent-line); }
+.plp-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ds-text); font-size: var(--ds-text-small); }
+.plp-list { max-height: 300px; overflow: auto; padding: var(--ds-s1) var(--ds-s2) var(--ds-s2); }
+.page-link[title] { cursor: var(--cursor-hand, pointer); }
+

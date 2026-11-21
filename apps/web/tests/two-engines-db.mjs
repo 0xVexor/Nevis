@@ -1,6 +1,7 @@
 // ROADMAP M7 demo, automated: Chromium and WebKit on ONE account, both OFFLINE, edit DIFFERENT cells of the SAME row and each adds a
 // select option; online again, everything is kept on both. The offline phase is guarded (the sides must really differ), as in M5.
 import { chromium, webkit } from '@playwright/test'
+import { createNew } from './shell-helpers.ts'
 
 const BASE = process.env.BASE ?? 'http://localhost:5174'
 const name = `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
@@ -26,7 +27,7 @@ try {
   await a.getByTestId('auth-submit').click()
   await a.getByTestId('recovery').waitFor()
   await a.getByTestId('ws-new').click()
-  await a.getByTestId('new-database').click()
+  await createNew(a, 'new-database')
   await a.getByTestId('db-title').fill('کتاب‌ها')
   for (const [n, t] of [['الف', 'text'], ['ب', 'text'], ['ژانر', 'select']]) {
     await a.getByTestId('db-prop-name').fill(n); await a.getByTestId('db-prop-type').selectOption(t); await a.getByTestId('db-add-prop').click()
@@ -42,7 +43,7 @@ try {
   await b.getByTestId('auth-submit').click()
   await b.getByTestId('ws-list').getByRole('button').first().click()
   await until(async () => (await b.getByTestId('page-row').count()) === 1, 15000, 'B sees the database')
-  await b.getByTestId('page-row').first().getByRole('button').nth(1).click()
+  await b.getByTestId('page-row').first().click()
   await until(async () => (await b.getByTestId('db-row').count()) === 1 && (await b.locator('th[data-prop="ژانر"]').count()) === 1, 15000, 'B sees the row and the columns')
 
   await ca.setOffline(true); await cb.setOffline(true)

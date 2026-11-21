@@ -1,0 +1,18 @@
+/* App updates: the corner notice and the body of the update Dialog. Everything else comes from the design system. */
+.update-notice { position: fixed; inset-inline-end: var(--ds-s6); inset-block-end: var(--ds-s6); z-index: var(--ds-z-toast); inline-size: min(360px, calc(100% - var(--ds-s8))); box-shadow: var(--ds-shadow-pop); }
+.update-lead b { display: block; font-size: var(--ds-text-ui); font-weight: 600; }
+.update-lead p { margin: var(--ds-s1) 0 0; color: var(--ds-text-2); font-size: var(--ds-text-small); }
+.update-versions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-s2); color: var(--ds-text-2); font-size: var(--ds-text-small); }
+.update-versions > bdi { font-family: var(--ds-font-mono); }
+.update-channel { padding: 2px var(--ds-s2); border-radius: var(--ds-r-full); background: var(--ds-accent-soft); color: var(--ds-accent); font-size: var(--ds-text-caption); font-weight: 600; }
+.update-channel.preview { background: color-mix(in oklab, var(--ds-warn) 14%, transparent); color: var(--ds-text); }
+.update-notes { padding: var(--ds-s4); border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); font-size: var(--ds-text-small); }
+.update-notes > b { color: var(--ds-text-2); font-size: var(--ds-text-caption); }
+.update-notes p { max-block-size: 180px; margin: var(--ds-s2) 0 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+.update-download { display: flex; flex-direction: column; gap: var(--ds-s2); }
+.update-download-label { display: flex; justify-content: space-between; gap: var(--ds-s3); font-size: var(--ds-text-small); }
+.update-download progress { inline-size: 100%; block-size: 6px; border: 0; border-radius: var(--ds-r-full); overflow: hidden; background: var(--ds-hover); accent-color: var(--ds-accent); }
+.update-download progress::-webkit-progress-bar { border-radius: var(--ds-r-full); background: var(--ds-hover); }
+.update-download progress::-webkit-progress-value { border-radius: var(--ds-r-full); background: var(--ds-accent); }
+.update-download small { color: var(--ds-text-2); font-size: var(--ds-text-caption); }
+@media (max-width: 480px) { .update-notice { inset-inline-end: var(--ds-s4); inset-block-end: var(--ds-s4); } }

@@ -11,6 +11,8 @@
     "test:engines": "node tests/two-engines.mjs && node tests/two-engines-pages.mjs && node tests/two-engines-db.mjs && node tests/two-engines-blocks.mjs"
   },
   "dependencies": {
+    "@fontsource/instrument-sans": "5.3.0",
+    "@fontsource/newsreader": "5.3.0",
     "@fontsource/vazirmatn": "5.3.0",
     "@nevis/core": "workspace:*",
     "@nevis/editor": "workspace:*",

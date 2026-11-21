@@ -4,8 +4,13 @@ import { setTranslator } from '../ds/text'
 import { FA_APP } from './faApp'
 import { FA_NEW } from './faNew'
 import { FA_SETTINGS } from './faSettings'
+import { FA_HOME } from './fa-home'
+import { FA_VIEWS } from './fa-views'
+import { FA_COVERS } from './fa-covers'
+import { FA_ONBOARDING } from './fa-onboarding'
+import { FA_CONFLICTS } from './fa-conflicts'
 
-const FA: Record<string, string> = { ...FA_APP, ...FA_SETTINGS, ...FA_NEW }
+const FA: Record<string, string> = { ...FA_APP, ...FA_SETTINGS, ...FA_HOME, ...FA_VIEWS, ...FA_COVERS, ...FA_ONBOARDING, ...FA_CONFLICTS, ...FA_NEW }
 
 /** t('Hello {name}', { name }): placeholders are filled AFTER translating, so user text stays untouched. */
 export function t(key: string, vars?: Record<string, string | number>): string {
@@ -14,3 +19,6 @@ export function t(key: string, vars?: Record<string, string | number>): string {
 }
 
 export function installTranslator() { setTranslator(t) }
+
+/** The interface language (a BCP 47 tag): Persian. */
+export const locale = (): string => 'fa'

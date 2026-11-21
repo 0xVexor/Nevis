@@ -1,0 +1,68 @@
+/* All horizontal scrollbars share the Pages rail's slim, rounded treatment.
+   Vertical scrollbar visibility is unchanged. Overflow and sticky positioning
+   remain with each section; synchronized viewports never render a second bar. */
+:root {
+  --scrollbar-horizontal-size: 6px;
+  --scrollbar-thumb: var(--ds-line-strong);
+  --scrollbar-thumb-hover: var(--ds-text-3);
+}
+
+/* Firefox fallback for horizontal surfaces; WebKit uses the precise axis rules below. */
+:is(.hscroll-rail, .tree-scroll, .dv-chart-svg,
+    .tiptap pre, .tiptap .tableWrapper, .math-block, .math-live,
+    .mermaid-view, .drawing-view, .fx-path, .fc-a table) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+@supports selector(::-webkit-scrollbar) {
+  /* Native scrollbar-width/color would override the WebKit pseudo elements. */
+  *, :is(.hscroll-rail, .tree-scroll, .dv-chart-svg,
+         .tiptap pre, .tiptap .tableWrapper, .math-block, .math-live,
+         .mermaid-view, .drawing-view, .fx-path, .fc-a table) {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+}
+*::-webkit-scrollbar:horizontal {
+  display: block;
+  height: var(--scrollbar-horizontal-size);
+}
+*::-webkit-scrollbar-track:horizontal { background: transparent; border: 0; }
+*::-webkit-scrollbar-thumb:horizontal {
+  background: var(--scrollbar-thumb);
+  background-clip: border-box;
+  border: 0;
+  border-radius: var(--ds-r-full);
+  box-shadow: none;
+}
+*::-webkit-scrollbar-thumb:horizontal:hover { background: var(--scrollbar-thumb-hover); }
+*::-webkit-scrollbar-button:horizontal { display: none; width: 0; }
+*::-webkit-scrollbar-corner { background: transparent; }
+
+.hscroll-rail { block-size: var(--scrollbar-horizontal-size); }
+.hscroll > .hscroll-viewport { scrollbar-width: none; }
+.hscroll > .hscroll-viewport::-webkit-scrollbar,
+.hscroll > .hscroll-viewport::-webkit-scrollbar:horizontal { display: none; }
+
+
+/* Pages has one vertical owner (the sidebar); only its horizontal rail follows it. */
+.tree-scroll.hscroll.hscroll-follow { padding-block-end: var(--scrollbar-horizontal-size); }
+.hscroll-follow > .hscroll-rail {
+  position: absolute;
+  inset-block-end: auto;
+  inset-inline: 0;
+}
+
+
+/* the shared horizontal scroller (HorizontalScroll): the viewport hides its own bar, the rail under it scrolls */
+.hscroll { position: relative; min-inline-size: 0; max-inline-size: 100%; }
+.hscroll-viewport { min-inline-size: 0; max-inline-size: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.hscroll-content { inline-size: max-content; min-inline-size: 100%; }
+.hscroll-viewport::-webkit-scrollbar { display: none; }
+.hscroll-rail { position: sticky; inset-block-end: 0; z-index: 8; block-size: 14px; overflow-x: scroll; overflow-y: hidden; background: var(--ds-bg); border-radius: var(--ds-r-full); }
+.hscroll-rail[hidden] { display: none; }
+.hscroll-rail:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: -2px; }
+.tree-scroll.hscroll { overflow: visible; padding-block-end: 0; }
+.tree-scroll .hscroll-rail { background: var(--ds-sunk); }
+/* collapsed to icons there is nothing to scroll; expanded (hover, focus, pinned by the logo) the rail comes back */

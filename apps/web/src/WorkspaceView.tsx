@@ -1,23 +1,23 @@
 import { useEffect, useState } from 'react'
 import { allBlocksTemplate } from '@nevis/editor'
-import { Button, IconButton, Icon, Row, Toast } from './ds'
+import { Button, Toast } from './ds'
 import { DatabaseView } from './DatabaseView'
 import { EditorPane } from './EditorPane'
-import { PageTreeView } from './PageTreeView'
+import { AppShell } from './shell/AppShell'
+import { HomeRoute } from './screens/HomeRoute'
+import { Trash } from './screens/Trash'
+import { legacyPages } from './shell/adapt'
 import { t } from './i18n'
 import { go, useRoute } from './router'
 import { readSynced } from './workspaceSettings'
 import type { Workspace, WsStatus } from './workspace'
 import { AllPages } from './views/AllPages'
-import { Home } from './views/Home'
 import { Palette } from './views/Palette'
 import { Settings } from './views/Settings'
 import { Graph } from './views/Graph'
 import { Backlinks } from './views/Backlinks'
 import { Tasks } from './views/Tasks'
 import { Templates } from './views/Templates'
-
-const ago = (ms: number) => (ms ? `${Math.max(0, Math.round((Date.now() - ms) / 1000))} ثانیه پیش` : 'هنوز نه')
 
 /** The app: a header with the sync status, a sidebar (navigation, new, tree, trash) and the screen of the current route. */
 export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: () => void }) {
@@ -80,52 +80,20 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
     if (route.name === 'settings') return <Settings ws={ws} />
     if (route.name === 'graph') return <Graph ws={ws} />
     if (route.name === 'tasks') return <Tasks ws={ws} />
-    return <Home ws={ws} onNewPage={() => void create('')} onNewDatabase={() => void createDb()} />
+    if (route.name === 'trash') return <div data-testid="trash"><Trash items={legacyPages(ws).filter(p => p.deletedAt)} days={30} onRestore={id => void ws.restore(id)} onPurge={() => ws.notify('الان فقط بازگردانی ممکن است؛ حذف دائمی به‌زودی می‌آید')} onEmpty={() => ws.notify('الان فقط بازگردانی ممکن است؛ حذف دائمی به‌زودی می‌آید')} /></div>
+    return <HomeRoute ws={ws} onOpen={select} onNewPage={() => void create('')} onTemplate={() => go({ name: 'templates' })} />
   })()
 
   return (
-    <div className={'app' + (navOpen ? ' nav-open' : '')} dir="rtl">
-      <header className="top">
-        <IconButton label="منو" className="nav-toggle" onClick={() => setNavOpen(o => !o)}><Icon name="list" /></IconButton>
-        <strong>نِویس</strong>
-        <IconButton label={t('Search or run a command')} data-testid="open-palette" onClick={() => setPalette(true)}><Icon name="search" /></IconButton>
-        <span data-testid="net" data-online={status?.online ?? false}>{status?.online ? `● ${t('Online')}` : `○ ${t('Offline')}`}</span>
-        <span>{t('Not sent yet')}: <b data-testid="outbox">{status?.outbox ?? 0}</b>{status && status.unsaved > 0 ? ` (+${status.unsaved} ذخیره‌نشده)` : ''}</span>
-        <span>{t('Last sync')}: {ago(status?.lastSyncAt ?? 0)}</span>
-        <span title="navigator.storage.persist()">ماندگار: {String(status?.persisted)}</span>
-        {status && status.files.pending > 0 && <span data-testid="files">{`فایل‌ها: ${status.files.pending} در انتظار آپلود`}{status.files.uploading && status.files.total ? ` (${Math.round(100 * status.files.sent / status.files.total)}٪)` : ''}</span>}
-        {status?.files.error === 'quota' && <span className="err" data-testid="files-quota">فضای حساب شما پر است؛ فایل‌ها روی این دستگاه می‌مانند و چیزی از دست نمی‌رود، اما تا آزاد شدن فضا همگام نمی‌شوند.</span>}
-        {status?.files.error === 'blob_too_large' && <span className="err" data-testid="files-too-large">فایلی از حد مجاز سرور بزرگ‌تر است و فقط روی این دستگاه می‌ماند.</span>}
-        {status?.lastError && <span className="err" data-testid="sync-error">{status.lastError}</span>}
-        {onSignOut && <Button size="sm" data-testid="signout" onClick={onSignOut}>{t('Sign out')}</Button>}
-      </header>
-      <div className="cols">
-        <nav className="side" aria-label="صفحه‌ها">
-          <Row as="button" icon={<Icon name="home" />} text={t('Home')} data-testid="nav-home" onClick={() => { go({ name: 'home' }); setNavOpen(false) }} />
-          <Row as="button" icon={<Icon name="folder" />} text={t('All pages')} data-testid="nav-all" onClick={() => { go({ name: 'all' }); setNavOpen(false) }} />
-          <Row as="button" icon={<Icon name="templates" />} text={t('Templates')} data-testid="nav-templates" onClick={() => { go({ name: 'templates' }); setNavOpen(false) }} />
-          <Row as="button" icon={<Icon name="tasks" />} text="کارها" data-testid="nav-tasks" onClick={() => { go({ name: 'tasks' }); setNavOpen(false) }} />
-          <Row as="button" icon={<Icon name="graph" />} text="گراف" data-testid="nav-graph" onClick={() => { go({ name: 'graph' }); setNavOpen(false) }} />
-          <Row as="button" icon={<Icon name="settings" />} text={t('Settings')} data-testid="nav-settings" onClick={() => { go({ name: 'settings' }); setNavOpen(false) }} />
-          <hr />
-          <div className="row">
-            <Button size="sm" variant="primary" data-testid="new-page" onClick={() => void create('')}>صفحهٔ تازه</Button>
-            <Button size="sm" data-testid="new-database" onClick={() => void createDb()}>پایگاه‌داده</Button>
-            <Button size="sm" data-testid="new-all-blocks" onClick={() => void createAllBlocks()}>نمونهٔ همهٔ بلوک‌ها</Button>
-            <Button size="sm" onClick={() => setShowTrash(s => !s)} data-testid="trash-toggle">سطل زباله ({ws.tree.trash.length})</Button>
-          </div>
-          <PageTreeView ws={ws} selected={selected} onSelect={select} />
-          {showTrash && (
-            <ul className="trash" data-testid="trash">
-              {ws.tree.trash.length === 0 && <li className="small">{t('Your trash is empty')}</li>}
-              {ws.tree.trash.map(p => <li key={p.id}>{p.title || 'بدون عنوان'} <Button size="sm" onClick={() => void ws.restore(p.id)}>بازگردانی</Button></li>)}
-            </ul>
-          )}
-        </nav>
-        <main className="main">{screen}</main>
-      </div>
+    <>
+      <AppShell
+        ws={ws} route={route} status={status} onSearch={() => setPalette(true)} onNewPage={p => void create(p)} onNewDatabase={() => void createDb()} onNewAllBlocks={() => void createAllBlocks()}
+        onOpen={select} onSignOut={onSignOut}
+      >
+        {screen}
+      </AppShell>
       {palette && <Palette ws={ws} onClose={() => setPalette(false)} onNewPage={() => void create('')} onNewDatabase={() => void createDb()} />}
       {ws.notice && <Toast msg={ws.notice} onClose={() => ws.notify('')} />}
-    </div>
+    </>
   )
 }

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { createNew, appReady } from './shell-helpers'
 
 // ROADMAP M10 in the real app: the index in a Worker, the three ways to write «می‌خواهم», two digit systems, ي/ی, backlinks that follow a
 // rename, the graph, the task list, and a rebuild when the stored index was made under another NORM_VERSION.
@@ -19,11 +20,11 @@ async function start(page: Page) {
   await page.getByTestId('auth-submit').click()
   await expect(page.getByTestId('recovery')).toBeVisible()
   await page.getByTestId('ws-new').click()
-  await expect(page.getByTestId('new-page')).toBeVisible()
+  await appReady(page)
 }
 async function newPage(page: Page, title: string, text: string) {
   const before = await page.evaluate(() => location.hash)
-  await page.getByTestId('new-page').click()
+  await createNew(page, 'new-page')
   await page.waitForFunction(h => location.hash !== h && location.hash.startsWith('#/page/'), before) // the NEW page is open
   await expect(body(page)).toBeVisible()
   await expect(page.getByTestId('title')).toHaveValue('')

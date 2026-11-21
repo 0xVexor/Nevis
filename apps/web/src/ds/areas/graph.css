@@ -1,0 +1,63 @@
+/* ───── Graph: the map fills the screen; finding on one side, the picked page and its links on the other ───── */
+.gr { position: relative; inline-size: 100%; block-size: 100%; min-block-size: 0; }
+.gr-none { display: grid; place-items: center; block-size: 100%; padding: var(--ds-s8); }
+.gr-none .ds-empty { max-inline-size: 520px; }
+/* a plain stage: the map is the picture, nothing under it competes with the dots and lines */
+.gr-stage { position: absolute; inset: 0; overflow: hidden; background: var(--ds-bg); container-type: inline-size; }
+.gr-canvas { display: block; inline-size: 100%; block-size: 100%; touch-action: none; cursor: var(--cursor-grab, grab); }
+.gr-canvas[data-grabbing] { cursor: grabbing; }
+.gr-loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ds-text-3); pointer-events: none; }
+
+/* No backdrop-filter on anything over the map: the canvas repaints every frame while you pan, and a blur behind these
+   panels would be recomputed each time. They are solid, with a hairline. */
+.gr-panel { position: absolute; z-index: 2; border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); }
+
+/* finding: search (with what it found), whole workspace or around a page, how far, tags, database links */
+.gr-find { inset-block-start: var(--ds-s4); inset-inline-start: var(--ds-s4); display: flex; flex-direction: column; gap: var(--ds-s3); inline-size: 300px; max-block-size: calc(100% - 2 * var(--ds-s4) - 56px); overflow: auto; padding: var(--ds-s3); }
+.gr-search { inline-size: 100%; }
+.gr-found { display: flex; flex-direction: column; gap: 2px; margin-block-start: calc(-1 * var(--ds-s2)); }
+.gr-scope { display: grid; grid-template-columns: 1fr 1fr; }
+.gr-scope button:disabled { opacity: 0.45; cursor: var(--cursor-arrow, default); }
+.gr-around { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-s2); }
+.gr-around-page { min-inline-size: 0; overflow: hidden; color: var(--ds-text-2); font-size: var(--ds-text-small); text-overflow: ellipsis; white-space: nowrap; }
+.gr-around .ds-seg button { min-inline-size: 32px; padding-inline: var(--ds-s2); font-variant-numeric: tabular-nums; }
+.gr-tags { display: flex; flex-wrap: wrap; gap: var(--ds-s1); }
+.gr-tags .ds-chip-btn { block-size: 26px; padding-inline: var(--ds-s2); font-size: var(--ds-text-caption); }
+
+/* the picked page: who it is, open it or explore from it, then its links both ways */
+.gr-card { inset-block-start: var(--ds-s4); inset-inline-end: var(--ds-s4); display: flex; flex-direction: column; gap: var(--ds-s3); inline-size: 300px; max-block-size: calc(100% - 2 * var(--ds-s4) - 56px); padding: var(--ds-s4); }
+.gr-card-head { display: flex; align-items: flex-start; gap: var(--ds-s3); }
+.gr-card-ic { display: grid; place-items: center; flex: none; inline-size: 36px; block-size: 36px; border: 1px solid var(--ds-line); border-radius: var(--ds-r); color: var(--ds-text-2); font-size: var(--ds-text-section); }
+.gr-card-ic svg { inline-size: 18px; block-size: 18px; }
+.gr-card-title { display: flex; flex: 1; flex-direction: column; min-inline-size: 0; }
+.gr-card-title b { overflow-wrap: anywhere; font-weight: 600; line-height: 1.35; }
+.gr-card-title small { color: var(--ds-text-3); font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; }
+.gr-card-tags { display: flex; flex-wrap: wrap; gap: var(--ds-s1); }
+.gr-card-acts { display: flex; flex-wrap: wrap; gap: var(--ds-s2); }
+.gr-card-sec, .gr-lists h3 { display: flex; align-items: baseline; gap: var(--ds-s2); margin: 0 0 var(--ds-s1); padding-inline: var(--ds-s2); color: var(--ds-text-2); font-size: var(--ds-text-caption); font-weight: 550; }
+.gr-lists h3 span { color: var(--ds-text-3); font-weight: 400; font-variant-numeric: tabular-nums; }
+.gr-lists { display: flex; flex-direction: column; gap: var(--ds-s3); min-block-size: 0; margin-inline: calc(-1 * var(--ds-s2)); overflow-y: auto; overscroll-behavior: contain; }
+.gr-lists > section { display: flex; flex-direction: column; gap: 2px; }
+.gr-row { display: flex; align-items: center; gap: var(--ds-s2); inline-size: 100%; min-block-size: 32px; padding: 0 var(--ds-s2); border: 0; border-radius: var(--ds-r-sm); background: none; color: var(--ds-text); font: inherit; font-size: var(--ds-text-small); text-align: start; cursor: var(--cursor-hand, pointer); }
+.gr-row:hover, .gr-row[data-on] { background: var(--ds-hover); }
+.gr-row:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: -2px; }
+.gr-row-ic { display: grid; place-items: center; flex: none; inline-size: 18px; block-size: 18px; color: var(--ds-text-3); font-size: var(--ds-text-small); }
+.gr-row-ic svg { inline-size: 14px; block-size: 14px; }
+.gr-row > span:not(.gr-row-ic) { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gr-row > em { flex: none; color: var(--ds-text-3); font-size: var(--ds-text-caption); font-style: normal; font-variant-numeric: tabular-nums; }
+.gr-note { margin: 0; padding: var(--ds-s1) var(--ds-s2); color: var(--ds-text-3); font-size: var(--ds-text-caption); }
+
+/* zoom and the counts along the bottom */
+.gr-zoom { inset-block-end: var(--ds-s4); inset-inline-end: var(--ds-s4); display: flex; align-items: center; gap: 2px; padding: 2px; }
+.gr-pct { min-inline-size: 48px; color: var(--ds-text-2); font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; text-align: center; }
+.gr-stats { inset-block-end: var(--ds-s4); inset-inline-start: var(--ds-s4); padding: var(--ds-s2) var(--ds-s3); }
+.gr-stats .ds-stat dd { font-size: var(--ds-text-ui); }
+.gr-stats .ds-stat dt { font-size: var(--ds-text-small); }
+
+/* narrow: the finder spans the top, the card sits over the bottom */
+@container (max-width: 760px) {
+  .gr-find { inset-inline-end: var(--ds-s4); inline-size: auto; max-block-size: 45%; }
+  .gr-card { inset-block-start: auto; inset-block-end: 64px; inset-inline-start: var(--ds-s4); inline-size: auto; max-block-size: 45%; }
+  .gr-stats { display: none; }
+}
+.scroller:has(> .gr) { overflow: hidden; }
