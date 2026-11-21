@@ -131,3 +131,57 @@ test('10 000 pages: Home, the palette and the "all pages" table touch only what 
   // the sidebar tree renders only the roots that are expanded: 3000 roots, but the DOM holds 50 + the open ones? (it holds the roots: bounded by the tree view)
   expect(await page.getByTestId('page-row').count()).toBeLessThan(3100)
 })
+
+// ---- dark mode is READABLE: text against its real background, computed (WCAG contrast), for the blocks that hard-coded light colours ----
+test('dark mode: text keeps WCAG AA contrast (4.5:1) on the callout, the table header, the slash menu, the floating bar, the palette and a board column', async ({ page }) => {
+  await signUpAndOpen(page)
+  await page.evaluate(() => localStorage.setItem('nevis.device', JSON.stringify({ theme: 'dark' })))
+  await page.reload()
+  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await page.getByTestId('new-all-blocks').click()
+  await expect(page.locator('.callout')).toBeVisible({ timeout: 30_000 })
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toContain('dark')
+
+  const ratio = (selector: string) => page.evaluate(sel => {
+    const el = document.querySelector(sel) as HTMLElement | null
+    if (!el) return -1
+    const rgba = (css: string): [number, number, number, number] => { const c = document.createElement('canvas').getContext('2d')!; c.clearRect(0, 0, 1, 1); c.fillStyle = '#000'; c.fillStyle = css; c.fillRect(0, 0, 1, 1); const d = c.getImageData(0, 0, 1, 1).data; return [d[0]!, d[1]!, d[2]!, d[3]! / 255] }
+    const lum = ([r, g, b]: number[]) => { const f = (v: number) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4 }; return 0.2126 * f(r!) + 0.7152 * f(g!) + 0.0722 * f(b!) }
+    const fg = rgba(getComputedStyle(el).color)
+    let bg: number[] = [0, 0, 0]
+    // the nearest ancestor with an opaque background; translucent layers are mixed over what is below
+    const layers: [number, number, number, number][] = []
+    for (let n: HTMLElement | null = el; n; n = n.parentElement) { const c = rgba(getComputedStyle(n).backgroundColor); if (c[3] > 0) layers.push(c); if (c[3] >= 0.99) break }
+    bg = [255, 255, 255]
+    for (const l of layers.reverse()) bg = [0, 1, 2].map(i => l[i]! * l[3] + bg[i]! * (1 - l[3]))
+    const [a, b] = [lum(fg), lum(bg)]
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+  }, selector)
+  const AA = 4.5
+  expect(await ratio('.callout .callout-body p'), 'callout text').toBeGreaterThanOrEqual(AA)
+  // control: the check is not vacuous: put back the OLD bug (a hard-coded light background under the light text) and it must be caught
+  const bug = await page.addStyleTag({ content: '.callout { background: #f6f8fa !important }' }) // a stylesheet (ProseMirror reverts inline style edits on its nodes)
+  expect(await ratio('.callout .callout-body p'), 'the old light-on-light bug must be detected').toBeLessThan(AA)
+  await bug.evaluate(e => e.remove())
+  expect(await ratio('.ProseMirror th p, .ProseMirror th'), 'table header').toBeGreaterThanOrEqual(AA)
+  await page.getByTestId('editor').locator('.ProseMirror').click()
+  await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('/')
+  await expect(page.locator('.floating-menu .row').first()).toBeVisible()
+  expect(await ratio('.floating-menu .row .title'), 'slash menu').toBeGreaterThanOrEqual(AA)
+  await page.keyboard.press('Escape')
+  await page.getByTestId('editor').locator('p').first().click({ clickCount: 3 })
+  await expect(page.locator('.floating-bar button').first()).toBeVisible()
+  expect(await ratio('.floating-bar button'), 'floating bar').toBeGreaterThanOrEqual(AA)
+  await page.keyboard.press('Control+k')
+  await page.locator('.ds-command-dialog input').first().fill('همه')
+  await expect(page.locator('.ds-command-dialog .ds-command-result').first()).toBeVisible()
+  expect(await ratio('.ds-command-dialog .ds-command-result'), 'palette').toBeGreaterThanOrEqual(AA)
+  await page.keyboard.press('Escape')
+  await page.getByTestId('new-database').click()
+  await page.getByTestId('db-prop-name').fill('وضعیت'); await page.getByTestId('db-prop-type').selectOption('select'); await page.getByTestId('db-add-prop').click()
+  await page.locator('th[data-prop="وضعیت"]').getByTestId('opt-name').fill('الف'); await page.locator('th[data-prop="وضعیت"]').getByTestId('opt-add').click()
+  await page.getByTestId('new-view-board').click()
+  await expect(page.getByTestId('board-col').first()).toBeVisible()
+  expect(await ratio('.board-col h3'), 'board column header').toBeGreaterThanOrEqual(AA)
+  expect(await ratio('.dbtable th, .viewbar'), 'database chrome').toBeGreaterThanOrEqual(AA)
+})

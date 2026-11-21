@@ -7,16 +7,16 @@
     "node": ">=24"
   },
   "scripts": {
-    "typecheck": "pnpm -r --if-present typecheck",
-    "test": "pnpm -r --if-present test",
+    "typecheck": "corepack pnpm -r --if-present typecheck",
+    "test": "corepack pnpm -r --if-present test",
     "dev:server": "cd server && DEV_MODE=1 DEV_TOKEN=dev PORT=8787 go run ./cmd/nevis-server",
-    "converge": "pnpm --filter @nevis/converge converge",
+    "converge": "corepack pnpm --filter @nevis/converge converge",
     "test:go": "cd server && go test ./... -race",
-    "test:long": "SEEDS=200 OPS=2000 pnpm --filter @nevis/converge test",
-    "test:all": "pnpm test && pnpm test:go",
-    "nevis-log": "pnpm --filter @nevis/nevis-log start",
-    "bench:startup": "pnpm --filter @nevis/bench start",
-    "check": "depcruise --config .dependency-cruiser.cjs apps/web/src packages/core/src packages/editor/src packages/schema/src && node tools/depcheck/test.mjs && pnpm typecheck"
+    "test:long": "SEEDS=200 OPS=2000 corepack pnpm --filter @nevis/converge test",
+    "test:all": "corepack pnpm test && corepack pnpm test:go",
+    "nevis-log": "corepack pnpm --filter @nevis/nevis-log start",
+    "bench:startup": "corepack pnpm --filter @nevis/bench start",
+    "check": "depcruise --config .dependency-cruiser.cjs apps/web/src packages/core/src packages/editor/src packages/schema/src && node tools/depcheck/test.mjs && corepack pnpm typecheck"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",

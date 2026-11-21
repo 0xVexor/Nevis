@@ -1,8 +1,8 @@
 /* The editor's blocks. Colours are CSS variables with plain defaults so the app (M8b) can theme them. */
-.ProseMirror { --ed-border: #d0d7de; --ed-soft: #f6f8fa; --ed-accent: #2563eb; --ed-danger: #cf222e; outline: none; font-family: Vazirmatn, system-ui, sans-serif; line-height: 1.9; }
-.ProseMirror p.is-empty:first-child::before, .ProseMirror p.is-empty.is-editor-empty::before { content: attr(data-placeholder); float: inline-start; height: 0; color: #8b949e; pointer-events: none }
+.ProseMirror { --ed-border: var(--ds-line, #d0d7de); --ed-soft: var(--ds-sunk, #f6f8fa); --ed-accent: var(--ds-accent, #2563eb); --ed-danger: var(--ds-danger, #cf222e); --ed-raised: var(--ds-raised, #fff); --ed-text: var(--ds-text, inherit); --ed-muted: var(--ds-text-3, #6e7781); outline: none; font-family: Vazirmatn, system-ui, sans-serif; line-height: 1.9; }
+.ProseMirror p.is-empty:first-child::before, .ProseMirror p.is-empty.is-editor-empty::before { content: attr(data-placeholder); float: inline-start; height: 0; color: var(--ed-muted); pointer-events: none }
 .ProseMirror pre, .ProseMirror code { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace }
-.ProseMirror .find-match { background: #ffe58f } .ProseMirror .find-match.current { background: #ffb020 }
+.ProseMirror .find-match { background: color-mix(in oklab, #ffd33d 55%, var(--ds-bg, #fff)) } .ProseMirror .find-match.current { background: color-mix(in oklab, #ff9f1c 70%, var(--ds-bg, #fff)) }
 
 .callout { display: flex; gap: .6rem; padding: .6rem .8rem; border: 1px solid var(--ed-border); border-radius: 8px; background: var(--ed-soft); margin: .6rem 0 }
 .callout-ic { all: unset; cursor: pointer; line-height: 0; padding-top: .35rem; color: var(--ed-accent) } .callout-body { flex: 1; min-width: 0 }
@@ -14,30 +14,35 @@
 @media (max-width: 640px) { .layout-group { grid-template-columns: 1fr } }
 
 .math-block, .math-inline, .mermaid-block, .drawing-block, .image-block { cursor: default } .math-block { text-align: center; margin: .6rem 0; padding: .3rem; overflow-x: auto }
-.math-inline { display: inline-block; padding: 0 .15rem } .math-block.empty, .math-inline.empty, .mermaid-block.empty { color: #8b949e }
+.math-inline { display: inline-block; padding: 0 .15rem } .math-block.empty, .math-inline.empty, .mermaid-block.empty { color: var(--ed-muted) }
 .math-block.error, .math-inline.error, .mermaid-block.error { color: var(--ed-danger) } .math-block.selected, .mermaid-block.selected, .drawing-block.selected, .image-block.selected { outline: 2px solid var(--ed-accent); border-radius: 4px }
 .atom-edit { width: 100%; box-sizing: border-box; font-family: ui-monospace, Menlo, monospace; direction: ltr }
 .mermaid-block { margin: .6rem 0; text-align: center; overflow-x: auto } .mermaid-block svg { max-width: 100%; height: auto }
-.drawing-block { margin: .6rem 0; border: 1px solid var(--ed-border); border-radius: 6px; padding: .4rem; position: relative; min-height: 64px } .drawing-preview.empty { text-align: center; color: #8b949e; font-size: 2rem }
+.drawing-block { margin: .6rem 0; border: 1px solid var(--ed-border); border-radius: 6px; padding: .4rem; position: relative; min-height: 64px } .drawing-preview.empty { text-align: center; color: var(--ed-muted); font-size: 2rem }
 .drawing-edit { position: absolute; inset-block-start: 6px; inset-inline-end: 6px; opacity: 0 } .drawing-block:hover .drawing-edit, .drawing-block.selected .drawing-edit { opacity: 1 }
-.drawing-overlay { position: fixed; inset: 0; z-index: 1000; background: #fff; display: flex; flex-direction: column } .drawing-bar { display: flex; gap: .5rem; padding: .4rem; justify-content: flex-end; border-bottom: 1px solid var(--ed-border) } .drawing-canvas { flex: 1; min-height: 0 }
+.drawing-overlay { position: fixed; inset: 0; z-index: 1000; background: var(--ds-bg, #fff); color: var(--ds-text, inherit); display: flex; flex-direction: column } .drawing-bar { display: flex; gap: .5rem; padding: .4rem; justify-content: flex-end; border-bottom: 1px solid var(--ed-border) } .drawing-canvas { flex: 1; min-height: 0 }
 
 .image-block { margin: .6rem 0; position: relative } .image-frame { max-width: 100% } .image-block[data-align=center] .image-frame { margin-inline: auto } .image-block[data-align=end] .image-frame { margin-inline-start: auto }
-.image-frame img { max-width: 100%; display: block; border-radius: 4px } .image-placeholder { border: 2px dashed var(--ed-border); border-radius: 6px; padding: 1.2rem; text-align: center; color: #6e7781; background: var(--ed-soft) }
+.image-frame img { max-width: 100%; display: block; border-radius: 4px } .image-placeholder { border: 2px dashed var(--ed-border); border-radius: 6px; padding: 1.2rem; text-align: center; color: var(--ed-muted); background: var(--ed-soft) }
 .image-url { display: flex; gap: .4rem; margin-top: .4rem } .image-url input { flex: 1; direction: ltr }
-.image-bar { display: none; gap: .25rem; margin-top: .25rem } .image-block:hover .image-bar, .image-block.selected .image-bar { display: flex } .image-bar button.on, .floating-bar button.on { background: #dbeafe }
-.page-link { color: var(--ed-accent); background: #eff6ff; border-radius: 4px; padding: 0 .3rem; cursor: pointer; white-space: nowrap } .page-link.missing { color: var(--ed-danger); background: #fff1f0; text-decoration: line-through }
+.image-bar { display: none; gap: .25rem; margin-top: .25rem } .image-block:hover .image-bar, .image-block.selected .image-bar { display: flex } .image-bar button.on, .floating-bar button.on { background: var(--ds-accent-soft, #dbeafe) }
+.page-link { color: var(--ed-accent); background: var(--ds-accent-soft, #eff6ff); border-radius: 4px; padding: 0 .3rem; cursor: pointer; white-space: nowrap } .page-link.missing { color: var(--ed-danger); background: color-mix(in oklab, var(--ds-danger, #cf222e) 14%, var(--ds-bg, #fff)); text-decoration: line-through }
 
 .code-block { position: relative; margin: .6rem 0; direction: ltr } .code-block pre { margin: 0; padding: .7rem; background: #0d1117; color: #e6edf3; border-radius: 6px; overflow-x: auto; text-align: left }
 .code-lang { position: absolute; inset-block-start: 4px; inset-inline-end: 4px; opacity: 0; font-size: 12px } .code-block:hover .code-lang { opacity: 1 }
-.hljs-comment, .hljs-quote { color: #8b949e } .hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag { color: #ff7b72 } .hljs-string, .hljs-regexp, .hljs-addition { color: #a5d6ff } .hljs-number, .hljs-attr, .hljs-attribute { color: #79c0ff }
+.hljs-comment, .hljs-quote { color: var(--ed-muted) } .hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag { color: #ff7b72 } .hljs-string, .hljs-regexp, .hljs-addition { color: #a5d6ff } .hljs-number, .hljs-attr, .hljs-attribute { color: #79c0ff }
 .hljs-title, .hljs-section, .hljs-name { color: #d2a8ff } .hljs-built_in, .hljs-type, .hljs-variable { color: #ffa657 } .hljs-deletion { color: #ffa198 }
 
 .ProseMirror table { border-collapse: collapse; margin: .6rem 0; width: 100% } .ProseMirror td, .ProseMirror th { border: 1px solid var(--ed-border); padding: .3rem .5rem; vertical-align: top; min-width: 3em } .ProseMirror th { background: var(--ed-soft) }
 .ProseMirror table[data-table-align=center] { margin-inline: auto } .ProseMirror table[data-table-align=right] { margin-left: auto; margin-right: 0 } .ProseMirror table[data-table-align=left] { margin-right: auto; margin-left: 0 }
 
-.floating-bar, .floating-menu, .find-bar { position: fixed; z-index: 900; background: #fff; border: 1px solid var(--ed-border); border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.14); font-family: Vazirmatn, system-ui, sans-serif; font-size: 13px }
-.floating-bar { display: flex; gap: 2px; padding: 3px } .floating-bar button, .find-bar button { all: unset; cursor: pointer; padding: 2px 8px; border-radius: 5px } .floating-bar button:hover, .find-bar button:hover { background: #eef2f6 } .floating-bar input { direction: ltr; width: 14em }
-.floating-menu { width: 260px; max-height: 260px; overflow: auto; padding: 4px } .floating-menu .row { display: flex; flex-direction: column; padding: 5px 8px; border-radius: 6px; cursor: pointer } .floating-menu .row.sel { background: #eef2f6 } .floating-menu .hint { color: #6e7781; font-size: 11px } .floating-menu .empty { padding: 8px; color: #6e7781 }
-.find-bar { inset-block-start: 8px; inset-inline-end: 12px; padding: 4px 6px; display: flex; gap: 6px; align-items: center } .find-count { color: #6e7781; min-width: 4em }
-.drag-handle { cursor: grab; color: #8b949e; padding: 0 4px; user-select: none; font-size: 16px }
+.floating-bar, .floating-menu, .find-bar { position: fixed; z-index: 900; background: var(--ds-raised, #fff); color: var(--ds-text, inherit); border: 1px solid var(--ed-border); border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.14); font-family: Vazirmatn, system-ui, sans-serif; font-size: 13px }
+.floating-bar { display: flex; gap: 2px; padding: 3px } .floating-bar button, .find-bar button { all: unset; cursor: pointer; padding: 2px 8px; border-radius: 5px } .floating-bar button:hover, .find-bar button:hover { background: var(--ds-sunk, #eef2f6) } .floating-bar input { direction: ltr; width: 14em }
+.floating-menu { width: 260px; max-height: 260px; overflow: auto; padding: 4px } .floating-menu .row { display: flex; flex-direction: column; padding: 5px 8px; border-radius: 6px; cursor: pointer } .floating-menu .row.sel { background: var(--ds-sunk, #eef2f6) } .floating-menu .hint { color: var(--ed-muted); font-size: 11px } .floating-menu .empty { padding: 8px; color: var(--ed-muted) }
+.find-bar { inset-block-start: 8px; inset-inline-end: 12px; padding: 4px 6px; display: flex; gap: 6px; align-items: center } .find-count { color: var(--ed-muted); min-width: 4em }
+.drag-handle { cursor: grab; color: var(--ed-muted); padding: 0 4px; user-select: none; font-size: 16px }
+
+/* a formula or a diagram is left-to-right whatever the page's direction is (an RTL page mirrored them: "E = mc^2" read backwards) */
+.math-block, .math-inline, .katex, .mermaid-block svg { direction: ltr; unicode-bidi: isolate }
+.floating-bar input, .find-bar input, .floating-menu { background: var(--ds-raised, #fff); color: var(--ds-text, inherit) }
+.callout, .layout-column, .ProseMirror th { color: var(--ds-text, inherit) }
