@@ -1,9 +1,10 @@
 // The notes app's state for one workspace in one tab: the page tree, the open documents, and the actions on them.
 // All writes go through the core client (one committed transaction each); this class only decides WHAT to write.
 import { normalizeFa } from '@nevis/editor'
-import { AUTO_AFTER_MS, DocHandle, addVersion, foldSchedules, loadDoc, readVersions, thinVersions, type Version, reviewCard, reviewTimes, type Grade, type Rec, type BlobStatus, buildTree, createDatabase, createPage, isInside, movePage, readStructured, renamePage, restorePage, trashPage, type Client, type PageNode, type PageRow, type PageTree, type Structured } from '@nevis/core'
+import { AUTO_AFTER_MS, DocHandle, addVersion, foldSchedules, loadDoc, readVersions, thinVersions, type Version, reviewCard, reviewTimes, type Grade, type Rec, type BlobStatus, buildTree, createDatabase, createPage, isInside, movePage, readStructured, renamePage, restorePage, setPageMeta, createTag, tagPage, trashPage, type Client, type PageNode, type PageRow, type PageTree, type Structured } from '@nevis/core'
 import { exportBundle, importBundle, mdFileName, toMarkdown, type ImportResult } from '@nevis/bundle'
-import { project, writeBody, type PMJson } from '@nevis/schema'
+import * as Y from 'yjs'
+import { BODY, project, writeBody, type PMJson } from '@nevis/schema'
 import { SV } from '@nevis/protocol'
 import { zipSync, strToU8, type Zippable } from 'fflate'
 import { Mirror, mirrorFolder } from './mirror'
@@ -263,6 +264,38 @@ export class Workspace {
     await this.reload()
   }
   async emptyTrash(): Promise<void> { for (const p of [...this.tree.trash]) await this.purge(p.id) }
+  /** Ticks (or unticks) a checklist item of a page, found by its block id, in one Yjs transaction: the page itself changes. */
+  async setTaskChecked(page: string, blockId: string, checked: boolean): Promise<void> {
+    const h = await this.openDoc(page)
+    try {
+      h.ydoc.transact(() => {
+        const walk = (n: Y.XmlFragment | Y.XmlElement): boolean => {
+          for (const c of n.toArray() as (Y.XmlElement | Y.XmlText)[]) {
+            if (!('nodeName' in c)) continue // text (duck typing: another copy of Yjs in the bundle would fail `instanceof`)
+            if (c.nodeName === 'taskItem' && c.getAttribute('blockId') === blockId) { c.setAttribute('checked', checked as never); return true }
+            if (walk(c)) return true
+          }
+          return false
+        }
+        walk(h.ydoc.getXmlFragment(BODY))
+      })
+      await h.flush()
+    } finally { await this.closeDoc(page) }
+  }
+  /** Adds a tag to a page (creating the tag the first time its name is used) or removes it. */
+  async tagPageByName(id: string, name: string, on: boolean) {
+    const key = normalizeFa(name.trim())
+    if (!key) return
+    let tag = this.data.tags.find(x => normalizeFa(x.name) === key)
+    let tagId = tag?.id
+    if (!tagId && on) tagId = await createTag(this.rt.client, { name: name.trim() })
+    if (!tagId) return
+    await tagPage(this.rt.client, id, tagId, on)
+    this.rt.written({ ents: [id, tagId] })
+    await this.reload()
+  }
+  /** Page metadata (status, icon, favorite): one register each. */
+  async setMeta(id: string, patch: Parameters<typeof setPageMeta>[2]) { await setPageMeta(this.rt.client, id, patch); await this.wrote(id) }
   async trash(id: string) { await trashPage(this.rt.client, id); await this.wrote(id) }
   async restore(id: string) { await restorePage(this.rt.client, id); await this.wrote(id) }
 

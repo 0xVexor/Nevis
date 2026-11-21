@@ -13,6 +13,7 @@ import { BrandMark } from './BrandMark'
 import { HorizontalScroll } from './HorizontalScroll'
 import { buildIndex } from './pageIndex'
 import { TreeFrame, TreeRow } from './PageTree'
+import { PanelHost } from './panelHost'
 
 const ROOT_CAP = 200
 
@@ -48,6 +49,7 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
   const [selected, setSelected] = useState<string | null>(null)
   const [rootCap, setRootCap] = useState(ROOT_CAP)
   // The Pages panel: beside the content on a wide window; on a narrow one (the old app's 760 px) a drawer over it, closed until asked for.
+  const [host, setHost] = useState<HTMLElement | null>(null)
   const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 760px)').matches)
   const [wide, setWide] = useState(true)
   const [drawer, setDrawer] = useState(false)
@@ -134,14 +136,14 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
       {narrow && drawer && <div className="context-backdrop" aria-hidden="true" onClick={() => setDrawer(false)} />}
       <aside id="workspace-context" className="context-panel" aria-label={t('Pages')} hidden={!panelOpen}>
         <header className="context-heading">
-          <h2>{t('Pages')}</h2>
+          <h2>{route.name === 'tasks' ? t('Tasks') : route.name === 'settings' ? t('Settings') : t('Pages')}</h2>
           <div className="context-tools" role="group" aria-label={t('Panel tools')}>
             <IconButton label={t('Expand all')} onClick={() => setCollapsed(new Set())}><Icon name="chevrons-up-down" size={15} /></IconButton>
             <IconButton label={t('Collapse all')} onClick={() => setCollapsed(new Set(live.filter(p => (index.kids.get(p.id) ?? []).length > 0).map(p => p.id)))}><Icon name="chevrons-down-up" size={15} /></IconButton>
           </div>
         </header>
-        <div className="side-scroll">
-          <div className="side-collections">
+        <div className="side-scroll" ref={setHost}>
+          {route.name !== 'tasks' && route.name !== 'settings' && <div className="side-collections">
             <HorizontalScroll className="tree-scroll" label={t('Pages')} followVisibleBottom>
               <TreeFrame
                 label={t('Pages')} selectedId={selected} onSelect={setSelected} onOpen={id => open(id)} onToggle={toggle} onMenu={rowProps.onMenu}
@@ -153,7 +155,7 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
             </HorizontalScroll>
             {(index.kids.get(null) ?? []).length > rootCap && <button className="section" data-testid="tree-more" onClick={() => setRootCap(c => c + ROOT_CAP)}>{t('Show more')} ({(index.kids.get(null) ?? []).length - rootCap})</button>}
             {roots.length === 0 && <div className="empty-note">{t('No pages yet')}</div>}
-          </div>
+          </div>}
         </div>
       </aside>
 
@@ -186,7 +188,7 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
             <IconButton label={dark ? t('Light mode') : t('Dark mode')} onClick={() => setDeviceSettings({ theme: dark ? 'light' : 'dark' })}><Icon name={dark ? 'sun' : 'moon'} size={17} /></IconButton>
           </div>
         </header>
-        <div className="scroller">{children}</div>
+        <div className="scroller"><PanelHost.Provider value={route.name === 'tasks' || route.name === 'settings' ? host : null}>{children}</PanelHost.Provider></div>
       </main>
       {rowMenu && <Menu anchor={rowMenu.rect} align="end" onClose={() => setRowMenu(null)} items={menuItems(rowMenu.id)} />}
     </div>

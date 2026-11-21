@@ -11,15 +11,18 @@ export function legacyPages(ws: Workspace): Page[] {
   const rank = new Map<string, number>()
   for (const l of byParent.values()) { l.sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : a.id < b.id ? -1 : 1)); l.forEach((p, i) => rank.set(p.id, i)) }
   const known = new Set(rows.map(p => p.id))
+  const tagName = new Map(ws.data.tags.map(t => [t.id, t.name]))
   return rows.map(p => {
     const text = ws.search.excerptOf(p.id)
     return {
-      id: p.id, parentId: p.parent && known.has(p.parent) ? p.parent : null, title: p.title, favorite: false, sort: rank.get(p.id) ?? 0,
+      id: p.id, icon: p.icon || undefined, status: (p.status || undefined) as Page['status'], favorite: !!p.favorite, cover: coverOf(p.cover), tags: (ws.data.pageTags.get(p.id) ?? []).map(i => tagName.get(i) ?? '').filter(Boolean), words: ws.search.wordsOf(p.id), parentId: p.parent && known.has(p.parent) ? p.parent : null, title: p.title, sort: rank.get(p.id) ?? 0,
       content: { type: 'doc', content: text ? [{ type: 'paragraph', content: [{ type: 'text', text }] }] : [] },
       updatedAt: ws.search.touchedAt(p.id) || p.createdAt, deletedAt: p.trashed ? p.createdAt : null,
     } satisfies Page
   })
 }
+
+function coverOf(raw: string | undefined): Page['cover'] { try { const v = raw ? JSON.parse(raw) : null; return v && typeof v === 'object' ? v : undefined } catch { return undefined } }
 
 export function legacyTasks(ws: Workspace): Task[] {
   const out: Task[] = []

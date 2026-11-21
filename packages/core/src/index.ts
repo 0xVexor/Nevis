@@ -11,7 +11,7 @@ export { TabCoordinator, type ChangedMessage, type ChannelPort, type Coordinator
 export { httpBlobNet, httpNet, type HttpNetOptions } from './http'
 export { FUTURE_MARGIN_MS, rebuildFutureOps } from './clockRepair'
 export { buildTree, isInside, type PageNode, type PageRow, type PageTree } from './tree'
-export { PAGE_KIND, createPage, movePage, readPages, renamePage, restorePage, sortKeyBetween, trashPage, type NewPage } from './pages'
+export { PAGE_KIND, createPage, movePage, readPages, renamePage, restorePage, setPageMeta, sortKeyBetween, trashPage, type NewPage } from './pages'
 export { DocHandle, REMOTE, type Cancel, type DocHandleOptions } from './docHandle'
 export { normalizeDecimal, compareDecimal, toAsciiDigits } from './decimal'
 export { normalizeDate, formatDateFa, gregorianToJalali, jalaliToGregorian, validGregorian } from './dates'

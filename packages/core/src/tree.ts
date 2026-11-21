@@ -18,6 +18,13 @@ export interface PageRow {
   parentHlc: string
   /** the `$kind` of the record: a page or a database (both are nodes of the page tree) */
   type?: 'page' | 'database'
+  /** page icon (an emoji or `i:<glyph>`), empty = the default */
+  icon?: string
+  /** '' | todo | doing | done */
+  status?: string
+  favorite?: boolean
+  /** a cover: `{kind:'gradient',id}` as JSON text, empty = none */
+  cover?: string
 }
 
 export interface PageNode { page: PageRow; children: PageNode[]; depth: number }

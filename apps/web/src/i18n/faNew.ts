@@ -9,4 +9,6 @@ export const FA_NEW: Record<string, string> = {
   'Use template': 'استفاده از قالب', 'Keyboard shortcuts': 'میانبرهای صفحه‌کلید', Search: 'جست‌وجو', 'Show all': 'نمایش همه',
   'Save a version now': 'ذخیرهٔ یک نسخه همین حالا',
   'A version is saved automatically 5 minutes after you stop editing.': 'پنج دقیقه بعد از آخرین ویرایش، یک نسخه خودکار ذخیره می‌شود.',
+  'Add tag': 'افزودن برچسب',
+  'Find a page on the map': 'یافتن صفحه روی نقشه', 'Links to': 'پیوند به', 'Linked from': 'پیوندشده از',
 }

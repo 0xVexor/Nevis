@@ -31,6 +31,7 @@ test('export the bundle and the Markdown zip; import the bundle into a new works
     await expect(a.locator('.image-block img')).toBeVisible()
     await a.waitForTimeout(1500)
     await a.getByTestId('nav-settings').click()
+    await a.getByTestId('settings-tab-data').click()
     const [bundle] = await Promise.all([a.waitForEvent('download'), a.getByTestId('export-bundle').click()])
     const zip = new Uint8Array(await readFile((await bundle.path())!))
     const files = unzipSync(zip)

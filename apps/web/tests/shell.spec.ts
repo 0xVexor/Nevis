@@ -103,6 +103,7 @@ test('a template makes a page with its blocks; the database and the sync status 
   await signUpAndOpen(page)
   await page.getByTestId('nav-templates').click()
   await page.getByTestId('template-meeting').click()
+  await page.getByTestId('tpl-use').click()
   await expect(page.getByTestId('editor').locator('.ProseMirror')).toContainText('دستور جلسه', { timeout: 20_000 })
   await expect(page.getByTestId('editor').locator('.callout')).toBeVisible()
   await expect(page.getByTestId('net')).toBeVisible()
@@ -122,10 +123,10 @@ test('10 000 pages: Home, the palette and the "all pages" table touch only what 
   await page.getByTestId('nav-home').click()
   await expect(page.locator('.home-page')).toHaveCount(3) // the old Home: the last page and three recent ones, never the 3000
   await page.getByTestId('nav-all').click()
-  await expect(page.getByTestId('all-pages-row')).toHaveCount(50)
-  await expect(page.getByTestId('pager')).toContainText('3000')
-  await page.getByTestId('pager').getByRole('button', { name: 'بعدی' }).click()
-  await expect(page.getByTestId('all-pages-row')).toHaveCount(50)
+  await expect(page.getByTestId('all-pages-row')).toHaveCount(100) // a hundred rows at a time, not all 3000
+  await expect(page.getByTestId('pt-more')).toContainText('2900')
+  await page.getByTestId('pt-more').click()
+  await expect(page.getByTestId('all-pages-row')).toHaveCount(200)
   await page.keyboard.press('Control+k')
   await page.locator('.ds-command-dialog input').first().fill('صفحه ۱۲')
   await expect(page.locator('.ds-command-dialog .ds-command-result').first()).toBeVisible()

@@ -84,6 +84,7 @@ export async function readStructured(store: Store): Promise<Structured> {
         pages.push({
           id, title: str(j(m, 'title')), parent: str(j(m, 'parent')), sortKey: str(j(m, 'sortKey')), trashed: j(m, 'trashed') === true,
           kind: str(j(m, 'kind'), 'doc'), createdAt: Number(j(m, 'createdAt') ?? 0), parentHlc: m.get('parent')?.hlc ?? '', type: kind,
+          icon: str(j(m, 'icon')), status: str(j(m, 'status')), favorite: j(m, 'favorite') === true, cover: m.has('cover') ? JSON.stringify(j(m, 'cover')) : '',
         })
         const on = new Set<string>()
         for (const [f] of m) if (f.startsWith('tag:') && j(m, f) === true) on.add(f.slice(4))

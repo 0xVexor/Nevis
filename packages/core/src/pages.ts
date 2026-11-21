@@ -17,6 +17,9 @@ export async function createPage(client: Client, o: NewPage = {}, id: string = c
 export const renamePage = (client: Client, id: string, title: string) => client.setFields(id, { title })
 /** Moves a page: parent and sortKey travel in ONE op so that they win or lose together. */
 export const movePage = (client: Client, id: string, parent: string, before: string | null, after: string | null) => client.setFields(id, { parent, sortKey: sortKeyBetween(before, after, client.rnd) })
+/** Metadata of a page, each its own register (concurrent edits of different ones both survive). */
+export const setPageMeta = (client: Client, id: string, patch: { icon?: string; status?: string; favorite?: boolean; cover?: string | null }) =>
+  client.setFields(id, { ...(patch.icon !== undefined ? { icon: patch.icon } : {}), ...(patch.status !== undefined ? { status: patch.status } : {}), ...(patch.favorite !== undefined ? { favorite: patch.favorite } : {}), ...(patch.cover !== undefined ? { cover: patch.cover === null ? '' : JSON.parse(patch.cover) } : {}) })
 export const trashPage = (client: Client, id: string) => client.setFields(id, { trashed: true })
 export const restorePage = (client: Client, id: string) => client.setFields(id, { trashed: false })
 

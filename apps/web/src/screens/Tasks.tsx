@@ -1,0 +1,91 @@
+// Tasks, drawn as the old app drew them (tk-*, ds-list rows, the sources in the side panel). Every checklist item of every page; ticking a box
+// writes the change into the page itself. (The old inbox and projects are not here yet: they have no place in the new data model.)
+import { useContext, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { Button, Checkbox, Icon, Screen } from '../ds'
+import { locale, t } from '../i18n'
+import { go } from '../router'
+import { legacyPages, legacyTasks } from '../shell/adapt'
+import { PanelHost } from '../shell/panelHost'
+import { PageIcon } from '../shell/PageIcon'
+import type { Page } from '../shell/model'
+import type { Workspace } from '../workspace'
+
+type Source = { kind: 'all' } | { kind: 'page'; id: string }
+type Status = 'active' | 'done' | 'all'
+const ALL: Source = { kind: 'all' }
+const SETTLE_MS = 700
+
+export function Tasks({ ws }: { ws: Workspace }) {
+  const host = useContext(PanelHost)
+  const [source, setSource] = useState<Source>(ALL)
+  const [status, setStatus] = useState<Status>('all')
+  const [showDone, setShowDone] = useState(false)
+  const [settling, setSettling] = useState<string[]>([])
+  const pages = useMemo(() => new Map(legacyPages(ws).map(p => [p.id, p])), [ws.data, ws.search.ready, ws.search.progress.done]) // eslint-disable-line react-hooks/exhaustive-deps
+  const raw = ws.search.tasks().filter(x => x.task.text)
+  const tasks = legacyTasks(ws).filter(x => x.text)
+  const items = tasks.map((x, i) => ({ key: `${x.pageId}:${x.index}`, text: x.text, checked: x.checked, page: pages.get(x.pageId), blockId: raw[i]?.task.blockId ?? '', pageId: x.pageId }))
+  const num = (n: number) => n.toLocaleString(locale())
+  const counts = new Map<string, number>()
+  for (const x of items) if (!x.checked) counts.set(x.pageId, (counts.get(x.pageId) ?? 0) + 1)
+  const sources = [...new Set(items.map(x => x.pageId))].map(id => pages.get(id)).filter((p): p is Page => !!p)
+  const page = source.kind === 'page' ? pages.get(source.id) : undefined
+  const current: Source = source.kind === 'page' && !page ? ALL : source
+  const shown = items.filter(x => current.kind === 'all' || x.pageId === current.id)
+  const open = shown.filter(x => !x.checked || settling.includes(x.key))
+  const done = shown.filter(x => x.checked && !settling.includes(x.key))
+  const total = shown.length
+  const pct = total ? Math.round((shown.filter(x => x.checked).length / total) * 100) : 0
+  const allOpen = items.filter(x => !x.checked).length
+  const toggle = (x: (typeof items)[number], next: boolean) => {
+    if (next) { setSettling(s => [...s, x.key]); window.setTimeout(() => setSettling(s => s.filter(k => k !== x.key)), SETTLE_MS) }
+    void ws.setTaskChecked(x.pageId, x.blockId, next)
+  }
+  const row = (x: (typeof items)[number]) => (
+    <div key={x.key} className="ds-list-row tk-row" data-testid="task-row" data-done={x.checked || undefined} style={{ '--depth': 0 } as CSSProperties}>
+      <Checkbox checked={x.checked} onChange={next => toggle(x, next)} className="tk-check"><span className="tk-text" dir="auto">{x.text}</span></Checkbox>
+      {current.kind === 'all' && <button type="button" className="tk-from" dir="auto" onClick={() => setSource({ kind: 'page', id: x.pageId })} title={t('Show only this list')}>{x.page?.title || t('Untitled')}</button>}
+    </div>
+  )
+  const sourceButton = (id: Source, icon: ReactNode, name: string, count: number) => (
+    <button key={id.kind === 'page' ? id.id : 'all'} type="button" className="tk-source" aria-current={(current.kind === id.kind && (id.kind === 'all' || (current.kind === 'page' && current.id === id.id))) || undefined} onClick={() => { setSource(id); setShowDone(false) }}>
+      <span className="tk-source-ic">{icon}</span><span className="tk-source-name" dir="auto">{name}</span>{count > 0 && <span className="ds-badge">{num(count)}</span>}
+    </button>
+  )
+  const sourcesNav = (
+    <nav className="tk-sources" aria-label={t('Task lists')}>
+      {sourceButton(ALL, <Icon name="checklist" size={17} />, t('All tasks'), allOpen)}
+      {sources.length > 0 && <h2 className="tk-sources-title">{t('In pages')}</h2>}
+      {sources.map(p => sourceButton({ kind: 'page', id: p.id }, <PageIcon page={p} />, p.title || t('Untitled'), counts.get(p.id) ?? 0))}
+    </nav>
+  )
+  const title = current.kind === 'all' ? t('All tasks') : page?.title || t('Untitled')
+  return (
+    <Screen width="wide" title={t('Tasks')} description={allOpen ? t('{n} open across your pages and inbox', { n: num(allOpen) }) : t('Checklist items from all your pages appear here.')}>
+      <div className="tk" data-testid="tasks">
+        {host && createPortal(sourcesNav, host)}
+        <section className="tk-main" aria-labelledby="tk-title">
+          <header className="tk-main-head">
+            <div className="tk-main-title"><h2 id="tk-title" dir="auto">{title}</h2><p>{total ? t('{done} of {total} done', { done: num(shown.filter(x => x.checked).length), total: num(total) }) : t('Nothing here yet')}</p></div>
+            {page && <Button variant="ghost" size="sm" icon={<Icon name="arrow-up-right" size={15} className="ds-flip" />} onClick={() => go({ name: 'page', id: page.id })}>{t('Open page')}</Button>}
+          </header>
+          {total > 0 && <div className="ds-progress tk-progress" role="progressbar" aria-label={t('Tasks done')} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><i style={{ inlineSize: pct + '%' }} /></div>}
+          <div className="tk-status" role="group" aria-label={t('Task status')}>
+            {(['active', 'done', 'all'] as const).map(v => <Button key={v} size="sm" variant="ghost" aria-pressed={status === v} onClick={() => setStatus(v)}>{t(v === 'active' ? 'Active' : v === 'done' ? 'Done' : 'All')}</Button>)}
+          </div>
+          {status !== 'done' && (open.length > 0 ? <div className="ds-list ds-list--framed tk-list">{open.map(row)}</div> : (
+            <div className="ds-empty ds-empty--framed" data-testid="tasks-empty"><Icon name={total ? 'check-circle' : 'checklist'} /><b>{total ? t('All caught up') : t('No tasks here yet')}</b><span>{total ? t('Every task here is done') : t('Open the page and add a checklist with /todo')}</span></div>
+          ))}
+          {status === 'done' && (done.length ? <div className="ds-list ds-list--framed tk-list">{done.map(row)}</div> : <div className="ds-empty ds-empty--framed"><b>{t('No completed tasks')}</b></div>)}
+          {status === 'all' && done.length > 0 && (
+            <div className="tk-done">
+              <button type="button" className="tk-done-toggle" aria-expanded={showDone} onClick={() => setShowDone(v => !v)}><Icon name="chevron-right" size={15} className="tk-done-chev ds-flip" />{t('Completed')}<span className="ds-badge">{num(done.length)}</span></button>
+              {showDone && <div className="tk-done-body"><div className="ds-list ds-list--framed tk-list">{done.map(row)}</div></div>}
+            </div>
+          )}
+        </section>
+      </div>
+    </Screen>
+  )
+}

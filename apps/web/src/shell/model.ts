@@ -21,6 +21,8 @@ export interface Page {
   content: unknown
   updatedAt: number
   deletedAt: number | null
+  /** words in the page text (from the index; 0 = not known) */
+  words?: number
   /** present when the page is a database (the tree shows it as a page) */
   database?: object
 }

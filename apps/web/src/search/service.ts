@@ -9,7 +9,7 @@ const INDEX_KEY = 'derived_search'
 const PAGES_KEY = 'derived_pages'
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-interface PageInfo { title: string; links: PageLinkRef[]; tasks: PageTask[]; /** the first ~160 characters of the text */ excerpt?: string; /** when this device last saw the page change (0 = not known) */ at?: number; /** the flashcards of the page (toggle blocks) */ cards?: RawCard[] }
+interface PageInfo { title: string; links: PageLinkRef[]; tasks: PageTask[]; /** the first ~160 characters of the text */ excerpt?: string; /** when this device last saw the page change (0 = not known) */ at?: number; /** the flashcards of the page (toggle blocks) */ cards?: RawCard[]; /** words in the text */ words?: number }
 
 export class SearchService {
   private worker: Worker
@@ -93,7 +93,7 @@ export class SearchService {
           try { const json = project(await this.store.run(tx => loadDoc(tx, p.id))); const ex = extractPage(json); text = ex.text; links = ex.links; tasks = ex.tasks; cards = extractCards(p.id, json) } catch { /* unreadable page: indexed by title only */ }
         }
         const prev = this.info.get(p.id)
-        this.info.set(p.id, { title: p.title, links, tasks, cards, excerpt: text.replace(/\s+/g, ' ').trim().slice(0, 160), at: dirty.has(p.id) || p.title !== prev?.title ? Date.now() : (prev?.at ?? 0) })
+        this.info.set(p.id, { title: p.title, links, tasks, cards, words: text.trim() ? text.trim().split(/\s+/).length : 0, excerpt: text.replace(/\s+/g, ' ').trim().slice(0, 160), at: dirty.has(p.id) || p.title !== prev?.title ? Date.now() : (prev?.at ?? 0) })
         docs.push({ id: p.id, title: p.title, body: text })
       }
       await this.call({ t: 'add', docs })
@@ -125,6 +125,7 @@ export class SearchService {
   }
 
   /** The first characters of a page's text, and when this device last saw it change (0 = not known). */
+  wordsOf(id: string): number { return this.info.get(id)?.words ?? 0 }
   excerptOf(id: string): string { return this.info.get(id)?.excerpt ?? '' }
   touchedAt(id: string): number { return this.info.get(id)?.at ?? 0 }
 

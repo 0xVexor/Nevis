@@ -13,12 +13,11 @@ import { t } from './i18n'
 import { go, useRoute } from './router'
 import { readSynced } from './workspaceSettings'
 import type { Workspace, WsStatus } from './workspace'
-import { AllPages } from './views/AllPages'
+import { PagesTable } from './screens/PagesTable'
 import { Palette } from './views/Palette'
 import { Settings } from './views/Settings'
 import { Graph } from './views/Graph'
-import { Backlinks } from './views/Backlinks'
-import { Tasks } from './views/Tasks'
+import { Tasks } from './screens/Tasks'
 import { Templates } from './views/Templates'
 
 /** The app: a header with the sync status, a sidebar (navigation, new, tree, trash) and the screen of the current route. */
@@ -66,11 +65,10 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
       return (
         <>
           {page.type === 'database' ? <div className="page-cols"><div className="page"><DatabaseView key={page.id} ws={ws} id={page.id} /></div></div> : <EditorPane key={`${page.id}:${ws.reopenCount(page.id)}`} ws={ws} id={page.id} title={page.title} />}
-          {page.type !== 'database' && <Backlinks ws={ws} id={page.id} />}
         </>
       )
     }
-    if (route.name === 'all') return <AllPages ws={ws} calendar={calendar} />
+    if (route.name === 'all') return <div data-testid="all-pages"><PagesTable pages={legacyPages(ws).filter(p => !p.deletedAt)} onOpen={select} onStatus={(id, st) => void ws.setMeta(id, { status: st ?? '' })} onClose={() => undefined} /></div>
     if (route.name === 'templates') return <Templates ws={ws} />
     if (route.name === 'settings') return <Settings ws={ws} />
     if (route.name === 'graph') return <Graph ws={ws} />
