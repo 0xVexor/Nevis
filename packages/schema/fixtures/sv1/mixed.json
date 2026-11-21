@@ -1,0 +1,24 @@
+{
+ "name": "mixed",
+ "sv": 1,
+ "update": "AQW3l9aVDgAHAQRib2R5AwlwYXJhZ3JhcGgHALeX1pUOAAYEALeX1pUOAZEB2YbYs9iu2YfZlCAzINin2LIgTmV2aXMg2K/YsSDYqtin2LHbjNiuINux27TbsNu1L9uw27gv27PbsCDZhdmG2KrYtNixINi02K/YmyDZhtuM2YXigIzZgdin2LXZhNmHINmIIFpXTkog2K3Zgdi4INmF24zigIzYtNmI2K86INmF24zigIzYrtmI2KfZh9mFLigAt5fWlQ4AA2RpcgF3BGF1dG8oALeX1pUOAAdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAyAA==",
+ "sha256": "df02d8c1365151b825a8cbad06ea4fa84037503ce3b13d7863056ec4815b68b3",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "paragraph",
+    "attrs": {
+     "dir": "auto",
+     "blockId": "01930000-0000-7000-8000-000000000002"
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "نسخهٔ 3 از Nevis در تاریخ ۱۴۰۵/۰۸/۳۰ منتشر شد؛ نیم‌فاصله و ZWNJ حفظ می‌شود: می‌خواهم."
+     }
+    ]
+   }
+  ]
+ }
+}

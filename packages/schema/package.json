@@ -12,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@nevis/protocol": "workspace:*",
     "@tiptap/core": "3.35.0",
     "@tiptap/extension-code-block": "3.35.0",
     "@tiptap/extension-link": "3.35.0",

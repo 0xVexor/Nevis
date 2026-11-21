@@ -5,7 +5,8 @@ import type * as Y from 'yjs'
 import { BlockIdentity } from './blockIdentity'
 import { schemaExtensions } from './extensions'
 
-export { BLOCK_TYPES, DIR_TYPES, SV } from './extensions'
+export { BLOCK_TYPES, DIR_TYPES } from './extensions'
+export { SV } from '@nevis/protocol'
 export { isBlockId, uuidv7 } from './ids'
 export { BlockIdentity } from './blockIdentity'
 
@@ -31,3 +32,22 @@ export function* attrValues(json: PMJson, path = ''): Generator<[string, unknown
   for (const m of json.marks ?? []) for (const [k, v] of Object.entries(m.attrs ?? {})) yield [`${path}/${json.type}:${m.type}.${k}`, v]
   for (const [i, c] of (json.content ?? []).entries()) yield* attrValues(c, `${path}/${json.type}[${i}]`)
 }
+
+/** The projection with every attribute that equals its schema default removed, recursively. This is what golden fixtures compare
+ *  (ADR-0003 §8, docs/formats/golden-fixtures.md): a LATER schema may add attributes (with defaults) and node types without making
+ *  a document written under an EARLIER one project differently, and the stored fixtures are never regenerated. */
+export function dropDefaults(json: PMJson, sch: Schema = schema): PMJson {
+  const out: PMJson = { type: json.type }
+  const attrSpec = json.type === 'text' ? undefined : sch.nodes[json.type]?.spec.attrs
+  const attrs = Object.entries(json.attrs ?? {}).filter(([k, v]) => !(attrSpec?.[k] && 'default' in attrSpec[k]! && JSON.stringify(attrSpec[k]!.default) === JSON.stringify(v)))
+  if (attrs.length) out.attrs = Object.fromEntries(attrs)
+  if (json.text !== undefined) out.text = json.text
+  if (json.marks?.length) out.marks = json.marks.map(m => {
+    const mt = sch.marks[m.type]
+    const a = Object.entries(m.attrs ?? {}).filter(([k, v]) => !(mt && k in mt.spec.attrs! && JSON.stringify(mt.spec.attrs![k]!.default) === JSON.stringify(v)))
+    return a.length ? { type: m.type, attrs: Object.fromEntries(a) } : { type: m.type }
+  })
+  if (json.content) out.content = json.content.map(c => dropDefaults(c, sch))
+  return out
+}
+export { auditSchema } from './audit'

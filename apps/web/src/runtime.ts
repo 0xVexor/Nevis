@@ -1,13 +1,11 @@
 // The sync runtime of one workspace in one tab: the IndexedDB store, the client (local writes), the engine (push/pull/apply), and the
 // tab coordinator (one leader per workspace talks to the server, with a long-poll). Shared by the real app and the test lab.
 import { Client, SyncEngine, TabCoordinator, httpNet, type ChangedMessage, type CycleStats, type Store } from '@nevis/core'
-import { uuidv7 } from '@nevis/protocol'
+import { SV, uuidv7 } from '@nevis/protocol'
 import { IdbStore } from '@nevis/store-idb'
 import { desktopFetch, isDesktop, openDesktopStore } from './desktop'
 import { webChannel, webLocks } from './ports'
 
-/** The schema version of this build (ADR-0002); a document from a newer one is not opened for editing. */
-export const SV = 1
 
 export interface RuntimeOptions {
   ws: string
@@ -65,7 +63,7 @@ export class SyncRuntime {
       ws: this.ws, locks: webLocks, channel: webChannel(`nevis-${this.ws}`), intervalMs: 2000,
       cycle: async () => {
         const s = await this.engine.cycle()
-        this.lastError = ''
+        this.lastError = s.rejected ? `${s.rejected} change(s) were refused by the server and could not be sent (kept in quarantine)` : ''
         this.lastSyncAt = Date.now()
         if (s.applied) this.o.onApplied?.(s)
         if (s.applied || s.pushed) this.o.onChange?.()

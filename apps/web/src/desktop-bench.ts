@@ -4,7 +4,7 @@
 import { Client, DocHandle } from '@nevis/core'
 import { createEditor } from '@nevis/editor'
 import { appInfo, invoke, isDesktop, openDesktopStore } from './desktop'
-import { uuidv7 } from '@nevis/protocol'
+import { uuidv7, SV } from '@nevis/protocol'
 import { TauriStore } from '@nevis/store-tauri'
 
 const pct = (xs: number[], p: number) => { const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.ceil(s.length * p) - 1)] ?? 0 }
@@ -18,7 +18,7 @@ async function main() {
   const inner = openDesktopStore(ws, ms => commits.push(ms)) as TauriStore
   // time every whole transaction (reads over IPC + the commit)
   const store = { run: async <T>(fn: Parameters<TauriStore['run']>[0]) => { const t = performance.now(); try { return (await inner.run(fn)) as T } finally { runs.push(performance.now() - t) } } }
-  const client = new Client({ store: store as never, ws, device: uuidv7(), sv: 1 })
+  const client = new Client({ store: store as never, ws, device: uuidv7(), sv: SV })
   const doc = uuidv7()
   const h = await DocHandle.open({ client, doc })
   const host = document.createElement('div'); document.body.append(host)

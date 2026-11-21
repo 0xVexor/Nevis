@@ -1,0 +1,50 @@
+{
+ "name": "directions",
+ "sv": 1,
+ "update": "AQ+ugtipBgAHAQRib2R5AwlwYXJhZ3JhcGgHAK6C2KkGAAYEAK6C2KkGAQ5hdXRvIGRpcmVjdGlvbigAroLYqQYAA2RpcgF3BGF1dG8oAK6C2KkGAAdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAzh66C2KkGAAMJcGFyYWdyYXBoBwCugtipBhIGBACugtipBhMW2LHYp9iz2KrigIzYqNmH4oCM2obZvigAroLYqQYSA2RpcgF3A3J0bCgAroLYqQYSB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwMDSHroLYqQYSAwlwYXJhZ3JhcGgHAK6C2KkGIAYEAK6C2KkGIQ1sZWZ0IHRvIHJpZ2h0KACugtipBiADZGlyAXcDbHRyKACugtipBiAHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDAwNQA=",
+ "sha256": "b23cc45002dcf01da8ac1fcbf54f6e4322684f10b4a9351594a2aecaa470700b",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "paragraph",
+    "attrs": {
+     "dir": "auto",
+     "blockId": "01930000-0000-7000-8000-000000000003"
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "auto direction"
+     }
+    ]
+   },
+   {
+    "type": "paragraph",
+    "attrs": {
+     "dir": "rtl",
+     "blockId": "01930000-0000-7000-8000-000000000004"
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "راست‌به‌چپ"
+     }
+    ]
+   },
+   {
+    "type": "paragraph",
+    "attrs": {
+     "dir": "ltr",
+     "blockId": "01930000-0000-7000-8000-000000000005"
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "left to right"
+     }
+    ]
+   }
+  ]
+ }
+}

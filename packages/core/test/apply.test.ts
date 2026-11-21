@@ -1,13 +1,13 @@
 import fc from 'fast-check'
 import * as Y from 'yjs'
 import { describe, expect, it } from 'vitest'
-import { b64urlEncode, encodeEnvelope, encodeEvt, encodeRec, encodeYUpdate, formatHlc, uuidv7, type Envelope } from '@nevis/protocol'
+import { b64urlEncode, encodeEnvelope, encodeEvt, encodeRec, encodeYUpdate, formatHlc, uuidv7, type Envelope, SV } from '@nevis/protocol'
 import { Client, MemoryStore, applyEnvelope, loadDoc, projectStore } from '../src'
 
 const WS = uuidv7(), DEV_A = uuidv7(), DEV_B = uuidv7()
 const hlc = (ms: number, c: number, dev: string) => formatHlc({ ms, counter: c }, dev)
-const env = (doc: string, dev: string, t: string, frame: Uint8Array, sv = 1): Envelope => ({ v: 1, op: uuidv7(), ws: WS, doc, dev, t, sv, kid: 0, p: b64urlEncode(frame) })
-const ctx = { device: DEV_A, sv: 1, now: 1_000 }
+const env = (doc: string, dev: string, t: string, frame: Uint8Array, sv = SV): Envelope => ({ v: 1, op: uuidv7(), ws: WS, doc, dev, t, sv, kid: 0, p: b64urlEncode(frame) })
+const ctx = { device: DEV_A, sv: SV, now: 1_000 }
 const apply = (s: MemoryStore, e: Envelope) => s.run(tx => applyEnvelope(tx, e, ctx))
 
 describe('LWW registers', () => {
@@ -91,7 +91,7 @@ describe('local writes', () => {
   it('one transaction writes the state, the outbox row and the clock; the outbox keeps the exact bytes', async () => {
     const store = new MemoryStore()
     let t = 5000
-    const c = new Client({ store, ws: WS, device: DEV_A, sv: 1, now: () => t })
+    const c = new Client({ store, ws: WS, device: DEV_A, sv: SV, now: () => t })
     const ent = uuidv7()
     const op = await c.setFields(ent, { title: 'سلام' }, 'page')
     const [row] = await store.run(tx => tx.listOutbox(10))
@@ -109,7 +109,7 @@ describe('local writes', () => {
 
   it('a failing write leaves neither state nor outbox nor clock change', async () => {
     const store = new MemoryStore()
-    const c = new Client({ store, ws: WS, device: DEV_A, sv: 1, now: () => 1 })
+    const c = new Client({ store, ws: WS, device: DEV_A, sv: SV, now: () => 1 })
     await expect(c.setFields(uuidv7(), { a: 1 }, undefined)).resolves.toBeTruthy()
     const before = await store.run(tx => tx.getMeta('hlc'))
     await expect(store.run(async tx => { await tx.setMeta('hlc', 'zzz'); throw new Error('x') })).rejects.toThrow()

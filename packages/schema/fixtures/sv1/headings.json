@@ -1,0 +1,53 @@
+{
+ "name": "headings",
+ "sv": 1,
+ "update": "ARL26+vTDgAHAQRib2R5AwdoZWFkaW5nBwD26+vTDgAGBAD26+vTDgEK2KrbjNiq2LEgMSgA9uvr0w4AA2RpcgF3BGF1dG8oAPbr69MOAAdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDA2KAD26+vTDgAFbGV2ZWwBfQGH9uvr0w4AAwdoZWFkaW5nBwD26+vTDgsGBAD26+vTDgwK2KrbjNiq2LEgMigA9uvr0w4LA2RpcgF3A3J0bCgA9uvr0w4LB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwMDcoAPbr69MOCwVsZXZlbAF9Aof26+vTDgsDB2hlYWRpbmcHAPbr69MOFgYEAPbr69MOFwrYqtuM2KrYsSAzKAD26+vTDhYDZGlyAXcEYXV0bygA9uvr0w4WB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwMDgoAPbr69MOFgVsZXZlbAF9AwA=",
+ "sha256": "f5aaf2dd98fc14e76d355cff6d969a92afc1595e49ae17888f547eb9a170bfe2",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "heading",
+    "attrs": {
+     "dir": "auto",
+     "blockId": "01930000-0000-7000-8000-000000000006",
+     "level": 1
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "تیتر 1"
+     }
+    ]
+   },
+   {
+    "type": "heading",
+    "attrs": {
+     "dir": "rtl",
+     "blockId": "01930000-0000-7000-8000-000000000007",
+     "level": 2
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "تیتر 2"
+     }
+    ]
+   },
+   {
+    "type": "heading",
+    "attrs": {
+     "dir": "auto",
+     "blockId": "01930000-0000-7000-8000-000000000008",
+     "level": 3
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "تیتر 3"
+     }
+    ]
+   }
+  ]
+ }
+}

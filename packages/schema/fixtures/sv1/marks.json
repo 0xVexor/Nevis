@@ -1,0 +1,74 @@
+{
+ "name": "marks",
+ "sv": 1,
+ "update": "ARPv0ZP5AwAHAQRib2R5AwlwYXJhZ3JhcGgHAO/Rk/kDAAYGAO/Rk/kDAQRib2xkAnt9hO/Rk/kDAgrZvtix2LHZhtqvhu/Rk/kDBwRib2xkBG51bGyE79GT+QMIBCDZiCCG79GT+QMLBml0YWxpYwJ7fYTv0ZP5AwwE2qnYrIbv0ZP5Aw4GaXRhbGljBG51bGyE79GT+QMPBCDZiCCG79GT+QMSBGNvZGUCe32E79GT+QMTBGNvZGWG79GT+QMXBGNvZGUEbnVsbITv0ZP5AxgEINmIIIbv0ZP5AxsEbGluaz57ImhyZWYiOiJodHRwczovL2V4YW1wbGUuY29tIiwidGFyZ2V0IjoiIiwicmVsIjoiIiwiY2xhc3MiOiIifYTv0ZP5AxwK2b7bjNmI2YbYr4bv0ZP5AyEEbGluawRudWxsKADv0ZP5AwADZGlyAXcEYXV0bygA79GT+QMAB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwMjcA",
+ "sha256": "359d67594ba1dd562da348bc3a17fb4d95e44f9e3298107c8ef383fb01759961",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "paragraph",
+    "attrs": {
+     "dir": "auto",
+     "blockId": "01930000-0000-7000-8000-000000000027"
+    },
+    "content": [
+     {
+      "type": "text",
+      "marks": [
+       {
+        "type": "bold"
+       }
+      ],
+      "text": "پررنگ"
+     },
+     {
+      "type": "text",
+      "text": " و "
+     },
+     {
+      "type": "text",
+      "marks": [
+       {
+        "type": "italic"
+       }
+      ],
+      "text": "کج"
+     },
+     {
+      "type": "text",
+      "text": " و "
+     },
+     {
+      "type": "text",
+      "marks": [
+       {
+        "type": "code"
+       }
+      ],
+      "text": "code"
+     },
+     {
+      "type": "text",
+      "text": " و "
+     },
+     {
+      "type": "text",
+      "marks": [
+       {
+        "type": "link",
+        "attrs": {
+         "href": "https://example.com",
+         "target": "",
+         "rel": "",
+         "class": ""
+        }
+       }
+      ],
+      "text": "پیوند"
+     }
+    ]
+   }
+  ]
+ }
+}

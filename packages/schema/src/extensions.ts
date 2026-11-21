@@ -11,7 +11,6 @@ import StarterKit from '@tiptap/starter-kit'
 export const BLOCK_TYPES = ['paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'taskList', 'taskItem', 'blockquote', 'codeBlock', 'table', 'tableRow', 'tableHeader', 'tableCell'] as const
 /** Nodes that carry a text direction. */
 export const DIR_TYPES = ['paragraph', 'heading', 'table'] as const
-export const SV = 1
 
 const Attrs = Extension.create({
   name: 'nevisAttrs',

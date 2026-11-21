@@ -1,0 +1,31 @@
+{
+ "name": "hardBreak",
+ "sv": 1,
+ "update": "AQj+udmFBgAHAQRib2R5AwlwYXJhZ3JhcGgHAP652YUGAAYEAP652YUGAQvYrti3INin2YjZhIf+udmFBgEDCWhhcmRCcmVha4f+udmFBggGBAD+udmFBgkL2K7YtyDYr9mI2YUoAP652YUGAANkaXIBdwRhdXRvKAD+udmFBgAHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDAyOAA=",
+ "sha256": "54461451613705d622c0f0ca9f7da9a3df463d87d0085f21be68692dda16f68a",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "paragraph",
+    "attrs": {
+     "dir": "auto",
+     "blockId": "01930000-0000-7000-8000-000000000028"
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "خط اول"
+     },
+     {
+      "type": "hardBreak"
+     },
+     {
+      "type": "text",
+      "text": "خط دوم"
+     }
+    ]
+   }
+  ]
+ }
+}

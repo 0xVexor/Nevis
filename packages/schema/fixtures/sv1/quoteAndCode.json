@@ -1,0 +1,58 @@
+{
+ "name": "quoteAndCode",
+ "sv": 1,
+ "update": "ARHajqT1BQAHAQRib2R5AwpibG9ja3F1b3RlBwDajqT1BQADCXBhcmFncmFwaAcA2o6k9QUBBgQA2o6k9QUCDdmG2YLZhCDZgtmI2YQoANqOpPUFAQNkaXIBdwRhdXRvKADajqT1BQEHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDAyNCgA2o6k9QUAB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwMjOH2o6k9QUAAwljb2RlQmxvY2sHANqOpPUFDQYEANqOpPUFDgtjb25zdCB4ID0gMSgA2o6k9QUNB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwMjUoANqOpPUFDQhsYW5ndWFnZQF3AnRzh9qOpPUFDQMJY29kZUJsb2NrBwDajqT1BRwGBADajqT1BR0FcGxhaW4oANqOpPUFHAdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDI2KADajqT1BRwIbGFuZ3VhZ2UBdwAA",
+ "sha256": "61db3510aad23af065e50c39eb16eb63b477bf9a8af507f4868d8edc9038ee0a",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "blockquote",
+    "attrs": {
+     "blockId": "01930000-0000-7000-8000-000000000023"
+    },
+    "content": [
+     {
+      "type": "paragraph",
+      "attrs": {
+       "dir": "auto",
+       "blockId": "01930000-0000-7000-8000-000000000024"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "نقل قول"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "codeBlock",
+    "attrs": {
+     "blockId": "01930000-0000-7000-8000-000000000025",
+     "language": "ts"
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "const x = 1"
+     }
+    ]
+   },
+   {
+    "type": "codeBlock",
+    "attrs": {
+     "blockId": "01930000-0000-7000-8000-000000000026",
+     "language": ""
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "plain"
+     }
+    ]
+   }
+  ]
+ }
+}

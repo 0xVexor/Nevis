@@ -5,7 +5,7 @@
 import { Client, DocHandle, buildTree, readPages } from '@nevis/core'
 import { createEditor } from '@nevis/editor'
 import { IdbStore } from '@nevis/store-idb'
-import { formatHlc, uuidv7 } from '@nevis/protocol'
+import { formatHlc, uuidv7, SV } from '@nevis/protocol'
 import * as Y from 'yjs'
 
 const DB = 'nevis-bench'
@@ -73,7 +73,7 @@ async function cold() {
 
 async function open(ids: string[], times: number) {
   const store = new IdbStore({ name: DB })
-  const client = new Client({ store, ws: uuidv7(), device: uuidv7(), sv: 1 })
+  const client = new Client({ store, ws: uuidv7(), device: uuidv7(), sv: SV })
   const el = document.getElementById('editor')!
   const out: number[] = []
   for (let i = 0; i < times; i++) {

@@ -1,10 +1,17 @@
 // Local writes. Each one is ONE transaction that writes the local state, the outbox row (the final envelope bytes, kept
 // exactly as first serialised so a resend is always byte-identical) and the advanced clock (ADR-0001 §4).
-import { FRAME, b64urlEncode, encodeEnvelope, encodeEvt, encodeRec, encodeYUpdate, type Envelope, type Json, type UuidGenerator, uuidv7 } from '@nevis/protocol'
+import { FRAME, MAX_P_CHARS, b64urlEncode, encodeEnvelope, encodeEvt, encodeRec, encodeYUpdate, type Envelope, type Json, type UuidGenerator, uuidv7 } from '@nevis/protocol'
 import { KIND_FIELD } from './apply'
 import { nextHlc } from './clock'
 import { compactDoc } from './docs'
 import type { Store, Tx } from './store'
+
+/** One op may not exceed the envelope limit the server enforces. An op the server refuses for size would sit in the outbox for ever
+ *  (a permanent 400), so it is refused HERE, before anything is written: the whole local transaction is undone. */
+export class OpTooLargeError extends Error {
+  readonly size: number
+  constructor(size: number) { super(`this change is too large to save (${Math.round(size / 1024)} KB; the limit is ${Math.round(MAX_P_CHARS / 1024)} KB)`); this.size = size }
+}
 
 export interface ClientOptions {
   store: Store
@@ -41,6 +48,7 @@ export class Client {
 
   private async emit(tx: Tx, doc: string, frame: Uint8Array, hlc: string): Promise<string> {
     const env: Envelope = { v: 1, op: this.newId(), ws: this.ws, doc, dev: this.device, t: hlc, sv: this.sv, kid: 0, p: b64urlEncode(frame) }
+    if (env.p.length > MAX_P_CHARS) throw new OpTooLargeError(env.p.length)
     const text = encodeEnvelope(env)
     await tx.addOutbox({ op: env.op, env: text, created: this.now() })
     return env.op

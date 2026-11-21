@@ -7,7 +7,7 @@
 //    to the outbox again, and the undo manager (which tracks the editor's own origin) never sees them;
 //  - `flush()` is public so that the page can call it on `visibilitychange`/`pagehide`/close. This file has no DOM.
 import * as Y from 'yjs'
-import type { Client } from './client'
+import { OpTooLargeError, type Client } from './client'
 
 /** The origin of updates that came from the store. */
 export const REMOTE = Symbol('nevis-remote')
@@ -22,6 +22,8 @@ export interface DocHandleOptions {
   /** after local updates were written: tell the other tabs and kick the sync */
   onLocalWrite?: (doc: string) => void
   onError?: (e: unknown) => void
+  /** a write was refused because ONE update is over the size limit: those edits are NOT saved and never will be (see `diverged`) */
+  onTooLarge?: (e: OpTooLargeError) => void
 }
 
 const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i])
@@ -34,6 +36,7 @@ export class DocHandle {
   private readonly schedule: (fn: () => void, ms: number) => Cancel
   private readonly onLocalWrite?: (doc: string) => void
   private readonly onError?: (e: unknown) => void
+  private readonly onTooLarge?: (e: OpTooLargeError) => void
   private pending: Uint8Array[] = []
   private cancelTimer: Cancel | null = null
   private writing: Promise<void> = Promise.resolve()
@@ -42,6 +45,8 @@ export class DocHandle {
   private closed = false
   /** true when the document holds changes from a newer schema this client cannot read (ADR-0003 §6): do not edit it. */
   needsUpdate = false
+  /** true after an edit was refused for size: this in-memory document holds changes the store does not. Close and reopen it. */
+  diverged = false
 
   private constructor(o: DocHandleOptions) {
     this.client = o.client
@@ -50,6 +55,7 @@ export class DocHandle {
     this.schedule = o.schedule ?? ((fn, ms) => { const t = setTimeout(fn, ms); return () => clearTimeout(t) })
     this.onLocalWrite = o.onLocalWrite
     this.onError = o.onError
+    this.onTooLarge = o.onTooLarge
     this.ydoc.on('update', (u: Uint8Array, origin: unknown) => {
       if (origin === REMOTE || this.needsUpdate) return
       this.pending.push(u)
@@ -98,6 +104,12 @@ export class DocHandle {
       await this.client.writeYUpdate(this.doc, batch.length === 1 ? batch[0]! : Y.mergeUpdates(batch))
       this.onLocalWrite?.(this.doc)
     } catch (e) {
+      if (e instanceof OpTooLargeError) { // retrying would fail the same way for ever: drop the batch and say so
+        this.diverged = true
+        this.onTooLarge?.(e)
+        this.onError?.(e)
+        return
+      }
       this.pending = [...batch, ...this.pending] // nothing was written: keep it and try again soon
       if (!this.closed && !this.cancelTimer) this.cancelTimer = this.schedule(() => { this.cancelTimer = null; void this.flush() }, Math.max(this.throttleMs, 1000))
       this.onError?.(e)

@@ -1,10 +1,10 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
-import { uuidv7 } from '@nevis/protocol'
+import { uuidv7, SV } from '@nevis/protocol'
 import { Client, MemoryStore, buildTree, createPage, isInside, movePage, readPages, renamePage, restorePage, sortKeyBetween, trashPage, type PageRow } from '../src'
 
 const row = (id: string, parent: string, sortKey: string, parentHlc = '', trashed = false): PageRow => ({ id, title: id, parent, sortKey, trashed, kind: 'doc', createdAt: 0, parentHlc })
-const client = () => new Client({ store: new MemoryStore(), ws: uuidv7(), device: uuidv7(), sv: 1 })
+const client = () => new Client({ store: new MemoryStore(), ws: uuidv7(), device: uuidv7(), sv: SV })
 
 describe('pages on the store', () => {
   it('create, rename, move, trash and restore are read back by ONE bulk read', async () => {

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { SV } from '@nevis/protocol'
 
 // The notes app (M5) with a real account against the real server, in each engine.
 const user = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
@@ -83,7 +84,7 @@ test('a page touched by a newer schema is not opened for editing (message instea
   await page.getByTestId('title').fill('x')
   await page.waitForTimeout(700)
   const id = await page.getByTestId('page-row').first().getAttribute('data-id')
-  await page.evaluate(id => (window as unknown as { __ws: { rt: { store: { run: (f: (tx: { bumpMaxSv: (d: string, v: number) => Promise<void> }) => Promise<void>) => Promise<void> } } } }).__ws.rt.store.run(tx => tx.bumpMaxSv(id!, 2)), id)
+  await page.evaluate(([id, v]) => (window as unknown as { __ws: { rt: { store: { run: (f: (tx: { bumpMaxSv: (d: string, v: number) => Promise<void> }) => Promise<void>) => Promise<void> } } } }).__ws.rt.store.run(tx => tx.bumpMaxSv(id!, v)), [id, SV + 1] as const)
   await page.getByTestId('new-page').click() // select another page, then come back
   await page.getByTestId('page-row').first().getByRole('button').nth(1).click()
   await expect(page.getByTestId('needs-update')).toBeVisible()

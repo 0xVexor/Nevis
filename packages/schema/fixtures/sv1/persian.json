@@ -1,0 +1,24 @@
+{
+ "name": "persian",
+ "sv": 1,
+ "update": "AQWh0azFDwAHAQRib2R5AwlwYXJhZ3JhcGgHAKHRrMUPAAYEAKHRrMUPAUHYs9mE2KfZhSDYr9mG24zYp9iMINin24zZhiDbjNqpINuM2KfYr9iv2KfYtNiqINmB2KfYsdiz24wg2KfYs9iqLigAodGsxQ8AA2RpcgF3BGF1dG8oAKHRrMUPAAdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAxAA==",
+ "sha256": "e82abda337f454cd1ca6b2cd0df9759ccb43b618d751aeaa5c5cb8af0a15ed92",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "paragraph",
+    "attrs": {
+     "dir": "auto",
+     "blockId": "01930000-0000-7000-8000-000000000001"
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "سلام دنیا، این یک یادداشت فارسی است."
+     }
+    ]
+   }
+  ]
+ }
+}

@@ -1,0 +1,99 @@
+{
+ "name": "lists",
+ "sv": 1,
+ "update": "ARzygoPCAwAHAQRib2R5AwpidWxsZXRMaXN0BwDygoPCAwADCGxpc3RJdGVtBwDygoPCAwEDCXBhcmFncmFwaAcA8oKDwgMCBgQA8oKDwgMDBNuM2qkoAPKCg8IDAgNkaXIBdwRhdXRvKADygoPCAwIHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDAxMYfygoPCAwIDCmJ1bGxldExpc3QHAPKCg8IDCAMIbGlzdEl0ZW0HAPKCg8IDCQMJcGFyYWdyYXBoBwDygoPCAwoGBADygoPCAwsO2KrZiCDYr9ixINiq2YgoAPKCg8IDCgNkaXIBdwRhdXRvKADygoPCAwoHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDAxNCgA8oKDwgMJB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwMTMoAPKCg8IDCAdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDEyKADygoPCAwEHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDAxMCgA8oKDwgMAB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwMDmH8oKDwgMAAwtvcmRlcmVkTGlzdAcA8oKDwgMaAwhsaXN0SXRlbQcA8oKDwgMbAwlwYXJhZ3JhcGgHAPKCg8IDHAYEAPKCg8IDHQTYs9mHKADygoPCAxwDZGlyAXcEYXV0bygA8oKDwgMcB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwMTcoAPKCg8IDGwdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDE2KADygoPCAxoHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDAxNSgA8oKDwgMaBXN0YXJ0AX0DAA==",
+ "sha256": "498a577fc2c4155f6ff3f5ba2f76f6868f50f4ad753144df37e63418a08c1ee0",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "bulletList",
+    "attrs": {
+     "blockId": "01930000-0000-7000-8000-000000000009"
+    },
+    "content": [
+     {
+      "type": "listItem",
+      "attrs": {
+       "blockId": "01930000-0000-7000-8000-000000000010"
+      },
+      "content": [
+       {
+        "type": "paragraph",
+        "attrs": {
+         "dir": "auto",
+         "blockId": "01930000-0000-7000-8000-000000000011"
+        },
+        "content": [
+         {
+          "type": "text",
+          "text": "یک"
+         }
+        ]
+       },
+       {
+        "type": "bulletList",
+        "attrs": {
+         "blockId": "01930000-0000-7000-8000-000000000012"
+        },
+        "content": [
+         {
+          "type": "listItem",
+          "attrs": {
+           "blockId": "01930000-0000-7000-8000-000000000013"
+          },
+          "content": [
+           {
+            "type": "paragraph",
+            "attrs": {
+             "dir": "auto",
+             "blockId": "01930000-0000-7000-8000-000000000014"
+            },
+            "content": [
+             {
+              "type": "text",
+              "text": "تو در تو"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "orderedList",
+    "attrs": {
+     "blockId": "01930000-0000-7000-8000-000000000015",
+     "start": 3
+    },
+    "content": [
+     {
+      "type": "listItem",
+      "attrs": {
+       "blockId": "01930000-0000-7000-8000-000000000016"
+      },
+      "content": [
+       {
+        "type": "paragraph",
+        "attrs": {
+         "dir": "auto",
+         "blockId": "01930000-0000-7000-8000-000000000017"
+        },
+        "content": [
+         {
+          "type": "text",
+          "text": "سه"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

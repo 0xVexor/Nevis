@@ -1,6 +1,6 @@
 import * as Y from 'yjs'
 import { describe, expect, it } from 'vitest'
-import { b64urlEncode, encodeEnvelope, encodeYUpdate, formatHlc, uuidv7, type Envelope } from '@nevis/protocol'
+import { b64urlEncode, encodeEnvelope, encodeYUpdate, formatHlc, uuidv7, type Envelope, SV } from '@nevis/protocol'
 import { COMPACT_AFTER, Client, DocHandle, MemoryStore, REMOTE, applyEnvelope, loadDoc } from '../src'
 
 /** A manual clock: timers fire only when the test says time has passed. */
@@ -17,7 +17,7 @@ const type = (y: Y.Doc, text: string) => y.transact(() => {
   const p = new Y.XmlElement('paragraph'); const t = new Y.XmlText(); p.insert(0, [t]); frag.insert(frag.length, [p]); t.insert(0, text)
 })
 const body = (y: Y.Doc) => y.getXmlFragment('body').toString()
-const setup = () => { const store = new MemoryStore(); const ws = uuidv7(); const client = new Client({ store, ws, device: uuidv7(), sv: 1 }); return { store, ws, client, doc: uuidv7() } }
+const setup = () => { const store = new MemoryStore(); const ws = uuidv7(); const client = new Client({ store, ws, device: uuidv7(), sv: SV }); return { store, ws, client, doc: uuidv7() } }
 
 describe('DocHandle', () => {
   it('writes local edits as ONE merged update per throttle window, even when typing never pauses', async () => {
@@ -73,7 +73,7 @@ describe('DocHandle', () => {
     const a = setup()
     const peer = new Y.Doc(); type(peer, 'from the future')
     const e: Envelope = { v: 1, op: uuidv7(), ws: a.ws, doc: a.doc, dev: uuidv7(), t: formatHlc({ ms: 5, counter: 0 }, uuidv7()), sv: 2, kid: 0, p: b64urlEncode(encodeYUpdate(Y.encodeStateAsUpdate(peer))) }
-    expect(await a.store.run(tx => applyEnvelope(tx, JSON.parse(encodeEnvelope(e)) as Envelope, { device: a.client.device, sv: 1, now: 10 }))).toBe('held')
+    expect(await a.store.run(tx => applyEnvelope(tx, JSON.parse(encodeEnvelope(e)) as Envelope, { device: a.client.device, sv: SV, now: 10 }))).toBe('held')
     const h = await DocHandle.open({ client: a.client, doc: a.doc })
     expect(h.needsUpdate).toBe(true)
     type(h.ydoc, 'must not be written')

@@ -4,7 +4,7 @@
 //  3. with a server (NEVIS_SERVER): sign up as a device, the token stays in Rust, and a client syncs through Rust to the server and
 //     back to a second device (the two ends of one account converge).
 import { Client, MemoryStore, SyncEngine, httpNet, storeConformance } from '@nevis/core'
-import { uuidv7 } from '@nevis/protocol'
+import { uuidv7, SV } from '@nevis/protocol'
 import { createWorkspace, me, signUp, workspaces } from './auth'
 import { appInfo, desktopFetch, invoke, isDesktop, openDesktopStore } from './desktop'
 import { harness, runAll, type Result } from './harness'
@@ -52,10 +52,10 @@ async function main() {
       const net = httpNet({ fetch: desktopFetch })
       const a = { store: openDesktopStore(ws), device: uuidv7() }
       const b = { store: new MemoryStore(), device: uuidv7() }
-      const ca = new Client({ store: a.store, ws, device: a.device, sv: 1 })
-      const cb = new Client({ store: b.store, ws, device: b.device, sv: 1 })
-      const ea = new SyncEngine({ store: a.store, net, ws, device: a.device, sv: 1 })
-      const eb = new SyncEngine({ store: b.store, net, ws, device: b.device, sv: 1 })
+      const ca = new Client({ store: a.store, ws, device: a.device, sv: SV })
+      const cb = new Client({ store: b.store, ws, device: b.device, sv: SV })
+      const ea = new SyncEngine({ store: a.store, net, ws, device: a.device, sv: SV })
+      const eb = new SyncEngine({ store: b.store, net, ws, device: b.device, sv: SV })
       await ca.setFields(page, { title: 'از دسکتاپ' }, 'page')
       await ea.cycle(); await eb.cycle()
       must((await b.store.run(tx => tx.getField(page, 'title')))?.val === JSON.stringify('از دسکتاپ'), 'the second device did not get the title')

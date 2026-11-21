@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
-import { MAX_SKEW_MS, b64urlDecode, decodeFrame, decodeRec, parseEnvelope, parseHlc, uuidv7 } from '@nevis/protocol'
+import { MAX_SKEW_MS, b64urlDecode, decodeFrame, decodeRec, parseEnvelope, parseHlc, uuidv7, SV } from '@nevis/protocol'
 import { Client, MemoryStore, NetError, SyncEngine, projectStore, type Net, type PullResult, type PushResult } from '../src'
 
 /** A tiny log server that refuses a batch with an HLC too far ahead of ITS clock, exactly like the Go server. */
@@ -35,8 +35,8 @@ describe('a device whose clock ran ahead', () => {
     const server = new SkewedServer(() => real)
     const store = new MemoryStore()
     const device = uuidv7()
-    const client = new Client({ store, ws: WS, device, sv: 1, now: () => deviceNow })
-    const engine = new SyncEngine({ store, net: server, ws: WS, device, sv: 1, now: () => deviceNow })
+    const client = new Client({ store, ws: WS, device, sv: SV, now: () => deviceNow })
+    const engine = new SyncEngine({ store, net: server, ws: WS, device, sv: SV, now: () => deviceNow })
 
     const ent = uuidv7(), doc = uuidv7(), card = uuidv7()
     const o1 = await client.setFields(ent, { title: 'می‌خواهم', n: 7 }, 'page')
@@ -78,7 +78,7 @@ describe('a device whose clock ran ahead', () => {
 
     // a second device that reads the log sees exactly what the first one shows
     const other = new MemoryStore()
-    await new SyncEngine({ store: other, net: server, ws: WS, device: uuidv7(), sv: 1, now: () => real }).cycle()
+    await new SyncEngine({ store: other, net: server, ws: WS, device: uuidv7(), sv: SV, now: () => real }).cycle()
     expect(await projectStore(other)).toEqual(await projectStore(store))
 
     // a later edit on the repaired device still wins over what it wrote before (the clock never goes backwards from here)
@@ -93,8 +93,8 @@ describe('a device whose clock ran ahead', () => {
     const server = new SkewedServer(() => real)
     const a = new MemoryStore(), b = new MemoryStore()
     const [da, db] = [uuidv7(), uuidv7()]
-    const ca = new Client({ store: a, ws: WS, device: da, sv: 1, now: () => deviceNow }), cb = new Client({ store: b, ws: WS, device: db, sv: 1, now: () => real })
-    const ea = new SyncEngine({ store: a, net: server, ws: WS, device: da, sv: 1, now: () => deviceNow }), eb = new SyncEngine({ store: b, net: server, ws: WS, device: db, sv: 1, now: () => real })
+    const ca = new Client({ store: a, ws: WS, device: da, sv: SV, now: () => deviceNow }), cb = new Client({ store: b, ws: WS, device: db, sv: SV, now: () => real })
+    const ea = new SyncEngine({ store: a, net: server, ws: WS, device: da, sv: SV, now: () => deviceNow }), eb = new SyncEngine({ store: b, net: server, ws: WS, device: db, sv: SV, now: () => real })
     const ent = uuidv7()
     await ca.setFields(ent, { title: 'from the fast clock' }, 'page') // HLC two hours ahead
     await expect(ea.cycle()).rejects.toMatchObject({ code: 'clock_ahead' })

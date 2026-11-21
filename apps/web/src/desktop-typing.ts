@@ -4,6 +4,7 @@
 import { Client, DocHandle } from '@nevis/core'
 import { createEditor } from '@nevis/editor'
 import { appInfo, invoke, isDesktop, openDesktopStore } from './desktop'
+import { SV } from '@nevis/protocol'
 
 const WS = 'killtest'
 const DOC = '00000000-0000-7000-8000-00000000d0c1'
@@ -12,7 +13,7 @@ async function main() {
   if (!isDesktop) throw new Error('not running inside the desktop app')
   const verify = (await appInfo()).verify
   const store = openDesktopStore(WS)
-  const client = new Client({ store, ws: WS, device: '00000000-0000-7000-8000-0000000000d1', sv: 1 })
+  const client = new Client({ store, ws: WS, device: '00000000-0000-7000-8000-0000000000d1', sv: SV })
   const h = await DocHandle.open({ client, doc: DOC })
   const host = document.createElement('div'); document.body.append(host)
   const ed = createEditor(h.ydoc, host)

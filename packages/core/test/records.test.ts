@@ -1,6 +1,6 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
-import { parseEnvelope, uuidv7 } from '@nevis/protocol'
+import { parseEnvelope, uuidv7, SV } from '@nevis/protocol'
 import {
   Client, InvalidCell, MemoryStore, addOption, addProperty, applyEnvelope, backlinks, buildTree, cellFields, compareDecimal, createDatabase, createRow, createSavedSearch, createTag, createView,
   formatDateFa, gregorianToJalali, jalaliToGregorian, movePage, createPage, normalizeDate, normalizeDecimal, projectStore, readPages, readStructured, removeOption, renameProperty, setCell,
@@ -12,9 +12,9 @@ class Dev {
   readonly store = new MemoryStore()
   readonly c: Client
   readonly id = uuidv7()
-  constructor(ws: string, rnd?: () => number) { this.c = new Client({ store: this.store, ws, device: this.id, sv: 1, ...(rnd ? { rnd } : {}) }) }
+  constructor(ws: string, rnd?: () => number) { this.c = new Client({ store: this.store, ws, device: this.id, sv: SV, ...(rnd ? { rnd } : {}) }) }
   async outbox() { return (await this.store.run(tx => tx.listOutbox(1e6))).map(r => r.env) }
-  async receive(envs: string[]) { for (const t of envs) await this.store.run(tx => applyEnvelope(tx, parseEnvelope(t), { device: this.id, sv: 1, now: Date.now() })) }
+  async receive(envs: string[]) { for (const t of envs) await this.store.run(tx => applyEnvelope(tx, parseEnvelope(t), { device: this.id, sv: SV, now: Date.now() })) }
   async s(): Promise<Structured> { return readStructured(this.store) }
 }
 async function sync(a: Dev, b: Dev) { const [x, y] = [await a.outbox(), await b.outbox()]; await b.receive(x); await a.receive(y) }

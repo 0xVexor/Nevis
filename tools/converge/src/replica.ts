@@ -1,7 +1,7 @@
 // One simulated device: a MemoryStore, a client, an engine, and a faulty network. A "crash" throws away every in-memory
 // object except the COMMITTED state of the store, then builds new ones on it, which is what a restart does.
 import { Client, MemoryStore, NetError, SyncEngine, type Net } from '@nevis/core'
-import { UuidGenerator } from '@nevis/protocol'
+import { UuidGenerator, SV } from '@nevis/protocol'
 import { FaultyNet, type FaultConfig } from './faults'
 import { seededBytes, type Rng } from './rng'
 
@@ -39,9 +39,9 @@ export class Replica {
 
   /** New in-memory objects on the same committed store. */
   build() {
-    this.client = new Client({ store: this.store, ws: this.ws, device: this.device, sv: 1, now: this.clock, newId: () => this.ids.next(), rnd: () => this.rng() })
+    this.client = new Client({ store: this.store, ws: this.ws, device: this.device, sv: SV, now: this.clock, newId: () => this.ids.next(), rnd: () => this.rng() })
     this.engine = new SyncEngine({
-      store: this.store, net: this.net, ws: this.ws, device: this.device, sv: 1, now: this.clock,
+      store: this.store, net: this.net, ws: this.ws, device: this.device, sv: SV, now: this.clock,
       hooks: {
         afterPush: () => { if (this.crashNext === 'afterPush') { this.crashNext = null; throw new CrashSignal('afterPush') } },
         afterPull: () => { if (this.crashNext === 'afterPull') { this.crashNext = null; throw new CrashSignal('afterPull') } },

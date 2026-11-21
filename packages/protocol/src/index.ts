@@ -5,3 +5,4 @@ export { HLC_RE, MAX_SKEW_MS, compareHlc, formatHlc, hlcRecv, hlcSend, parseHlc,
 export { EnvelopeError, MAX_P_CHARS, encodeEnvelope, parseEnvelope, validateEnvelope, type Envelope } from './envelope'
 export { FRAME, FrameError, decodeEvt, decodeFrame, decodeRec, encodeEvt, encodeFrame, encodeRec, encodeYUpdate, jsonBytes, type EvtPayload, type FrameKind, type RecPayload } from './payload'
 export { ERRORS, ERROR_CODES, isRetryableCode, type ErrorSpec } from './errors'
+export { SV } from './version'

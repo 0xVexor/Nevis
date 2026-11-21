@@ -1,7 +1,7 @@
 // One seed: N replicas of the core against the REAL Go server, a random run with faults and crashes, then a check that
 // everything converged and that every operation committed on a device is in the server's log exactly once.
 import { MemoryStore, SyncEngine, buildTree, projectStore, readStructured, type Net, type Projection } from '@nevis/core'
-import { UuidGenerator } from '@nevis/protocol'
+import { UuidGenerator, SV } from '@nevis/protocol'
 import { createWorkspace } from './account'
 import { httpNet } from './http'
 import { randomOp, type World } from './ops'
@@ -139,7 +139,7 @@ export async function runSeed(seed: number, o: Options): Promise<SeedResult> {
     // 3. a device that starts from nothing and reads the whole log ends in the same state
     const fresh = new MemoryStore()
     const device = idGen.next()
-    await new SyncEngine({ store: fresh, net: direct, ws, device, sv: 1, now: () => base + tick }).cycle()
+    await new SyncEngine({ store: fresh, net: direct, ws, device, sv: SV, now: () => base + tick }).cycle()
     if (!same(projections[0]!, await projectStore(fresh))) return fail(seed, stats, reps, t0, 'a fresh device reading the log differs from the replicas')
 
     if ((await derived({ store: fresh })) !== dv[0]) return fail(seed, stats, reps, t0, 'the derived data of a fresh device differs from the replicas')

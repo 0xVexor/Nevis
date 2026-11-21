@@ -1,0 +1,105 @@
+{
+ "name": "rtlTable",
+ "sv": 1,
+ "update": "ASKB5+KMDgAHAQRib2R5AwV0YWJsZQcAgefijA4AAwh0YWJsZVJvdwcAgefijA4BAwt0YWJsZUhlYWRlcgcAgefijA4CAwlwYXJhZ3JhcGgHAIHn4owOAwYEAIHn4owOBB7YudmG2YjYp9mGINin2K/Yutin2YXigIzYtNiv2YcoAIHn4owOAwNkaXIBdwRhdXRvKACB5+KMDgMHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDAzMigAgefijA4CB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwMzEoAIHn4owOAgdjb2xzcGFuAX0CKACB5+KMDgIHcm93c3BhbgF9ASgAgefijA4BB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwMzCHgefijA4BAwh0YWJsZVJvdwcAgefijA4aAwl0YWJsZUNlbGwHAIHn4owOGwMJcGFyYWdyYXBoBwCB5+KMDhwGBACB5+KMDh0G2KfZhNmBKACB5+KMDhwDZGlyAXcEYXV0bygAgefijA4cB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwMzUoAIHn4owOGwdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDM0KACB5+KMDhsHY29sc3BhbgF9ASgAgefijA4bB3Jvd3NwYW4BfQGHgefijA4bAwl0YWJsZUNlbGwHAIHn4owOJgMJcGFyYWdyYXBoBwCB5+KMDicGBACB5+KMDigC2KgoAIHn4owOJwNkaXIBdwNsdHIoAIHn4owOJwdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDM3KACB5+KMDiYHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDAzNigAgefijA4mB2NvbHNwYW4BfQEoAIHn4owOJgdyb3dzcGFuAX0BKACB5+KMDhoHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDAzMygAgefijA4AA2RpcgF3A3J0bCgAgefijA4AB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwMjkA",
+ "sha256": "17c7f70ff9ca33386406c494d6e97f2c8753ebc432d10a548fdce48451e35a94",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "table",
+    "attrs": {
+     "dir": "rtl",
+     "blockId": "01930000-0000-7000-8000-000000000029"
+    },
+    "content": [
+     {
+      "type": "tableRow",
+      "attrs": {
+       "blockId": "01930000-0000-7000-8000-000000000030"
+      },
+      "content": [
+       {
+        "type": "tableHeader",
+        "attrs": {
+         "blockId": "01930000-0000-7000-8000-000000000031",
+         "colspan": 2,
+         "rowspan": 1
+        },
+        "content": [
+         {
+          "type": "paragraph",
+          "attrs": {
+           "dir": "auto",
+           "blockId": "01930000-0000-7000-8000-000000000032"
+          },
+          "content": [
+           {
+            "type": "text",
+            "text": "عنوان ادغام‌شده"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "tableRow",
+      "attrs": {
+       "blockId": "01930000-0000-7000-8000-000000000033"
+      },
+      "content": [
+       {
+        "type": "tableCell",
+        "attrs": {
+         "blockId": "01930000-0000-7000-8000-000000000034",
+         "colspan": 1,
+         "rowspan": 1
+        },
+        "content": [
+         {
+          "type": "paragraph",
+          "attrs": {
+           "dir": "auto",
+           "blockId": "01930000-0000-7000-8000-000000000035"
+          },
+          "content": [
+           {
+            "type": "text",
+            "text": "الف"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "tableCell",
+        "attrs": {
+         "blockId": "01930000-0000-7000-8000-000000000036",
+         "colspan": 1,
+         "rowspan": 1
+        },
+        "content": [
+         {
+          "type": "paragraph",
+          "attrs": {
+           "dir": "ltr",
+           "blockId": "01930000-0000-7000-8000-000000000037"
+          },
+          "content": [
+           {
+            "type": "text",
+            "text": "ب"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

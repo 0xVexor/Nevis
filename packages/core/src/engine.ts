@@ -45,7 +45,7 @@ export interface EngineOptions {
   batch?: number
 }
 
-export interface CycleStats { pushed: number; dup: number; pulled: number; applied: number; held: number; quarantined: number }
+export interface CycleStats { pushed: number; dup: number; pulled: number; applied: number; held: number; quarantined: number; /** ops the server refused for good (moved to quarantine, not retried) */ rejected: number }
 
 export class SyncEngine {
   private readonly o: Required<Omit<EngineOptions, 'hooks'>> & { hooks: EngineHooks }
@@ -55,7 +55,7 @@ export class SyncEngine {
 
   /** Push everything pending, pull everything new, apply it. */
   async cycle(): Promise<CycleStats> {
-    const s: CycleStats = { pushed: 0, dup: 0, pulled: 0, applied: 0, held: 0, quarantined: 0 }
+    const s: CycleStats = { pushed: 0, dup: 0, pulled: 0, applied: 0, held: 0, quarantined: 0, rejected: 0 }
     await this.repairClock()
     await this.push(s)
     await this.pull(s)
@@ -88,7 +88,7 @@ export class SyncEngine {
     return n
   }
 
-  async push(s: CycleStats = { pushed: 0, dup: 0, pulled: 0, applied: 0, held: 0, quarantined: 0 }) {
+  async push(s: CycleStats = { pushed: 0, dup: 0, pulled: 0, applied: 0, held: 0, quarantined: 0, rejected: 0 }) {
     const { store, net, ws } = this.o
     for (;;) {
       const rows = await store.run(tx => tx.listOutbox(this.o.batch))
@@ -99,6 +99,8 @@ export class SyncEngine {
       } catch (e) {
         // the server refused the batch because this device's clock is ahead: remember it, keep every op, repair when the clock is right
         if (e instanceof NetError && e.code === 'clock_ahead') await store.run(tx => tx.setMeta('clockAhead', '1'))
+        // a permanent 400 means SOME op of the batch can never be accepted: without this, that one op blocks the whole outbox for ever
+        if (e instanceof NetError && e.status === 400 && !e.retryable && rows.length > 0) { await this.pushOneByOne(rows, s); continue }
         throw e
       }
       const sent = new Set(rows.map(r => r.op))
@@ -116,7 +118,30 @@ export class SyncEngine {
     }
   }
 
-  async pull(s: CycleStats = { pushed: 0, dup: 0, pulled: 0, applied: 0, held: 0, quarantined: 0 }) {
+  /** After a batch was refused for good: push the ops one at a time. An op the server refuses for good (400, not retryable) goes to
+   *  quarantine with the reason and leaves the outbox, so the ops behind it are sent. The local state keeps its change; the device
+   *  and the server differ by it, and `rejected` makes that visible. Any other failure stops the round as usual. */
+  private async pushOneByOne(rows: { op: string; env: string }[], s: CycleStats) {
+    const { store, net, ws } = this.o
+    for (const r of rows) {
+      try {
+        const res = await net.push(ws, [r.env])
+        if (res.results.some(x => x.op === r.op)) { res.results.some(x => x.status === 'dup') ? s.dup++ : s.pushed++; await store.run(tx => tx.deleteOutbox([r.op])) }
+        else throw new NetError(502, 'incomplete_push_answer', true)
+      } catch (e) {
+        if (!(e instanceof NetError && e.status === 400 && !e.retryable)) throw e
+        await store.run(async tx => {
+          const n = Number((await tx.getMeta('rejectedCount')) ?? 0) + 1
+          await tx.setMeta('rejectedCount', String(n))
+          await tx.addQuarantine({ seq: -n, env: r.env, reason: `refused by the server: ${e.code}: ${e.message}` }) // negative seq: never collides with a server seq
+          await tx.deleteOutbox([r.op])
+        })
+        s.rejected++
+      }
+    }
+  }
+
+  async pull(s: CycleStats = { pushed: 0, dup: 0, pulled: 0, applied: 0, held: 0, quarantined: 0, rejected: 0 }) {
     const { store, net, ws } = this.o
     for (;;) {
       const after = Number((await store.run(tx => tx.getMeta('cursor'))) ?? 0)
@@ -137,7 +162,7 @@ export class SyncEngine {
     }
   }
 
-  async applyInbox(s: CycleStats = { pushed: 0, dup: 0, pulled: 0, applied: 0, held: 0, quarantined: 0 }) {
+  async applyInbox(s: CycleStats = { pushed: 0, dup: 0, pulled: 0, applied: 0, held: 0, quarantined: 0, rejected: 0 }) {
     const { store, device, sv } = this.o
     let after = 0
     for (;;) {
