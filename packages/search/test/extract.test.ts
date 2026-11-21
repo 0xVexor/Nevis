@@ -18,5 +18,9 @@ describe('extractPage', () => {
     expect(r.links).toEqual([{ dst: 'X', blockId: 'b1' }])
     expect(r.tasks).toEqual([{ blockId: 't1', text: 'کار یک', checked: true, due: '2026-01-02' }, { blockId: 't2', text: 'کار دو', checked: false, due: '' }])
   })
-  it('an empty page is empty', () => expect(extractPage({ type: 'doc' })).toEqual({ text: '', links: [], tasks: [] }))
+  it('an empty page is empty', () => expect(extractPage({ type: 'doc' })).toEqual({ text: '', links: [], tasks: [], drawings: [] }))
+  it('a drawing block is listed with whether anything is drawn', () => {
+    const doc = { type: 'doc', content: [{ type: 'drawing', attrs: { blockId: 'b1', scene: '{}' } }, { type: 'drawing', attrs: { blockId: 'b2', scene: '' } }] }
+    expect(extractPage(doc).drawings).toEqual([{ blockId: 'b1', filled: true }, { blockId: 'b2', filled: false }])
+  })
 })

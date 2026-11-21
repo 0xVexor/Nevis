@@ -7,7 +7,7 @@ import { t } from './i18n'
 import type { Workspace } from './workspace'
 
 const TYPE_LABEL: Record<PropType, string> = { text: 'Text', number: 'Number', date: 'Date', select: 'Select', multiSelect: 'Multi-select', relation: 'Relation', checkbox: 'Checkbox', url: 'URL' }
-const KIND_ICON: Record<PropType, string> = { text: 'type', number: 'hash', date: 'calendar', select: 'list', multiSelect: 'list', relation: 'link', checkbox: 'check', url: 'link' }
+export const KIND_ICON: Record<PropType, string> = { text: 'type', number: 'hash', date: 'calendar', select: 'list', multiSelect: 'list', relation: 'link', checkbox: 'check', url: 'link' }
 /** The conditions each kind of property offers. */
 const OPS: Record<PropType, FilterOp[]> = {
   text: ['contains', 'not_contains', 'is', 'is_not', 'empty', 'not_empty'], url: ['contains', 'not_contains', 'is', 'is_not', 'empty', 'not_empty'],

@@ -2,6 +2,7 @@
 const p = (text) => ({ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] })
 const h = (level, text) => ({ type: 'heading', attrs: { level }, content: [{ type: 'text', text }] })
 const task = (text, checked) => ({ type: 'taskItem', attrs: { checked }, content: [p(text)] })
+const toggle = (q, a) => ({ type: 'toggle', attrs: { open: false }, content: [p(q), p(a)] })
 const link = (id, text) => ({ type: 'paragraph', content: [{ type: 'text', text: 'نگاه کنید به ' }, { type: 'pageLink', attrs: { id, dstId: id, label: text } }] })
 
 export const PAGES = [
@@ -13,6 +14,8 @@ export const PAGES = [
     doc: [h(2, 'Agenda'), { type: 'bulletList', content: [{ type: 'listItem', content: [p('Roadmap review')] }, { type: 'listItem', content: [p('Budget')] }] }, link('__shiraz', 'سفر به شیراز')] },
   { key: 'ideas', title: 'ایده‌ها', icon: '', favorite: false, tags: [], status: 'done', parent: null,
     doc: [p('یک فهرست کوتاه از ایده‌ها'), { type: 'taskList', content: [task('نوشتن گزارش', false)] }] },
+  { key: 'cards', title: 'واژه‌های انگلیسی', icon: '', favorite: false, tags: [], status: '', parent: null,
+    doc: [h(2, 'واژه‌ها'), toggle('apple', 'سیب'), toggle('book', 'کتاب'), toggle('house', 'خانه')] },
 ]
 // `app`: 'old' keeps `id`, 'new' keeps `dstId` (the two schemas name the link target differently).
 export const docOf = (page, ids, app) => {

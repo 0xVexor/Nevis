@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { InvalidCell, addOption, addProperty, createRow, createView, formatDateFa, patchViewConfig, readViewConfig, removeOption, renameProperty, setCell, setMembers, setViewConfig, trashProperty, trashRow, trashView, viewRows, PROP_TYPES, titleProperty, type CellValue, type DatabaseModel, type PropertyModel, type PropType, type RowModel, type ViewModel } from '@nevis/core'
 import { BoardView } from './BoardView'
-import { DatabaseToolbar } from './DatabaseToolbar'
+import { DatabaseToolbar, KIND_ICON } from './DatabaseToolbar'
+import { Icon, Menu, type MenuItem } from './ds'
 import { go } from './router'
 import type { Workspace } from './workspace'
 import { readSynced } from './workspaceSettings'
@@ -110,6 +111,7 @@ function OptionAdder({ ws, p }: { ws: Workspace; p: PropertyModel }) {
 export function DatabaseView({ ws, id }: { ws: Workspace; id: string }) {
   const db = ws.data.databases.get(id)
   const [search, setSearch] = useState('')
+  const [colMenu, setColMenu] = useState<{ rect: DOMRect; p: PropertyModel } | null>(null)
   const [title, setTitle] = useState(db?.title ?? '')
   const [activeView, setActiveView] = useState('')
   useEffect(() => setTitle(ws.data.databases.get(id)?.title ?? ''), [id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -121,6 +123,15 @@ export function DatabaseView({ ws, id }: { ws: Workspace; id: string }) {
   const q = search.trim().toLowerCase()
   const rows = viewRows(db.rows, db.properties, config).filter(r => !q || (r.title ?? '').toLowerCase().includes(q) || Object.values(r.cells).some(v => typeof v === 'string' && v.toLowerCase().includes(q)))
   const tp = titleProperty(db.properties)
+  const saveView = (patch: Parameters<typeof patchViewConfig>[1]) => view && ws.mutate([view.id], c => setViewConfig(c, view.id, patchViewConfig(view.config, patch)))
+  const colItems = (p: PropertyModel): MenuItem[] => [
+    { label: 'تغییر نام', icon: <Icon name="pencil" size={16} />, onSelect: () => { const n = window.prompt('نام ستون', p.name); if (n?.trim() && n !== p.name) void ws.mutate([p.id], c => renameProperty(c, p.id, n.trim())) } },
+    { kind: 'sep' },
+    { label: 'مرتب‌سازی صعودی', icon: <Icon name="arrow-up" size={16} />, checked: config.sort[0]?.prop === p.id && config.sort[0].dir === 'asc', onSelect: () => void saveView({ sort: [{ prop: p.id, dir: 'asc' }] }) },
+    { label: 'مرتب‌سازی نزولی', icon: <Icon name="arrow-down" size={16} />, checked: config.sort[0]?.prop === p.id && config.sort[0].dir === 'desc', onSelect: () => void saveView({ sort: [{ prop: p.id, dir: 'desc' }] }) },
+    ...(config.sort[0]?.prop === p.id ? [{ label: 'حذف مرتب‌سازی', icon: <Icon name="x" size={16} />, onSelect: () => void saveView({ sort: [] }) } as MenuItem] : []),
+    ...(!p.isTitle ? [{ kind: 'sep' } as MenuItem, { label: 'پنهان کردن در این نما', icon: <Icon name="eye-off" size={16} />, onSelect: () => void saveView({ hidden: [...config.hidden, p.id] }) } as MenuItem, { label: 'حذف ستون', icon: <Icon name="trash" size={16} />, danger: true, onSelect: () => void ws.mutate([p.id], c => trashProperty(c, p.id)) } as MenuItem] : []),
+  ]
   return (
     <section className="pane dv" data-testid="db-view">
       <input className="page-title" data-testid="db-title" value={title} placeholder="پایگاه‌دادهٔ بدون عنوان" onChange={e => { setTitle(e.target.value); ws.setTitle(id, e.target.value) }} />
@@ -133,9 +144,11 @@ export function DatabaseView({ ws, id }: { ws: Workspace; id: string }) {
             <tr>
               {props.map(p => (
                 <th key={p.id} data-prop={p.name}>
-                  <input className="colname" aria-label="نام ستون" defaultValue={p.name} onBlur={e => { if (e.target.value !== p.name) void ws.mutate([p.id], c => renameProperty(c, p.id, e.target.value)) }} />
-                  <span className="small"> {TYPE_FA[p.type]}</span>
-                  {p.id !== tp?.id && <button className="tiny" title="حذف ستون" onClick={() => void ws.mutate([p.id], c => trashProperty(c, p.id))}>✕</button>}
+                  <button type="button" className="dv-th-btn" data-testid="col-head" aria-haspopup="menu" onClick={e => setColMenu({ rect: e.currentTarget.getBoundingClientRect(), p })}>
+                    <span className="dv-kind"><Icon name={KIND_ICON[p.type]} size={15} /></span>
+                    <span className="dv-th-name" dir="auto">{p.name}</span>
+                    {config.sort[0]?.prop === p.id && <Icon name={config.sort[0].dir === 'asc' ? 'arrow-up' : 'arrow-down'} size={14} className="dv-th-sort" />}
+                  </button>
                   {(p.type === 'select' || p.type === 'multiSelect') && <OptionAdder ws={ws} p={p} />}
                 </th>
               ))}
@@ -160,6 +173,9 @@ export function DatabaseView({ ws, id }: { ws: Workspace; id: string }) {
         )}
         <div className="db-foot">{rows.length.toLocaleString()} مورد</div>
       </div>)}
+      {colMenu && view && (
+        <Menu anchor={colMenu.rect} onClose={() => setColMenu(null)} items={colItems(colMenu.p)} />
+      )}
     </section>
   )
 }

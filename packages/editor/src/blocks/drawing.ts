@@ -34,6 +34,19 @@ const restoreScene = (L: Lib) => (data: unknown) => {
   return L.restore({ elements: (d.elements ?? []) as never, appState: (d.appState ?? {}) as never, files: {} }, null, null)
 }
 
+/** The picture of a scene as an SVG element, drawn at its own size (for a list of drawings); null when the scene is empty or cannot be read. */
+export async function drawingSvg(json: string): Promise<SVGSVGElement | null> {
+  if (!json) return null
+  try {
+    const L = await loadExcalidraw()
+    const r = readScene(json, restoreScene(L))
+    if (r.status !== 'ok') return null
+    const svg = await L.exportToSvg({ elements: r.scene.elements.filter(e => !e.isDeleted), appState: { ...r.scene.appState, exportBackground: false }, files: null })
+    svg.style.maxWidth = '100%'; svg.style.maxHeight = '100%'; svg.style.height = 'auto'; svg.style.display = 'block'
+    return svg
+  } catch { return null }
+}
+
 async function preview(host: HTMLElement, json: string) {
   host.textContent = ''
   if (!json) { host.classList.add('empty'); host.textContent = '✎'; return }
@@ -43,7 +56,8 @@ async function preview(host: HTMLElement, json: string) {
     const r = readScene(json, restoreScene(L))
     if (r.status !== 'ok') { host.classList.add('error'); host.textContent = S.formulaError; return }
     const svg = await L.exportToSvg({ elements: r.scene.elements.filter(e => !e.isDeleted), appState: { ...r.scene.appState, exportBackground: false }, files: null })
-    svg.removeAttribute('width'); svg.removeAttribute('height'); svg.style.maxWidth = '100%'; svg.style.height = 'auto'
+    // natural size (what the export measured), never stretched to the page width; only shrunk to fit, and never taller than most of a screen
+    svg.style.maxWidth = '100%'; svg.style.maxHeight = '70vh'; svg.style.height = 'auto'; svg.style.display = 'block'; svg.style.marginInline = 'auto'
     host.append(svg)
   } catch { host.classList.add('error'); host.textContent = S.formulaError }
 }

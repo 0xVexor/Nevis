@@ -1,5 +1,5 @@
 // @ts-nocheck -- copied from the old app, where this ran as written; the new tsconfig's stricter index checks are not applied to copied code.
-import { useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { Button, Icon, IconButton, Screen, SearchField, dirOf, useMenu, type MenuItem } from '../ds'
 import { ago } from './ago'
 import { t, locale } from '../i18n'
@@ -9,15 +9,26 @@ type Filter = 'all' | 'board' | 'inline'
 const DAY = 24 * 3600 * 1000
 
 /** What one drawing of the list needs (a drawing block of a page; the page's title and last edit stand for it). */
-export interface DrawingInfo { key: string; pageId: string; title: string; updatedAt: number; source: 'board' | 'inline'; preview: string }
+export interface DrawingInfo { key: string; pageId: string; title: string; updatedAt: number; source: 'board' | 'inline'; preview: string; /** reads the scene (JSON text) of this drawing, for its thumbnail */ loadScene?: () => Promise<string> }
 const warmDrawing = () => undefined
-/** The picture of a drawing is not stored apart from its scene yet: a pencil stands in for it. */
-function Thumb(_: { preview: string }) {
-  return (
-    <span className="dr-blank">
-      <Icon name="pencil" size={24} />
-    </span>
-  )
+/** The drawing's picture, drawn from its scene when the card scrolls into view; a pencil while nothing is drawn (or while it loads). */
+function Thumb({ load }: { load?: () => Promise<string> }) {
+  const host = useRef<HTMLSpanElement>(null)
+  const [drawn, setDrawn] = useState(false)
+  useEffect(() => {
+    const el = host.current?.parentElement // the visible box (the picture's own slot has none)
+    if (!el || !load) return
+    let live = true
+    const io = new IntersectionObserver(entries => {
+      if (!entries.some(e => e.isIntersecting)) return
+      io.disconnect()
+      void load().then(async json => { const { drawingSvg } = await import('@nevis/editor'); return drawingSvg(json) }).then(svg => { if (live && svg && host.current) { host.current.append(svg); setDrawn(true) } }, e => console.warn('drawing thumb', e))
+    })
+    io.observe(el)
+    return () => { live = false; io.disconnect() }
+  }, [load])
+  // the picture goes into an element React never puts children in; the pencil is React's, and goes when the picture is there
+  return <span className={drawn ? 'dr-pic' : 'dr-blank'}>{!drawn && <Icon name="pencil" size={24} />}<span ref={host} className="dr-svg" /></span>
 }
 
 /**
@@ -61,7 +72,7 @@ export function Drawings({ all, onOpen, onNew, onDelete }: { all: DrawingInfo[];
     <div key={d.key} className="dr-card" onContextMenu={context(d)}>
       <button type="button" className="dr-open" onClick={() => onOpen(d.pageId)} onPointerEnter={warmDrawing} dir={dirOf(name(d))}>
         <span className="dr-thumb">
-          <Thumb preview={d.preview} />
+          <Thumb load={d.loadScene} />
         </span>
         <span className="dr-meta">
           <b dir="auto">{name(d)}</b>
@@ -119,7 +130,7 @@ export function Drawings({ all, onOpen, onNew, onDelete }: { all: DrawingInfo[];
           {latest && (
             <section className="dr-latest" aria-labelledby="dr-latest" onContextMenu={context(latest)}>
               <button type="button" className="dr-latest-board" onClick={() => onOpen(latest.pageId)} onPointerEnter={warmDrawing} tabIndex={-1} aria-hidden="true">
-                <Thumb preview={latest.preview} />
+                <Thumb load={latest.loadScene} />
               </button>
               <div className="dr-latest-text">
                 <small>{t('Last edited {when}', { when: ago(latest.updatedAt) })}</small>

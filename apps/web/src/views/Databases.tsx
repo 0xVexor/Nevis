@@ -1,5 +1,6 @@
 // Databases and Drawings: the old app's two list screens (list on one side, the chosen item on the other), over this app's data.
 import { useMemo } from 'react'
+import { project } from '@nevis/schema'
 import { Icon } from '../ds'
 import { go } from '../router'
 import { t } from '../i18n'
@@ -30,11 +31,27 @@ export function Databases({ ws }: { ws: Workspace }) {
   )
 }
 
+/** The scene text of one drawing block of a page: inline, or read from its attachment. */
+async function sceneOf(ws: Workspace, page: string, blockId: string): Promise<string> {
+  const h = await ws.openDoc(page)
+  try {
+    type N = { type: string; attrs?: Record<string, unknown>; content?: N[] }
+    const find = (n: N): N | undefined => (n.type === 'drawing' && (n.attrs?.blockId === blockId || !blockId) ? n : n.content?.map(find).find(Boolean))
+    const node = find(project(h.ydoc) as N)
+    if (!node) return ''
+    const inline = String(node.attrs?.scene ?? '')
+    if (inline) return inline
+    const hash = String(node.attrs?.sceneBlob ?? '')
+    const blob = hash ? await ws.rt.attachments.open(hash, 'application/json').catch(() => null) : null
+    return blob ? await blob.text() : ''
+  } finally { await ws.closeDoc(page) }
+}
+
 export function Drawings({ ws }: { ws: Workspace }) {
   const all = useMemo<DrawingInfo[]>(() => {
     const titles = new Map(ws.data.pages.map(p => [p.id, p.title]))
     return ws.search.drawings().map(({ page, drawing }) => ({
-      key: `${page}:${drawing.blockId}`, pageId: page, title: titles.get(page) ?? '', updatedAt: ws.search.touchedAt(page), source: (ws.search.wordsOf(page) === 0 ? 'board' : 'inline') as DrawingInfo['source'], preview: '',
+      key: `${page}:${drawing.blockId}`, pageId: page, title: titles.get(page) ?? '', updatedAt: ws.search.touchedAt(page), source: (ws.search.wordsOf(page) === 0 ? 'board' : 'inline') as DrawingInfo['source'], preview: '', loadScene: () => sceneOf(ws, page, drawing.blockId),
     })).sort((a, b) => b.updatedAt - a.updatedAt)
   }, [ws.data, ws.search.ready, ws.search.progress.done]) // eslint-disable-line react-hooks/exhaustive-deps
   const open = (id: string) => go({ name: 'page', id })

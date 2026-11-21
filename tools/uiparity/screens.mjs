@@ -14,6 +14,8 @@ export const SCREENS = {
   pagefocus: { old: async (p, ids) => { await SCREENS.page.old(p, ids); await p.waitForTimeout(800); await p.locator('.ProseMirror p').first().click() }, new: async (p, ids) => { await SCREENS.page.new(p, ids); await p.waitForTimeout(800); await p.locator('.ProseMirror p').first().click() }, wait: 900 },
   // a new, empty database (its default table view)
   database: { old: async p => { await p.locator('.side-new').click(); await p.locator('.ds-menu-item').filter({ hasText: /پایگاه داده|پایگاه‌داده/ }).first().click() }, new: async p => { await p.getByTestId('new-menu').click(); await p.getByTestId('new-database').click() }, wait: 1500 },
+  // the first card of a review (the question side), then the answer
+  review: { old: async p => { await oldNav('cards')(p); await p.waitForTimeout(500); await p.locator('button, .ds-btn').filter({ hasText: /مرور|شروع/ }).first().click() }, new: async p => { await p.getByTestId('nav-cards').click(); await p.waitForTimeout(500); await p.locator('button, .ds-btn').filter({ hasText: /مرور|شروع/ }).first().click() }, wait: 900 },
   templates: { old: oldNav('templates'), new: newNav('nav-templates') },
   tasks: { old: oldNav('tasks'), new: newNav('nav-tasks') },
   cards: { old: oldNav('cards'), new: newNav('nav-cards') },

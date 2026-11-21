@@ -73,3 +73,11 @@ ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 .dv-cond :is(input, select) { block-size: 32px; padding-inline: var(--ds-s2); border: 1px solid var(--ds-line); border-radius: var(--ds-r-md, 8px); background: var(--ds-raised); color: var(--ds-text); font: inherit; font-size: var(--ds-text-small, .85rem); }
 .dv-proplist :is(input[type=text], select), .dv-pair :is(input, select), .ds-pop select { block-size: 32px; padding-inline: var(--ds-s2); border: 1px solid var(--ds-line); border-radius: var(--ds-r-md, 8px); background: var(--ds-raised); color: var(--ds-text); font: inherit; }
 .dv-new > .ds-btn:only-child { inline-size: auto; }
+.dv-th-btn { display: inline-flex; align-items: center; gap: var(--ds-s2); max-inline-size: 100%; padding: 4px var(--ds-s2); border: 0; border-radius: var(--ds-r-md, 8px); background: none; color: inherit; font: inherit; font-weight: 550; cursor: pointer; }
+.dv-th-btn:hover { background: var(--ds-sunk-2, rgba(0,0,0,.05)); }
+.dv-th-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dv-th-sort { color: var(--ds-accent); }
+.dr-thumb .dr-pic { display: grid; place-items: center; inline-size: 100%; block-size: 100%; padding: var(--ds-s2); background: var(--ds-white, #fff); overflow: hidden; }
+.dr-thumb .dr-pic > svg, .dr-latest-board .dr-pic > svg { max-inline-size: 100%; max-block-size: 100%; }
+.dr-svg { display: contents; }
+.dr-blank > .dr-svg { display: none; }

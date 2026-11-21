@@ -74,3 +74,45 @@ test('find in page (Ctrl+F) highlights every match and steps through them; the t
   await page.getByRole('toolbar').getByRole('button', { name: /^درشت/ }).click()
   await expect(body(page).locator('strong, b').first()).toBeVisible()
 })
+
+test('a small drawing is shown at its own size, not stretched to the page width', async ({ page }) => {
+  await signUpAndOpen(page)
+  const scene = JSON.stringify({ type: 'excalidraw', version: 2, source: 'nevis', elements: [{ id: 'a', type: 'rectangle', x: 0, y: 0, width: 160, height: 90, angle: 0, strokeColor: '#1e1e1e', backgroundColor: 'transparent', fillStyle: 'solid', strokeWidth: 2, roughness: 1, opacity: 100, seed: 1, version: 1, versionNonce: 1, isDeleted: false, groupIds: [], boundElements: null, updated: 1, link: null, locked: false, roundness: null, frameId: null }], appState: { viewBackgroundColor: '#ffffff' }, files: {} })
+  await page.evaluate(async s => {
+    const ws = (window as unknown as { __ws: { newTemplatePage: (t: string, c: unknown) => Promise<string> } }).__ws
+    const id = await ws.newTemplatePage('نقاشی', { type: 'doc', content: [{ type: 'drawing', attrs: { scene: s } }] }); location.hash = '#/page/' + id
+  }, scene)
+  const svg = page.locator('.drawing-block svg').first()
+  await expect(svg).toBeVisible({ timeout: 60_000 })
+  const box = (await svg.boundingBox())!
+  expect(box.width).toBeLessThan(400) // the picture is 160 x 90 plus its margin; stretched it would be as wide as the page (about 820)
+  expect(box.height).toBeLessThan(300)
+})
+
+test('database: the column header opens its menu (sort, hide, delete) and the filter panel narrows the rows', async ({ page }) => {
+  await signUpAndOpen(page)
+  await createNew(page, 'new-database')
+  for (const name of ['الف', 'ب', 'ج']) { await page.getByTestId('db-add-row').click(); await expect(page.getByTestId('db-row')).toHaveCount(['الف', 'ب', 'ج'].indexOf(name) + 1) }
+  const names = ['سیب', 'موز', 'سیر']
+  for (let i = 0; i < 3; i++) { await page.locator(`[data-testid=cell][data-prop="نام"][data-row="${i}"] input`).fill(names[i]!); await page.locator(`[data-testid=cell][data-prop="نام"][data-row="${i}"] input`).blur() }
+  await page.getByTestId('col-head').first().click()
+  await page.getByRole('menuitem', { name: /نزولی/ }).click()
+  await expect(page.locator('.dv-conditions')).toContainText('نزولی')
+  await page.getByTestId('chip-filter').click()
+  await page.getByTestId('add-rule').click()
+  await page.getByTestId('rule-value').fill('سی')
+  await expect(page.getByTestId('db-row')).toHaveCount(2) // سیب and سیر
+})
+
+test('the Drawings list shows the picture of each drawing, not an empty pencil', async ({ page }) => {
+  await signUpAndOpen(page)
+  const scene = JSON.stringify({ type: 'excalidraw', version: 2, source: 'nevis', elements: [{ id: 'a', type: 'rectangle', x: 0, y: 0, width: 160, height: 90, angle: 0, strokeColor: '#1e1e1e', backgroundColor: 'transparent', fillStyle: 'solid', strokeWidth: 2, roughness: 1, opacity: 100, seed: 1, version: 1, versionNonce: 1, isDeleted: false, groupIds: [], boundElements: null, updated: 1, link: null, locked: false, roundness: null, frameId: null }], appState: { viewBackgroundColor: '#ffffff' }, files: {} })
+  await page.evaluate(async s => {
+    const ws = (window as unknown as { __ws: { newTemplatePage: (t: string, c: unknown) => Promise<string> } }).__ws
+    const id = await ws.newTemplatePage('نقاشی من', { type: 'doc', content: [{ type: 'drawing', attrs: { scene: s } }] }); location.hash = '#/page/' + id // the page takes its template when it is opened
+  }, scene)
+  await expect(page.locator('.drawing-block svg').first()).toBeVisible({ timeout: 60_000 })
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __ws: { search: { drawings: () => unknown[] } } }).__ws.search.drawings().length), { timeout: 30_000 }).toBeGreaterThan(0) // saved, then indexed
+  await page.getByTestId('nav-drawings').click()
+  await expect(page.locator('.dr-pic svg').first()).toBeVisible({ timeout: 60_000 })
+})

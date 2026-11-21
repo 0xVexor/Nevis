@@ -58,7 +58,7 @@
         if (!tid('ws-list')) throw new Error('expected the workspace list after a restart, got ' + (tid('auth-form') ? 'the sign-in form' : 'the server form'))
         tid('ws-list').querySelector('button').click()
         const row = await wait(() => tid('page-row'), 'the page row')
-        row.click()
+        row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })) // a page opens on a double click (the old app's default)
         await wait(() => editorText().includes('متن ماندگار پس از بستن'), 'the text typed before closing')
         // sign out: the form returns
         tid('signout').click()

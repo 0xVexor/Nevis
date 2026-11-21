@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { intervalLabel, isDue, type Grade, type RawCard, type Rec } from '@nevis/core'
 import { Button, Icon, Screen, Stats, dirOf } from '../ds'
+import { commandHint } from '../shortcutCommands'
 import { locale, t } from '../i18n'
 import { go } from '../router'
 import type { Workspace } from '../workspace'
@@ -152,16 +153,17 @@ export function Flashcards({ ws }: { ws: Workspace }) {
             {shown && <div className="fc-a-wrap"><div className="fc-a tiptap" data-testid="fc-answer">{card.answer.split('\n').map((l, i) => <p key={i} dir="auto">{l}</p>)}</div></div>}
           </article>
           {!shown ? (
-            <Button variant="primary" className="fc-show" data-testid="fc-show" onClick={() => setShown(true)}>{t('Show answer')}</Button>
+            <Button variant="primary" className="fc-show" data-testid="fc-show" onClick={() => setShown(true)}>{t('Show answer')}<kbd className="ds-kbd">{commandHint('Show the answer')}</kbd></Button>
           ) : (
             <div className="fc-grades" role="group" aria-label={t('How well did you know it?')}>
               {GRADES.map(({ grade, name, tone }) => (
                 <button key={grade} type="button" className="fc-grade" data-tone={tone} data-testid={`fc-grade-${grade}`} onClick={() => void rate(grade)}>
-                  <span className="fc-grade-name"><i aria-hidden="true" />{t(name)}</span><small>{intervalLabel(rec, grade, Date.now())}</small>
+                  <span className="fc-grade-name"><i aria-hidden="true" />{t(name)}</span><small>{intervalLabel(rec, grade, Date.now())}</small><kbd className="ds-kbd">{commandHint(['Again', 'Hard', 'Good', 'Easy'][grade]!)}</kbd>
                 </button>
               ))}
             </div>
           )}
+          <p className="fc-keys">{t('End the session')} <kbd className="ds-kbd">{commandHint('End the session')}</kbd></p>
         </div>
       )}
     </div>
