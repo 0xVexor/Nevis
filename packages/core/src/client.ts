@@ -107,7 +107,9 @@ export class Client {
       const parts = [...(st?.state ? [st.state] : []), ...tail.map(u => u.upd)]
       const state = parts.length ? Y.mergeUpdates(parts) : new Uint8Array()
       const h = await nextHlc(tx, this.device, this.now())
-      return this.emit(tx, ent, encodeSnap({ fields, state }), h, { cov })
+      const events = (await tx.allEvents()).filter(e => e.ent === ent).map(e => ({ id: e.id, kind: e.kind, hlc: e.hlc, body: JSON.parse(e.body) as Json }))
+      // too large to fit one op: `emit` throws OpTooLargeError and NOTHING is written; the caller skips this document (never drops history to fit)
+      return this.emit(tx, ent, encodeSnap({ fields, events, state }), h, { cov })
     })
   }
 

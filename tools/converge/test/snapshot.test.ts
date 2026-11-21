@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as Y from 'yjs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { Client, MemoryStore, Snapshotter, SyncEngine, httpNet, loadDoc } from '@nevis/core'
+import { Client, MemoryStore, Snapshotter, SyncEngine, addVersion, cardId, foldSchedules, httpNet, loadDoc, readVersions, reviewCard } from '@nevis/core'
 import { SV, uuidv7 } from '@nevis/protocol'
 
 const PORT = 18801
@@ -71,5 +71,31 @@ describe('snapshot and purge on the real server', () => {
     expect(s.dup + s.pushed).toBeGreaterThanOrEqual(1)
     expect((await late.store.run(tx => tx.listOutbox(10))).length).toBe(0) // answered "purged": the op left the outbox
     expect(await late.store.run(tx => tx.entities())).not.toContain(page) // and the purge reached the late device
+  }, 120_000)
+
+  // The events of an entity (page versions, card reviews) are ops of that entity: a snapshot covers them, so it must CARRY them.
+  it('versions and card reviews survive a snapshot: a new device, started from the compact log, has the same history and the same schedule', async () => {
+    const ws = uuidv7(), page = uuidv7()
+    const a = device(ws)
+    await a.client.setFields(page, { title: 'با تاریخچه' }, 'page')
+    const y = new Y.Doc()
+    for (let i = 0; i < 120; i++) { const sv = Y.encodeStateVector(y); y.getText('t').insert(y.getText('t').length, `w${i} `); await a.client.writeYUpdate(page, Y.encodeStateAsUpdate(y, sv)) }
+    await addVersion(a.client, page, '{"v":1}', { at: 1000 })
+    await addVersion(a.client, page, '{"v":2}', { at: 2000, manual: true, label: 'مهم' })
+    const card = cardId(page, 'پرسش؟')
+    for (const [i, g] of [2, 2, 3].entries()) await reviewCard(a.client, card, g as 2 | 3, 1_700_000_000_000 + i * 86_400_000)
+    await a.engine.cycle()
+    // the entity of the card is its own document: 3 reviews, far under the threshold; snapshot it explicitly as well
+    expect(await new Snapshotter({ client: a.client, store: a.store, net: a.net, ws, minOps: 100, every: 0 }).run()).toBeGreaterThanOrEqual(1)
+    expect(await a.client.writeSnapshot(card)).not.toBeNull()
+    await a.engine.cycle()
+    const b = device(ws)
+    await b.engine.cycle()
+    const versions = async (d: typeof a) => readVersions(await d.store.run(tx => tx.allEvents()), page).map(v => [v.at, v.manual, v.label, v.json])
+    expect(await versions(b)).toEqual(await versions(a))
+    expect((await versions(b)).length).toBe(2)
+    const sched = async (d: typeof a) => JSON.stringify([...foldSchedules(await d.store.run(tx => tx.allEvents()))])
+    expect(await sched(b)).toBe(await sched(a))
+    expect(foldSchedules(await b.store.run(tx => tx.allEvents())).get(card)!.reps).toBe(3)
   }, 120_000)
 })

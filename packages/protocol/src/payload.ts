@@ -48,10 +48,11 @@ export function decodeEvt(data: Uint8Array): EvtPayload {
 /** `snap` (M13): the state of ONE entity at the moment of the snapshot: its registers (value + the HLC that wrote it) and, if it has a body,
  *  the Yjs state. Layout: u32 big-endian length of the JSON, the JSON `{"fields":{"title":["\"x\"","<hlc>"]}}` (values are the stored JSON text),
  *  then the Yjs V1 state (possibly empty). */
-export interface SnapPayload { fields: Record<string, [string, string]>; state: Uint8Array }
+export interface SnapEvent { id: string; kind: string; hlc: string; body: Json }
+export interface SnapPayload { fields: Record<string, [string, string]>; /** the entity's events (versions, reviews): ops of the entity that a snapshot covers must not lose them */ events: SnapEvent[]; state: Uint8Array }
 
 export function encodeSnap(s: SnapPayload): Uint8Array {
-  const json = jsonBytes({ fields: s.fields })
+  const json = jsonBytes({ fields: s.fields, events: s.events })
   const out = new Uint8Array(4 + json.length + s.state.length)
   new DataView(out.buffer).setUint32(0, json.length)
   out.set(json, 4); out.set(s.state, 4 + json.length)
@@ -69,5 +70,14 @@ export function decodeSnap(data: Uint8Array): SnapPayload {
     if (!Array.isArray(v) || v.length !== 2 || typeof v[0] !== 'string' || typeof v[1] !== 'string') throw new FrameError('bad snap field')
     fields[k] = [v[0], v[1]]
   }
-  return { fields, state: data.subarray(4 + n) }
+  const events: SnapEvent[] = []
+  if (o.events !== undefined) {
+    if (!Array.isArray(o.events)) throw new FrameError('bad snap events')
+    for (const e of o.events as unknown[]) {
+      const x = e as Record<string, unknown>
+      if (!x || typeof x.id !== 'string' || typeof x.kind !== 'string' || typeof x.hlc !== 'string' || !('body' in x)) throw new FrameError('bad snap event')
+      events.push({ id: x.id, kind: x.kind, hlc: x.hlc, body: x.body as Json })
+    }
+  }
+  return { fields, events, state: data.subarray(4 + n) }
 }

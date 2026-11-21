@@ -38,6 +38,7 @@ export async function applyEnvelope(tx: Tx, env: Envelope, ctx: { device: string
       // and the Yjs state merges like any update
       const snap = decodeSnap(frame.data)
       for (const [f, [val, hlc]] of Object.entries(snap.fields)) await tx.putFieldIfNewer(env.doc, f, val, hlc)
+      for (const e of snap.events) await tx.putEvent({ id: e.id, ent: env.doc, kind: e.kind, hlc: e.hlc, body: JSON.stringify(e.body) }) // immutable: idempotent
       if (snap.state.length) { await tx.appendDocUpdate(env.doc, snap.state); await compactDoc(tx, env.doc) }
       break
     }
