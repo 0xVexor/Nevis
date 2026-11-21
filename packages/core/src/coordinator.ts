@@ -115,10 +115,12 @@ export class TabCoordinator {
           this.wake = abort
           signal.addEventListener('abort', abort, { once: true })
           const t0 = Date.now()
-          try { await this.o.idle(poll.signal) } catch (e) { this.failures++; this.o.onError?.(e) }
+          let news: unknown = false
+          try { news = await this.o.idle(poll.signal) } catch (e) { this.failures++; this.o.onError?.(e) }
           signal.removeEventListener('abort', abort)
-          // a server that answers at once with no news must not make a busy loop
-          if (!this.kicked && !signal.aborted && Date.now() - t0 < 50) await new Promise<void>(r => setTimeout(r, this.o.intervalMs))
+          // a server that answers at once with NO news must not make a busy loop; one that answers at once WITH news must be heard now
+          // (waiting here made a change arrive up to `intervalMs` late whenever it landed just as the poll started)
+          if (!news && !this.kicked && !signal.aborted && Date.now() - t0 < 50) await new Promise<void>(r => setTimeout(r, this.o.intervalMs))
         } else if (!this.kicked) await new Promise<void>(res => {
           const t = setTimeout(done, wait)
           function done() { clearTimeout(t); res() }

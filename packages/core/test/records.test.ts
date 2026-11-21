@@ -72,11 +72,9 @@ describe('dates', () => {
     }
     expect(gregorianToJalali(2026, 3, 21)).toEqual([1405, 1, 1])
   })
-  it('a date-only value shows the same day wherever the device is (no local-time shift)', () => {
+  it('a date-only value is formatted in UTC, never in local time (the check in a west-of-UTC browser is db.spec.ts with timezoneId America/Los_Angeles)', () => {
     expect(formatDateFa('2026-11-20')).toBe('۱۴۰۵/۰۸/۲۹')
-    const tz = process.env.TZ
     expect(formatDateFa('2026-03-21')).toBe('۱۴۰۵/۰۱/۰۱')
-    process.env.TZ = tz
   })
 })
 

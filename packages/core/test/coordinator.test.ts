@@ -114,6 +114,30 @@ describe('TabCoordinator', () => {
     t.stop()
   })
 
+  it('long-poll: a poll that answers AT ONCE with news is followed by a sync at once, not after intervalMs (the 2 s stall)', async () => {
+    const locks = new FakeLocks(), bus = new FakeBus()
+    let cycles = 0, idles = 0
+    const t = make(locks, bus, async () => { cycles++ }, {
+      intervalMs: 5000, // the old code slept this long after ANY fast answer, news or not
+      idle: signal => { idles++; return idles === 1 ? Promise.resolve(true) : new Promise<boolean>(res => signal.addEventListener('abort', () => res(false), { once: true })) },
+    })
+    t.start()
+    await sleep(80)
+    expect(cycles).toBeGreaterThanOrEqual(2) // cycle, poll(news) -> cycle again at once, then parked
+    expect(idles).toBe(2)
+    t.stop()
+  })
+
+  it('long-poll: a fast answer with NO news still waits intervalMs (no busy loop)', async () => {
+    const locks = new FakeLocks(), bus = new FakeBus()
+    let cycles = 0
+    const t = make(locks, bus, async () => { cycles++ }, { intervalMs: 5000, idle: async () => false })
+    t.start()
+    await sleep(120)
+    expect(cycles).toBe(1)
+    t.stop()
+  })
+
   it('long-poll: a local write aborts the wait at once and syncs; a stop ends the wait', async () => {
     const locks = new FakeLocks(), bus = new FakeBus()
     let cycles = 0, idles = 0, aborted = 0

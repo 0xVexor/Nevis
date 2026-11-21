@@ -18,7 +18,7 @@
 | ۳ ۱۰k صفحه | لیست قابل‌استفاده: Chromium **۲۴۱ms**، WebKit **۱۸۵ms**، Firefox **۲۵۵ms** (حد ۲s)؛ باز کردن صفحه median ۱۷/۱۷/۱۶ms، p95 ۱۷/۲۲/۱۷ms (حد ۲۰۰ms) |
 | ۴ `max_sv > SV` | `pages.spec.ts` (سه موتور): پیام `needs-update` و ادیتور باز نمی‌شود |
 | ۵ compaction | `docHandle.test.ts`: بعد از ۵۰۰ ویرایش tail کوتاه، متن بدون تغییر، outbox دست‌نخورده |
-| ۶ تأخیر ویرایش→دستگاه دوم | همان اسکریپت، ۶۰ نمونه، Chromium→WebKit روی localhost: median ۳۳۸ms، p95 ۳۴۵ms، max ۳۴۷ms (حد ۱.۵s). **توجه:** در دو اجرای قبلی (۲۰ نمونه) یک نمونه ~۲s بود و در اجرای ۶۰نمونه‌ای تکرار نشد؛ علتش بررسی نشد. LAN واقعی اندازه‌گیری نشد. |
+| ۶ تأخیر ویرایش→دستگاه دوم | همان اسکریپت، ۶۰ نمونه، Chromium→WebKit روی localhost: median ۳۳۸ms، p95 ۳۴۵ms، max ۳۴۷ms (حد ۱.۵s). **توجه:** در دو اجرای قبلی (۲۰ نمونه) یک نمونه ~۲s بود و در اجرای ۶۰نمونه‌ای تکرار نشد؛ علتش در M7 پیدا و رفع شد (coordinator: جواب فوری long-poll با خبر تازه ۲s منتظر می‌ماند؛ `docs/reports/09-m7-structured-data.md`). LAN واقعی اندازه‌گیری نشد. |
 | converge با DocHandle | ۵۰ seed × ۲۰۰۰ op × ۳ replica با crash و خطای شبکه (۱۰۰٬۰۰۰ op، ۱۰۲۱ درخواست گم‌شده، ۱۷۴۵ crash): همه همگرا، هیچ op گم یا دوبار نشد |
 - آزمون‌ها (`corepack pnpm -r --if-present test`): protocol ۶۵، schema ۲۵، m1-editor ۶، core ۴۱، store-idb ۱۰، converge ۴؛ typecheck تمیز، Go `-race` سبز، Playwright سه موتور ۳۴ سبز و ۲ skip عمدی (`engines.spec` فقط داخل Chromium اجرا می‌شود و اسکریپت مستقل را صدا می‌زند).
 - یافته در بنچ: seed کردن ۱۰k صفحه ۵–۱۰s طول می‌کشد (فقط تولید داده؛ در معیار نیست).

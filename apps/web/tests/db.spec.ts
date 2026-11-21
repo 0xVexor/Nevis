@@ -68,3 +68,26 @@ test('a database: columns of several types, an option, rows, Persian digits in a
   await expect(cell(page, 'خوانده', 0).locator('input')).toBeChecked()
   await expect(cell(page, 'تاریخ', 0).locator('input')).toHaveValue('۱۴۰۵/۰۸/۲۹')
 })
+
+// West of UTC a date parsed or formatted in LOCAL time shows the previous day. A date-only cell must show the same day everywhere.
+test.describe('a browser west of UTC', () => {
+  test.use({ timezoneId: 'America/Los_Angeles' })
+  test('a date cell keeps its day (stored 2026-11-20, shown 29 Aban 1405) and the stored form is the Gregorian day typed', async ({ page }) => {
+    await signUpAndOpen(page)
+    await page.getByTestId('new-database').click()
+    await page.getByTestId('db-prop-name').fill('تاریخ')
+    await page.getByTestId('db-prop-type').selectOption('date')
+    await page.getByTestId('db-add-prop').click()
+    await page.getByTestId('db-add-row').click()
+    expect(await page.evaluate(() => new Date(2026, 10, 20).getTimezoneOffset())).toBeGreaterThan(0) // really west of UTC
+    await cell(page, 'تاریخ', 0).locator('input').fill('2026-11-20')
+    await cell(page, 'تاریخ', 0).locator('input').blur()
+    await expect(cell(page, 'تاریخ', 0).locator('input')).toHaveValue('۱۴۰۵/۰۸/۲۹')
+    await cell(page, 'تاریخ', 0).locator('input').focus()
+    await expect(cell(page, 'تاریخ', 0).locator('input')).toHaveValue('2026-11-20')
+    await cell(page, 'تاریخ', 0).locator('input').fill('۱۴۰۵/۰۱/۰۱')
+    await cell(page, 'تاریخ', 0).locator('input').blur()
+    await cell(page, 'تاریخ', 0).locator('input').focus()
+    await expect(cell(page, 'تاریخ', 0).locator('input')).toHaveValue('2026-03-21') // Nowruz 1405
+  })
+})
