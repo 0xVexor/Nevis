@@ -131,6 +131,16 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
     if (isDesktop) void onWindowFlush(async () => { await ws.flushAll(); await Promise.race([ws.rt.engine.cycle().catch(() => undefined), new Promise(r => setTimeout(r, 4000))]) })
   }
   const make = async () => { const id = uuidv7(); await createWorkspace(id, 'یادداشت‌ها'); enter(id) }
+  /** A bundle always goes into a NEW workspace (ADR-0009 §2). */
+  const importFile = async (file: File) => {
+    const id = uuidv7()
+    await createWorkspace(id, file.name.replace(/\.nevis\.zip$|\.zip$/i, '') || 'ورودی')
+    const ws = new Workspace(id, null)
+    ;(window as unknown as { __ws?: Workspace }).__ws = ws
+    await ws.start()
+    try { await ws.importBundle(new Uint8Array(await file.arrayBuffer())) } catch (e) { alert('ورود ناموفق: ' + String((e as Error).message ?? e)) }
+    setOpen({ ws })
+  }
   if (open) return <WorkspaceView ws={open.ws} onSignOut={() => void leave()} />
   return (
     <main dir="rtl">
@@ -140,6 +150,7 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
         <ul data-testid="ws-list">{list.map(w => <li key={w.id}><button onClick={() => enter(w.id)}>{w.name}</button> <span className="small">{w.role}</span></li>)}</ul>
       )}
       <button data-testid="ws-new" onClick={() => void make()}>فضای کار تازه</button>
+      <label>ورود از باندل <input type="file" accept=".zip" data-testid="ws-import" onChange={e => { const f = e.target.files?.[0]; if (f) void importFile(f) }} /></label>
       <button data-testid="signout" onClick={() => void leave()}>خروج</button>
     </main>
   )

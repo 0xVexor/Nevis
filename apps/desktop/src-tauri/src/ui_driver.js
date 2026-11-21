@@ -10,6 +10,8 @@
   // React tracks controlled inputs through the native setter: a plain `.value =` would be ignored
   const setVal = (el, v) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })) }
   const button = t => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === t)
+  // the rail's New menu (the old app's way): open it, then click the item
+  const create = async item => { (await wait(() => tid('new-menu'), 'the New button')).click(); (await wait(() => tid(item), 'the menu item ' + item)).click() }
   const editorText = () => (document.querySelector('.ProseMirror') || {}).textContent || ''
 
   addEventListener('DOMContentLoaded', async () => {
@@ -28,8 +30,8 @@
         tid('auth-submit').click()
         await wait(() => tid('recovery'), 'recovery key')
         tid('ws-new').click()
-        await wait(() => tid('new-page'), 'workspace view')
-        tid('new-page').click()
+        await wait(() => tid('new-menu'), 'workspace view')
+        await create('new-page')
         await wait(() => document.querySelector('.ProseMirror') && window.__editor, 'editor')
         window.__editor.commands.insertContent('متن ماندگار پس از بستن')
         // close at ONCE: well inside the 300 ms throttle, so only the flush on close can save this text
@@ -39,8 +41,8 @@
         // the all-blocks page in the REAL desktop WebView and under its CSP: KaTeX, Mermaid, code highlighting, Excalidraw from our own assets
         await wait(() => tid('ws-list'), 'the workspace list after a restart')
         tid('ws-list').querySelector('button').click()
-        await wait(() => tid('new-all-blocks'), 'the workspace view')
-        tid('new-all-blocks').click()
+        await wait(() => tid('new-menu'), 'the workspace view')
+        await create('new-all-blocks')
         await wait(() => document.querySelector('.math-block .katex'), 'a rendered formula', 60000)
         await wait(() => document.querySelector('.mermaid-block svg'), 'a rendered diagram', 60000)
         await wait(() => document.querySelector('.code-block .hljs-keyword'), 'highlighted code', 20000)
@@ -56,7 +58,7 @@
         if (!tid('ws-list')) throw new Error('expected the workspace list after a restart, got ' + (tid('auth-form') ? 'the sign-in form' : 'the server form'))
         tid('ws-list').querySelector('button').click()
         const row = await wait(() => tid('page-row'), 'the page row')
-        row.querySelectorAll('button')[1].click()
+        row.click()
         await wait(() => editorText().includes('متن ماندگار پس از بستن'), 'the text typed before closing')
         // sign out: the form returns
         tid('signout').click()

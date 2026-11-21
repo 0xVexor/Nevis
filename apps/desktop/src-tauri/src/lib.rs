@@ -1,5 +1,6 @@
 //! Nevis desktop (ADR-0013): the web bundle in a Tauri 2 window, SQLite for the local store, the network and the device token in Rust.
 pub mod blobs;
+pub mod mirror;
 pub mod net;
 pub mod secrets;
 pub mod store;
@@ -268,6 +269,12 @@ async fn blob_get_range(state: State<'_, AppState>, ws: String, hash: String, st
     Ok(tauri::ipc::Response::new(out))
 }
 
+/// Writes the Markdown mirror (see mirror.rs): returns `{written, skipped, removed}`.
+#[tauri::command]
+async fn mirror_sync(dir: String, files: Vec<(String, String)>, remove: Vec<String>) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || mirror::sync(std::path::Path::new(&dir), &files, &remove).map(|o| json!({ "written": o.written, "skipped": o.skipped, "removed": o.removed }))).await.map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 fn net_cancel(state: State<'_, AppState>, request_id: String) {
     if let Some(n) = state.inflight.lock().unwrap().get(&request_id) { n.notify_one(); }
@@ -372,7 +379,7 @@ pub fn run() {
                 });
             }
         })
-        .invoke_handler(tauri::generate_handler![app_info, server_set, store_commit, store_read, net_request, net_cancel, blob_put, blob_get, blob_meta, blob_list, blob_set, blob_delete, blob_head, blob_put_piece, blob_get_range, auth_signin, auth_signup, auth_signout, flush_ready, flush_done, app_log, ui_close, app_exit])
+        .invoke_handler(tauri::generate_handler![app_info, server_set, store_commit, store_read, net_request, net_cancel, mirror_sync, blob_put, blob_get, blob_meta, blob_list, blob_set, blob_delete, blob_head, blob_put_piece, blob_get_range, auth_signin, auth_signup, auth_signout, flush_ready, flush_done, app_log, ui_close, app_exit])
         .run(tauri::generate_context!())
         .expect("error while running Nevis");
 }

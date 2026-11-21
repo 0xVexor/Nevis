@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { formatSize } from '@nevis/editor'
+import { download } from '../download'
+import { isDesktop } from '../desktop'
+import { mirrorFolder, setMirrorFolder } from '../mirror'
 import { me, type Me } from '../auth'
 import { PreferenceGroup, PreferenceRow, RangeControl, SegmentedChoice, Screen } from '../ds'
 import { setDeviceSettings, useDeviceSettings } from '../deviceSettings'
@@ -48,6 +51,18 @@ export function Settings({ ws }: { ws: Workspace }) {
           </PreferenceGroup>
         </div>
       )}
+      <div data-testid="settings-data">
+        <PreferenceGroup title="دادهٔ شما">
+          <PreferenceRow label="همهٔ یادداشت‌ها، بدون اتلاف (باندل)"><button className="ds-btn ds-btn--sm" data-testid="export-bundle" onClick={() => void ws.exportBundle().then(b => download(b, 'nevis.nevis.zip'))}>دانلود باندل</button></PreferenceRow>
+          <PreferenceRow label="فایل‌های Markdown (خوانا برای ابزارهای دیگر)"><button className="ds-btn ds-btn--sm" data-testid="export-markdown" onClick={() => void ws.exportMarkdown().then(b => download(b, 'nevis-markdown.zip'))}>دانلود Markdown</button></PreferenceRow>
+          {isDesktop && (
+            <PreferenceRow label="آینهٔ Markdown (یک‌طرفه: برنامه می‌نویسد، هرگز نمی‌خواند؛ ویرایش فایل‌ها بازنویسی می‌شود)">
+              <input data-testid="mirror-dir" dir="ltr" defaultValue={mirrorFolder(ws.ws)} placeholder="/Users/you/Notes" aria-label="پوشهٔ آینه"
+                onBlur={e => { setMirrorFolder(ws.ws, e.target.value.trim()); ws.startMirror(e.target.value.trim()) }} />
+            </PreferenceRow>
+          )}
+        </PreferenceGroup>
+      </div>
       <PreferenceGroup title={t('Keyboard shortcuts')}>
         <dl className="shortcuts">{SHORTCUTS.map(([what, keys]) => <div key={what}><dt>{what}</dt><dd dir="ltr">{keys}</dd></div>)}</dl>
       </PreferenceGroup>

@@ -17,7 +17,8 @@
     "nevis-log": "corepack pnpm --filter @nevis/nevis-log start",
     "bench:startup": "corepack pnpm --filter @nevis/bench start",
     "bench:search": "corepack pnpm --filter @nevis/search bench",
-    "check": "depcruise --config .dependency-cruiser.cjs apps/web/src packages/core/src packages/editor/src packages/schema/src && node tools/depcheck/test.mjs && corepack pnpm typecheck"
+    "check": "depcruise --config .dependency-cruiser.cjs apps/web/src packages/core/src packages/editor/src packages/schema/src && node tools/depcheck/test.mjs && corepack pnpm typecheck",
+    "nevis": "corepack pnpm --filter @nevis/bundle nevis"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",

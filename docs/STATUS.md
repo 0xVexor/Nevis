@@ -1,6 +1,6 @@
 # وضعیت
 
-آخرین به‌روزرسانی: 2026-11-21، پایان M10.
+آخرین به‌روزرسانی: 2026-11-21، پایان M12.
 
 | بخش | وضعیت | امتحان کنید |
 |---|---|---|
@@ -18,7 +18,9 @@
 | M8b اپ کامل (طراحی قدیمی، خانه، همهٔ صفحه‌ها، قالب‌ها، تنظیمات، palette، نماهای پایگاه‌داده و برد) | خودکار سبز (`m8b`)؛ «حس اپ قدیمی» و iPhone با مالک | `docs/reports/11-m8b-app.md`، `docs/checklists/M8b.md`؛ `corepack pnpm check` |
 | M9 پیوست‌ها و blob (`SV = 3`) | خودکار سبز (`m9`)؛ Safari/iPhone با فایل بزرگ و دمو با مالک؛ **`SV = 3` منتظر تأیید معمار** | `docs/reports/12-m9-attachments.md`، `docs/checklists/M9.md` |
 | M10 جست‌وجو و ایندکس‌های مشتق | خودکار سبز (`m10`)؛ بنچ iPhone/Safari با مالک | `docs/reports/13-m10-search.md`، `docs/checklists/M10.md`؛ `corepack pnpm bench:search` |
-| M11 … M16 | در انتظار | `docs/ROADMAP.md` |
+| M11 فلش‌کارت و تاریخچهٔ صفحه | خودکار سبز (`m11`)؛ چک‌لیست با مالک | `docs/reports/14-m11-cards-history.md`، `docs/checklists/M11.md` |
+| M12 export/import، آینهٔ Markdown، import قدیمی | خودکار سبز (`m12`)؛ **import دادهٔ واقعی مالک منتظر شماست** | `docs/reports/15-m12-export-import.md`، `docs/checklists/M12.md`، `docs/formats/bundle-v1.md` |
+| M13 … M16 | در انتظار | `docs/ROADMAP.md` |
 | **مرحلهٔ ظاهر (پیشنهادی، بعد از M10)** | **منتظر شروع** | مقایسهٔ کنار‌به‌کنار با اپ قدیمی و رفع تفاوت‌ها (آیکن/کاور صفحه، برچسب، نوار کنار، خانه) |
 
 ## کار مالک الان

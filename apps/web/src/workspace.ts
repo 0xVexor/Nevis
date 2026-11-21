@@ -2,7 +2,12 @@
 // All writes go through the core client (one committed transaction each); this class only decides WHAT to write.
 import { normalizeFa } from '@nevis/editor'
 import { AUTO_AFTER_MS, DocHandle, addVersion, foldSchedules, loadDoc, readVersions, thinVersions, type Version, reviewCard, reviewTimes, type Grade, type Rec, type BlobStatus, buildTree, createDatabase, createPage, isInside, movePage, readStructured, renamePage, restorePage, trashPage, type Client, type PageNode, type PageRow, type PageTree, type Structured } from '@nevis/core'
+import { exportBundle, importBundle, mdFileName, toMarkdown, type ImportResult } from '@nevis/bundle'
 import { project, writeBody, type PMJson } from '@nevis/schema'
+import { SV } from '@nevis/protocol'
+import { zipSync, strToU8, type Zippable } from 'fflate'
+import { Mirror, mirrorFolder } from './mirror'
+import { isDesktop } from './desktop'
 import { SyncRuntime } from './runtime'
 import { SearchService } from './search/service'
 
@@ -26,6 +31,8 @@ const TITLE_THROTTLE_MS = 400
 export class Workspace {
   readonly rt: SyncRuntime
   readonly search: SearchService
+  /** the Markdown mirror (desktop only; set from Settings) */
+  mirror: Mirror | null = null
   tree: PageTree = buildTree([])
   /** everything structured (databases, rows, tags...) as of the last reload */
   data: Structured = { pages: [], databases: new Map(), tags: [], savedSearches: [], settings: {}, pageTags: new Map() }
@@ -48,7 +55,7 @@ export class Workspace {
     this.rt = new SyncRuntime({
       ws, token,
       onChange: () => this.emit(),
-      onApplied: s => { this.search.dirty(s.docs ?? []); void this.afterRemote() },
+      onApplied: s => { this.search.dirty(s.docs ?? []); this.mirror?.touch(s.docs ?? []); void this.afterRemote() },
       onRemoteChange: m => void this.afterRemote(m.docs),
     })
     this.search = new SearchService(this.rt.store)
@@ -61,6 +68,7 @@ export class Workspace {
     await this.rt.start()
     await this.reload()
     void this.search.start(this.data.pages)
+    if (isDesktop && mirrorFolder(this.ws)) this.startMirror(mirrorFolder(this.ws))
   }
 
   subscribe(fn: () => void) { this.listeners.add(fn); return () => void this.listeners.delete(fn) }
@@ -75,6 +83,7 @@ export class Workspace {
         this.data = await readStructured(this.rt.store)
         this.tree = buildTree(this.data.pages)
         this.search.setPages(this.data.pages)
+        this.mirror?.touch()
         this.emit()
       } while (this.again)
     })().finally(() => { this.reloading = null })
@@ -135,6 +144,41 @@ export class Workspace {
     await reviewCard(this.rt.client, card, grade, Date.now(), durationMs)
     this.rt.written({ ents: [card] })
   }
+  // ---- export and import (ADR-0009): the person's data, in open formats ----
+  private async attachment(hash: string) {
+    const data = await this.rt.blobSync.fetch(hash)
+    return data ? { data, mime: (await this.rt.blobs.meta(hash))?.mime ?? '' } : undefined
+  }
+  /** The lossless bundle (`*.nevis.zip`). */
+  exportBundle(): Promise<Uint8Array> { return exportBundle({ store: this.rt.store, workspace: { id: this.ws, name: '' }, sv: SV, blob: h => this.attachment(h) }) }
+  /** The Markdown file of one page: its path in the tree (folders are the parents' file names) and its text. `refs` collects the attachments it names. */
+  async markdownOf(id: string, refs: Set<string> = new Set()): Promise<{ path: string; text: string }> {
+    const byId = new Map(this.data.pages.map(p => [p.id, p]))
+    const dirOf = (pid: string, guard = 0): string => { const p = byId.get(pid); return p && p.parent && byId.has(p.parent) && guard < 50 ? `${dirOf(p.parent, guard + 1)}${mdFileName(byId.get(p.parent)!.title, p.parent).replace(/\.md$/, '')}/` : '' }
+    const p = byId.get(id)!
+    const folder = dirOf(id)
+    const json = project(await this.rt.store.run(tx => loadDoc(tx, id)))
+    const up = '../'.repeat(folder.split('/').filter(Boolean).length)
+    const text = toMarkdown(json, { titleOf: x => byId.get(x)?.title ?? '', attachment: h => { refs.add(h); return `${up}attachments/${h}` } }, { id, title: p.title, parent: p.parent, created: p.createdAt })
+    return { path: `${folder}${mdFileName(p.title, id)}`, text }
+  }
+  /** A zip of Markdown files laid out as the page tree, with the attachments next to them. One way: nothing is read back from it. */
+  async exportMarkdown(): Promise<Uint8Array> {
+    const files: Zippable = {}
+    const refs = new Set<string>()
+    for (const p of this.data.pages.filter(x => !x.trashed && x.type !== 'database')) { const f = await this.markdownOf(p.id, refs); files[f.path] = strToU8(f.text) }
+    for (const h of refs) { const a = await this.attachment(h); if (a) files[`attachments/${h}`] = [new Uint8Array(await a.data.arrayBuffer()), { level: 0 }] }
+    return zipSync(files)
+  }
+  startMirror(dir: string) { this.mirror?.stop(); this.mirror = dir ? new Mirror(this, dir) : null; this.mirror?.touch() }
+  /** Imports a bundle into THIS (new) workspace. */
+  async importBundle(zip: Uint8Array): Promise<ImportResult> {
+    const r = await importBundle(zip, { client: this.rt.client, store: this.rt.store, blobs: this.rt.blobs })
+    this.rt.written({})
+    await this.reload()
+    return r
+  }
+
   // ---- page history (versions are events about the page; see packages/core/src/versions.ts) ----
   private readonly versionTimers = new Map<string, ReturnType<typeof setTimeout>>()
   /** The page as it is stored now, as JSON text. */
@@ -212,7 +256,7 @@ export class Workspace {
   async openDoc(id: string): Promise<DocHandle> {
     const have = this.handles.get(id)
     if (have) return have
-    const h = await DocHandle.open({ client: this.rt.client, doc: id, onLocalWrite: d => { this.rt.written({ docs: [d] }); this.search.dirty([d]); this.scheduleVersion(d) }, onError: e => this.fail(e), onTooLarge: () => { this.diverged.add(id); this.emit() } })
+    const h = await DocHandle.open({ client: this.rt.client, doc: id, onLocalWrite: d => { this.rt.written({ docs: [d] }); this.search.dirty([d]); this.scheduleVersion(d); this.mirror?.touch([d]) }, onError: e => this.fail(e), onTooLarge: () => { this.diverged.add(id); this.emit() } })
     this.handles.set(id, h)
     return h
   }
@@ -297,6 +341,7 @@ export class Workspace {
   async stop() {
     await this.flushAll()
     this.search.stop()
+    this.mirror?.stop()
     this.rt.stop()
     for (const id of [...this.handles.keys()]) await this.closeDoc(id)
   }
