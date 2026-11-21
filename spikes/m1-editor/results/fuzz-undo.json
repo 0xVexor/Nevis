@@ -3,60 +3,153 @@
   "seeds": 300,
   "docsEqual": 300,
   "failedSeeds": [],
-  "seedsWithViewMismatch": 0,
-  "seedsWithViewMismatchNotFixedByRerender": 0,
-  "viewMismatchRatePerCheck": 0,
-  "transientViewMismatches": 20,
-  "rangeErrors": 0,
-  "otherErrors": 2,
-  "errorSamples": [
-    "Cannot read properties of undefined (reading 'client')"
+  "seedsWithViewMismatch": 6,
+  "seedsWithViewMismatchNotFixedByRerender": 6,
+  "viewMismatchRatePerCheck": 0.00019801980198019803,
+  "transientViewMismatches": 22,
+  "rangeErrors": 4781,
+  "otherErrors": 0,
+  "errorSamples": [],
+  "mismatchSamples": [
+    "/content/6/content/1/content/1: undefined vs {\"type\":\"tableC LAST-OPS B6,B11,A5,A12,A7,A3,B10,B15,B6,B2,B13,A2,B13,A13",
+    "/content/13/content/3/content/8: undefined vs {\"type\":\"table LAST-OPS B15,B3,B14,A12,B8,A5,A9,B14,B0,A14,B15,B5,B17,B14",
+    "/content/20/content/0/content/2: undefined vs {\"type\":\"table LAST-OPS A6,A17,B17,A9,A15,A3,B0,B17,B6,A16,A4,B12,B16,A1",
+    "/content/19/content/0/content/2: undefined vs {\"type\":\"table LAST-OPS A6,A17,B17,A9,A15,A3,B0,B17,B6,A16,A4,B12,B16,A1",
+    "/content/20/content/1/content/3: undefined vs {\"type\":\"table LAST-OPS A3,B0,B17,B6,A16,A4,B12,B16,A1,B7,B2,A12,B5,B0",
+    "/content/5/content/2/content/2: undefined vs {\"type\":\"tableC LAST-OPS B14,B12,B14,A12,A12,A14,B1,A9,B4,B3,B11,A5,B2,B15",
+    "/content/5/content/2/content/2: undefined vs {\"type\":\"tableC LAST-OPS A14,B1,A9,B4,B3,B11,A5,B2,B15,B11,B10,B15,B7,B16",
+    "/content/3/content/0/content/5: undefined vs {\"type\":\"tableC LAST-OPS A16,A1,A9,B14,B14,A6,A8,A14,B9,B12,A2,A15,B0,B16"
   ],
-  "mismatchSamples": [],
   "idsNotOk": [],
   "nullAttrs": 0,
-  "maxSizeBytes": 110443,
-  "ms": 41155,
+  "maxSizeBytes": 173642,
+  "ms": 82893,
   "results": [
     {
-      "seed": 241,
+      "seed": 51,
       "steps": 500,
       "withUndo": true,
       "docsEqual": true,
       "viewChecks": 202,
-      "viewMismatches": 0,
+      "viewMismatches": 1,
       "fixedByRerender": 0,
-      "rangeErrors": 0,
-      "otherErrors": 1,
-      "errorSample": [
-        "Cannot read properties of undefined (reading 'client')"
-      ],
+      "rangeErrors": 11,
+      "otherErrors": 0,
+      "errorSample": [],
       "idsOk": true,
       "nullAttrs": 0,
-      "sizeA": 110183,
-      "ms": 232,
-      "mismatchSample": [],
+      "sizeA": 32296,
+      "ms": 382,
+      "mismatchSample": [
+        "/content/6/content/1/content/1: undefined vs {\"type\":\"tableC LAST-OPS B6,B11,A5,A12,A7,A3,B10,B15,B6,B2,B13,A2,B13,A13"
+      ],
       "transient": 1
     },
     {
-      "seed": 297,
+      "seed": 68,
       "steps": 500,
       "withUndo": true,
       "docsEqual": true,
       "viewChecks": 202,
-      "viewMismatches": 0,
+      "viewMismatches": 1,
       "fixedByRerender": 0,
-      "rangeErrors": 0,
-      "otherErrors": 1,
-      "errorSample": [
-        "Cannot read properties of undefined (reading 'client')"
-      ],
+      "rangeErrors": 14,
+      "otherErrors": 0,
+      "errorSample": [],
       "idsOk": true,
       "nullAttrs": 0,
-      "sizeA": 32245,
-      "ms": 156,
-      "mismatchSample": [],
-      "transient": 0
+      "sizeA": 59075,
+      "ms": 523,
+      "mismatchSample": [
+        "/content/13/content/3/content/8: undefined vs {\"type\":\"table LAST-OPS B15,B3,B14,A12,B8,A5,A9,B14,B0,A14,B15,B5,B17,B14"
+      ],
+      "transient": 2
+    },
+    {
+      "seed": 154,
+      "steps": 500,
+      "withUndo": true,
+      "docsEqual": true,
+      "viewChecks": 202,
+      "viewMismatches": 3,
+      "fixedByRerender": 0,
+      "rangeErrors": 19,
+      "otherErrors": 0,
+      "errorSample": [],
+      "idsOk": true,
+      "nullAttrs": 0,
+      "sizeA": 41337,
+      "ms": 709,
+      "mismatchSample": [
+        "/content/20/content/0/content/2: undefined vs {\"type\":\"table LAST-OPS A6,A17,B17,A9,A15,A3,B0,B17,B6,A16,A4,B12,B16,A1",
+        "/content/19/content/0/content/2: undefined vs {\"type\":\"table LAST-OPS A6,A17,B17,A9,A15,A3,B0,B17,B6,A16,A4,B12,B16,A1",
+        "/content/20/content/1/content/3: undefined vs {\"type\":\"table LAST-OPS A3,B0,B17,B6,A16,A4,B12,B16,A1,B7,B2,A12,B5,B0"
+      ],
+      "transient": 1
+    },
+    {
+      "seed": 168,
+      "steps": 500,
+      "withUndo": true,
+      "docsEqual": true,
+      "viewChecks": 202,
+      "viewMismatches": 2,
+      "fixedByRerender": 0,
+      "rangeErrors": 18,
+      "otherErrors": 0,
+      "errorSample": [],
+      "idsOk": true,
+      "nullAttrs": 0,
+      "sizeA": 31159,
+      "ms": 458,
+      "mismatchSample": [
+        "/content/5/content/2/content/2: undefined vs {\"type\":\"tableC LAST-OPS B14,B12,B14,A12,A12,A14,B1,A9,B4,B3,B11,A5,B2,B15",
+        "/content/5/content/2/content/2: undefined vs {\"type\":\"tableC LAST-OPS A14,B1,A9,B4,B3,B11,A5,B2,B15,B11,B10,B15,B7,B16"
+      ],
+      "transient": 1
+    },
+    {
+      "seed": 223,
+      "steps": 500,
+      "withUndo": true,
+      "docsEqual": true,
+      "viewChecks": 202,
+      "viewMismatches": 3,
+      "fixedByRerender": 0,
+      "rangeErrors": 11,
+      "otherErrors": 0,
+      "errorSample": [],
+      "idsOk": true,
+      "nullAttrs": 0,
+      "sizeA": 73184,
+      "ms": 541,
+      "mismatchSample": [
+        "/content/3/content/0/content/5: undefined vs {\"type\":\"tableC LAST-OPS A16,A1,A9,B14,B14,A6,A8,A14,B9,B12,A2,A15,B0,B16",
+        "/content/4/content/2/content/6: undefined vs {\"type\":\"tableC LAST-OPS A2,A15,B0,B16,B6,B7,B17,A17,B3,B13,A7,A7,A3,B11",
+        "/content/4/content/0/content/7: undefined vs {\"type\":\"tableC LAST-OPS B7,B17,A17,B3,B13,A7,A7,A3,B11,A4,A11,A5,B5,B14"
+      ],
+      "transient": 1
+    },
+    {
+      "seed": 294,
+      "steps": 500,
+      "withUndo": true,
+      "docsEqual": true,
+      "viewChecks": 202,
+      "viewMismatches": 2,
+      "fixedByRerender": 0,
+      "rangeErrors": 13,
+      "otherErrors": 0,
+      "errorSample": [],
+      "idsOk": true,
+      "nullAttrs": 0,
+      "sizeA": 75786,
+      "ms": 460,
+      "mismatchSample": [
+        "/content/8/content/0/content/3: undefined vs {\"type\":\"tableC LAST-OPS A16,A7,B9,A3,A2,A17,B2,A4,A15,A16,B15,B9,A15,A8",
+        "/content/8/content/0/content/3: undefined vs {\"type\":\"tableC LAST-OPS A16,A7,B9,A3,A2,A17,B2,A4,A15,A16,B15,B9,A15,A8"
+      ],
+      "transient": 1
     }
   ]
 }

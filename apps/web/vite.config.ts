@@ -28,11 +28,21 @@ function excalidrawAssets() {
 // Rewritten at build time to our own origin: the base becomes `<origin>/excalidraw-assets/#...` (a URL fragment in a base is dropped when
 // a relative path is resolved against it), so the fallback is the same place as the first choice.
 function excalidrawNoCdn() {
+  let seen = 0 // modules that define ASSETS_FALLBACK_URL (exactly one is expected)
+  let replaced = 0
   return {
     name: 'nevis-excalidraw-no-cdn',
+    apply: 'build' as const,
     transform(code: string, id: string) {
-      if (!id.includes('excalidraw') || !code.includes('https://esm.sh/')) return null
+      if (!id.includes('excalidraw') || !code.includes('ASSETS_FALLBACK_URL') || !code.includes('https://esm.sh/')) return null
+      seen++
+      replaced += code.split('https://esm.sh/').length - 1
       return { code: code.split('https://esm.sh/').join('${globalThis.location?.origin ?? ""}/excalidraw-assets/#'), map: null }
+    },
+    // If a new Excalidraw changes that string, the CDN reference would silently come back (a blocked request under our CSP, and a third-party
+    // address in the bundle): the BUILD fails instead.
+    buildEnd(this: { error: (message: string) => never }) {
+      if (seen !== 1 || replaced !== 1) this.error(`nevis-excalidraw-no-cdn: expected exactly one module defining ASSETS_FALLBACK_URL with one esm.sh address, found ${seen} module(s) and ${replaced} address(es): the Excalidraw version changed; update this plugin`)
     },
   }
 }

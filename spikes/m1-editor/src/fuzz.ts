@@ -130,7 +130,8 @@ export async function runFuzz(seed: number, steps = 500, withUndo = false, check
     e.view.dispatch(e.state.tr.setSelection(TextSelection.near(e.state.doc.resolve(pos))).setMeta('addToHistory', false))
     const r = rng()
     // 0-8 text and structure, 9-10 undo/redo, 11-16 the M8a blocks
-    const pool = withUndo ? [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] : [0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16]
+    const paste = (window as unknown as { __fuzzPaste?: boolean }).__fuzzPaste ? [17] : [] // STRESS only (FUZZ_PASTE=1): a multi-block paste at a random caret
+    const pool = withUndo ? [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, ...paste] : [0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, ...paste]
     const k = pool[Math.floor(r * pool.length)]!
     log.push(`${side}${k}`); if (log.length > 14) log.shift()
     switch (k) {
@@ -158,9 +159,7 @@ export async function runFuzz(seed: number, steps = 500, withUndo = false, check
       case 8: rng() < 0.7 ? setDir(e, pick(rng, DIRS)) : e.commands.addRowAfter(); break
       case 9: e.commands.undo(); break
       case 10: e.commands.redo(); break
-      case 11: { // the real flow: a new empty line (Enter at the end of a block), then the slash command replaces it
-        e.view.dispatch(e.state.tr.setSelection(TextSelection.near(e.state.doc.resolve(blk.to))))
-        e.commands.splitBlock()
+      case 11: { // at a RANDOM caret (inside text, a cell, a list item...): the command itself must put the block on an empty line
         const c = [() => e.commands.insertCallout(pick(rng, ['bulb', 'warning', 'info'])), () => e.commands.insertToggle(), () => e.commands.insertLayout(rng() < 0.5 ? 2 : 3), () => e.commands.insertMathInline('y^2'), () => e.commands.insertMathBlock('z'), () => e.commands.insertImagePlaceholder('جا')]; pick(rng, c)(); break }
       case 12: { // delete a whole top-level block
         const top = e.state.doc.childCount
@@ -184,6 +183,11 @@ export async function runFuzz(seed: number, steps = 500, withUndo = false, check
       case 14: e.commands.setColumnWidths([0, 0].concat(rng() < 0.5 ? [] : [0]).map(() => Math.floor(rng() * 5) * 10)); break
       case 15: e.commands.setTextAlign(pick(rng, ['left', 'center', 'right', 'justify'] as const)); break
       case 16: e.commands.setDirection(pick(rng, DIRS)); break
+      case 17: { // PASTE of several blocks at the random caret (a web page, Word, an AI chat), through the editor's own paste path
+        const html = pick(rng, ['<h2>عنوان</h2><p>پاراگراف یک</p><p>دو</p>', '<ul><li>الف</li><li>ب</li></ul><p>پایان</p>', '<blockquote><p>نقل</p></blockquote><p>x</p>', '<table><tr><td>a</td><td>b</td></tr></table>', '<p>یک</p><pre><code>code</code></pre><ol><li>1</li></ol>'])
+        e.view.pasteHTML(html)
+        break
+      }
     }
   }
 

@@ -40,7 +40,10 @@ const summary = (rs: FuzzResult[]) => ({
   ms: rs.reduce((a, r) => a + r.ms, 0),
 })
 
-test.beforeEach(async ({ page }) => { await page.goto('/') })
+test.beforeEach(async ({ page }) => {
+  if (process.env.FUZZ_PASTE) await page.addInitScript('window.__fuzzPaste = true') // STRESS run: also paste several blocks at a random caret (known open: ~1-2% of seeds)
+  await page.goto('/')
+})
 
 for (const withUndo of [false, true]) {
   test(`fuzz ${SEEDS} seeds x ${STEPS} steps ${withUndo ? 'WITH' : 'WITHOUT'} undo`, async ({ page }) => {
@@ -55,6 +58,7 @@ for (const withUndo of [false, true]) {
     expect(s.nullAttrs).toBe(0)
     // (b) view != own Y.Doc: seeds with a mismatch that a re-render does not fix
     const limit = withUndo ? 0.05 : 0.01
+    if (process.env.FUZZ_PASTE) { console.log('PASTE-STRESS (informational, not asserted)', s.seedsWithViewMismatch, 'of', s.seeds); return }
     expect(s.seedsWithViewMismatch / s.seeds, 'view mismatch rate').toBeLessThanOrEqual(limit)
   })
 }

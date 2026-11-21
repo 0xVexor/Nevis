@@ -17,7 +17,7 @@ async function signUpAndOpen(page: Page) {
   return name
 }
 const body = (page: Page) => page.getByTestId('editor').locator('.ProseMirror')
-type Json = { type: string; attrs?: Record<string, unknown>; content?: Json[] }
+type Json = { type: string; attrs?: Record<string, unknown>; content?: Json[]; text?: string }
 const docJson = (page: Page) => page.evaluate(() => (window as unknown as { __editor: { getJSON: () => unknown } }).__editor.getJSON()) as Promise<Json>
 const find = (n: Json, type: string): Json[] => [...(n.type === type ? [n] : []), ...(n.content ?? []).flatMap(c => find(c, type))]
 
@@ -123,4 +123,33 @@ test('the drag handle appears next to a block on hover (blocks are moved with th
   await expect(body(page).locator('.callout')).toBeVisible({ timeout: 30_000 })
   await body(page).locator('.callout').hover()
   await expect(page.locator('.drag-handle')).toBeVisible()
+})
+
+test('dragging a block with its handle moves it; the new order is saved and survives a reload', async ({ page, browserName }) => {
+  // HTML5 drag-and-drop through scripted mouse events is reliable in Chromium only; WebKit and Firefox are covered by the owner's checklist.
+  test.skip(browserName !== 'chromium', 'scripted HTML5 drag-and-drop is only reliable in Chromium')
+  await signUpAndOpen(page)
+  await page.getByTestId('new-page').click()
+  await page.waitForFunction(() => !!(window as unknown as { __editor?: unknown }).__editor)
+  await page.evaluate(() => (window as unknown as { __editor: { commands: { setContent: (c: unknown) => void } } }).__editor.commands.setContent({
+    type: 'doc', content: ['اول', 'دوم', 'سوم'].map(t => ({ type: 'paragraph', content: [{ type: 'text', text: t }] })),
+  }))
+  const order = async () => (await docJson(page)).content!.map(n => n.content?.[0]?.text ?? '')
+  expect(await order()).toEqual(['اول', 'دوم', 'سوم'])
+  const first = body(page).locator('p', { hasText: 'اول' }), last = body(page).locator('p', { hasText: 'سوم' })
+  await first.hover()
+  const handle = page.locator('.drag-handle')
+  await expect(handle).toBeVisible()
+  const h = (await handle.boundingBox())!, l = (await last.boundingBox())!
+  await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(l.x + l.width / 2, l.y + l.height * 0.9, { steps: 12 })
+  await page.mouse.up()
+  await expect.poll(order, { timeout: 5000 }).toEqual(['دوم', 'سوم', 'اول'])
+  await expect.poll(async () => page.evaluate(async () => { const st = await (window as unknown as { __ws: { status: () => Promise<{ outbox: number; unsaved: number }> } }).__ws.status(); return st.outbox === 0 && st.unsaved === 0 }), { timeout: 30_000 }).toBe(true)
+  await page.reload()
+  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await page.getByTestId('page-row').first().getByRole('button').nth(1).click()
+  await expect(body(page)).toContainText('اول')
+  expect(await order()).toEqual(['دوم', 'سوم', 'اول'])
 })
