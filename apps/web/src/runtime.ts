@@ -1,6 +1,6 @@
 // The sync runtime of one workspace in one tab: the IndexedDB store, the client (local writes), the engine (push/pull/apply), and the
 // tab coordinator (one leader per workspace talks to the server, with a long-poll). Shared by the real app and the test lab.
-import { BlobSync, Client, SyncEngine, TabCoordinator, httpBlobNet, httpNet, sha256Hex, type BlobStatus, type BlobStore, type ChangedMessage, type CycleStats, type Store } from '@nevis/core'
+import { BlobSync, Client, NetError, Snapshotter, SyncEngine, TabCoordinator, httpBlobNet, httpNet, sha256Hex, type BlobStatus, type BlobStore, type ChangedMessage, type CycleStats, type Store } from '@nevis/core'
 import type { AttachmentsPort } from '@nevis/editor'
 import { SV, uuidv7 } from '@nevis/protocol'
 import { IdbBlobStore, IdbStore } from '@nevis/store-idb'
@@ -28,6 +28,9 @@ export class SyncRuntime {
   readonly store: Store
   readonly blobs: BlobStore
   blobSync!: BlobSync
+  snapshotter!: Snapshotter
+  /** the server said this app is too old for the workspace (426): sending stops until the app is updated */
+  upgradeRequired = false
   /** what the editor is given: files are kept here first, shown from here or from the server */
   attachments!: AttachmentsPort
   private readonly availableListeners = new Set<() => void>()
@@ -76,6 +79,7 @@ export class SyncRuntime {
     this.blobSync = new BlobSync({ ws: this.ws, blobs: this.blobs, net: blobNet, onChange: () => this.o.onChange?.(), onUploaded: () => this.coord?.kick() })
     this.client = new Client({ store: this.store, ws: this.ws, device: this.device, sv: SV })
     this.engine = new SyncEngine({ store: this.store, net, ws: this.ws, device: this.device, sv: SV, gate: this.blobSync })
+    this.snapshotter = new Snapshotter({ client: this.client, store: this.store, net, ws: this.ws })
     this.attachments = {
       maxBytes: MAX_ATTACHMENT_BYTES,
       add: async (file, name, mime) => {
@@ -99,6 +103,7 @@ export class SyncRuntime {
         void this.blobSync.uploadPending().catch(e => { this.lastError = String((e as Error).message ?? e) })
         const s = await this.engine.cycle()
         await this.blobSync.reportRefs(this.store).catch(() => undefined)
+        if (await this.snapshotter.run().catch(() => 0)) this.coord.kick() // snapshots of documents with many ops (the server may later drop what they cover)
         if (s.applied || s.pulled) this.tellAvailable()
         this.lastError = s.rejected ? `${s.rejected} change(s) were refused by the server and could not be sent (kept in quarantine)` : ''
         this.lastSyncAt = Date.now()
@@ -109,7 +114,7 @@ export class SyncRuntime {
       idle: signal => this.engine.listen(signal),
       onLeaderChange: () => this.o.onChange?.(),
       onRemoteChange: m => { this.o.onRemoteChange?.(m); this.o.onChange?.() },
-      onError: e => { this.lastError = String((e as Error).message ?? e); this.o.onChange?.() },
+      onError: e => { if (e instanceof NetError && e.code === 'upgrade_required') this.upgradeRequired = true; this.lastError = String((e as Error).message ?? e); this.o.onChange?.() },
     })
     this.coord.start()
     // the browser says the network is back: try now instead of waiting out the backoff

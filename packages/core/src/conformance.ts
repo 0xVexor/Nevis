@@ -83,6 +83,26 @@ export function storeConformance({ describe, it, expect }: Harness, name: string
       expect(await s.run(tx => tx.docs())).toEqual(['d'])
     })
 
+    it('purgeEntity forgets the registers, events, document and updates of ONE entity and nothing else', async () => {
+      const s = await factory()
+      await s.run(async tx => {
+        for (const e of ['x', 'y']) {
+          await tx.putFieldIfNewer(e, 'title', '"t"', 'h1'); await tx.putEvent({ id: 'ev-' + e, ent: e, kind: 'review', hlc: 'h1', body: '{}' })
+          await tx.putDocState(e, enc('state'), 1); await tx.appendDocUpdate(e, enc('u'))
+        }
+      })
+      await s.run(tx => tx.purgeEntity('x'))
+      expect(await s.run(tx => tx.entities())).toEqual(['y'])
+      expect((await s.run(tx => tx.allEvents())).map(e => e.id)).toEqual(['ev-y'])
+      expect(await s.run(tx => tx.getDocState('x'))).toBeUndefined()
+      expect(await s.run(tx => tx.listDocUpdates('x'))).toEqual([])
+      expect(await s.run(tx => tx.docs())).toEqual(['y'])
+      expect(new TextDecoder().decode((await s.run(tx => tx.getDocState('y')))!.state!)).toBe('state')
+      // a purged entity can start again (an old op arriving late is the server's `purged`, but the store itself allows it)
+      await s.run(tx => tx.putFieldIfNewer('x', 'title', '"again"', 'h2'))
+      expect([...(await s.run(tx => tx.entities()))].sort()).toEqual(['x', 'y'])
+    })
+
     it('outbox: in the order added (whatever `created` says), deleted by op id', async () => {
       const s = await factory()
       await s.run(async tx => { await tx.addOutbox({ op: 'b', env: 'B', created: 9 }); await tx.addOutbox({ op: 'a', env: 'A', created: 1 }); await tx.addOutbox({ op: 'c', env: 'C', created: 5 }) })

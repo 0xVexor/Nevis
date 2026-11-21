@@ -96,6 +96,11 @@ export class MemoryStore implements Store {
       },
       listDocUpdates: async doc => [...(this.docUpdates.get(doc) ?? [])],
       deleteDocUpdates: async (doc, throughK) => this.mapSet(this.docUpdates, doc, (this.docUpdates.get(doc) ?? []).filter(u => u.k > throughK), undo),
+      purgeEntity: async ent => {
+        this.mapDel(this.fields, ent, undo)
+        for (const [id, e] of [...this.eventRows]) if (e.ent === ent) this.mapDel(this.eventRows, id, undo)
+        this.mapDel(this.docState, ent, undo); this.mapDel(this.docUpdates, ent, undo); this.mapDel(this.docSeq, ent, undo)
+      },
       docs: async () => [...new Set([...this.docState.keys(), ...this.docUpdates.keys()])],
       addOutbox: async row => this.mapSet(this.outbox, row.op, row, undo),
       listOutbox: async limit => [...this.outbox.values()].slice(0, limit), // a Map keeps insertion order

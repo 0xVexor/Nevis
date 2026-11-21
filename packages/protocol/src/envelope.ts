@@ -19,6 +19,8 @@ export interface Envelope {
   p: string
   /** only on snapshot ops */
   cov?: number
+  /** a PURGE op: the permanent deletion of the document (M13) */
+  pg?: 1
 }
 
 export class EnvelopeError extends Error {
@@ -26,7 +28,7 @@ export class EnvelopeError extends Error {
   constructor(message: string) { super(message) }
 }
 
-const KEYS = new Set(['v', 'op', 'ws', 'doc', 'dev', 't', 'sv', 'kid', 'n', 'p', 'cov'])
+const KEYS = new Set(['v', 'op', 'ws', 'doc', 'dev', 't', 'sv', 'kid', 'n', 'p', 'cov', 'pg'])
 export const MAX_P_CHARS = 1_500_000
 
 /** Fixed key order, no spaces: the bytes that go to the outbox and on the wire. */
@@ -35,6 +37,7 @@ export function encodeEnvelope(e: Envelope): string {
   if (e.n !== undefined) o.n = e.n
   o.p = e.p
   if (e.cov !== undefined) o.cov = e.cov
+  if (e.pg !== undefined) o.pg = e.pg
   return JSON.stringify(o)
 }
 
@@ -62,6 +65,11 @@ export function validateEnvelope(o: Json): Envelope {
     env.n = o.n
   }
   if (o.cov !== undefined) env.cov = int(o.cov, 0, 'cov')
+  if (o.pg !== undefined) {
+    if (o.pg !== 1) throw new EnvelopeError('pg must be 1')
+    if (env.cov !== undefined) throw new EnvelopeError('a purge op has no cov')
+    env.pg = 1
+  }
   return env
 }
 

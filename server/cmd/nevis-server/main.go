@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -69,6 +70,27 @@ func main() {
 		DevMode: devMode, DevToken: os.Getenv("DEV_TOKEN"), Secret: secret, Registration: reg, InviteCodes: invites, PowBits: bits, SignupsPerHour: envInt("SIGNUPS_PER_HOUR"),
 		QuotaBytes: int64(quota) << 20, DataDir: dataDir, MaxBlobBytes: int64(maxBlob) << 20, WebDir: os.Getenv("WEB_DIR"), InsecureCookies: insecure, Log: log,
 	})
+	go func() { // covered ops older than 30 days are removed; a backup of the database is taken first (once a day at most)
+		pruneCtx := context.Background()
+		var lastBackup time.Time
+		for {
+			time.Sleep(time.Hour)
+			if time.Since(lastBackup) > 24*time.Hour {
+				if path, err := st.Backup(pruneCtx, filepath.Join(dataDir, "backup")); err != nil {
+					log.Error("backup before pruning failed: nothing is pruned", "err", err)
+					continue
+				} else {
+					lastBackup = time.Now()
+					log.Info("backup", "path", path)
+				}
+			}
+			if n, err := st.Prune(pruneCtx); err != nil {
+				log.Error("prune", "err", err)
+			} else if n > 0 {
+				log.Info("prune", "removed", n)
+			}
+		}
+	}()
 	gcCtx, stopGC := context.WithCancel(context.Background())
 	defer stopGC()
 	go func() { // attachments nobody refers to for 30 days (store.BlobGraceMs) are removed; a referenced one never is

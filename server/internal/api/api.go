@@ -104,6 +104,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /v1/devices/{id}", s.authed(s.revokeDevice))
 	s.mux.HandleFunc("POST /v1/ws/{ws}/ops", s.authed(s.push))
 	s.mux.HandleFunc("GET /v1/ws/{ws}/ops", s.authed(s.pull))
+	s.mux.HandleFunc("GET /v1/ws/{ws}/snapshots/candidates", s.authed(s.snapshotCandidates))
 	s.mux.HandleFunc("PUT /v1/ws/{ws}/blobs/{sha}", s.authed(s.putBlob))
 	s.mux.HandleFunc("HEAD /v1/ws/{ws}/blobs/{sha}", s.authed(s.headBlob))
 	s.mux.HandleFunc("GET /v1/ws/{ws}/blobs/{sha}", s.authed(s.getBlob))

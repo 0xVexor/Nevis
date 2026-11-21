@@ -1,6 +1,7 @@
 // Local writes. Each one is ONE transaction that writes the local state, the outbox row (the final envelope bytes, kept
 // exactly as first serialised so a resend is always byte-identical) and the advanced clock (ADR-0001 §4).
-import { FRAME, MAX_P_CHARS, b64urlEncode, encodeEnvelope, encodeEvt, encodeRec, encodeYUpdate, type Envelope, type Json, type UuidGenerator, uuidv7 } from '@nevis/protocol'
+import * as Y from 'yjs'
+import { FRAME, MAX_P_CHARS, b64urlEncode, encodeEnvelope, encodeEvt, encodeFrame, encodeRec, encodeSnap, encodeYUpdate, type Envelope, type Json, type UuidGenerator, uuidv7 } from '@nevis/protocol'
 import { KIND_FIELD } from './apply'
 import { hexNamesIn } from './blobs'
 import { nextHlc } from './clock'
@@ -47,8 +48,8 @@ export class Client {
   newIdFor(): string { return this.newId() }
   nowMs(): number { return this.now() }
 
-  private async emit(tx: Tx, doc: string, frame: Uint8Array, hlc: string): Promise<string> {
-    const env: Envelope = { v: 1, op: this.newId(), ws: this.ws, doc, dev: this.device, t: hlc, sv: this.sv, kid: 0, p: b64urlEncode(frame) }
+  private async emit(tx: Tx, doc: string, frame: Uint8Array, hlc: string, extra: { cov?: number; pg?: 1 } = {}): Promise<string> {
+    const env: Envelope = { v: 1, op: this.newId(), ws: this.ws, doc, dev: this.device, t: hlc, sv: this.sv, kid: 0, p: b64urlEncode(frame), ...extra }
     if (env.p.length > MAX_P_CHARS) throw new OpTooLargeError(env.p.length)
     const text = encodeEnvelope(env)
     // EVERY attachment name the op's content holds goes into the gate, whatever this device believes about it (that it came from the server,
@@ -88,6 +89,35 @@ export class Client {
       await tx.appendDocUpdate(doc, update)
       await compactDoc(tx, doc)
       return this.emit(tx, doc, encodeYUpdate(update), h)
+    })
+  }
+
+  /** A snapshot op of one entity (M13): its registers and its Yjs state as they are now, covering every op up to the cursor. Written only when
+   *  the cursor has reached the server's head and NOTHING waits in the inbox (so every op up to the cursor is applied here and none is held
+   *  back for a newer schema); null otherwise. The check and the write are one transaction. */
+  async writeSnapshot(ent: string): Promise<string | null> {
+    return this.store.run(async tx => {
+      const cov = Number((await tx.getMeta('cursor')) ?? 0)
+      const head = Number((await tx.getMeta('head')) ?? -1)
+      if (cov === 0 || cov !== head || (await tx.listInbox(0, 1)).length) return null
+      const fields: Record<string, [string, string]> = {}
+      for (const [f, r] of Object.entries(await tx.entityFields(ent))) fields[f] = [r.val, r.hlc]
+      const st = await tx.getDocState(ent)
+      const tail = await tx.listDocUpdates(ent)
+      const parts = [...(st?.state ? [st.state] : []), ...tail.map(u => u.upd)]
+      const state = parts.length ? Y.mergeUpdates(parts) : new Uint8Array()
+      const h = await nextHlc(tx, this.device, this.now())
+      return this.emit(tx, ent, encodeSnap({ fields, state }), h, { cov })
+    })
+  }
+
+  /** Permanent deletion of an entity (M13): this device forgets it in the same transaction that writes the purge op; the server then removes
+   *  every op of it and refuses later ones, and every other device forgets it when the op reaches it. */
+  async purge(ent: string): Promise<string> {
+    return this.store.run(async tx => {
+      const h = await nextHlc(tx, this.device, this.now())
+      await tx.purgeEntity(ent)
+      return this.emit(tx, ent, encodeFrame(FRAME.purge), h, { pg: 1 })
     })
   }
 

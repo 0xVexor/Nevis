@@ -1,6 +1,6 @@
 // Applying one op to the local state. Every branch is idempotent and order-independent (registers: last HLC wins; events:
 // insert if absent; Yjs: commutative), so a duplicate, a late or a reordered op changes nothing.
-import { FRAME, FrameError, b64urlDecode, decodeEvt, decodeFrame, decodeRec, type Envelope } from '@nevis/protocol'
+import { FRAME, FrameError, b64urlDecode, decodeEvt, decodeFrame, decodeRec, decodeSnap, type Envelope } from '@nevis/protocol'
 import { observeHlc } from './clock'
 import { compactDoc } from './docs'
 import type { Tx } from './store'
@@ -33,6 +33,17 @@ export async function applyEnvelope(tx: Tx, env: Envelope, ctx: { device: string
       await tx.putEvent({ id: e.id, ent: env.doc, kind: e.kind, hlc: e.h, body: JSON.stringify(e.body) })
       break
     }
+    case FRAME.snap: {
+      // the state of one entity at the time of the snapshot: registers keep the HLC that wrote them (so a newer local write still wins),
+      // and the Yjs state merges like any update
+      const snap = decodeSnap(frame.data)
+      for (const [f, [val, hlc]] of Object.entries(snap.fields)) await tx.putFieldIfNewer(env.doc, f, val, hlc)
+      if (snap.state.length) { await tx.appendDocUpdate(env.doc, snap.state); await compactDoc(tx, env.doc) }
+      break
+    }
+    case FRAME.purge:
+      await tx.purgeEntity(env.doc) // permanent deletion: this device forgets the entity too
+      break
     default:
       throw new FrameError(`frame kind ${frame.kind} is not supported yet`)
   }

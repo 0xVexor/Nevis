@@ -170,6 +170,7 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
           {status && status.files.pending > 0 && <span className="sync-chip" data-testid="files">{`${t('Files')}: ${status.files.pending}`}{status.files.uploading && status.files.total ? ` (${Math.round(100 * status.files.sent / status.files.total)}٪)` : ''}</span>}
           {status?.files.error === 'quota' && <span className="err sync-chip" data-testid="files-quota">فضای حساب شما پر است؛ فایل‌ها روی این دستگاه می‌مانند و چیزی از دست نمی‌رود، اما تا آزاد شدن فضا همگام نمی‌شوند.</span>}
           {status?.files.error === 'blob_too_large' && <span className="err sync-chip" data-testid="files-too-large">فایلی از حد مجاز سرور بزرگ‌تر است و فقط روی این دستگاه می‌ماند.</span>}
+          {status?.upgradeRequired && <span className="err sync-chip" data-testid="needs-app-update">این نسخهٔ برنامه برای این فضای کار قدیمی است؛ <button onClick={() => location.reload()}>بارگذاری دوباره</button></span>}
           {status?.lastError && <span className="err sync-chip" data-testid="sync-error">{status.lastError}</span>}
           <div className="tb-group">
             {route.name === 'page' && onHistory && <IconButton label={t('Version history')} data-testid="open-history" onClick={onHistory}><Icon name="history" size={17} /></IconButton>}

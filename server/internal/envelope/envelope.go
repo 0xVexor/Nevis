@@ -32,6 +32,8 @@ type Envelope struct {
 	N   string
 	P   string
 	Cov *int
+	// Pg marks a PURGE op (the permanent deletion of the document): the server then forgets every other op of the doc.
+	Pg bool
 
 	Raw    []byte
 	SHA256 [32]byte
@@ -53,7 +55,7 @@ var (
 	intRE  = regexp.MustCompile(`^-?(0|[1-9][0-9]*)$`)
 )
 
-var known = map[string]bool{"v": true, "op": true, "ws": true, "doc": true, "dev": true, "t": true, "sv": true, "kid": true, "n": true, "p": true, "cov": true}
+var known = map[string]bool{"v": true, "op": true, "ws": true, "doc": true, "dev": true, "t": true, "sv": true, "kid": true, "n": true, "p": true, "cov": true, "pg": true}
 
 // Parse validates one envelope given as JSON bytes.
 func Parse(raw []byte) (*Envelope, error) {
@@ -191,6 +193,16 @@ func Parse(raw []byte) (*Envelope, error) {
 	if c, present, err := getInt("cov", 0, false); present {
 		check(err)
 		e.Cov = &c
+	}
+	if pg, present, err := getInt("pg", 1, false); present {
+		check(err)
+		if err == nil && pg != 1 {
+			check(bad("pg must be 1"))
+		}
+		e.Pg = true
+	}
+	if e.Pg && e.Cov != nil {
+		check(bad("a purge op has no cov"))
 	}
 	if verr != nil {
 		return nil, verr

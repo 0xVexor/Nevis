@@ -25,3 +25,4 @@ export { MemoryBlobStore, hashesIn, hexNamesIn, sha256Hex, type BlobMeta, type B
 export { BlobSync, collectReferences, type BlobNet, type BlobStatus, type BlobSyncOptions } from './blobSync'
 export { AGAIN_MS, FRESH, REVIEW_KIND, SCHEDULER_VERSION, cardId, extractCards, foldSchedules, intervalLabel, isDue, reviewCard, reviewTimes, schedule, type Grade, type RawCard, type Rec, type ReviewBody } from './cards'
 export { AUTO_AFTER_MS, MAX_VERSION_CHARS, VERSION_KIND, addVersion, readVersions, thinVersions, type Version } from './versions'
+export { Snapshotter, type SnapshotterOptions } from './snapshots'

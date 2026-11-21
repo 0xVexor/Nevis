@@ -37,8 +37,11 @@ export function httpNet(o: HttpNetOptions = {}): Net {
     async push(ws, envs): Promise<PushResult> {
       return call('POST', `/v1/ws/${ws}/ops`, `{"ops":[${envs.join(',')}]}`)
     },
+    async candidates(ws, min) {
+      return (await call('GET', `/v1/ws/${ws}/snapshots/candidates?min=${min}`)).docs.map((d: { doc: string }) => d.doc)
+    },
     async pull(ws, after, limit, opts): Promise<PullResult> {
-      const j = await call('GET', `/v1/ws/${ws}/ops?after=${after}&limit=${limit}${opts?.wait ? `&wait=${opts.wait}` : ''}`, undefined, opts?.signal)
+      const j = await call('GET', `/v1/ws/${ws}/ops?after=${after}&limit=${limit}${opts?.wait ? `&wait=${opts.wait}` : ''}${opts?.compact ? '&compact=1' : ''}`, undefined, opts?.signal)
       return { head: j.head, more: j.more, ops: j.ops.map((o: any) => ({ seq: o.seq, by: o.by, rt: o.rt, env: JSON.stringify(o.env) })) }
     },
   }

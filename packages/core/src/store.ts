@@ -38,6 +38,8 @@ export interface Tx {
   listDocUpdates(doc: string): Promise<DocUpdate[]>
   deleteDocUpdates(doc: string, throughK: number): Promise<void>
   docs(): Promise<string[]>
+  /** Permanently forgets everything this device holds about an entity: its registers, its events, its document and updates (M13 purge). */
+  purgeEntity(ent: string): Promise<void>
   // outbox / inbox / quarantine
   addOutbox(row: OutboxRow): Promise<void>
   /** In the order the rows were added (not by `created`: the wall clock can go back). */

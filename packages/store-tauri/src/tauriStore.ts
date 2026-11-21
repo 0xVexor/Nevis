@@ -164,6 +164,12 @@ function makeTx(read: Read, ops: Record<string, unknown>[]): Tx {
       deletedThrough.set(doc, Math.max(deletedThrough.get(doc) ?? 0, throughK))
       ops.push({ t: 'deleteDocUpdates', doc, through: throughK })
     },
+    purgeEntity: async ent => {
+      ops.push({ t: 'purgeEntity', ent })
+      for (const k of [...fields.keys()]) if (fields.get(k)!.ent === ent) fields.delete(k)
+      for (const [id, e] of [...events]) if (e.ent === ent) events.delete(id)
+      docState.delete(ent); docSeq.delete(ent); addedUpdates.delete(ent); deletedThrough.set(ent, Number.MAX_SAFE_INTEGER)
+    },
     docs: async () => {
       const s = new Set((await read({ t: 'docs' })) as string[])
       for (const d of docState.keys()) s.add(d)

@@ -190,6 +190,8 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request, p *store.Principal
 		fail(w, 422, "clock_ahead", "the device clock is more than 10 minutes ahead of the server", false)
 	case errors.Is(err, store.ErrNoWorkspace):
 		fail(w, 404, "no_such_workspace", "no such workspace", false)
+	case errors.Is(err, store.ErrBadCov):
+		fail(w, 400, "bad_cov", "a snapshot covers ops the server has not got", false)
 	case errors.Is(err, store.ErrQuota):
 		fail(w, 507, "quota_exceeded", "the storage of this account is full", false)
 	case errors.As(err, &sv):
@@ -245,9 +247,13 @@ func (s *Server) pull(w http.ResponseWriter, r *http.Request, p *store.Principal
 	for {
 		// subscribe BEFORE reading, so a commit that lands between the read and the wait is not missed
 		ch, cancel := s.st.Subscribe(ws)
-		ops, head, more, err := s.st.Pull(r.Context(), ws, after, limit, s.DevMode && p.Dev)
+		ops, head, more, err := s.st.Pull(r.Context(), ws, after, limit, s.DevMode && p.Dev, q.Get("compact") == "1")
 		if err != nil {
 			cancel()
+			if errors.Is(err, store.ErrResync) {
+				fail(w, 410, "resync_required", "part of the log was removed after a snapshot: start again from a compact pull", false, map[string]any{"head": head})
+				return
+			}
 			if errors.Is(err, store.ErrNoWorkspace) {
 				fail(w, 404, "no_such_workspace", "no such workspace", false)
 				return

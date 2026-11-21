@@ -76,7 +76,7 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
     if (route.name === 'graph') return <Graph ws={ws} />
     if (route.name === 'cards') return <Flashcards ws={ws} />
     if (route.name === 'tasks') return <Tasks ws={ws} />
-    if (route.name === 'trash') return <div data-testid="trash"><Trash items={legacyPages(ws).filter(p => p.deletedAt)} days={30} onRestore={id => void ws.restore(id)} onPurge={() => ws.notify('الان فقط بازگردانی ممکن است؛ حذف دائمی به‌زودی می‌آید')} onEmpty={() => ws.notify('الان فقط بازگردانی ممکن است؛ حذف دائمی به‌زودی می‌آید')} /></div>
+    if (route.name === 'trash') return <div data-testid="trash"><Trash items={legacyPages(ws).filter(p => p.deletedAt)} days={30} onRestore={id => void ws.restore(id)} onPurge={page => { if (confirm(`«${page.title || 'بدون عنوان'}» برای همیشه حذف شود؟ این کار در هیچ دستگاهی قابل بازگشت نیست.`)) void ws.purge(page.id) }} onEmpty={() => { if (confirm('همهٔ صفحه‌های سطل برای همیشه حذف شوند؟ این کار قابل بازگشت نیست.')) void ws.emptyTrash() }} /></div>
     return <HomeRoute ws={ws} onOpen={select} onNewPage={() => void create('')} onTemplate={() => go({ name: 'templates' })} />
   })()
 

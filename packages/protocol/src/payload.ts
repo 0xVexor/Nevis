@@ -44,3 +44,30 @@ export function decodeEvt(data: Uint8Array): EvtPayload {
   if (o === null || typeof o !== 'object' || Array.isArray(o) || typeof o.id !== 'string' || typeof o.kind !== 'string' || typeof o.h !== 'string' || !('body' in o)) throw new FrameError('bad evt')
   return o as unknown as EvtPayload
 }
+
+/** `snap` (M13): the state of ONE entity at the moment of the snapshot: its registers (value + the HLC that wrote it) and, if it has a body,
+ *  the Yjs state. Layout: u32 big-endian length of the JSON, the JSON `{"fields":{"title":["\"x\"","<hlc>"]}}` (values are the stored JSON text),
+ *  then the Yjs V1 state (possibly empty). */
+export interface SnapPayload { fields: Record<string, [string, string]>; state: Uint8Array }
+
+export function encodeSnap(s: SnapPayload): Uint8Array {
+  const json = jsonBytes({ fields: s.fields })
+  const out = new Uint8Array(4 + json.length + s.state.length)
+  new DataView(out.buffer).setUint32(0, json.length)
+  out.set(json, 4); out.set(s.state, 4 + json.length)
+  return encodeFrame(FRAME.snap, out)
+}
+
+export function decodeSnap(data: Uint8Array): SnapPayload {
+  if (data.length < 4) throw new FrameError('bad snap')
+  const n = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(0)
+  if (4 + n > data.length) throw new FrameError('bad snap length')
+  const o = parseStrictBytes(data.subarray(4, 4 + n))
+  if (o === null || typeof o !== 'object' || Array.isArray(o) || o.fields === null || typeof o.fields !== 'object' || Array.isArray(o.fields)) throw new FrameError('bad snap fields')
+  const fields: Record<string, [string, string]> = {}
+  for (const [k, v] of Object.entries(o.fields as Record<string, unknown>)) {
+    if (!Array.isArray(v) || v.length !== 2 || typeof v[0] !== 'string' || typeof v[1] !== 'string') throw new FrameError('bad snap field')
+    fields[k] = [v[0], v[1]]
+  }
+  return { fields, state: data.subarray(4 + n) }
+}

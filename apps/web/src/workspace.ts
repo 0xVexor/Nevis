@@ -22,6 +22,8 @@ export interface WsStatus {
   lastSyncAt: number
   persisted: boolean | null
   lastError: string
+  /** this app is too old for the workspace: it must be reloaded/updated (HTTP 426) */
+  upgradeRequired: boolean
   /** attachments: files waiting to upload, progress, and why uploading stopped */
   files: BlobStatus
 }
@@ -249,6 +251,18 @@ export class Workspace {
     const gp = this.place(parent)
     return this.moveTo(id, gp.parent, gp.index + 1)
   }
+  /** Permanent deletion of a page and everything under it (the trash's "Delete permanently"). Cannot be undone, on any device. */
+  async purge(id: string): Promise<void> {
+    const kids = new Map<string, string[]>()
+    for (const p of this.data.pages) { const l = kids.get(p.parent) ?? []; l.push(p.id); kids.set(p.parent, l) }
+    const all: string[] = []
+    const walk = (x: string, depth = 0) => { all.push(x); if (depth < 200) for (const c of kids.get(x) ?? []) walk(c, depth + 1) }
+    walk(id)
+    for (const x of all) await this.rt.client.purge(x)
+    this.rt.written({ ents: all })
+    await this.reload()
+  }
+  async emptyTrash(): Promise<void> { for (const p of [...this.tree.trash]) await this.purge(p.id) }
   async trash(id: string) { await trashPage(this.rt.client, id); await this.wrote(id) }
   async restore(id: string) { await restorePage(this.rt.client, id); await this.wrote(id) }
 
@@ -334,6 +348,7 @@ export class Workspace {
       lastSyncAt: this.rt.lastSyncAt,
       persisted: this.rt.persisted,
       lastError: this.rt.lastError,
+      upgradeRequired: this.rt.upgradeRequired,
       files: { ...this.rt.blobStatus(), pending: (await this.rt.blobs.pending()).length },
     }
   }

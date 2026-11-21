@@ -13,7 +13,9 @@ export interface PullResult { ops: PullOp[]; head: number; more: boolean }
 export interface Net {
   push(ws: string, envs: string[]): Promise<PushResult>
   /** `wait` (seconds, 0..25): hold the request until something newer than `after` exists. `signal` cancels it. */
-  pull(ws: string, after: number, limit: number, opts?: { wait?: number; signal?: AbortSignal }): Promise<PullResult>
+  pull(ws: string, after: number, limit: number, opts?: { wait?: number; signal?: AbortSignal; compact?: boolean }): Promise<PullResult>
+  /** Documents with at least `min` ops that no snapshot covers (the server only counts). Absent = this transport cannot say. */
+  candidates?(ws: string, min: number): Promise<string[]>
 }
 
 export class NetError extends Error {
@@ -179,21 +181,31 @@ export class SyncEngine {
 
   async pull(s: CycleStats = { pushed: 0, dup: 0, pulled: 0, applied: 0, held: 0, quarantined: 0, rejected: 0 }) {
     const { store, net, ws } = this.o
+    // A device that starts from nothing, or whose cursor lies in a part of the log the server has removed after a snapshot (410), reads a
+    // COMPACT log: the snapshots and the ops no snapshot covers. Local state is never cleared: what arrives merges like any op.
+    let compact = false
     for (;;) {
       const after = Number((await store.run(tx => tx.getMeta('cursor'))) ?? 0)
-      const page = await net.pull(ws, after, 1000)
-      if (page.ops.length) {
-        await store.run(async tx => {
-          let max = after
-          for (const op of page.ops) {
-            await tx.putInbox({ seq: op.seq, env: op.env })
-            max = Math.max(max, op.seq)
-          }
-          await tx.setMeta('cursor', String(max)) // the cursor moves in the same transaction that stores what it covers
-        })
-        s.pulled += page.ops.length
-        await this.o.hooks.afterPull?.()
+      if (after === 0) compact = true
+      let page
+      try {
+        page = await net.pull(ws, after, 1000, compact ? { compact } : undefined)
+      } catch (e) {
+        if (e instanceof NetError && e.code === 'resync_required') { await store.run(tx => tx.setMeta('cursor', '0')); compact = true; continue }
+        throw e
       }
+      await store.run(async tx => {
+        let max = after
+        for (const op of page.ops) {
+          await tx.putInbox({ seq: op.seq, env: op.env })
+          max = Math.max(max, op.seq)
+        }
+        // an empty compact page ends at the head: the cursor moves there (nothing below it is missing)
+        if (!page.more && compact) max = Math.max(max, page.head)
+        await tx.setMeta('cursor', String(max)) // the cursor moves in the same transaction that stores what it covers
+        await tx.setMeta('head', String(page.head))
+      })
+      if (page.ops.length) { s.pulled += page.ops.length; await this.o.hooks.afterPull?.() }
       if (!page.more) return
     }
   }

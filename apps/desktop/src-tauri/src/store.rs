@@ -52,6 +52,8 @@ pub enum Op {
     PutInbox { seq: i64, env: String, inserted: bool },
     DeleteInbox { seqs: Vec<i64> },
     AddQuarantine { seq: i64, env: String, reason: String },
+    /// M13: forget everything about one entity (registers, events, document, updates)
+    PurgeEntity { ent: String },
 }
 
 /// A read of COMMITTED state. Typed: there is no way to send SQL.
@@ -269,6 +271,9 @@ fn apply(tx: &rusqlite::Transaction, op: &Op) -> Res<()> {
         Op::PutInbox { seq, env, inserted } => {
             let n = tx.execute("INSERT OR IGNORE INTO inbox (seq, env) VALUES (?1, ?2)", params![seq, env])? == 1;
             if n != *inserted { return Err(drift("putInbox", inserted, &n)); }
+        }
+        Op::PurgeEntity { ent } => {
+            for sql in ["DELETE FROM field WHERE ent = ?1", "DELETE FROM event WHERE ent = ?1", "DELETE FROM doc_state WHERE doc = ?1", "DELETE FROM doc_seq WHERE doc = ?1", "DELETE FROM doc_update WHERE doc = ?1"] { tx.execute(sql, [ent])?; }
         }
         Op::DeleteInbox { seqs } => { for q in seqs { tx.execute("DELETE FROM inbox WHERE seq = ?1", [q])?; } }
         Op::AddQuarantine { seq, env, reason } => {

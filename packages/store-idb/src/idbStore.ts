@@ -161,6 +161,12 @@ function makeTx(t: IDBTransaction): Tx {
       return rows.map(r => ({ k: r.k, upd: r.upd }) as DocUpdate)
     },
     deleteDocUpdates: async (doc, throughK) => { await req(s('doc_update').delete(IDBKeyRange.bound([doc, 0], [doc, throughK]))) },
+    purgeEntity: async ent => {
+      for (const k of (await req(s('fields').index('byEnt').getAllKeys(ent))) as IDBValidKey[]) await req(s('fields').delete(k))
+      for (const e of (await req(s('events').getAll())) as EventRow[]) if (e.ent === ent) await req(s('events').delete(e.id))
+      await req(s('doc_state').delete(ent)); await req(s('doc_seq').delete(ent))
+      await req(s('doc_update').delete(IDBKeyRange.bound([ent, 0], [ent, Number.MAX_SAFE_INTEGER])))
+    },
     docs: async () => {
       const a = (await req(s('doc_state').getAllKeys())) as string[]
       const b = (await req(s('doc_seq').getAllKeys())) as string[]

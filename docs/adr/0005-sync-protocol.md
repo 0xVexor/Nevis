@@ -90,3 +90,5 @@
 - harness همگرایی (۳ replica، ۲۰۰ seed، تحویل تکراری/بی‌ترتیب/گم‌شده، crash بین نوشتن محلی و ارسال) هر واگرایی نشان دهد.
 - ارسال دوبارهٔ یک دسته ۱۰ بار `seq` یا حالت را تغییر دهد.
 - آزمون هم‌زمانی سرور (۸ pusher و ۴ puller، ۱۰k op) گپ دیده‌شده‌ای نشان دهد که بعداً پر شود.
+
+**یادداشت M13:** فیلد envelope `pg: 1` (purge) افزوده شد تا سرور بدون decode کردن `p` بداند کدام opها را حذف کند؛ `cov` برای snapshot و `compact=1`، `410 resync_required`، `bad_cov` و `GET …/snapshots/candidates` پیاده شدند. نیازمند تأیید معمار. جزئیات: `docs/reports/16-m13-snapshot-purge.md`.

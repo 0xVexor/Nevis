@@ -166,5 +166,17 @@
   "code": "quota_exceeded",
   "retryable": false,
   "note": "the account storage is full"
+ },
+ {
+  "status": 400,
+  "code": "bad_cov",
+  "retryable": false,
+  "note": "M13: a snapshot covers more than the log has"
+ },
+ {
+  "status": 410,
+  "code": "resync_required",
+  "retryable": false,
+  "note": "M13: part of the log was pruned; resync with compact=1"
  }
 ]

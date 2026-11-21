@@ -50,6 +50,8 @@ var (
 	ErrNoWorkspace = errors.New("no_such_workspace")
 	ErrQuota       = errors.New("quota_exceeded")
 	ErrSvTooOld    = errors.New("sv_too_old")
+	ErrBadCov      = errors.New("bad_cov")
+	ErrResync      = errors.New("resync_required")
 )
 
 const MaxSkew = 10 * time.Minute
@@ -91,6 +93,10 @@ func Open(dir string) (*Store, error) {
 	if _, err := w.Exec(schema); err != nil {
 		w.Close()
 		return nil, fmt.Errorf("create schema: %w", err)
+	}
+	if err := migrate(w); err != nil {
+		w.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
 	}
 	r, err := sql.Open("sqlite", dsn("query_only(1)"))
 	if err != nil {
@@ -176,10 +182,25 @@ func (s *Store) Push(ctx context.Context, ws, by string, envs []*envelope.Envelo
 			out = append(out, Result{Op: e.Op, Seq: 0, Status: "purged"})
 			continue
 		}
+		if e.Cov != nil && int64(*e.Cov) > head {
+			return nil, 0, ErrBadCov // a snapshot cannot cover ops the server has not got
+		}
 		head++
-		if _, err := tx.ExecContext(ctx, `INSERT INTO op (ws, seq, op_id, doc, dev, by_account, sv, kid, size, env_sha256, env, received_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-			ws, head, e.Op, e.Doc, e.Dev, by, e.SV, e.KID, len(e.P), e.SHA256[:], string(e.Raw), s.now().UnixMilli()); err != nil {
+		var cov any
+		if e.Cov != nil {
+			cov = *e.Cov
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO op (ws, seq, op_id, doc, dev, by_account, sv, kid, size, env_sha256, env, received_at, cov) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			ws, head, e.Op, e.Doc, e.Dev, by, e.SV, e.KID, len(e.P), e.SHA256[:], string(e.Raw), s.now().UnixMilli(), cov); err != nil {
 			return nil, 0, err
+		}
+		if e.Pg { // permanent deletion: every other op of the document goes, and the document stays gone for late writers (status purged)
+			if _, err := tx.ExecContext(ctx, `DELETE FROM op WHERE ws = ? AND doc = ? AND seq <> ?`, ws, e.Doc, head); err != nil {
+				return nil, 0, err
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO purged (ws, doc, at) VALUES (?,?,?)`, ws, e.Doc, s.now().UnixMilli()); err != nil {
+				return nil, 0, err
+			}
 		}
 		added += int64(len(e.P))
 		out = append(out, Result{Op: e.Op, Seq: head, Status: "ok"})
@@ -218,14 +239,14 @@ type PulledOp struct {
 
 // Pull returns the ops after `after`, at most `limit`, and the head, both read from ONE snapshot: `more` is exact and a
 // reader never sees a gap that a later commit fills. An unknown workspace is empty when `create` is set (dev mode).
-func (s *Store) Pull(ctx context.Context, ws string, after int64, limit int, create bool) ([]PulledOp, int64, bool, error) {
+func (s *Store) Pull(ctx context.Context, ws string, after int64, limit int, create bool, compact ...bool) ([]PulledOp, int64, bool, error) {
 	tx, err := s.r.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, 0, false, err
 	}
 	defer tx.Rollback()
-	var head int64
-	if err := tx.QueryRowContext(ctx, `SELECT head FROM workspace WHERE id = ?`, ws).Scan(&head); err != nil {
+	var head, pruned int64
+	if err := tx.QueryRowContext(ctx, `SELECT head, pruned_through FROM workspace WHERE id = ?`, ws).Scan(&head, &pruned); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			if create {
 				return nil, 0, false, nil
@@ -234,7 +255,18 @@ func (s *Store) Pull(ctx context.Context, ws string, after int64, limit int, cre
 		}
 		return nil, 0, false, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT seq, by_account, received_at, env FROM op WHERE ws = ? AND seq > ? ORDER BY seq LIMIT ?`, ws, after, limit)
+	// ops below `pruned` were physically removed after a snapshot covered them: a device that stopped before that point cannot be brought
+	// up to date by the log alone; it starts again from a compact pull (snapshots and what no snapshot covers)
+	if after > 0 && after < pruned {
+		return nil, head, false, ErrResync
+	}
+	q := `SELECT seq, by_account, received_at, env FROM op o WHERE ws = ? AND seq > ?`
+	if len(compact) > 0 && compact[0] {
+		// an op a snapshot covers is skipped, but only when the snapshot is of the same schema version or newer: an op written under a
+		// NEWER schema than the snapshot is never hidden behind it
+		q += ` AND NOT EXISTS (SELECT 1 FROM op s WHERE s.ws = o.ws AND s.doc = o.doc AND s.cov IS NOT NULL AND s.cov >= o.seq AND s.seq <> o.seq AND s.sv >= o.sv)`
+	}
+	rows, err := tx.QueryContext(ctx, q+` ORDER BY seq LIMIT ?`, ws, after, limit)
 	if err != nil {
 		return nil, 0, false, err
 	}
@@ -252,4 +284,40 @@ func (s *Store) Pull(ctx context.Context, ws string, after int64, limit int, cre
 	}
 	more := len(ops) > 0 && ops[len(ops)-1].Seq < head
 	return ops, head, more, nil
+}
+
+// migrate adds the columns of later milestones to a database made before them (M13: snapshots and pruning).
+func migrate(db *sql.DB) error {
+	has := func(table, col string) (bool, error) {
+		rows, err := db.Query(`SELECT name FROM pragma_table_info('` + table + `')`)
+		if err != nil {
+			return false, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var n string
+			if err := rows.Scan(&n); err != nil {
+				return false, err
+			}
+			if n == col {
+				return true, nil
+			}
+		}
+		return false, rows.Err()
+	}
+	for _, c := range []struct{ table, col, ddl string }{
+		{"op", "cov", `ALTER TABLE op ADD COLUMN cov INTEGER`},
+		{"workspace", "pruned_through", `ALTER TABLE workspace ADD COLUMN pruned_through INTEGER NOT NULL DEFAULT 0`},
+	} {
+		ok, err := has(c.table, c.col)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			if _, err := db.Exec(c.ddl); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
