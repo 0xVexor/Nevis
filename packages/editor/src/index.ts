@@ -40,4 +40,5 @@ export { AttachmentError, formatSize, sniffImage, type AttachmentRef, type Attac
 export { attachFiles } from './attach'
 export { allBlocksTemplate, dailyNoteTemplate, meetingNotesTemplate, taskListTemplate } from './template'
 export { normalizeFa } from './findNormalize'
+export { getFind, scrollToMatch } from './find'
 export { insertBlock, insertCallout, insertDrawing, insertImagePlaceholder, insertLayout, insertMathBlock, insertMathInline, insertMermaid, insertPageLink, insertTable, insertToggle } from './insert'

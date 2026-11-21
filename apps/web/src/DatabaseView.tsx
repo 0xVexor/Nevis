@@ -166,6 +166,7 @@ export function DatabaseView({ ws, id }: { ws: Workspace; id: string }) {
   return (
     <section className="pane" data-testid="db-view">
       <input className="page-title" data-testid="db-title" value={title} placeholder="پایگاه‌دادهٔ بدون عنوان" onChange={e => { setTitle(e.target.value); ws.setTitle(id, e.target.value) }} />
+      <p className="db-count">{rows.length.toLocaleString()} {'مورد'}</p>
       <div className="bar">
         <input data-testid="db-prop-name" placeholder="نام ستون تازه" value={propName} onChange={e => setPropName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void addProp() }} />
         <select data-testid="db-prop-type" value={propType} onChange={e => setPropType(e.target.value as PropType)}>{PROP_TYPES.map(t => <option key={t} value={t}>{TYPE_FA[t]}</option>)}</select>
@@ -198,6 +199,14 @@ export function DatabaseView({ ws, id }: { ws: Workspace; id: string }) {
             ))}
           </tbody>
         </table>
+        {rows.length === 0 && (
+          <div className="ds-empty ds-empty--framed db-empty">
+            <b>هنوز چیزی اینجا نیست</b>
+            <span>اولین مورد را اضافه کنید.</span>
+            <button className="ds-btn ds-btn--primary" data-testid="db-empty-add" onClick={() => void ws.mutate([id], c => createRow(c, db))}>مورد جدید</button>
+          </div>
+        )}
+        <div className="db-foot">{rows.length.toLocaleString()} مورد</div>
       </div>)}
     </section>
   )

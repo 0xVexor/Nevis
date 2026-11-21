@@ -6,10 +6,19 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { normalizeChar, normalizeFa } from './findNormalize'
 import { S } from './strings'
+import { optionsOf } from './options'
 
 interface FindState { query: string; matches: { from: number; to: number }[]; index: number }
 const findKey = new PluginKey<FindState>('findInPage')
 const EMPTY: FindState = { query: '', matches: [], index: 0 }
+
+/** What the page's find has now: the query, every match and which one is current. */
+export const getFind = (editor: { state: import('@tiptap/pm/state').EditorState }): FindState => findKey.getState(editor.state) ?? EMPTY
+/** Scrolls the current match into view. */
+export function scrollToMatch(editor: { state: import('@tiptap/pm/state').EditorState; view: import('@tiptap/pm/view').EditorView }) {
+  const m = getFind(editor).matches[getFind(editor).index]
+  if (m) editor.view.domAtPos(m.from).node.parentElement?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
 
 /** Every match of `query` in every text block. Normalized per character so offsets map 1:1 back to document positions. */
 export function search(doc: PMNode, query: string): { from: number; to: number }[] {
@@ -69,9 +78,11 @@ export const FindInPage = Extension.create({
         },
       },
       view: view => {
+        const editor = this.editor
         // the little bar: created on first use
         let bar: HTMLElement | null = null
         const open = () => {
+          if (optionsOf(editor).ownFindBar) return
           if (bar) { (bar.querySelector('input') as HTMLInputElement).focus(); return }
           bar = document.createElement('div'); bar.className = 'find-bar'; bar.setAttribute('dir', 'rtl')
           const input = document.createElement('input'); input.placeholder = S.find.placeholder; input.setAttribute('dir', 'auto')

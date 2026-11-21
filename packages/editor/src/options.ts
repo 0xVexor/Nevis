@@ -12,6 +12,8 @@ export interface EditorOptions {
   notify?: (message: string) => void
   /** images and files stored with the page (absent: the editor shows https images only and the attach commands are off) */
   attachments?: AttachmentsPort
+  /** the app draws its own find bar (it listens for `nevis:find-open` on the page): the editor then keeps its small built-in one closed */
+  ownFindBar?: boolean
 }
 
 export const NevisOptions = Extension.create<EditorOptions, EditorOptions>({

@@ -10,6 +10,10 @@ export const SCREENS = {
   // Home decides "first visit" when it mounts: the new workspace was empty then, so leave the screen and come back
   home: { old: oldNav('home'), new: async page => { await page.getByTestId('nav-templates').click(); await page.getByTestId('nav-home').click() } },
   page: { old: oldPage('shiraz'), new: newPage('shiraz'), wait: 1200 },
+  // the page with the caret in its text (the formatting bar, the slash menu and the floating menus live here)
+  pagefocus: { old: async (p, ids) => { await SCREENS.page.old(p, ids); await p.waitForTimeout(800); await p.locator('.ProseMirror p').first().click() }, new: async (p, ids) => { await SCREENS.page.new(p, ids); await p.waitForTimeout(800); await p.locator('.ProseMirror p').first().click() }, wait: 900 },
+  // a new, empty database (its default table view)
+  database: { old: async p => { await p.locator('.side-new').click(); await p.locator('.ds-menu-item').filter({ hasText: /پایگاه داده|پایگاه‌داده/ }).first().click() }, new: async p => { await p.getByTestId('new-menu').click(); await p.getByTestId('new-database').click() }, wait: 1500 },
   templates: { old: oldNav('templates'), new: newNav('nav-templates') },
   tasks: { old: oldNav('tasks'), new: newNav('nav-tasks') },
   cards: { old: oldNav('cards'), new: newNav('nav-cards') },

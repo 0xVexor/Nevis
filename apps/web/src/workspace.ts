@@ -4,7 +4,7 @@ import { normalizeFa } from '@nevis/editor'
 import { AUTO_AFTER_MS, DocHandle, addVersion, foldSchedules, loadDoc, readVersions, thinVersions, type Version, reviewCard, reviewTimes, type Grade, type Rec, type BlobStatus, buildTree, createDatabase, createPage, isInside, movePage, readStructured, renamePage, restorePage, setPageMeta, createTag, tagPage, trashPage, setSetting, type Client, type PageNode, type PageRow, type PageTree, type Structured } from '@nevis/core'
 import { exportBundle, importBundle, mdFileName, toMarkdown, type ImportResult } from '@nevis/bundle'
 import * as Y from 'yjs'
-import { BODY, project, writeBody, type PMJson } from '@nevis/schema'
+import { BODY, project, uuidv7, writeBody, type PMJson } from '@nevis/schema'
 import { SV } from '@nevis/protocol'
 import { zipSync, strToU8, type Zippable } from 'fflate'
 import { Mirror, mirrorFolder } from './mirror'
@@ -305,7 +305,7 @@ export class Workspace {
       h.ydoc.transact(() => {
         const frag = h.ydoc.getXmlFragment(BODY)
         const last = frag.length ? frag.get(frag.length - 1) : null
-        const item = new Y.XmlElement('taskItem'); item.setAttribute('checked', false as never)
+        const item = new Y.XmlElement('taskItem'); item.setAttribute('checked', false as never); item.setAttribute('blockId', uuidv7() as never)
         const para = new Y.XmlElement('paragraph'); para.insert(0, [new Y.XmlText(text)]); item.insert(0, [para])
         if (last && 'nodeName' in last && last.nodeName === 'taskList') (last as Y.XmlElement).insert((last as Y.XmlElement).length, [item])
         else { const list = new Y.XmlElement('taskList'); list.insert(0, [item]); frag.insert(frag.length, [list]) }

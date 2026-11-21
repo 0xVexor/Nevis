@@ -41,3 +41,28 @@ ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 .plain .ds-row { width: 100%; box-sizing: border-box; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; padding: 6px 8px; border-radius: 8px } .plain .ds-row:hover { background: var(--ds-sunk, #eff1ee) }
 .dbtable input, .dbtable select, .viewbar select, .db-board-card select, .viewbar button, .viewbar input, .db-board-card input { background: var(--ds-raised, #fff); color: var(--ds-text, inherit); border: 1px solid var(--ds-line, #d0d7de); border-radius: 6px }
 .viewtabs button { border: 0 !important; background: none !important }
+
+/* ── the database page in the old app's look (frame, header row, quiet cells); the markup is this app's own, the testids unchanged ── */
+.pane > .page-title { border: 0; padding: 0; font-size: var(--ds-text-display, 2.2rem); font-weight: 700; line-height: 1.2; outline: none; }
+.pane > .page-title:focus { outline: none; }
+.db-count { margin: 2px 0 var(--ds-s4); color: var(--ds-text-3); font-size: var(--ds-text-ui, .95rem); }
+.pane > .bar { display: flex; flex-wrap: wrap; gap: var(--ds-s2); align-items: center; margin-block: var(--ds-s3); }
+.pane > .bar :is(input, select) { height: 32px; padding-inline: var(--ds-s3); border: 1px solid var(--ds-line); border-radius: var(--ds-r-md, 8px); background: var(--ds-raised); color: var(--ds-text); font: inherit; font-size: var(--ds-text-small, .85rem); }
+.pane > .bar button, .viewbar button:not(.tiny) { height: 32px; padding-inline: var(--ds-s3); border: 1px solid var(--ds-line); border-radius: var(--ds-r-md, 8px); background: var(--ds-raised); color: var(--ds-text); font: inherit; font-size: var(--ds-text-small, .85rem); font-weight: 550; cursor: pointer; }
+.pane > .bar button:hover, .viewbar button:not(.tiny):hover { border-color: var(--ds-line-strong); background: var(--ds-sunk); }
+.pane > .bar button[data-testid=db-add-row] { background: var(--ds-accent); border-color: var(--ds-accent); color: var(--ds-accent-ink, #fff); }
+.viewbar { margin-block: var(--ds-s2) var(--ds-s3); padding-block-end: 0; border-block-end: 1px solid var(--ds-line); }
+.viewbar .viewtabs { border-block-end: 0; flex: 1; }
+.viewbar .viewtabs button { height: 36px; border: 0 !important; border-radius: 0; border-block-end: 2px solid transparent !important; background: none !important; color: var(--ds-text-2); }
+.viewbar .viewtabs button.on { color: var(--ds-text); border-block-end-color: var(--ds-accent) !important; }
+.tablewrap { margin-block-start: var(--ds-s3); border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); overflow: auto; }
+.dbtable { border-collapse: collapse; min-inline-size: 100%; }
+.dbtable th, .dbtable td { border: 0; border-block-end: 1px solid var(--ds-line); border-inline-end: 0; padding: 6px var(--ds-s3); }
+.dbtable th { block-size: 40px; background: var(--ds-sunk); color: var(--ds-text-2); font-size: var(--ds-text-small, .85rem); font-weight: 550; }
+.dbtable tbody tr:last-child td { border-block-end: 0; }
+.dbtable td input:not([type=checkbox]), .dbtable td select { border-color: transparent; background: transparent; }
+.dbtable td input:not([type=checkbox]):hover, .dbtable td select:hover { border-color: var(--ds-line); }
+.dbtable td input:focus, .dbtable td select:focus { border-color: var(--ds-accent); background: var(--ds-raised); outline: 0; box-shadow: 0 0 0 3px var(--ds-accent-soft); }
+.dbtable th input.colname { border-color: transparent; background: transparent; font: inherit; font-weight: 550; }
+.db-empty { margin: var(--ds-s4); }
+.db-foot { padding: var(--ds-s3) var(--ds-s4); background: var(--ds-sunk); border-block-start: 1px solid var(--ds-line); color: var(--ds-text-3); font-size: var(--ds-text-caption, .78rem); }
