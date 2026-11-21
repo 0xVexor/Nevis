@@ -218,12 +218,18 @@ importers:
       '@nevis/schema':
         specifier: workspace:*
         version: link:../../packages/schema
+      '@nevis/search':
+        specifier: workspace:*
+        version: link:../../packages/search
       '@nevis/store-idb':
         specifier: workspace:*
         version: link:../../packages/store-idb
       '@nevis/store-tauri':
         specifier: workspace:*
         version: link:../../packages/store-tauri
+      '@nevis/text-fa':
+        specifier: workspace:*
+        version: link:../../packages/text-fa
       '@tauri-apps/api':
         specifier: 2.12.4
         version: 2.12.4
@@ -397,6 +403,25 @@ importers:
         specifier: 24.10.1
         version: 24.10.1
 
+  packages/search:
+    dependencies:
+      '@nevis/text-fa':
+        specifier: workspace:*
+        version: link:../text-fa
+      minisearch:
+        specifier: 7.2.0
+        version: 7.2.0
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.1
+        version: 24.10.1
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
+      vitest:
+        specifier: 5.1.1
+        version: 5.1.1(@types/node@24.10.1)(vite@8.3.8(@types/node@24.10.1)(esbuild@0.28.2)(tsx@4.23.15))
+
   packages/store-idb:
     dependencies:
       '@nevis/core':
@@ -419,6 +444,15 @@ importers:
       '@types/node':
         specifier: 24.10.1
         version: 24.10.1
+
+  packages/text-fa:
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.1
+        version: 24.10.1
+      vitest:
+        specifier: 5.1.1
+        version: 5.1.1(@types/node@24.10.1)(vite@8.3.8(@types/node@24.10.1)(esbuild@0.28.2)(tsx@4.23.15))
 
   spikes/m1-editor:
     dependencies:
@@ -2319,6 +2353,9 @@ packages:
 
   minimist@1.2.8:
     resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
+
+  minisearch@7.2.0:
+    resolution: {integrity: sha512-dqT2XBYUOZOiC5t2HRnwADjhNS2cecp9u+TJRiJ1Qp/f5qjkeT5APcGPjHw+bz89Ms8Jp+cG4AlE+QZ/QnDglg==}
 
   motion-dom@12.43.0:
     resolution: {integrity: sha512-azKON4d9S65PEoFUiQTMTgPheEmzf2QngdRc50AKfJp9Q9mmcBVw22c8eMq9k8kxOFHdL7+WZY7N/5F/lwiDag==}
@@ -4572,6 +4609,8 @@ snapshots:
       ts-dedent: 2.3.0
 
   minimist@1.2.8: {}
+
+  minisearch@7.2.0: {}
 
   motion-dom@12.43.0:
     dependencies:

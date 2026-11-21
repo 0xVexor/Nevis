@@ -12,6 +12,9 @@ import { AllPages } from './views/AllPages'
 import { Home } from './views/Home'
 import { Palette } from './views/Palette'
 import { Settings } from './views/Settings'
+import { Graph } from './views/Graph'
+import { Backlinks } from './views/Backlinks'
+import { Tasks } from './views/Tasks'
 import { Templates } from './views/Templates'
 
 const ago = (ms: number) => (ms ? `${Math.max(0, Math.round((Date.now() - ms) / 1000))} ثانیه پیش` : 'هنوز نه')
@@ -68,12 +71,15 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
             <Button size="sm" variant="danger" onClick={() => { void ws.trash(page.id); go({ name: 'home' }) }}>حذف</Button>
           </div>
           {page.type === 'database' ? <DatabaseView key={page.id} ws={ws} id={page.id} /> : <EditorPane key={`${page.id}:${ws.reopenCount(page.id)}`} ws={ws} id={page.id} title={page.title} />}
+          {page.type !== 'database' && <Backlinks ws={ws} id={page.id} />}
         </>
       )
     }
     if (route.name === 'all') return <AllPages ws={ws} calendar={calendar} />
     if (route.name === 'templates') return <Templates ws={ws} />
     if (route.name === 'settings') return <Settings ws={ws} />
+    if (route.name === 'graph') return <Graph ws={ws} />
+    if (route.name === 'tasks') return <Tasks ws={ws} />
     return <Home ws={ws} onNewPage={() => void create('')} onNewDatabase={() => void createDb()} />
   })()
 
@@ -98,6 +104,8 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
           <Row as="button" icon={<Icon name="home" />} text={t('Home')} data-testid="nav-home" onClick={() => { go({ name: 'home' }); setNavOpen(false) }} />
           <Row as="button" icon={<Icon name="folder" />} text={t('All pages')} data-testid="nav-all" onClick={() => { go({ name: 'all' }); setNavOpen(false) }} />
           <Row as="button" icon={<Icon name="templates" />} text={t('Templates')} data-testid="nav-templates" onClick={() => { go({ name: 'templates' }); setNavOpen(false) }} />
+          <Row as="button" icon={<Icon name="tasks" />} text="کارها" data-testid="nav-tasks" onClick={() => { go({ name: 'tasks' }); setNavOpen(false) }} />
+          <Row as="button" icon={<Icon name="graph" />} text="گراف" data-testid="nav-graph" onClick={() => { go({ name: 'graph' }); setNavOpen(false) }} />
           <Row as="button" icon={<Icon name="settings" />} text={t('Settings')} data-testid="nav-settings" onClick={() => { go({ name: 'settings' }); setNavOpen(false) }} />
           <hr />
           <div className="row">

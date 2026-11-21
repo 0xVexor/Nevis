@@ -3,6 +3,7 @@
 import { normalizeFa } from '@nevis/editor'
 import { DocHandle, type BlobStatus, buildTree, createDatabase, createPage, isInside, movePage, readStructured, renamePage, restorePage, trashPage, type Client, type PageNode, type PageRow, type PageTree, type Structured } from '@nevis/core'
 import { SyncRuntime } from './runtime'
+import { SearchService } from './search/service'
 
 export interface WsStatus {
   leader: boolean
@@ -23,6 +24,7 @@ const TITLE_THROTTLE_MS = 400
 
 export class Workspace {
   readonly rt: SyncRuntime
+  readonly search: SearchService
   tree: PageTree = buildTree([])
   /** everything structured (databases, rows, tags...) as of the last reload */
   data: Structured = { pages: [], databases: new Map(), tags: [], savedSearches: [], settings: {}, pageTags: new Map() }
@@ -45,9 +47,11 @@ export class Workspace {
     this.rt = new SyncRuntime({
       ws, token,
       onChange: () => this.emit(),
-      onApplied: () => void this.afterRemote(),
+      onApplied: s => { this.search.dirty(s.docs ?? []); void this.afterRemote() },
       onRemoteChange: m => void this.afterRemote(m.docs),
     })
+    this.search = new SearchService(this.rt.store)
+    this.search.onChange = () => this.emit()
   }
 
   get ws() { return this.rt.ws }
@@ -55,6 +59,7 @@ export class Workspace {
   async start() {
     await this.rt.start()
     await this.reload()
+    void this.search.start(this.data.pages)
   }
 
   subscribe(fn: () => void) { this.listeners.add(fn); return () => void this.listeners.delete(fn) }
@@ -68,6 +73,7 @@ export class Workspace {
         this.again = false
         this.data = await readStructured(this.rt.store)
         this.tree = buildTree(this.data.pages)
+        this.search.setPages(this.data.pages)
         this.emit()
       } while (this.again)
     })().finally(() => { this.reloading = null })
@@ -164,7 +170,7 @@ export class Workspace {
   async openDoc(id: string): Promise<DocHandle> {
     const have = this.handles.get(id)
     if (have) return have
-    const h = await DocHandle.open({ client: this.rt.client, doc: id, onLocalWrite: d => this.rt.written({ docs: [d] }), onError: e => this.fail(e), onTooLarge: () => { this.diverged.add(id); this.emit() } })
+    const h = await DocHandle.open({ client: this.rt.client, doc: id, onLocalWrite: d => { this.rt.written({ docs: [d] }); this.search.dirty([d]) }, onError: e => this.fail(e), onTooLarge: () => { this.diverged.add(id); this.emit() } })
     this.handles.set(id, h)
     return h
   }
@@ -248,6 +254,7 @@ export class Workspace {
 
   async stop() {
     await this.flushAll()
+    this.search.stop()
     this.rt.stop()
     for (const id of [...this.handles.keys()]) await this.closeDoc(id)
   }

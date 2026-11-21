@@ -63,7 +63,9 @@ export interface EngineOptions {
   maxBatchChars?: number
 }
 
-export interface CycleStats { pushed: number; dup: number; pulled: number; applied: number; held: number; quarantined: number; /** ops the server refused for good (moved to quarantine, not retried) */ rejected: number }
+export interface CycleStats { pushed: number; dup: number; pulled: number; applied: number; held: number; quarantined: number; /** ops the server refused for good (moved to quarantine, not retried) */ rejected: number
+  /** documents whose ops were applied this round (derived indexes refresh these) */
+  docs?: string[] }
 
 export class SyncEngine {
   private readonly o: Required<Omit<EngineOptions, 'hooks' | 'gate'>> & { hooks: EngineHooks; gate?: OutboxGate }
@@ -210,7 +212,7 @@ export class SyncEngine {
             const env = parseEnvelope(row.env)
             const r = await applyEnvelope(tx, env, { device, sv, now: this.o.now() })
             if (r === 'held') s.held++ // stays in the inbox until this client understands its schema
-            else { done.push(row.seq); s.applied++ }
+            else { done.push(row.seq); s.applied++; if (r === 'applied') (s.docs ??= []).includes(env.doc) || s.docs.push(env.doc) }
           } catch (e) {
             if (!(e instanceof EnvelopeError || e instanceof FrameError || e instanceof SyntaxError)) throw e
             await tx.addQuarantine({ seq: row.seq, env: row.env, reason: String((e as Error).message).slice(0, 200) })

@@ -16,6 +16,8 @@
     "@nevis/editor": "workspace:*",
     "@nevis/protocol": "workspace:*",
     "@nevis/schema": "workspace:*",
+    "@nevis/search": "workspace:*",
+    "@nevis/text-fa": "workspace:*",
     "@nevis/store-idb": "workspace:*",
     "@nevis/store-tauri": "workspace:*",
     "@tauri-apps/api": "2.12.4",

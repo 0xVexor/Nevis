@@ -1,6 +1,6 @@
 # وضعیت
 
-آخرین به‌روزرسانی: 2026-11-21، پایان M9.
+آخرین به‌روزرسانی: 2026-11-21، پایان M10.
 
 | بخش | وضعیت | امتحان کنید |
 |---|---|---|
@@ -17,10 +17,12 @@
 | M8a ادیتور کامل (همهٔ بلوک‌ها، `SV = 2`) | خودکار سبز (`m8a`)؛ Safari/iPhone/IME/paste از Word با مالک | «نمونهٔ همهٔ بلوک‌ها» در نوار کنار؛ `docs/reports/10-m8a-editor.md`، `docs/formats/golden-fixtures.md`، `docs/checklists/M8a.md` |
 | M8b اپ کامل (طراحی قدیمی، خانه، همهٔ صفحه‌ها، قالب‌ها، تنظیمات، palette، نماهای پایگاه‌داده و برد) | خودکار سبز (`m8b`)؛ «حس اپ قدیمی» و iPhone با مالک | `docs/reports/11-m8b-app.md`، `docs/checklists/M8b.md`؛ `corepack pnpm check` |
 | M9 پیوست‌ها و blob (`SV = 3`) | خودکار سبز (`m9`)؛ Safari/iPhone با فایل بزرگ و دمو با مالک؛ **`SV = 3` منتظر تأیید معمار** | `docs/reports/12-m9-attachments.md`، `docs/checklists/M9.md` |
-| M10 … M16 | در انتظار | `docs/ROADMAP.md` |
+| M10 جست‌وجو و ایندکس‌های مشتق | خودکار سبز (`m10`)؛ بنچ iPhone/Safari با مالک | `docs/reports/13-m10-search.md`، `docs/checklists/M10.md`؛ `corepack pnpm bench:search` |
+| M11 … M16 | در انتظار | `docs/ROADMAP.md` |
+| **مرحلهٔ ظاهر (پیشنهادی، بعد از M10)** | **منتظر شروع** | مقایسهٔ کنار‌به‌کنار با اپ قدیمی و رفع تفاوت‌ها (آیکن/کاور صفحه، برچسب، نوار کنار، خانه) |
 
 ## کار مالک الان
-- چک‌لیست‌های `docs/checklists/M1.md`، `M3.md`، `M4.md`، `M5.md`، `M6.md`، `M7.md`، `M8a.md`، `M8b.md`، `M9.md` روی Safari macOS و iPhone (HTTPS: `docs/dev-https.md`).
+- چک‌لیست‌های `docs/checklists/M1.md`، `M3.md`، `M4.md`، `M5.md`، `M6.md`، `M7.md`، `M8a.md`، `M8b.md`، `M9.md`، `M10.md` روی Safari macOS و iPhone (HTTPS: `docs/dev-https.md`).
 - `docs/OPEN-QUESTIONS.md` (به‌ویژه ۱: سینک پس‌زمینه، ۲: E2EE، ۸: نام پیش از M6).
 - معمار: اصلاح ADR-0003 بند ۱۳ (سقف hold ۱۰ ثانیه) و ADR-0001 بند ۶ (`persist()` نباید await شود).
 

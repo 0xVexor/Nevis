@@ -1,0 +1,374 @@
+[
+ {
+  "text": "یک روز خوب",
+  "query": "يك",
+  "found": true,
+  "note": "arabic yeh and kaf"
+ },
+ {
+  "text": "يك روز خوب",
+  "query": "یک",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "كتاب",
+  "query": "کتاب",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "کتاب",
+  "query": "كتاب",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "علي رفت",
+  "query": "علی",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "على رفت",
+  "query": "علی",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "سال ۱۴۰۳",
+  "query": "1403",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "سال 1403",
+  "query": "۱۴۰۳",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "سال ١٤٠٣",
+  "query": "1403",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "سال ۱۴۰۳",
+  "query": "١٤٠٣",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "سال 1403",
+  "query": "1404",
+  "found": false,
+  "note": ""
+ },
+ {
+  "text": "قیمت ۱٫۵ دلار",
+  "query": "1.5",
+  "found": true,
+  "note": "arabic decimal separator"
+ },
+ {
+  "text": "مبلغ ۱٬۰۰۰",
+  "query": "1,000",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "من می‌خواهم بروم",
+  "query": "می‌خواهم",
+  "found": true,
+  "note": "zwnj forms"
+ },
+ {
+  "text": "من می‌خواهم بروم",
+  "query": "میخواهم",
+  "found": true,
+  "note": "zwnj forms"
+ },
+ {
+  "text": "من می‌خواهم بروم",
+  "query": "می خواهم",
+  "found": true,
+  "note": "zwnj forms"
+ },
+ {
+  "text": "من می‌خواهم بروم",
+  "query": "خواهم",
+  "found": true,
+  "note": "zwnj forms"
+ },
+ {
+  "text": "من می‌خواهم بروم",
+  "query": "می",
+  "found": true,
+  "note": "zwnj forms"
+ },
+ {
+  "text": "من میخواهم بروم",
+  "query": "می‌خواهم",
+  "found": true,
+  "note": "zwnj forms"
+ },
+ {
+  "text": "من میخواهم بروم",
+  "query": "میخواهم",
+  "found": true,
+  "note": "zwnj forms"
+ },
+ {
+  "text": "من میخواهم بروم",
+  "query": "می خواهم",
+  "found": false,
+  "note": "zwnj forms: a joined text has no part boundary"
+ },
+ {
+  "text": "من میخواهم بروم",
+  "query": "خواهم",
+  "found": false,
+  "note": "zwnj forms: a joined text has no part boundary"
+ },
+ {
+  "text": "من میخواهم بروم",
+  "query": "می",
+  "found": true,
+  "note": "zwnj forms"
+ },
+ {
+  "text": "من می خواهم بروم",
+  "query": "می‌خواهم",
+  "found": true,
+  "note": "zwnj forms"
+ },
+ {
+  "text": "من می خواهم بروم",
+  "query": "میخواهم",
+  "found": false,
+  "note": "zwnj forms: a spaced text has no joined form"
+ },
+ {
+  "text": "من می خواهم بروم",
+  "query": "می خواهم",
+  "found": true,
+  "note": "zwnj forms"
+ },
+ {
+  "text": "من می خواهم بروم",
+  "query": "خواهم",
+  "found": true,
+  "note": "zwnj forms"
+ },
+ {
+  "text": "من می خواهم بروم",
+  "query": "می",
+  "found": true,
+  "note": "zwnj forms"
+ },
+ {
+  "text": "من می‌خواهم بروم",
+  "query": "خوا",
+  "found": true,
+  "note": "prefix of a part"
+ },
+ {
+  "text": "خانه‌ها بزرگ‌اند",
+  "query": "خانه",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "خانه‌ها بزرگ‌اند",
+  "query": "ها",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "خانه‌ها بزرگ‌اند",
+  "query": "خانهها",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "من می‌روم",
+  "query": "خواهم",
+  "found": false,
+  "note": ""
+ },
+ {
+  "text": "مُحَمَّد",
+  "query": "محمد",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "محمد",
+  "query": "مُحَمَّد",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "کتــــاب",
+  "query": "کتاب",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "آب و أحمد",
+  "query": "اب",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "إسلام",
+  "query": "اسلام",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "مؤمن",
+  "query": "مومن",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "مسئله",
+  "query": "مسیله",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "مسأله",
+  "query": "مساله",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "مدرسة",
+  "query": "مدرسه",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "خانۀ",
+  "query": "خانه",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "Nevis نویس app",
+  "query": "nevis",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "Nevis نویس app",
+  "query": "NEVIS",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "Nevis نویس app",
+  "query": "نویس",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "Hello World",
+  "query": "wor",
+  "found": false,
+  "note": "no prefix-in-the-middle"
+ },
+ {
+  "text": "فایل report_2024.pdf",
+  "query": "report",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "id: a1b2-c3d4",
+  "query": "c3d4",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "user@example.com",
+  "query": "example",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "سلام، دنیا! چطوری؟",
+  "query": "دنیا",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "«نقل قول»",
+  "query": "نقل",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "(پرانتز)",
+  "query": "پرانتز",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "a;b",
+  "query": "b",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "‏سلام‎",
+  "query": "سلام",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "‫سلام‬",
+  "query": "سلام",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "ﻻ",
+  "query": "لا",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "ﺳﻼم",
+  "query": "سلام",
+  "found": true,
+  "note": ""
+ },
+ {
+  "text": "سیب و گلابی",
+  "query": "انار",
+  "found": false,
+  "note": ""
+ },
+ {
+  "text": "one two",
+  "query": "three",
+  "found": false,
+  "note": ""
+ },
+ {
+  "text": "یک",
+  "query": "دو",
+  "found": false,
+  "note": ""
+ },
+ {
+  "text": "",
+  "query": "x",
+  "found": false,
+  "note": ""
+ }
+]
