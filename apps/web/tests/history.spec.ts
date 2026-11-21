@@ -3,6 +3,7 @@ import { appReady, createNew } from './shell-helpers'
 
 // ROADMAP M11 (page history): a version is an event; restoring yesterday's text is an ordinary edit that reaches the other device.
 const pw = 'correct horse battery'
+async function openHistory(p: import('@playwright/test').Page) { if (!(await p.locator('.page-drawer.open').count())) await p.getByTestId('page-panel-toggle').click(); await p.getByTestId('open-history').click() }
 test.setTimeout(180_000)
 const body = (p: Page) => p.getByTestId('editor').locator('.ProseMirror')
 
@@ -30,20 +31,20 @@ test('save a version, change the page, restore it: the old text is back, a versi
     await a.waitForTimeout(700)
     await body(a).click(); await a.keyboard.type('متن دیروز')
     await a.waitForTimeout(900)
-    await a.getByTestId('open-history').click()
+    await openHistory(a)
     await a.getByTestId('history-save').click()
     await expect(a.getByTestId('history-row')).toHaveCount(1)
     await a.keyboard.press('Escape')
     await body(a).click(); await a.keyboard.press('Control+End'); await a.keyboard.type(' و متن امروز')
     await expect(body(a)).toContainText('و متن امروز')
     await a.waitForTimeout(900)
-    await a.getByTestId('open-history').click()
+    await openHistory(a)
     await expect(a.getByTestId('history-preview')).toContainText('متن دیروز')
     await a.getByTestId('history-restore').click()
     await expect(body(a)).not.toContainText('و متن امروز')
     await expect(body(a)).toContainText('متن دیروز')
     // the newer text was saved as a version before the restore
-    await a.getByTestId('open-history').click()
+    await openHistory(a)
     await expect.poll(() => a.getByTestId('history-row').count()).toBeGreaterThanOrEqual(2)
     await a.keyboard.press('Escape')
     await settled(a)
@@ -55,7 +56,7 @@ test('save a version, change the page, restore it: the old text is back, a versi
     await b.getByTestId('auth-submit').click()
     await b.getByTestId('ws-list').getByRole('button').first().click()
     await expect(b.getByTestId('page-row')).toHaveCount(1, { timeout: 30_000 })
-    await b.getByTestId('page-row').first().click()
+    await b.getByTestId('page-row').first().dblclick()
     await expect(body(b)).toContainText('متن دیروز', { timeout: 30_000 })
     await expect(body(b)).not.toContainText('و متن امروز')
   } finally { await ca.close(); await cb.close() }

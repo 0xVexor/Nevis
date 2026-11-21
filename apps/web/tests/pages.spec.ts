@@ -44,7 +44,7 @@ test('create a page, write Persian and English, reload: it is all still there; r
 
   await page.reload()
   await page.getByTestId('ws-list').getByRole('button').first().click()
-  await page.getByTestId('page-row').first().click()
+  await page.getByTestId('page-row').first().dblclick()
   await expect(page.getByTestId('title')).toHaveValue('سفر به شیراز')
   await expect(body(page)).toContainText('سلام دنیا. hello world ۱۲۳')
 
@@ -62,7 +62,7 @@ test('create a page, write Persian and English, reload: it is all still there; r
   await expect(page.getByTestId('page-row')).toHaveCount(1)
   await page.getByTestId('trash-toggle').click()
   await expect(page.getByTestId('trash')).toContainText('بازار وکیل')
-  await page.getByTestId('trash').getByRole('button', { name: 'بازگردانی' }).click()
+  await page.getByTestId('trash').getByRole('button', { name: 'بازیابی' }).click()
   await page.getByTestId('trash-toggle').click()
   await expect(page.getByTestId('page-row')).toHaveCount(2)
 })
@@ -76,7 +76,7 @@ test('closing the tab 400 ms after the last key loses nothing (the throttle wind
   await page.close()
   const again = await context.newPage()
   await signIn(again, name)
-  await again.getByTestId('page-row').first().click()
+  await again.getByTestId('page-row').first().dblclick()
   await expect(body(again)).toContainText('پایدار ماندن بعد از بستن صفحه')
 })
 
@@ -88,7 +88,7 @@ test('a page touched by a newer schema is not opened for editing (message instea
   const id = await page.getByTestId('page-row').first().getAttribute('data-id')
   await page.evaluate(([id, v]) => (window as unknown as { __ws: { rt: { store: { run: (f: (tx: { bumpMaxSv: (d: string, v: number) => Promise<void> }) => Promise<void>) => Promise<void> } } } }).__ws.rt.store.run(tx => tx.bumpMaxSv(id!, v)), [id, SV + 1] as const)
   await createNew(page, 'new-page') // select another page, then come back
-  await page.getByTestId('page-row').first().click()
+  await page.getByTestId('page-row').first().dblclick()
   await expect(page.getByTestId('needs-update')).toBeVisible()
   await expect(page.getByTestId('editor')).toHaveCount(0)
 })

@@ -4,10 +4,11 @@ const oldNav = name => async page => { await page.locator('.row.plain:not(.searc
 const newNav = id => async page => { await page.getByTestId(id).click() }
 const oldPage = key => async (page, ids) => { await oldNav('home')(page); await page.locator(`[data-id="${ids[key]}"], [data-page-id="${ids[key]}"]`).first().click().catch(async () => { await page.getByText(TITLES[key]).first().click() }) }
 const TITLES = { shiraz: 'سفر به شیراز', notes: 'Meeting notes' }
-const newPage = key => async (page, ids) => { await page.locator(`[data-testid=page-row][data-id="${ids[key]}"]`).first().click() }
+const newPage = key => async (page, ids) => { await page.locator(`[data-testid=page-row][data-id="${ids[key]}"]`).first().dblclick() }
 
 export const SCREENS = {
-  home: { old: oldNav('home'), new: newNav('nav-home') },
+  // Home decides "first visit" when it mounts: the new workspace was empty then, so leave the screen and come back
+  home: { old: oldNav('home'), new: async page => { await page.getByTestId('nav-templates').click(); await page.getByTestId('nav-home').click() } },
   page: { old: oldPage('shiraz'), new: newPage('shiraz'), wait: 1200 },
   templates: { old: oldNav('templates'), new: newNav('nav-templates') },
   tasks: { old: oldNav('tasks'), new: newNav('nav-tasks') },

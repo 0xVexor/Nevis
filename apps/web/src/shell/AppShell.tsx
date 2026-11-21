@@ -1,31 +1,34 @@
-// The frame of the app, as the old app drew it: an icon rail (`nav.side`), the Pages panel (`aside.context-panel`) with the page tree,
-// and the main column (`header.topbar` + `.scroller`). Markup and class names are the old ones, so the copied stylesheets (ds/areas) apply
-// as they did there; only the data comes from the new layer (shell/adapt.ts).
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Button, Icon, IconButton, Menu, SaveStatus, WorkspaceHeader, type MenuItem } from '../ds'
+// The frame of the app, composed from the old app's three regions: the rail (nav.side), the side panel (aside.context-panel) and the main
+// column (header.topbar + .scroller). Markup and class names are the old ones, so the copied stylesheets (ds/areas) apply as they did there;
+// only the data comes from the new layer (shell/adapt.ts). The regions live in Rail.tsx, ContextPanel.tsx and Topbar.tsx.
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Icon, IconButton, Menu, type MenuItem } from '../ds'
 import { t } from '../i18n'
-import { go, type Route } from '../router'
-import { setDeviceSettings, useDeviceSettings } from '../deviceSettings'
+import { go, href, type Route } from '../router'
+import { isDark, updateSettings, useSettings } from '../deviceSettings'
+import { download } from '../download'
 import type { Workspace, WsStatus } from '../workspace'
 import { legacyPages } from './adapt'
-import { Brand } from './Brand'
-import { BrandMark } from './BrandMark'
-import { HorizontalScroll } from './HorizontalScroll'
+import { bindingHint, matches } from '../shortcutBindings'
+import { ContextPanel } from './ContextPanel'
+import { PageChrome } from './pageChrome'
+import { PagePanel } from './PagePanel'
+import { ReaderBar, loadReaderCfg, type ReaderCfg } from './ReaderBar'
 import { buildIndex } from './pageIndex'
-import { TreeFrame, TreeRow } from './PageTree'
 import { PanelHost } from './panelHost'
+import { Rail } from './Rail'
+import { Topbar } from './Topbar'
+import { useNavHistory } from './useNavHistory'
 
-const ROOT_CAP = 200
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
+const PAGE_W = { min: 640, max: 1800, def: 1400, step: 80 } // the text column's width, the old app's limits
+const PANEL_TITLES: Record<string, string> = { tasks: 'Tasks', settings: 'Settings' }
 
-interface RailItem { id: string; label: string; icon: string; route: Route['name']; testid: string }
-const RAIL: RailItem[] = [
-  { id: 'home', label: 'Home', icon: 'home', route: 'home', testid: 'nav-home' },
-  { id: 'templates', label: 'Templates', icon: 'templates', route: 'templates', testid: 'nav-templates' },
-  { id: 'tasks', label: 'Tasks', icon: 'tasks', route: 'tasks', testid: 'nav-tasks' },
-  { id: 'cards', label: 'Flashcards', icon: 'cards', route: 'cards', testid: 'nav-cards' },
-  { id: 'graph', label: 'Graph', icon: 'graph', route: 'graph', testid: 'nav-graph' },
-  { id: 'all', label: 'All pages', icon: 'table', route: 'all', testid: 'nav-all' },
-]
+/** A number kept on this device (a panel's width): null = the stylesheet's own size. */
+function useStoredNumber(key: string, min: number, max: number): [number | null, (v: number | null) => void] {
+  const [v, setV] = useState<number | null>(() => { try { const n = Number(localStorage.getItem(key)); return n ? Math.min(max, Math.max(min, n)) : null } catch { return null } })
+  return [v, (n: number | null) => { setV(n); try { n === null ? localStorage.removeItem(key) : localStorage.setItem(key, String(n)) } catch { /* private window */ } }]
+}
 
 export interface ShellProps {
   ws: Workspace
@@ -36,48 +39,62 @@ export interface ShellProps {
   onNewPage: (parent: string) => void
   onNewDatabase: () => void
   onNewAllBlocks: () => void
+  onNewFolder?: () => void
+  onNewTodo?: () => void
   onOpen: (id: string) => void
   onSignOut?: () => void
+  /** back to the list of workspaces */
+  onWorkspaces?: () => void
   /** the page's history (the clock in the top bar) */
   onHistory?: () => void
+  /** flashcards due now (the badge on the rail) */
+  dueCards?: number
+  /** a page's own tools in the top bar (reader mode, the page side panel) */
+  pageTools?: ReactNode
+  save?: 'idle' | 'saving' | 'saved' | 'error'
 }
 
-export function AppShell({ ws, route, status, children, onSearch, onNewPage, onNewDatabase, onNewAllBlocks, onOpen, onSignOut, onHistory }: ShellProps) {
-  const [newMenu, setNewMenu] = useState<DOMRect | null>(null)
+export function AppShell({ ws, route, status, children, onSearch, onNewPage, onNewDatabase, onNewAllBlocks, onNewFolder, onNewTodo, onOpen, onSignOut, onWorkspaces, onHistory, dueCards = 0, pageTools, save = 'saved' }: ShellProps) {
+  const settings = useSettings()
   const [rowMenu, setRowMenu] = useState<{ id: string; rect: DOMRect } | null>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   const [selected, setSelected] = useState<string | null>(null)
-  const [rootCap, setRootCap] = useState(ROOT_CAP)
-  // The Pages panel: beside the content on a wide window; on a narrow one (the old app's 760 px) a drawer over it, closed until asked for.
+  const [railW, setRailW] = useStoredNumber('nevis.railW', 148, 320)
+  const [sideW, setSideW] = useStoredNumber('nevis.sideW', 240, 600)
   const [host, setHost] = useState<HTMLElement | null>(null)
   const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 760px)').matches)
   const [wide, setWide] = useState(true)
   const [drawer, setDrawer] = useState(false)
+  const [fullScreen, setFullScreen] = useState(!!document.fullscreenElement)
+  const [drawerOpen, setDrawerOpen] = useState(false) // the page's own side panel (opposite the pages panel)
+  const [reader, setReader] = useState(false)
+  const [readerCfg, setReaderCfg] = useState<ReaderCfg>(loadReaderCfg)
+  const [pageW, setPageW] = useState<number>(() => { try { return Number(localStorage.getItem('nevis.page.width')) || PAGE_W.def } catch { return PAGE_W.def } })
+  const savePageW = (w: number) => { setPageW(w); try { localStorage.setItem('nevis.page.width', String(w)) } catch { /* private window */ } }
   useEffect(() => { const m = matchMedia('(max-width: 760px)'); const f = () => setNarrow(m.matches); m.addEventListener('change', f); return () => m.removeEventListener('change', f) }, [])
+  useEffect(() => { const f = () => setFullScreen(!!document.fullscreenElement); document.addEventListener('fullscreenchange', f); return () => document.removeEventListener('fullscreenchange', f) }, [])
   const panelOpen = narrow ? drawer : wide
   const togglePanel = () => (narrow ? setDrawer(o => !o) : setWide(o => !o))
-  const navOpen = false
-  const setNavOpen = (_: boolean | ((o: boolean) => boolean)) => { setDrawer(false) } // choosing something closes the drawer
-  const device = useDeviceSettings()
-  const dark = device.theme === 'dark' || (device.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+  const dark = isDark(settings)
   const currentId = route.name === 'page' ? route.id : ''
   const pages = useMemo(() => legacyPages(ws), [ws.data, ws.search.ready, ws.search.progress.done]) // eslint-disable-line react-hooks/exhaustive-deps
   const live = useMemo(() => pages.filter(p => !p.deletedAt), [pages])
   const index = useMemo(() => buildIndex(live), [live])
-  const roots = (index.kids.get(null) ?? []).slice(0, rootCap)
-  const trashCount = ws.tree.trash.length
   const byId = useMemo(() => new Map(pages.map(p => [p.id, p])), [pages])
+  const current = byId.get(currentId) ?? null
   const crumbs = useMemo(() => {
     const out = []
     for (let p = byId.get(currentId), n = 0; p && n < 50; p = p.parentId ? byId.get(p.parentId) : undefined, n++) out.unshift(p)
     return out
   }, [byId, currentId])
-  const here = (r: Route['name']) => route.name === r
-  const open = (id: string) => { onOpen(id); setNavOpen(false) }
+  const nav = useNavHistory(href(route), useCallback((h: string) => { location.hash = h }, []))
+  const open = (id: string) => { onOpen(id); setDrawer(false) }
+  const goTo = (name: Route['name']) => { go({ name } as Route); setDrawer(false) }
   const toggle = (id: string) => setCollapsed(c => { const n = new Set(c); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const boxes = () => live.filter(p => (index.kids.get(p.id) ?? []).length > 0 || p.kind === 'folder').map(p => p.id)
 
   const rowProps = {
-    index, currentId, selectedId: selected, onSelect: setSelected, openOnClick: true, collapsed, onToggle: toggle,
+    index, currentId, selectedId: selected, onSelect: setSelected, openOnClick: settings.treeSingleClick, collapsed, onToggle: toggle,
     onOpen: (id: string) => open(id), onAdd: (parent: string) => onNewPage(parent),
     onMenu: (id: string, rect: DOMRect) => setRowMenu({ id, rect }),
     onMove: (id: string, parentId: string | null, beforeId: string | null) => {
@@ -85,112 +102,83 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
       void ws.moveTo(id, parentId ?? '', beforeId ? Math.max(0, sibs.indexOf(beforeId)) : sibs.length)
     },
   }
-  const menuItems = (id: string): MenuItem[] => [
+  const treeFrame = {
+    label: t('Pages'), selectedId: selected, onSelect: setSelected, onOpen: (id: string) => open(id), onToggle: toggle, onMenu: rowProps.onMenu,
+    isOpenBox: (id: string) => { const k = index.kids.get(id) ?? []; const pg = byId.get(id); return k.length || pg?.kind === 'folder' ? !collapsed.has(id) : null },
+    parentOf: (id: string) => byId.get(id)?.parentId ?? null,
+  }
+  const rowItems = (id: string): MenuItem[] => [
     { label: t('Open'), icon: <Icon name="external-link" size={16} />, onSelect: () => open(id) },
     { label: t('New subpage'), testid: 'menu-subpage', icon: <Icon name="plus" size={16} />, onSelect: () => onNewPage(id) },
+    { label: byId.get(id)?.favorite ? t('Remove from favorites') : t('Add to favorites'), icon: <Icon name="star" size={16} />, onSelect: () => void ws.setMeta(id, { favorite: !byId.get(id)?.favorite }) },
     { label: t('Move up'), icon: <Icon name="arrow-up" size={16} />, onSelect: () => void ws.moveUp(id) },
     { label: t('Move down'), icon: <Icon name="arrow-down" size={16} />, onSelect: () => void ws.moveDown(id) },
     { label: t('Indent'), icon: <Icon name="arrow-right" size={16} className="ds-flip" />, onSelect: () => void ws.indent(id) },
     { label: t('Outdent'), icon: <Icon name="arrow-left" size={16} className="ds-flip" />, onSelect: () => void ws.outdent(id) },
-    { label: t('Delete'), testid: 'menu-delete', icon: <Icon name="trash" size={16} />, onSelect: () => { void ws.trash(id); if (id === currentId) go({ name: 'home' }) } },
+    { label: t('Delete'), testid: 'menu-delete', icon: <Icon name="trash" size={16} />, danger: true, onSelect: () => { void ws.trash(id); if (id === currentId) go({ name: 'home' }) } },
   ]
-  const crumbLabel = (r: Route['name']) => ({ home: 'Home', templates: 'Templates', tasks: 'Tasks', cards: 'Flashcards', graph: 'Graph', all: 'All pages', settings: 'Settings', trash: 'Trash', page: '' } as Record<string, string>)[r] ?? ''
-  const crumbIcon = (r: Route['name']) => ({ templates: 'templates', tasks: 'tasks', cards: 'cards', graph: 'graph', all: 'table', settings: 'settings', trash: 'trash' } as Record<string, string>)[r]
+  const shareItems = (id: string): MenuItem[] => [
+    { label: t('Export as Markdown'), icon: <Icon name="download" size={16} />, onSelect: () => void ws.markdownOf(id).then(m => download(new TextEncoder().encode(m.text), m.path.split('/').pop() || 'page.md', 'text/markdown')) },
+    { label: t('Print'), icon: <Icon name="printer" size={16} />, onSelect: () => window.print() },
+    { label: t('Copy link'), icon: <Icon name="link" size={16} />, onSelect: () => void navigator.clipboard?.writeText(location.origin + location.pathname + href({ name: 'page', id })) },
+  ]
+  const panelKind = route.name === 'tasks' || route.name === 'settings' ? 'host' : 'vault'
+  const toggleFullScreen = () => void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => undefined)
+  const iconsOnly = settings.sidebar === 'icons' || narrow
+  const onPage = route.name === 'page' && !!current
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      const wider = matches(e, 'widerColumn')
+      if (wider || matches(e, 'narrowerColumn')) { e.preventDefault(); savePageW(Math.min(PAGE_W.max, Math.max(PAGE_W.min, pageW + (wider ? PAGE_W.step : -PAGE_W.step)))) }
+      if (matches(e, 'reader')) { e.preventDefault(); setReader(r => !r) }
+      if (matches(e, 'sidebar')) { e.preventDefault(); togglePanel() }
+      if (e.key === 'Escape' && reader && !document.querySelector('.lightbox, .palette-overlay, .ds-pop')) setReader(false)
+    }
+    const toggleReader = () => setReader(r => !r)
+    const history = () => onHistory?.()
+    window.addEventListener('keydown', key); window.addEventListener('toggle-reader', toggleReader); window.addEventListener('open-history', history)
+    return () => { window.removeEventListener('keydown', key); window.removeEventListener('toggle-reader', toggleReader); window.removeEventListener('open-history', history) }
+  }) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!onPage) setReader(false) }, [onPage])
 
   return (
-    <div className="app" dir="rtl">
-      <nav className="side" aria-label={t('Workspace navigation')} data-rail="" data-icons="">
-        <div className="ws"><WorkspaceHeader mark={<BrandMark />} name={<Brand />} revealLabel={t('Expand navigation rail')} expanded={false} /></div>
-        <div className="side-scroll">
-          <button aria-label={t('Search')} className="row plain search-row" data-testid="open-palette" onClick={onSearch}>
-            <span className="ic"><Icon name="search" /></span><span className="ntitle">{t('Search')}...</span><kbd dir="ltr">Ctrl K</kbd>
-          </button>
-          {RAIL.map(item => (
-            <button key={item.id} aria-label={t(item.label)} data-testid={item.testid} className={'row plain' + (here(item.route) ? ' cur' : '')} onClick={() => { go({ name: item.route } as Route); setNavOpen(false) }}>
-              <span className="ic"><Icon name={item.icon} /></span><span className="ntitle">{t(item.label)}</span>
-            </button>
-          ))}
-        </div>
-        <div className="side-foot">
-          <button aria-label={t('Settings')} data-testid="nav-settings" className={'row plain' + (here('settings') ? ' cur' : '')} onClick={() => { go({ name: 'settings' }); setNavOpen(false) }}>
-            <span className="ic"><Icon name="settings" /></span><span className="ntitle">{t('Settings')}</span>
-          </button>
-          <button aria-label={t('Trash')} data-testid="trash-toggle" className={'row plain' + (here('trash') ? ' cur' : '')} onClick={() => { go({ name: 'trash' }); setNavOpen(false) }}>
-            <span className="ic"><Icon name="trash" /></span><span className="ntitle">{t('Trash')}</span>
-            {trashCount > 0 && <span className="ds-badge">{trashCount}</span>}
-          </button>
-          <Button variant="primary" className="side-new" aria-label={t('New')} aria-haspopup="menu" aria-expanded={!!newMenu} data-testid="new-menu" onClick={e => setNewMenu(newMenu ? null : e.currentTarget.getBoundingClientRect())}>
-            <Icon name="plus" size={16} /><span className="ntitle">{t('New')}</span>
-          </Button>
-          {newMenu && (
-            <Menu anchor={newMenu} onClose={() => setNewMenu(null)} items={[
-              { label: t('New page'), testid: 'new-page', icon: <Icon name="file" size={16} />, onSelect: () => onNewPage('') },
-              { label: t('New database'), testid: 'new-database', icon: <Icon name="table" size={16} />, onSelect: onNewDatabase },
-              { label: t('All blocks sample'), testid: 'new-all-blocks', icon: <Icon name="blocks" size={16} />, onSelect: onNewAllBlocks },
-            ]} />
-          )}
-          {onSignOut && <button aria-label={t('Sign out')} data-testid="signout" className="row plain" onClick={onSignOut}><span className="ic"><Icon name="log-out" /></span><span className="ntitle">{t('Sign out')}</span></button>}
-        </div>
-      </nav>
-
-      {narrow && drawer && <div className="context-backdrop" aria-hidden="true" onClick={() => setDrawer(false)} />}
-      <aside id="workspace-context" className="context-panel" aria-label={t('Pages')} hidden={!panelOpen}>
-        <header className="context-heading">
-          <h2>{route.name === 'tasks' ? t('Tasks') : route.name === 'settings' ? t('Settings') : t('Pages')}</h2>
-          <div className="context-tools" role="group" aria-label={t('Panel tools')}>
-            <IconButton label={t('Expand all')} onClick={() => setCollapsed(new Set())}><Icon name="chevrons-up-down" size={15} /></IconButton>
-            <IconButton label={t('Collapse all')} onClick={() => setCollapsed(new Set(live.filter(p => (index.kids.get(p.id) ?? []).length > 0).map(p => p.id)))}><Icon name="chevrons-down-up" size={15} /></IconButton>
-          </div>
-        </header>
-        <div className="side-scroll" ref={setHost}>
-          {route.name !== 'tasks' && route.name !== 'settings' && <div className="side-collections">
-            <HorizontalScroll className="tree-scroll" label={t('Pages')} followVisibleBottom>
-              <TreeFrame
-                label={t('Pages')} selectedId={selected} onSelect={setSelected} onOpen={id => open(id)} onToggle={toggle} onMenu={rowProps.onMenu}
-                isOpenBox={id => { const k = index.kids.get(id) ?? []; return k.length ? !collapsed.has(id) : null }}
-                parentOf={id => byId.get(id)?.parentId ?? null}
-              >
-                <div data-testid="tree">{roots.map(p => <TreeRow key={p.id} {...rowProps} page={p} depth={0} />)}</div>
-              </TreeFrame>
-            </HorizontalScroll>
-            {(index.kids.get(null) ?? []).length > rootCap && <button className="section" data-testid="tree-more" onClick={() => setRootCap(c => c + ROOT_CAP)}>{t('Show more')} ({(index.kids.get(null) ?? []).length - rootCap})</button>}
-            {roots.length === 0 && <div className="empty-note">{t('No pages yet')}</div>}
-          </div>}
-        </div>
-      </aside>
-
-      <main className="main">
-        <header className="topbar">
-          <IconButton label={t('Pages')} data-testid="panel-toggle" aria-expanded={panelOpen} aria-controls="workspace-context" onClick={togglePanel}><Icon name="panel-left" size={17} className="ds-flip" /></IconButton>
-          <nav className="crumbs">
-            <IconButton className="crumb-home" label={t('Home')} onClick={() => go({ name: 'home' })}><Icon name="home" size={15} /></IconButton>
-            {route.name !== 'page' && route.name !== 'home' && (
-              <span className="crumb"><span className="crumb-cur">{crumbIcon(route.name) && <Icon name={crumbIcon(route.name)!} size={14} />}{t(crumbLabel(route.name))}</span></span>
-            )}
-            {route.name === 'home' && <span className="crumb"><span className="crumb-cur">{t('Home')}</span></span>}
-            {route.name === 'page' && crumbs.map((c, i) => (
-              <span key={c.id} className={'crumb' + (i === crumbs.length - 1 ? ' last' : '')}>
-                <span className="crumb-sep"><Icon name="chevron-right" size={13} /></span>
-                <button onClick={() => open(c.id)} dir="auto" title={c.title || t('Untitled')}><span className="crumb-t">{c.title || t('Untitled')}</span></button>
-              </span>
-            ))}
-          </nav>
-          <span className="spacer" />
-          {status && <span data-testid="net" data-online={status.online} className="sync-chip">{status.online ? `● ${t('Online')}` : `○ ${t('Offline')}`}</span>}
-          {status && <span className="sync-chip">{t('Not sent yet')}: <b data-testid="outbox">{status.outbox}</b>{status.unsaved > 0 ? ` (+${status.unsaved})` : ''}</span>}
-          {status && status.files.pending > 0 && <span className="sync-chip" data-testid="files">{`${t('Files')}: ${status.files.pending}`}{status.files.uploading && status.files.total ? ` (${Math.round(100 * status.files.sent / status.files.total)}٪)` : ''}</span>}
-          {status?.files.error === 'quota' && <span className="err sync-chip" data-testid="files-quota">فضای حساب شما پر است؛ فایل‌ها روی این دستگاه می‌مانند و چیزی از دست نمی‌رود، اما تا آزاد شدن فضا همگام نمی‌شوند.</span>}
-          {status?.files.error === 'blob_too_large' && <span className="err sync-chip" data-testid="files-too-large">فایلی از حد مجاز سرور بزرگ‌تر است و فقط روی این دستگاه می‌ماند.</span>}
-          {status?.upgradeRequired && <span className="err sync-chip" data-testid="needs-app-update">این نسخهٔ برنامه برای این فضای کار قدیمی است؛ <button onClick={() => location.reload()}>بارگذاری دوباره</button></span>}
-          {status?.lastError && <span className="err sync-chip" data-testid="sync-error">{status.lastError}</span>}
-          <div className="tb-group">
-            {route.name === 'page' && onHistory && <IconButton label={t('Version history')} data-testid="open-history" onClick={onHistory}><Icon name="history" size={17} /></IconButton>}
-            <IconButton label={dark ? t('Light mode') : t('Dark mode')} onClick={() => setDeviceSettings({ theme: dark ? 'light' : 'dark' })}><Icon name={dark ? 'sun' : 'moon'} size={17} /></IconButton>
-          </div>
-        </header>
-        <div className="scroller"><PanelHost.Provider value={route.name === 'tasks' || route.name === 'settings' ? host : null}>{children}</PanelHost.Provider></div>
+    <div data-preferences={route.name === 'settings' ? '' : undefined} className={'app' + (reader && onPage ? ' reading' : '')} style={{ '--page-w': pageW + 'px', '--r-scale': readerCfg.scale } as React.CSSProperties}>
+      <Rail
+        route={route} status={status} dueCards={dueCards} trashCount={ws.tree.trash.length} iconsOnly={iconsOnly} narrow={narrow}
+        width={railW} defaultWidth={settings.sidebar === 'compact' ? 148 : 176} onWidth={setRailW}
+        onGo={goTo} onSearch={onSearch} searchHint={isMac ? '⌘K' : 'Ctrl K'}
+        onNewPage={() => onNewPage('')} onNewDatabase={onNewDatabase} onNewAllBlocks={onNewAllBlocks} onNewFolder={onNewFolder ?? (() => onNewPage(''))} onNewTodo={onNewTodo ?? (() => onNewPage(''))}
+        onOpenSettings={() => goTo('settings')} onSignOut={onSignOut} workspaceName="" onWorkspaces={onWorkspaces ?? (() => undefined)}
+      />
+      <ContextPanel
+        title={t(PANEL_TITLES[route.name] ?? 'Pages')} kind={panelKind} open={panelOpen} narrow={narrow} width={sideW} onWidth={setSideW} onClose={() => setDrawer(false)} setHost={setHost}
+        pages={pages} index={index} currentId={currentId} rowProps={rowProps} settings={settings} onSettings={updateSettings}
+        onReveal={() => { if (currentId) { setSelected(currentId); setCollapsed(c => { const n = new Set(c); for (let p = byId.get(currentId); p; p = p.parentId ? byId.get(p.parentId) : undefined) n.delete(p.id); return n }) } }}
+        onOpen={open} onExpandAll={() => setCollapsed(new Set())} onCollapseAll={() => setCollapsed(new Set(boxes()))} treeFrame={treeFrame}
+      />
+      <main className={'main' + (drawerOpen && !reader && onPage ? ' drawer-open' : '')}>
+        <Topbar
+          routeName={route.name} crumbs={crumbs} current={current} panelOpen={panelOpen} onTogglePanel={togglePanel} onHome={() => goTo('home')} onOpen={open} nav={nav}
+          save={status && status.unsaved > 0 ? 'saving' : save} dark={dark} onToggleDark={() => updateSettings({ theme: dark ? 'light' : 'dark' })}
+          fullScreen={fullScreen} onToggleFullScreen={toggleFullScreen} onFavorite={id => void ws.setMeta(id, { favorite: !byId.get(id)?.favorite })}
+          shareItems={currentId ? shareItems(currentId) : undefined} onHistory={undefined}
+          pageTools={<>
+            <IconButton label={t('Reader mode') + '  ' + bindingHint('reader')} onClick={() => setReader(true)}><Icon name="book" size={17} /></IconButton>
+            <IconButton label={t('Page side panel (quick actions & navigation)')} data-testid="page-panel-toggle" pressed={drawerOpen} onClick={() => setDrawerOpen(o => !o)}><Icon name="panel-right" size={17} /></IconButton>
+            {pageTools}
+          </>}
+        />
+        {reader && onPage && <ReaderBar cfg={readerCfg} onCfg={c => { setReaderCfg(c); try { localStorage.setItem('nevis.reader.cfg', JSON.stringify(c)) } catch { /* private window */ } }} width={pageW} onWidth={savePageW} onExit={() => setReader(false)} />}
+        <div className="scroller"><PageChrome.Provider value={{ reader: reader && onPage }}><PanelHost.Provider value={panelKind === 'host' ? host : null}>{children}</PanelHost.Provider></PageChrome.Provider></div>
+        {onPage && current && (
+          <PagePanel
+            open={drawerOpen && !reader} page={current} pages={pages} onClose={() => setDrawerOpen(false)} onOpen={open} onNewSub={() => onNewPage(current.id)}
+            onCover={rect => window.dispatchEvent(new CustomEvent('nevis:page-cover', { detail: rect }))}
+            onExport={() => void ws.markdownOf(current.id).then(m => download(new TextEncoder().encode(m.text), m.path.split('/').pop() || 'page.md', 'text/markdown'))}
+          />
+        )}
       </main>
-      {rowMenu && <Menu anchor={rowMenu.rect} align="end" onClose={() => setRowMenu(null)} items={menuItems(rowMenu.id)} />}
+      {rowMenu && <Menu anchor={rowMenu.rect} align="end" onClose={() => setRowMenu(null)} items={rowItems(rowMenu.id)} />}
     </div>
   )
 }

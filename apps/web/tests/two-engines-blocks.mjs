@@ -34,7 +34,7 @@ try {
   await b.getByTestId('auth-submit').click()
   await b.getByTestId('ws-list').getByRole('button').first().click()
   await until(async () => (await b.getByTestId('page-row').count()) === 1, 15000, 'B sees the page')
-  await b.getByTestId('page-row').first().click()
+  await b.getByTestId('page-row').first().dblclick()
   await b.locator('.callout').waitFor({ timeout: 30000 })
   await b.locator('.math-block .katex').waitFor({ timeout: 30000 })
   if (ids(await doc(a)) !== ids(await doc(b))) throw new Error('the two devices differ before the offline phase')

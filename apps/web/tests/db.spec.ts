@@ -59,7 +59,7 @@ test('a database: columns of several types, an option, rows, Persian digits in a
 
   await page.reload()
   await page.getByTestId('ws-list').getByRole('button').first().click()
-  await page.getByTestId('page-row').first().click()
+  await page.getByTestId('page-row').first().dblclick()
   await expect(page.getByTestId('db-title')).toHaveValue('کتاب‌ها')
   await expect(page.getByTestId('db-row')).toHaveCount(1)
   await expect(cell(page, 'نام', 0).locator('input')).toHaveValue('بوف کور')

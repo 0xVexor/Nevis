@@ -65,7 +65,7 @@ test('search finds every spelling, both digit systems and ي/ی; links, backlink
   await page.evaluate(() => (window as unknown as { __editor: { chain: () => { focus: () => { toggleTaskList: () => { run: () => void } } } } }).__editor.chain().focus().toggleTaskList().run())
   await page.keyboard.type('خرید نان')
   await page.getByTestId('nav-all').click()
-  await page.getByTestId('page-row').filter({ hasText: 'برنامه' }).first().click().catch(() => undefined)
+  await page.getByTestId('page-row').filter({ hasText: 'برنامه' }).first().dblclick().catch(() => undefined)
   await page.evaluate(id => { location.hash = `#/page/${id}` }, target)
   await expect(page.getByTestId('backlink')).toHaveText('یادداشت', { timeout: 30_000 })
   await page.getByTestId('title').fill('برنامهٔ تازه')

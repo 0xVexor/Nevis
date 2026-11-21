@@ -13,7 +13,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
 const body = p => p.getByTestId('editor').locator('.ProseMirror')
 const text = p => body(p).innerText()
 const rows = p => p.getByTestId('page-row').count()
-const select = (p, i) => p.getByTestId('page-row').nth(i).click()
+const select = (p, i) => p.getByTestId('page-row').nth(i).dblclick()
 async function until(fn, ms, what) {
   const t0 = Date.now()
   for (;;) { if (await fn()) return Date.now() - t0; if (Date.now() - t0 > ms) throw new Error(`timeout: ${what}`); await sleep(20) }

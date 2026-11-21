@@ -55,7 +55,7 @@ test('export the bundle and the Markdown zip; import the bundle into a new works
     await b.getByTestId('ws-import').setInputFiles({ name: 'nevis.nevis.zip', mimeType: 'application/zip', buffer: Buffer.from(zip) })
     await appReady(b)
     await expect(b.getByTestId('page-row')).toHaveCount(1, { timeout: 30_000 })
-    await b.getByTestId('page-row').first().click()
+    await b.getByTestId('page-row').first().dblclick()
     await expect(b.getByTestId('title')).toHaveValue('گزارش من')
     await expect(body(b)).toContainText('متن فارسی و English')
     await expect(b.locator('.image-block img')).toBeVisible({ timeout: 30_000 })

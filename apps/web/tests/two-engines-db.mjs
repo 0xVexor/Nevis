@@ -43,7 +43,7 @@ try {
   await b.getByTestId('auth-submit').click()
   await b.getByTestId('ws-list').getByRole('button').first().click()
   await until(async () => (await b.getByTestId('page-row').count()) === 1, 15000, 'B sees the database')
-  await b.getByTestId('page-row').first().click()
+  await b.getByTestId('page-row').first().dblclick()
   await until(async () => (await b.getByTestId('db-row').count()) === 1 && (await b.locator('th[data-prop="ژانر"]').count()) === 1, 15000, 'B sees the row and the columns')
 
   await ca.setOffline(true); await cb.setOffline(true)

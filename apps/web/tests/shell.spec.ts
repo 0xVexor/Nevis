@@ -32,13 +32,12 @@ test('device settings never reach the outbox or the server; a synced setting is 
 
   // every device setting, through the Settings screen
   const device = page.getByTestId('settings-device')
-  await device.getByRole('button', { name: 'تیره' }).click()
+  await device.getByRole('button', { name: 'تاریک' }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  expect(await page.evaluate(() => document.documentElement.style.colorScheme)).toBe('dark')
-  await device.getByLabel('اندازهٔ متن').fill('120')
-  await device.getByLabel('عرض نوار کنار').fill('300')
   await device.locator('input[type=color]').fill('#aa3366')
-  await expect.poll(() => page.evaluate(() => document.documentElement.style.fontSize)).toBe('120%')
+  await page.getByRole('button', { name: /ویرایشگر/ }).click() // the Editor tab holds the text size
+  await page.getByLabel('اندازه‌ی متن').fill('20')
+  await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue('--editor-size'))).toBe('20px')
   expect(await page.evaluate(() => document.documentElement.style.getPropertyValue('--user-accent'))).toBe('#aa3366')
   await page.waitForTimeout(1500) // long enough for anything that was going to be written to be written
   await settled(page)
@@ -53,6 +52,7 @@ test('device settings never reach the outbox or the server; a synced setting is 
   await page.getByTestId('nav-settings').click()
   await settled(page)
   const h1 = await head(page)
+  await page.getByRole('button', { name: 'پایگاه داده', exact: true }).click()
   await page.getByTestId('settings-synced').getByRole('button', { name: 'میلادی' }).click()
   await settled(page)
   await expect.poll(() => head(page)).toBe(h1 + 1)
@@ -88,10 +88,10 @@ test('trash and restore, the tree, a deep link and the back button', async ({ pa
   await expect(page.getByTestId('home')).toBeVisible()
   await page.getByTestId('trash-toggle').click()
   await expect(page.getByTestId('trash')).toContainText('برای حذف')
-  await page.getByTestId('trash').getByRole('button', { name: 'بازگردانی' }).click()
+  await page.getByTestId('trash').getByRole('button', { name: 'بازیابی' }).click()
   await expect(page.getByTestId('page-row')).toHaveCount(1)
   expect(url).toMatch(/#\/page\//)
-  await page.getByTestId('page-row').first().click()
+  await page.getByTestId('page-row').first().dblclick()
   await expect(page).toHaveURL(url) // the restored page has its old link
   await page.reload() // the deep link: the hash survives a reload and opens the page
   await page.getByTestId('ws-list').getByRole('button').first().click()

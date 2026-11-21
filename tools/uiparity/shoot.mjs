@@ -36,7 +36,7 @@ async function openNew() {
   await page.locator('input[name=username]').fill('par' + Date.now().toString(36))
   await page.locator('input[name=password]').fill('correct horse battery')
   await page.getByTestId('auth-submit').click(); await page.getByTestId('recovery').waitFor()
-  await page.getByTestId('ws-new').click(); await page.waitForFunction(() => !!window.__ws)
+  await page.getByTestId('ws-new').click(); await page.waitForFunction(() => !!window.__ws?.rt?.client)
   const ids = {}
   for (const p of PAGES) {
     ids[p.key] = await page.evaluate(async ([p, parent]) => {

@@ -55,7 +55,7 @@ test('table view: sort by a number (exact), hide a column, and the view config s
   await settled(page)
   await page.reload()
   await page.getByTestId('ws-list').getByRole('button').first().click()
-  await page.getByTestId('page-row').first().click()
+  await page.getByTestId('page-row').first().dblclick()
   await expect(page.locator('th[data-prop="وضعیت"]')).toHaveCount(0)
   await expect(page.getByTestId('sort-dir')).toContainText('نزولی')
 })
