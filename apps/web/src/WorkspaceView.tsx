@@ -56,7 +56,7 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
   const calendar = readSynced(ws).calendar
   const screen = (() => {
     if (route.name === 'page') {
-      if (!page) return <p className="small screen">{ws.tree.parentOf.has(selected) ? t('Your trash is empty') : t('No pages yet')}</p>
+      if (!page) return <p className="small screen">{ws.data.pages.find(p => p.id === selected)?.trashed ? 'این صفحه در سطل زباله است (از نوار کنار بازگردانی کنید).' : 'صفحه پیدا نشد.'}</p>
       return (
         <>
           <div className="bar" data-testid="page-actions">

@@ -129,7 +129,12 @@ test('10 000 pages: Home, the palette and the "all pages" table touch only what 
   await expect(page.locator('.ds-command-dialog .ds-command-result').first()).toBeVisible()
   expect(await page.locator('.ds-command-dialog .ds-command-result').count()).toBeLessThanOrEqual(30)
   // the sidebar tree renders only the roots that are expanded: 3000 roots, but the DOM holds 50 + the open ones? (it holds the roots: bounded by the tree view)
-  expect(await page.getByTestId('page-row').count()).toBeLessThan(3100)
+  await page.keyboard.press('Escape') // close the palette: it covers the sidebar
+  // 3000 FLAT roots: the sidebar holds the first 200 and a "show more" button, not 3000 rows
+  expect(await page.getByTestId('page-row').count()).toBeLessThanOrEqual(200)
+  await expect(page.getByTestId('tree-more')).toBeVisible()
+  await page.getByTestId('tree-more').click()
+  expect(await page.getByTestId('page-row').count()).toBeLessThanOrEqual(400)
 })
 
 // ---- dark mode is READABLE: text against its real background, computed (WCAG contrast), for the blocks that hard-coded light colours ----
@@ -162,7 +167,7 @@ test('dark mode: text keeps WCAG AA contrast (4.5:1) on the callout, the table h
   // control: the check is not vacuous: put back the OLD bug (a hard-coded light background under the light text) and it must be caught
   const bug = await page.addStyleTag({ content: '.callout { background: #f6f8fa !important }' }) // a stylesheet (ProseMirror reverts inline style edits on its nodes)
   expect(await ratio('.callout .callout-body p'), 'the old light-on-light bug must be detected').toBeLessThan(AA)
-  await bug.evaluate(e => e.remove())
+  await bug.evaluate(e => (e as Element).remove())
   expect(await ratio('.ProseMirror th p, .ProseMirror th'), 'table header').toBeGreaterThanOrEqual(AA)
   await page.getByTestId('editor').locator('.ProseMirror').click()
   await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('/')

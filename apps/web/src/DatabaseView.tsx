@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { InvalidCell, addOption, addProperty, createRow, createView, formatDateFa, patchViewConfig, readViewConfig, removeOption, renameProperty, setCell, setMembers, setViewConfig, trashProperty, trashRow, trashView, viewRows, PROP_TYPES, titleProperty, type CellValue, type DatabaseModel, type PropertyModel, type PropType, type RowModel, type ViewModel } from '@nevis/core'
 import { BoardView } from './BoardView'
 import type { Workspace } from './workspace'
+import { readSynced } from './workspaceSettings'
 
 const TYPE_FA: Record<PropType, string> = { text: 'متن', number: 'عدد', date: 'تاریخ', select: 'انتخاب', multiSelect: 'چندانتخابی', relation: 'ارتباط', checkbox: 'تیک', url: 'پیوند' }
 const THROTTLE_MS = 400
@@ -21,7 +22,7 @@ function useDraft(stored: string, commit: (v: string) => Promise<void> | void) {
   return { draft, change, flush }
 }
 
-function TextCell({ stored, onCommit, kind, label }: { stored: string; onCommit: (v: string) => Promise<void>; kind: 'text' | 'url' | 'number' | 'date'; label: string }) {
+function TextCell({ stored, onCommit, kind, label, jalali = true }: { jalali?: boolean; stored: string; onCommit: (v: string) => Promise<void>; kind: 'text' | 'url' | 'number' | 'date'; label: string }) {
   const [error, setError] = useState('')
   const [focus, setFocus] = useState(false)
   const normalized = kind === 'number' || kind === 'date'
@@ -30,7 +31,7 @@ function TextCell({ stored, onCommit, kind, label }: { stored: string; onCommit:
   }
   const { draft, change, flush } = useDraft(stored, commit)
   // a date is SHOWN in the Persian calendar and edited in the stored (Gregorian) form
-  const shown = kind === 'date' && !focus && stored && draft === stored ? formatDateFa(stored) : draft
+  const shown = kind === 'date' && !focus && stored && draft === stored && jalali ? formatDateFa(stored) : draft
   return (
     <>
       <input aria-label={label} dir={kind === 'text' ? 'auto' : 'ltr'} className={error ? 'bad' : ''} value={shown} title={error || undefined}
@@ -87,7 +88,7 @@ function Cell({ ws, db, p, row }: { ws: Workspace; db: DatabaseModel; p: Propert
         </details>
       )
     }
-    default: return <TextCell stored={typeof v === 'string' ? v : ''} kind={p.type} label={p.name} onCommit={async s => { await write(s) }} />
+    default: return <TextCell jalali={readSynced(ws).calendar === 'jalali'} stored={typeof v === 'string' ? v : ''} kind={p.type} label={p.name} onCommit={async s => { await write(s) }} />
   }
 }
 

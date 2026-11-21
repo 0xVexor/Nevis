@@ -2,11 +2,13 @@ import { useState } from 'react'
 import type { PageNode } from '@nevis/core'
 import type { Workspace } from './workspace'
 
+const ROOT_CAP = 200
 interface Props { ws: Workspace; selected: string; onSelect: (id: string) => void }
 
 /** The collapsed-by-default page tree: only expanded branches are in the DOM, so 10 000 pages cost 50 rows at startup. */
 export function PageTreeView({ ws, selected, onSelect }: Props) {
   const [open, setOpen] = useState<Set<string>>(new Set())
+  const [rootCap, setRootCap] = useState(ROOT_CAP)
   const toggle = (id: string) => setOpen(o => { const n = new Set(o); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const row = (n: PageNode): React.ReactNode => {
     const id = n.page.id
@@ -21,7 +23,14 @@ export function PageTreeView({ ws, selected, onSelect }: Props) {
       </li>
     )
   }
-  return <ul className="tree" data-testid="tree">{ws.tree.roots.map(row)}</ul>
+  // A flat workspace (an import, 10 000 root pages) must not put every root in the DOM: the first ROOT_CAP, then "show more".
+  const shown = ws.tree.roots.slice(0, rootCap)
+  return (
+    <ul className="tree" data-testid="tree">
+      {shown.map(row)}
+      {ws.tree.roots.length > rootCap && <li><button data-testid="tree-more" className="title" onClick={() => setRootCap(c => c + ROOT_CAP)}>نمایش بیشتر ({ws.tree.roots.length - rootCap})</button></li>}
+    </ul>
+  )
 }
 
 function isAncestor(ws: Workspace, ancestor: string, id: string): boolean {

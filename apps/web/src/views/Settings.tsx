@@ -30,9 +30,6 @@ export function Settings({ ws }: { ws: Workspace }) {
           <PreferenceRow label={t('Calendar')}>
             <SegmentedChoice label={t('Calendar')} value={synced.calendar} items={[{ value: 'jalali', label: t('Jalali') }, { value: 'gregorian', label: t('Gregorian') }]} onChange={v => void writeSynced(ws, 'calendar', v)} />
           </PreferenceRow>
-          <PreferenceRow label={t('First day of the week')}>
-            <SegmentedChoice label={t('First day of the week')} value={synced.weekStart} items={[{ value: 'sat', label: t('Saturday') }, { value: 'sun', label: t('Sunday') }, { value: 'mon', label: t('Monday') }]} onChange={v => void writeSynced(ws, 'weekStart', v)} />
-          </PreferenceRow>
         </PreferenceGroup>
       </div>
       <PreferenceGroup title={t('Keyboard shortcuts')}>
