@@ -1,0 +1,11 @@
+# An image from a finished release folder (the output of deploy/build-release.sh), with no base image: the server is one static binary.
+# Used for the first, manual deploy; CI builds the full image (deploy/Dockerfile) instead.
+#   docker build --platform linux/amd64 -f deploy/Dockerfile.release -t nevis-next:0.1.0 release/nevis-0.1.0
+FROM scratch
+ARG ARCH=amd64
+COPY bin/nevis-server-linux-${ARCH} /nevis-server
+COPY web /web
+ENV WEB_DIR=/web DATA_DIR=/data LISTEN_HOST=0.0.0.0 PORT=8787
+USER 65532:65532
+EXPOSE 8787
+ENTRYPOINT ["/nevis-server"]
