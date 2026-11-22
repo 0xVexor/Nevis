@@ -22,6 +22,7 @@ import { Graph } from './views/Graph'
 import { Tasks } from './screens/Tasks'
 import { Templates } from './views/Templates'
 import { Files } from './views/Files'
+import { RowPage } from './RowPage'
 import { Databases, Drawings } from './views/Databases'
 
 /** The app: a header with the sync status, a sidebar (navigation, new, tree, trash) and the screen of the current route. */
@@ -92,6 +93,7 @@ export function WorkspaceView({ ws, onSignOut, onWorkspaces, workspaceName }: { 
     if (route.name === 'all') return <div data-testid="all-pages"><PagesTable pages={legacyPages(ws).filter(p => !p.deletedAt)} onOpen={select} onStatus={(id, st) => void ws.setMeta(id, { status: st ?? '' })} onClose={() => undefined} /></div>
     if (route.name === 'templates') return <Templates ws={ws} />
     if (route.name === 'settings') return <Settings ws={ws} />
+    if (route.name === 'row') return <RowPage key={route.id} ws={ws} dbId={route.db} id={route.id} />
     if (route.name === 'databases') return <Databases ws={ws} />
     if (route.name === 'drawings') return <Drawings ws={ws} />
     if (route.name === 'files') return <Files ws={ws} />

@@ -53,7 +53,7 @@ function useOptimistic<T>(stored: T) {
   return [local ? local.v : stored, set] as const
 }
 
-function Cell({ ws, db, p, row }: { ws: Workspace; db: DatabaseModel; p: PropertyModel; row: RowModel }) {
+export function Cell({ ws, db, p, row }: { ws: Workspace; db: DatabaseModel; p: PropertyModel; row: RowModel }) {
   const stored: CellValue = row.cells[p.id] ?? null
   const [v, setV] = useOptimistic<CellValue>(stored)
   const write = (value: string | boolean | null) => ws.mutate([row.id], c => setCell(c, row.id, p, value))
@@ -165,7 +165,7 @@ export function DatabaseView({ ws, id }: { ws: Workspace; id: string }) {
           <tbody>
             {rows.map((r, i) => (
               <tr key={r.id} data-testid="db-row" data-id={r.id}>
-                {props.map(p => <td key={p.id} data-testid="cell" data-prop={p.name} data-row={i}><Cell ws={ws} db={db} p={p} row={r} /></td>)}
+                {props.map(p => <td key={p.id} data-testid="cell" data-prop={p.name} data-row={i}><span className="db-cellbox"><Cell ws={ws} db={db} p={p} row={r} />{p.isTitle && <button type="button" className="dv-open" data-testid="row-open" title={t('Open as page')} aria-label={t('Open as page')} onClick={() => go({ name: 'row', db: id, id: r.id })}><Icon name="maximize" size={14} /></button>}</span></td>)}
                 <td><button className="tiny" title={t('Delete row')} onClick={() => void ws.mutate([r.id], c => trashRow(c, r.id))}>✕</button></td>
               </tr>
             ))}

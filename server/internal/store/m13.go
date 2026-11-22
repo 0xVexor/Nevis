@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 )
 
@@ -53,6 +54,23 @@ func (s *Store) Backup(ctx context.Context, dir string) (string, error) {
 		return "", err
 	}
 	return path, nil
+}
+
+// PruneBackups keeps the `keep` newest backup files of `dir` (named by their time, so by name) and removes the older ones. Returns how many went.
+func PruneBackups(dir string, keep int) (int, error) {
+	files, err := filepath.Glob(filepath.Join(dir, "nevis-*.db"))
+	if err != nil {
+		return 0, err
+	}
+	sort.Strings(files)
+	removed := 0
+	for i := 0; i < len(files)-keep; i++ {
+		if err := os.Remove(files[i]); err != nil {
+			return removed, err
+		}
+		removed++
+	}
+	return removed, nil
 }
 
 // Prune physically removes the ops that a snapshot covers and that are older than PruneAfter. It removes NOTHING else: not a snapshot, not an

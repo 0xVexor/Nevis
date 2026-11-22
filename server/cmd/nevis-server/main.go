@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -22,6 +23,9 @@ import (
 	"github.com/nevis-app/nevis/server/internal/store"
 )
 
+// backupKeep is how many daily backups of the database stay in DATA_DIR/backup (older ones are removed).
+const backupKeep = 14
+
 func env(k, def string) string {
 	if v := os.Getenv(k); v != "" {
 		return v
@@ -32,6 +36,26 @@ func env(k, def string) string {
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	dataDir := env("DATA_DIR", "./data")
+	if len(os.Args) > 1 && os.Args[1] == "backup" { // nevis-server backup [dir]: a consistent copy of the database NOW (safe while the server runs)
+		dir := filepath.Join(dataDir, "backup")
+		if len(os.Args) > 2 {
+			dir = os.Args[2]
+		}
+		st, err := store.Open(dataDir)
+		if err != nil {
+			log.Error("open store", "err", err)
+			os.Exit(1)
+		}
+		defer st.Close()
+		path, err := st.Backup(context.Background(), dir)
+		if err != nil {
+			log.Error("backup", "err", err)
+			os.Exit(1)
+		}
+		_, _ = store.PruneBackups(dir, backupKeep)
+		fmt.Println(path)
+		return
+	}
 	st, err := store.Open(dataDir)
 	if err != nil {
 		log.Error("open store", "err", err)
@@ -73,8 +97,9 @@ func main() {
 	go func() { // covered ops older than 30 days are removed; a backup of the database is taken first (once a day at most)
 		pruneCtx := context.Background()
 		var lastBackup time.Time
-		for {
-			time.Sleep(time.Hour)
+		for first := true; ; time.Sleep(time.Hour) { // the first round runs at once: a new server has a backup in its first minutes
+			_ = first
+			first = false
 			if time.Since(lastBackup) > 24*time.Hour {
 				if path, err := st.Backup(pruneCtx, filepath.Join(dataDir, "backup")); err != nil {
 					log.Error("backup before pruning failed: nothing is pruned", "err", err)
@@ -82,6 +107,11 @@ func main() {
 				} else {
 					lastBackup = time.Now()
 					log.Info("backup", "path", path)
+					if n, err := store.PruneBackups(filepath.Join(dataDir, "backup"), backupKeep); err != nil {
+						log.Error("old backups", "err", err)
+					} else if n > 0 {
+						log.Info("old backups removed", "n", n, "kept", backupKeep)
+					}
 				}
 			}
 			if n, err := st.Prune(pruneCtx); err != nil {

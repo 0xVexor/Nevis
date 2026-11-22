@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -230,5 +231,23 @@ func TestSnapshotCandidatesAndBackup(t *testing.T) {
 	}
 	if st2, err := os.Stat(path); err != nil || st2.Size() == 0 {
 		t.Fatalf("the backup file is empty or missing: %v", err)
+	}
+}
+
+func TestPruneBackupsKeepsTheNewest(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{"nevis-20260101-000000.db", "nevis-20260102-000000.db", "nevis-20260103-000000.db", "other.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := PruneBackups(dir, 2)
+	if err != nil || n != 1 {
+		t.Fatalf("removed %d, err %v", n, err)
+	}
+	for name, want := range map[string]bool{"nevis-20260101-000000.db": false, "nevis-20260102-000000.db": true, "nevis-20260103-000000.db": true, "other.txt": true} {
+		if _, err := os.Stat(filepath.Join(dir, name)); (err == nil) != want {
+			t.Fatalf("%s: present=%v, want %v", name, err == nil, want)
+		}
 	}
 }

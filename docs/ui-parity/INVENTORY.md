@@ -39,3 +39,7 @@ Known differences, kept honest:
 - Copied files carry `@ts-nocheck` (graph, Explorer, Drawings, Databases, Toolbar): they ran as written in the old app; the new strict index checks are not applied to them.
 
 Tests: Playwright 133 passed on three engines (11 skipped on purpose), core unit tests 112, `pnpm test:engines` green; `pnpm check` clean. New: tests/screens.spec.ts (inbox tasks, files/drawings/databases, find in page and toolbar).
+
+## Audit round (control inventory)
+`node tools/uiparity/inventory.mjs [screen ...]` lists every button, menu item, checkbox, link and field of each screen by accessible name in both apps (same data, same language). Fixed from it: shortcut hints in tooltips, the side-panel button label, tag click showing its pages, the add-property column, the open button of the databases list. Dead controls found and fixed: Home task ticks, the flashcards badge on the rail, the workspace card, the search shortcut following Settings, Ctrl+Z for a toast's Undo, the trash (it never stored when a page was deleted: `trashedAt` now). Removed because nothing used them: "compress images" and "card reminders" settings. All visible text now goes through `t()` (English works); rows of a database open as pages.
+Flaky under load (pass alone): `crash.spec` on Firefox (random close moments).

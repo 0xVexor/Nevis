@@ -138,3 +138,23 @@ test('Home: ticking a task there ticks it in its page; the trash says when a pag
   await expect(page.getByTestId('trash')).toContainText('حذف‌شده')
   await expect(page.getByTestId('trash')).not.toContainText('روز')
 })
+
+test('database: a row opens as a page with its properties and a body of its own that survives a reload', async ({ page }) => {
+  await signUpAndOpen(page)
+  await createNew(page, 'new-database')
+  await page.getByTestId('db-add-row').click()
+  await expect(page.getByTestId('db-row')).toHaveCount(1)
+  await page.locator('[data-testid=cell][data-prop="نام"][data-row="0"] input').fill('کتاب اول')
+  await page.locator('[data-testid=cell][data-prop="نام"][data-row="0"] input').blur()
+  await page.getByTestId('row-open').first().click({ force: true })
+  await expect(page.getByTestId('row-title')).toHaveValue('کتاب اول')
+  await page.getByTestId('row-editor').locator('.ProseMirror').click()
+  await page.keyboard.type('خلاصهٔ کتاب')
+  await expect.poll(() => page.evaluate(async () => { const st = await (window as unknown as { __ws: { status: () => Promise<{ outbox: number; unsaved: number }> } }).__ws.status(); return st.outbox === 0 && st.unsaved === 0 }), { timeout: 30_000 }).toBe(true) // written, then reload
+  await page.reload()
+  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await expect(page.getByTestId('row-title')).toHaveValue('کتاب اول', { timeout: 15_000 })
+  await expect(page.getByTestId('row-editor')).toContainText('خلاصهٔ کتاب', { timeout: 15_000 })
+  await page.getByTestId('row-back').click()
+  await expect(page.getByTestId('db-view')).toBeVisible()
+})

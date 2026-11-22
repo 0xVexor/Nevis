@@ -1,0 +1,10 @@
+# Caddy gets the HTTPS certificate by itself. Replace notes.example.com with your domain (its DNS must point at this machine).
+# The server needs the request's Host unchanged (it compares Origin with Host): `reverse_proxy` keeps it.
+notes.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8787
+	# attachments up to MAX_BLOB_MB
+	request_body {
+		max_size 110MB
+	}
+}

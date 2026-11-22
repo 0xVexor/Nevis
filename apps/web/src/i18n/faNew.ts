@@ -108,4 +108,5 @@ export const FA_NEW: Record<string, string> = {
   "Delete “{title}” permanently? This cannot be undone on any device.": "«{title}» برای همیشه حذف شود؟ این کار در هیچ دستگاهی قابل بازگشت نیست.",
   "Delete everything in the trash permanently? This cannot be undone.": "همهٔ صفحه‌های سطل برای همیشه حذف شوند؟ این کار قابل بازگشت نیست.",
   "{used} of {total}": "{used} از {total}",
+  "Open as page": "باز کردن به‌صورت صفحه", "Back to the database": "بازگشت به پایگاه داده",
 }

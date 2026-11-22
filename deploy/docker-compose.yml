@@ -1,0 +1,11 @@
+# docker compose up -d      (put the values of env.example in a file named .env next to this one)
+services:
+  nevis:
+    build: { context: .., dockerfile: deploy/Dockerfile }
+    restart: unless-stopped
+    env_file: .env
+    environment: { DATA_DIR: /data, WEB_DIR: /web, LISTEN_HOST: 0.0.0.0 }
+    volumes: [ "nevis-data:/data" ]
+    ports: [ "127.0.0.1:8787:8787" ]   # only the reverse proxy on this machine reaches it
+volumes:
+  nevis-data:

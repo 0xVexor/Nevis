@@ -126,7 +126,7 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
   const panelKind = route.name === 'tasks' || route.name === 'settings' ? 'host' : 'vault'
   const toggleFullScreen = () => void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => undefined)
   // The side panel belongs to Home, a page, Tasks and Settings; every other screen fills the window (as in the old app)
-  const overlay = !['home', 'page', 'tasks', 'settings'].includes(route.name)
+  const overlay = !['home', 'page', 'row', 'tasks', 'settings'].includes(route.name)
   const iconsOnly = settings.sidebar === 'icons' || narrow
   const onPage = route.name === 'page' && !!current
   useEffect(() => {

@@ -1,0 +1,22 @@
+[Unit]
+Description=Nevis notes server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=nevis
+Group=nevis
+EnvironmentFile=/etc/nevis/env
+ExecStart=/opt/nevis/bin/nevis-server
+Restart=on-failure
+RestartSec=3
+# a stricter box around the process
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/nevis
+StateDirectory=nevis
+
+[Install]
+WantedBy=multi-user.target

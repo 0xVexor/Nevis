@@ -9,3 +9,4 @@ coverage/
 target/
 gen/
 apps/web/public/excalidraw-assets/
+release/
