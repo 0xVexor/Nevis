@@ -34,7 +34,7 @@ test('search and the synced workspace label fit at the minimum sidebar width', a
       await expect(labels).toHaveCount(2)
       for (const label of await labels.all()) {
         await expect(label).toHaveCSS('white-space', 'nowrap')
-        expect(await label.evaluate(el => el.scrollWidth - el.clientWidth), await label.textContent()).toBeLessThanOrEqual(1)
+        expect(await label.evaluate(el => el.scrollWidth - el.clientWidth), (await label.textContent()) ?? 'Sidebar label').toBeLessThanOrEqual(1)
       }
     }
   }
