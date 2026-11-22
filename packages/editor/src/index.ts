@@ -42,4 +42,8 @@ export { allBlocksTemplate, dailyNoteTemplate, meetingNotesTemplate, taskListTem
 export { normalizeFa } from './findNormalize'
 export { getFind, scrollToMatch } from './find'
 export { drawingSvg, prepareExcalidraw } from './blocks/drawing'
+export { CodeBlock, lowlight } from './blocks/code'
+export { renderMath, renderMermaid } from './blocks/rendered'
+export { Image } from './blocks/media'
+export { Drawing } from './blocks/drawing'
 export { insertBlock, insertCallout, insertDrawing, insertImagePlaceholder, insertLayout, insertMathBlock, insertMathInline, insertMermaid, insertPageLink, insertTable, insertToggle } from './insert'

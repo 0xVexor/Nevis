@@ -3,9 +3,9 @@
 //  1: both go offline, edit the SAME page's text and make separate pages, come back online: the page list and the text are
 //     identical on both within 5 s. Run outside the Playwright runner (two different engines; see engines.spec.ts).
 import { chromium, webkit } from '@playwright/test'
-import { createNew } from './shell-helpers.ts'
+import { createNew, reopenWorkspace } from './shell-helpers.ts'
 
-const BASE = process.env.BASE ?? 'http://localhost:5174'
+const BASE = process.env.BASE ?? `http://localhost:${process.env.NEVIS_TEST_PORT ?? 5174}`
 const name = `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
 const pw = 'correct horse battery'
 const N = 60
@@ -42,7 +42,7 @@ try {
   await b.locator('input[name=username]').fill(name)
   await b.locator('input[name=password]').fill(pw)
   await b.getByTestId('auth-submit').click()
-  await b.getByTestId('ws-list').getByRole('button').first().click()
+  await reopenWorkspace(b)
   await until(async () => (await rows(b)) === 1, 15000, 'B sees the page made in Chromium')
   await select(b, 0)
   await until(async () => (await text(b)).includes('شروع'), 10000, 'B sees the body')

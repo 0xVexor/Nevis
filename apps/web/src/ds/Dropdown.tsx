@@ -15,6 +15,7 @@ export function Dropdown<V extends string>({
   placeholder,
   disabled,
   className,
+  'data-testid': testid,
 }: {
   value: V
   options: { value: V; label: string; raw?: boolean; swatch?: string }[]
@@ -23,8 +24,9 @@ export function Dropdown<V extends string>({
   placeholder?: string
   disabled?: boolean
   className?: string
+  'data-testid'?: string
 }) {
-  const { open, menu } = useMenu()
+  const { open, close, menu, isOpen } = useMenu()
   const ref = useRef<HTMLButtonElement>(null)
   const current = options.find((o) => o.value === value)
   const text = current ? (current.raw ? current.label : t(current.label)) : (placeholder ?? '')
@@ -33,16 +35,19 @@ export function Dropdown<V extends string>({
       <button
         ref={ref}
         type="button"
+        data-testid={testid}
+        data-value={value}
         className={'ds-dd-btn' + (className ? ' ' + className : '')}
         aria-haspopup="menu"
+        aria-expanded={isOpen}
         aria-label={t(label)}
         title={text}
         disabled={disabled}
         data-empty={current ? undefined : ''}
         onClick={() =>
-          ref.current &&
+          isOpen ? close() : ref.current &&
           open(
-            options.map((o) => ({ label: o.label, raw: o.raw, swatch: o.swatch, checked: o.value === value, onSelect: () => onChange(o.value) })),
+            options.map((o) => ({ label: o.label, value: o.value, raw: o.raw, swatch: o.swatch, checked: o.value === value, onSelect: () => onChange(o.value) })),
             ref.current,
           )
         }

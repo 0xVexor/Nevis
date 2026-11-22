@@ -24,10 +24,10 @@ export function SyncIndicator({ status, onOpenSettings }: { status: WsStatus | n
   const info = describeSync(status)
   return (
     <div className="sync-ind">
-      <button type="button" className="row plain sync-ind-main" data-tone={info.tone} title={info.text} onClick={onOpenSettings}>
+      {(!status.online || info.tone !== 'quiet') && <button type="button" className="row plain sync-ind-main" data-tone={info.tone} title={info.text} onClick={onOpenSettings}>
         <span className="ic"><span className="sync-ind-dot" aria-hidden="true" /></span>
         <span className="ntitle" role="status" aria-live="polite">{info.text}</span>
-      </button>
+      </button>}
       <div style={HIDDEN}>
         <span data-testid="net" data-online={status.online}>{status.online ? 'online' : 'offline'}</span>
         <span>{t('Not sent yet')}: <b data-testid="outbox">{status.outbox}</b></span>

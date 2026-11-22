@@ -1,6 +1,6 @@
 // The navigation rail (`nav.side`): the old app's markup and classes. An icon column by default; the logo pins it open into a labelled column.
-import { useState } from 'react'
-import { Button, Icon, Menu, WorkspaceHeader } from '../ds'
+import { useEffect, useRef, useState } from 'react'
+import { Button, Icon, Menu, WorkspaceHeader, useMenu } from '../ds'
 import { ResizeHandle } from '../ds/ResizeHandle'
 import { t } from '../i18n'
 import type { Route } from '../router'
@@ -10,7 +10,7 @@ import { BrandMark } from './BrandMark'
 import { SideTip } from './SideTip'
 import { SyncIndicator } from './SyncIndicator'
 
-export const RAIL_MIN = 148
+export const RAIL_MIN = 168
 export const RAIL_MAX = 320
 
 type Name = Route['name']
@@ -47,8 +47,9 @@ export interface RailProps {
   searchHint: string
   onNewPage: () => void
   onNewDatabase: () => void
-  onNewAllBlocks: () => void
   onNewTodo: () => void
+  onNewBoard: () => void
+  onNewFolder: () => void
   onOpenSettings: () => void
   onSignOut?: () => void
   workspaceName: string
@@ -58,12 +59,23 @@ export interface RailProps {
 export function Rail(p: RailProps) {
   const [pinned, setPinned] = useState(false) // the icon column opened from the logo
   const [newMenu, setNewMenu] = useState<DOMRect | null>(null)
+  const workspaceMenu = useMenu()
   const expanded = p.iconsOnly && pinned
   const labelled = !p.iconsOnly || expanded
+  const nav = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (!expanded) return
+    const down = (event: PointerEvent) => {
+      const inOverlay = event.composedPath().some(node => node instanceof Element && node.matches('.ds-pop, [role="dialog"]'))
+      if (!inOverlay && event.target instanceof Node && !nav.current?.contains(event.target)) setPinned(false)
+    }
+    document.addEventListener('pointerdown', down, true)
+    return () => document.removeEventListener('pointerdown', down, true)
+  }, [expanded])
   const row = (e: Entry) => {
     const count = e.badge === 'cards' ? p.dueCards : e.badge === 'trash' ? p.trashCount : 0
     return (
-      <button key={e.route} aria-label={t(e.label)} data-testid={e.testid} className={'row plain' + (p.route.name === e.route ? ' cur' : '')} onClick={() => p.onGo(e.route)}>
+      <button key={e.route} aria-label={t(e.label)} data-testid={e.testid} title={t(e.label)} className={'row plain' + (p.route.name === e.route ? ' cur' : '')} onClick={() => p.onGo(e.route)}>
         <span className="ic"><Icon name={e.icon} /></span>
         <span className="ntitle">{t(e.label)}</span>
         {count > 0 && <span className="ds-badge">{count}</span>}
@@ -72,6 +84,7 @@ export function Rail(p: RailProps) {
   }
   return (
     <nav
+      ref={nav}
       className="side"
       aria-label={t('Workspace navigation')}
       data-rail={p.iconsOnly ? '' : undefined}
@@ -102,19 +115,23 @@ export function Rail(p: RailProps) {
         {newMenu && (
           <Menu anchor={newMenu} onClose={() => setNewMenu(null)} items={[
             { label: t('New page'), testid: 'new-page', icon: <Icon name="file" size={16} />, onSelect: p.onNewPage },
+            { label: t('New folder'), testid: 'new-folder', icon: <Icon name="folder" size={16} />, onSelect: p.onNewFolder },
+            { label: t('New board'), testid: 'new-board', icon: <Icon name="pencil" size={16} />, onSelect: p.onNewBoard },
             { label: t('New database'), testid: 'new-database', icon: <Icon name="table" size={16} />, onSelect: p.onNewDatabase },
             { label: t('New to-do list'), testid: 'new-todo', icon: <Icon name="checklist" size={16} />, onSelect: p.onNewTodo },
-            { label: t('All blocks sample'), testid: 'new-all-blocks', icon: <Icon name="blocks" size={16} />, onSelect: p.onNewAllBlocks },
           ]} />
         )}
         <div className="side-workspace">
-          <button className="wscard" title={t('Workspaces')} data-testid="workspaces" onClick={p.onWorkspaces}>
+          <button className="wscard" title={t('Workspaces')} data-testid="workspaces" aria-haspopup="menu" aria-expanded={workspaceMenu.isOpen} onClick={event => workspaceMenu.isOpen ? workspaceMenu.close() : workspaceMenu.open([
+            { label: 'Workspaces', icon: <Icon name="vault" size={16} />, onSelect: p.onWorkspaces },
+            ...(p.onSignOut ? [{ label: 'Sign out', testid: 'signout', icon: <Icon name="log-out" size={16} />, onSelect: p.onSignOut }] : []),
+          ], event.currentTarget)}>
             <span className="wscard-ic"><Icon name="vault" /></span>
             <span className="wscard-tx"><b dir="auto">{p.workspaceName || t('Personal space')}</b><small>{t('Synced workspace')}</small></span>
             <span className="wscard-chev"><Icon name="chevrons-up-down" size={14} /></span>
           </button>
+          {workspaceMenu.menu}
         </div>
-        {p.onSignOut && <button aria-label={t('Sign out')} data-testid="signout" className="row plain" onClick={p.onSignOut}><span className="ic"><Icon name="log-out" /></span><span className="ntitle">{t('Sign out')}</span></button>}
         <div className="side-credit">{t('Created by')} Vexor</div>
       </div>
     </nav>

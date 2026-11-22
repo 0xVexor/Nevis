@@ -76,4 +76,17 @@ export const fixturesV3: Record<string, PMJson> = {
     ],
   },
 }
-export const allFixtures: Record<string, PMJson> = { ...fixtures, ...fixturesV2, ...fixturesV3 }
+// SV 4: resized RTL table, including a merged cell and automatic-width cells.
+export const fixturesV4: Record<string, PMJson> = {
+  tableColumnWidths: { type: 'doc', content: [{ type: 'table', attrs: { blockId: id(), dir: 'rtl' }, content: [
+    { type: 'tableRow', attrs: { blockId: id() }, content: [
+      { type: 'tableHeader', attrs: { blockId: id(), colspan: 2, colwidthJson: '[180,260]' }, content: [p([t('سرستون ادغام‌شده')])] },
+    ] },
+    { type: 'tableRow', attrs: { blockId: id() }, content: [
+      { type: 'tableCell', attrs: { blockId: id(), colwidthJson: '[180]' }, content: [p([t('راست')])] },
+      { type: 'tableCell', attrs: { blockId: id(), colwidthJson: '[260]' }, content: [p([t('چپ')])] },
+    ] },
+  ] }] },
+  divider: { type: 'doc', content: [p([t('بخش اول')]), { type: 'horizontalRule', attrs: { blockId: id() } }, p([t('بخش دوم')])] },
+}
+export const allFixtures: Record<string, PMJson> = { ...fixtures, ...fixturesV2, ...fixturesV3, ...fixturesV4 }

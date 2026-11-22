@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { allBlocksTemplate } from '@nevis/editor'
 import { isDue } from '@nevis/core'
 import { Button, Toast } from './ds'
 import { DatabaseView } from './DatabaseView'
+import { DatabaseRowPeek } from './DatabaseRowPeek'
 import { EditorPane } from './EditorPane'
 import { AppShell } from './shell/AppShell'
 import { HomeRoute } from './screens/HomeRoute'
@@ -10,13 +10,13 @@ import { Trash } from './screens/Trash'
 import { Flashcards } from './screens/Flashcards'
 import { History } from './screens/History'
 import { legacyPages } from './shell/adapt'
+import { getTemplates, templateDoc } from './shell/oldTemplates'
 import { t } from './i18n'
 import { go, useRoute } from './router'
 import { matches } from './shortcutBindings'
 import { readSynced } from './workspaceSettings'
 import type { Workspace, WsStatus } from './workspace'
 import { PagesTable } from './screens/PagesTable'
-import { Palette } from './views/Palette'
 import { Settings } from './views/Settings'
 import { Graph } from './views/Graph'
 import { Tasks } from './screens/Tasks'
@@ -33,6 +33,7 @@ export function WorkspaceView({ ws, onSignOut, onWorkspaces, workspaceName }: { 
   const [status, setStatus] = useState<WsStatus | null>(null)
   const [showTrash, setShowTrash] = useState(false)
   const [palette, setPalette] = useState(false)
+  const [peek, setPeek] = useState<{ db: string; row: string } | null>(null)
   const [history, setHistory] = useState(false)
   const [navOpen, setNavOpen] = useState(false)
   const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null)
@@ -40,6 +41,8 @@ export function WorkspaceView({ ws, onSignOut, onWorkspaces, workspaceName }: { 
   toastRef.current = toast
   useEffect(() => { const f = (e: Event) => setToast((e as CustomEvent<{ msg: string; undo?: () => void }>).detail); window.addEventListener('app-toast', f); return () => window.removeEventListener('app-toast', f) }, [])
   const selected = route.name === 'page' ? route.id : ''
+  const activePeek = peek?.db === selected ? peek : null
+  useEffect(() => { if (!activePeek) setPeek(null) }, [activePeek])
   // flashcards due now (the badge on the rail): a fold over the reviews, refreshed when the data changes and now and then (cards fall due with time)
   const [due, setDue] = useState(0)
   useEffect(() => {
@@ -54,7 +57,6 @@ export function WorkspaceView({ ws, onSignOut, onWorkspaces, workspaceName }: { 
 
   const create = async (parent: string) => { const id = await ws.newPage(parent); select(id) }
   const createDb = async () => { const id = await ws.newDatabase(''); select(id) }
-  const createAllBlocks = async () => { const id = await ws.newTemplatePage(t('All blocks'), allBlocksTemplate()); select(id) }
 
   useEffect(() => {
     ws.onOpenPage = id => { if (ws.tree.byId.has(id)) select(id); else ws.notify(t('Page not found')) }
@@ -69,6 +71,7 @@ export function WorkspaceView({ ws, onSignOut, onWorkspaces, workspaceName }: { 
     addEventListener('pagehide', pagehide)
     // Shortcuts use PHYSICAL keys (event.code), so they work with any keyboard language: Ctrl/⌘ K, Alt N, Alt H
     const keys = (e: KeyboardEvent) => {
+      if (document.querySelector('.dv-peek-layer')) return
       if (matches(e, 'search')) { e.preventDefault(); setPalette(p => !p) }
       else if (e.altKey && e.code === 'KeyN') { e.preventDefault(); void create('') }
       else if (e.altKey && e.code === 'KeyH') { e.preventDefault(); go({ name: 'home' }) }
@@ -85,15 +88,16 @@ export function WorkspaceView({ ws, onSignOut, onWorkspaces, workspaceName }: { 
   const screen = (() => {
     if (route.name === 'page') {
       if (!page) return <p className="small screen">{ws.data.pages.find(p => p.id === selected)?.trashed ? t('This page is in the trash (restore it from the trash screen).') : t('Page not found.')}</p>
+      if (ws.isFolder(page.id)) return <Files ws={ws} initialFolder={page.id} />
       return (
         <>
-          {ws.isBoard(page.id) ? <BoardPage key={page.id} ws={ws} id={page.id} title={page.title} /> : page.type === 'database' ? <div className="page-cols"><div className="page"><DatabaseView key={page.id} ws={ws} id={page.id} /></div></div> : <EditorPane key={`${page.id}:${ws.reopenCount(page.id)}`} ws={ws} id={page.id} title={page.title} />}
+          {ws.isBoard(page.id) ? <BoardPage key={page.id} ws={ws} id={page.id} title={page.title} /> : page.type === 'database' ? <DatabaseView key={page.id} ws={ws} id={page.id} onPeek={row => setPeek({ db: page.id, row })} /> : <EditorPane key={`${page.id}:${ws.reopenCount(page.id)}`} ws={ws} id={page.id} title={page.title} />}
         </>
       )
     }
     if (route.name === 'all') return <div data-testid="all-pages"><PagesTable pages={legacyPages(ws).filter(p => !p.deletedAt)} onOpen={select} onStatus={(id, st) => void ws.setMeta(id, { status: st ?? '' })} onClose={() => undefined} /></div>
     if (route.name === 'templates') return <Templates ws={ws} />
-    if (route.name === 'settings') return <Settings ws={ws} />
+    if (route.name === 'settings') return <Settings ws={ws} initialTab={route.tab} onTabChange={tab => go({ name: 'settings', tab })} />
     if (route.name === 'row') return <RowPage key={route.id} ws={ws} dbId={route.db} id={route.id} />
     if (route.name === 'databases') return <Databases ws={ws} />
     if (route.name === 'drawings') return <Drawings ws={ws} />
@@ -102,19 +106,27 @@ export function WorkspaceView({ ws, onSignOut, onWorkspaces, workspaceName }: { 
     if (route.name === 'cards') return <Flashcards ws={ws} />
     if (route.name === 'tasks') return <Tasks ws={ws} />
     if (route.name === 'trash') return <div data-testid="trash"><Trash items={legacyPages(ws).filter(p => p.deletedAt)} onRestore={id => void ws.restore(id)} onPurge={page => { if (confirm(t('Delete “{title}” permanently? This cannot be undone on any device.', { title: page.title || t('Untitled') }))) void ws.purge(page.id) }} onEmpty={() => { if (confirm(t('Delete everything in the trash permanently? This cannot be undone.'))) void ws.emptyTrash() }} /></div>
-    return <HomeRoute ws={ws} onOpen={select} onNewPage={() => void create('')} onTemplate={() => go({ name: 'templates' })} onWorkspaces={onWorkspaces} />
+    return <HomeRoute ws={ws} onOpen={select} onNewPage={() => void create('')} onTemplate={templateId => {
+      const template = getTemplates().find(item => item.id === templateId)
+      if (!template) return
+      void ws.newTemplatePage(template.pageTitle, templateDoc(template)).then(async id => {
+        await ws.setMeta(id, { icon: template.icon })
+        select(id)
+      }).catch(() => ws.notify(t('Could not complete the action. Please try again.')))
+    }} onWorkspaces={onWorkspaces} />
   })()
 
   return (
     <>
       <AppShell
-        ws={ws} route={route} status={status} onSearch={() => setPalette(true)} onNewPage={p => void create(p)} onNewDatabase={() => void createDb()} onNewAllBlocks={() => void createAllBlocks()}
+        ws={ws} route={route} status={status} onSearch={() => setPalette(true)} searchOpen={palette && !activePeek} onCloseSearch={() => setPalette(false)} onNewPage={p => void create(p)} onNewDatabase={() => void createDb()}
         onOpen={select} onSignOut={onSignOut} onWorkspaces={onWorkspaces} workspaceName={workspaceName} dueCards={due} onHistory={() => setHistory(true)}
       >
         {screen}
       </AppShell>
+      {activePeek && <DatabaseRowPeek key={activePeek.row} ws={ws} dbId={activePeek.db} rowId={activePeek.row}
+        onClose={() => setPeek(null)} onFullPage={() => { setPeek(null); go({ name: 'row', db: activePeek.db, id: activePeek.row }) }} />}
       {history && route.name === 'page' && <History ws={ws} id={route.id} title={ws.tree.byId.get(route.id)?.page.title ?? ''} onClose={() => setHistory(false)} />}
-      {palette && <Palette ws={ws} onClose={() => setPalette(false)} onNewPage={() => void create('')} onNewDatabase={() => void createDb()} />}
       {ws.notice && <Toast msg={ws.notice} onClose={() => ws.notify('')} />}
       {toast && <Toast msg={toast.msg} action={toast.undo ? t('Undo') : undefined} actionHint="Ctrl+Z" onAction={toast.undo} onClose={() => setToast(null)} />}
     </>

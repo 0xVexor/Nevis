@@ -40,3 +40,5 @@ minimumReleaseAgeExclude:
   - "@tiptap/extension-floating-menu@3.35.0"
   - "@tiptap/react@3.35.0"
 verifyDepsBeforeRun: false
+allowBuilds:
+  esbuild@0.28.2: true

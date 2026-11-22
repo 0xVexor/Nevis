@@ -41,6 +41,8 @@ export class Workspace {
   /** everything structured (databases, rows, tags...) as of the last reload */
   data: Structured = { pages: [], databases: new Map(), tags: [], savedSearches: [], settings: {}, pageTags: new Map() }
   private readonly handles = new Map<string, DocHandle>()
+  private readonly opening = new Map<string, Promise<DocHandle>>()
+  private readonly closing = new Map<string, Promise<void>>()
   /** documents whose last edit was too large to save: read-only until reopened from the store (what came after it was never saved) */
   readonly diverged = new Set<string>()
   /** a short message for the person (from the editor: an image placeholder, a drawing that was too large) */
@@ -154,9 +156,15 @@ export class Workspace {
     return data ? { data, mime: (await this.rt.blobs.meta(hash))?.mime ?? '' } : undefined
   }
   /** The lossless bundle (`*.nevis.zip`). */
-  exportBundle(): Promise<Uint8Array> { return exportBundle({ store: this.rt.store, workspace: { id: this.ws, name: '' }, sv: SV, blob: h => this.attachment(h) }) }
+  async exportBundle(): Promise<Uint8Array> {
+    await Promise.all([...this.handles.values()].map(h => h.flush()))
+    for (const id of [...this.titles.keys()]) await this.flushTitle(id)
+    return exportBundle({ store: this.rt.store, workspace: { id: this.ws, name: '' }, sv: SV, blob: h => this.attachment(h) })
+  }
   /** The Markdown file of one page: its path in the tree (folders are the parents' file names) and its text. `refs` collects the attachments it names. */
   async markdownOf(id: string, refs: Set<string> = new Set()): Promise<{ path: string; text: string }> {
+    await this.handles.get(id)?.flush()
+    await this.flushTitle(id)
     const byId = new Map(this.data.pages.map(p => [p.id, p]))
     const dirOf = (pid: string, guard = 0): string => { const p = byId.get(pid); return p && p.parent && byId.has(p.parent) && guard < 50 ? `${dirOf(p.parent, guard + 1)}${mdFileName(byId.get(p.parent)!.title, p.parent).replace(/\.md$/, '')}/` : '' }
     const p = byId.get(id)!
@@ -170,7 +178,7 @@ export class Workspace {
   async exportMarkdown(): Promise<Uint8Array> {
     const files: Zippable = {}
     const refs = new Set<string>()
-    for (const p of this.data.pages.filter(x => !x.trashed && x.type !== 'database')) { const f = await this.markdownOf(p.id, refs); files[f.path] = strToU8(f.text) }
+    for (const p of this.data.pages.filter(x => !x.trashed && x.type !== 'database' && !this.isFolder(x.id))) { const f = await this.markdownOf(p.id, refs); files[f.path] = strToU8(f.text) }
     for (const h of refs) { const a = await this.attachment(h); if (a) files[`attachments/${h}`] = [new Uint8Array(await a.data.arrayBuffer()), { level: 0 }] }
     return zipSync(files)
   }
@@ -218,6 +226,11 @@ export class Workspace {
     if (cur) { cur.value = value; return }
     const entry = { value, timer: setTimeout(() => void this.flushTitle(id), TITLE_THROTTLE_MS) as ReturnType<typeof setTimeout> | null }
     this.titles.set(id, entry)
+  }
+  /** Dialog actions commit immediately, replacing any title still waiting from the editor. */
+  async rename(id: string, value: string) {
+    this.setTitle(id, value)
+    await this.flushTitle(id)
   }
   private async flushTitle(id: string) {
     const t = this.titles.get(id)
@@ -296,9 +309,15 @@ export class Workspace {
   }
   /** A board: a page that is one whole drawing (the settings mark it; one register per board, so two devices never overwrite each other). */
   isBoard(id: string): boolean { return this.data.settings[`board:${id}`] === true }
-  async newBoard(): Promise<string> {
-    const id = await this.newPage('', '')
+  async newBoard(parent = ''): Promise<string> {
+    const id = await this.newPage(parent, '')
     await this.mutate([this.ws], c => setSetting(c, `board:${id}`, true))
+    return id
+  }
+  isFolder(id: string): boolean { return this.data.settings[`folder:${id}`] === true }
+  async newFolder(parent = '', title = ''): Promise<string> {
+    const id = await this.newPage(parent, title)
+    await this.mutate([this.ws], c => setSetting(c, `folder:${id}`, true))
     return id
   }
   /** A to-do list: a page the settings mark as a list (one register per list, so two devices never overwrite each other). */
@@ -345,11 +364,18 @@ export class Workspace {
   }
   /** A copy of a page (title, look and body) under `parent`, with the id the caller already handed out. */
   async duplicatePage(id: string, parent: string, newId: string): Promise<void> {
+    await this.flushTitle(id)
     const src = this.data.pages.find(p => p.id === id); if (!src) return
+    if (src.type === 'database') throw new Error('Database duplication requires its structured data')
+    const alreadyOpen = this.handles.has(id)
     const h = await this.openDoc(id); let json: PMJson
-    try { json = project(h.ydoc) } finally { await this.closeDoc(id) }
-    await createPage(this.rt.client, { parent, title: src.title }, newId)
-    await this.setMeta(newId, { icon: src.icon ?? '', cover: src.cover ?? null, status: src.status ?? '' })
+    try { json = project(h.ydoc) } finally { if (!alreadyOpen) await this.closeDoc(id) }
+    const siblings = this.children(parent)
+    await createPage(this.rt.client, { parent, title: src.title, before: siblings.at(-1)?.page.sortKey ?? null }, newId)
+    await this.setMeta(newId, { icon: src.icon ?? '', cover: src.cover || null, status: src.status ?? '' })
+    for (const kind of ['board', 'list', 'folder']) {
+      if (this.data.settings[`${kind}:${id}`] === true) await this.mutate([this.ws], c => setSetting(c, `${kind}:${newId}`, true))
+    }
     for (const tid of this.data.pageTags.get(id) ?? []) await tagPage(this.rt.client, newId, tid, true)
     await this.writeBody(newId, json)
     await this.wrote(newId)
@@ -373,11 +399,18 @@ export class Workspace {
 
   // ---- documents ----
   async openDoc(id: string): Promise<DocHandle> {
+    // A fast page switch may return while the previous handle is still flushing. Read only after it finishes.
+    await this.closing.get(id)
     const have = this.handles.get(id)
     if (have) return have
-    const h = await DocHandle.open({ client: this.rt.client, doc: id, onLocalWrite: d => { this.rt.written({ docs: [d] }); this.search.dirty([d]); this.scheduleVersion(d); this.mirror?.touch([d]) }, onError: e => this.fail(e), onTooLarge: () => { this.diverged.add(id); this.emit() } })
-    this.handles.set(id, h)
-    return h
+    let pending = this.opening.get(id)
+    if (!pending) {
+      pending = DocHandle.open({ client: this.rt.client, doc: id, onLocalWrite: d => { this.rt.written({ docs: [d] }); this.search.dirty([d]); this.scheduleVersion(d); this.mirror?.touch([d]) }, onError: e => this.fail(e), onTooLarge: () => { this.diverged.add(id); this.emit() } })
+        .then(h => { this.handles.set(id, h); return h })
+        .finally(() => this.opening.delete(id))
+      this.opening.set(id, pending)
+    }
+    return pending
   }
   /** The newest pages and databases (not trashed), without sorting the whole list: one pass keeping the best `n`. */
   recent(n: number): PageRow[] {
@@ -412,7 +445,7 @@ export class Workspace {
   }
 
   /** Pages and databases a link may point to. */
-  pageList(): { id: string; title: string }[] { return this.data.pages.filter(p => !p.trashed).map(p => ({ id: p.id, title: p.title })) }
+  pageList(): { id: string; title: string }[] { return this.data.pages.filter(p => !p.trashed && !this.isFolder(p.id)).map(p => ({ id: p.id, title: p.title })) }
   notify(message: string) {
     this.notice = message
     this.emit()
@@ -430,10 +463,16 @@ export class Workspace {
     this.emit()
   }
   async closeDoc(id: string) {
-    const h = this.handles.get(id)
-    if (!h) return
-    this.handles.delete(id)
-    await h.close()
+    const pending = this.closing.get(id)
+    if (pending) return pending
+    const closing = (async () => {
+      const h = this.handles.get(id) ?? await this.opening.get(id)
+      if (!h) return
+      this.handles.delete(id)
+      await h.close()
+    })().finally(() => this.closing.delete(id))
+    this.closing.set(id, closing)
+    return closing
   }
 
   /** On `visibilitychange` (hidden), `pagehide` and close: write everything that is still waiting. Never throws. */

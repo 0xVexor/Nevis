@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { appReady, createNew } from './shell-helpers'
+import { appReady, createNew, reopenWorkspace } from './shell-helpers'
 
 // ROADMAP M13 in the real app: "Delete permanently" in the trash removes the page (and what is under it) on every device.
 const pw = 'correct horse battery'
@@ -28,7 +28,7 @@ test('a page deleted permanently in one browser is gone in the other, and its op
     await b.goto('/')
     await b.locator('input[name=username]').fill(user); await b.locator('input[name=password]').fill(pw)
     await b.getByTestId('auth-submit').click()
-    await b.getByTestId('ws-list').getByRole('button').first().click()
+    await reopenWorkspace(b)
     await expect(b.getByTestId('page-row')).toHaveCount(1, { timeout: 30_000 })
     // trash, then delete permanently
     await a.getByTestId('page-row').first().click({ button: 'right' })

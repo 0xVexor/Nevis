@@ -17,7 +17,7 @@ async function signUp(page: Page, name: string) {
 test('sign up, create a workspace, reload stays signed in, sign out', async ({ page, context }) => {
   const name = user()
   await signUp(page, name)
-  await expect(page.getByRole('heading', { name: new RegExp(name) })).toBeVisible()
+  await expect(page.getByTestId('ws-new')).toBeVisible()
   await page.getByTestId('ws-new').click()
   await appReady(page)
 
@@ -30,12 +30,13 @@ test('sign up, create a workspace, reload stays signed in, sign out', async ({ p
 
   // a reload and a second tab are still signed in
   await page.reload()
-  await expect(page.getByTestId('ws-list').getByRole('button')).toHaveCount(1)
+  await appReady(page)
   const second = await context.newPage()
   await second.goto('/')
-  await expect(second.getByTestId('ws-list')).toBeVisible()
+  await appReady(second)
   await second.close()
 
+  await page.getByTestId('workspaces').click()
   await page.getByTestId('signout').click()
   await expect(page.getByTestId('auth-form')).toBeVisible()
   await page.reload()

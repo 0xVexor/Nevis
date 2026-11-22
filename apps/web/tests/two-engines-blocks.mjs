@@ -1,9 +1,9 @@
 // ROADMAP M8a demo, automated: the "all blocks" page on ONE account in Chromium and WebKit; both OFFLINE: one types in the callout, the
 // other edits a table cell and adds a row; online again, the pages are identical and hold both edits. Offline phase guarded (as in M5/M7).
 import { chromium, webkit } from '@playwright/test'
-import { createNew } from './shell-helpers.ts'
+import { createNew, reopenWorkspace } from './shell-helpers.ts'
 
-const BASE = process.env.BASE ?? 'http://localhost:5174'
+const BASE = process.env.BASE ?? `http://localhost:${process.env.NEVIS_TEST_PORT ?? 5174}`
 const name = `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 async function until(fn, ms, what) { const t0 = Date.now(); for (;;) { if (await fn()) return Date.now() - t0; if (Date.now() - t0 > ms) throw new Error(`timeout: ${what}`); await sleep(25) } }
@@ -25,6 +25,7 @@ try {
   await a.getByTestId('ws-new').click()
   await createNew(a, 'new-all-blocks')
   await a.locator('.callout').waitFor({ timeout: 30000 })
+  await a.locator('.mermaid-block').scrollIntoViewIfNeeded()
   await a.locator('.mermaid-block svg').waitFor({ timeout: 30000 })
   await until(async () => (await status(a)) === 0, 20000, 'A synced')
 
@@ -32,7 +33,7 @@ try {
   await b.locator('input[name=username]').fill(name)
   await b.locator('input[name=password]').fill('correct horse battery')
   await b.getByTestId('auth-submit').click()
-  await b.getByTestId('ws-list').getByRole('button').first().click()
+  await reopenWorkspace(b)
   await until(async () => (await b.getByTestId('page-row').count()) === 1, 15000, 'B sees the page')
   await b.getByTestId('page-row').first().dblclick()
   await b.locator('.callout').waitFor({ timeout: 30000 })

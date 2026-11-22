@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run tests/layout-model.test.ts",
     "test:e2e": "playwright test",
     "test:engines": "node tests/two-engines.mjs && node tests/two-engines-pages.mjs && node tests/two-engines-db.mjs && node tests/two-engines-blocks.mjs"
   },
@@ -38,6 +39,8 @@
     "@tauri-apps/api": "2.12.4",
     "@tiptap/core": "3.35.0",
     "@tiptap/pm": "3.35.0",
+    "@tiptap/suggestion": "3.35.0",
+    "@tiptap/y-tiptap": "3.3.1",
     "fflate": "0.8.3",
     "katex": "0.19.1",
     "motion": "12.43.0",

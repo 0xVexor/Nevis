@@ -299,6 +299,7 @@ export const FA_APP: Record<string, string> = {
   'Convert to code': 'تبدیل به کد',
   'Image from link': 'تصویر از لینک',
   'Add a picture from a web address (saved for offline use)': 'افزودن عکس از آدرس اینترنتی (برای استفاده‌ی آفلاین ذخیره می‌شود)',
+  'Add a picture from a web address': 'افزودن عکس از آدرس اینترنتی',
   // vault import, flashcards, history, tags
   'Importing vault…': 'در حال وارد کردن Vault…',
   'Importing vault… {done}/{total}': 'در حال وارد کردن Vault… {done} از {total}',
@@ -854,6 +855,9 @@ export const FA_APP: Record<string, string> = {
   'Current workspace': 'فضای کاری فعلی',
   'New workspace…': 'فضای کاری جدید…',
   'New workspace': 'فضای کاری جدید',
+  'New item options': 'گزینه‌های ساخت مورد',
+  'New item as a page': 'ساخت مورد و بازکردن صفحه',
+  'Create an account to sync your notes.': 'برای همگام‌سازی یادداشت‌ها حساب بسازید.',
   'Workspace name:': 'نام فضای کاری:',
   'Your notes live locally. This preview uses its own sample content, separate from your Nevis workspace.':
     'یادداشت‌های شما روی همین دستگاه می‌مانند. این پیش‌نمایش محتوای نمونه‌ی خودش را دارد و از فضای کاری Nevis جداست.',

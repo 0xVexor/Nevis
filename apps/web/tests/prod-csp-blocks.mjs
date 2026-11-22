@@ -40,12 +40,13 @@ try {
     await p.getByTestId('ws-new').click()
     await createNew(p, 'new-all-blocks')
     await p.locator('.math-block .katex').waitFor({ timeout: 30000 })
+    await p.locator('.mermaid-block').scrollIntoViewIfNeeded() // reference diagrams render when near the viewport
     await p.locator('.mermaid-block svg').waitFor({ timeout: 30000 })
-    await p.locator('.code-block .hljs-keyword').first().waitFor({ timeout: 15000 })
+    await p.locator('.code-wrap .hljs-keyword').first().waitFor({ timeout: 15000 })
     // the drawing editor: Excalidraw loads from /excalidraw-assets, offline-capable
     await p.locator('.drawing-block').hover()
     await p.getByTestId('drawing-edit').click()
-    await p.locator('.drawing-overlay .excalidraw').waitFor({ timeout: 60000 })
+    await p.locator('.drawing-modal .excalidraw').waitFor({ timeout: 60000 })
     await p.waitForTimeout(1500)
     const fontOk = await p.evaluate(() => document.fonts.check('16px Vazirmatn', 'سلام'))
     await p.getByTestId('drawing-save').click()

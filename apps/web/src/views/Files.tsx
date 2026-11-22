@@ -10,12 +10,12 @@ import type { Page } from '../shell/model'
 import type { Workspace } from '../workspace'
 import { showToast } from '../toast'
 
-export function Files({ ws }: { ws: Workspace }) {
+export function Files({ ws, initialFolder }: { ws: Workspace; initialFolder?: string }) {
   const pages = useMemo(() => legacyPages(ws).filter(p => !p.deletedAt), [ws.data, ws.search.ready, ws.search.progress.done]) // eslint-disable-line react-hooks/exhaustive-deps
   const stub = (id: string, parent: string | null): Page => ({ id, parentId: parent, title: '', favorite: false, sort: 0, content: null, updatedAt: Date.now(), deletedAt: null })
   const ops: FileOps = {
     rename: (id, title) => ws.setTitle(id, title),
-    create: parent => { const id = ws.rt.client.newIdFor(); void createPage(ws.rt.client, { parent: parent ?? '', title: '' }, id).then(() => ws.wrote(id)); return stub(id, parent) },
+    create: async (parent, kind) => { const id = kind === 'folder' ? await ws.newFolder(parent ?? '', t('New folder')) : await ws.newPage(parent ?? '', ''); return { ...stub(id, parent), kind } },
     remove: id => void ws.trash(id),
     restore: id => void ws.restore(id),
     move: (id, parent, before) => {
@@ -29,5 +29,5 @@ export function Files({ ws }: { ws: Workspace }) {
       return stub(nid, parent)
     },
   }
-  return <div data-testid="files" style={{ display: 'contents' }}><Explorer pages={pages} ops={ops} onOpen={id => go({ name: 'page', id })} onChange={() => undefined} onToast={(msg, undo) => showToast(msg, undo)} /></div>
+  return <div data-testid="files" style={{ display: 'contents' }}><Explorer key={initialFolder ?? 'root'} initialFolder={initialFolder} pages={pages} ops={ops} onOpen={id => go({ name: 'page', id })} onChange={() => undefined} onToast={(msg, undo) => showToast(msg, undo)} /></div>
 }

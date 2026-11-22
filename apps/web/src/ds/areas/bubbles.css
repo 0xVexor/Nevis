@@ -7,14 +7,6 @@
 .tiptap ol > li::marker { color: var(--ds-accent); font-weight: 800; font-variant-numeric: tabular-nums; }
 .tiptap li > ul, .tiptap li > ol { margin-top: 2px; }
 
-/* checklist: the tick sits on top of the gradient */
-.tiptap ul[data-type='taskList'] li > label input:checked {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E"), var(--ds-accent);
-  background-size: 13px 13px, cover;
-  background-repeat: no-repeat, no-repeat;
-  background-position: center, center;
-}
-
 /* tags: a round "+" that turns into a field */
 
 /* "link to page" picker */

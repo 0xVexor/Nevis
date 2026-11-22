@@ -1,7 +1,7 @@
 // The frame of the app, composed from the old app's three regions: the rail (nav.side), the side panel (aside.context-panel) and the main
 // column (header.topbar + .scroller). Markup and class names are the old ones, so the copied stylesheets (ds/areas) apply as they did there;
 // only the data comes from the new layer (shell/adapt.ts). The regions live in Rail.tsx, ContextPanel.tsx and Topbar.tsx.
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Icon, IconButton, Menu, type MenuItem } from '../ds'
 import { t } from '../i18n'
 import { go, href, type Route } from '../router'
@@ -16,9 +16,14 @@ import { PagePanel } from './PagePanel'
 import { ReaderBar, loadReaderCfg, type ReaderCfg } from './ReaderBar'
 import { buildIndex } from './pageIndex'
 import { PanelHost } from './panelHost'
-import { Rail } from './Rail'
+import { Rail, RAIL_MIN, RAIL_MAX } from './Rail'
+import { Palette, type SearchCommand } from '../views/Palette'
+import { editorSearchItems } from '../editor/slash'
+import { runEditorCommand } from '../editor/commandPalette'
+import type { Editor } from '@tiptap/core'
 import { Topbar } from './Topbar'
 import { useNavHistory } from './useNavHistory'
+import { usePageActions } from './usePageActions'
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
 const PAGE_W = { min: 640, max: 1800, def: 1400, step: 80 } // the text column's width, the old app's limits
@@ -36,9 +41,10 @@ export interface ShellProps {
   status: WsStatus | null
   children: ReactNode
   onSearch: () => void
+  searchOpen: boolean
+  onCloseSearch: () => void
   onNewPage: (parent: string) => void
   onNewDatabase: () => void
-  onNewAllBlocks: () => void
   onNewTodo?: () => void
   onOpen: (id: string) => void
   onSignOut?: () => void
@@ -55,16 +61,22 @@ export interface ShellProps {
   save?: 'idle' | 'saving' | 'saved' | 'error'
 }
 
-export function AppShell({ ws, route, status, children, onSearch, onNewPage, onNewDatabase, onNewAllBlocks, onNewTodo, onOpen, onSignOut, onWorkspaces, workspaceName, onHistory, dueCards = 0, pageTools, save = 'saved' }: ShellProps) {
+export function AppShell({ ws, route, status, children, onSearch, searchOpen, onCloseSearch, onNewPage, onNewDatabase, onNewTodo, onOpen, onSignOut, onWorkspaces, workspaceName, onHistory, dueCards = 0, pageTools, save = 'saved' }: ShellProps) {
   const settings = useSettings()
   const [rowMenu, setRowMenu] = useState<{ id: string; rect: DOMRect } | null>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   const [selected, setSelected] = useState<string | null>(null)
-  const [railW, setRailW] = useStoredNumber('nevis.railW', 148, 320)
+  const [railW, setRailW] = useStoredNumber('nevis.railW', RAIL_MIN, RAIL_MAX)
   const [sideW, setSideW] = useStoredNumber('nevis.sideW', 240, 600)
   const [host, setHost] = useState<HTMLElement | null>(null)
   const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 760px)').matches)
-  const [wide, setWide] = useState(true)
+  const panel = route.name === 'tasks' || route.name === 'settings' ? route.name : 'vault'
+  const [panelVisibility, setPanelVisibility] = useState<Record<string, boolean>>(() => {
+    try { return { vault: true, tasks: true, settings: true, ...JSON.parse(localStorage.getItem('nevis.contextPanels') || '{}') } } catch { return { vault: true, tasks: true, settings: true } }
+  })
+  const wide = panelVisibility[panel] !== false
+  const setWide = (open: boolean) => setPanelVisibility(previous => ({ ...previous, [panel]: open }))
+  useEffect(() => { try { localStorage.setItem('nevis.contextPanels', JSON.stringify(panelVisibility)) } catch { /* private window */ } }, [panelVisibility])
   const [drawer, setDrawer] = useState(false)
   const [fullScreen, setFullScreen] = useState(!!document.fullscreenElement)
   const [drawerOpen, setDrawerOpen] = useState(false) // the page's own side panel (opposite the pages panel)
@@ -75,7 +87,22 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
   useEffect(() => { const m = matchMedia('(max-width: 760px)'); const f = () => setNarrow(m.matches); m.addEventListener('change', f); return () => m.removeEventListener('change', f) }, [])
   useEffect(() => { const f = () => setFullScreen(!!document.fullscreenElement); document.addEventListener('fullscreenchange', f); return () => document.removeEventListener('fullscreenchange', f) }, [])
   const panelOpen = narrow ? drawer : wide
-  const togglePanel = () => (narrow ? setDrawer(o => !o) : setWide(o => !o))
+  const togglePanel = () => (narrow ? setDrawer(o => !o) : setWide(!wide))
+  const returnFocus = useRef<Element | null>(null)
+  const restoreFocus = () => {
+    const editor = document.querySelector<HTMLElement & { editor?: { commands: { focus: () => void } } }>('.main .ProseMirror')
+    if (editor?.editor) editor.editor.commands.focus()
+    else if (returnFocus.current instanceof HTMLElement && returnFocus.current.isConnected) returnFocus.current.focus()
+  }
+  const togglePanelFromKeys = () => {
+    if (panelOpen) { togglePanel(); requestAnimationFrame(restoreFocus); return }
+    returnFocus.current = document.activeElement
+    togglePanel()
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const aside = document.getElementById('workspace-context')
+      ;(aside?.querySelector<HTMLElement>('.tree-in, [aria-current]:not([disabled])') ?? aside?.querySelector<HTMLElement>('.side-scroll button:not([disabled])'))?.focus()
+    }))
+  }
   const dark = isDark(settings)
   const currentId = route.name === 'page' ? route.id : ''
   const pages = useMemo(() => legacyPages(ws), [ws.data, ws.search.ready, ws.search.progress.done]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -83,6 +110,19 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
   const index = useMemo(() => buildIndex(live), [live])
   const byId = useMemo(() => new Map(pages.map(p => [p.id, p])), [pages])
   const current = byId.get(currentId) ?? null
+  useEffect(() => {
+    if (!settings.treeAutoReveal || !currentId) return
+    setSelected(currentId)
+    setCollapsed(previous => {
+      const next = new Set(previous)
+      const seen = new Set<string>()
+      for (let p = byId.get(currentId); p && !seen.has(p.id); p = p.parentId ? byId.get(p.parentId) : undefined) {
+        seen.add(p.id)
+        next.delete(p.id)
+      }
+      return next.size === previous.size ? previous : next
+    })
+  }, [currentId, settings.treeAutoReveal, byId])
   const crumbs = useMemo(() => {
     const out = []
     for (let p = byId.get(currentId), n = 0; p && n < 50; p = p.parentId ? byId.get(p.parentId) : undefined, n++) out.unshift(p)
@@ -90,6 +130,15 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
   }, [byId, currentId])
   const nav = useNavHistory(href(route), useCallback((h: string) => { location.hash = h }, []))
   const open = (id: string) => { onOpen(id); setDrawer(false) }
+  const pageActions = usePageActions(ws, pages, open, id => {
+    go({ name: 'home' }); setSelected(id)
+    setCollapsed(previous => {
+      const next = new Set(previous)
+      for (let parent = ws.tree.parentOf.get(id); parent; parent = ws.tree.parentOf.get(parent)) next.delete(parent)
+      return next
+    })
+    if (narrow) setDrawer(true); else setWide(true)
+  })
   const goTo = (name: Route['name']) => { go({ name } as Route); setDrawer(false) }
   const toggle = (id: string) => setCollapsed(c => { const n = new Set(c); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const boxes = () => live.filter(p => (index.kids.get(p.id) ?? []).length > 0 || p.kind === 'folder').map(p => p.id)
@@ -109,32 +158,32 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
     parentOf: (id: string) => byId.get(id)?.parentId ?? null,
   }
   const rowItems = (id: string): MenuItem[] => [
-    { label: t('Open'), icon: <Icon name="external-link" size={16} />, onSelect: () => open(id) },
+    ...(byId.get(id)?.kind !== 'folder' ? [{ label: t('Open'), icon: <Icon name="external-link" size={16} />, onSelect: () => open(id) }] : []),
+    { kind: 'sep' },
+    { kind: 'head', label: 'Create' },
     { label: t('New subpage'), testid: 'menu-subpage', icon: <Icon name="plus" size={16} />, onSelect: () => onNewPage(id) },
-    { label: byId.get(id)?.favorite ? t('Remove from favorites') : t('Add to favorites'), icon: <Icon name="star" size={16} />, onSelect: () => void ws.setMeta(id, { favorite: !byId.get(id)?.favorite }) },
-    { label: t('Move up'), icon: <Icon name="arrow-up" size={16} />, onSelect: () => void ws.moveUp(id) },
-    { label: t('Move down'), icon: <Icon name="arrow-down" size={16} />, onSelect: () => void ws.moveDown(id) },
-    { label: t('Indent'), icon: <Icon name="arrow-right" size={16} className="ds-flip" />, onSelect: () => void ws.indent(id) },
-    { label: t('Outdent'), icon: <Icon name="arrow-left" size={16} className="ds-flip" />, onSelect: () => void ws.outdent(id) },
+    { label: 'Add folder', testid: 'menu-new-folder', icon: <Icon name="folder-plus" size={16} />, onSelect: () => pageActions.newFolder(id) },
+    { label: 'Add board', testid: 'menu-new-board', icon: <Icon name="pencil" size={16} />, onSelect: () => void ws.newBoard(id).then(open).catch(() => ws.notify(t('Could not complete the action. Please try again.'))) },
+    ...(byId.get(id)?.kind !== 'folder' ? [{ label: byId.get(id)?.favorite ? t('Remove from favorites') : t('Add to favorites'), icon: <Icon name="star" size={16} />, onSelect: () => void ws.setMeta(id, { favorite: !byId.get(id)?.favorite }) }] : []),
+    { kind: 'sep' },
+    { kind: 'head', label: 'Organize' },
+    ...(byId.has(id) ? pageActions.organizeItems(byId.get(id)!) : []),
+    { kind: 'sep' },
     { label: t('Delete'), testid: 'menu-delete', icon: <Icon name="trash" size={16} />, danger: true, onSelect: () => { void ws.trash(id); if (id === currentId) go({ name: 'home' }) } },
-  ]
-  const shareItems = (id: string): MenuItem[] => [
-    { label: t('Export as Markdown'), icon: <Icon name="download" size={16} />, onSelect: () => void ws.markdownOf(id).then(m => download(new TextEncoder().encode(m.text), m.path.split('/').pop() || 'page.md', 'text/markdown')) },
-    { label: t('Print'), icon: <Icon name="printer" size={16} />, onSelect: () => window.print() },
-    { label: t('Copy link'), icon: <Icon name="link" size={16} />, onSelect: () => void navigator.clipboard?.writeText(location.origin + location.pathname + href({ name: 'page', id })) },
   ]
   const panelKind = route.name === 'tasks' || route.name === 'settings' ? 'host' : 'vault'
   const toggleFullScreen = () => void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => undefined)
   // The side panel belongs to Home, a page, Tasks and Settings; every other screen fills the window (as in the old app)
   const overlay = !['home', 'page', 'row', 'tasks', 'settings'].includes(route.name)
   const iconsOnly = settings.sidebar === 'icons' || narrow
-  const onPage = route.name === 'page' && !!current
+  const onPage = route.name === 'page' && !!current && current.kind !== 'folder'
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const wider = matches(e, 'widerColumn')
       if (wider || matches(e, 'narrowerColumn')) { e.preventDefault(); savePageW(Math.min(PAGE_W.max, Math.max(PAGE_W.min, pageW + (wider ? PAGE_W.step : -PAGE_W.step)))) }
       if (matches(e, 'reader')) { e.preventDefault(); setReader(r => !r) }
-      if (matches(e, 'sidebar')) { e.preventDefault(); togglePanel() }
+      if (matches(e, 'sidebar')) { e.preventDefault(); togglePanelFromKeys() }
+      if (e.key === 'Escape' && narrow && drawer && !document.querySelector('.ds-pop, [role="dialog"]')) { setDrawer(false); requestAnimationFrame(restoreFocus) }
       if (e.key === 'Escape' && reader && !document.querySelector('.lightbox, .palette-overlay, .ds-pop')) setReader(false)
     }
     const toggleReader = () => setReader(r => !r)
@@ -145,13 +194,62 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
   useEffect(() => { if (!onPage) setReader(false) }, [onPage])
   useEffect(() => { const f = () => { if (narrow) setDrawer(true); else setWide(true) }; window.addEventListener('nevis:show-tag', f); return () => window.removeEventListener('nevis:show-tag', f) }, [narrow])
 
+  const onNewBoard = () => void ws.newBoard().then(open).catch(() => ws.notify(t('Could not complete the action. Please try again.')))
+  const newTodo = onNewTodo ?? (() => void ws.newTodoList(t('New list')).then(open).catch(() => ws.notify(t('Could not complete the action. Please try again.'))))
+  const paletteCommands = (): SearchCommand[] => {
+    const entry = (id: string, label: string, group: string, icon: string, run: () => void, keywords?: string, hint?: string): SearchCommand =>
+      ({ id, label, group, icon: <Icon name={icon} size={16} />, run, keywords, hint })
+    const list = [
+      entry('new-page', 'New page', 'Create', 'file', () => onNewPage(''), 'create add document صفحه جدید سند'),
+      entry('new-folder', 'New folder', 'Create', 'folder', () => pageActions.newFolder(), 'create add پوشه'),
+      entry('new-database', 'New database', 'Create', 'table', onNewDatabase, 'create add database table ساخت دیتابیس'),
+      entry('new-board', 'New board', 'Create', 'pencil', onNewBoard, 'create drawing canvas ساخت بوم'),
+      entry('new-todo', 'New to-do list', 'Create', 'checklist', newTodo, 'create tasks checklist ساخت فهرست کار'),
+      entry('theme', dark ? 'Light mode' : 'Dark mode', 'Settings', dark ? 'sun' : 'moon', () => updateSettings({ theme: dark ? 'light' : 'dark' }), 'theme dark light روشن تاریک تم'),
+      entry('full-screen', fullScreen ? 'Exit full screen' : 'Full screen', 'Settings', 'maximize', toggleFullScreen, 'fullscreen F11 تمام صفحه'),
+      entry('page-list-style', settings.pagesView === 'compact' ? 'Show pages as a tree' : 'Show pages as a compact list', 'Settings', 'layers', () => updateSettings({ pagesView: settings.pagesView === 'compact' ? 'tree' : 'compact' }), 'tree compact sidebar درخت فشرده'),
+      entry('backup-settings', 'Import or restore…', 'Data & backup', 'upload', () => go({ name: 'settings', tab: 'data' }), 'import restore backup zip پشتیبان بازیابی'),
+      entry('export-workspace', 'Export the whole workspace', 'Data & backup', 'download', () => {
+        void ws.exportMarkdown().then(bytes => download(bytes, 'nevis-markdown.zip')).catch(() => ws.notify(t('Could not complete the action. Please try again.')))
+      }, 'export markdown backup zip دانلود خروجی'),
+    ]
+    if (onWorkspaces) list.push(entry('workspaces', 'Workspaces', 'Data & backup', 'vault', onWorkspaces, 'workspace switch account فضای کاری'))
+    if (!overlay) list.push(entry('sidebar', panelOpen ? 'Hide side panel' : 'Show side panel', 'Settings', 'panel-left', togglePanel, 'sidebar navigation panel سایدبار نوار کنار', bindingHint('sidebar')))
+    if (current && onPage) {
+      list.push(
+        entry('subpage', 'New subpage', 'Page actions', 'plus', () => onNewPage(current.id), 'create child زیرصفحه'),
+        entry('favorite', current.favorite ? 'Remove from favorites' : 'Add to favorites', 'Page actions', 'star', () => void ws.setMeta(current.id, { favorite: !current.favorite }), 'favorite star علاقه مندی'),
+        entry('history', 'Version history', 'Page actions', 'history', () => onHistory?.(), 'restore versions تاریخچه نسخه'),
+        entry('reader', reader ? 'Leave reader mode' : 'Reader mode', 'Page actions', 'book', () => setReader(open => !open), 'read reading مطالعه', bindingHint('reader')),
+        entry('page-panel', 'Page side panel (quick actions & navigation)', 'Page actions', 'panel-right', () => setDrawerOpen(open => !open), 'outline backlinks پنل صفحه'),
+      )
+      for (const item of pageActions.organizeItems(current)) {
+        if ('onSelect' in item && item.onSelect) {
+          list.push({ id: item.testid ?? item.label, label: item.label, group: 'Page actions', icon: item.icon, keywords: item.label + ' page صفحه', run: item.onSelect })
+        }
+      }
+    }
+    const editor = document.querySelector<HTMLElement & { editor?: Editor }>('.main :is([data-testid="editor"], [data-testid="row-editor"]) .ProseMirror')?.editor
+    if (editor?.isEditable && !reader) {
+      if (onPage) list.push(entry('find-page', 'Find in page', 'Page actions', 'search', () => window.dispatchEvent(new Event('open-find')), 'find search ctrl+f جستجو', bindingHint('find')))
+      for (const { item, title, desc, searchOnly } of editorSearchItems()) list.push({
+        id: 'editor-' + item.title + (item.vars?.name ?? ''), label: title, group: 'Writing', searchOnly,
+        icon: <Icon name="pencil" size={16} />, keywords: [item.title, item.keywords, desc].join(' '),
+        run: () => runEditorCommand(editor, item),
+      })
+    }
+    return list
+  }
+
   return (
     <div data-preferences={route.name === 'settings' ? '' : undefined} className={'app' + (reader && onPage ? ' reading' : '')} style={{ '--page-w': pageW + 'px', '--r-scale': readerCfg.scale } as React.CSSProperties}>
       <Rail
         route={route} status={status} dueCards={dueCards} trashCount={ws.tree.trash.length} iconsOnly={iconsOnly} narrow={narrow}
-        width={railW} defaultWidth={settings.sidebar === 'compact' ? 148 : 176} onWidth={setRailW}
+        width={railW} defaultWidth={settings.sidebar === 'compact' ? 168 : 192} onWidth={setRailW}
         onGo={goTo} onSearch={onSearch} searchHint={isMac ? '⌘K' : 'Ctrl K'}
-        onNewPage={() => onNewPage('')} onNewDatabase={onNewDatabase} onNewAllBlocks={onNewAllBlocks} onNewTodo={onNewTodo ?? (() => void ws.newTodoList(t('New list')).then(open))}
+        onNewPage={() => onNewPage('')} onNewDatabase={onNewDatabase} onNewTodo={newTodo}
+        onNewBoard={onNewBoard}
+        onNewFolder={() => pageActions.newFolder()}
         onOpenSettings={() => goTo('settings')} onSignOut={onSignOut} workspaceName={workspaceName ?? ''} onWorkspaces={onWorkspaces ?? (() => undefined)}
       />
       {!overlay && <ContextPanel
@@ -166,7 +264,7 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
           noPanel={overlay} routeName={route.name} crumbs={crumbs} current={current} panelOpen={panelOpen} onTogglePanel={togglePanel} onHome={() => goTo('home')} onOpen={open} nav={nav}
           save={status && status.unsaved > 0 ? 'saving' : save} dark={dark} onToggleDark={() => updateSettings({ theme: dark ? 'light' : 'dark' })}
           fullScreen={fullScreen} onToggleFullScreen={toggleFullScreen} onFavorite={id => void ws.setMeta(id, { favorite: !byId.get(id)?.favorite })}
-          shareItems={currentId ? shareItems(currentId) : undefined} onHistory={undefined}
+          shareItems={currentId ? pageActions.shareItems(currentId) : undefined} onHistory={undefined}
           pageTools={<>
             <IconButton label={t('Reader mode') + '  ' + bindingHint('reader')} onClick={() => setReader(true)}><Icon name="book" size={17} /></IconButton>
             <IconButton label={t('Page side panel (quick actions & navigation)')} data-testid="page-panel-toggle" pressed={drawerOpen} onClick={() => setDrawerOpen(o => !o)}><Icon name="panel-right" size={17} /></IconButton>
@@ -184,6 +282,8 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
         )}
       </main>
       {rowMenu && <Menu anchor={rowMenu.rect} align="end" onClose={() => setRowMenu(null)} items={rowItems(rowMenu.id)} />}
+      {pageActions.dialogs}
+      {searchOpen && <Palette ws={ws} commands={paletteCommands()} onClose={onCloseSearch} onOpen={open} />}
     </div>
   )
 }

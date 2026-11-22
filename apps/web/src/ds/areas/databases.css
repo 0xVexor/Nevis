@@ -208,6 +208,10 @@
 
 /* the date picker */
 .dv-date { display: grid; gap: var(--ds-s3); }
+.dv-date-field { display: flex; align-items: center; inline-size: 100%; min-inline-size: 0; }
+.dv-date-field > input { flex: 1; min-inline-size: 0; }
+.dv-date-field > button { flex: none; }
+.dv-date-picker { inline-size: min(286px, calc(100vw - 18px)); padding: var(--ds-s3); }
 .dv-date-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-s2); }
 .dv-date-head b { font-weight: 600; }
 .dv-date-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
@@ -217,7 +221,7 @@
 .dv-date-day[data-out] { color: var(--ds-text-3); }
 .dv-date-day[data-range] { border-radius: 0; background: var(--ds-accent-soft); }
 .dv-date-day[data-today] { box-shadow: inset 0 0 0 1.5px var(--ds-accent-line); font-weight: 600; }
-.dv-date-day[aria-selected='true'] { border-radius: var(--ds-r-sm); background: var(--ds-accent); color: var(--ds-accent-ink); font-weight: 600; }
+.dv-date-day:is([aria-selected='true'], [aria-pressed='true']) { border-radius: var(--ds-r-sm); background: var(--ds-accent); color: var(--ds-accent-ink); font-weight: 600; }
 .dv-date-day:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 1px; }
 .dv-date-opts { display: grid; gap: var(--ds-s1); }
 .dv-date-time { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: var(--ds-s2); }

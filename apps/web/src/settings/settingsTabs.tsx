@@ -16,4 +16,4 @@ const ALL_TABS: { id: SettingsTab; label: string; title: string; hint: string; i
 ]
 
 /** Sync is a desktop feature, and a release can leave it out. */
-export const SETTINGS_TABS = ALL_TABS.filter(tab => tab.id !== 'sync' || SYNC_ENABLED)
+export const SETTINGS_TABS = ALL_TABS.filter(tab => tab.id !== 'connections' && (tab.id !== 'sync' || SYNC_ENABLED))

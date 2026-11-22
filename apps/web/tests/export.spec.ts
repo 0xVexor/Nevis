@@ -26,7 +26,7 @@ test('export the bundle and the Markdown zip; import the bundle into a new works
     // a picture (an attachment)
     await a.getByTestId('editor').click()
     const chooser = a.waitForEvent('filechooser')
-    await a.keyboard.press('Enter'); await a.keyboard.type('/image'); await expect(a.locator('.floating-menu .row').first()).toBeVisible(); await a.keyboard.press('Enter')
+    await a.keyboard.press('Enter'); await a.keyboard.type('/image'); await expect(a.locator('.slash-menu .ds-menu-item').first()).toBeVisible(); await a.keyboard.press('Enter')
     await (await chooser).setFiles([{ name: 'p.png', mimeType: 'image/png', buffer: PNG }])
     await expect(a.locator('.image-block img')).toBeVisible()
     await a.waitForTimeout(1500)

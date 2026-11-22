@@ -1,0 +1,47 @@
+import { expect, test } from '@playwright/test'
+import { choose } from './db-helpers'
+import { createNew } from './shell-helpers'
+
+test('first note stays available with a database, uses the selected language, and saves before opening', async ({ page }) => {
+  const name = 'home' + crypto.randomUUID().replaceAll('-', '').slice(0, 16)
+  const password = 'correct horse battery'
+  await page.goto('/')
+  await page.getByTestId('auth-switch').click()
+  await page.locator('[name=username]').fill(name)
+  await page.locator('[name=password]').fill(password)
+  await page.getByTestId('auth-submit').click()
+  await page.getByTestId('ws-new').click()
+  await createNew(page, 'new-database')
+  await page.getByTestId('nav-home').click()
+  await expect(page.locator('.home-first-layout')).toBeVisible()
+  const note = page.getByTestId('home-note-editor').locator('.ProseMirror')
+  await expect(note).toBeFocused()
+  await expect(note.locator('p')).toHaveAttribute('data-placeholder', /شروع به نوشتن/)
+
+  await page.getByTestId('nav-settings').click()
+  await page.getByRole('button', { name: 'زبان و چیدمان', exact: false }).first().click()
+  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await choose(page, page.getByRole('button', { name: 'Layout direction', exact: true }), { value: 'rtl' })
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl')
+
+  await page.getByTestId('workspaces').click()
+  await page.getByTestId('signout').click()
+  await page.reload()
+  await expect(page.getByTestId('auth-submit')).toHaveText('Sign in')
+  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl')
+  await page.locator('[name=username]').fill(name)
+  await page.locator('[name=password]').fill(password)
+  await page.getByTestId('auth-submit').click()
+  await page.getByTestId('nav-home').click()
+  await expect(note.locator('p')).toHaveAttribute('data-placeholder', 'Start writing, or press / for commands.')
+  await page.getByRole('button', { name: /Commands/ }).click()
+  await expect(page.locator('.slash-menu')).toContainText('Checklist')
+  await page.keyboard.press('Escape')
+  await expect(note).toBeEmpty()
+  await note.fill('A first note')
+  await expect(page.locator('.home-first-layout')).toBeVisible()
+  await page.getByRole('button', { name: 'Open page' }).click()
+  await expect(page.getByTestId('editor')).toContainText('A first note')
+  await expect(page.getByTestId('title')).toHaveValue('A first note')
+})

@@ -22,7 +22,7 @@
 .drawing-edit { position: absolute; inset-block-start: 6px; inset-inline-end: 6px; opacity: 0 } .drawing-block:hover .drawing-edit, .drawing-block.selected .drawing-edit { opacity: 1 }
 .drawing-overlay { position: fixed; inset: 0; z-index: 1000; background: var(--ds-bg, #fff); color: var(--ds-text, inherit); display: flex; flex-direction: column } .drawing-bar { display: flex; gap: .5rem; padding: .4rem; justify-content: flex-end; border-bottom: 1px solid var(--ed-border) } .drawing-canvas { flex: 1; min-height: 0 }
 
-.image-block { margin: .6rem 0; position: relative } .image-frame { max-width: 100% } .image-block[data-align=center] .image-frame { margin-inline: auto } .image-block[data-align=end] .image-frame { margin-inline-start: auto }
+.image-block { margin: .6rem 0; position: relative; max-width: 100% } .image-frame { max-width: 100% } .image-block[data-align=center] { margin-inline: auto } .image-block[data-align=end] { margin-inline-start: auto }
 .image-frame img { max-width: 100%; display: block; border-radius: 4px } .image-placeholder { border: 2px dashed var(--ed-border); border-radius: 6px; padding: 1.2rem; text-align: center; color: var(--ed-muted); background: var(--ed-soft) }
 .image-url { display: flex; gap: .4rem; margin-top: .4rem } .image-url input { flex: 1; direction: ltr }
 .image-bar { display: none; gap: .25rem; margin-top: .25rem } .image-block:hover .image-bar, .image-block.selected .image-bar { display: flex } .image-bar button.on, .floating-bar button.on { background: var(--ds-accent-soft, #dbeafe) }

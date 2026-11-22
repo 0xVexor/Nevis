@@ -90,12 +90,32 @@ type Mermaid = typeof import('mermaid').default
 let mermaid: Promise<Mermaid> | null = null
 const loadMermaid = () => (mermaid ??= import('mermaid').then(m => { m.default.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'default', fontFamily: 'inherit' }); return m.default }))
 let seq = 0
-export async function renderMermaid(code: string): Promise<{ svg: string; ok: boolean }> {
-  try {
-    const m = await loadMermaid()
-    const { svg } = await m.render(`mmd-${Date.now()}-${++seq}`, cleanMermaid(code))
-    return { svg, ok: true }
-  } catch { return { svg: '', ok: false } }
+let renderQueue: Promise<unknown> = Promise.resolve()
+let renderedTheme = 'default'
+export function renderMermaid(code: string, dark = false): Promise<{ svg: string; ok: boolean }> {
+  const render = async () => {
+    const id = `mmd-${Date.now()}-${++seq}`
+    try {
+      const m = await loadMermaid()
+      const theme = dark ? 'dark' : 'default'
+      if (renderedTheme !== theme) {
+        m.initialize({ startOnLoad: false, securityLevel: 'strict', theme, fontFamily: 'inherit' })
+        renderedTheme = theme
+      }
+      const source = cleanMermaid(code)
+      await m.parse(source)
+      const { svg } = await m.render(id, source)
+      return { svg, ok: true }
+    } catch {
+      document.getElementById(`d${id}`)?.remove()
+      document.getElementById(id)?.remove()
+      return { svg: '', ok: false }
+    }
+  }
+  // Mermaid uses global scratch state. Concurrent node views must not render over each other.
+  const result = renderQueue.then(render, render)
+  renderQueue = result
+  return result
 }
 
 const drawMermaid = async (el: HTMLElement, code: string, token: number) => {

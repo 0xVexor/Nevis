@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { SV } from '@nevis/protocol'
-import { createNew, appReady } from './shell-helpers'
+import { createNew, appReady, reopenWorkspace } from './shell-helpers'
 
 // The notes app (M5) with a real account against the real server, in each engine.
 const user = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
@@ -26,7 +26,7 @@ export async function signIn(page: Page, name: string) {
     await page.locator('input[name=password]').fill(pw)
     await page.getByTestId('auth-submit').click()
   }
-  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await reopenWorkspace(page)
   await appReady(page)
 }
 const body = (page: Page) => page.getByTestId('editor').locator('.ProseMirror')
@@ -43,7 +43,7 @@ test('create a page, write Persian and English, reload: it is all still there; r
   await page.waitForTimeout(700)
 
   await page.reload()
-  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await reopenWorkspace(page)
   await page.getByTestId('page-row').first().dblclick()
   await expect(page.getByTestId('title')).toHaveValue('سفر به شیراز')
   await expect(body(page)).toContainText('سلام دنیا. hello world ۱۲۳')
@@ -95,6 +95,7 @@ test('a page touched by a newer schema is not opened for editing (message instea
 
 test('signing out stops the sync and shows the sign-in form', async ({ page }) => {
   await signUpAndOpen(page)
+  await page.getByTestId('workspaces').click()
   await page.getByTestId('signout').click()
   await expect(page.getByTestId('auth-form')).toBeVisible()
 })

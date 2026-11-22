@@ -27,5 +27,5 @@ export function useMenu() {
     if (trigger.current?.isConnected) trigger.current.focus({ preventScroll: true })
   }, [])
   const menu: ReactNode = state ? <Menu anchor={state.anchor} items={state.items} header={state.header} onClose={close} /> : null
-  return { open, close, menu }
+  return { open, close, menu, isOpen: state !== null }
 }

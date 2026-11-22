@@ -17,7 +17,7 @@ import { SETTINGS_TABS, type SettingsTab } from '../settings/settingsTabs'
 import { PanelHost } from '../shell/panelHost'
 import type { Workspace } from '../workspace'
 
-export function Settings({ ws, initialTab, onLeave }: { ws: Workspace; initialTab?: SettingsTab; onLeave?: () => void }) {
+export function Settings({ ws, initialTab, onTabChange, onLeave }: { ws: Workspace; initialTab?: string; onTabChange?: (tab: SettingsTab) => void; onLeave?: () => void }) {
   const synced = readSynced(ws)
   const [account, setAccount] = useState<Me | null>(null)
   useEffect(() => { let dead = false; void me().then(m => { if (!dead) setAccount(m) }, () => undefined); return () => { dead = true } }, [])
@@ -27,7 +27,7 @@ export function Settings({ ws, initialTab, onLeave }: { ws: Workspace; initialTa
   return (
     <div data-testid="settings">
       <SettingsWorkspace
-        embedded panelHost={host} onLeave={onLeave} initialCategory={initialTab} onReset={reset} editorExtras={<EditorExtras />}
+        embedded panelHost={host} onLeave={onLeave} activeCategory={SETTINGS_TABS.find(tab => tab.id === initialTab)?.id ?? 'appearance'} onCategoryChange={onTabChange} onReset={reset} editorExtras={<EditorExtras />}
         panels={{
           appearance: <div data-testid="settings-device"><Appearance /></div>,
           editor: <><EditorSettings /><EditorExtras /></>,

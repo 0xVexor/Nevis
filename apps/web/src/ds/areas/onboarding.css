@@ -149,3 +149,9 @@
 }
 :root[data-motion='reduce'] :is(.fn-kicker, .fn-sheet, .fn-ideas, .fn-tip) { animation-name: onb-fade; }
 :root[data-motion='reduce'] :is(.fn, .fn-sheet) { transition: none; }
+
+.onb[data-surface] .onb-stage { background: radial-gradient(ellipse at 50% 43%, var(--ds-accent-soft), transparent 54%); }
+.onb[data-surface] .onb-stage > .onb-panel { padding: var(--ds-s8); border: 1px solid var(--ds-line); border-radius: var(--ds-r-lg); background: var(--ds-raised); box-shadow: var(--ds-shadow-pop); }
+.onb-form { display: grid; gap: var(--ds-s4); min-inline-size: 0; }
+.onb[data-surface='workspaces'] .onb-actions { justify-content: flex-start; flex-wrap: wrap; gap: var(--ds-s2); }
+@media (max-width: 540px) { .onb[data-surface] .onb-stage > .onb-panel { padding: var(--ds-s5); } }

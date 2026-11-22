@@ -2,7 +2,8 @@
 // writes the change into the page itself. (The old inbox and projects are not here yet: they have no place in the new data model.)
 import { useContext, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Button, Checkbox, Icon, IconButton, Screen } from '../ds'
+import { AnimatePresence, motion } from 'motion/react'
+import { Button, Checkbox, Icon, IconButton, Screen, useUIMotion } from '../ds'
 import { locale, t } from '../i18n'
 import { go } from '../router'
 import { legacyPages, legacyTasks } from '../shell/adapt'
@@ -18,6 +19,7 @@ const SETTLE_MS = 700
 
 export function Tasks({ ws }: { ws: Workspace }) {
   const host = useContext(PanelHost)
+  const motionOf = useUIMotion()
   const [source, setSource] = useState<Source>(ALL)
   const [status, setStatus] = useState<Status>('all')
   const [showDone, setShowDone] = useState(false)
@@ -51,11 +53,12 @@ export function Tasks({ ws }: { ws: Workspace }) {
     void ws.setTaskChecked(x.pageId, x.blockId, next, items.filter(y => y.pageId === x.pageId).indexOf(x))
   }
   const row = (x: (typeof items)[number]) => (
-    <div key={x.key} className="ds-list-row tk-row" data-testid="task-row" data-done={x.checked || undefined} style={{ '--depth': 0 } as CSSProperties}>
+    <motion.div key={x.key} className="ds-list-row tk-row" data-testid="task-row" data-done={x.checked || undefined} style={{ '--depth': 0 } as CSSProperties}
+      layout={motionOf.reduced ? false : 'position'} initial={motionOf.reduced ? false : { opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={motionOf.reduced ? undefined : { opacity: 0, height: 0 }} transition={{ ...motionOf.transition, layout: motionOf.spring }}>
       <Checkbox checked={x.checked} onChange={next => toggle(x, next)} className="tk-check"><span className="tk-text" dir="auto">{x.text}</span></Checkbox>
       {x.pageId === inboxId && <IconButton label={t('Delete')} className="tk-del" onClick={() => void ws.removeTask(x.pageId, x.blockId)}><Icon name="trash" size={16} /></IconButton>}
       {current.kind === 'all' && <button type="button" className="tk-from" dir="auto" onClick={() => setSource(x.pageId === inboxId ? { kind: 'inbox' } : { kind: 'page', id: x.pageId })} title={t('Show only this list')}>{x.pageId === inboxId ? t('Inbox') : x.page?.title || t('Untitled')}</button>}
-    </div>
+    </motion.div>
   )
   const sourceButton = (id: Source, icon: ReactNode, name: string, count: number) => (
     <button key={id.kind === 'page' ? id.id : id.kind} type="button" className="tk-source" aria-current={(current.kind === id.kind && (id.kind !== 'page' || (current.kind === 'page' && current.id === id.id))) || undefined} onClick={() => { setSource(id); setShowDone(false) }}>
@@ -94,14 +97,14 @@ export function Tasks({ ws }: { ws: Workspace }) {
           <div className="tk-status" role="group" aria-label={t('Task status')}>
             {(['active', 'done', 'all'] as const).map(v => <Button key={v} size="sm" variant="ghost" aria-pressed={status === v} onClick={() => setStatus(v)}>{t(v === 'active' ? 'Active' : v === 'done' ? 'Done' : 'All')}</Button>)}
           </div>
-          {status !== 'done' && (open.length > 0 ? <div className="ds-list ds-list--framed tk-list">{open.map(row)}</div> : (
+          {status !== 'done' && (open.length > 0 ? <div className="ds-list ds-list--framed tk-list"><AnimatePresence initial={false}>{open.map(row)}</AnimatePresence></div> : (
             <div className="ds-empty ds-empty--framed" data-testid="tasks-empty"><Icon name={total ? 'check-circle' : 'checklist'} /><b>{total ? t('All caught up') : t('No tasks here yet')}</b><span>{total ? t('Every task here is done') : canAdd ? t('Type one above, or add a checklist to any page with /todo') : t('Open the page and add a checklist with /todo')}</span></div>
           ))}
-          {status === 'done' && (done.length ? <div className="ds-list ds-list--framed tk-list">{done.map(row)}</div> : <div className="ds-empty ds-empty--framed"><b>{t('No completed tasks')}</b></div>)}
+          {status === 'done' && (done.length ? <div className="ds-list ds-list--framed tk-list"><AnimatePresence initial={false}>{done.map(row)}</AnimatePresence></div> : <div className="ds-empty ds-empty--framed"><b>{t('No completed tasks')}</b></div>)}
           {status === 'all' && done.length > 0 && (
             <div className="tk-done">
               <button type="button" className="tk-done-toggle" aria-expanded={showDone} onClick={() => setShowDone(v => !v)}><Icon name="chevron-right" size={15} className="tk-done-chev ds-flip" />{t('Completed')}<span className="ds-badge">{num(done.length)}</span></button>
-              {showDone && <div className="tk-done-body"><div className="ds-list ds-list--framed tk-list">{done.map(row)}</div></div>}
+              <AnimatePresence initial={false}>{showDone && <motion.div key="done" className="tk-done-body" initial={motionOf.reduced ? false : { opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={motionOf.reduced ? undefined : { opacity: 0, height: 0 }} transition={motionOf.transition}><div className="ds-list ds-list--framed tk-list"><AnimatePresence initial={false}>{done.map(row)}</AnimatePresence></div></motion.div>}</AnimatePresence>
             </div>
           )}
         </section>

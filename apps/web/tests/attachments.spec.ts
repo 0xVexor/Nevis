@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { expect, test, type Page } from '@playwright/test'
-import { createNew, appReady } from './shell-helpers'
+import { createNew, appReady, reopenWorkspace } from './shell-helpers'
 
 // ROADMAP M9 in the real app, against the real Go server: images and files go into a page, live on this device first, upload in the
 // background, and the op that names them waits for them. Chromium, WebKit and Firefox.
@@ -40,7 +40,7 @@ async function slash(page: Page, query: string) {
   await body(page).focus()
   await page.keyboard.press('Control+End')
   await page.keyboard.type('/' + query)
-  await expect(page.locator('.floating-menu .row').first()).toBeVisible()
+  await expect(page.locator('.slash-menu .ds-menu-item').first()).toBeVisible()
   await page.keyboard.press('Enter')
 }
 /** Slash command that opens the file picker, answered with `files`. */
@@ -73,7 +73,7 @@ test('an image picked from the slash menu shows at once, uploads in the backgrou
   await sent(page) // the op went only after the file was on the server
   expect(await serverHas(page, await myWorkspace(page), sha(PNG))).toBe(200)
   await page.reload()
-  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await reopenWorkspace(page)
   await page.getByTestId('page-row').first().dblclick()
   await expect(page.locator('.image-block img')).toBeVisible()
   expect(await page.locator('.image-block img').evaluate((i: HTMLImageElement) => i.naturalWidth)).toBe(1)
@@ -122,7 +122,7 @@ test('offline: the image is kept and shown here, the op waits; online: it upload
     await b.locator('input[name=username]').fill(user)
     await b.locator('input[name=password]').fill(pw)
     await b.getByTestId('auth-submit').click()
-    await b.getByTestId('ws-list').getByRole('button').first().click()
+    await reopenWorkspace(b)
     await expect(b.getByTestId('page-row')).toHaveCount(1, { timeout: 30_000 })
     await b.getByTestId('page-row').first().dblclick()
     const img = b.locator('.image-block img')

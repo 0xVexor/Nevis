@@ -17,7 +17,7 @@ export function legacyPages(ws: Workspace, hideInbox = true): Page[] {
   return rows.filter(p => p.id !== inbox || !hideInbox).map(p => {
     const text = ws.search.excerptOf(p.id)
     return {
-      kind: ws.isTodoList(p.id) ? 'todo' : ws.isBoard(p.id) ? 'board' : undefined, id: p.id, icon: p.icon || undefined, status: (p.status || undefined) as Page['status'], favorite: !!p.favorite, cover: coverOf(p.cover), tags: (ws.data.pageTags.get(p.id) ?? []).map(i => tagName.get(i) ?? '').filter(Boolean), words: ws.search.wordsOf(p.id), parentId: p.parent && known.has(p.parent) ? p.parent : null, title: p.title, sort: rank.get(p.id) ?? 0,
+      kind: ws.isFolder(p.id) ? 'folder' : ws.isTodoList(p.id) ? 'todo' : ws.isBoard(p.id) ? 'board' : undefined, id: p.id, icon: p.icon || undefined, status: (p.status || undefined) as Page['status'], favorite: !!p.favorite, cover: coverOf(p.cover), tags: (ws.data.pageTags.get(p.id) ?? []).map(i => tagName.get(i) ?? '').filter(Boolean), words: ws.search.wordsOf(p.id), parentId: p.parent && known.has(p.parent) ? p.parent : null, title: p.title, sort: rank.get(p.id) ?? 0,
       content: { type: 'doc', content: text ? [{ type: 'paragraph', content: [{ type: 'text', text }] }] : [] },
       updatedAt: ws.search.touchedAt(p.id) || p.createdAt, deletedAt: p.trashed ? (p.trashedAt || p.createdAt) : null,
     } satisfies Page
@@ -29,6 +29,8 @@ function coverOf(raw: string | undefined): Page['cover'] { try { const v = raw ?
 export function legacyTasks(ws: Workspace): Task[] {
   const out: Task[] = []
   const count = new Map<string, number>()
+  const created = new Map(ws.data.pages.map(page => [page.id, page.createdAt]))
   for (const { page, task } of ws.search.tasks()) { const i = count.get(page) ?? 0; count.set(page, i + 1); out.push({ pageId: page, index: i, text: task.text, checked: task.checked, depth: 0 }) }
-  return out
+  // Worker completion order must not reorder the Home task list. The old repo listed pages in creation order.
+  return out.sort((a, b) => (created.get(a.pageId) ?? 0) - (created.get(b.pageId) ?? 0) || a.pageId.localeCompare(b.pageId) || a.index - b.index)
 }

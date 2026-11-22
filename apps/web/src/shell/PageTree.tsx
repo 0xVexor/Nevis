@@ -319,16 +319,15 @@ export function TreeRow(props: RowProps) {
           props.onMove(dragged, page.parentId, z === 'before' ? page.id : (sibs[i + 1]?.id ?? null))
         }}
       >
-        <button
+        {(kids.length > 0 || folder) && <button
           className={'twisty' + (open ? ' open' : '')}
-          style={{ visibility: kids.length || folder ? 'visible' : 'hidden' }}
           onClick={(e) => (e.stopPropagation(), props.onToggle(page.id))}
           tabIndex={-1}
           aria-label={t('Expand or collapse')}
           aria-expanded={open}
         >
           <Icon name="chevron-right" size={14} />
-        </button>
+        </button>}
         <span className="ic">
           <PageIcon page={page} />
         </span>

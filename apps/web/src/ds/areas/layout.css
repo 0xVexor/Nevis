@@ -1,7 +1,7 @@
 /* Layout-only styling; typography, menus and theme colours come from the existing design system. */
-.tiptap .layout-group { position: relative; margin: 1.1em 0; padding: var(--ds-s2) 0; min-width: 0; }
+.tiptap .layout-group { display: block; position: relative; margin: 1.1em 0; padding: var(--ds-s2) 0; min-width: 0; }
 .layout-columns, .layout-export { display: grid; gap: var(--ds-s6); align-items: start; }
-.layout-columns > .layout-column, .layout-export > .layout-column { min-width: 0; min-height: 52px; box-sizing: border-box; padding: 2px 0; overflow-wrap: anywhere; border-radius: var(--ds-r-sm); }
+.layout-columns > .layout-column, .layout-export > .layout-column { min-width: 0; min-height: 52px; box-sizing: border-box; border: 0; padding: 2px 0; overflow-wrap: anywhere; border-radius: var(--ds-r-sm); }
 .layout-column > :first-child { margin-top: 0; }
 .layout-column > :last-child { margin-bottom: 0; }
 .tiptap .layout-group:focus-within > .layout-columns > .layout-column,

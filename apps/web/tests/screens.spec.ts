@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
-import { createNew, appReady } from './shell-helpers'
+import { createNew, appReady, reopenWorkspace } from './shell-helpers'
+import { addProp } from './db-helpers'
 
 const pw = 'correct horse battery'
 async function signUpAndOpen(page: import('@playwright/test').Page) {
@@ -26,7 +27,7 @@ test('Tasks: a task typed into the inbox shows at once, can be ticked, and survi
   await page.getByTestId('task-row').locator('.ds-check').first().click()
   await expect(page.locator('.tk-done-toggle .ds-badge')).toHaveText('۱', { timeout: 15_000 }) // a ticked task moves to Completed
   await page.reload()
-  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await reopenWorkspace(page)
   await page.getByTestId('nav-tasks').click()
   await expect(page.locator('.tk-done-toggle .ds-badge')).toHaveText('۱', { timeout: 15_000 }) // still done after the reload
   // the inbox is a page the tree does not show; a new list is one it does
@@ -149,17 +150,71 @@ test('database: a row opens as a page with its properties and a body of its own 
   await expect(page.getByTestId('db-row')).toHaveCount(1)
   await page.locator('[data-testid=cell][data-prop="نام"][data-row="0"] input').fill('کتاب اول')
   await page.locator('[data-testid=cell][data-prop="نام"][data-row="0"] input').blur()
-  await page.getByTestId('row-open').first().click({ force: true })
+  const databaseUrl = page.url()
+  const titleCell = page.locator('[data-testid=cell][data-prop="نام"][data-row="0"] input')
+  await titleCell.click()
+  await expect(page.getByTestId('row-peek')).toBeVisible()
+  await expect(page).toHaveURL(databaseUrl)
+  await expect(page.getByTestId('row-open')).toHaveCount(0)
   await expect(page.getByTestId('row-title')).toHaveValue('کتاب اول')
   await page.getByTestId('row-editor').locator('.ProseMirror').click()
   await page.keyboard.type('خلاصهٔ کتاب')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('/divider')
+  await expect(page.locator('.slash-menu .ds-menu-item')).toHaveCount(1)
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('row-editor').locator('hr')).toBeVisible()
   await expect.poll(() => page.evaluate(async () => { const st = await (window as unknown as { __ws: { status: () => Promise<{ outbox: number; unsaved: number }> } }).__ws.status(); return st.outbox === 0 && st.unsaved === 0 }), { timeout: 30_000 }).toBe(true) // written, then reload
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('row-peek')).toHaveCount(0)
+  await titleCell.click()
+  await expect(page.getByTestId('row-editor')).toContainText('خلاصهٔ کتاب')
+  await page.getByTestId('row-peek-full').click()
+  await expect(page).toHaveURL(/#\/row\//)
   await page.reload()
-  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await reopenWorkspace(page)
   await expect(page.getByTestId('row-title')).toHaveValue('کتاب اول', { timeout: 15_000 })
   await expect(page.getByTestId('row-editor')).toContainText('خلاصهٔ کتاب', { timeout: 15_000 })
+  await expect(page.getByTestId('row-editor').locator('hr')).toBeVisible()
   await page.getByTestId('row-back').click()
   await expect(page.getByTestId('db-view')).toBeVisible()
+})
+
+test('database: choose a date from the calendar in the table and in the side panel', async ({ page }) => {
+  await signUpAndOpen(page)
+  await createNew(page, 'new-database')
+  await addProp(page, 'موعد', 'date')
+  await page.getByTestId('db-add-row').click()
+  const field = page.getByTestId('db-table').getByRole('textbox', { name: 'موعد' })
+  await field.click()
+  const calendar = page.locator('.dv-date-picker')
+  await expect(calendar).toBeVisible()
+  const previousMonth = calendar.locator('.dv-date-head b')
+  const month = await previousMonth.textContent()
+  await calendar.getByRole('button', { name: 'ماه قبل' }).click()
+  await expect(previousMonth).not.toHaveText(month!)
+  const day = calendar.locator('.dv-date-day:not([data-out])').first()
+  const picked = await day.getAttribute('data-date')
+  await day.click()
+  await expect(calendar).toHaveCount(0)
+  await expect(field).not.toHaveValue('')
+  await page.getByTestId('db-table').getByRole('button', { name: 'تقویم' }).click()
+  await expect(calendar.locator('[aria-pressed="true"]')).toHaveAttribute('data-date', picked!)
+  await page.keyboard.press('Escape')
+  await expect(calendar).toHaveCount(0)
+  await page.getByTestId('db-row').getByRole('textbox', { name: 'نام' }).click()
+  const peek = page.getByTestId('row-peek')
+  await peek.getByRole('button', { name: 'تقویم' }).click()
+  await expect(calendar.locator('[aria-pressed="true"]')).toHaveAttribute('data-date', picked!)
+  await page.keyboard.press('Escape')
+  await expect(calendar).toHaveCount(0)
+  await expect(peek).toBeVisible()
+  await peek.getByRole('button', { name: 'تقویم' }).click()
+  await calendar.getByRole('button', { name: 'پاک کردن' }).click()
+  await expect(peek.getByRole('textbox', { name: 'موعد' })).toHaveValue('')
+  await page.keyboard.press('Escape')
+  await expect(peek).toHaveCount(0)
+  await expect(field).toHaveValue('')
 })
 
 test('a new board opens as a whole-page drawing (not a text page), saves by itself, and comes back after a reload with its picture in the list', async ({ page }) => {
@@ -177,7 +232,7 @@ test('a new board opens as a whole-page drawing (not a text page), saves by itse
   await expect(page.locator('.board-save')).toHaveText(/ذخیره شد|همه تغییرات/, { timeout: 30_000 })
   await expect.poll(() => page.evaluate(() => (window as unknown as { __ws: { search: { drawings: () => { drawing: { filled: boolean } }[] } } }).__ws.search.drawings().filter(d => d.drawing.filled).length), { timeout: 30_000 }).toBeGreaterThan(0) // saved, then indexed with its picture
   await page.reload()
-  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await reopenWorkspace(page)
   await page.getByTestId('nav-drawings').click()
   await expect(page.locator('.dr-pic svg').first()).toBeVisible({ timeout: 60_000 }) // the picture is in the list
   await page.locator('.dr-latest .dr-latest-board, .dr-card .dr-open').first().click()

@@ -3,8 +3,8 @@
   background: transparent; }
 
 /* ───────── workspace navigation and contextual panel ───────── */
-.app { --nav-width: 176px; --nav-label-width: 176px; }
-[data-side='compact'] .app { --nav-width: 148px; --nav-label-width: 148px; }
+.app { --nav-width: 192px; --nav-label-width: 192px; }
+[data-side='compact'] .app { --nav-width: 168px; --nav-label-width: 168px; }
 [data-side='icons'] .app { --nav-width: 68px; }
 .side, .context-panel {
   position: relative;
@@ -16,7 +16,7 @@
   background: var(--ds-side);
   border-inline-end: 1px solid var(--ds-line);
 }
-.side { inline-size: var(--nav-user-width, var(--nav-width)); z-index: 12; overflow: hidden; }
+.side { inline-size: var(--nav-user-width, var(--nav-width)); container-type: inline-size; z-index: 12; overflow: hidden; }
 .side[data-icons] { inline-size: var(--nav-width); }
 .side[data-expanded] {
   --rail-expanded-width: min(var(--nav-user-width, var(--nav-label-width)), calc(100vw - var(--nav-width)));
@@ -253,3 +253,17 @@
   overflow: hidden;
   clip-path: inset(50%);
 }
+
+/* Give labelled navigation room for translations and keep the shortcut out of the compact search label. */
+.side:not([data-icons]) .row.plain .ntitle { min-inline-size: 0; white-space: normal; overflow-wrap: anywhere; }
+.side:not([data-icons]) .row.plain.search-row .ntitle { white-space: nowrap; }
+.side .search-row kbd { flex: none; white-space: nowrap; }
+.side:not([data-rail]) .row.plain.search-row { gap: var(--ds-s1); padding-inline: var(--ds-s2); }
+@container (max-width: 145px) { .side .search-row kbd { display: none; } }
+:root[data-side='compact'] .side .search-row kbd { display: none; }
+.side:not([data-icons]) .wscard { position: relative; gap: var(--ds-s1); }
+.side:not([data-rail]) .wscard { padding-inline: var(--ds-s1); }
+.side:not([data-icons]) .wscard-chev { position: absolute; inset-inline-end: var(--ds-s1); inset-block-start: var(--ds-s2); }
+.side:not([data-icons]) .wscard-tx b { padding-inline-end: var(--ds-s5); }
+:root[data-side='compact'] .side:not([data-rail]) { padding-inline: var(--ds-s3); }
+:root[data-side='compact'] .side:not([data-icons]) :is(.row.plain .ntitle, .wscard-tx small) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

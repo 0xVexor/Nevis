@@ -1,0 +1,116 @@
+{
+ "name": "tableColumnWidths",
+ "sv": 4,
+ "update": "AS2MqKeEBwAHAQRib2R5AwV0YWJsZQcAjKinhAcAAwh0YWJsZVJvdwcAjKinhAcBAwt0YWJsZUhlYWRlcgcAjKinhAcCAwlwYXJhZ3JhcGgHAIyop4QHAwYEAIyop4QHBCDYs9ix2LPYqtmI2YYg2KfYr9i62KfZheKAjNi02K/ZhygAjKinhAcDA2RpcgF3BGF1dG8oAIyop4QHAwdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDk4KACMqKeEBwMJdGV4dEFsaWduAXcAKACMqKeEBwIDZGlyAXcEYXV0bygAjKinhAcCB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwOTcoAIyop4QHAgdjb2xzcGFuAX0CKACMqKeEBwIHcm93c3BhbgF9ASgAjKinhAcCDGNvbHdpZHRoSnNvbgF3CVsxODAsMjYwXSgAjKinhAcBB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwOTaHjKinhAcBAwh0YWJsZVJvdwcAjKinhAceAwl0YWJsZUNlbGwHAIyop4QHHwMJcGFyYWdyYXBoBwCMqKeEByAGBACMqKeEByEI2LHYp9iz2KooAIyop4QHIANkaXIBdwRhdXRvKACMqKeEByAHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDEwMSgAjKinhAcgCXRleHRBbGlnbgF3ACgAjKinhAcfA2RpcgF3BGF1dG8oAIyop4QHHwdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMTAwKACMqKeEBx8HY29sc3BhbgF9ASgAjKinhAcfB3Jvd3NwYW4BfQEoAIyop4QHHwxjb2x3aWR0aEpzb24BdwVbMTgwXYeMqKeEBx8DCXRhYmxlQ2VsbAcAjKinhAcuAwlwYXJhZ3JhcGgHAIyop4QHLwYEAIyop4QHMATahtm+KACMqKeEBy8DZGlyAXcEYXV0bygAjKinhAcvB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAxMDMoAIyop4QHLwl0ZXh0QWxpZ24BdwAoAIyop4QHLgNkaXIBdwRhdXRvKACMqKeEBy4HYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDEwMigAjKinhAcuB2NvbHNwYW4BfQEoAIyop4QHLgdyb3dzcGFuAX0BKACMqKeEBy4MY29sd2lkdGhKc29uAXcFWzI2MF0oAIyop4QHHgdibG9ja0lkAXckMDE5MzAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDk5KACMqKeEBwADZGlyAXcDcnRsKACMqKeEBwAHYmxvY2tJZAF3JDAxOTMwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDA5NSgAjKinhAcACnRhYmxlQWxpZ24BdwAoAIyop4QHAAp0YWJsZVdpZHRoAX0AAA==",
+ "sha256": "29e8d5fed081e597a4bf94d5414eefb831ab37068c275d79703fbc46dfe9a377",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "table",
+    "attrs": {
+     "dir": "rtl",
+     "blockId": "01930000-0000-7000-8000-000000000095",
+     "tableAlign": "",
+     "tableWidth": 0
+    },
+    "content": [
+     {
+      "type": "tableRow",
+      "attrs": {
+       "blockId": "01930000-0000-7000-8000-000000000096"
+      },
+      "content": [
+       {
+        "type": "tableHeader",
+        "attrs": {
+         "dir": "auto",
+         "blockId": "01930000-0000-7000-8000-000000000097",
+         "colspan": 2,
+         "rowspan": 1,
+         "colwidthJson": "[180,260]"
+        },
+        "content": [
+         {
+          "type": "paragraph",
+          "attrs": {
+           "dir": "auto",
+           "blockId": "01930000-0000-7000-8000-000000000098",
+           "textAlign": ""
+          },
+          "content": [
+           {
+            "type": "text",
+            "text": "سرستون ادغام‌شده"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "tableRow",
+      "attrs": {
+       "blockId": "01930000-0000-7000-8000-000000000099"
+      },
+      "content": [
+       {
+        "type": "tableCell",
+        "attrs": {
+         "dir": "auto",
+         "blockId": "01930000-0000-7000-8000-000000000100",
+         "colspan": 1,
+         "rowspan": 1,
+         "colwidthJson": "[180]"
+        },
+        "content": [
+         {
+          "type": "paragraph",
+          "attrs": {
+           "dir": "auto",
+           "blockId": "01930000-0000-7000-8000-000000000101",
+           "textAlign": ""
+          },
+          "content": [
+           {
+            "type": "text",
+            "text": "راست"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "tableCell",
+        "attrs": {
+         "dir": "auto",
+         "blockId": "01930000-0000-7000-8000-000000000102",
+         "colspan": 1,
+         "rowspan": 1,
+         "colwidthJson": "[260]"
+        },
+        "content": [
+         {
+          "type": "paragraph",
+          "attrs": {
+           "dir": "auto",
+           "blockId": "01930000-0000-7000-8000-000000000103",
+           "textAlign": ""
+          },
+          "content": [
+           {
+            "type": "text",
+            "text": "چپ"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

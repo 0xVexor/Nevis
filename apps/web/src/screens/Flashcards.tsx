@@ -1,8 +1,9 @@
 // Flashcards, drawn as the old app drew them (same markup and classes: fc-today, fc-section, fc-review, fc-card...). The cards are the toggle
 // blocks of the pages; the schedule is a fold over the review events (packages/core/src/cards.ts), so a review on another device counts here.
+import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { intervalLabel, isDue, type Grade, type RawCard, type Rec } from '@nevis/core'
-import { Button, Icon, Screen, Stats, dirOf } from '../ds'
+import { Button, Icon, Screen, Stats, dirOf, useUIMotion } from '../ds'
 import { commandHint } from '../shortcutCommands'
 import { locale, t } from '../i18n'
 import { go } from '../router'
@@ -20,6 +21,7 @@ export function Flashcards({ ws }: { ws: Workspace }) {
   const [deck, setDeck] = useState<string | null>(null)
   const [queue, setQueue] = useState<RawCard[]>([])
   const [pos, setPos] = useState(0)
+  const motionOf = useUIMotion()
   const [done, setDone] = useState(0)
   const [shown, setShown] = useState(false)
   const started = useRef(0)
@@ -147,11 +149,11 @@ export function Flashcards({ ws }: { ws: Workspace }) {
         </div>
       ) : (
         <div className="fc-stage">
-          <article className="fc-card" aria-live="polite">
+          <motion.article key={`${pos}`} className="fc-card" aria-live="polite" initial={motionOf.reduced ? false : { opacity: 0, x: document.documentElement.dir === 'rtl' ? -28 : 28 }} animate={{ opacity: 1, x: 0 }} transition={motionOf.spring}>
             <button type="button" className="fc-source" onClick={() => go({ name: 'page', id: card.pageId })} dir="auto" title={t('Open the page')}>{titleOf.get(card.pageId) || t('Untitled')}<Icon name="arrow-up-right" size={13} className="ds-flip" /></button>
             <h2 className="fc-q" dir="auto" data-testid="fc-question" data-long={card.question.length > 90 || undefined}>{card.question}</h2>
-            {shown && <div className="fc-a-wrap"><div className="fc-a tiptap" data-testid="fc-answer">{card.answer.split('\n').map((l, i) => <p key={i} dir="auto">{l}</p>)}</div></div>}
-          </article>
+            <AnimatePresence initial={false}>{shown && <motion.div key="answer" className="fc-a-wrap" initial={motionOf.reduced ? false : { opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={motionOf.reduced ? undefined : { opacity: 0, height: 0 }} transition={motionOf.transition}><div className="fc-a tiptap" data-testid="fc-answer">{card.answer.split('\n').map((l, i) => <p key={i} dir="auto">{l}</p>)}</div></motion.div>}</AnimatePresence>
+          </motion.article>
           {!shown ? (
             <Button variant="primary" className="fc-show" data-testid="fc-show" onClick={() => setShown(true)}>{t('Show answer')}<kbd className="ds-kbd">{commandHint('Show the answer')}</kbd></Button>
           ) : (

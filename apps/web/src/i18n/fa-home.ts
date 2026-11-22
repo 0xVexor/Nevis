@@ -16,6 +16,8 @@ export const FA_HOME: Record<string, string> = {
   'Use this template': 'استفاده از این الگو',
   'Already have notes?': 'از قبل یادداشت دارید؟',
   'Bring in Markdown files or an Obsidian vault.': 'فایل‌های Markdown یا پوشهٔ Obsidian خود را وارد کنید.',
+  'Import a Nevis backup into a new workspace.': 'پشتیبان نِویس را در یک فضای کاری تازه وارد کنید.',
+  'Choose Import a bundle from the workspace list.': 'در فهرست فضاهای کاری، «وارد کردن باندل» را انتخاب کنید.',
   'Import notes': 'وارد کردن یادداشت‌ها',
   'Continue writing': 'ادامهٔ نوشتن',
   'Write a quick note…': 'یک یادداشت سریع بنویسید…',

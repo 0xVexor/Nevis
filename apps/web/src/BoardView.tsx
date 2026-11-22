@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { t } from './i18n'
 import { boardColumns, createRow, moveCard, type DatabaseModel, type PropertyModel, type RowModel, type ViewConfig } from '@nevis/core'
-import { Button } from './ds'
+import { Button, Dropdown } from './ds'
 import type { Workspace } from './workspace'
 
 const COLOR: Record<string, string> = { red: '#fde2e0', blue: '#dbeafe', green: '#dcf5e4', gray: '#eceff1', yellow: '#fff3c4', orange: '#ffe6cc', purple: '#eadcfb', pink: '#fbdcf0' }
@@ -32,10 +32,7 @@ export function BoardView({ ws, db, config, rows, titleProp }: { ws: Workspace; 
           {col.rows.map(r => (
             <article key={r.id} className="db-board-card" draggable data-testid="board-card" data-id={r.id} onDragStart={e => { e.dataTransfer.setData('text/plain', r.id); e.dataTransfer.effectAllowed = 'move' }}>
               <span dir="auto">{label(r)}</span>
-              <select aria-label={t('Move to')} value={col.id} onChange={e => void move(r.id, e.target.value, null)}>
-                <option value="">{t('No value')}</option>
-                {group.options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-              </select>
+              <Dropdown label={t('Move to')} value={col.id} options={cols.map(c => ({ value: c.id, label: c.id === '' ? t('No value') : c.name, raw: true }))} onChange={option => void move(r.id, option, null)} />
             </article>
           ))}
           <Button size="sm" data-testid="board-add" onClick={() => void ws.mutate([], c => createRow(c, db, { cells: { [`c:${group.id}`]: col.id === '' ? null : col.id } }))}>{t('+ Card')}</Button>

@@ -43,6 +43,23 @@ export interface ContextPanelProps {
 }
 
 export function ContextPanel(p: ContextPanelProps) {
+  useEffect(() => {
+    const aside = document.getElementById('workspace-context')
+    if (!aside || !p.open) return
+    const keys = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+      const from = event.target as HTMLElement
+      if (from.closest('.tree-in, input, textarea, [contenteditable="true"]') || !from.closest('.side-scroll')) return
+      const items = [...aside.querySelectorAll<HTMLElement>('.side-scroll button:not([disabled])')].filter(button => !button.closest('.tree-in, .acts') && button.getClientRects().length)
+      const at = items.indexOf(from)
+      if (at < 0) return
+      event.preventDefault()
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : Math.min(items.length - 1, Math.max(0, at + (event.key === 'ArrowDown' ? 1 : -1)))
+      items[next]?.focus()
+    }
+    aside.addEventListener('keydown', keys)
+    return () => aside.removeEventListener('keydown', keys)
+  }, [p.open, p.kind])
   const [shut, setShut] = useState<Shut>({})
   const [menu, setMenu] = useState<{ rect: DOMRect; items: MenuItem[] } | null>(null)
   const [tagFilter, setTagFilter] = useState<string | null>(null)
@@ -97,7 +114,8 @@ export function ContextPanel(p: ContextPanelProps) {
                   <div className="fav-zone">
                     <button className={'section' + (shut.favs ? ' shut' : '')} onClick={() => flip('favs')}>{t('Favorites')}<Icon name="chevron-right" size={13} /></button>
                     {!shut.favs && favs.map(f => (
-                      <div key={f.id} dir={dirOf(f.title)} className={'row' + (f.id === p.currentId ? ' cur' : '')} style={{ paddingInlineStart: 24 }} onClick={() => p.onOpen(f.id)}>
+                      <div key={f.id} dir={dirOf(f.title)} className={'row' + (f.id === p.currentId ? ' cur' : '')} style={{ paddingInlineStart: 24 }} onClick={() => p.onOpen(f.id)}
+                        onContextMenu={e => { e.preventDefault(); p.rowProps.onMenu(f.id, e.currentTarget.getBoundingClientRect()) }}>
                         <span className="ic"><PageIcon page={f} /></span><span className="ntitle" dir="auto">{f.title || t('Untitled')}</span>
                       </div>
                     ))}

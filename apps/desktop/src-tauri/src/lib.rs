@@ -345,7 +345,7 @@ pub fn run() {
     let server = std::env::var("NEVIS_SERVER").ok().and_then(|u| net::check_server(&u).ok()).or_else(|| {
         let text = std::fs::read_to_string(data_dir.join("config.json")).ok()?;
         net::check_server(serde_json::from_str::<Value>(&text).ok()?.get("server")?.as_str()?).ok()
-    });
+    }).or_else(|| Some("https://nevis.manaz.pro".to_owned()));
     let state = AppState {
         mode, data_dir, stores: Mutex::new(HashMap::new()), server: Mutex::new(server), tokens: secrets::from_env(), token_cache: Mutex::new(HashMap::new()),
         http: reqwest::Client::builder().timeout(Duration::from_secs(60)).build().expect("http client"),
@@ -355,7 +355,12 @@ pub fn run() {
         .manage(state)
         .setup(move |app| {
             let mut w = WebviewWindowBuilder::new(app, "main", WebviewUrl::App(mode.page().into()))
-                .title("Nevis").inner_size(1100.0, 760.0).use_https_scheme(true); // fixed for ever (ADR-0013 §2)
+                .title("Nevis.").use_https_scheme(true); // fixed for ever (ADR-0013 §2)
+            if mode == Mode::Normal {
+                w = w.inner_size(1366.0, 825.0).min_inner_size(1366.0, 825.0);
+            } else {
+                w = w.inner_size(1100.0, 760.0);
+            }
             if mode == Mode::UiTest {
                 // the driver exists only in this mode; its settings come from the environment of the test run
                 let cfg = std::env::var("NEVIS_UI_CFG").unwrap_or_else(|_| "{}".into());

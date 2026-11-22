@@ -1,8 +1,7 @@
 name: Server image
 
 # This repository also holds the old app on main and dev: the new code lives on the branch `nevis-next` and its releases are tags named nx/v1.2.3.
-# Builds the server image (the Go server and the web app in one image) on every push to main and every tag, and publishes it to the
-# GitHub container registry. A tag is a release: v1.2.3 also publishes the image under that version.
+# Pushes publish to the GitHub Container Registry. Release tags also publish a versioned image.
 on:
   push:
     branches: [nevis-next]
@@ -51,4 +50,5 @@ jobs:
         env:
           HOOK: ${{ secrets.COOLIFY_DEPLOY_WEBHOOK }}
           TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
-        run: curl --fail --silent --show-error -H "Authorization: Bearer $TOKEN" "$HOOK"
+        run: |
+          curl --fail --silent --show-error -H "Authorization: Bearer $TOKEN" "$HOOK"

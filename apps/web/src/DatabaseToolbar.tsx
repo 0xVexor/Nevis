@@ -2,8 +2,9 @@
 // "New". Filter, Sort, Group and Properties open small panels; what they set is written to the view's `config` (one op each).
 import { useEffect, useState } from 'react'
 import { createView, patchViewConfig, readViewConfig, renameView, setViewConfig, trashView, type DatabaseModel, type FilterOp, type FilterRule, type PropType, type PropertyModel, type ViewModel, PROP_TYPES, addProperty } from '@nevis/core'
-import { Button, ChipButton, Icon, IconButton, Menu, Panel, Popover, SearchField, type MenuItem } from './ds'
+import { Button, Dropdown, ChipButton, Icon, IconButton, Menu, Panel, Popover, SearchField, type MenuItem } from './ds'
 import { t } from './i18n'
+import { promptDialog } from './dialog'
 import type { Workspace } from './workspace'
 
 const TYPE_LABEL: Record<PropType, string> = { text: 'Text', number: 'Number', date: 'Date', select: 'Select', multiSelect: 'Multi-select', relation: 'Relation', checkbox: 'Checkbox', url: 'URL' }
@@ -19,7 +20,7 @@ const NEEDS_VALUE = (op: FilterOp) => !['empty', 'not_empty', 'checked', 'unchec
 
 type PanelName = 'filter' | 'sort' | 'group' | 'props' | 'newview'
 
-export function DatabaseToolbar({ ws, db, view, onActive, search, onSearch, onNewRow, onDelete }: { ws: Workspace; db: DatabaseModel; view: ViewModel; onActive: (id: string) => void; search: string; onSearch: (q: string) => void; onNewRow: () => void; onDelete: () => void }) {
+export function DatabaseToolbar({ ws, db, view, onActive, search, onSearch, onNewRow, onNewPageRow, onDelete }: { ws: Workspace; db: DatabaseModel; view: ViewModel; onActive: (id: string) => void; search: string; onSearch: (q: string) => void; onNewRow: () => void; onNewPageRow: () => void; onDelete: () => void }) {
   const views = db.views.filter(v => !v.trashed)
   const props = db.properties.filter(p => !p.trashed)
   const config = readViewConfig(view.config, db.properties)
@@ -37,7 +38,7 @@ export function DatabaseToolbar({ ws, db, view, onActive, search, onSearch, onNe
   const groupProp = props.find(p => p.id === config.groupBy)
   const sort = config.sort[0]
   const viewItems = (v: ViewModel): MenuItem[] => [
-    { label: t('Rename'), icon: <Icon name="pencil" size={16} />, onSelect: () => { const name = window.prompt(t('Name'), v.name); if (name?.trim()) void ws.mutate([v.id], c => renameView(c, v.id, name.trim())) } },
+    { label: t('Rename'), icon: <Icon name="pencil" size={16} />, onSelect: () => void promptDialog({ title: t('Name'), initial: v.name }).then(name => { if (name?.trim()) void ws.mutate([v.id], c => renameView(c, v.id, name.trim())) }) },
     { kind: 'sep' },
     { label: t('Delete view'), icon: <Icon name="trash" size={16} />, danger: true, disabled: views.length < 2, onSelect: () => { void ws.mutate([v.id], c => trashView(c, v.id)); onActive('') } },
   ]
@@ -64,11 +65,15 @@ export function DatabaseToolbar({ ws, db, view, onActive, search, onSearch, onNe
           ) : <IconButton label={t('Search')} onClick={() => setSearchOpen(true)}><Icon name="search" size={16} /></IconButton>}
           <ChipButton icon={<Icon name="filter" size={14} />} aria-pressed={ruleCount > 0} data-testid="chip-filter" onClick={open('filter')}>{ruleCount ? t('Filter · {n}', { n: ruleCount }) : t('Filter')}</ChipButton>
           <ChipButton icon={<Icon name="sort" size={14} />} aria-pressed={config.sort.length > 0} data-testid="chip-sort" onClick={open('sort')}>{config.sort.length ? t('Sort · {n}', { n: config.sort.length }) : t('Sort')}</ChipButton>
-          {view.type === 'board' && <ChipButton icon={<Icon name="layers" size={14} />} aria-pressed={!!groupProp} data-testid="chip-group" onClick={open('group')}>{groupProp ? <span dir="auto">{t('Group · {n}', { n: groupProp.name })}</span> : t('Group')}</ChipButton>}
+          <ChipButton icon={<Icon name="layers" size={14} />} aria-pressed={!!groupProp} data-testid="chip-group" onClick={open('group')}>{groupProp ? <span dir="auto">{t('Group · {n}', { n: groupProp.name })}</span> : t('Group')}</ChipButton>
           <IconButton label={t('Properties')} data-testid="chip-props" onClick={open('props')}><Icon name="eye" size={16} /></IconButton>
           <IconButton label={t('More')} onClick={e => setMenu({ rect: e.currentTarget.getBoundingClientRect(), items: [{ label: t('Delete database'), icon: <Icon name="trash" size={16} />, danger: true, onSelect: onDelete }] })}><Icon name="more-horizontal" size={16} /></IconButton>
           <div className="ds-split dv-new">
             <Button variant="primary" size="sm" icon={<Icon name="plus" size={15} />} data-testid="db-add-row" onClick={onNewRow}>{t('New')}</Button>
+            <Button variant="primary" size="sm" aria-label={t('New item options')} aria-haspopup="menu" onClick={event => setMenu({ rect: event.currentTarget.getBoundingClientRect(), items: [
+              { label: 'New item', icon: <Icon name="plus" size={16} />, onSelect: onNewRow },
+              { label: 'New item as a page', icon: <Icon name="file" size={16} />, onSelect: onNewPageRow },
+            ] })}><Icon name="chevron-down" size={14} /></Button>
           </div>
         </div>
       </header>
@@ -105,10 +110,10 @@ export function DatabaseToolbar({ ws, db, view, onActive, search, onSearch, onNe
                   const set = (patch: Partial<FilterRule>) => setRules(config.filter.map((x, j) => (j === i ? { ...x, ...patch } : x)))
                   return (
                     <div key={i} className="dv-cond" data-testid="rule">
-                      <select aria-label={t('Property')} data-testid="rule-prop" value={r.prop} onChange={e => { const np = props.find(x => x.id === e.target.value)!; set({ prop: np.id, op: OPS[np.type][0]!, value: '' }) }}>{props.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
-                      <select aria-label={t('Condition')} data-testid="rule-op" value={r.op} onChange={e => set({ op: e.target.value as FilterOp })}>{OPS[p.type].map(o => <option key={o} value={o}>{t(OP_LABEL[o])}</option>)}</select>
+                      <Dropdown label={t('Property')} data-testid="rule-prop" value={r.prop} options={props.map(x => ({ value: x.id, label: x.name, raw: true }))} onChange={id => { const np = props.find(x => x.id === id)!; set({ prop: np.id, op: OPS[np.type][0]!, value: '' }) }} />
+                      <Dropdown label={t('Condition')} data-testid="rule-op" value={r.op} options={OPS[p.type].map(o => ({ value: o, label: OP_LABEL[o] }))} onChange={op => set({ op })} />
                       {NEEDS_VALUE(r.op) && (p.type === 'select'
-                        ? <select aria-label={t('Value')} data-testid="rule-value" value={r.value} onChange={e => set({ value: e.target.value })}><option value="">—</option>{p.options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select>
+                        ? <Dropdown label={t('Value')} data-testid="rule-value" value={r.value} options={[{ value: '', label: '—' }, ...p.options.map(o => ({ value: o.id, label: o.name, raw: true }))]} onChange={value => set({ value })} />
                         : <input aria-label={t('Value')} data-testid="rule-value" dir="auto" value={r.value} onChange={e => set({ value: e.target.value })} />)}
                       <IconButton label={t('Remove rule')} onClick={() => setRules(config.filter.filter((_, j) => j !== i))}><Icon name="x" size={14} /></IconButton>
                     </div>
@@ -120,18 +125,14 @@ export function DatabaseToolbar({ ws, db, view, onActive, search, onSearch, onNe
           {panel.kind === 'sort' && (
             <Panel title={t('Sort')} size="sm">
               <div className="dv-pair">
-                <select aria-label={t('Sort by')} data-testid="sort-prop" value={sort?.prop ?? ''} onChange={e => void save({ sort: e.target.value ? [{ prop: e.target.value, dir: sort?.dir ?? 'asc' }] : [] })}>
-                  <option value="">—</option>{props.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
+                <Dropdown label={t('Sort by')} data-testid="sort-prop" value={sort?.prop ?? ''} options={[{ value: '', label: '—' }, ...props.map(p => ({ value: p.id, label: p.name, raw: true }))]} onChange={prop => void save({ sort: prop ? [{ prop, dir: sort?.dir ?? 'asc' }] : [] })} />
                 {sort && <Button size="sm" data-testid="sort-dir" onClick={() => void save({ sort: [{ prop: sort.prop, dir: sort.dir === 'asc' ? 'desc' : 'asc' }] })}>{sort.dir === 'asc' ? t('Ascending') : t('Descending')}</Button>}
               </div>
             </Panel>
           )}
           {panel.kind === 'group' && (
             <Panel title={t('Group')} size="sm">
-              <select aria-label={t('Group by')} data-testid="group-by" value={config.groupBy} onChange={e => void save({ groupBy: e.target.value })}>
-                <option value="">—</option>{props.filter(p => p.type === 'select').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+              <Dropdown label={t('Group by')} data-testid="group-by" value={config.groupBy} options={[{ value: '', label: '—' }, ...props.filter(p => p.type === 'select').map(p => ({ value: p.id, label: p.name, raw: true }))]} onChange={groupBy => void save({ groupBy })} />
             </Panel>
           )}
           {panel.kind === 'props' && <PropertiesPanel ws={ws} db={db} view={view} props={props} hidden={hidden} setHidden={setHidden} onSave={save} />}
@@ -169,7 +170,7 @@ function PropertiesPanel({ ws, db, view, props, hidden, setHidden, onSave }: { w
       </div>
       <div className="dv-pair" style={{ marginBlockStart: 'var(--ds-s3)' }}>
         <input data-testid="db-prop-name" dir="auto" placeholder={t('New property')} aria-label={t('New property')} value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void add() }} />
-        <select data-testid="db-prop-type" aria-label={t('Type')} value={type} onChange={e => setType(e.target.value as PropType)}>{PROP_TYPES.map(x => <option key={x} value={x}>{t(TYPE_LABEL[x])}</option>)}</select>
+        <Dropdown data-testid="db-prop-type" label={t('Type')} value={type} options={PROP_TYPES.map(x => ({ value: x, label: TYPE_LABEL[x] }))} onChange={setType} />
       </div>
       <Button size="sm" icon={<Icon name="plus" size={15} />} data-testid="db-add-prop" onClick={() => void add()} className="dv-hint">{t('New property')}</Button>
       <span hidden>{view.id}</span>

@@ -1,9 +1,10 @@
 // ROADMAP M7 demo, automated: Chromium and WebKit on ONE account, both OFFLINE, edit DIFFERENT cells of the SAME row and each adds a
 // select option; online again, everything is kept on both. The offline phase is guarded (the sides must really differ), as in M5.
 import { chromium, webkit } from '@playwright/test'
-import { createNew } from './shell-helpers.ts'
+import { addProp } from './db-helpers.ts'
+import { createNew, reopenWorkspace } from './shell-helpers.ts'
 
-const BASE = process.env.BASE ?? 'http://localhost:5174'
+const BASE = process.env.BASE ?? `http://localhost:${process.env.NEVIS_TEST_PORT ?? 5174}`
 const name = `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
 const pw = 'correct horse battery'
 const sleep = ms => new Promise(r => setTimeout(r, ms))
@@ -12,7 +13,13 @@ async function until(fn, ms, what) {
   const t0 = Date.now()
   for (;;) { if (await fn()) return Date.now() - t0; if (Date.now() - t0 > ms) throw new Error(`timeout: ${what}`); await sleep(25) }
 }
-const options = async (p, prop) => (await cell(p, prop).locator('select option').allTextContents()).filter(t => t !== '—').sort()
+const options = async (p, prop) => {
+  await cell(p, prop).locator('.ds-dd-btn').click()
+  const labels = (await p.locator('.ds-pop').last().getByRole('menuitem').allTextContents()).filter(t => t !== '—').sort()
+  await p.keyboard.press('Escape')
+  await p.locator('.ds-pop').last().waitFor({ state: 'detached' })
+  return labels
+}
 const outbox = async p => Number(await p.getByTestId('outbox').innerText())
 
 const [bc, bw] = [await chromium.launch({ channel: 'chrome' }), await webkit.launch()]
@@ -30,7 +37,7 @@ try {
   await createNew(a, 'new-database')
   await a.getByTestId('db-title').fill('کتاب‌ها')
   for (const [n, t] of [['الف', 'text'], ['ب', 'text'], ['ژانر', 'select']]) {
-    if (!(await a.getByTestId('db-prop-name').isVisible())) await a.getByTestId('chip-props').click(); await a.getByTestId('db-prop-name').fill(n); await a.getByTestId('db-prop-type').selectOption(t); await a.getByTestId('db-add-prop').click(); await a.locator(`th[data-prop="${n}"]`).waitFor(); await a.keyboard.press('Escape'); await a.locator('.ds-pop').first().waitFor({ state: 'detached' })
+    await addProp(a, n, t)
     await a.locator(`th[data-prop="${n}"]`).waitFor()
   }
   await a.getByTestId('db-add-row').click()
@@ -41,7 +48,7 @@ try {
   await b.locator('input[name=username]').fill(name)
   await b.locator('input[name=password]').fill(pw)
   await b.getByTestId('auth-submit').click()
-  await b.getByTestId('ws-list').getByRole('button').first().click()
+  await reopenWorkspace(b)
   await until(async () => (await b.getByTestId('page-row').count()) === 1, 15000, 'B sees the database')
   await b.getByTestId('page-row').first().dblclick()
   await until(async () => (await b.getByTestId('db-row').count()) === 1 && (await b.locator('th[data-prop="ژانر"]').count()) === 1, 15000, 'B sees the row and the columns')

@@ -18,7 +18,9 @@
     try {
       const phase = cfg.phase
       if (phase === 1) {
-        // no server configured yet: the server form, then sign-up through the real form
+        // Login opens directly. Switch servers only through the optional setting.
+        await wait(() => tid('auth-form'), 'sign-in form without server setup')
+        tid('custom-server').click()
         const form = await wait(() => tid('server-form'), 'server form')
         setVal(form.querySelector('input[name=server]'), cfg.server)
         form.requestSubmit()
@@ -39,29 +41,30 @@
         await inv('ui_close')
       } else if (phase === 4) {
         // the all-blocks page in the REAL desktop WebView and under its CSP: KaTeX, Mermaid, code highlighting, Excalidraw from our own assets
-        await wait(() => tid('ws-list'), 'the workspace list after a restart')
-        tid('ws-list').querySelector('button').click()
-        await wait(() => tid('new-menu'), 'the workspace view')
-        await create('new-all-blocks')
+        await wait(() => tid('new-menu'), 'the restored workspace')
+        tid('nav-templates').click()
+        ;(await wait(() => tid('template-all-blocks'), 'all-blocks template')).click()
+        await wait(() => tid('template-all-blocks')?.getAttribute('aria-selected') === 'true', 'selected template')
+        tid('tpl-use').click()
         await wait(() => document.querySelector('.math-block .katex'), 'a rendered formula', 60000)
+        ;(await wait(() => document.querySelector('.mermaid-block'), 'diagram block')).scrollIntoView()
         await wait(() => document.querySelector('.mermaid-block svg'), 'a rendered diagram', 60000)
-        await wait(() => document.querySelector('.code-block .hljs-keyword'), 'highlighted code', 20000)
-        document.querySelector('.drawing-block .drawing-edit').click()
-        await wait(() => document.querySelector('.drawing-overlay .excalidraw'), 'the drawing editor', 90000)
+        await wait(() => document.querySelector('.code-wrap .hljs-keyword'), 'highlighted code', 20000)
+        document.querySelector('.drawing-block .dr-edit').click()
+        await wait(() => document.querySelector('.drawing-modal .excalidraw'), 'the drawing editor', 90000)
         document.querySelector('[data-testid=drawing-save]').click()
-        await wait(() => !document.querySelector('.drawing-overlay'), 'the drawing editor closing')
+        await wait(() => !document.querySelector('.drawing-modal'), 'the drawing editor closing')
         await sleep(800) // let the page reach the store before the window goes
         await inv('app_exit', { code: 0, report: 'UI-PHASE-4 ok: every block rendered in the desktop WebView under its CSP' })
       } else if (phase === 2) {
-        // restart: no server form, no sign-in form: straight to the workspace list, then the page with its text
-        await wait(() => tid('ws-list') || tid('auth-form') || tid('server-form'), 'a first screen')
-        if (!tid('ws-list')) throw new Error('expected the workspace list after a restart, got ' + (tid('auth-form') ? 'the sign-in form' : 'the server form'))
-        tid('ws-list').querySelector('button').click()
+        // Restart restores the authenticated workspace automatically.
+        await wait(() => tid('new-menu'), 'the restored workspace after restart')
         const row = await wait(() => tid('page-row'), 'the page row')
         row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })) // a page opens on a double click (the old app's default)
         await wait(() => editorText().includes('متن ماندگار پس از بستن'), 'the text typed before closing')
         // sign out: the form returns
-        tid('signout').click()
+        tid('workspaces').click()
+        ;(await wait(() => tid('signout'), 'sign out action')).click()
         await wait(() => tid('auth-form'), 'the sign-in form after signing out')
         await inv('app_exit', { code: 0, report: 'UI-PHASE-2 ok: restart kept the session, the text survived the close, sign-out shows the form' })
       } else {

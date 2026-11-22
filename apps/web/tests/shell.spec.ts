@@ -1,6 +1,6 @@
 import { addProp } from './db-helpers'
 import { expect, test, type Page } from '@playwright/test'
-import { createNew, appReady } from './shell-helpers'
+import { createNew, appReady, reopenWorkspace } from './shell-helpers'
 
 // ROADMAP M8b: the main paths of the app (create a page, the tree, a database, trash, settings), device settings that never reach the log,
 // the command palette, and 10 000 pages that are never all rendered.
@@ -46,7 +46,7 @@ test('device settings never reach the outbox or the server; a synced setting is 
   expect(await page.evaluate(async () => (await (window as unknown as W).__ws.status()).outbox), 'a device setting entered the outbox').toBe(o0)
   // they stay on THIS device: they survive a reload from localStorage
   await page.reload()
-  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await reopenWorkspace(page)
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
 
   // the control: a SYNCED setting does reach the log, as exactly one op (this is what makes the check above non-vacuous)
@@ -76,6 +76,22 @@ test('the palette (Ctrl+K, a physical key) finds a page by a Persian-normalised 
   await page.keyboard.press('Enter')
   await expect(page.getByTestId('settings')).toBeVisible()
   await expect(page).toHaveURL(/#\/settings$/)
+  await page.keyboard.press('Control+k')
+  await page.locator('.ds-command-dialog input').fill('> layout language')
+  await expect(page.locator('.ds-command-dialog .ds-command-result')).toHaveCount(1)
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('settings-tab-language')).toHaveAttribute('aria-current', 'page')
+  await expect(page).toHaveURL(/#\/settings\/language$/)
+  await page.getByTestId('settings-tab-about').click()
+  await page.keyboard.press('Control+k')
+  await page.locator('.ds-command-dialog input').fill('> language layout')
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('settings-tab-language')).toHaveAttribute('aria-current', 'page')
+  await page.keyboard.press('Control+k')
+  await page.locator('.ds-command-dialog input').fill('> whiteboard sketch')
+  await page.locator('.ds-command-dialog .ds-command-result').getByText('نقاشی‌ها', { exact: true }).click()
+  await expect(page).toHaveURL(/#\/drawings$/)
+
 })
 
 test('trash and restore, the tree, a deep link and the back button', async ({ page }) => {
@@ -96,7 +112,7 @@ test('trash and restore, the tree, a deep link and the back button', async ({ pa
   await page.getByTestId('page-row').first().dblclick()
   await expect(page).toHaveURL(url) // the restored page has its old link
   await page.reload() // the deep link: the hash survives a reload and opens the page
-  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await reopenWorkspace(page)
   await expect(page.getByTestId('title')).toHaveValue('برای حذف')
   await page.goBack()
 })
@@ -121,7 +137,7 @@ test('10 000 pages: Home, the palette and the "all pages" table touch only what 
     for (let i = 0; i < 3000; i++) await rt.client.setFields(crypto.randomUUID(), { title: `صفحه ${i}`, parent: '', sortKey: 'a' + String(i).padStart(5, '0'), trashed: false, kind: 'doc', createdAt: 1_700_000_000_000 + i }, 'page')
   })
   await page.reload()
-  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await reopenWorkspace(page)
   await page.getByTestId('nav-home').click()
   await expect(page.locator('.home-page')).toHaveCount(3) // the old Home: the last page and three recent ones, never the 3000
   await page.getByTestId('nav-all').click()
@@ -148,7 +164,7 @@ test('dark mode: text keeps WCAG AA contrast (4.5:1) on the callout, the table h
   await signUpAndOpen(page)
   await page.evaluate(() => localStorage.setItem('nevis.device', JSON.stringify({ theme: 'dark' })))
   await page.reload()
-  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await reopenWorkspace(page)
   await createNew(page, 'new-all-blocks')
   await expect(page.locator('.callout')).toBeVisible({ timeout: 30_000 })
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toContain('dark')
@@ -175,14 +191,14 @@ test('dark mode: text keeps WCAG AA contrast (4.5:1) on the callout, the table h
   expect(await ratio('.callout .callout-body p'), 'the old light-on-light bug must be detected').toBeLessThan(AA)
   await bug.evaluate(e => (e as Element).remove())
   expect(await ratio('.ProseMirror th p, .ProseMirror th'), 'table header').toBeGreaterThanOrEqual(AA)
-  await page.getByTestId('editor').locator('.ProseMirror').click()
-  await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('/')
-  await expect(page.locator('.floating-menu .row').first()).toBeVisible()
-  expect(await ratio('.floating-menu .row .title'), 'slash menu').toBeGreaterThanOrEqual(AA)
+  await page.getByTestId('editor').locator('.ProseMirror p').first().click()
+  await page.locator('.toolbar .tb-btn--primary').click()
+  await expect(page.locator('.slash-menu .ds-menu-item').first()).toBeVisible()
+  expect(await ratio('.slash-menu .ds-menu-label b'), 'slash menu').toBeGreaterThanOrEqual(AA)
   await page.keyboard.press('Escape')
   await page.getByTestId('editor').locator('p').first().click({ clickCount: 3 })
-  await expect(page.locator('.floating-bar button').first()).toBeVisible()
-  expect(await ratio('.floating-bar button'), 'floating bar').toBeGreaterThanOrEqual(AA)
+  await expect(page.locator('.toolbar .tb-btn:not(.tb-btn--primary)').first()).toBeVisible()
+  expect(await ratio('.toolbar .tb-btn:not(.tb-btn--primary)'), 'formatting bar').toBeGreaterThanOrEqual(AA)
   await page.keyboard.press('Control+k')
   await page.locator('.ds-command-dialog input').first().fill('همه')
   await expect(page.locator('.ds-command-dialog .ds-command-result').first()).toBeVisible()

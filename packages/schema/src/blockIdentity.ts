@@ -53,7 +53,11 @@ export const BlockIdentity = Extension.create<{ newId: () => string }>({
         // does not write a Yjs-origin transaction back, so the fix would show in the view and never reach the document.)
         appendTransaction(transactions, _old, state) {
           if (!transactions.some(t => t.docChanged) || transactions.some(fromYjs)) return null
-          return repair(state, newId)
+          const fixed = repair(state, newId)
+          // y-tiptap reads the last document-changing transaction of the dispatch. An appended identity repair
+          // must inherit the edit's history policy, or it suppresses undo for the entire insertion/move.
+          if (fixed && transactions.some(t => t.docChanged && t.getMeta('addToHistory') !== false)) fixed.setMeta('addToHistory', true)
+          return fixed
         },
         // After a remote change the repair is its own, local transaction, one microtask later, so that it is synced.
         view() {

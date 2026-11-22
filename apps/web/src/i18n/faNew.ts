@@ -1,5 +1,17 @@
 // Strings of the screens written for the new core (the rest come from the old app's translations).
 export const FA_NEW: Record<string, string> = {
+  'Open as full page': 'بازکردن تمام‌صفحه',
+  'Folder name': 'نام پوشه',
+  'Two columns': 'دو ستون',
+  'Three columns': 'سه ستون',
+  'Could not access the clipboard. Use the keyboard shortcut instead.': 'دسترسی به کلیپ‌بورد ممکن نشد. از میانبر صفحه‌کلید استفاده کنید.',
+  'Could not render the diagram. Check its source.': 'نمودار رسم نشد. متن آن را بررسی کنید.',
+  'Write in two columns': 'نوشتن در دو ستون',
+  'Write in three columns': 'نوشتن در سه ستون',
+  'Attach a file': 'پیوست کردن فایل',
+  'Move page': 'انتقال صفحه',
+  'Search to narrow the destinations.': 'برای محدود کردن مقصدها جست‌وجو کنید.',
+  'Could not complete the action. Please try again.': 'انجام این کار ممکن نشد. دوباره تلاش کنید.',
   Home: 'خانه', 'All pages': 'همهٔ صفحه‌ها', Templates: 'قالب‌ها', Settings: 'تنظیمات', Trash: 'سطل زباله', 'New page': 'صفحهٔ تازه', 'New database': 'پایگاه‌داده', 'Search or run a command': 'جست‌وجو یا اجرای دستور',
   'Recent pages': 'صفحه‌های اخیر', 'No pages yet': 'هنوز صفحه‌ای نیست', Restore: 'بازگردانی', 'Your trash is empty': 'سطل زباله خالی است', 'Page title': 'عنوان صفحه', Created: 'ساخته‌شده', Type: 'نوع', Page: 'صفحه', Database: 'پایگاه‌داده',
   'Previous': 'قبلی', 'Next': 'بعدی', 'of': 'از', 'Synced settings': 'تنظیمات همگام (روی همهٔ دستگاه‌ها)', 'This device': 'این دستگاه', Theme: 'ظاهر', Light: 'روشن', Dark: 'تیره', System: 'سیستم', 'Text size': 'اندازهٔ متن',

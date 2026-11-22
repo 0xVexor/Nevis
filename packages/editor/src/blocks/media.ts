@@ -1,5 +1,6 @@
 // Image (a placeholder or an https URL until attachments exist in M9) and page link (an inline chip).
 import type { NodeViewRendererProps } from '@tiptap/core'
+import { nodeInputRule } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { Image as ImageSpec, PageLink as PageLinkSpec, isBlobHash, safeImageSrc } from '@nevis/schema'
 import { sniffBlob, whenAvailable } from '../attachments'
@@ -67,7 +68,7 @@ export const Image = ImageSpec.extend({
         frame.textContent = ''
         const a = cur.attrs
         dom.dataset.align = String(a.align)
-        frame.style.width = Number(a.width) > 0 ? `${Number(a.width)}%` : ''
+        dom.style.width = Number(a.width) > 0 ? `${Number(a.width)}%` : ''
         if (isBlobHash(a.blob)) {
           watch(String(a.blob), String(a.mime))
           if (blobState === 'ready' && objectUrl) {
@@ -125,22 +126,53 @@ export const Image = ImageSpec.extend({
 })
 
 export const PageLink = PageLinkSpec.extend({
+  addInputRules() {
+    return [nodeInputRule({ find: /\[\[([^\[\]\n]+)\]\]$/, type: this.type, getAttributes: match => ({ dstId: '', label: match[1]?.trim() }) })]
+  },
   addNodeView() {
-    return ({ node, editor }: NodeViewRendererProps) => {
+    return ({ node, editor, getPos }: NodeViewRendererProps) => {
       let cur = node
+      let opening = false
       const dom = document.createElement('span')
       dom.className = 'page-link'
       dom.contentEditable = 'false'
       dom.setAttribute('dir', 'auto')
+      dom.setAttribute('role', 'link')
+      dom.tabIndex = 0
       const draw = () => {
         const pages = optionsOf(editor).pages?.()
         const found = pages?.find(p => p.id === cur.attrs.dstId)
         dom.textContent = found?.title || String(cur.attrs.label) || S.pageLinkMissing
         dom.classList.toggle('missing', !!pages && !found)
-        dom.title = String(cur.attrs.dstId)
+        dom.removeAttribute('title')
       }
       draw()
-      dom.addEventListener('click', e => { e.preventDefault(); optionsOf(editor).onOpenPage?.(String(cur.attrs.dstId)) })
+      const open = async (event: Event) => {
+        event.preventDefault()
+        if (opening) return
+        const opts = optionsOf(editor)
+        const { dstId, label } = cur.attrs
+        const pages = opts.pages?.() ?? []
+        if (pages.some(page => page.id === dstId) || !opts.pages) { opts.onOpenPage?.(String(dstId)); return }
+        const title = String(label).trim()
+        if (!title || !editor.isEditable || !opts.onCreateLinkedPage) return
+        opening = true
+        try {
+          const lookup = (name: string) => name.trim().normalize('NFC').toLocaleLowerCase()
+          const sameTitle = pages.find(page => lookup(page.title) === lookup(title))
+          const id = sameTitle?.id ?? await opts.onCreateLinkedPage(title)
+          if (editor.isDestroyed || !editor.isEditable) return
+          const pos = getPos()
+          if (pos == null || cur.attrs.dstId !== dstId || cur.attrs.label !== label) return
+          editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...cur.attrs, dstId: id }))
+          opts.onOpenPage?.(id)
+        } catch (error) {
+          console.error(error)
+          opts.notify?.(S.pageLinkMissing)
+        } finally { opening = false }
+      }
+      dom.addEventListener('click', event => void open(event))
+      dom.addEventListener('keydown', event => { if (event.key === 'Enter') { event.stopPropagation(); void open(event) } })
       return {
         dom,
         update: (n: PMNode) => { if (n.type !== cur.type) return false; cur = n; draw(); return true },

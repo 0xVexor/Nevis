@@ -3,9 +3,10 @@ h1 { font-size: 1.5rem; margin: 0 0 .6rem; } h2 { font-size: 1.05rem; margin: 1.
 .err { color: var(--ds-danger, #b3402e); }
 ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 .small { font-size: .8rem; color: var(--ds-text-3, #6a736a); }
+.tiptap.ProseMirror { font-family: var(--font); }
+.page-destinations { max-block-size: 45vh; overflow-y: auto; margin-block-start: var(--ds-s3); }
 .screen { max-width: 920px; margin: 0 auto; padding-block: 8px; }
 .page-title { width: 100%; font: inherit; font-size: 1.6rem; font-weight: 600; border: 0; border-bottom: 1px solid var(--ds-line, #e3e8e3); padding: 4px 0; background: transparent; color: inherit; }
-.editor .ProseMirror { min-height: 50vh; outline: none; padding: 6px 0; line-height: 1.9; }
 .ProseMirror ul, .ProseMirror ol { padding-inline-start: 24px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; } .cards .ds-card { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; text-align: start; padding: 14px; font: inherit; color: inherit; cursor: pointer; }
 .dstable { width: 100%; border-collapse: collapse; margin: 10px 0; } .dstable th, .dstable td { text-align: start; padding: 6px 8px; border-bottom: 1px solid var(--ds-line, #e3e8e3); } .dstable .ds-row { border: 0; background: none; font: inherit; color: inherit; cursor: pointer; padding: 4px 0; min-block-size: 32px; }
@@ -23,6 +24,10 @@ ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px }
 .chip { display: inline-flex; gap: 2px; align-items: center; background: var(--ds-sunk, #eef2f6); color: var(--ds-text, inherit); border-radius: 10px; padding: 1px 6px; font-weight: 400 }
 .optadd { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px }
+.optadd-entry { display: flex; align-items: center; gap: var(--ds-s1); inline-size: 100%; min-inline-size: 100px; }
+.dbtable .optadd-entry input { flex: 1; min-inline-size: 0; block-size: var(--ds-control-sm); }
+.optadd-entry > button { flex: none; }
+.db-cellbox > .ds-dd-btn { inline-size: 100%; min-inline-size: 0; }
 .tiny { font-size: 11px; padding: 0 4px }
 .colname { font-weight: 600; border: none; background: transparent; width: 8em }
 .notice { background: #fff8c5; padding: 2px 8px; border-radius: 4px }
@@ -75,6 +80,7 @@ ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 .dv-new > .ds-btn:only-child { inline-size: auto; }
 .dv-th-btn { display: inline-flex; align-items: center; gap: var(--ds-s2); max-inline-size: 100%; padding: 4px var(--ds-s2); border: 0; border-radius: var(--ds-r-md, 8px); background: none; color: inherit; font: inherit; font-weight: 550; cursor: pointer; }
 .dv-th-btn:hover { background: var(--ds-sunk-2, rgba(0,0,0,.05)); }
+.dbtable .dv-th-btn { block-size: auto; }
 .dv-th-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dv-th-sort { color: var(--ds-accent); }
 /* the picture sits inside its box with room around it and is never cropped or stretched (the old list drew an <img> the same way) */
@@ -89,9 +95,28 @@ ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 .ds-split.dv-new > .ds-btn:only-child { inline-size: auto !important; border-radius: var(--ds-r-md, 8px); }
 .db-cellbox { display: flex; align-items: center; gap: var(--ds-s1); }
 .db-cellbox > :first-child { flex: 1; min-inline-size: 0; }
-.dv-open { display: grid; place-items: center; flex: none; inline-size: 24px; block-size: 24px; border: 0; border-radius: var(--ds-r-sm, 6px); background: none; color: var(--ds-text-3); opacity: 0; cursor: pointer; }
-.dbtable tr:hover .dv-open, .dv-open:focus-visible { opacity: 1; }
-.dv-open:hover { background: var(--ds-sunk); color: var(--ds-text); }
 .board-save { color: var(--ds-text-3); font-size: var(--ds-text-caption, .78rem); white-space: nowrap; }
 .board-save[data-state='error'] { color: var(--ds-bad, #c0362c); }
 .board-loading { display: grid; place-items: center; block-size: 100%; color: var(--ds-text-3); }
+
+/* Desktop database grid using semantic table cells and the reference row controls. */
+.dbtable-wrap { overflow-x: auto; }
+.dbtable { inline-size: 100%; }
+.dbtable thead th { text-align: start; vertical-align: middle; }
+.dbtable tr[data-checked] { background: var(--ds-accent-soft); }
+.dbtable td { vertical-align: middle; block-size: 36px; }
+.dbtable th.dbtable-handle, .dbtable td.dbtable-handle { inline-size: 56px; padding-inline: var(--ds-s1) var(--ds-s2); white-space: nowrap; }
+.dbtable th.dbtable-handle { text-align: end; }
+.dbtable-handle .dv-grip { display: inline-grid; vertical-align: middle; margin-inline-end: var(--ds-s1); }
+.dbtable-handle .ds-checkbox { vertical-align: middle; }
+.dbtable-add { inline-size: 38px; }
+.dbtable-add .dv-th-btn { justify-content: center; padding-inline: 0; }
+.db-cellbox { position: relative; }
+.db-cellbox > .dbcell-file { flex: none; color: var(--ds-text-3); }
+.db-cellbox > input:not([type=checkbox]) { flex: 1; min-inline-size: 0; }
+.dbtable th.dbtable-group { block-size: 34px; background: var(--ds-bg); }
+.dbtable-group > .ds-badge { margin-inline-start: var(--ds-s2); }
+.dv-page-title::placeholder { color: var(--ds-text); }
+
+.dbtable tbody tr[data-id] { cursor: var(--cursor-hand, pointer); }
+.dbtable .db-cellbox[data-kind="title"] > input { cursor: inherit; }

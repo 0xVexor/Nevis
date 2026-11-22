@@ -20,6 +20,7 @@ describe('golden fixtures', () => {
     expect(all.filter(g => g.sv === 1).length).toBeGreaterThanOrEqual(12)
     expect(all.filter(g => g.sv === 2).length).toBeGreaterThanOrEqual(12) // the blocks of M8a
     expect(all.filter(g => g.sv === 3).length).toBeGreaterThanOrEqual(1) // the attachments of M9
+    expect(all.filter(g => g.sv === 4).length).toBeGreaterThanOrEqual(1) // resized tables
     for (const n of ['real-m5-store', 'real-m5-merged']) expect(all.some(g => g.sv === 1 && g.name === n), `the realistic sv1 fixture ${n}`).toBe(true)
     for (const g of all) expect(g.sv).toBeLessThanOrEqual(SV)
   })

@@ -1,6 +1,6 @@
-import { addProp } from './db-helpers'
+import { addProp, choose } from './db-helpers'
 import { expect, test, type Page } from '@playwright/test'
-import { createNew, appReady } from './shell-helpers'
+import { createNew, appReady, reopenWorkspace } from './shell-helpers'
 
 // ROADMAP M7: a database "کتاب‌ها" in the real app: properties of several types, a select option, cells (with Persian digits),
 // reload: everything persisted and read back typed.
@@ -42,8 +42,8 @@ test('a database: columns of several types, an option, rows, Persian digits in a
   await cell(page, 'قیمت', 0).locator('input').fill('۱۲٫۵')
   await cell(page, 'قیمت', 0).locator('input').blur()
   await expect(cell(page, 'قیمت', 0).locator('input')).toHaveValue('12.5') // normalized to ASCII digits
-  await cell(page, 'ژانر', 0).locator('select').selectOption({ label: 'رمان' })
-  await cell(page, 'خوانده', 0).locator('input').check()
+  await choose(page, cell(page, 'ژانر', 0).locator('.ds-dd-btn'), { label: 'رمان' })
+  await cell(page, 'خوانده', 0).locator('.ds-check').click()
   await cell(page, 'تاریخ', 0).locator('input').fill('۱۴۰۵/۰۸/۲۹')
   await cell(page, 'تاریخ', 0).locator('input').blur()
   await expect(cell(page, 'تاریخ', 0).locator('input')).toHaveValue('۱۴۰۵/۰۸/۲۹') // shown in the Persian calendar
@@ -57,14 +57,13 @@ test('a database: columns of several types, an option, rows, Persian digits in a
   await page.waitForFunction(() => document.querySelector('[data-testid=outbox]')?.textContent === '0')
 
   await page.reload()
-  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await reopenWorkspace(page)
   await page.getByTestId('page-row').first().dblclick()
   await expect(page.getByTestId('db-title')).toHaveValue('کتاب‌ها')
   await expect(page.getByTestId('db-row')).toHaveCount(1)
   await expect(cell(page, 'نام', 0).locator('input')).toHaveValue('بوف کور')
   await expect(cell(page, 'قیمت', 0).locator('input')).toHaveValue('12.5')
-  await expect(cell(page, 'ژانر', 0).locator('select')).toHaveValue(/.+/)
-  await expect(cell(page, 'ژانر', 0).locator('select option:checked')).toHaveText('رمان')
+  await expect(cell(page, 'ژانر', 0).locator('.ds-dd-btn')).toHaveText('رمان')
   await expect(cell(page, 'خوانده', 0).locator('input')).toBeChecked()
   await expect(cell(page, 'تاریخ', 0).locator('input')).toHaveValue('۱۴۰۵/۰۸/۲۹')
 })

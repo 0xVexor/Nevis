@@ -63,6 +63,7 @@ function block(n: PMJson, c: MdContext): string {
     case 'drawing': return '<!-- drawing -->'
     case 'layoutGroup': return `<div class="nv-columns">\n\n${(n.content ?? []).map(col => `<div class="nv-column">\n\n${blocks(col.content, c)}\n\n</div>`).join('\n\n')}\n\n</div>`
     case 'table': return table(n, c)
+    case 'horizontalRule': return '---'
     default: return inline(n.content, c)
   }
 }

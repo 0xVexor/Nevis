@@ -10,7 +10,7 @@ import { t } from '../i18n'
 /** What the file manager does to pages: the old app's `repo` calls, answered by the workspace (they are written asynchronously; the screen redraws when the data changes). */
 export interface FileOps {
   rename: (id: string, title: string) => void
-  create: (parent: string | null) => Page
+  create: (parent: string | null, kind: 'page' | 'folder') => Promise<Page>
   remove: (id: string) => void
   restore: (id: string) => void
   move: (id: string, parent: string | null, before: string | null) => boolean
@@ -32,8 +32,8 @@ const folderFirst = (a: Page, b: Page) => Number(b.kind === 'folder') - Number(a
  * A file-manager view of the vault: browse folders, select several items, rename, cut / copy / paste, duplicate, drag into folders,
  * delete (to the trash, with undo) and search. Pages are the files, folders are folders.
  */
-export function Explorer({ pages, ops, onOpen, onChange, onToast }: { pages: Page[]; ops: FileOps; onOpen: (id: string) => void; onChange: () => void; onToast: (msg: string, undo?: () => void) => void }) {
-  const [cwd, setCwd] = useState<string | null>(null)
+export function Explorer({ pages, ops, onOpen, onChange, onToast, initialFolder = null }: { pages: Page[]; ops: FileOps; onOpen: (id: string) => void; onChange: () => void; onToast: (msg: string, undo?: () => void) => void; initialFolder?: string | null }) {
+  const [cwd, setCwd] = useState<string | null>(initialFolder)
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [anchor, setAnchor] = useState<string | null>(null)
   const [clip, setClip] = useState<Clip | null>(null)
@@ -208,9 +208,10 @@ export function Explorer({ pages, ops, onOpen, onChange, onToast }: { pages: Pag
     }
     setRenaming(null)
   }
-  const create = (kind: 'page' | 'folder') => {
-    const p = ops.create(cwd)
-    if (kind === 'folder') ops.rename(p.id, t('New folder'))
+  const create = async (kind: 'page' | 'folder') => {
+    let p: Page
+    try { p = await ops.create(cwd, kind) }
+    catch { onToast(t('Could not complete the action. Please try again.')); return }
     onChange()
     setSel(new Set([p.id]))
     setAnchor(p.id)

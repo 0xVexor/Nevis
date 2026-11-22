@@ -6,8 +6,26 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="theme-color" content="#087f74" />
     <title>نِویس</title>
+    <script src="/first-paint.js"></script>
+    <style>
+      #splash{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--sp-bg,#fcfcfb);color:var(--sp-accent,#087f74);transition:opacity .5s ease}
+      #splash.out{opacity:0;pointer-events:none}
+      #splash svg{width:84px;height:84px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;animation:splash-in .5s cubic-bezier(.2,.8,.2,1) both}
+      #splash path{stroke-dasharray:1;stroke-dashoffset:1;animation:splash-draw .9s .2s cubic-bezier(.4,0,.2,1) forwards}
+      #splash path+path{animation-delay:.6s}
+      #splash b{font:600 26px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.01em;color:var(--sp-text,#222923);animation:splash-name .6s 1.1s ease both}
+      #splash b i{font-style:normal;font-size:3em;line-height:0;color:var(--sp-accent,#087f74)}
+      @keyframes splash-name{from{opacity:0;transform:translateY(6px)}}
+      @keyframes splash-draw{to{stroke-dashoffset:0}}
+      @keyframes splash-in{from{opacity:0;transform:scale(.86)}}
+    </style>
   </head>
   <body>
+    <div id="splash" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path pathLength="1" d="M12.67 19a2 2 0 0 0 1.416-.588l6.154-6.172a6 6 0 0 0-8.49-8.49L5.586 9.914A2 2 0 0 0 5 11.328V18a1 1 0 0 0 1 1z"/><path pathLength="1" d="M16 8 2 22M17.5 15H9"/></svg>
+      <b>Nevis<i>.</i></b>
+    </div>
+    <script src="/splash.js"></script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

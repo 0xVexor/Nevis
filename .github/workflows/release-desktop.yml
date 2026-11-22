@@ -38,8 +38,7 @@ jobs:
           workspaces: apps/desktop/src-tauri
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
-      - name: Build the web app the installers embed
-        run: pnpm --filter web build
+      # Tauri's beforeBuildCommand builds the shared web application.
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

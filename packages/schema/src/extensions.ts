@@ -8,9 +8,10 @@ import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table
 import StarterKit from '@tiptap/starter-kit'
 import { blockNodes } from './blocks'
 import { isSafeHref } from './safeHref'
+import { columnWidthsAttribute } from './tableWidths'
 
 /** Nodes that carry a stable `blockId`. */
-export const BLOCK_TYPES = ['paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'taskList', 'taskItem', 'blockquote', 'codeBlock', 'table', 'tableRow', 'tableHeader', 'tableCell', 'callout', 'toggle', 'layoutGroup', 'layoutColumn', 'mathBlock', 'mermaid', 'drawing', 'image', 'file'] as const
+export const BLOCK_TYPES = ['paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'taskList', 'taskItem', 'blockquote', 'horizontalRule', 'codeBlock', 'table', 'tableRow', 'tableHeader', 'tableCell', 'callout', 'toggle', 'layoutGroup', 'layoutColumn', 'mathBlock', 'mermaid', 'drawing', 'image', 'file'] as const
 /** Nodes that carry a text direction. */
 export const DIR_TYPES = ['paragraph', 'heading', 'table', 'blockquote', 'listItem', 'taskItem', 'tableCell', 'tableHeader', 'layoutGroup'] as const
 /** Nodes whose text can be aligned by physical side (left / center / right / justify); '' = natural (follows the direction). */
@@ -63,7 +64,6 @@ const Attrs = Extension.create({
   },
 })
 
-// prosemirror-tables defaults `colwidth` to null; column widths are out of scope for the schema's first version.
 /** The code block's language: a non-null string ('' = none), read back from `<pre><code class="language-x">` (pasted Markdown fences and web pages). */
 export const codeLanguage = {
   default: '',
@@ -71,14 +71,19 @@ export const codeLanguage = {
   parseHTML: (el: HTMLElement) => /language-([\w+#-]+)/.exec(el.firstElementChild?.getAttribute('class') ?? '')?.[1] ?? '',
 }
 
-const Cell = TableCell.extend({ addAttributes: () => ({ colspan: { default: 1 }, rowspan: { default: 1 } }) })
-const Header = TableHeader.extend({ addAttributes: () => ({ colspan: { default: 1 }, rowspan: { default: 1 } }) })
+const cellAttributes = () => ({
+  colspan: { default: 1, parseHTML: (el: HTMLElement) => Number(el.getAttribute('colspan')) || 1 },
+  rowspan: { default: 1, parseHTML: (el: HTMLElement) => Number(el.getAttribute('rowspan')) || 1 },
+  colwidthJson: columnWidthsAttribute,
+})
+const Cell = TableCell.extend({ addAttributes: cellAttributes })
+const Header = TableHeader.extend({ addAttributes: cellAttributes })
 
 export const schemaExtensions: AnyExtension[] = [
   StarterKit.configure({
     heading: { levels: [1, 2, 3] },
     // not part of the schema contract, or behaviour that belongs to the editor (history comes from Yjs)
-    undoRedo: false, horizontalRule: false, dropcursor: false, gapcursor: false, trailingNode: false, listKeymap: false,
+    undoRedo: false, dropcursor: false, gapcursor: false, trailingNode: false, listKeymap: false,
     bulletList: false, orderedList: false, listItem: false, link: false,
     codeBlock: false,
   }),

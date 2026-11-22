@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { appReady, createNew } from './shell-helpers'
+import { appReady, createNew, reopenWorkspace } from './shell-helpers'
 
 // ROADMAP M11 (cards): a toggle is a card; a review is an event; two devices that review at the same time both keep their review.
 const pw = 'correct horse battery'
@@ -55,7 +55,7 @@ test('the same card reviewed on two devices while apart: both reviews are kept a
     await b.locator('input[name=username]').fill(user)
     await b.locator('input[name=password]').fill(pw)
     await b.getByTestId('auth-submit').click()
-    await b.getByTestId('ws-list').getByRole('button').first().click()
+    await reopenWorkspace(b)
     await expect.poll(() => b.evaluate(() => (window as unknown as { __ws: { search: { cards: () => unknown[] } } }).__ws.search.cards().length), { timeout: 30_000 }).toBe(1)
     await ca.setOffline(true); await cb.setOffline(true)
     for (const [p, grade] of [[a, 2], [b, 3]] as const) {

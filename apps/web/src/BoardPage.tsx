@@ -103,7 +103,8 @@ export function BoardPage({ ws, id, title }: { ws: Workspace; id: string; title:
   useEffect(() => {
     const sync = () => setFull(document.fullscreenElement === root.current)
     document.addEventListener('fullscreenchange', sync)
-    return () => { document.removeEventListener('fullscreenchange', sync); if (document.fullscreenElement === root.current) void document.exitFullscreen() }
+    const element = root.current
+    return () => { document.removeEventListener('fullscreenchange', sync); if (element && document.fullscreenElement === element) void document.exitFullscreen().catch(() => undefined) }
   }, [])
 
   return (

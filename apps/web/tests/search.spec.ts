@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { createNew, appReady } from './shell-helpers'
+import { createNew, appReady, reopenWorkspace } from './shell-helpers'
 
 // ROADMAP M10 in the real app: the index in a Worker, the three ways to write «می‌خواهم», two digit systems, ي/ی, backlinks that follow a
 // rename, the graph, the task list, and a rebuild when the stored index was made under another NORM_VERSION.
@@ -92,7 +92,7 @@ test('search finds every spelling, both digit systems and ي/ی; links, backlink
     db.close()
   }, ws)
   await page.reload()
-  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await reopenWorkspace(page)
   await expect.poll(() => page.evaluate(() => (window as unknown as { __ws: Ws }).__ws.search.rebuilt)).toBe(true)
   await expect.poll(() => hits(page, 'میخواهم'), { timeout: 30_000 }).toBeGreaterThan(0)
   W(page)

@@ -6,6 +6,11 @@ import { join } from 'node:path'
 
 let proc: ChildProcess | null = null
 export default async function globalSetup() {
+  if (process.env.NEVIS_SERVER) {
+    const health = await fetch(`${process.env.NEVIS_SERVER}/v1/health`)
+    if (!health.ok) throw new Error('The configured test server is not healthy')
+    return
+  }
   try { if ((await fetch('http://127.0.0.1:8787/v1/health')).ok) return } catch { /* none running: start ours */ }
   const dir = mkdtempSync(join(tmpdir(), 'nevis-web-e2e-'))
   const bin = join(dir, 'nevis-server')

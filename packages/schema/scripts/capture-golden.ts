@@ -9,10 +9,10 @@ import { prosemirrorJSONToYXmlFragment } from '@tiptap/y-tiptap'
 import * as Y from 'yjs'
 import { SV } from '@nevis/protocol'
 import { BODY, normalize, project, schema } from '../src'
-import { allFixtures as fixtures, fixturesV2, fixturesV3 } from '../test/fixtures'
+import { allFixtures as fixtures, fixturesV2, fixturesV3, fixturesV4 } from '../test/fixtures'
 
 // Each schema version captures only the fixtures it INTRODUCED; older ones keep their stored files (never rewritten).
-const introduced: Record<number, string[]> = { 1: Object.keys(fixtures).filter(n => !(n in fixturesV2) && !(n in fixturesV3)), 2: Object.keys(fixturesV2), 3: Object.keys(fixturesV3) }
+const introduced: Record<number, string[]> = { 1: Object.keys(fixtures).filter(n => !(n in fixturesV2) && !(n in fixturesV3) && !(n in fixturesV4)), 2: Object.keys(fixturesV2), 3: Object.keys(fixturesV3), 4: Object.keys(fixturesV4) }
 const current = introduced[SV]
 if (!current) throw new Error(`say which fixtures SV ${SV} introduces (the table above)`)
 

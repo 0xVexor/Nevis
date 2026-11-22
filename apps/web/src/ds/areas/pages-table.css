@@ -33,10 +33,11 @@
 .pt-title:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 4px; border-radius: var(--ds-r-sm); }
 .pt-ic { display: grid; place-items: center; flex: none; inline-size: 28px; block-size: 28px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-sm); color: var(--ds-text-3); font-size: var(--ds-text-ui); }
 .pt-path { overflow: hidden; color: var(--ds-text-3); font-size: var(--ds-text-small); text-overflow: ellipsis; white-space: nowrap; }
-/* tags stay on one line: the first two, then +N that opens the rest */
-.pt-tag-list { display: flex; align-items: center; gap: var(--ds-s1); min-inline-size: 0; overflow: hidden; }
-.pt-tag-list .ds-tag { flex: 0 1 auto; min-inline-size: 56px; }
-.pt-tag-more { flex: none; block-size: 22px; padding-inline: var(--ds-s2); font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; }
+/* Keep tag pills inside the same inset as their heading, even in a narrow column. */
+.pt td.pt-col-tags { padding-block: var(--ds-s2); padding-inline: var(--ds-s4); }
+.pt-tag-list { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-s1); min-inline-size: 0; }
+.pt-tag-list .ds-tag { flex: 0 1 auto; min-inline-size: 0; max-inline-size: min(100%, 220px); }
+.pt-tag-more { flex: none; block-size: var(--ds-control-sm); padding-inline: var(--ds-s2); font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; }
 .pt td { overflow: hidden; }
 .pt td .ds-chip-btn { max-inline-size: 100%; }
 .pt td .ds-chip-btn > span { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

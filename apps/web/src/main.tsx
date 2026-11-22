@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { t } from './i18n'
-import { StrictMode, useEffect, useState, type FormEvent } from 'react'
+import { StrictMode, useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import { uuidv7 } from '@nevis/protocol'
 import { AuthError, createWorkspace, deviceLabel, me, signIn, signOut, signUp, workspaces, type Me, type WorkspaceInfo } from './auth'
@@ -12,7 +12,7 @@ import { Workspace } from './workspace'
 import { WorkspaceView } from './WorkspaceView'
 import { Brand } from './shell/Brand'
 import { BrandMark } from './shell/BrandMark'
-import { Button } from './ds'
+import { Button, Icon } from './ds'
 import 'katex/dist/katex.min.css'
 import '@nevis/editor/editor.css'
 import './app.css'
@@ -92,7 +92,7 @@ const errText = (e: unknown): string => {
   return t('The server is not reachable')
 }
 
-function SignInForm({ onDone }: { onDone: (recoveryKey?: string) => void }) {
+function SignInForm({ onDone, onServer }: { onDone: (recoveryKey?: string) => void; onServer?: () => void }) {
   const [mode, setMode] = useState<'in' | 'up'>('in')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -107,10 +107,10 @@ function SignInForm({ onDone }: { onDone: (recoveryKey?: string) => void }) {
     } catch (e) { setErr(errText(e)) } finally { setBusy(false) }
   }
   return (
-    <Frame>
+    <Frame surface="auth">
       <h1>{mode === 'in' ? t('Sign in') : t('Create account')}</h1>
-      <p>{mode === 'in' ? t('Sign in so your notes sync.') : 'یک حساب بسازید؛ یادداشت‌ها روی دستگاه شما می‌مانند و با سرور خودتان همگام می‌شوند.'}</p>
-      <form onSubmit={e => void submit(e)} data-testid="auth-form" className="onb-panel">
+      <p>{mode === 'in' ? t('Sign in so your notes sync.') : t('Create an account to sync your notes.')}</p>
+      <form onSubmit={e => void submit(e)} data-testid="auth-form" className="onb-form">
         <label className="onb-field"><span>{t('Username')}</span><input className="ds-field" name="username" autoComplete="username" required dir="ltr" /></label>
         <label className="onb-field"><span>{t('Password')}</span><input className="ds-field" name="password" type="password" autoComplete={mode === 'in' ? 'current-password' : 'new-password'} required dir="ltr" /></label>
         {mode === 'up' && <label className="onb-field"><span>{t('Invite code (if needed)')}</span><input className="ds-field" name="invite" dir="ltr" /></label>}
@@ -120,14 +120,15 @@ function SignInForm({ onDone }: { onDone: (recoveryKey?: string) => void }) {
           <Button type="submit" variant="primary" disabled={busy} data-testid="auth-submit">{busy ? '…' : mode === 'in' ? t('Sign in') : t('Create account')}</Button>
         </div>
       </form>
+      {onServer && <Button variant="ghost" size="sm" icon={<Icon name="settings" size={16} />} data-testid="custom-server" onClick={onServer}>{t('Server address')}</Button>}
     </Frame>
   )
 }
 
 /** The old app's first-run frame (`onb`): the brand at the top, one centered panel. */
-function Frame({ children, wide }: { children: ReactNode; wide?: boolean }) {
+function Frame({ children, wide, surface }: { children: ReactNode; wide?: boolean; surface?: "auth" | "workspaces" }) {
   return (
-    <div className="onb" dir="rtl">
+    <div className="onb" data-surface={surface}>
       <header className="onb-top"><span className="onb-brand"><BrandMark size={20} /><Brand /></span><span className="onb-top-end" /></header>
       <main className="onb-stage"><section className={'onb-panel' + (wide ? ' onb-panel--wide' : '')}>{children}</section></main>
     </div>
@@ -139,16 +140,67 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
   const [list, setList] = useState<WorkspaceInfo[] | null>(null)
   const [open, setOpen] = useState<{ ws: Workspace } | null>(null)
   const [key, setKey] = useState(recoveryKey)
-  useEffect(() => { void workspaces().then(setList, () => setList([])) }, [])
-  const leave = async () => { await open?.ws.stop(); await signOut().catch(() => undefined); onSignedOut() }
-  const enter = (id: string) => {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const pending = useRef(false)
+  const lastKey = 'nevis.lastWorkspace.' + who.account.id
+  const flushOff = useRef<(() => void) | undefined>(undefined)
+  const remember = useCallback((id: string) => {
+    try { localStorage.setItem(lastKey, id) } catch { /* private window */ }
+  }, [lastKey])
+  const leave = async () => { flushOff.current?.(); await open?.ws.stop(); await signOut().catch(() => undefined); onSignedOut() }
+  const enter = useCallback(async (id: string) => {
+    if (pending.current) return
+    pending.current = true
+    setBusy(true)
+    setError('')
     const ws = new Workspace(id, null)
-    ;(window as unknown as { __ws?: Workspace }).__ws = ws
-    void ws.start().then(() => setOpen({ ws }))
-    // desktop: closing the window writes what is still waiting and pushes the outbox first (at most 5 s, ADR-0007 §7)
-    if (isDesktop) void onWindowFlush(async () => { await ws.flushAll(); await Promise.race([ws.rt.engine.cycle().catch(() => undefined), new Promise(r => setTimeout(r, 4000))]) })
+    try {
+      await ws.start()
+      ;(window as unknown as { __ws?: Workspace }).__ws = ws
+      if (isDesktop) {
+        flushOff.current?.()
+        flushOff.current = await onWindowFlush(async () => {
+          await ws.flushAll()
+          await Promise.race([ws.rt.engine.cycle().catch(() => undefined), new Promise(r => setTimeout(r, 4000))])
+        })
+      }
+      remember(id)
+      setOpen({ ws })
+    } catch (error) {
+      await ws.stop().catch(() => undefined)
+      setError(errText(error))
+    } finally {
+      pending.current = false
+      setBusy(false)
+    }
+  }, [remember])
+  useEffect(() => {
+    let alive = true
+    void workspaces().then(list => {
+      if (!alive) return
+      setList(list)
+      if (recoveryKey) return
+      let last: string | null
+      try { last = localStorage.getItem(lastKey) } catch { last = null }
+      if (last && list.some(workspace => workspace.id === last)) void enter(last)
+    }, error => { if (alive) { setError(errText(error)); setList([]) } })
+    return () => { alive = false }
+  }, [enter, lastKey, recoveryKey])
+  const make = async () => {
+    if (pending.current) return
+    pending.current = true
+    setBusy(true)
+    try {
+      const id = uuidv7()
+      const name = t('Notes')
+      await createWorkspace(id, name)
+      setList(current => [...(current ?? []), { id, name, role: 'owner', head: 0 }])
+      pending.current = false
+      await enter(id)
+    } catch (error) { setError(errText(error)) }
+    finally { pending.current = false; setBusy(false) }
   }
-  const make = async () => { const id = uuidv7(); await createWorkspace(id, t('Notes')); enter(id) }
   /** A bundle always goes into a NEW workspace (ADR-0009 §2). */
   const importFile = async (file: File) => {
     const id = uuidv7()
@@ -157,20 +209,26 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
     ;(window as unknown as { __ws?: Workspace }).__ws = ws
     await ws.start()
     try { await ws.importBundle(new Uint8Array(await file.arrayBuffer())) } catch (e) { alert('ورود ناموفق: ' + String((e as Error).message ?? e)) }
+    remember(id)
     setOpen({ ws })
   }
-  const back = async () => { await open?.ws.stop(); setOpen(null); void workspaces().then(setList, () => setList([])) }
+  const back = async () => { flushOff.current?.(); await open?.ws.stop(); setOpen(null); void workspaces().then(setList, error => setError(errText(error))) }
   if (open) return <WorkspaceView ws={open.ws} onSignOut={() => void leave()} onWorkspaces={() => void back()} workspaceName={list?.find(w => w.id === open.ws.ws)?.name} />
   return (
-    <Frame wide>
-      <h1>سلام {who.account.username}</h1>
+    <Frame wide surface="workspaces">
+      <h1>{t('Choose a workspace')}</h1>
       <p>{t('Open a workspace or create one.')}</p>
       {key && <div className="recovery onb-key" data-testid="recovery"><p>کلید بازیابی شما (فقط یک بار نشان داده می‌شود؛ جایی امن نگه دارید):</p><code dir="ltr">{key}</code> <Button size="sm" onClick={() => setKey(undefined)}>نوشتم</Button></div>}
-      {list === null ? <p>{t('Loading…')}</p> : (
-        <ul data-testid="ws-list" className="onb-list">{list.map(w => <li key={w.id} className="onb-row onb-row--gap"><Button onClick={() => enter(w.id)}>{w.name}</Button> <span className="small">{w.role}</span></li>)}</ul>
+      {error && <p role="alert" className="err">{error}</p>}
+      {list === null || busy ? <p role="status">{t('Opening…')}</p> : (
+        <ul data-testid="ws-list" className="onb-list">{list.map(w => <li key={w.id}>
+          <Icon name="vault" size={20} />
+          <div className="onb-list-text"><b dir="auto">{w.name}</b><small>{t(w.role === 'owner' ? 'Owner' : w.role)}</small></div>
+          <Button size="sm" onClick={() => void enter(w.id)} aria-label={w.name}>{t('Open')}</Button>
+        </li>)}</ul>
       )}
       <div className="onb-actions">
-        <Button variant="primary" data-testid="ws-new" onClick={() => void make()}>{t('New workspace')}</Button>
+        <Button variant="primary" data-testid="ws-new" disabled={busy} onClick={() => void make()}>{t('New workspace')}</Button>
         <label className="ds-btn ds-btn--ghost">{t('Import a bundle')} <input type="file" accept=".zip" data-testid="ws-import" hidden onChange={e => { const f = e.target.files?.[0]; if (f) void importFile(f) }} /></label>
         <Button variant="ghost" data-testid="signout" onClick={() => void leave()}>{t('Sign out')}</Button>
       </div>
@@ -179,35 +237,43 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
 }
 
 /** Desktop only: which server this app talks to (the one address JavaScript may name; Rust checks it). */
-function ServerForm({ onDone }: { onDone: () => void }) {
+function ServerForm({ onDone, onBack }: { onDone: () => void; onBack: () => void }) {
   const [err, setErr] = useState('')
   const submit = async (ev: FormEvent<HTMLFormElement>) => {
     ev.preventDefault()
     try { await setServer(String(new FormData(ev.currentTarget).get('server') ?? '')); onDone() } catch (e) { setErr(String(e)) }
   }
   return (
-    <Frame>
+    <Frame surface="auth">
       <h1>{t('Server address')}</h1>
       <p>{t('Nevis syncs with your own server; enter its address.')}</p>
-      <form onSubmit={e => void submit(e)} data-testid="server-form" className="onb-panel">
+      <form onSubmit={e => void submit(e)} data-testid="server-form" className="onb-form">
         <label className="onb-field"><span>{t('Your server address')}</span><input className="ds-field" name="server" dir="ltr" placeholder="https://notes.example.com" required /></label>
         {err && <p className="err" role="alert">{err}</p>}
-        <div className="onb-actions"><Button type="submit" variant="primary">{t('Continue')}</Button></div>
+        <div className="onb-actions"><Button type="button" variant="ghost" onClick={onBack}>{t('Cancel')}</Button><Button type="submit" variant="primary">{t('Continue')}</Button></div>
       </form>
     </Frame>
   )
 }
 
 function Root() {
-  const [state, setState] = useState<'loading' | 'server' | 'out' | { me: Me; recoveryKey?: string }>('loading')
+  const [state, setState] = useState<'loading' | 'server' | 'out' | 'unreachable' | { me: Me; recoveryKey?: string }>('loading')
   const refresh = async (recoveryKey?: string) => {
-    if (isDesktop && !(await appInfo()).server) { setState('server'); return }
-    await me().then(m => setState(m ? { me: m, recoveryKey } : 'out'), () => setState('out'))
+    if (isDesktop) {
+      try {
+        const info = await appInfo()
+        if (!info.server || !info.hasToken) { setState('out'); return }
+      } catch { setState('unreachable'); return }
+    }
+    await me().then(m => setState(m ? { me: m, recoveryKey } : 'out'), () => setState('unreachable'))
   }
   useEffect(() => { void refresh() }, [])
+  // the start animation (index.html) fades away once the app has something to show
+  useEffect(() => { if (state !== 'loading') (window as unknown as { __splashDone?: () => void }).__splashDone?.() }, [state])
   if (state === 'loading') return <main><p>{t('Opening…')}</p></main>
-  if (state === 'server') return <ServerForm onDone={() => void refresh()} />
-  if (state === 'out') return <SignInForm onDone={k => void refresh(k)} />
+  if (state === 'server') return <ServerForm onDone={() => void refresh()} onBack={() => void refresh()} />
+  if (state === 'out') return <SignInForm onDone={k => void refresh(k)} onServer={isDesktop ? () => setState('server') : undefined} />
+  if (state === 'unreachable') return <Frame surface="auth"><h1>{t('The server is not reachable')}</h1><div className="onb-actions">{isDesktop && <Button variant="ghost" onClick={() => setState('server')}>{t('Server address')}</Button>}<Button variant="primary" onClick={() => void refresh()}>{t('Try again')}</Button></div></Frame>
   return <Home who={state.me} recoveryKey={state.recoveryKey} onSignedOut={() => setState('out')} />
 }
 

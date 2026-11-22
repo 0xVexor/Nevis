@@ -21,6 +21,7 @@
 
 /* ───────── page tree: folders with a count, children hung on a guide line ───────── */
 .row.tree { padding-inline-start: var(--ds-s1); }
+.row.tree:not(.cmp-file, :has(> .twisty)) { padding-inline-start: var(--ds-s2); }
 .row.tree.folder { color: var(--ds-text); font-weight: 550; }
 .row.tree.folder .ic { color: var(--ds-text-2); }
 .tree-count { flex: none; padding-inline: var(--ds-s2); font-size: var(--ds-text-caption); font-weight: 600; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; color: var(--ds-text-3); }
@@ -45,7 +46,6 @@
 .tree-in .row.tree .ntitle { flex: 1 1 0; width: 0; min-width: 72px; }
 .row.tree.leaf { min-height: var(--ds-control); font-weight: 450; }
 /* a page without sub-pages keeps its icon; the empty twisty keeps its place so its title lines up with its siblings */
-.row.tree.leaf .twisty { visibility: hidden; }
 .row.tree.leaf.cur::before { inset-inline-start: -9px; top: 8px; bottom: 8px; }
 .row.tree.folder.cur { background: transparent; color: var(--ds-accent); }
 .row.tree.folder.cur::before { display: none; }

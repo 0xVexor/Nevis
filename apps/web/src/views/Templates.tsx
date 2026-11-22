@@ -3,7 +3,8 @@
 import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { allBlocksTemplate, dailyNoteTemplate, meetingNotesTemplate, taskListTemplate } from '@nevis/editor'
 import { formatDateFa } from '@nevis/core'
-import { Button, Icon, Screen } from '../ds'
+import { motion } from 'motion/react'
+import { Button, Icon, Screen, useUIMotion } from '../ds'
 import { Glyph } from '../ds/iconSet'
 import { go } from '../router'
 import { t } from '../i18n'
@@ -51,6 +52,7 @@ function PaperBlock({ block: b }: { block: Block }) {
 }
 
 export function Templates({ ws }: { ws: Workspace }) {
+  const motionOf = useUIMotion()
   const meeting = meetingNotesTemplate(today()), tasks = taskListTemplate(), daily = dailyNoteTemplate(today()), all = allBlocksTemplate()
   const empty: Choice[] = [
     { id: 'blank', title: t('Blank page'), hint: t('Start from scratch'), icon: <Icon name="file-text" />, action: t('Create page'), make: () => null },
@@ -104,11 +106,11 @@ export function Templates({ ws }: { ws: Workspace }) {
             <Button variant="primary" data-testid="tpl-use" onClick={() => void pick(chosen)}>{chosen.action}</Button>
           </header>
           <div className="tpl-stage">
-            <div key={chosen.id} className="tpl-paper">
+            <motion.div key={chosen.id} className="tpl-paper" initial={motionOf.reduced ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={motionOf.transition}>
               <span className="tpl-paper-icon">{chosen.icon}</span>
               <p className="tpl-paper-title" dir="auto" data-empty={!chosen.pageTitle?.trim() || undefined}>{chosen.pageTitle?.trim() || t('Untitled')}</p>
               {!chosen.blocks?.length ? <p className="tpl-paper-hint">{t('Start writing, or press / for blocks')}</p> : chosen.blocks.map((b, i) => <PaperBlock key={i} block={b} />)}
-            </div>
+            </motion.div>
           </div>
         </section>
       </div>

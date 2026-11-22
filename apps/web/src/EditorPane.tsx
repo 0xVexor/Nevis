@@ -2,10 +2,16 @@ import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { PageChrome } from './shell/pageChrome'
 import { Toolbar } from './shell/Toolbar'
+import { createWorkspaceEditor } from './editor/createWorkspaceEditor'
+import { LayoutControls } from './LayoutControls'
+import { TableBubble } from './TableBubble'
+import { ImageBubble } from './ImageBubble'
+import { closeCommandPalette } from './editor/commandPalette'
+import { EditorMenus } from './editor/EditorMenus'
 import { getTemplates, templateDoc, type Template } from './shell/oldTemplates'
 import { Glyph } from './ds/iconSet'
 import type { Editor } from '@tiptap/core'
-import { createEditor, getFind, scrollToMatch } from '@nevis/editor'
+import { getFind, scrollToMatch } from '@nevis/editor'
 import { matches } from './shortcutBindings'
 import { IconButton } from './ds'
 import { Backlinks } from './views/Backlinks'
@@ -30,7 +36,11 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
   const [state, setState] = useState<'loading' | 'ready' | 'needs-update'>('loading')
   const [editor, setEditor] = useState<Editor | null>(null)
   const [name, setName] = useState(title)
-  useEffect(() => setName(title), [id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const titleInput = useRef<HTMLTextAreaElement | null>(null)
+  useEffect(() => {
+    // Preserve typing in progress; a rename from the tree or another device updates an unfocused title.
+    if (document.activeElement !== titleInput.current) setName(title)
+  }, [id, title])
 
   useEffect(() => {
     let ed: Editor | null = null
@@ -41,13 +51,13 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
       if (dead) return
       handle = h
       if (h.needsUpdate) { setState('needs-update'); return } // ADR-0003 §6: a newer schema is not edited by an older client
-      ed = createEditor(h.ydoc, host.current!, { pages: () => ws.pageList(), onOpenPage: pid => ws.onOpenPage?.(pid), notify: m => ws.notify(m), attachments: ws.rt.attachments, ownFindBar: true })
+      ed = createWorkspaceEditor(ws, h.ydoc, host.current!)
       const tpl = ws.takeTemplate(id)
       if (tpl && ed.isEmpty) ed.commands.setContent(tpl as never)
       ;(window as unknown as { __editor?: Editor }).__editor = ed
       setEditor(ed); setState('ready')
     })
-    return () => { dead = true; ed?.destroy(); if (handle) void ws.closeDoc(id) }
+    return () => { dead = true; if (ed) { closeCommandPalette(ed); ed.destroy() }; if (handle) void ws.closeDoc(id) }
   }, [ws, id])
 
   const meta = legacyPages(ws).find(p => p.id === id)
@@ -84,6 +94,11 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
   const diverged = ws.diverged.has(id)
   useEffect(() => { editor?.setEditable(!diverged && !reader) }, [editor, diverged, reader])
   useEffect(() => { const f = (e: Event) => setCoverMenu((e as CustomEvent<DOMRect>).detail); window.addEventListener('nevis:page-cover', f); return () => window.removeEventListener('nevis:page-cover', f) }, [])
+  useEffect(() => {
+    const notify = (event: Event) => ws.notify(String((event as CustomEvent<string>).detail))
+    window.addEventListener('layout-message', notify)
+    return () => window.removeEventListener('layout-message', notify)
+  }, [ws])
   // the page's headings, for the outline in the page drawer
   const [heads, setHeads] = useState<{ pos: number; level: number; text: string }[]>([])
   useEffect(() => {
@@ -131,7 +146,7 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
             {meta?.icon && <button type="button" className="pg-icon" data-testid="page-icon" aria-label={t('Change icon')} title={t('Change icon')} onClick={e => setPicker(e.currentTarget.getBoundingClientRect())}><span className="pg-icon-glyph" style={isGlyph(meta.icon) ? { color: parseIcon(meta.icon).color ?? toneOf(id) } : undefined}>{iconNode(meta.icon, 40)}</span></button>}
             <textarea
               className="pg-title" data-testid="title" rows={1} dir={name.trim() ? 'auto' : undefined} aria-label={t('Page title')} placeholder={t('Untitled')} value={name}
-              ref={el => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' } }}
+              ref={el => { titleInput.current = el; if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' } }}
               onChange={e => { const v = e.target.value.replace(/\n/g, ' '); setName(v); ws.setTitle(id, v) }}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); editor?.commands.focus('start') } }}
             />
@@ -186,7 +201,10 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
           </div>
         )}
         {editor && !reader && !diverged && <Toolbar editor={editor} />}
+        {editor && !reader && !diverged && <LayoutControls editor={editor} />}
+        {editor && <EditorMenus editor={editor} ws={ws} id={id} />}
         <div className="ec editor" data-testid="editor" ref={host} />
+        {editor && !reader && !diverged && <><TableBubble editor={editor} /><ImageBubble editor={editor} /></>}
         <Backlinks ws={ws} id={id} />
       </div>
     </div>

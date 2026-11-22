@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { unzipSync, strFromU8 } from 'fflate'
-import { Client, MemoryStore } from '@nevis/core'
+import { Client, MemoryStore, readStructured } from '@nevis/core'
 import { SV, uuidv7 } from '@nevis/protocol'
 import { importBundle, legacyToBundle, type LegacyPage } from '../src'
+import { convertLegacyDoc } from '../src/legacy'
 
 const text = (t: string) => ({ type: 'text', text: t })
 const old: LegacyPage[] = [
@@ -20,6 +21,12 @@ const old: LegacyPage[] = [
 ]
 
 describe('legacy import', () => {
+  it('keeps resized columns and merged cell widths from the old editor', () => {
+    const report = { pages: 0, folders: 0, skipped: [], lost: {} }
+    const result = convertLegacyDoc({ type: 'tableCell', attrs: { colspan: 2, colwidth: [180, 240] }, content: [{ type: 'paragraph' }] }, report)
+    expect(result.attrs).toMatchObject({ colspan: 2, colwidthJson: '[180,240]' })
+    expect(result.attrs).not.toHaveProperty('colwidth')
+  })
   it('maps the old nodes, reports what was lost and skipped, and the result imports as a bundle', async () => {
     const { zip, report } = await legacyToBundle(old)
     expect(report.pages).toBe(2); expect(report.folders).toBe(1)
@@ -33,6 +40,10 @@ describe('legacy import', () => {
     expect(page).not.toContain('null')
     const store = new MemoryStore()
     const r = await importBundle(zip, { client: new Client({ store, ws: uuidv7(), device: uuidv7(), sv: SV }), store })
-    expect(r.pages).toBe(2); expect(r.entities).toBe(3) // the folder and two pages; the deleted page and the board are not in
+    expect(r.pages).toBe(2); expect(r.entities).toBe(4) // folder, two pages and the synced folder marker
+    const imported = await readStructured(store)
+    const folder = imported.pages.find(p => p.title === 'پوشه')!
+    expect(imported.settings[`folder:${folder.id}`]).toBe(true)
+    expect(imported.pages.find(p => p.title === 'صفحهٔ قدیمی')?.parent).toBe(folder.id)
   })
 })

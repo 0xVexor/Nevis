@@ -26,13 +26,15 @@ const viewNames = new Set(WITH_VIEWS.map(e => e.name))
 /** Every extension of the editor, without the collaboration binding (added by `createEditor`). */
 export function editorExtensions(options: EditorOptions = {}): AnyExtension[] {
   const handle = () => { const el = document.createElement('div'); el.className = 'drag-handle'; el.textContent = '⠿'; el.title = 'جابه‌جایی بلوک'; el.setAttribute('role', 'button'); el.setAttribute('aria-label', 'جابه‌جایی بلوک'); return el }
-  return [
+  const defaults = [
     ...schemaExtensions.filter(e => !viewNames.has(e.name)),
     BlockIdentity,
     ...WITH_VIEWS,
     NevisOptions.configure(options),
     NevisCommands, HeadingDir, AttachFiles, MarkdownPaste, SlashMenu, PageLinkSuggest, FloatingBars, FindInPage,
-    Placeholder.configure({ placeholder: ({ node }) => (node.type.name === 'paragraph' ? S.slash.placeholder : ''), showOnlyCurrent: true }),
+    Placeholder.configure({ placeholder: ({ node }) => (node.type.name === 'paragraph' ? options.placeholder?.() ?? S.slash.placeholder : ''), showOnlyCurrent: true }),
     DragHandle.configure({ render: handle }),
   ]
+  const replacements = new Set(options.uiExtensions?.map(extension => extension.name))
+  return [...defaults.filter(extension => !replacements.has(extension.name)), ...(options.uiExtensions ?? [])]
 }

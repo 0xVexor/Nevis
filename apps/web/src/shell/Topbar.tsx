@@ -40,7 +40,7 @@ export interface TopbarProps {
 
 export function Topbar(p: TopbarProps) {
   const [menu, setMenu] = useState<{ rect: DOMRect; items: MenuItem[] } | null>(null)
-  const onPage = p.routeName === 'page' && !!p.current
+  const onPage = p.routeName === 'page' && !!p.current && p.current.kind !== 'folder'
   const shown = p.crumbs.length > 3 ? [p.crumbs[0]!, null, ...p.crumbs.slice(-2)] : p.crumbs // a deep page keeps the top level and its last two ancestors
   const here = CRUMB[p.routeName]
   return (

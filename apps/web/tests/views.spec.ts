@@ -1,6 +1,6 @@
-import { addProp } from './db-helpers'
+import { addProp, choose } from './db-helpers'
 import { expect, test, type Page } from '@playwright/test'
-import { createNew, appReady } from './shell-helpers'
+import { createNew, appReady, reopenWorkspace } from './shell-helpers'
 
 // ROADMAP M8b: the database views on the M7 model: tabs, sort, hidden columns, a board whose cards are moved by dragging (one op), the view config saved.
 const pw = 'correct horse battery'
@@ -39,15 +39,15 @@ async function seed(page: Page) {
     await cell(page, 'نام', i).locator('input').fill(name); await cell(page, 'نام', i).locator('input').blur()
     await cell(page, 'قیمت', i).locator('input').fill(price); await cell(page, 'قیمت', i).locator('input').blur()
   }
-  await cell(page, 'وضعیت', 0).locator('select').selectOption({ label: 'در انتظار' })
-  await cell(page, 'وضعیت', 1).locator('select').selectOption({ label: 'در انتظار' })
+  await choose(page, cell(page, 'وضعیت', 0).locator('.ds-dd-btn'), { label: 'در انتظار' })
+  await choose(page, cell(page, 'وضعیت', 1).locator('.ds-dd-btn'), { label: 'در انتظار' })
 }
 
 test('table view: sort by a number (exact), hide a column, and the view config survives a reload', async ({ page }) => {
   await open(page)
   await seed(page)
   await page.getByTestId('chip-sort').click()
-  await page.getByTestId('sort-prop').selectOption({ label: 'قیمت' })
+  await choose(page, page.getByTestId('sort-prop'), { label: 'قیمت' })
   await expect.poll(async () => (await page.locator('[data-testid=cell][data-prop="نام"] input').evaluateAll(els => els.map(e => (e as HTMLInputElement).value)))).toEqual(['ب', 'ج', 'الف']) // 5, 12.5, 30
   await page.getByTestId('sort-dir').click()
   await expect.poll(async () => (await page.locator('[data-testid=cell][data-prop="نام"] input').evaluateAll(els => els.map(e => (e as HTMLInputElement).value)))).toEqual(['الف', 'ج', 'ب'])
@@ -60,7 +60,7 @@ test('table view: sort by a number (exact), hide a column, and the view config s
   await expect(page.locator('th[data-prop="وضعیت"]')).toHaveCount(0)
   await settled(page)
   await page.reload()
-  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await reopenWorkspace(page)
   await page.getByTestId('page-row').first().dblclick()
   await expect(page.locator('th[data-prop="وضعیت"]')).toHaveCount(0)
   await expect(page.locator('.dv-conditions')).toContainText('نزولی')
@@ -80,7 +80,7 @@ test('board view: columns are the options; dragging a card moves it as ONE op; t
   const h0 = await head(page)
 
   // the "move to" menu (touch, and every engine)
-  await col('در انتظار').getByTestId('board-card').filter({ has: page.locator('span', { hasText: /^ب$/ }) }).locator('select').selectOption({ label: 'تمام' })
+  await choose(page, col('در انتظار').getByTestId('board-card').filter({ has: page.locator('span', { hasText: /^ب$/ }) }).locator('.ds-dd-btn'), { label: 'تمام' })
   await expect(col('تمام').getByTestId('board-card')).toHaveCount(1)
   await settled(page)
   await expect.poll(() => head(page)).toBe(h0 + 1) // the option and the position: ONE op
@@ -100,7 +100,7 @@ test('board view: columns are the options; dragging a card moves it as ONE op; t
   await settled(page)
   // the table view of the SAME database shows the moved cards
   await page.getByTestId('view-tab').first().click()
-  const shown = await page.locator('[data-testid=cell][data-prop="وضعیت"] select option:checked').allTextContents()
+  const shown = await page.locator('[data-testid=cell][data-prop="وضعیت"] .ds-dd-btn').allTextContents()
   expect(shown).toContain('تمام')
   if (browserName === 'chromium') expect(shown).toContain('در حال انجام')
   // a card can be added in a column

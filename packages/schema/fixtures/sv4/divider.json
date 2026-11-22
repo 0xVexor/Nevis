@@ -1,0 +1,45 @@
+{
+ "name": "divider",
+ "sv": 4,
+ "update": "AQ7tv6auAgAHAQRib2R5AwlwYXJhZ3JhcGgHAO2/pq4CAAYEAO2/pq4CAQ3YqNiu2LQg2KfZiNmEKADtv6auAgADZGlyAXcEYXV0bygA7b+mrgIAB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAxMDQoAO2/pq4CAAl0ZXh0QWxpZ24BdwCH7b+mrgIAAw5ob3Jpem9udGFsUnVsZSgA7b+mrgIMB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAxMDWH7b+mrgIMAwlwYXJhZ3JhcGgHAO2/pq4CDgYEAO2/pq4CDw3YqNiu2LQg2K/ZiNmFKADtv6auAg4DZGlyAXcEYXV0bygA7b+mrgIOB2Jsb2NrSWQBdyQwMTkzMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAxMDYoAO2/pq4CDgl0ZXh0QWxpZ24BdwAA",
+ "sha256": "98d2fe612857f1fcc31d10ef44fac35174dc885cef026f50df038c2269626c34",
+ "projection": {
+  "type": "doc",
+  "content": [
+   {
+    "type": "paragraph",
+    "attrs": {
+     "dir": "auto",
+     "blockId": "01930000-0000-7000-8000-000000000104",
+     "textAlign": ""
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "بخش اول"
+     }
+    ]
+   },
+   {
+    "type": "horizontalRule",
+    "attrs": {
+     "blockId": "01930000-0000-7000-8000-000000000105"
+    }
+   },
+   {
+    "type": "paragraph",
+    "attrs": {
+     "dir": "auto",
+     "blockId": "01930000-0000-7000-8000-000000000106",
+     "textAlign": ""
+    },
+    "content": [
+     {
+      "type": "text",
+      "text": "بخش دوم"
+     }
+    ]
+   }
+  ]
+ }
+}

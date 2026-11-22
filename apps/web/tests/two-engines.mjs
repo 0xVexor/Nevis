@@ -3,7 +3,7 @@
 import { chromium, webkit } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 
-const BASE = process.env.BASE ?? 'http://localhost:5174'
+const BASE = process.env.BASE ?? `http://localhost:${process.env.NEVIS_TEST_PORT ?? 5174}`
 const ws = randomUUID()
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 const lab = (page, fn, ...args) => page.evaluate(fn, ...args)

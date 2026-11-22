@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { appReady, createNew } from './shell-helpers'
+import { appReady, createNew, reopenWorkspace } from './shell-helpers'
 
 // ROADMAP M11 (page history): a version is an event; restoring yesterday's text is an ordinary edit that reaches the other device.
 const pw = 'correct horse battery'
@@ -54,7 +54,7 @@ test('save a version, change the page, restore it: the old text is back, a versi
     await b.locator('input[name=username]').fill(user)
     await b.locator('input[name=password]').fill(pw)
     await b.getByTestId('auth-submit').click()
-    await b.getByTestId('ws-list').getByRole('button').first().click()
+    await reopenWorkspace(b)
     await expect(b.getByTestId('page-row')).toHaveCount(1, { timeout: 30_000 })
     await b.getByTestId('page-row').first().dblclick()
     await expect(body(b)).toContainText('متن دیروز', { timeout: 30_000 })

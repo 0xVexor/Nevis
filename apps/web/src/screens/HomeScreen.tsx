@@ -115,7 +115,7 @@ export function HomeScreen({ pages, tasks, due, now, showIcons, onCheck, onOpen,
                 </button>)}
               </div>
               <Button variant="ghost" size="sm" onClick={onTemplates}>{t('All templates')}<Icon name="arrow-right" className="ds-flip" size={14} /></Button>
-              <div className="home-import-start"><Icon name="upload" size={20} /><h3>{t('Already have notes?')}</h3><p>{t('Bring in Markdown files or an Obsidian vault.')}</p><Button size="sm" onClick={onImport}>{t('Import notes')}</Button></div>
+              <div className="home-import-start"><Icon name="upload" size={20} /><h3>{t('Already have notes?')}</h3><p>{t('Import a Nevis backup into a new workspace.')}</p><Button size="sm" onClick={onImport}>{t('Import notes')}</Button></div>
             </aside>
           </div>
         </div>

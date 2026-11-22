@@ -1,9 +1,9 @@
 // One-time import of the OLD app's data (ADR-0009 §2; docs/formats/legacy-import.md): the old page records (`repo.dump()`: an array of
 // pages with TipTap JSON content) become a bundle, which is then imported like any other. Runs on one device, offline.
 import * as Y from 'yjs'
-import { Client, MemoryBlobStore, MemoryStore, createPage } from '@nevis/core'
+import { Client, MemoryBlobStore, MemoryStore, createPage, setSetting } from '@nevis/core'
 import { SV, uuidv7 } from '@nevis/protocol'
-import { normalize, writeBody, type PMJson } from '@nevis/schema'
+import { normalize, readColumnWidths, writeBody, type PMJson } from '@nevis/schema'
 import { exportBundle } from './bundle'
 
 export interface LegacyPage {
@@ -39,6 +39,12 @@ export function convertLegacyDoc(doc: unknown, r: LegacyReport): PMJson {
     const out: N = { ...n }
     const a = { ...(n.attrs ?? {}) }
     switch (n.type) {
+      case 'tableCell': case 'tableHeader': {
+        const widths = readColumnWidths(JSON.stringify(a.colwidth ?? []))
+        if (widths.length) a.colwidthJson = JSON.stringify(widths)
+        delete a.colwidth
+        break
+      }
       case 'callout': if (isStr(a.emoji)) { a.icon = a.emoji; delete a.emoji } else delete a.emoji; break
       case 'layoutGroup': { const w = a.widths; const d = a.direction; delete a.widths; delete a.direction; if (d === 'rtl' || d === 'ltr') a.dir = d
         out.content = (n.content ?? []).map((c, i) => ({ ...c, attrs: { ...(c.attrs ?? {}), ...(Array.isArray(w) && typeof w[i] === 'number' ? { width: Math.round(w[i] as number) } : {}) } })); break }
@@ -69,7 +75,7 @@ export async function legacyToBundle(pages: LegacyPage[], workspace = { id: uuid
     if (p.kind === 'board' || p.kind === 'deck') { report.skipped.push({ id: p.id, title: p.title, why: `a ${p.kind} page has no equivalent yet` }); continue }
     const parent = p.parentId && ids.has(p.parentId) ? ids.get(p.parentId)! : ''
     await createPage(client, { parent, title: p.title || '' }, id)
-    if (p.kind === 'folder') { report.folders++; continue }
+    if (p.kind === 'folder') { await setSetting(client, `folder:${id}`, true); report.folders++; continue }
     const json = convertLegacyDoc(p.content, report)
     const y = new Y.Doc(); writeBody(y, json)
     await client.writeYUpdate(id, Y.encodeStateAsUpdate(y))

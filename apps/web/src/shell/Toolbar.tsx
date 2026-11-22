@@ -8,23 +8,16 @@ import { Icon, useMenu, type MenuItem } from '../ds'
 import { commandBinding } from '../shortcutCommands'
 import { shortcutLabel } from '../shortcuts'
 import { t } from '../i18n'
+import { alertDialog } from '../dialog'
+import { editLink } from '../editor/linkPrompt'
+import { linkSelection } from '../editor/slash'
+import { openCommandPalette } from '../editor/commandPalette'
 
-const alertDialog = ({ title }: { title: string }) => { window.alert(title); return Promise.resolve() }
 const slash = (id: string) => (editor: Editor) => SLASH_ITEMS.find(x => x.id === id)?.run(editor)
 const pickImages = slash('image'), insertImageFromUrl = slash('imageUrl')
 const insertImages = (editor: Editor, files: File[]) => attachFiles(editor, files)
 /** "Link to page": the same `[[` picker the slash menu opens. */
-const linkSelection = (c: Chain, _editor: Editor) => c.insertContent('[[')
 /** A link on the selection: asks for the address (empty removes the link); only safe addresses are accepted. */
-function editLink(editor: Editor) {
-  const current = (editor.getAttributes('link').href as string | undefined) ?? ''
-  const href = window.prompt(t('Link address'), current)
-  if (href === null) return
-  const url = href.trim()
-  if (!url) editor.chain().focus().extendMarkRange('link').unsetLink().run()
-  else if (isSafeHref(url)) editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
-  else void alertDialog({ title: t('This address is not allowed') })
-}
 /** Is the first row (or column) of the table under the caret made of header cells? */
 function headerOf(editor: Editor, axis: 'row' | 'column'): boolean {
   const { $from } = editor.state.selection
@@ -195,7 +188,7 @@ export function Toolbar({ editor, diagram }: { editor: Editor; diagram?: { from:
   return (
     <div className={'toolbar' + (menu ? ' is-open' : '')} role="toolbar" aria-label={t('Formatting')} ref={wrap}>
       <div className="tb-pill" ref={pill}>
-        <B editor={editor} primary label="Open the “/” menu" icon={<Icon name="plus" size={16} />} run={(c) => c.setTextSelection(editor.state.selection.to).insertContent('/')} />
+        <button type="button" className="ds-icon-btn tb-btn tb-btn--primary" aria-label={t('Open the “/” menu')} title={tip('Open the “/” menu')} onMouseDown={e => e.preventDefault()} onClick={() => openCommandPalette(editor)}><Icon name="plus" size={16} /></button>
         <span className="tb-sep" />
         <B editor={editor} label="Heading 1" icon={<span className="tb-tx">H1</span>} on={is('heading', { level: 1 })} run={(c) => c.toggleHeading({ level: 1 })} />
         <B editor={editor} label="Heading 2" icon={<span className="tb-tx">H2</span>} on={is('heading', { level: 2 })} run={(c) => c.toggleHeading({ level: 2 })} />

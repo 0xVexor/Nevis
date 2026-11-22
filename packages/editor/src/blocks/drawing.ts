@@ -129,15 +129,22 @@ export const Drawing = DrawingSpec.extend({
         if (busy || !editor.isEditable) return
         busy = true
         try {
+          const originalScene = cur.attrs.scene, originalBlob = cur.attrs.sceneBlob
+          const unchanged = () => !editor.isDestroyed && cur.attrs.scene === originalScene && cur.attrs.sceneBlob === originalBlob
           const json = await sceneNow()
+          if (!unchanged()) return
           if (json === null) { optionsOf(editor).notify?.(S.drawingMissing); return } // never edit or save over a scene that is not here
           const port = optionsOf(editor).attachments
-          const next = await edit(json, m => optionsOf(editor).notify?.(m), port ? MAX_ATTACHED_SCENE : MAX_DRAWING_SCENE)
+          const hostEdit = optionsOf(editor).editDrawing
+          const max = port ? MAX_ATTACHED_SCENE : MAX_DRAWING_SCENE
+          const next = await (hostEdit ? hostEdit(json, max) : edit(json, m => optionsOf(editor).notify?.(m), max))
           const pos = getPos()
+          if (!unchanged()) return
           if (next === null || pos == null || next === json) return
           let attrs: Record<string, unknown>
           if (port) {
             const ref = await port.add(new Blob([next], { type: 'application/json' }), 'drawing.json', 'application/json')
+            if (!unchanged()) return // another client may edit the scene while the attachment is being stored
             attrs = { ...cur.attrs, scene: '', sceneBlob: ref.blob }
           } else attrs = { ...cur.attrs, scene: next }
           const now = getPos()
