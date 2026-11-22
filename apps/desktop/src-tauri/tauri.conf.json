@@ -1,11 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Nevis",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "identifier": "app.nevis.desktop",
   "build": {
     "frontendDist": "../../web/dist",
-    "devUrl": "http://localhost:5174"
+    "devUrl": "http://localhost:5174",
+    "beforeBuildCommand": "corepack pnpm --filter web build"
   },
   "app": {
     "windows": [],
@@ -14,6 +15,29 @@
     }
   },
   "bundle": {
-    "active": false
+    "active": true,
+    "targets": [
+      "nsis",
+      "dmg",
+      "app"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Productivity",
+    "shortDescription": "Nevis",
+    "longDescription": "Offline-first notes that sync with your own server.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "English"
+        ]
+      }
+    }
   }
 }
