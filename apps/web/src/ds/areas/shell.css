@@ -259,7 +259,6 @@
 .side:not([data-icons]) .row.plain.search-row .ntitle { white-space: nowrap; }
 .side .search-row kbd { flex: none; white-space: nowrap; }
 .side:not([data-rail]) .row.plain.search-row { gap: var(--ds-s1); padding-inline: var(--ds-s2); }
-@container (max-width: 145px) { .side .search-row kbd { display: none; } }
 :root[data-side='compact'] .side .search-row kbd { display: none; }
 .side:not([data-icons]) .wscard { position: relative; gap: var(--ds-s1); }
 .side:not([data-rail]) .wscard { padding-inline: var(--ds-s1); }
@@ -267,3 +266,8 @@
 .side:not([data-icons]) .wscard-tx b { padding-inline-end: var(--ds-s5); }
 :root[data-side='compact'] .side:not([data-rail]) { padding-inline: var(--ds-s3); }
 :root[data-side='compact'] .side:not([data-icons]) :is(.row.plain .ntitle, .wscard-tx small) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@container (max-width: 145px) {
+  .side .search-row kbd { display: none; }
+  .side:not([data-rail]) .wscard { padding-inline: 0; }
+  .side:not([data-rail]) .wscard-ic { inline-size: 22px; }
+}

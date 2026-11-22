@@ -16,6 +16,10 @@ export const appInfo = (): Promise<AppInfo> => invoke('app_info') as Promise<App
 export const setServer = (url: string): Promise<string> => invoke('server_set', { url }) as Promise<string>
 
 export const openDesktopStore = (ws: string, onCommit?: (ms: number, ops: number) => void): Store => new TauriStore({ ws, invoke, onCommit })
+// A native, unsynced store for preferences that must survive the WebView closing.
+const preferences = openDesktopStore('device-preferences')
+export const getDesktopPreference = (key: string) => preferences.run(tx => tx.getMeta(key))
+export const setDesktopPreference = (key: string, value: string) => preferences.run(tx => tx.setMeta(key, value))
 
 /** The attachments of the desktop: files in the app data folder, rows in the workspace's SQLite, requests made by Rust. */
 export const openDesktopBlobs = (ws: string): BlobStore => new TauriBlobStore({ ws, invoke: invokeRaw })

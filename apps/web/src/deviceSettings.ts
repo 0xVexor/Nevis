@@ -3,8 +3,9 @@ import { workspaceAppearance, appearancePresets, deckThemeForAppearance, syntaxC
 // DEVICE settings: how THIS device looks (the old app's appearance model, copied). They never leave the device: this module cannot reach the
 // synced log (rule `device-settings-never-reach-the-outbox`), and the e2e test checks that the outbox does not change.
 // Everything is applied as CSS variables on <html> (see docs/design-language.md),
-// so no component needs to know about them. Persisted in localStorage (small, per device).
+// so no component needs to know about them. Persisted on the device only.
 import { useSyncExternalStore } from 'react'
+import { getDesktopPreference, isDesktop, setDesktopPreference } from './desktop'
 
 export type Theme = 'system' | 'light' | 'dark'
 export type SidebarStyle = 'default' | 'compact' | 'icons'
@@ -240,10 +241,10 @@ const glow = ([a0, b0]: [string, string], strength: number) => {
   return `radial-gradient(1500px 1000px at 0% 0%, ${a}, transparent 68%), radial-gradient(1400px 1000px at 100% 100%, ${b}, transparent 68%), radial-gradient(1100px 800px at 85% 0%, color-mix(in srgb, ${a} 50%, ${b}), transparent 70%)`
 }
 
-function load(): Settings {
+function load(native?: string): Settings {
   let saved: Partial<Settings> = {}
   try {
-    saved = JSON.parse(localStorage.getItem(KEY) ?? 'null') ?? {}
+    saved = JSON.parse(native ?? localStorage.getItem(KEY) ?? 'null') ?? {}
   } catch {
     /* corrupt value: fall back to defaults */
   }
@@ -264,13 +265,25 @@ const subscribe = (fn: () => void) => (subs.add(fn), () => void subs.delete(fn))
 
 export function updateSettings(patch: Partial<Settings>) {
   state = { ...state, ...patch }
+  const stored = JSON.stringify(state)
   try {
-    localStorage.setItem(KEY, JSON.stringify(state))
+    localStorage.setItem(KEY, stored)
   } catch {
     /* private mode: the change still applies for this session */
   }
+  if (isDesktop) void setDesktopPreference(KEY, stored).catch(error => console.warn('Could not save device preferences', error))
   apply()
   subs.forEach((f) => f())
+}
+
+export async function restoreDesktopSettings() {
+  const stored = await getDesktopPreference(KEY)
+  if (!stored) return
+  state = load(stored)
+  // The first-paint script can use this cache before the native bridge loads.
+  try { localStorage.setItem(KEY, stored) } catch { /* keep the native value */ }
+  apply()
+  subs.forEach(fn => fn())
 }
 
 export function reloadSettings() {

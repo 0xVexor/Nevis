@@ -5,9 +5,9 @@ import { createRoot } from 'react-dom/client'
 import { uuidv7 } from '@nevis/protocol'
 import { AuthError, createWorkspace, deviceLabel, me, signIn, signOut, signUp, workspaces, type Me, type WorkspaceInfo } from './auth'
 import { Lab, type Note, type Status } from './lab'
-import { appInfo, isDesktop, onWindowFlush, setServer } from './desktop'
+import { appInfo, getDesktopPreference, isDesktop, onWindowFlush, setDesktopPreference, setServer } from './desktop'
 import { installTranslator } from './i18n'
-import { apply as applyDeviceSettings } from './deviceSettings'
+import { apply as applyDeviceSettings, restoreDesktopSettings } from './deviceSettings'
 import { Workspace } from './workspace'
 import { WorkspaceView } from './WorkspaceView'
 import { Brand } from './shell/Brand'
@@ -145,8 +145,9 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
   const pending = useRef(false)
   const lastKey = 'nevis.lastWorkspace.' + who.account.id
   const flushOff = useRef<(() => void) | undefined>(undefined)
-  const remember = useCallback((id: string) => {
+  const remember = useCallback(async (id: string) => {
     try { localStorage.setItem(lastKey, id) } catch { /* private window */ }
+    if (isDesktop) await setDesktopPreference(lastKey, id).catch(error => console.warn('Could not remember the last workspace', error))
   }, [lastKey])
   const leave = async () => { flushOff.current?.(); await open?.ws.stop(); await signOut().catch(() => undefined); onSignedOut() }
   const enter = useCallback(async (id: string) => {
@@ -165,7 +166,7 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
           await Promise.race([ws.rt.engine.cycle().catch(() => undefined), new Promise(r => setTimeout(r, 4000))])
         })
       }
-      remember(id)
+      await remember(id)
       setOpen({ ws })
     } catch (error) {
       await ws.stop().catch(() => undefined)
@@ -177,13 +178,17 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
   }, [remember])
   useEffect(() => {
     let alive = true
-    void workspaces().then(list => {
+    void workspaces().then(async list => {
       if (!alive) return
       setList(list)
       if (recoveryKey) return
       let last: string | null
       try { last = localStorage.getItem(lastKey) } catch { last = null }
-      if (last && list.some(workspace => workspace.id === last)) void enter(last)
+      if (isDesktop) {
+        const native = await getDesktopPreference(lastKey).catch(error => { console.warn('Could not read the last workspace', error); return undefined })
+        last = native ?? last
+      }
+      if (alive && last && list.some(workspace => workspace.id === last)) void enter(last)
     }, error => { if (alive) { setError(errText(error)); setList([]) } })
     return () => { alive = false }
   }, [enter, lastKey, recoveryKey])
@@ -209,7 +214,7 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
     ;(window as unknown as { __ws?: Workspace }).__ws = ws
     await ws.start()
     try { await ws.importBundle(new Uint8Array(await file.arrayBuffer())) } catch (e) { alert('ورود ناموفق: ' + String((e as Error).message ?? e)) }
-    remember(id)
+    await remember(id)
     setOpen({ ws })
   }
   const back = async () => { flushOff.current?.(); await open?.ws.stop(); setOpen(null); void workspaces().then(setList, error => setError(errText(error))) }
@@ -283,5 +288,7 @@ if (devWs) {
   const lab = startLab(devWs, 'dev')
   createRoot(document.getElementById('root')!).render(<StrictMode><LabView lab={lab} started={window.__labReady!} /></StrictMode>)
 } else {
-  createRoot(document.getElementById('root')!).render(<StrictMode><Root /></StrictMode>)
+  const renderApp = () => createRoot(document.getElementById('root')!).render(<StrictMode><Root /></StrictMode>)
+  if (isDesktop) void restoreDesktopSettings().catch(error => console.warn('Could not restore device preferences', error)).then(renderApp)
+  else renderApp()
 }

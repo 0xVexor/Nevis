@@ -20,6 +20,26 @@ async function signUpAndOpen(page: Page) {
   return name
 }
 type W = { __ws: { status: () => Promise<{ outbox: number; unsaved: number }>; ws: string } }
+
+test('search and the synced workspace label fit at the minimum sidebar width', async ({ page }) => {
+  await signUpAndOpen(page)
+  await page.evaluate(() => localStorage.setItem('nevis.railW', '168'))
+  for (const lang of ['fa', 'en']) {
+    for (const sidebar of ['default', 'compact']) {
+      await page.evaluate(settings => localStorage.setItem('nevis.device', JSON.stringify(settings)), { lang, sidebar })
+      await page.reload()
+      await appReady(page)
+      await page.evaluate(() => document.fonts.ready.then(() => undefined))
+      const labels = page.locator('.search-row .ntitle, .wscard-tx small')
+      await expect(labels).toHaveCount(2)
+      for (const label of await labels.all()) {
+        await expect(label).toHaveCSS('white-space', 'nowrap')
+        expect(await label.evaluate(el => el.scrollWidth - el.clientWidth), await label.textContent()).toBeLessThanOrEqual(1)
+      }
+    }
+  }
+})
+
 const settled = (page: Page) => expect.poll(() => page.evaluate(async () => { const s = await (window as unknown as W).__ws.status(); return s.outbox === 0 && s.unsaved === 0 }), { timeout: 30_000 }).toBe(true)
 /** The server's log head for this workspace: how many ops the SERVER holds. */
 const head = (page: Page) => page.evaluate(async () => { const id = (window as unknown as W).__ws.ws; const r = await fetch(`/v1/ws/${id}/ops?after=0&limit=1`); return ((await r.json()) as { head: number }).head })
