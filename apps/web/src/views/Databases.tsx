@@ -51,13 +51,13 @@ export function Drawings({ ws }: { ws: Workspace }) {
   const all = useMemo<DrawingInfo[]>(() => {
     const titles = new Map(ws.data.pages.map(p => [p.id, p.title]))
     return ws.search.drawings().map(({ page, drawing }) => ({
-      key: `${page}:${drawing.blockId}`, pageId: page, title: titles.get(page) ?? '', updatedAt: ws.search.touchedAt(page), source: (ws.search.wordsOf(page) === 0 ? 'board' : 'inline') as DrawingInfo['source'], preview: '', loadScene: () => sceneOf(ws, page, drawing.blockId),
+      key: `${page}:${drawing.blockId}`, pageId: page, title: titles.get(page) ?? '', updatedAt: ws.search.touchedAt(page), source: (ws.isBoard(page) ? 'board' : 'inline') as DrawingInfo['source'], preview: '', loadScene: () => sceneOf(ws, page, drawing.blockId),
     })).sort((a, b) => b.updatedAt - a.updatedAt)
   }, [ws.data, ws.search.ready, ws.search.progress.done]) // eslint-disable-line react-hooks/exhaustive-deps
   const open = (id: string) => go({ name: 'page', id })
   return (
     <div data-testid="drawings" style={{ display: 'contents' }}>
-      <DrawingList all={all} onOpen={open} onNew={() => void ws.newTemplatePage('', { type: 'doc', content: [{ type: 'drawing' }] }).then(open)} onDelete={d => (d.source === 'board' ? void ws.trash(d.pageId) : open(d.pageId))} />
+      <DrawingList all={all} onOpen={open} onNew={() => void ws.newBoard().then(open)} onDelete={d => (d.source === 'board' ? void ws.trash(d.pageId) : open(d.pageId))} />
     </div>
   )
 }

@@ -161,3 +161,27 @@ test('database: a row opens as a page with its properties and a body of its own 
   await page.getByTestId('row-back').click()
   await expect(page.getByTestId('db-view')).toBeVisible()
 })
+
+test('a new board opens as a whole-page drawing (not a text page), saves by itself, and comes back after a reload with its picture in the list', async ({ page }) => {
+  await signUpAndOpen(page)
+  await page.getByTestId('nav-drawings').click()
+  await page.getByRole('button', { name: /بوم جدید/ }).first().click()
+  await expect(page.getByTestId('board')).toBeVisible()
+  await expect(page.locator('.excalidraw')).toBeVisible({ timeout: 90_000 })
+  await expect(page.getByTestId('editor')).toHaveCount(0) // not a text page
+  await page.getByTestId('board-title').fill('طرح من')
+  // draw a rectangle with our own tool bar
+  await page.getByRole('toolbar').getByRole('button', { name: /مستطیل/ }).click()
+  const stage = (await page.locator('.board-stage').boundingBox())!
+  await page.mouse.move(stage.x + 320, stage.y + 280); await page.mouse.down(); await page.mouse.move(stage.x + 540, stage.y + 420, { steps: 8 }); await page.mouse.up() // clear of the style panel on the left
+  await expect(page.locator('.board-save')).toHaveText(/ذخیره شد|همه تغییرات/, { timeout: 30_000 })
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __ws: { search: { drawings: () => { drawing: { filled: boolean } }[] } } }).__ws.search.drawings().filter(d => d.drawing.filled).length), { timeout: 30_000 }).toBeGreaterThan(0) // saved, then indexed with its picture
+  await page.reload()
+  await page.getByTestId('ws-list').getByRole('button').first().click()
+  await page.getByTestId('nav-drawings').click()
+  await expect(page.locator('.dr-pic svg').first()).toBeVisible({ timeout: 60_000 }) // the picture is in the list
+  await page.locator('.dr-latest .dr-latest-board, .dr-card .dr-open').first().click()
+  await expect(page.getByTestId('board-title')).toHaveValue('طرح من')
+  await page.getByTestId('board-back').click()
+  await expect(page.getByTestId('drawings')).toBeVisible()
+})

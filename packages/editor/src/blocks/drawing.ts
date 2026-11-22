@@ -22,9 +22,13 @@ const loadPersianFont = () => (font ??= (async () => { document.fonts.add(await 
 
 type Lib = typeof import('@excalidraw/excalidraw')
 let lib: Promise<Lib> | null = null
-const loadExcalidraw = () => (lib ??= (async () => {
+/** Points Excalidraw at this app's own fonts and gives Persian its face. Call before the library is imported (the board canvas does). */
+export async function prepareExcalidraw(): Promise<void> {
   ;(window as unknown as { EXCALIDRAW_ASSET_PATH?: string }).EXCALIDRAW_ASSET_PATH = assetBase()
   await loadPersianFont()
+}
+const loadExcalidraw = () => (lib ??= (async () => {
+  await prepareExcalidraw()
   await import('@excalidraw/excalidraw/index.css')
   return import('@excalidraw/excalidraw')
 })())

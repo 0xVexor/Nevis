@@ -294,6 +294,13 @@ export class Workspace {
     await this.wrote(id)
     return id
   }
+  /** A board: a page that is one whole drawing (the settings mark it; one register per board, so two devices never overwrite each other). */
+  isBoard(id: string): boolean { return this.data.settings[`board:${id}`] === true }
+  async newBoard(): Promise<string> {
+    const id = await this.newPage('', '')
+    await this.mutate([this.ws], c => setSetting(c, `board:${id}`, true))
+    return id
+  }
   /** A to-do list: a page the settings mark as a list (one register per list, so two devices never overwrite each other). */
   isTodoList(id: string): boolean { return this.data.settings[`list:${id}`] === true }
   async newTodoList(title: string): Promise<string> {

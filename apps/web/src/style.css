@@ -92,3 +92,6 @@ ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 .dv-open { display: grid; place-items: center; flex: none; inline-size: 24px; block-size: 24px; border: 0; border-radius: var(--ds-r-sm, 6px); background: none; color: var(--ds-text-3); opacity: 0; cursor: pointer; }
 .dbtable tr:hover .dv-open, .dv-open:focus-visible { opacity: 1; }
 .dv-open:hover { background: var(--ds-sunk); color: var(--ds-text); }
+.board-save { color: var(--ds-text-3); font-size: var(--ds-text-caption, .78rem); white-space: nowrap; }
+.board-save[data-state='error'] { color: var(--ds-bad, #c0362c); }
+.board-loading { display: grid; place-items: center; block-size: 100%; color: var(--ds-text-3); }

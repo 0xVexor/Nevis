@@ -23,6 +23,7 @@ import { Tasks } from './screens/Tasks'
 import { Templates } from './views/Templates'
 import { Files } from './views/Files'
 import { RowPage } from './RowPage'
+import { BoardPage } from './BoardPage'
 import { Databases, Drawings } from './views/Databases'
 
 /** The app: a header with the sync status, a sidebar (navigation, new, tree, trash) and the screen of the current route. */
@@ -86,7 +87,7 @@ export function WorkspaceView({ ws, onSignOut, onWorkspaces, workspaceName }: { 
       if (!page) return <p className="small screen">{ws.data.pages.find(p => p.id === selected)?.trashed ? t('This page is in the trash (restore it from the trash screen).') : t('Page not found.')}</p>
       return (
         <>
-          {page.type === 'database' ? <div className="page-cols"><div className="page"><DatabaseView key={page.id} ws={ws} id={page.id} /></div></div> : <EditorPane key={`${page.id}:${ws.reopenCount(page.id)}`} ws={ws} id={page.id} title={page.title} />}
+          {ws.isBoard(page.id) ? <BoardPage key={page.id} ws={ws} id={page.id} title={page.title} /> : page.type === 'database' ? <div className="page-cols"><div className="page"><DatabaseView key={page.id} ws={ws} id={page.id} /></div></div> : <EditorPane key={`${page.id}:${ws.reopenCount(page.id)}`} ws={ws} id={page.id} title={page.title} />}
         </>
       )
     }

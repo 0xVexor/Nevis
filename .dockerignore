@@ -1,0 +1,9 @@
+.git
+**/node_modules
+**/target
+**/dist
+release
+apps/desktop/src-tauri/target
+apps/web/test-results
+apps/web/playwright-report
+**/.DS_Store

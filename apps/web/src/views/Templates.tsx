@@ -33,7 +33,7 @@ function outline(doc: unknown): Block[] {
   })
 }
 
-interface Choice { id: string; title: string; hint: string; icon: ReactNode; action: string; pageTitle?: string; blocks?: Block[]; make: () => { title: string; content: unknown; icon?: string } | null | 'database' }
+interface Choice { id: string; title: string; hint: string; icon: ReactNode; action: string; pageTitle?: string; blocks?: Block[]; make: () => { title: string; content: unknown; icon?: string } | null | 'database' | 'board' }
 const Line = ({ width }: { width: number }) => <i className="tpl-line" style={{ inlineSize: width + '%' }} />
 
 function PaperBlock({ block: b }: { block: Block }) {
@@ -54,7 +54,7 @@ export function Templates({ ws }: { ws: Workspace }) {
   const meeting = meetingNotesTemplate(today()), tasks = taskListTemplate(), daily = dailyNoteTemplate(today()), all = allBlocksTemplate()
   const empty: Choice[] = [
     { id: 'blank', title: t('Blank page'), hint: t('Start from scratch'), icon: <Icon name="file-text" />, action: t('Create page'), make: () => null },
-    { id: 'drawing', title: t('Drawing'), hint: t('A blank whiteboard for sketches and diagrams.'), icon: <Icon name="pencil" />, action: t('Create drawing'), make: () => ({ title: '', content: { type: 'doc', content: [{ type: 'drawing' }] } }) },
+    { id: 'drawing', title: t('Drawing'), hint: t('A blank whiteboard for sketches and diagrams.'), icon: <Icon name="pencil" />, action: t('Create drawing'), make: () => 'board' },
     { id: 'database', title: t('Database'), hint: t('Tables, views, forms and dashboards in one database.'), icon: <Icon name="database" />, action: t('Create database'), make: () => 'database' },
   ]
   const GLYPH: Record<string, string> = { lecture: 'graduation', chapter: 'book', exercise: 'target', meeting: 'users', todo: 'list' } // the old gallery's icons
@@ -71,6 +71,7 @@ export function Templates({ ws }: { ws: Workspace }) {
   const pick = async (c: Choice) => {
     const made = c.make()
     if (made === 'database') { go({ name: 'page', id: await ws.newDatabase('') }); return }
+    if (made === 'board') { go({ name: 'page', id: await ws.newBoard() }); return }
     const id = made ? await ws.newTemplatePage(made.title, made.content) : await ws.newPage('')
     if (made?.icon) await ws.setMeta(id, { icon: made.icon })
     go({ name: 'page', id })
