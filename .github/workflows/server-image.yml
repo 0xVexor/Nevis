@@ -35,7 +35,8 @@ jobs:
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/nevis-next' }}
             type=sha,format=short
             type=match,pattern=nx/v(.*),group=1
-      - uses: docker/build-push-action@v6
+      - id: build
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/Dockerfile
@@ -44,6 +45,25 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Export the image for manual deployments
+        env:
+          PUBLISHED_IMAGE: ghcr.io/${{ github.repository_owner }}/nevis-server@${{ steps.build.outputs.digest }}
+        run: |
+          version=$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)
+          image=nevis-next:$version
+          docker pull "${PUBLISHED_IMAGE,,}"
+          docker tag "${PUBLISHED_IMAGE,,}" "$image"
+          mkdir -p server-deploy
+          docker save "$image" | gzip > "server-deploy/nevis-next-$version-image.tar.gz"
+          container=$(docker create "$image")
+          trap 'docker rm "$container" >/dev/null' EXIT
+          docker cp "$container:/web/index.html" server-deploy/index.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-image-amd64
+          path: server-deploy/
+          retention-days: 7
+          if-no-files-found: error
       # optional: tell the server (Coolify) to pull the new image; set the secret COOLIFY_DEPLOY_WEBHOOK to enable
       - name: Ask the server to deploy
         if: github.ref == 'refs/heads/nevis-next' && env.HOOK != ''

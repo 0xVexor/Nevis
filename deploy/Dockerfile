@@ -14,6 +14,7 @@ FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=server /nevis-server /nevis-server
 COPY --from=web /src/apps/web/dist /web
 ENV WEB_DIR=/web DATA_DIR=/data LISTEN_HOST=0.0.0.0 PORT=8787
+USER 65532:65532
 VOLUME /data
 EXPOSE 8787
 ENTRYPOINT ["/nevis-server"]
