@@ -1,11 +1,11 @@
 name: Desktop installers
 
 # Windows (NSIS setup) and macOS (universal: Apple silicon and Intel) installers, attached to a draft GitHub release.
-# Run it from a tag (v0.1.0) or by hand (workflow_dispatch: the installers are then kept as run artifacts only).
+# (This repository also holds the old app: the new code's releases are tags named nx/v0.1.0.) Run it from such a tag or by hand (workflow_dispatch: the installers are then kept as run artifacts only).
 on:
   workflow_dispatch:
   push:
-    tags: ['v*']
+    tags: ['nx/v*']
 
 permissions:
   contents: write

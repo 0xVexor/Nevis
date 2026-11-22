@@ -2,8 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [nevis-next]
   pull_request:
+    branches: [nevis-next]
 
 permissions:
   contents: read

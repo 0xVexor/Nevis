@@ -1,11 +1,12 @@
 name: Server image
 
+# This repository also holds the old app on main and dev: the new code lives on the branch `nevis-next` and its releases are tags named nx/v1.2.3.
 # Builds the server image (the Go server and the web app in one image) on every push to main and every tag, and publishes it to the
 # GitHub container registry. A tag is a release: v1.2.3 also publishes the image under that version.
 on:
   push:
-    branches: [main]
-    tags: ['v*']
+    branches: [nevis-next]
+    tags: ['nx/v*']
   workflow_dispatch:
 
 permissions:
@@ -32,9 +33,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/nevis-server
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/nevis-next' }}
             type=sha,format=short
-            type=semver,pattern={{version}}
+            type=match,pattern=nx/v(.*),group=1
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -46,7 +47,7 @@ jobs:
           cache-to: type=gha,mode=max
       # optional: tell the server (Coolify) to pull the new image; set the secret COOLIFY_DEPLOY_WEBHOOK to enable
       - name: Ask the server to deploy
-        if: github.ref == 'refs/heads/main' && env.HOOK != ''
+        if: github.ref == 'refs/heads/nevis-next' && env.HOOK != ''
         env:
           HOOK: ${{ secrets.COOLIFY_DEPLOY_WEBHOOK }}
           TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
