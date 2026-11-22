@@ -21,6 +21,8 @@ const body = (page: Page) => page.getByTestId('editor').locator('.ProseMirror')
 type Json = { type: string; attrs?: Record<string, unknown>; content?: Json[]; text?: string }
 const docJson = (page: Page) => page.evaluate(() => (window as unknown as { __editor: { getJSON: () => unknown } }).__editor.getJSON()) as Promise<Json>
 const find = (n: Json, type: string): Json[] => [...(n.type === type ? [n] : []), ...(n.content ?? []).flatMap(c => find(c, type))]
+const IMAGE_URL = 'https://example.com/nevis-test.png'
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aP9sAAAAASUVORK5CYII=', 'base64')
 
 /** An empty paragraph at the end of the page (outside any block), the caret in it, then `/query` + Enter. */
 async function slash(page: Page, query: string) {
@@ -51,7 +53,7 @@ const BLOCKS: { id: string; query: string; type: string; check?: (n: Json) => bo
   { id: 'math', query: 'latex', type: 'mathBlock' },
   { id: 'mermaid', query: 'mermaid', type: 'mermaid' },
   { id: 'drawing', query: 'excalidraw', type: 'drawing' },
-  { id: 'imageUrl', query: 'url', type: 'image', check: n => n.attrs?.src === '' && n.attrs?.blob === '' },
+  { id: 'imageUrl', query: 'url', type: 'image', check: n => n.attrs?.src === IMAGE_URL && !n.attrs?.blob },
 ]
 
 test('every block can be inserted from the slash menu; they render, persist and come back after a reload', async ({ page }) => {
@@ -59,10 +61,17 @@ test('every block can be inserted from the slash menu; they render, persist and 
   await createNew(page, 'new-page')
   await expect(body(page)).toBeVisible()
   await page.waitForFunction(() => !!(window as unknown as { __editor?: unknown }).__editor)
+  await page.route(IMAGE_URL, route => route.fulfill({ contentType: 'image/png', body: PNG }))
   for (const b of BLOCKS) {
     await slash(page, b.query)
     if (b.id === 'math') { await page.locator('.math-field').fill('x'); await page.keyboard.press('Enter') }
     if (b.id === 'mermaid') { await expect(page.locator('.mermaid-src')).toBeVisible(); await page.keyboard.press('Control+Enter') }
+    if (b.id === 'imageUrl') {
+      const url = page.getByRole('dialog').getByPlaceholder('https://')
+      await url.fill(IMAGE_URL)
+      await url.press('Enter')
+      await expect(body(page).locator(`img[src="${IMAGE_URL}"]`)).toBeVisible()
+    }
     const found = find(await docJson(page), b.type)
     expect(found.length, `${b.id} was not inserted`).toBeGreaterThan(0)
     if (b.check) expect(found.some(b.check), `${b.id}: wrong attrs ${JSON.stringify(found.map(f => f.attrs))}`).toBe(true)
@@ -77,7 +86,7 @@ test('every block can be inserted from the slash menu; they render, persist and 
   await expect(body(page).locator('.toggle .toggle-btn')).toHaveCount(1)
   await expect(body(page).locator('.layout-group')).toHaveCount(2)
   await expect(body(page).locator('.layout-column')).toHaveCount(5)
-  await expect(body(page).locator('.image-placeholder')).toHaveCount(1)
+  await expect(body(page).locator(`img[src="${IMAGE_URL}"]`)).toHaveCount(1)
   await expect(body(page).locator('.code-wrap .code-lang-btn')).toBeVisible()
   await expect(body(page).locator('.drawing-block button.dr-edit')).toHaveCount(1)
 
