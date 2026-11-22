@@ -18,7 +18,7 @@ export function Databases({ ws }: { ws: Workspace }) {
     const live = db.rows.filter(r => !r.trashed)
     return (
       <div className="dbs-peek" data-testid="database-preview">
-        <header><h2 dir="auto">{db.title || t('Untitled database')}</h2><p>{t('{n} items', { n: live.length.toLocaleString() })}</p></header>
+        <header><h2 dir="auto">{db.title || t('Untitled database')}</h2><button type="button" className="ds-btn ds-btn--sm" data-testid="open-database" onClick={() => go({ name: 'page', id: page.id })}>{t('Open database')}</button><p>{t('{n} items', { n: live.length.toLocaleString() })}</p></header>
         <div className="dbs-props">{db.properties.map(p => <span key={p.id} className="ds-chip" dir="auto">{p.name}</span>)}</div>
         <ul className="dbs-rows">{live.slice(0, 8).map(r => <li key={r.id} dir="auto"><Icon name="file" size={14} /> {r.title || t('Untitled')}</li>)}</ul>
       </div>

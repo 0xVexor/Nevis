@@ -82,7 +82,7 @@ export async function readStructured(store: Store): Promise<Structured> {
       case KINDS.page:
       case KINDS.database: {
         pages.push({
-          id, title: str(j(m, 'title')), parent: str(j(m, 'parent')), sortKey: str(j(m, 'sortKey')), trashed: j(m, 'trashed') === true,
+          id, title: str(j(m, 'title')), parent: str(j(m, 'parent')), sortKey: str(j(m, 'sortKey')), trashed: j(m, 'trashed') === true, trashedAt: Number(j(m, 'trashedAt') ?? 0),
           kind: str(j(m, 'kind'), 'doc'), createdAt: Number(j(m, 'createdAt') ?? 0), parentHlc: m.get('parent')?.hlc ?? '', type: kind,
           icon: str(j(m, 'icon')), status: str(j(m, 'status')), favorite: j(m, 'favorite') === true, cover: m.has('cover') ? JSON.stringify(j(m, 'cover')) : '',
         })
@@ -183,7 +183,7 @@ async function lastSortKey(store: Store, filter: (m: F) => boolean): Promise<str
   return last([...by.values()].filter(filter).map(m => str(j(m, 'sortKey'))).filter(Boolean))
 }
 
-export interface NewDatabase { title?: string; parent?: string; before?: string | null; after?: string | null; titlePropertyName?: string }
+export interface NewDatabase { title?: string; parent?: string; before?: string | null; after?: string | null; titlePropertyName?: string; /** the name of the first view (the default is Persian) */ viewName?: string }
 
 /** A database with its title property and a first table view, in ONE local transaction. Other devices may see the three ops one at a time. */
 export async function createDatabase(c: Client, o: NewDatabase = {}): Promise<{ id: string; titleProp: string; view: string }> {
@@ -191,7 +191,7 @@ export async function createDatabase(c: Client, o: NewDatabase = {}): Promise<{ 
   await c.setFieldsMany([
     { ent: id, kind: KINDS.database, set: { title: o.title ?? '', parent: o.parent ?? '', sortKey: sortKeyBetween(o.before ?? null, o.after ?? null, c.rnd), trashed: false, kind: 'doc', createdAt: now } },
     { ent: titleProp, kind: KINDS.property, set: { db: id, name: o.titlePropertyName ?? 'نام', type: 'text', config: { title: true }, sortKey: sortKeyBetween(null, null, c.rnd), trashed: false, createdAt: now } },
-    { ent: view, kind: KINDS.view, set: { db: id, name: 'جدول', type: 'table', config: {}, sortKey: sortKeyBetween(null, null, c.rnd), trashed: false, createdAt: now } },
+    { ent: view, kind: KINDS.view, set: { db: id, name: o.viewName ?? 'جدول', type: 'table', config: {}, sortKey: sortKeyBetween(null, null, c.rnd), trashed: false, createdAt: now } },
   ])
   return { id, titleProp, view }
 }

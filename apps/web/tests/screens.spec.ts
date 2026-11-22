@@ -116,3 +116,25 @@ test('the Drawings list shows the picture of each drawing, not an empty pencil',
   await page.getByTestId('nav-drawings').click()
   await expect(page.locator('.dr-pic svg').first()).toBeVisible({ timeout: 60_000 })
 })
+
+test('Home: ticking a task there ticks it in its page; the trash says when a page was deleted and never promises to delete by itself', async ({ page }) => {
+  await signUpAndOpen(page)
+  const id = await page.evaluate(async () => {
+    const ws = (window as unknown as { __ws: { newPage: (p: string, t: string) => Promise<string>; writeBody: (id: string, j: unknown) => Promise<void> } }).__ws
+    const id = await ws.newPage('', 'برنامه')
+    await ws.writeBody(id, { type: 'doc', content: [{ type: 'taskList', content: [{ type: 'taskItem', attrs: { checked: false }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'شستن ظرف' }] }] }] }] })
+    return id
+  })
+  await page.evaluate(i => { location.hash = '#/page/' + i }, id) // opening the page gives its blocks their ids
+  await expect(body(page)).toContainText('شستن ظرف')
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __ws: { search: { tasks: () => unknown[] } } }).__ws.search.tasks().length), { timeout: 30_000 }).toBe(1)
+  await page.getByTestId('nav-tasks').click(); await page.getByTestId('nav-home').click()
+  await page.getByTestId('home').locator('.ds-check').first().click()
+  await page.getByTestId('nav-tasks').click()
+  await expect(page.locator('.tk-done-toggle .ds-badge')).toHaveText('۱', { timeout: 15_000 }) // it is in the page, not only on Home
+  // the trash
+  await page.evaluate(async i => { await (window as unknown as { __ws: { trash: (id: string) => Promise<void> } }).__ws.trash(i) }, id)
+  await page.getByTestId('trash-toggle').click()
+  await expect(page.getByTestId('trash')).toContainText('حذف‌شده')
+  await expect(page.getByTestId('trash')).not.toContainText('روز')
+})

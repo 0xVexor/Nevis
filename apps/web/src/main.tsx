@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { t } from './i18n'
 import { StrictMode, useEffect, useState, type FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import { uuidv7 } from '@nevis/protocol'
@@ -43,12 +44,12 @@ function LabView({ lab, started, onSignOut }: { lab: Lab; started: Promise<void>
     const t = setInterval(() => void refresh(), 1000)
     return () => { live = false; off(); clearInterval(t) }
   }, [])
-  if (!ready || !status) return <main><p>در حال باز کردن…</p></main>
+  if (!ready || !status) return <main><p>{t('Opening…')}</p></main>
   const mb = (n: number | null) => (n == null ? '—' : `${(n / 1048576).toFixed(1)} MB`)
   return (
     <main dir="rtl">
       <h1>M3 — آزمایشگاه ذخیره‌سازی</h1>
-      {onSignOut && <button data-testid="signout" onClick={onSignOut}>خروج</button>}
+      {onSignOut && <button data-testid="signout" onClick={onSignOut}>{t('Sign out')}</button>}
       <div className="bar" data-testid="status">
         <span data-testid="leader" data-leader={status.leader}>{status.leader ? '★ این تب leader است' : 'این تب leader نیست'}</span>
         <span>outbox: <b data-testid="outbox">{status.outbox}</b></span>
@@ -85,10 +86,10 @@ function LabView({ lab, started, onSignOut }: { lab: Lab; started: Promise<void>
 
 const errText = (e: unknown): string => {
   if (e instanceof AuthError) {
-    const m: Record<string, string> = { bad_credentials: 'نام کاربری یا گذرواژه درست نیست', rate_limited: 'تلاش بیش از حد؛ کمی بعد دوباره امتحان کنید', username_taken: 'این نام کاربری گرفته شده', registration_closed: 'این سرور حساب تازه نمی‌پذیرد', bad_invite: 'کد دعوت درست نیست', weak_password: 'گذرواژه ضعیف است' }
+    const m: Record<string, string> = { bad_credentials: t('The username or password is not right'), rate_limited: t('Too many tries; try again in a moment'), username_taken: 'این نام کاربری گرفته شده', registration_closed: 'این سرور حساب تازه نمی‌پذیرد', bad_invite: 'کد دعوت درست نیست', weak_password: 'گذرواژه ضعیف است' }
     return m[e.code] ?? e.message
   }
-  return 'سرور در دسترس نیست'
+  return t('The server is not reachable')
 }
 
 function SignInForm({ onDone }: { onDone: (recoveryKey?: string) => void }) {
@@ -107,16 +108,16 @@ function SignInForm({ onDone }: { onDone: (recoveryKey?: string) => void }) {
   }
   return (
     <Frame>
-      <h1>{mode === 'in' ? 'ورود' : 'ساخت حساب'}</h1>
-      <p>{mode === 'in' ? 'با حساب خود وارد شوید تا یادداشت‌هایتان همگام شود.' : 'یک حساب بسازید؛ یادداشت‌ها روی دستگاه شما می‌مانند و با سرور خودتان همگام می‌شوند.'}</p>
+      <h1>{mode === 'in' ? t('Sign in') : t('Create account')}</h1>
+      <p>{mode === 'in' ? t('Sign in so your notes sync.') : 'یک حساب بسازید؛ یادداشت‌ها روی دستگاه شما می‌مانند و با سرور خودتان همگام می‌شوند.'}</p>
       <form onSubmit={e => void submit(e)} data-testid="auth-form" className="onb-panel">
-        <label className="onb-field"><span>نام کاربری</span><input className="ds-field" name="username" autoComplete="username" required dir="ltr" /></label>
-        <label className="onb-field"><span>گذرواژه</span><input className="ds-field" name="password" type="password" autoComplete={mode === 'in' ? 'current-password' : 'new-password'} required dir="ltr" /></label>
-        {mode === 'up' && <label className="onb-field"><span>کد دعوت (اگر لازم است)</span><input className="ds-field" name="invite" dir="ltr" /></label>}
+        <label className="onb-field"><span>{t('Username')}</span><input className="ds-field" name="username" autoComplete="username" required dir="ltr" /></label>
+        <label className="onb-field"><span>{t('Password')}</span><input className="ds-field" name="password" type="password" autoComplete={mode === 'in' ? 'current-password' : 'new-password'} required dir="ltr" /></label>
+        {mode === 'up' && <label className="onb-field"><span>{t('Invite code (if needed)')}</span><input className="ds-field" name="invite" dir="ltr" /></label>}
         {err && <p className="err" role="alert" data-testid="auth-error">{err}</p>}
         <div className="onb-actions">
-          <Button type="button" variant="ghost" onClick={() => { setMode(mode === 'in' ? 'up' : 'in'); setErr('') }}>{mode === 'in' ? 'حساب ندارم' : 'حساب دارم'}</Button>
-          <Button type="submit" variant="primary" disabled={busy} data-testid="auth-submit">{busy ? '…' : mode === 'in' ? 'ورود' : 'ساخت حساب'}</Button>
+          <Button type="button" variant="ghost" data-testid="auth-switch" onClick={() => { setMode(mode === 'in' ? 'up' : 'in'); setErr('') }}>{mode === 'in' ? t('I have no account') : t('I have an account')}</Button>
+          <Button type="submit" variant="primary" disabled={busy} data-testid="auth-submit">{busy ? '…' : mode === 'in' ? t('Sign in') : t('Create account')}</Button>
         </div>
       </form>
     </Frame>
@@ -147,30 +148,31 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
     // desktop: closing the window writes what is still waiting and pushes the outbox first (at most 5 s, ADR-0007 §7)
     if (isDesktop) void onWindowFlush(async () => { await ws.flushAll(); await Promise.race([ws.rt.engine.cycle().catch(() => undefined), new Promise(r => setTimeout(r, 4000))]) })
   }
-  const make = async () => { const id = uuidv7(); await createWorkspace(id, 'یادداشت‌ها'); enter(id) }
+  const make = async () => { const id = uuidv7(); await createWorkspace(id, t('Notes')); enter(id) }
   /** A bundle always goes into a NEW workspace (ADR-0009 §2). */
   const importFile = async (file: File) => {
     const id = uuidv7()
-    await createWorkspace(id, file.name.replace(/\.nevis\.zip$|\.zip$/i, '') || 'ورودی')
+    await createWorkspace(id, file.name.replace(/\.nevis\.zip$|\.zip$/i, '') || t('Import'))
     const ws = new Workspace(id, null)
     ;(window as unknown as { __ws?: Workspace }).__ws = ws
     await ws.start()
     try { await ws.importBundle(new Uint8Array(await file.arrayBuffer())) } catch (e) { alert('ورود ناموفق: ' + String((e as Error).message ?? e)) }
     setOpen({ ws })
   }
-  if (open) return <WorkspaceView ws={open.ws} onSignOut={() => void leave()} />
+  const back = async () => { await open?.ws.stop(); setOpen(null); void workspaces().then(setList, () => setList([])) }
+  if (open) return <WorkspaceView ws={open.ws} onSignOut={() => void leave()} onWorkspaces={() => void back()} workspaceName={list?.find(w => w.id === open.ws.ws)?.name} />
   return (
     <Frame wide>
       <h1>سلام {who.account.username}</h1>
-      <p>فضای کاری را باز کنید یا یکی بسازید.</p>
+      <p>{t('Open a workspace or create one.')}</p>
       {key && <div className="recovery onb-key" data-testid="recovery"><p>کلید بازیابی شما (فقط یک بار نشان داده می‌شود؛ جایی امن نگه دارید):</p><code dir="ltr">{key}</code> <Button size="sm" onClick={() => setKey(undefined)}>نوشتم</Button></div>}
-      {list === null ? <p>در حال بارگذاری…</p> : (
+      {list === null ? <p>{t('Loading…')}</p> : (
         <ul data-testid="ws-list" className="onb-list">{list.map(w => <li key={w.id} className="onb-row onb-row--gap"><Button onClick={() => enter(w.id)}>{w.name}</Button> <span className="small">{w.role}</span></li>)}</ul>
       )}
       <div className="onb-actions">
-        <Button variant="primary" data-testid="ws-new" onClick={() => void make()}>فضای کار تازه</Button>
-        <label className="ds-btn ds-btn--ghost">ورود از باندل <input type="file" accept=".zip" data-testid="ws-import" hidden onChange={e => { const f = e.target.files?.[0]; if (f) void importFile(f) }} /></label>
-        <Button variant="ghost" data-testid="signout" onClick={() => void leave()}>خروج</Button>
+        <Button variant="primary" data-testid="ws-new" onClick={() => void make()}>{t('New workspace')}</Button>
+        <label className="ds-btn ds-btn--ghost">{t('Import a bundle')} <input type="file" accept=".zip" data-testid="ws-import" hidden onChange={e => { const f = e.target.files?.[0]; if (f) void importFile(f) }} /></label>
+        <Button variant="ghost" data-testid="signout" onClick={() => void leave()}>{t('Sign out')}</Button>
       </div>
     </Frame>
   )
@@ -185,12 +187,12 @@ function ServerForm({ onDone }: { onDone: () => void }) {
   }
   return (
     <Frame>
-      <h1>آدرس سرور</h1>
-      <p>نِویس با سرور خودتان همگام می‌شود؛ آدرس آن را بنویسید.</p>
+      <h1>{t('Server address')}</h1>
+      <p>{t('Nevis syncs with your own server; enter its address.')}</p>
       <form onSubmit={e => void submit(e)} data-testid="server-form" className="onb-panel">
-        <label className="onb-field"><span>آدرس سرور شما</span><input className="ds-field" name="server" dir="ltr" placeholder="https://notes.example.com" required /></label>
+        <label className="onb-field"><span>{t('Your server address')}</span><input className="ds-field" name="server" dir="ltr" placeholder="https://notes.example.com" required /></label>
         {err && <p className="err" role="alert">{err}</p>}
-        <div className="onb-actions"><Button type="submit" variant="primary">ادامه</Button></div>
+        <div className="onb-actions"><Button type="submit" variant="primary">{t('Continue')}</Button></div>
       </form>
     </Frame>
   )
@@ -203,7 +205,7 @@ function Root() {
     await me().then(m => setState(m ? { me: m, recoveryKey } : 'out'), () => setState('out'))
   }
   useEffect(() => { void refresh() }, [])
-  if (state === 'loading') return <main><p>در حال باز کردن…</p></main>
+  if (state === 'loading') return <main><p>{t('Opening…')}</p></main>
   if (state === 'server') return <ServerForm onDone={() => void refresh()} />
   if (state === 'out') return <SignInForm onDone={k => void refresh(k)} />
   return <Home who={state.me} recoveryKey={state.recoveryKey} onSignedOut={() => setState('out')} />

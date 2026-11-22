@@ -99,7 +99,7 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
       <button key={h.pos} type="button" className="pp-outline-item" style={{ ['--lv' as string]: h.level - 1 } as React.CSSProperties} onClick={() => { editor?.chain().focus().setTextSelection(h.pos + 1).scrollIntoView().run() }}><span dir="auto">{h.text}</span></button>
     ))}</nav>}
   </>, slot), [slot, heads, editor])
-  if (state === 'needs-update') return <div className="page-cols"><div className="page"><p role="alert" className="pg-note" data-testid="needs-update">این صفحه با نسخهٔ تازه‌تری از برنامه ساخته شده؛ به‌روزرسانی لازم است.</p></div></div>
+  if (state === 'needs-update') return <div className="page-cols"><div className="page"><p role="alert" className="pg-note" data-testid="needs-update">{t('This page was made with a newer version of the app; an update is needed.')}</p></div></div>
   return (
     <div className={'page-cols' + (meta?.cover ? ' has-cover' : '')}>
       <div className={'page' + (findOpen ? ' finding' : '')}>
@@ -140,7 +140,7 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
         <PropertyList className="pg-props" label={t('Page properties')}>
           <PropertyRow icon={<Icon name="flag" size={16} />} label={t('Status')}><PageStatusChip status={meta?.status} onChange={st => void ws.setMeta(id, { status: st ?? '' })} /></PropertyRow>
           <PropertyRow icon={<Icon name="tag" size={16} />} label={t('Tags')}>
-            {(meta?.tags ?? []).map(tag => <Tag key={tag} label={tag} onRemove={() => void ws.tagPageByName(id, tag, false)} removeLabel={t('Remove tag')} />)}
+            {(meta?.tags ?? []).map(tag => <Tag key={tag} label={tag} onOpen={() => window.dispatchEvent(new CustomEvent('nevis:show-tag', { detail: tag }))} openLabel={t('Show pages with this tag')} onRemove={() => void ws.tagPageByName(id, tag, false)} removeLabel={t('Remove tag')} />)}
             {addingTag ? (
               <span className="ds-chip-field">
                 <Icon name="tag" size={14} />
@@ -172,7 +172,7 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
         </PropertyList>
         {diverged && (
           <p role="alert" className="err" data-testid="too-large">
-            آخرین ویرایش بیش از حد بزرگ بود و ذخیره نشد؛ هر چه بعد از آن نوشته شود هم ذخیره نمی‌شود. <button onClick={() => void ws.reopenDoc(id)}>باز کردن دوباره از آخرین نسخهٔ ذخیره‌شده</button>
+            {t('The last edit was too large and was not saved; nothing written after it is saved either.')} <button onClick={() => void ws.reopenDoc(id)}>{t('Reopen from the last saved version')}</button>
           </p>
         )}
         {outline}

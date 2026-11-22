@@ -11,6 +11,7 @@ import { Mirror, mirrorFolder } from './mirror'
 import { isDesktop } from './desktop'
 import { SyncRuntime } from './runtime'
 import { SearchService } from './search/service'
+import { t } from './i18n'
 
 export interface WsStatus {
   leader: boolean
@@ -113,7 +114,7 @@ export class Workspace {
 
   async newDatabase(parent = ''): Promise<string> {
     const sibs = this.children(parent)
-    const { id } = await this.mutate([], c => createDatabase(c, { parent, before: sibs.length ? sibs[sibs.length - 1]!.page.sortKey : null }))
+    const { id } = await this.mutate([], c => createDatabase(c, { parent, before: sibs.length ? sibs[sibs.length - 1]!.page.sortKey : null, titlePropertyName: t('Name'), viewName: t('Table') }))
     return id
   }
 
@@ -265,14 +266,16 @@ export class Workspace {
   }
   async emptyTrash(): Promise<void> { for (const p of [...this.tree.trash]) await this.purge(p.id) }
   /** Ticks (or unticks) a checklist item of a page, found by its block id, in one Yjs transaction: the page itself changes. */
-  async setTaskChecked(page: string, blockId: string, checked: boolean): Promise<void> {
+  /** `ordinal` (the item's place among the page's checklist items) is used only for an item that has no block id yet: a page written before it was ever edited. */
+  async setTaskChecked(page: string, blockId: string, checked: boolean, ordinal = -1): Promise<void> {
     const h = await this.openDoc(page)
     try {
       h.ydoc.transact(() => {
+        let seen = 0
         const walk = (n: Y.XmlFragment | Y.XmlElement): boolean => {
           for (const c of n.toArray() as (Y.XmlElement | Y.XmlText)[]) {
             if (!('nodeName' in c)) continue // text (duck typing: another copy of Yjs in the bundle would fail `instanceof`)
-            if (c.nodeName === 'taskItem' && c.getAttribute('blockId') === blockId) { c.setAttribute('checked', checked as never); return true }
+            if (c.nodeName === 'taskItem') { const mine = blockId ? c.getAttribute('blockId') === blockId : seen === ordinal; seen++; if (mine) { c.setAttribute('checked', checked as never); return true } }
             if (walk(c)) return true
           }
           return false

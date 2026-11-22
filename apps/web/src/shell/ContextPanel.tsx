@@ -1,8 +1,9 @@
 // The side panel (`aside.context-panel`): the page tree with Favorites above it and the tag browser below, as the old app drew it.
 // Tasks and Settings put their own navigation into the same panel through `PanelHost` (the `side-scroll` element is the host).
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Icon, IconButton, Menu, dirOf, type MenuItem } from '../ds'
 import { ResizeHandle } from '../ds/ResizeHandle'
+import { commandHint } from '../shortcutCommands'
 import { t } from '../i18n'
 import type { Settings } from '../deviceSettings'
 import { HorizontalScroll } from './HorizontalScroll'
@@ -46,6 +47,8 @@ export function ContextPanel(p: ContextPanelProps) {
   const [menu, setMenu] = useState<{ rect: DOMRect; items: MenuItem[] } | null>(null)
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [rootCap, setRootCap] = useState(ROOT_CAP)
+  // a tag clicked on a page lights up its pages here
+  useEffect(() => { const f = (e: Event) => { setTagFilter(String((e as CustomEvent<string>).detail).toLowerCase()); setShut(s => ({ ...s, tags: false })) }; window.addEventListener('nevis:show-tag', f); return () => window.removeEventListener('nevis:show-tag', f) }, [])
   const live = useMemo(() => p.pages.filter(x => !x.deletedAt && !x.database), [p.pages])
   const favs = useMemo(() => live.filter(x => x.favorite && x.kind !== 'folder'), [live])
   const tagList = useMemo<TagInfo[]>(() => {
@@ -69,7 +72,7 @@ export function ContextPanel(p: ContextPanelProps) {
           <div className="context-tools" role="group" aria-label={t('Panel tools')}>
             {p.kind === 'vault' && (
               <>
-                <IconButton label={t('Select opened page')} disabled={!p.currentId} onClick={p.onReveal}><Icon name="target" size={15} /></IconButton>
+                <IconButton label={t('Select opened page') + '  ' + commandHint('Reveal active note')} disabled={!p.currentId} onClick={p.onReveal}><Icon name="target" size={15} /></IconButton>
                 <IconButton label={t('Expand all')} onClick={p.onExpandAll}><Icon name="chevrons-up-down" size={15} /></IconButton>
                 <IconButton label={t('Collapse all')} onClick={p.onCollapseAll}><Icon name="chevrons-down-up" size={15} /></IconButton>
                 <IconButton label={t('Options')} aria-haspopup="menu" onClick={e => setMenu({ rect: e.currentTarget.getBoundingClientRect(), items: [

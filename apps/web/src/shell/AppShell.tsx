@@ -44,6 +44,8 @@ export interface ShellProps {
   onSignOut?: () => void
   /** back to the list of workspaces */
   onWorkspaces?: () => void
+  /** the name on the workspace card */
+  workspaceName?: string
   /** the page's history (the clock in the top bar) */
   onHistory?: () => void
   /** flashcards due now (the badge on the rail) */
@@ -53,7 +55,7 @@ export interface ShellProps {
   save?: 'idle' | 'saving' | 'saved' | 'error'
 }
 
-export function AppShell({ ws, route, status, children, onSearch, onNewPage, onNewDatabase, onNewAllBlocks, onNewTodo, onOpen, onSignOut, onWorkspaces, onHistory, dueCards = 0, pageTools, save = 'saved' }: ShellProps) {
+export function AppShell({ ws, route, status, children, onSearch, onNewPage, onNewDatabase, onNewAllBlocks, onNewTodo, onOpen, onSignOut, onWorkspaces, workspaceName, onHistory, dueCards = 0, pageTools, save = 'saved' }: ShellProps) {
   const settings = useSettings()
   const [rowMenu, setRowMenu] = useState<{ id: string; rect: DOMRect } | null>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
@@ -141,6 +143,7 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
     return () => { window.removeEventListener('keydown', key); window.removeEventListener('toggle-reader', toggleReader); window.removeEventListener('open-history', history) }
   }) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!onPage) setReader(false) }, [onPage])
+  useEffect(() => { const f = () => { if (narrow) setDrawer(true); else setWide(true) }; window.addEventListener('nevis:show-tag', f); return () => window.removeEventListener('nevis:show-tag', f) }, [narrow])
 
   return (
     <div data-preferences={route.name === 'settings' ? '' : undefined} className={'app' + (reader && onPage ? ' reading' : '')} style={{ '--page-w': pageW + 'px', '--r-scale': readerCfg.scale } as React.CSSProperties}>
@@ -149,7 +152,7 @@ export function AppShell({ ws, route, status, children, onSearch, onNewPage, onN
         width={railW} defaultWidth={settings.sidebar === 'compact' ? 148 : 176} onWidth={setRailW}
         onGo={goTo} onSearch={onSearch} searchHint={isMac ? '⌘K' : 'Ctrl K'}
         onNewPage={() => onNewPage('')} onNewDatabase={onNewDatabase} onNewAllBlocks={onNewAllBlocks} onNewTodo={onNewTodo ?? (() => void ws.newTodoList(t('New list')).then(open))}
-        onOpenSettings={() => goTo('settings')} onSignOut={onSignOut} workspaceName="" onWorkspaces={onWorkspaces ?? (() => undefined)}
+        onOpenSettings={() => goTo('settings')} onSignOut={onSignOut} workspaceName={workspaceName ?? ''} onWorkspaces={onWorkspaces ?? (() => undefined)}
       />
       {!overlay && <ContextPanel
         title={t(PANEL_TITLES[route.name] ?? 'Pages')} kind={panelKind} open={panelOpen} narrow={narrow} width={sideW} onWidth={setSideW} onClose={() => setDrawer(false)} setHost={setHost}

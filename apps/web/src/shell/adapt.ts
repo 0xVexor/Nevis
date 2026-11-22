@@ -19,7 +19,7 @@ export function legacyPages(ws: Workspace, hideInbox = true): Page[] {
     return {
       kind: ws.isTodoList(p.id) ? 'todo' : undefined, id: p.id, icon: p.icon || undefined, status: (p.status || undefined) as Page['status'], favorite: !!p.favorite, cover: coverOf(p.cover), tags: (ws.data.pageTags.get(p.id) ?? []).map(i => tagName.get(i) ?? '').filter(Boolean), words: ws.search.wordsOf(p.id), parentId: p.parent && known.has(p.parent) ? p.parent : null, title: p.title, sort: rank.get(p.id) ?? 0,
       content: { type: 'doc', content: text ? [{ type: 'paragraph', content: [{ type: 'text', text }] }] : [] },
-      updatedAt: ws.search.touchedAt(p.id) || p.createdAt, deletedAt: p.trashed ? p.createdAt : null,
+      updatedAt: ws.search.touchedAt(p.id) || p.createdAt, deletedAt: p.trashed ? (p.trashedAt || p.createdAt) : null,
     } satisfies Page
   })
 }

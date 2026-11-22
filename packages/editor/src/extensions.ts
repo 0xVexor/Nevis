@@ -25,7 +25,7 @@ const viewNames = new Set(WITH_VIEWS.map(e => e.name))
 
 /** Every extension of the editor, without the collaboration binding (added by `createEditor`). */
 export function editorExtensions(options: EditorOptions = {}): AnyExtension[] {
-  const handle = () => { const el = document.createElement('div'); el.className = 'drag-handle'; el.textContent = '⠿'; el.title = 'جابه‌جایی'; return el }
+  const handle = () => { const el = document.createElement('div'); el.className = 'drag-handle'; el.textContent = '⠿'; el.title = 'جابه‌جایی بلوک'; el.setAttribute('role', 'button'); el.setAttribute('aria-label', 'جابه‌جایی بلوک'); return el }
   return [
     ...schemaExtensions.filter(e => !viewNames.has(e.name)),
     BlockIdentity,

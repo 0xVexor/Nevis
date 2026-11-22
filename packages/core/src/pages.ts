@@ -20,8 +20,9 @@ export const movePage = (client: Client, id: string, parent: string, before: str
 /** Metadata of a page, each its own register (concurrent edits of different ones both survive). */
 export const setPageMeta = (client: Client, id: string, patch: { icon?: string; status?: string; favorite?: boolean; cover?: string | null }) =>
   client.setFields(id, { ...(patch.icon !== undefined ? { icon: patch.icon } : {}), ...(patch.status !== undefined ? { status: patch.status } : {}), ...(patch.favorite !== undefined ? { favorite: patch.favorite } : {}), ...(patch.cover !== undefined ? { cover: patch.cover === null ? '' : JSON.parse(patch.cover) } : {}) })
-export const trashPage = (client: Client, id: string) => client.setFields(id, { trashed: true })
-export const restorePage = (client: Client, id: string) => client.setFields(id, { trashed: false })
+/** Moves a page to the trash and remembers WHEN (one op: both fields), so the trash can say how long a page has been there. */
+export const trashPage = (client: Client, id: string) => client.setFields(id, { trashed: true, trashedAt: client.nowMs() })
+export const restorePage = (client: Client, id: string) => client.setFields(id, { trashed: false, trashedAt: null })
 
 const s = (v: string | undefined): string | undefined => (v === undefined ? undefined : (JSON.parse(v) as string))
 

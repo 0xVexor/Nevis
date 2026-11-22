@@ -32,9 +32,9 @@ export function SyncIndicator({ status, onOpenSettings }: { status: WsStatus | n
         <span data-testid="net" data-online={status.online}>{status.online ? 'online' : 'offline'}</span>
         <span>{t('Not sent yet')}: <b data-testid="outbox">{status.outbox}</b></span>
         {status.files.pending > 0 && <span data-testid="files">{`${t('Files')}: ${status.files.pending}`}</span>}
-        {status.files.error === 'quota' && <span data-testid="files-quota">فضای حساب شما پر است؛ فایل‌ها روی این دستگاه می‌مانند و چیزی از دست نمی‌رود، اما تا آزاد شدن فضا همگام نمی‌شوند.</span>}
-        {status.files.error === 'blob_too_large' && <span data-testid="files-too-large">فایلی از حد مجاز سرور بزرگ‌تر است و فقط روی این دستگاه می‌ماند.</span>}
-        {status.upgradeRequired && <span data-testid="needs-app-update">این نسخهٔ برنامه برای این فضای کار قدیمی است؛ <button onClick={() => location.reload()}>بارگذاری دوباره</button></span>}
+        {status.files.error === 'quota' && <span data-testid="files-quota">{t('Your account is full: files stay on this device and nothing is lost, but they will not sync until there is room.')}</span>}
+        {status.files.error === 'blob_too_large' && <span data-testid="files-too-large">{t('A file is larger than the server allows and stays on this device only.')}</span>}
+        {status.upgradeRequired && <span data-testid="needs-app-update">{t('This app version is too old for this workspace; ')}<button onClick={() => location.reload()}>{t('Reload')}</button></span>}
         {status.lastError && <span data-testid="sync-error">{status.lastError}</span>}
       </div>
     </div>

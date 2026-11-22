@@ -23,7 +23,7 @@ export function AllPages({ ws, calendar }: { ws: Workspace; calendar: 'jalali' |
         <tbody>
           {rows.map(p => (
             <tr key={p.id} data-testid="all-pages-row">
-              <td><Row as="button" icon={<Icon name={p.type === 'database' ? 'table' : 'file-text'} />} text={p.title || 'بدون عنوان'} onClick={() => go({ name: 'page', id: p.id })} /></td>
+              <td><Row as="button" icon={<Icon name={p.type === 'database' ? 'table' : 'file-text'} />} text={p.title || t('Untitled')} onClick={() => go({ name: 'page', id: p.id })} /></td>
               <td>{p.type === 'database' ? t('Database') : t('Page')}</td>
               <td dir="ltr">{p.createdAt ? (calendar === 'jalali' ? formatDateFa(ymd(p.createdAt)) : ymd(p.createdAt)) : ''}</td>
             </tr>

@@ -48,7 +48,7 @@ export function Tasks({ ws }: { ws: Workspace }) {
   const allOpen = items.filter(x => !x.checked).length
   const toggle = (x: (typeof items)[number], next: boolean) => {
     if (next) { setSettling(s => [...s, x.key]); window.setTimeout(() => setSettling(s => s.filter(k => k !== x.key)), SETTLE_MS) }
-    void ws.setTaskChecked(x.pageId, x.blockId, next)
+    void ws.setTaskChecked(x.pageId, x.blockId, next, items.filter(y => y.pageId === x.pageId).indexOf(x))
   }
   const row = (x: (typeof items)[number]) => (
     <div key={x.key} className="ds-list-row tk-row" data-testid="task-row" data-done={x.checked || undefined} style={{ '--depth': 0 } as CSSProperties}>

@@ -45,12 +45,12 @@ export function Settings({ ws, initialTab, onLeave }: { ws: Workspace; initialTa
           data: (
             <>
               <div data-testid="settings-data">
-                <PreferenceGroup title="دادهٔ شما">
-                  <PreferenceRow label="همهٔ یادداشت‌ها، بدون اتلاف (باندل)"><button className="ds-btn ds-btn--sm" data-testid="export-bundle" onClick={() => void ws.exportBundle().then(b => download(b, 'nevis.nevis.zip'))}>دانلود باندل</button></PreferenceRow>
-                  <PreferenceRow label="فایل‌های Markdown (خوانا برای ابزارهای دیگر)"><button className="ds-btn ds-btn--sm" data-testid="export-markdown" onClick={() => void ws.exportMarkdown().then(b => download(b, 'nevis-markdown.zip'))}>دانلود Markdown</button></PreferenceRow>
+                <PreferenceGroup title={t('Your data')}>
+                  <PreferenceRow label={t('All notes, lossless (bundle)')}><button className="ds-btn ds-btn--sm" data-testid="export-bundle" onClick={() => void ws.exportBundle().then(b => download(b, 'nevis.nevis.zip'))}>{t('Download bundle')}</button></PreferenceRow>
+                  <PreferenceRow label={t('Markdown files (readable by other tools)')}><button className="ds-btn ds-btn--sm" data-testid="export-markdown" onClick={() => void ws.exportMarkdown().then(b => download(b, 'nevis-markdown.zip'))}>{t('Download Markdown')}</button></PreferenceRow>
                   {isDesktop && (
-                    <PreferenceRow label="آینهٔ Markdown (یک‌طرفه: برنامه می‌نویسد، هرگز نمی‌خواند؛ ویرایش فایل‌ها بازنویسی می‌شود)">
-                      <input data-testid="mirror-dir" dir="ltr" defaultValue={mirrorFolder(ws.ws)} placeholder="/Users/you/Notes" aria-label="پوشهٔ آینه"
+                    <PreferenceRow label={t('Markdown mirror (one-way: the app writes and never reads; edits to the files are overwritten)')}>
+                      <input data-testid="mirror-dir" dir="ltr" defaultValue={mirrorFolder(ws.ws)} placeholder="/Users/you/Notes" aria-label={t('Mirror folder')}
                         onBlur={e => { setMirrorFolder(ws.ws, e.target.value.trim()); ws.startMirror(e.target.value.trim()) }} />
                     </PreferenceRow>
                   )}
@@ -58,18 +58,18 @@ export function Settings({ ws, initialTab, onLeave }: { ws: Workspace; initialTa
               </div>
               {account && (
                 <div data-testid="settings-storage">
-                  <PreferenceGroup title="فضای ذخیره‌سازی حساب">
-                    <PreferenceRow label="فضای مصرف‌شده (متن و فایل‌ها)">
-                      <span data-testid="quota-used">{formatSize(account.usedBytes)}{account.quotaBytes > 0 ? ` از ${formatSize(account.quotaBytes)}` : ''}</span>
-                      {account.quotaBytes > 0 && <progress max={account.quotaBytes} value={account.usedBytes} aria-label="فضای مصرف‌شده" />}
+                  <PreferenceGroup title={t('Account storage')}>
+                    <PreferenceRow label={t('Space used (text and files)')}>
+                      <span data-testid="quota-used">{formatSize(account.usedBytes)}{account.quotaBytes > 0 ? ` ${t('of')} ${formatSize(account.quotaBytes)}` : ''}</span>
+                      {account.quotaBytes > 0 && <progress max={account.quotaBytes} value={account.usedBytes} aria-label={t('Space used')} />}
                     </PreferenceRow>
-                    {files.pending > 0 && <PreferenceRow label="فایل‌های منتظر آپلود"><span data-testid="quota-pending">{files.pending}</span></PreferenceRow>}
+                    {files.pending > 0 && <PreferenceRow label={t('Files waiting to upload')}><span data-testid="quota-pending">{files.pending}</span></PreferenceRow>}
                   </PreferenceGroup>
                 </div>
               )}
             </>
           ),
-          sync: <PreferenceGroup title={t('Sync')}><PreferenceRow label="وضعیت"><span data-testid="settings-sync">{ws.rt.lastError || (ws.rt.lastSyncAt ? 'همگام' : 'در حال اتصال')}</span></PreferenceRow></PreferenceGroup>,
+          sync: <PreferenceGroup title={t('Sync')}><PreferenceRow label={t('Status')}><span data-testid="settings-sync">{ws.rt.lastError || (ws.rt.lastSyncAt ? t('Synced') : t('Connecting'))}</span></PreferenceRow></PreferenceGroup>,
           shortcuts: <ShortcutsSettings />,
           about: <About />,
         }}

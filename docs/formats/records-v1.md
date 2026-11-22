@@ -5,7 +5,7 @@
 ## موجودیت‌ها
 | `$kind` | فیلدها | بدنهٔ Yjs |
 |---|---|---|
-| `page` | `title`، `parent` ('' = ریشه)، `sortKey`، `trashed`، `kind` (`"doc"`)، `createdAt`، `tag:<tagId>` (`true`/`false`) | دارد |
+| `page` | `title`، `parent` ('' = ریشه)، `sortKey`، `trashed`، `kind` (`"doc"`)، `createdAt`، `trashedAt` (میلی‌ثانیه؛ همراه `trashed:true` در همان op نوشته می‌شود و با بازگردانی `null` می‌شود؛ ساخت‌های قدیمی‌تر آن را نمی‌نویسند و نمی‌خوانند)، `tag:<tagId>` (`true`/`false`) | دارد |
 | `database` | همانند page (گره‌ای از درخت صفحه است) | دارد (توضیح) |
 | `property` | `db`، `name`، `type`، `config`، `sortKey`، `trashed`، `createdAt`، `opt:<optionId>` (فقط select/multiSelect) | ندارد |
 | `view` | `db`، `name`، `type` (`table` یا `board`)، `config`، `sortKey`، `trashed`، `createdAt` | ندارد |

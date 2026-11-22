@@ -31,6 +31,8 @@ export function DatabaseToolbar({ ws, db, view, onActive, search, onSearch, onNe
   const [hidden, setHidden] = useState(config.hidden)
   const stored = config.hidden.join(',')
   useEffect(() => setHidden(config.hidden), [stored]) // eslint-disable-line react-hooks/exhaustive-deps
+  // the + at the end of the header row opens the properties panel (where a new property is made)
+  useEffect(() => { const f = () => { const el = document.querySelector<HTMLElement>('[data-testid=chip-props]'); if (el) setPanel({ kind: 'props', rect: el.getBoundingClientRect() }) }; window.addEventListener('nevis:db-props', f); return () => window.removeEventListener('nevis:db-props', f) }, [])
   const open = (kind: PanelName) => (e: React.MouseEvent<HTMLElement>) => setPanel({ kind, rect: e.currentTarget.getBoundingClientRect() })
   const groupProp = props.find(p => p.id === config.groupBy)
   const sort = config.sort[0]

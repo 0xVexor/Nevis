@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { allBlocksTemplate } from '@nevis/editor'
+import { isDue } from '@nevis/core'
 import { Button, Toast } from './ds'
 import { DatabaseView } from './DatabaseView'
 import { EditorPane } from './EditorPane'
@@ -11,6 +12,7 @@ import { History } from './screens/History'
 import { legacyPages } from './shell/adapt'
 import { t } from './i18n'
 import { go, useRoute } from './router'
+import { matches } from './shortcutBindings'
 import { readSynced } from './workspaceSettings'
 import type { Workspace, WsStatus } from './workspace'
 import { PagesTable } from './screens/PagesTable'
@@ -23,7 +25,7 @@ import { Files } from './views/Files'
 import { Databases, Drawings } from './views/Databases'
 
 /** The app: a header with the sync status, a sidebar (navigation, new, tree, trash) and the screen of the current route. */
-export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: () => void }) {
+export function WorkspaceView({ ws, onSignOut, onWorkspaces, workspaceName }: { ws: Workspace; onSignOut?: () => void; onWorkspaces?: () => void; workspaceName?: string }) {
   const route = useRoute()
   const [, redraw] = useState(0)
   const [status, setStatus] = useState<WsStatus | null>(null)
@@ -32,18 +34,28 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
   const [history, setHistory] = useState(false)
   const [navOpen, setNavOpen] = useState(false)
   const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null)
+  const toastRef = useRef(toast)
+  toastRef.current = toast
   useEffect(() => { const f = (e: Event) => setToast((e as CustomEvent<{ msg: string; undo?: () => void }>).detail); window.addEventListener('app-toast', f); return () => window.removeEventListener('app-toast', f) }, [])
   const selected = route.name === 'page' ? route.id : ''
+  // flashcards due now (the badge on the rail): a fold over the reviews, refreshed when the data changes and now and then (cards fall due with time)
+  const [due, setDue] = useState(0)
+  useEffect(() => {
+    let live = true
+    const count = () => void ws.reviewData().then(d => { if (live) setDue(ws.search.cards().filter(c => isDue(d.recs.get(c.id), Date.now())).length) })
+    count(); const off = ws.subscribe(count); const timer = setInterval(count, 60_000)
+    return () => { live = false; off(); clearInterval(timer) }
+  }, [ws])
   const lastPage = useRef('') // the page the graph centres on when it is opened from elsewhere
   if (selected) lastPage.current = selected
   const select = (id: string) => { go({ name: 'page', id }); setShowTrash(false); setNavOpen(false) }
 
   const create = async (parent: string) => { const id = await ws.newPage(parent); select(id) }
   const createDb = async () => { const id = await ws.newDatabase(''); select(id) }
-  const createAllBlocks = async () => { const id = await ws.newTemplatePage('همهٔ بلوک‌ها', allBlocksTemplate()); select(id) }
+  const createAllBlocks = async () => { const id = await ws.newTemplatePage(t('All blocks'), allBlocksTemplate()); select(id) }
 
   useEffect(() => {
-    ws.onOpenPage = id => { if (ws.tree.byId.has(id)) select(id); else ws.notify('صفحه پیدا نشد') }
+    ws.onOpenPage = id => { if (ws.tree.byId.has(id)) select(id); else ws.notify(t('Page not found')) }
     const refresh = () => { redraw(n => n + 1); void ws.status().then(setStatus) }
     const off = ws.subscribe(refresh)
     const timer = setInterval(refresh, 1000)
@@ -55,19 +67,22 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
     addEventListener('pagehide', pagehide)
     // Shortcuts use PHYSICAL keys (event.code), so they work with any keyboard language: Ctrl/⌘ K, Alt N, Alt H
     const keys = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyK') { e.preventDefault(); setPalette(p => !p) }
+      if (matches(e, 'search')) { e.preventDefault(); setPalette(p => !p) }
       else if (e.altKey && e.code === 'KeyN') { e.preventDefault(); void create('') }
       else if (e.altKey && e.code === 'KeyH') { e.preventDefault(); go({ name: 'home' }) }
     }
+    // Ctrl/⌘ Z right after a toast that offers Undo runs it (outside text fields, where Z undoes typing)
+    const undo = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.code === 'KeyZ' && toastRef.current?.undo && !(e.target as HTMLElement | null)?.closest?.('input, textarea, [contenteditable=true]')) { e.preventDefault(); toastRef.current.undo(); setToast(null) } }
+    addEventListener('keydown', undo)
     addEventListener('keydown', keys)
-    return () => { off(); clearInterval(timer); document.removeEventListener('visibilitychange', hide); removeEventListener('pagehide', pagehide); removeEventListener('keydown', keys) }
+    return () => { off(); clearInterval(timer); document.removeEventListener('visibilitychange', hide); removeEventListener('pagehide', pagehide); removeEventListener('keydown', keys); removeEventListener('keydown', undo) }
   }, [ws]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const page = selected ? ws.tree.byId.get(selected)?.page : undefined
   const calendar = readSynced(ws).calendar
   const screen = (() => {
     if (route.name === 'page') {
-      if (!page) return <p className="small screen">{ws.data.pages.find(p => p.id === selected)?.trashed ? 'این صفحه در سطل زباله است (از نوار کنار بازگردانی کنید).' : 'صفحه پیدا نشد.'}</p>
+      if (!page) return <p className="small screen">{ws.data.pages.find(p => p.id === selected)?.trashed ? t('This page is in the trash (restore it from the trash screen).') : t('Page not found.')}</p>
       return (
         <>
           {page.type === 'database' ? <div className="page-cols"><div className="page"><DatabaseView key={page.id} ws={ws} id={page.id} /></div></div> : <EditorPane key={`${page.id}:${ws.reopenCount(page.id)}`} ws={ws} id={page.id} title={page.title} />}
@@ -83,15 +98,15 @@ export function WorkspaceView({ ws, onSignOut }: { ws: Workspace; onSignOut?: ()
     if (route.name === 'graph') return <Graph ws={ws} currentId={lastPage.current || undefined} />
     if (route.name === 'cards') return <Flashcards ws={ws} />
     if (route.name === 'tasks') return <Tasks ws={ws} />
-    if (route.name === 'trash') return <div data-testid="trash"><Trash items={legacyPages(ws).filter(p => p.deletedAt)} days={30} onRestore={id => void ws.restore(id)} onPurge={page => { if (confirm(`«${page.title || 'بدون عنوان'}» برای همیشه حذف شود؟ این کار در هیچ دستگاهی قابل بازگشت نیست.`)) void ws.purge(page.id) }} onEmpty={() => { if (confirm('همهٔ صفحه‌های سطل برای همیشه حذف شوند؟ این کار قابل بازگشت نیست.')) void ws.emptyTrash() }} /></div>
-    return <HomeRoute ws={ws} onOpen={select} onNewPage={() => void create('')} onTemplate={() => go({ name: 'templates' })} />
+    if (route.name === 'trash') return <div data-testid="trash"><Trash items={legacyPages(ws).filter(p => p.deletedAt)} onRestore={id => void ws.restore(id)} onPurge={page => { if (confirm(t('Delete “{title}” permanently? This cannot be undone on any device.', { title: page.title || t('Untitled') }))) void ws.purge(page.id) }} onEmpty={() => { if (confirm(t('Delete everything in the trash permanently? This cannot be undone.'))) void ws.emptyTrash() }} /></div>
+    return <HomeRoute ws={ws} onOpen={select} onNewPage={() => void create('')} onTemplate={() => go({ name: 'templates' })} onWorkspaces={onWorkspaces} />
   })()
 
   return (
     <>
       <AppShell
         ws={ws} route={route} status={status} onSearch={() => setPalette(true)} onNewPage={p => void create(p)} onNewDatabase={() => void createDb()} onNewAllBlocks={() => void createAllBlocks()}
-        onOpen={select} onSignOut={onSignOut} onHistory={() => setHistory(true)}
+        onOpen={select} onSignOut={onSignOut} onWorkspaces={onWorkspaces} workspaceName={workspaceName} dueCards={due} onHistory={() => setHistory(true)}
       >
         {screen}
       </AppShell>

@@ -4,15 +4,12 @@ import type { Page } from '../shell/model'
 import { ago } from '../shell/ago'
 import { t } from '../i18n'
 
-const DAY = 86_400_000
-
-/** Deleted pages and folders, kept for a while. Restoring puts a page back where it was; deleting here is permanent. */
-export function Trash({ items, days, onRestore, onPurge, onEmpty }: { items: Page[]; days: number; onRestore: (id: string) => void; onPurge: (page: Page) => void; onEmpty: () => void }) {
-  const daysLeft = (page: Page) => Math.max(0, days - Math.floor((Date.now() - page.deletedAt!) / DAY))
+/** Deleted pages, kept until the person restores them or deletes them for good (nothing here deletes by itself). Restoring puts a page back where it was. */
+export function Trash({ items, onRestore, onPurge, onEmpty }: { items: Page[]; onRestore: (id: string) => void; onPurge: (page: Page) => void; onEmpty: () => void }) {
   return (
     <Screen
       title={t('Trash')}
-      description={t('Pages are deleted permanently after {days} days.', { days })}
+      description={t('Deleted pages stay here until you restore them or delete them permanently.')}
       actions={
         items.length > 0 && (
           <Button variant="danger" icon={<Icon name="trash" size={16} />} onClick={onEmpty}>
@@ -34,7 +31,7 @@ export function Trash({ items, days, onRestore, onPurge, onEmpty }: { items: Pag
               <span className="ds-list-main">
                 <b dir="auto">{page.title || (page.kind === 'folder' ? t('Untitled folder') : t('Untitled'))}</b>
                 <small>
-                  {ago(page.deletedAt!)} · {t('{n} days left', { n: daysLeft(page) })}
+                  {t('Deleted {when}', { when: ago(page.deletedAt!) })}
                 </small>
               </span>
               <span className="ds-list-acts">

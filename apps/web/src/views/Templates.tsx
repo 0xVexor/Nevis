@@ -61,8 +61,8 @@ export function Templates({ ws }: { ws: Workspace }) {
   const fromOld: Choice[] = getTemplates().map(tp => { const doc = templateDoc(tp); return { id: tp.id, title: tp.title, hint: tp.desc, icon: <Glyph name={GLYPH[tp.id] ?? 'page'} size={18} />, action: t('Use template'), pageTitle: tp.pageTitle.replace(/[\s—–-]+$/, ''), blocks: outline(doc), make: () => ({ title: tp.pageTitle, content: doc, icon: tp.icon }) } })
   const ready: Choice[] = [
     ...fromOld,
-    { id: 'daily', title: t('Daily note'), hint: 'برنامه و یادداشت امروز', icon: <Glyph name="calendar" size={18} />, action: t('Use template'), pageTitle: today(), blocks: outline(daily), make: () => ({ title: today(), content: daily }) },
-    { id: 'all-blocks', title: t('All blocks sample'), hint: 'یک نمونه از هر بلوک', icon: <Glyph name="templates" size={18} />, action: t('Use template'), pageTitle: 'همهٔ بلوک‌ها', blocks: outline(all), make: () => ({ title: 'همهٔ بلوک‌ها', content: all }) },
+    { id: 'daily', title: t('Daily note'), hint: t('Plan and notes for today'), icon: <Glyph name="calendar" size={18} />, action: t('Use template'), pageTitle: today(), blocks: outline(daily), make: () => ({ title: today(), content: daily }) },
+    { id: 'all-blocks', title: t('All blocks sample'), hint: t('One sample of every block'), icon: <Glyph name="templates" size={18} />, action: t('Use template'), pageTitle: t('All blocks'), blocks: outline(all), make: () => ({ title: t('All blocks'), content: all }) },
   ]
   const choices = [...empty, ...ready]
   const [current, setCurrent] = useState(choices[0]!.id)

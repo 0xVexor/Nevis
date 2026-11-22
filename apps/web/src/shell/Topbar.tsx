@@ -5,6 +5,7 @@ import { Button, Icon, IconButton, Menu, SaveStatus, type MenuItem } from '../ds
 import { t } from '../i18n'
 import type { Route } from '../router'
 import type { Page } from './model'
+import { commandHint } from '../shortcutCommands'
 import { iconNode } from '../ds/iconSet'
 
 type Name = Route['name']
@@ -44,7 +45,7 @@ export function Topbar(p: TopbarProps) {
   const here = CRUMB[p.routeName]
   return (
     <header className="topbar">
-      {!p.noPanel && <IconButton label={t('Pages')} data-testid="panel-toggle" aria-expanded={p.panelOpen} aria-controls="workspace-context" onClick={p.onTogglePanel}><Icon name="panel-left" size={17} className="ds-flip" /></IconButton>}
+      {!p.noPanel && <IconButton label={(p.panelOpen ? t('Hide side panel') : t('Show side panel')) + '  ' + commandHint('Open or close the sidebar')} data-testid="panel-toggle" aria-expanded={p.panelOpen} aria-controls="workspace-context" onClick={p.onTogglePanel}><Icon name="panel-left" size={17} className="ds-flip" /></IconButton>}
       <div className="nav-hist">
         <IconButton label={t('Back  Alt+←')} disabled={!p.nav.canBack} onClick={p.nav.back}><Icon name="arrow-left" size={17} className="ds-flip" /></IconButton>
         <IconButton label={t('Forward  Alt+→')} disabled={!p.nav.canForward} onClick={p.nav.forward}><Icon name="arrow-right" size={17} className="ds-flip" /></IconButton>
@@ -73,7 +74,7 @@ export function Topbar(p: TopbarProps) {
       <div className="tb-group">
         {onPage && p.onHistory && <IconButton label={t('Version history')} data-testid="open-history" onClick={p.onHistory}><Icon name="history" size={17} /></IconButton>}
         {onPage && p.pageTools}
-        <IconButton label={p.fullScreen ? t('Exit full screen') : t('Full screen')} pressed={p.fullScreen} className="ds-icon-btn--toggle topbar-fullscreen" onClick={p.onToggleFullScreen}><Icon name={p.fullScreen ? 'minimize' : 'maximize'} size={17} /></IconButton>
+        <IconButton label={(p.fullScreen ? t('Exit full screen') : t('Full screen')) + '  ' + commandHint('Full screen')} pressed={p.fullScreen} className="ds-icon-btn--toggle topbar-fullscreen" onClick={p.onToggleFullScreen}><Icon name={p.fullScreen ? 'minimize' : 'maximize'} size={17} /></IconButton>
         <IconButton label={p.dark ? t('Light mode') : t('Dark mode')} onClick={p.onToggleDark}><Icon name={p.dark ? 'sun' : 'moon'} size={17} /></IconButton>
       </div>
       {onPage && p.current && p.onFavorite && (

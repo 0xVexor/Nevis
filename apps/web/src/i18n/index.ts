@@ -11,12 +11,14 @@ import { FA_ONBOARDING } from './fa-onboarding'
 import { FA_CONFLICTS } from './fa-conflicts'
 import { FA_OLD } from './faOld'
 import { getSettings } from '../deviceSettings'
+import { formatShortcutText } from '../shortcuts'
 
 const FA: Record<string, string> = { ...FA_APP, ...FA_SETTINGS, ...FA_HOME, ...FA_VIEWS, ...FA_COVERS, ...FA_ONBOARDING, ...FA_CONFLICTS, ...FA_NEW, ...FA_OLD }
 
 /** t('Hello {name}', { name }): placeholders are filled AFTER translating, so user text stays untouched. */
 export function t(key: string, vars?: Record<string, string | number>): string {
-  const out = getSettings().lang === 'fa' ? (FA[key] ?? key) : key // English: the source string itself
+  let out = getSettings().lang === 'fa' ? (FA[key] ?? key) : key // English: the source string itself
+  out = formatShortcutText(out) // shortcut names inside UI text read as this platform writes them (⌥← on a Mac), before the placeholders are filled
   return vars ? out.replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k] ?? '')) : out
 }
 

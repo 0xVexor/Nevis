@@ -89,7 +89,7 @@ export function Flashcards({ ws }: { ws: Workspace }) {
                 <div className="fc-today-text">
                   <h2 id="fc-today" data-testid="fc-due">{due.length === 0 ? t('You are up to date') : due.length === 1 ? t('1 card is waiting') : t('{n} cards are waiting', { n: num(due.length) })}</h2>
                   <p>{due.length > 0 ? t('About {m} min. Cards you miss come back before the session ends.', { m: num(minutes) }) : Number.isFinite(upcoming) ? t('Next card is due {when}.', { when: new Date(upcoming).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' }) }) : t('Nothing is scheduled yet')}</p>
-                  {due.length > 0 && <Button variant="primary" className="fc-start" data-testid="fc-start" onClick={() => start(ALL)}>{t('Start review')}</Button>}
+                  {due.length > 0 && <Button variant="primary" className="fc-start" data-testid="fc-start" onClick={() => start(ALL)}>{t('Start review')}<kbd className="ds-kbd">{commandHint('Start review')}</kbd></Button>}
                   <Stats className="fc-facts" label={t('Statistics')} items={[
                     { label: t('reviewed today'), value: num(perDay.get(dayKey(now)) ?? 0) }, { label: t('day streak'), value: num(streak) },
                     { label: t('due tomorrow'), value: num(dueTomorrow) }, { label: t('reviews in total'), value: num(times.length) },

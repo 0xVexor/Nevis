@@ -34,7 +34,7 @@ export function Palette({ ws, onClose, onNewPage, onNewDatabase }: { ws: Workspa
     if (scope !== 'commands') {
       const byId = new Map(ws.data.pages.map(p => [p.id, p]))
       const pages = hitIds ? hitIds.map(id => byId.get(id)).filter((p): p is NonNullable<typeof p> => !!p) : ws.searchTitles(query, 20)
-      if (pages.length) out.push({ label: t('Pages'), items: pages.map(p => ({ id: `page-${p.id}`, icon: <Icon name={p.type === 'database' ? 'table' : 'file-text'} />, title: p.title || 'بدون عنوان', onChoose: () => go({ name: 'page', id: p.id }) })) })
+      if (pages.length) out.push({ label: t('Pages'), items: pages.map(p => ({ id: `page-${p.id}`, icon: <Icon name={p.type === 'database' ? 'table' : 'file-text'} />, title: p.title || t('Untitled'), onChoose: () => go({ name: 'page', id: p.id }) })) })
     }
     return out
   }, [query, scope, ws.data, device.theme, hitIds])

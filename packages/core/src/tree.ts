@@ -12,6 +12,8 @@ export interface PageRow {
   parent: string
   sortKey: string
   trashed: boolean
+  /** when the page went to the trash (ms; 0 = not known: a page trashed by an older build) */
+  trashedAt?: number
   kind: string
   createdAt: number
   /** HLC of the `parent` register: decides which page of a cycle goes to the root. */
