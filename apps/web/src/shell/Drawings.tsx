@@ -22,7 +22,7 @@ function Thumb({ load }: { load?: () => Promise<string> }) {
     const io = new IntersectionObserver(entries => {
       if (!entries.some(e => e.isIntersecting)) return
       io.disconnect()
-      void load().then(async json => { const { drawingSvg } = await import('@nevis/editor'); return drawingSvg(json) }).then(svg => { if (live && svg && host.current) { host.current.append(svg); setDrawn(true) } }, e => console.warn('drawing thumb', e))
+      void load().then(async json => { const { drawingSvg } = await import('@nevis/editor'); return drawingSvg(json, { fit: true }) }).then(svg => { if (live && svg && host.current) { host.current.append(svg); setDrawn(true) } }, e => console.warn('drawing thumb', e))
     })
     io.observe(el)
     return () => { live = false; io.disconnect() }

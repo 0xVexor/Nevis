@@ -115,6 +115,9 @@ test('the Drawings list shows the picture of each drawing, not an empty pencil',
   await expect.poll(() => page.evaluate(() => (window as unknown as { __ws: { search: { drawings: () => unknown[] } } }).__ws.search.drawings().length), { timeout: 30_000 }).toBeGreaterThan(0) // saved, then indexed
   await page.getByTestId('nav-drawings').click()
   await expect(page.locator('.dr-pic svg').first()).toBeVisible({ timeout: 60_000 })
+  // the picture sits whole inside its box (never larger than it, never cropped)
+  const fits = await page.locator('.dr-pic').first().evaluate(el => { const box = el.parentElement!.getBoundingClientRect(), svg = el.querySelector('svg')!.getBoundingClientRect(); return svg.width <= box.width && svg.height <= box.height && svg.top >= box.top && svg.bottom <= box.bottom + 1 })
+  expect(fits).toBe(true)
 })
 
 test('Home: ticking a task there ticks it in its page; the trash says when a page was deleted and never promises to delete by itself', async ({ page }) => {

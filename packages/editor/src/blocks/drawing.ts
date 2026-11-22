@@ -35,13 +35,14 @@ const restoreScene = (L: Lib) => (data: unknown) => {
 }
 
 /** The picture of a scene as an SVG element, drawn at its own size (for a list of drawings); null when the scene is empty or cannot be read. */
-export async function drawingSvg(json: string): Promise<SVGSVGElement | null> {
+export async function drawingSvg(json: string, o: { fit?: boolean } = {}): Promise<SVGSVGElement | null> {
   if (!json) return null
   try {
     const L = await loadExcalidraw()
     const r = readScene(json, restoreScene(L))
     if (r.status !== 'ok') return null
     const svg = await L.exportToSvg({ elements: r.scene.elements.filter(e => !e.isDeleted), appState: { ...r.scene.appState, exportBackground: false }, files: null })
+    if (o.fit) { svg.removeAttribute('width'); svg.removeAttribute('height'); svg.style.width = '100%'; svg.style.height = '100%'; svg.style.display = 'block'; return svg } // fills its box, whole, never cropped (a thumbnail)
     svg.style.maxWidth = '100%'; svg.style.maxHeight = '100%'; svg.style.height = 'auto'; svg.style.display = 'block'
     return svg
   } catch { return null }

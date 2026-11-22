@@ -77,8 +77,11 @@ ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 .dv-th-btn:hover { background: var(--ds-sunk-2, rgba(0,0,0,.05)); }
 .dv-th-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dv-th-sort { color: var(--ds-accent); }
-.dr-thumb .dr-pic { display: grid; place-items: center; inline-size: 100%; block-size: 100%; padding: var(--ds-s2); background: var(--ds-white, #fff); overflow: hidden; }
-.dr-thumb .dr-pic > svg, .dr-latest-board .dr-pic > svg { max-inline-size: 100%; max-block-size: 100%; }
+/* the picture sits inside its box with room around it and is never cropped or stretched (the old list drew an <img> the same way) */
+.dr-thumb, .dr-latest-board { position: relative; }
+.dr-thumb .dr-pic, .dr-latest-board .dr-pic { position: absolute; inset: 0; display: block; padding: var(--ds-s3); box-sizing: border-box; }
+.dr-latest-board .dr-pic { padding: var(--ds-s6); }
+.dr-pic svg { display: block; inline-size: 100%; block-size: 100%; }
 .dr-svg { display: contents; }
 .dr-blank > .dr-svg { display: none; }
 .dv-check-wrap { position: relative; display: inline-grid; place-items: center; inline-size: 24px; block-size: 24px; cursor: pointer; }
