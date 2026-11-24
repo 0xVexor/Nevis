@@ -54,7 +54,7 @@ export const FindInPage = Extension.create({
       findNext: (step: 1 | -1 = 1) => ({ tr, dispatch }: CommandProps) => { dispatch?.(tr.setMeta(findKey, { step })); return true },
     }
   },
-  addKeyboardShortcuts() { return { 'Mod-f': () => { this.editor.view.dom.dispatchEvent(new CustomEvent('nevis:find-open', { bubbles: true })); return true } } },
+  addKeyboardShortcuts() { return { 'Mod-f': () => { if (optionsOf(this.editor).ownFindBar) return false; this.editor.view.dom.dispatchEvent(new CustomEvent('nevis:find-open', { bubbles: true })); return true } } },
   addProseMirrorPlugins() {
     return [new Plugin<FindState>({
       key: findKey,

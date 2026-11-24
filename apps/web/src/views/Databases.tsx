@@ -1,7 +1,10 @@
 // Databases and Drawings: the old app's two list screens (list on one side, the chosen item on the other), over this app's data.
 import { useMemo } from 'react'
 import { project } from '@nevis/schema'
-import { Icon } from '../ds'
+import { Button, Icon, dirOf } from '../ds'
+import { databasePresentation } from '../DatabasePresentations'
+import { KIND_ICON } from '../DatabaseToolbar'
+import { PageIcon } from '../shell/PageIcon'
 import { go } from '../router'
 import { t } from '../i18n'
 import { legacyPages } from '../shell/adapt'
@@ -16,11 +19,28 @@ export function Databases({ ws }: { ws: Workspace }) {
     const db = ws.data.databases.get(page.id)
     if (!db) return null
     const live = db.rows.filter(r => !r.trashed)
+    const views = db.views.filter(v => !v.trashed)
+    const props = db.properties.filter(p => !p.trashed)
+    const latest = [...live].sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id)).slice(0, 6)
+    const count = (n: number) => n.toLocaleString()
     return (
-      <div className="dbs-peek" data-testid="database-preview">
-        <header><h2 dir="auto">{db.title || t('Untitled database')}</h2><button type="button" className="ds-btn ds-btn--sm" data-testid="open-database" onClick={() => go({ name: 'page', id: page.id })}>{t('Open database')}</button><p>{t('{n} items', { n: live.length.toLocaleString() })}</p></header>
-        <div className="dbs-props">{db.properties.map(p => <span key={p.id} className="ds-chip" dir="auto">{p.name}</span>)}</div>
-        <ul className="dbs-rows">{live.slice(0, 8).map(r => <li key={r.id} dir="auto"><Icon name="file" size={14} /> {r.title || t('Untitled')}</li>)}</ul>
+      <div data-testid="database-preview">
+        <header className="dbs-head" dir={dirOf(db.title)}>
+          <span className="dbs-head-ic"><PageIcon page={page} /></span>
+          <h2 dir="auto">{db.title || t('Untitled database')}</h2>
+          <Button variant="primary" icon={<Icon name="arrow-up-right" size={16} className="ds-flip" />} data-testid="open-database" onClick={() => go({ name: 'page', id: db.id })}>{t('Open database')}</Button>
+        </header>
+        <p className="dbs-line">{t('{n} items', { n: count(live.length) })} · {t('{n} views', { n: count(views.length) })} · {t('{n} properties', { n: count(props.length) })}</p>
+        <h3 className="dv-section-head">{t('Views')}</h3>
+        <div className="dbs-chips">{views.map(v => <span className="dbs-chip" key={v.id} title={v.name}><Icon name={databasePresentation(v)} size={15} /><span dir="auto">{v.name || t('View')}</span></span>)}</div>
+        <h3 className="dv-section-head">{t('Properties')}</h3>
+        <div className="dbs-chips">{props.map(p => <span className="dbs-chip" key={p.id} title={p.name}><Icon name={KIND_ICON[p.type]} size={14} /><span dir="auto">{p.name}</span></span>)}</div>
+        <h3 className="dv-section-head">{t('Recently created items')}</h3>
+        {latest.length === 0 ? <div className="ds-empty ds-empty--framed dbs-empty"><span>{t('No items yet. Open the database to add the first one.')}</span></div> : (
+          <div className="ds-list ds-list--framed">{latest.map(row => <button key={row.id} type="button" className="ds-list-row" dir={dirOf(row.title)} onClick={() => go({ name: 'row', db: db.id, id: row.id })}>
+            <PageIcon page={{ id: row.id }} /><span className="ds-list-main"><b dir="auto">{row.title || t('Untitled')}</b></span>
+          </button>)}</div>
+        )}
       </div>
     )
   }

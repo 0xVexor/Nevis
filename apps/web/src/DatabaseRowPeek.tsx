@@ -24,6 +24,7 @@ export function DatabaseRowPeek({ ws, dbId, rowId, onClose, onFullPage }: {
     closeButton.current?.focus()
     const key = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return
+      if (document.querySelector('.dv-peek .pg-find')) return
       const layers = document.querySelectorAll('.ds-pop, .slash-menu, .ds-command-dialog, .ds-modal-layer, .lightbox[open], .lang-pop')
       if ([...layers].some(layer => layer.getClientRects().length && getComputedStyle(layer).visibility === 'visible')) return
       event.preventDefault()

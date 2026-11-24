@@ -71,13 +71,13 @@ export function WorkspaceView({ ws, onSignOut, onWorkspaces, workspaceName }: { 
     addEventListener('pagehide', pagehide)
     // Shortcuts use PHYSICAL keys (event.code), so they work with any keyboard language: Ctrl/⌘ K, Alt N, Alt H
     const keys = (e: KeyboardEvent) => {
-      if (document.querySelector('.dv-peek-layer')) return
+      if (e.defaultPrevented || document.querySelector('.dv-peek-layer')) return
       if (matches(e, 'search')) { e.preventDefault(); setPalette(p => !p) }
       else if (e.altKey && e.code === 'KeyN') { e.preventDefault(); void create('') }
       else if (e.altKey && e.code === 'KeyH') { e.preventDefault(); go({ name: 'home' }) }
     }
     // Ctrl/⌘ Z right after a toast that offers Undo runs it (outside text fields, where Z undoes typing)
-    const undo = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.code === 'KeyZ' && toastRef.current?.undo && !(e.target as HTMLElement | null)?.closest?.('input, textarea, [contenteditable=true]')) { e.preventDefault(); toastRef.current.undo(); setToast(null) } }
+    const undo = (e: KeyboardEvent) => { if (!e.defaultPrevented && !document.querySelector('.dv-peek-layer, [role="dialog"], .ds-pop') && (e.ctrlKey || e.metaKey) && !e.shiftKey && e.code === 'KeyZ' && toastRef.current?.undo && !(e.target as HTMLElement | null)?.closest?.('input, textarea, [contenteditable=true]')) { e.preventDefault(); toastRef.current.undo(); setToast(null) } }
     addEventListener('keydown', undo)
     addEventListener('keydown', keys)
     return () => { off(); clearInterval(timer); document.removeEventListener('visibilitychange', hide); removeEventListener('pagehide', pagehide); removeEventListener('keydown', keys); removeEventListener('keydown', undo) }

@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { intervalLabel, isDue, type Grade, type RawCard, type Rec } from '@nevis/core'
 import { Button, Icon, Screen, Stats, dirOf, useUIMotion } from '../ds'
-import { commandHint } from '../shortcutCommands'
+import { commandHint, commandMatches } from '../shortcutCommands'
 import { locale, t } from '../i18n'
 import { go } from '../router'
 import type { Workspace } from '../workspace'
@@ -50,14 +50,16 @@ export function Flashcards({ ws }: { ws: Workspace }) {
   }, [card, ws, reload])
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (deck === null || !card || e.target instanceof HTMLInputElement) return
-      if (!shown && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); setShown(true) }
-      else if (shown && ['1', '2', '3', '4'].includes(e.key)) { e.preventDefault(); void rate((Number(e.key) - 1) as Grade) }
-      else if (e.key === 'Escape') setDeck(null)
+      if ((e.target as HTMLElement | null)?.closest?.('input, textarea, select, button, [contenteditable="true"], [role="dialog"]')) return
+      if (deck === null) { if (due.length && commandMatches(e, 'Start review')) { e.preventDefault(); start(ALL) }; return }
+      if (commandMatches(e, 'End the session')) { e.preventDefault(); setDeck(null); return }
+      if (!card) return
+      if (!shown && commandMatches(e, 'Show the answer')) { e.preventDefault(); setShown(true) }
+      else if (shown) { const grade = GRADES.find(item => commandMatches(e, item.name)); if (grade) { e.preventDefault(); void rate(grade.grade) } }
     }
     addEventListener('keydown', key)
     return () => removeEventListener('keydown', key)
-  }, [deck, card, shown, rate])
+  }, [deck, card, shown, rate, due, cards, recs])
 
   if (deck === null) {
     const decks = [...new Set(cards.map(c => c.pageId))].map(id => {

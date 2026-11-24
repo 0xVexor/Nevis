@@ -29,6 +29,7 @@
 .onb-panel--center .onb-actions, .onb-actions--start { justify-content: flex-start; }
 .onb-panel--center .onb-actions { justify-content: center; }
 .onb-aside { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-s1); margin: 0; color: var(--ds-text-3); font-size: var(--ds-text-small); }
+.onb-pending { display: flex; align-items: center; gap: var(--ds-s3); color: var(--ds-text-2); font-size: var(--ds-text-small); }
 
 /* welcome with sync: three equal choices, each a real button */
 .onb-choices { display: grid; gap: var(--ds-s3); justify-self: stretch; text-align: start; }

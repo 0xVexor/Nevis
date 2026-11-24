@@ -34,6 +34,26 @@ async function slash(page: Page, query: string) {
 }
 const json = (page: Page) => page.evaluate(() => (window as unknown as W).__editor.getJSON())
 
+test('marker shortcut converts a block and follows its remapping', async ({ page }) => {
+  await start(page)
+  await body(page).click()
+  await page.keyboard.type('##')
+  await page.keyboard.press('Tab')
+  await expect(body(page).locator('h2')).toHaveCount(1)
+  await page.evaluate(async () => { const path = '/src/deviceSettings.ts'; const settings = await import(path); settings.updateSettings({ shortcuts: { 'study:Turn a typed marker (#, -, 1., >, [], ```, ---) into a block': ['Alt', 'T'] } }) })
+  await page.evaluate(() => (window as unknown as W).__editor.commands.setContent({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '###' }] }] }))
+  await page.evaluate(() => (window as unknown as W).__editor.commands.focus('end'))
+  await page.keyboard.press('Alt+t')
+  await expect(body(page).locator('h3')).toHaveCount(1)
+  await page.evaluate(() => { const editor = (window as unknown as W).__editor; editor.commands.setContent({ type: 'doc', content: [{ type: 'codeBlock', content: [{ type: 'text', text: 'code' }] }] }); editor.commands.focus('end') })
+  await page.keyboard.press('Tab')
+  expect(await body(page).locator('pre').textContent()).toBe('code    ')
+  await page.evaluate(() => { const editor = (window as unknown as W).__editor; editor.commands.setContent({ type: 'doc', content: [{ type: 'paragraph' }] }); editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run() })
+  const before = await page.evaluate(() => (window as unknown as W).__editor.state.selection.from)
+  await page.keyboard.press('Tab')
+  expect(await page.evaluate(() => (window as unknown as W).__editor.state.selection.from)).toBeGreaterThan(before)
+})
+
 test('reference slash menu has groups, icons, preview and keyboard controls; the toolbar opens it without writing a slash', async ({ page }) => {
   await start(page)
   await body(page).click()

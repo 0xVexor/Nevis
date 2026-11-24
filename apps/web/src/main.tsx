@@ -92,7 +92,7 @@ const errText = (e: unknown): string => {
   return t('The server is not reachable')
 }
 
-function SignInForm({ onDone, onServer }: { onDone: (recoveryKey?: string) => void; onServer?: () => void }) {
+function SignInForm({ onDone, onServer }: { onDone: (recoveryKey?: string) => Promise<void>; onServer?: () => void }) {
   const [mode, setMode] = useState<'in' | 'up'>('in')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -102,8 +102,8 @@ function SignInForm({ onDone, onServer }: { onDone: (recoveryKey?: string) => vo
     const u = String(f.get('username') ?? '').trim(), p = String(f.get('password') ?? ''), inv = String(f.get('invite') ?? '')
     setBusy(true); setErr('')
     try {
-      if (mode === 'in') { await signIn(u, p, deviceLabel()); onDone() }
-      else { const r = await signUp(u, p, deviceLabel(), inv); onDone(r.recoveryKey) }
+      if (mode === 'in') { await signIn(u, p, deviceLabel()); await onDone() }
+      else { const r = await signUp(u, p, deviceLabel(), inv); await onDone(r.recoveryKey) }
     } catch (e) { setErr(errText(e)) } finally { setBusy(false) }
   }
   return (
@@ -116,13 +116,18 @@ function SignInForm({ onDone, onServer }: { onDone: (recoveryKey?: string) => vo
         {mode === 'up' && <label className="onb-field"><span>{t('Invite code (if needed)')}</span><input className="ds-field" name="invite" dir="ltr" /></label>}
         {err && <p className="err" role="alert" data-testid="auth-error">{err}</p>}
         <div className="onb-actions">
-          <Button type="button" variant="ghost" data-testid="auth-switch" onClick={() => { setMode(mode === 'in' ? 'up' : 'in'); setErr('') }}>{mode === 'in' ? t('I have no account') : t('I have an account')}</Button>
-          <Button type="submit" variant="primary" disabled={busy} data-testid="auth-submit">{busy ? '…' : mode === 'in' ? t('Sign in') : t('Create account')}</Button>
+          <Button type="button" variant="ghost" disabled={busy} data-testid="auth-switch" onClick={() => { setMode(mode === 'in' ? 'up' : 'in'); setErr('') }}>{mode === 'in' ? t('I have no account') : t('I have an account')}</Button>
+          <Button type="submit" variant="primary" disabled={busy} data-testid="auth-submit">{mode === 'in' ? t('Sign in') : t('Create account')}</Button>
         </div>
+        {busy && <Pending />}
       </form>
-      {onServer && <Button variant="ghost" size="sm" icon={<Icon name="settings" size={16} />} data-testid="custom-server" onClick={onServer}>{t('Server address')}</Button>}
+      {onServer && <Button variant="ghost" size="sm" disabled={busy} icon={<Icon name="settings" size={16} />} data-testid="custom-server" onClick={onServer}>{t('Server address')}</Button>}
     </Frame>
   )
+}
+
+function Pending() {
+  return <div className="onb-pending" role="status"><span className="ds-command-state-icon" data-pending><BrandMark size={24} /></span><span>{t('Opening…')}</span></div>
 }
 
 /** The old app's first-run frame (`onb`): the brand at the top, one centered panel. */
@@ -141,6 +146,7 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
   const [open, setOpen] = useState<{ ws: Workspace } | null>(null)
   const [key, setKey] = useState(recoveryKey)
   const [busy, setBusy] = useState(false)
+  const [checkingLast, setCheckingLast] = useState(true)
   const [error, setError] = useState('')
   const pending = useRef(false)
   const lastKey = 'nevis.lastWorkspace.' + who.account.id
@@ -181,15 +187,16 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
     void workspaces().then(async list => {
       if (!alive) return
       setList(list)
-      if (recoveryKey) return
+      if (recoveryKey) { setCheckingLast(false); return }
       let last: string | null
       try { last = localStorage.getItem(lastKey) } catch { last = null }
       if (isDesktop) {
         const native = await getDesktopPreference(lastKey).catch(error => { console.warn('Could not read the last workspace', error); return undefined })
         last = native ?? last
       }
-      if (alive && last && list.some(workspace => workspace.id === last)) void enter(last)
-    }, error => { if (alive) { setError(errText(error)); setList([]) } })
+      if (alive && last && list.some(workspace => workspace.id === last)) await enter(last)
+      if (alive) setCheckingLast(false)
+    }, error => { if (alive) { setError(errText(error)); setList([]); setCheckingLast(false) } })
     return () => { alive = false }
   }, [enter, lastKey, recoveryKey])
   const make = async () => {
@@ -225,17 +232,18 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
       <p>{t('Open a workspace or create one.')}</p>
       {key && <div className="recovery onb-key" data-testid="recovery"><p>کلید بازیابی شما (فقط یک بار نشان داده می‌شود؛ جایی امن نگه دارید):</p><code dir="ltr">{key}</code> <Button size="sm" onClick={() => setKey(undefined)}>نوشتم</Button></div>}
       {error && <p role="alert" className="err">{error}</p>}
-      {list === null || busy ? <p role="status">{t('Opening…')}</p> : (
+      {(checkingLast || list === null || busy) && <Pending />}
+      {!checkingLast && list !== null && (
         <ul data-testid="ws-list" className="onb-list">{list.map(w => <li key={w.id}>
           <Icon name="vault" size={20} />
           <div className="onb-list-text"><b dir="auto">{w.name}</b><small>{t(w.role === 'owner' ? 'Owner' : w.role)}</small></div>
-          <Button size="sm" onClick={() => void enter(w.id)} aria-label={w.name}>{t('Open')}</Button>
+          <Button size="sm" disabled={busy} onClick={() => void enter(w.id)} aria-label={w.name}>{t('Open')}</Button>
         </li>)}</ul>
       )}
       <div className="onb-actions">
-        <Button variant="primary" data-testid="ws-new" disabled={busy} onClick={() => void make()}>{t('New workspace')}</Button>
-        <label className="ds-btn ds-btn--ghost">{t('Import a bundle')} <input type="file" accept=".zip" data-testid="ws-import" hidden onChange={e => { const f = e.target.files?.[0]; if (f) void importFile(f) }} /></label>
-        <Button variant="ghost" data-testid="signout" onClick={() => void leave()}>{t('Sign out')}</Button>
+        <Button variant="primary" data-testid="ws-new" disabled={busy || checkingLast} onClick={() => void make()}>{t('New workspace')}</Button>
+        <label className="ds-btn ds-btn--ghost">{t('Import a bundle')} <input type="file" accept=".zip" data-testid="ws-import" disabled={busy || checkingLast} hidden onChange={e => { const f = e.target.files?.[0]; if (f) void importFile(f) }} /></label>
+        <Button variant="ghost" data-testid="signout" disabled={busy || checkingLast} onClick={() => void leave()}>{t('Sign out')}</Button>
       </div>
     </Frame>
   )
@@ -275,9 +283,9 @@ function Root() {
   useEffect(() => { void refresh() }, [])
   // the start animation (index.html) fades away once the app has something to show
   useEffect(() => { if (state !== 'loading') (window as unknown as { __splashDone?: () => void }).__splashDone?.() }, [state])
-  if (state === 'loading') return <main><p>{t('Opening…')}</p></main>
+  if (state === 'loading') return <Frame><Pending /></Frame>
   if (state === 'server') return <ServerForm onDone={() => void refresh()} onBack={() => void refresh()} />
-  if (state === 'out') return <SignInForm onDone={k => void refresh(k)} onServer={isDesktop ? () => setState('server') : undefined} />
+  if (state === 'out') return <SignInForm onDone={refresh} onServer={isDesktop ? () => setState('server') : undefined} />
   if (state === 'unreachable') return <Frame surface="auth"><h1>{t('The server is not reachable')}</h1><div className="onb-actions">{isDesktop && <Button variant="ghost" onClick={() => setState('server')}>{t('Server address')}</Button>}<Button variant="primary" onClick={() => void refresh()}>{t('Try again')}</Button></div></Frame>
   return <Home who={state.me} recoveryKey={state.recoveryKey} onSignedOut={() => setState('out')} />
 }

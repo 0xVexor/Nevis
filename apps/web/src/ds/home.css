@@ -68,7 +68,7 @@
 .home-note-toolbar > span { display: flex; align-items: center; gap: var(--ds-s2); font-size: var(--ds-text-caption); color: var(--ds-text-3); }
 .home-note-toolbar > .ds-btn { color: var(--ds-text-3); }
 .home-note-writing { padding: var(--ds-s8); }
-.home-note-title { display: block; inline-size: 100%; padding: 0; margin-block-end: var(--ds-s4); border: 0; border-radius: 0; background: transparent; color: var(--ds-text); font: 500 var(--ds-text-section)/1.5 var(--ds-font-ui); }
+.home-note-title { display: block; box-sizing: border-box; inline-size: 100%; padding: var(--ds-s2) var(--ds-s3); margin-block-end: var(--ds-s4); border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-sunk); color: var(--ds-text); font: 500 var(--ds-text-section)/1.5 var(--ds-font-ui); text-align: start; }
 .home-note-title::placeholder { color: var(--ds-text-3); }
 .home-note-title:focus-visible { outline-offset: var(--ds-s1); }
 .home-note-editor .tiptap { min-block-size: 220px; max-block-size: 350px; overflow: auto; color: var(--ds-text); font: 400 var(--ds-text-ui) /1.9 var(--ds-font-ui); overflow-wrap: anywhere; }

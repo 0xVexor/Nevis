@@ -22,13 +22,19 @@ export interface ViewConfig {
   hidden: string[]
   /** conditions a row must meet to be shown (all of them) */
   filter: FilterRule[]
+  /** Ordered property ids; newly added properties follow these. */
+  columnOrder: string[]
+  /** Freeze all visible columns through this property; empty means none. */
+  frozenThrough: string
+  /** Explicit table column widths in CSS pixels, keyed by property id. */
+  columnWidths: Record<string, number>
 }
-export const DEFAULT_VIEW_CONFIG: ViewConfig = { v: VIEW_CONFIG_VERSION, groupBy: '', sort: [], hidden: [], filter: [] }
+export const DEFAULT_VIEW_CONFIG: ViewConfig = { v: VIEW_CONFIG_VERSION, groupBy: '', sort: [], hidden: [], filter: [], columnOrder: [], frozenThrough: '', columnWidths: {} }
 
 const isObj = (x: unknown): x is Record<string, Json> => !!x && typeof x === 'object' && !Array.isArray(x)
 
 export function readViewConfig(raw: Json | undefined, props: readonly PropertyModel[] = []): ViewConfig {
-  if (!isObj(raw)) return { ...DEFAULT_VIEW_CONFIG, sort: [], hidden: [], filter: [] }
+  if (!isObj(raw)) return { ...DEFAULT_VIEW_CONFIG, sort: [], hidden: [], filter: [], columnOrder: [], frozenThrough: '', columnWidths: {} }
   const live = new Map(props.filter(p => !p.trashed).map(p => [p.id, p]))
   const groupBy = typeof raw.groupBy === 'string' && live.get(raw.groupBy)?.type === 'select' ? raw.groupBy : ''
   const sort: SortRule[] = []
@@ -36,17 +42,26 @@ export function readViewConfig(raw: Json | undefined, props: readonly PropertyMo
   const hidden = Array.isArray(raw.hidden) ? raw.hidden.filter((h): h is string => typeof h === 'string' && live.has(h)) : []
   const filter: FilterRule[] = []
   if (Array.isArray(raw.filter)) for (const r of raw.filter) if (isObj(r) && typeof r.prop === 'string' && live.has(r.prop) && typeof r.op === 'string' && FILTER_OPS.includes(r.op)) filter.push({ prop: r.prop, op: r.op as FilterOp, value: typeof r.value === 'string' ? r.value : '' })
-  return { v: typeof raw.v === 'number' ? raw.v : VIEW_CONFIG_VERSION, groupBy, sort, hidden, filter }
+  const columnOrder = Array.isArray(raw.columnOrder) ? [...new Set(raw.columnOrder.filter((id): id is string => typeof id === 'string' && live.has(id)))] : []
+  const frozenThrough = typeof raw.frozenThrough === 'string' && live.has(raw.frozenThrough) ? raw.frozenThrough : ''
+  const columnWidths: Record<string, number> = {}
+  if (isObj(raw.columnWidths)) for (const [id, width] of Object.entries(raw.columnWidths)) {
+    if (live.has(id) && typeof width === 'number' && Number.isFinite(width) && width >= 120 && width <= 1000) columnWidths[id] = width
+  }
+  return { v: typeof raw.v === 'number' ? raw.v : VIEW_CONFIG_VERSION, groupBy, sort, hidden, filter, columnOrder, frozenThrough, columnWidths }
 }
 
 /** The config to store after changing some fields: the fields this build does not know are kept as they were (a newer build wrote them). */
-export function patchViewConfig(raw: Json | undefined, patch: Partial<Pick<ViewConfig, 'groupBy' | 'sort' | 'hidden' | 'filter'>>): Json {
+export function patchViewConfig(raw: Json | undefined, patch: Partial<Pick<ViewConfig, 'groupBy' | 'sort' | 'hidden' | 'filter' | 'columnOrder' | 'frozenThrough' | 'columnWidths'>>): Json {
   const base = isObj(raw) ? { ...raw } : {}
   const next: Record<string, Json> = { ...base, v: Math.max(VIEW_CONFIG_VERSION, typeof base.v === 'number' ? base.v : 0) }
   if (patch.groupBy !== undefined) next.groupBy = patch.groupBy
   if (patch.sort !== undefined) next.sort = patch.sort.map(s => ({ prop: s.prop, dir: s.dir }))
   if (patch.hidden !== undefined) next.hidden = [...patch.hidden]
   if (patch.filter !== undefined) next.filter = patch.filter.map(f => ({ prop: f.prop, op: f.op, value: f.value }))
+  if (patch.columnOrder !== undefined) next.columnOrder = [...patch.columnOrder]
+  if (patch.frozenThrough !== undefined) next.frozenThrough = patch.frozenThrough
+  if (patch.columnWidths !== undefined) next.columnWidths = { ...patch.columnWidths }
   return next
 }
 

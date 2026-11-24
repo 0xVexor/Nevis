@@ -11,13 +11,24 @@ const row = (id: string, cells: RowModel['cells'], sortKey = id): RowModel => ({
 describe('view config: versioned and tolerant', () => {
   const props = [prop('t', 'text'), prop('s', 'select', [{ id: 'o1', name: 'الف', color: 'red', sortKey: 'a' }]), prop('n', 'number')]
   it('anything unreadable is the default; nothing throws', () => {
-    for (const raw of [undefined, null, 5, 'x', [], true, { sort: 3 }, { groupBy: 7, hidden: 'x', sort: [1, null, {}] }]) expect(readViewConfig(raw as never, props)).toEqual({ v: 1, groupBy: '', sort: [], hidden: [], filter: [] })
+    for (const raw of [undefined, null, 5, 'x', [], true, { sort: 3 }, { groupBy: 7, hidden: 'x', sort: [1, null, {}] }]) expect(readViewConfig(raw as never, props)).toEqual({ v: 1, groupBy: '', sort: [], hidden: [], filter: [], columnOrder: [], frozenThrough: '', columnWidths: {} })
   })
   it('a groupBy that is gone, trashed or not a select is "no grouping"; sort and hidden drop what no longer exists', () => {
     const cfg = readViewConfig({ v: 1, groupBy: 'n', sort: [{ prop: 'n', dir: 'desc' }, { prop: 'gone', dir: 'asc' }, { prop: 't', dir: 'sideways' }], hidden: ['t', 'gone', 5] }, props)
-    expect(cfg).toEqual({ v: 1, groupBy: '', sort: [{ prop: 'n', dir: 'desc' }, { prop: 't', dir: 'asc' }], hidden: ['t'], filter: [] })
+    expect(cfg).toEqual({ v: 1, groupBy: '', sort: [{ prop: 'n', dir: 'desc' }, { prop: 't', dir: 'asc' }], hidden: ['t'], filter: [], columnOrder: [], frozenThrough: '', columnWidths: {} })
     expect(readViewConfig({ groupBy: 's' }, props).groupBy).toBe('s')
     expect(readViewConfig({ groupBy: 's' }, [{ ...props[1]!, trashed: true }]).groupBy).toBe('')
+  })
+  it('validates and persists table order and frozen columns', () => {
+    const raw = patchViewConfig({}, { columnOrder: ['n', 't', 'n', 'gone'], frozenThrough: 'n' })
+    expect(readViewConfig(raw, props)).toMatchObject({ columnOrder: ['n', 't'], frozenThrough: 'n' })
+    expect(readViewConfig({ frozenThrough: 'gone' }, props).frozenThrough).toBe('')
+  })
+  it('validates and preserves column widths', () => {
+    const raw = patchViewConfig({ future: 1 }, { columnWidths: { t: 420, n: 100, s: 1001, gone: 300 } })
+    expect(readViewConfig(raw, props).columnWidths).toEqual({ t: 420 })
+    expect((raw as Record<string, unknown>).future).toBe(1)
+    expect(readViewConfig({ columnWidths: { t: 'wide' } }, props).columnWidths).toEqual({})
   })
   it('a newer build\'s fields survive a rewrite by this one, and `v` never goes down', () => {
     const next = patchViewConfig({ v: 3, groupBy: 's', future: { x: [1, 2] }, cardCover: 'img' }, { sort: [{ prop: 'n', dir: 'asc' }] }) as Record<string, unknown>
@@ -33,7 +44,7 @@ describe('view config: versioned and tolerant', () => {
 describe('what a view shows', () => {
   const props = [prop('t', 'text'), prop('n', 'number'), prop('s', 'select', [{ id: 'o1', name: 'یک', color: '', sortKey: 'a' }, { id: 'o2', name: 'دو', color: '', sortKey: 'b' }]), prop('c', 'checkbox')]
   const rows = [row('r1', { t: 'ب', n: '10', s: 'o2', c: true }), row('r2', { t: 'الف', n: '9.5', s: 'o1', c: false }), row('r3', { t: null, n: null, s: null, c: false }), row('r4', { t: 'پ', n: '-2', s: 'gone', c: true })]
-  const cfg = (over: Partial<ReturnType<typeof readViewConfig>> = {}) => ({ v: 1, groupBy: '', sort: [], hidden: [], filter: [], ...over })
+  const cfg = (over: Partial<ReturnType<typeof readViewConfig>> = {}) => ({ v: 1, groupBy: '', sort: [], hidden: [], filter: [], columnOrder: [], frozenThrough: '', columnWidths: {}, ...over })
   it('sorts numbers exactly, text in Persian order, selects by option order, checkboxes false before true; empty last; desc reverses', () => {
     const ids = (c: ReturnType<typeof cfg>) => viewRows(rows, props, c).map(r => r.id)
     expect(ids(cfg({ sort: [{ prop: 'n', dir: 'asc' }] }))).toEqual(['r4', 'r2', 'r1', 'r3'])
@@ -72,11 +83,11 @@ describe('moving a card is ONE op', () => {
     await moveCard(c, r, sel, b, null, null)
     expect((await store.run(tx => tx.listOutbox(1000))).length).toBe(before + 1)
     const m = (await readStructured(store)).databases.get(db.id)!
-    const cols = boardColumns(m.rows, m.properties, { v: 1, groupBy: sel, sort: [], hidden: [], filter: [] })
+    const cols = boardColumns(m.rows, m.properties, { v: 1, groupBy: sel, sort: [], hidden: [], filter: [], columnOrder: [], frozenThrough: '', columnWidths: {} })
     expect(cols.find(x => x.id === b)!.rows.map(x => x.id)).toEqual([r])
     expect(cols.find(x => x.id === a)!.rows).toEqual([])
     await moveCard(c, r, sel, '', null, null) // back to "no value"
-    expect(boardColumns((await readStructured(store)).databases.get(db.id)!.rows, m.properties, { v: 1, groupBy: sel, sort: [], hidden: [], filter: [] })[0]!.rows.map(x => x.id)).toEqual([r])
+    expect(boardColumns((await readStructured(store)).databases.get(db.id)!.rows, m.properties, { v: 1, groupBy: sel, sort: [], hidden: [], filter: [], columnOrder: [], frozenThrough: '', columnWidths: {} })[0]!.rows.map(x => x.id)).toEqual([r])
   })
 })
 

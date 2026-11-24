@@ -107,7 +107,7 @@ export function HomeNote({ ws, onOpen, autoFocus }: { ws: Workspace; onOpen: (id
         <Button variant="ghost" size="sm" onMouseDown={e => e.preventDefault()} onClick={() => { const ed = editor.current; if (ed) openCommandPalette(ed, NOTE_COMMANDS) }}><kbd>/</kbd>{t('Commands')}</Button>
       </div>
       <div className="home-note-writing" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) saveQuietly() }}>
-        <input className="home-note-title" aria-label={t('Note title')} placeholder={t('Title (optional)')} dir="auto" value={titleText} onChange={e => { title.current = e.target.value; setTitleText(e.target.value); later() }}
+        <input className="home-note-title" aria-label={t('Note title')} placeholder={t('Title (optional)')} dir={titleText.trim() ? 'auto' : undefined} value={titleText} onChange={e => { title.current = e.target.value; setTitleText(e.target.value); later() }}
           onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); editor.current?.commands.focus('start') } }} />
         <div><div className="home-note-editor" ref={host} data-testid="home-note-editor" /></div>
       </div>

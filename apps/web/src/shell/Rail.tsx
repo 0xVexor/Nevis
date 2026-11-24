@@ -75,10 +75,10 @@ export function Rail(p: RailProps) {
   const row = (e: Entry) => {
     const count = e.badge === 'cards' ? p.dueCards : e.badge === 'trash' ? p.trashCount : 0
     return (
-      <button key={e.route} aria-label={t(e.label)} data-testid={e.testid} title={t(e.label)} className={'row plain' + (p.route.name === e.route ? ' cur' : '')} onClick={() => p.onGo(e.route)}>
+      <button key={e.route} aria-label={t(e.label)} aria-description={count > 0 ? String(count) : undefined} data-testid={e.testid} title={count > 0 ? `${t(e.label)} (${count})` : t(e.label)} className={'row plain' + (p.route.name === e.route ? ' cur' : '')} onClick={() => p.onGo(e.route)}>
         <span className="ic"><Icon name={e.icon} /></span>
         <span className="ntitle">{t(e.label)}</span>
-        {count > 0 && <span className="ds-badge">{count}</span>}
+        {count > 0 && <span className="ds-badge" aria-hidden="true">{count > 99 ? '99+' : count}</span>}
       </button>
     )
   }

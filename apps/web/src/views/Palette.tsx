@@ -1,10 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { normalizeFa } from '@nevis/editor'
+import { createSavedSearch } from '@nevis/core'
 import { Icon, SearchPalette, type PaletteSection } from '../ds'
 import { go, type Route } from '../router'
 import { t } from '../i18n'
 import { SETTINGS_TABS } from '../settings/settingsTabs'
 import type { Workspace } from '../workspace'
+import { promptDialog } from '../dialog'
 
 export interface SearchCommand {
   id: string
@@ -38,13 +40,14 @@ const matches = (words: string[], value: string) => {
 
 type PageResult = { term: string; ids: string[]; failed?: boolean }
 
-export function Palette({ ws, commands, onOpen, onClose }: {
+export function Palette({ ws, commands, onOpen, onClose, initialQuery = '' }: {
   ws: Workspace
   commands: SearchCommand[]
   onOpen: (id: string) => void
   onClose: () => void
+  initialQuery?: string
 }) {
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(initialQuery)
   const [scope, setScope] = useState('all')
   const [result, setResult] = useState<PageResult>()
   const [retry, setRetry] = useState(0)
@@ -127,6 +130,13 @@ export function Palette({ ws, commands, onOpen, onClose }: {
       state={!commandsOnly && term && ready ? current?.failed ? 'failed' : current ? 'fresh' : 'pending' : 'fresh'}
       onRetry={() => { setResult(undefined); setRetry(value => value + 1) }}
       countLabel={t(term ? 'Search' : 'Recent')} sections={sections} emptyHint={t('No results')} onClose={onClose}
+      saveLabel={!commandsOnly && term ? t('Save this search') : undefined}
+      onSave={!commandsOnly && term ? () => {
+        void promptDialog({ title: t('Save this search'), message: t('Name:'), initial: term }).then(name => {
+          if (name === null) return
+          return ws.mutate([], c => createSavedSearch(c, { name: name.trim() || term, query: term }))
+        }).catch(() => ws.notify(t('Could not complete the action. Please try again.')))
+      } : undefined}
     />
   )
 }

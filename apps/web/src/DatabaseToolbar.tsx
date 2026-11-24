@@ -6,6 +6,7 @@ import { Button, Dropdown, ChipButton, Icon, IconButton, Menu, Panel, Popover, S
 import { t } from './i18n'
 import { promptDialog } from './dialog'
 import type { Workspace } from './workspace'
+import { databasePresentation } from './DatabasePresentations'
 
 const TYPE_LABEL: Record<PropType, string> = { text: 'Text', number: 'Number', date: 'Date', select: 'Select', multiSelect: 'Multi-select', relation: 'Relation', checkbox: 'Checkbox', url: 'URL' }
 export const KIND_ICON: Record<PropType, string> = { text: 'type', number: 'hash', date: 'calendar', select: 'list', multiSelect: 'list', relation: 'link', checkbox: 'check', url: 'link' }
@@ -49,10 +50,10 @@ export function DatabaseToolbar({ ws, db, view, onActive, search, onSearch, onNe
       <header className="dv-bar" data-testid="viewbar">
         <div className="dv-views" role="tablist" aria-label={t('Views')}>
           {views.map(v => (
-            <button key={v.id} type="button" role="tab" aria-selected={v.id === view.id} className="dv-view-tab" data-testid="view-tab" data-type={v.type} title={v.name}
+            <button key={v.id} type="button" role="tab" aria-selected={v.id === view.id} className="dv-view-tab" data-testid="view-tab" data-type={databasePresentation(v)} title={v.name}
               onClick={e => (v.id === view.id ? setMenu({ rect: e.currentTarget.getBoundingClientRect(), items: viewItems(v) }) : onActive(v.id))}
               onContextMenu={e => { e.preventDefault(); setMenu({ rect: new DOMRect(e.clientX, e.clientY, 0, 0), items: viewItems(v) }) }}>
-              <Icon name={v.type === 'board' ? 'board' : 'table'} size={16} />
+              <Icon name={databasePresentation(v)} size={16} />
               <span dir="auto">{v.name || t('View')}</span>
               {v.id === view.id && <Icon name="chevron-down" size={14} className="dv-view-caret" />}
             </button>
@@ -91,11 +92,11 @@ export function DatabaseToolbar({ ws, db, view, onActive, search, onSearch, onNe
           {panel.kind === 'newview' && (
             <Panel title={t('Add a view')} size="sm">
               <div className="dv-viewtypes" role="menu" aria-label={t('Layout')}>
-                {(['table', 'board'] as const).map(ty => (
+                {(['table', 'board', 'list', 'gallery'] as const).map(ty => (
                   <button key={ty} type="button" role="menuitem" className="ds-menu-item dv-viewtype" data-testid={`new-view-${ty}`}
-                    onClick={() => { void ws.mutate([], c => createView(c, db.id, { name: ty === 'table' ? t('Table') : t('Board'), type: ty, config: ty === 'board' ? patchViewConfig(undefined, { groupBy: props.find(p => p.type === 'select')?.id ?? '' }) : {} })).then(onActive); setPanel(null) }}>
-                    <Icon name={ty === 'board' ? 'board' : 'table'} size={18} />
-                    <span className="dv-viewtype-text"><b>{t(ty === 'table' ? 'Table' : 'Board')}</b><small>{t(ty === 'table' ? 'Rows and columns' : 'Cards in columns by a property')}</small></span>
+                    onClick={() => { void ws.mutate([], c => createView(c, db.id, { name: t({ table: 'Table', board: 'Board', list: 'List', gallery: 'Gallery' }[ty]), type: ty === 'board' ? 'board' : 'table', config: ty === 'board' ? patchViewConfig(undefined, { groupBy: props.find(p => p.type === 'select')?.id ?? '' }) : ty === 'list' || ty === 'gallery' ? { presentation: ty } : {} })).then(onActive); setPanel(null) }}>
+                    <Icon name={ty} size={18} />
+                    <span className="dv-viewtype-text"><b>{t({ table: 'Table', board: 'Board', list: 'List', gallery: 'Gallery' }[ty])}</b><small>{t({ table: 'Rows and columns, edit like a spreadsheet', board: 'Cards in columns by status or group', list: 'A simple list of items', gallery: 'Items as cards' }[ty])}</small></span>
                   </button>
                 ))}
               </div>

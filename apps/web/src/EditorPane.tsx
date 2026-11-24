@@ -11,8 +11,7 @@ import { EditorMenus } from './editor/EditorMenus'
 import { getTemplates, templateDoc, type Template } from './shell/oldTemplates'
 import { Glyph } from './ds/iconSet'
 import type { Editor } from '@tiptap/core'
-import { getFind, scrollToMatch } from '@nevis/editor'
-import { matches } from './shortcutBindings'
+import { usePageFind } from './editor/usePageFind'
 import { IconButton } from './ds'
 import { Backlinks } from './views/Backlinks'
 import { Button, ChipButton, Icon, PageIconPicker, Popover, PropertyList, PropertyRow, Tag, dirOf } from './ds'
@@ -69,28 +68,7 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
   const q = tagDraft.trim().replace(/^#+/, '').toLowerCase()
   const suggestions = q ? ws.data.tags.map(x => x.name).filter(n => n.toLowerCase().includes(q) && !(meta?.tags ?? []).includes(n)).slice(0, 6) : []
   const { reader } = useContext(PageChrome)
-  // find in the page (Ctrl+F): the old app's bar over the text; the matches are decorations of the editor (nothing is written to the page)
-  const [findOpen, setFindOpen] = useState(false)
-  const findInput = useRef<HTMLInputElement>(null)
-  const [, redrawFind] = useState(0)
-  const find = editor ? getFind(editor) : { query: '', matches: [], index: 0 }
-  const stepFind = (d: 1 | -1) => { editor?.commands.findNext(d); if (editor) scrollToMatch(editor) }
-  const closeFind = () => { editor?.commands.setFindQuery(''); setFindOpen(false); editor?.commands.focus() }
-  useEffect(() => {
-    if (!editor) return
-    const openFind = () => {
-      const { from, to } = editor.state.selection
-      const picked = from !== to ? editor.state.doc.textBetween(from, to, ' ') : ''
-      setFindOpen(true)
-      requestAnimationFrame(() => { const el = findInput.current; if (!el) return; if (picked && !picked.includes('\n')) { el.value = picked; editor.commands.setFindQuery(picked); scrollToMatch(editor) } el.focus(); el.select() })
-    }
-    const key = (ev: KeyboardEvent) => { if (matches(ev, 'find')) { ev.preventDefault(); openFind() } }
-    const dom = editor.view.dom
-    const upd = () => redrawFind(n => n + 1)
-    editor.on('transaction', upd); editor.on('focus', upd); editor.on('blur', upd)
-    window.addEventListener('keydown', key); window.addEventListener('open-find', openFind); dom.addEventListener('nevis:find-open', openFind)
-    return () => { editor.off('transaction', upd); editor.off('focus', upd); editor.off('blur', upd); window.removeEventListener('keydown', key); window.removeEventListener('open-find', openFind); dom.removeEventListener('nevis:find-open', openFind) }
-  }, [editor])
+  const { open: findOpen, bar: findBar } = usePageFind(editor)
   const diverged = ws.diverged.has(id)
   useEffect(() => { editor?.setEditable(!diverged && !reader) }, [editor, diverged, reader])
   useEffect(() => { const f = (e: Event) => setCoverMenu((e as CustomEvent<DOMRect>).detail); window.addEventListener('nevis:page-cover', f); return () => window.removeEventListener('nevis:page-cover', f) }, [])
@@ -118,20 +96,7 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
   return (
     <div className={'page-cols' + (meta?.cover ? ' has-cover' : '')}>
       <div className={'page' + (findOpen ? ' finding' : '')}>
-        {findOpen && editor && (
-          <div className="pg-find-slot">
-            <div className="pg-find" role="search" data-testid="find">
-              <Icon name="search" size={16} />
-              <input ref={findInput} dir="auto" aria-label={t('Search in this page…')} placeholder={t('Search in this page…')}
-                onChange={ev => { editor.commands.setFindQuery(ev.target.value); scrollToMatch(editor) }}
-                onKeyDown={ev => { if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); stepFind(ev.shiftKey ? -1 : 1) } else if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); closeFind() } }} />
-              <span className="pg-find-count" aria-live="polite">{find.matches.length ? t('{i} of {n}', { i: find.index + 1, n: find.matches.length }) : find.query ? t('Not found') : ''}</span>
-              <IconButton label={t('Previous')} disabled={!find.matches.length} onClick={() => stepFind(-1)}><Icon name="chevron-up" size={16} /></IconButton>
-              <IconButton label={t('Next')} disabled={!find.matches.length} onClick={() => stepFind(1)}><Icon name="chevron-down" size={16} /></IconButton>
-              <IconButton label={t('Close')} onClick={closeFind}><Icon name="x" size={16} /></IconButton>
-            </div>
-          </div>
-        )}
+        {findBar}
         {meta?.cover && <CoverBanner cover={meta.cover} onChange={setCoverMenu} onRemove={() => setCover(undefined)} />}
         <header className="pg-head">
           {(!meta?.icon || !meta.cover) && (

@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { t } from './i18n'
-import { InvalidCell, boardColumns, addOption, addProperty, createRow, createView, formatDateFa, patchViewConfig, readViewConfig, removeOption, renameProperty, setCell, setMembers, setViewConfig, trashProperty, trashRow, trashView, viewRows, PROP_TYPES, titleProperty, type CellValue, type DatabaseModel, type PropertyModel, type PropType, type RowModel, type ViewModel } from '@nevis/core'
+import { commandMatches } from './shortcutCommands'
+import { InvalidCell, boardColumns, cellFields, addOption, addProperty, createRow, createView, formatDateFa, patchViewConfig, readViewConfig, removeOption, renameProperty, setCell, setMembers, setViewConfig, trashProperty, trashRow, trashView, viewRows, PROP_TYPES, titleProperty, type CellValue, type DatabaseModel, type PropertyModel, type PropType, type RowModel, type ViewModel } from '@nevis/core'
 import { BoardView } from './BoardView'
+import { DatabasePresentations, databasePresentation } from './DatabasePresentations'
 import { DatabaseToolbar, KIND_ICON } from './DatabaseToolbar'
 import { Button, Checkbox, Dropdown, Icon, IconButton, Menu, useMenu, type MenuItem } from './ds'
+import { ColumnResize } from './ColumnResize'
 import { DatabaseDatePicker } from './DatabaseDatePicker'
 import { go } from './router'
 import { promptDialog } from './dialog'
@@ -28,7 +31,7 @@ function useDraft(stored: string, commit: (v: string) => Promise<void> | void) {
   return { draft, change, flush }
 }
 
-function TextCell({ stored, onCommit, kind, label, settings }: { settings: SyncedSettings; stored: string; onCommit: (v: string) => Promise<void>; kind: 'text' | 'url' | 'number' | 'date'; label: string }) {
+function TextCell({ stored, onCommit, kind, label, settings, propertyField }: { settings: SyncedSettings; stored: string; onCommit: (v: string) => Promise<void>; kind: 'text' | 'url' | 'number' | 'date'; label: string; propertyField?: boolean }) {
   const [error, setError] = useState('')
   const [focus, setFocus] = useState(false)
   const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null)
@@ -47,7 +50,7 @@ function TextCell({ stored, onCommit, kind, label, settings }: { settings: Synce
     setDateAnchor(null)
   }
   const input = (
-    <input aria-label={label} dir={kind === 'text' ? 'auto' : 'ltr'} className={error ? 'bad' : ''} value={shown} title={error || undefined}
+    <input aria-label={label} dir={kind === 'text' ? 'auto' : 'ltr'} className={[propertyField && 'ds-field', error && 'bad'].filter(Boolean).join(' ')} value={shown} title={error || undefined}
       onFocus={() => setFocus(true)} onBlur={() => { setFocus(false); flush() }} onClick={kind === 'date' ? openDate : undefined}
       onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
       onChange={e => change(e.target.value, !normalized)} />
@@ -71,14 +74,14 @@ function useOptimistic<T>(stored: T) {
   return [local ? local.v : stored, set] as const
 }
 
-export function Cell({ ws, db, p, row }: { ws: Workspace; db: DatabaseModel; p: PropertyModel; row: RowModel }) {
+export function Cell({ ws, db, p, row, onWrite, propertyField }: { ws: Workspace; db: DatabaseModel; p: PropertyModel; row: RowModel; propertyField?: boolean; onWrite?: (row: RowModel, p: PropertyModel, value: CellValue) => Promise<void> }) {
   const stored: CellValue = row.cells[p.id] ?? null
   const [v, setV] = useOptimistic<CellValue>(stored)
-  const write = (value: string | boolean | null) => ws.mutate([row.id], c => setCell(c, row.id, p, value))
+  const write = (value: string | boolean | null) => onWrite ? onWrite(row, p, value) : ws.mutate([row.id], c => setCell(c, row.id, p, value)).then(() => {})
   const members = (id: string, on: boolean) => {
     const cur = new Set(v as string[])
     if (on) cur.add(id); else cur.delete(id)
-    setV([...cur].sort(), () => ws.mutate([row.id], c => setMembers(c, row.id, p.id, { [id]: on })))
+    setV([...cur].sort(), () => onWrite ? onWrite(row, p, [...cur].sort()) : ws.mutate([row.id], c => setMembers(c, row.id, p.id, { [id]: on })))
   }
   switch (p.type) {
     case 'checkbox': return (
@@ -109,7 +112,7 @@ export function Cell({ ws, db, p, row }: { ws: Workspace; db: DatabaseModel; p: 
         </details>
       )
     }
-    default: return <TextCell settings={readSynced(ws)} stored={typeof v === 'string' ? v : ''} kind={p.type} label={p.name} onCommit={async s => { await write(s) }} />
+    default: return <TextCell propertyField={propertyField} settings={readSynced(ws)} stored={typeof v === 'string' ? v : ''} kind={p.type} label={p.name} onCommit={async s => { await write(s) }} />
   }
 }
 
@@ -132,16 +135,44 @@ export function DatabaseView({ ws, id, onPeek }: { ws: Workspace; id: string; on
   const db = ws.data.databases.get(id)
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  const resizeGeneration = useRef(0)
+  const resizeWrites = useRef<Promise<void>>(Promise.resolve())
+  const [resizePreview, setResizePreview] = useState<{ id: string; width: number } | null>(null)
+  const [columnOffsets, setColumnOffsets] = useState<number[]>([])
+  const [gridError, setGridError] = useState('')
+  const [cellSelection, setCellSelection] = useState<{ anchor: [number, number]; active: [number, number] } | null>(null)
+  const history = useRef<Array<Array<{ rowId: string; propId: string; before: CellValue; after: CellValue }>>>([])
+  const tableRef = useRef<HTMLTableElement>(null)
+  const pendingWrites = useRef<Promise<void>>(Promise.resolve())
   const rowMenu = useMenu()
   const [colMenu, setColMenu] = useState<{ rect: DOMRect; p: PropertyModel } | null>(null)
   const [title, setTitle] = useState(db?.title ?? '')
   const [activeView, setActiveView] = useState('')
+  useEffect(() => {
+    const table = tableRef.current
+    if (!table) return
+    const measure = () => {
+      const headers = [...table.querySelectorAll<HTMLElement>('thead th')].filter(th => th.classList.contains('dbtable-handle') || th.hasAttribute('data-prop'))
+      let offset = 0
+      const next = headers.map(header => { const current = offset; offset += header.getBoundingClientRect().width; return current })
+      setColumnOffsets(current => JSON.stringify(current) === JSON.stringify(next) ? current : next)
+    }
+    const observer = new ResizeObserver(measure)
+    table.querySelectorAll('thead th').forEach(th => observer.observe(th))
+    measure()
+    return () => observer.disconnect()
+  })
   useEffect(() => setTitle(ws.data.databases.get(id)?.title ?? ''), [id]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!db) return <p className="small">{t('Loading…')}</p>
   const views = db.views.filter(v => !v.trashed)
   const view = views.find(v => v.id === activeView) ?? views[0]
   const config = readViewConfig(view?.config, db.properties)
-  const props = db.properties.filter(p => !p.trashed && !(view?.type === 'table' && config.hidden.includes(p.id)))
+  const presentation = view ? databasePresentation(view) : 'table'
+  const liveProps = db.properties.filter(p => !p.trashed)
+  const orderedProps = [...config.columnOrder.map(id => liveProps.find(p => p.id === id)).filter((p): p is PropertyModel => !!p), ...liveProps.filter(p => !config.columnOrder.includes(p.id))]
+  const props = orderedProps.filter(p => !(view?.type === 'table' && config.hidden.includes(p.id)))
+  const frozenIndex = props.findIndex(p => p.id === config.frozenThrough)
+  const frozenStyle = (index: number) => index <= frozenIndex ? { insetInlineStart: columnOffsets[index + 1] ?? 0 } : undefined
   const q = search.trim().toLowerCase()
   const rows = viewRows(db.rows, db.properties, config).filter(r => !q || (r.title ?? '').toLowerCase().includes(q) || Object.values(r.cells).some(v => typeof v === 'string' && v.toLowerCase().includes(q)))
   const tp = titleProperty(db.properties)
@@ -150,6 +181,94 @@ export function DatabaseView({ ws, id, onPeek }: { ws: Workspace; id: string; on
   const grouped = config.groupBy && db.properties.some(p => p.id === config.groupBy && p.type === 'select' && !p.trashed)
   const rowIndexes = new Map(rows.map((row, index) => [row.id, index]))
   const groups = grouped ? boardColumns(rows, db.properties, config).filter(group => group.rows.length) : [{ id: '', name: '', rows }]
+  // Keyboard coordinates follow the rendered order, including grouped views.
+  const tableRows = groups.flatMap(group => group.rows)
+  const gridRowIndexes = new Map(tableRows.map((row, index) => [row.id, index]))
+  const valueAt = (row: RowModel, p: PropertyModel): CellValue => row.cells[p.id] ?? null
+  const sameValue = (a: CellValue, b: CellValue) => JSON.stringify(Array.isArray(a) ? [...a].sort() : a) === JSON.stringify(Array.isArray(b) ? [...b].sort() : b)
+  const applyValues = async (changes: Array<{ row: RowModel; p: PropertyModel; value: CellValue }>, record = true) => {
+    const entries: Array<{ rowId: string; propId: string; before: CellValue; after: CellValue }> = []
+    const writes: Array<{ ent: string; set: ReturnType<typeof cellFields> }> = []
+    for (const { row, p, value } of changes) {
+      const currentRow = ws.data.databases.get(id)?.rows.find(item => item.id === row.id) ?? row
+      const before = valueAt(currentRow, p)
+      if (sameValue(before, value)) continue
+      let set: ReturnType<typeof cellFields>
+      if (p.type === 'multiSelect' || p.type === 'relation') {
+        const previous = Array.isArray(before) ? before : []
+        const next = Array.isArray(value) ? value : []
+        set = Object.fromEntries([...new Set([...previous, ...next])].map(member => [`c:${p.id}/${member}`, next.includes(member)]))
+      } else set = cellFields(p, value as string | boolean | null)
+      writes.push({ ent: row.id, set })
+      entries.push({ rowId: row.id, propId: p.id, before, after: value })
+    }
+    if (!writes.length) return
+    // All local records and their outbox entries commit together; remote peers can observe separate operations.
+    await ws.mutate([...new Set(writes.map(write => write.ent))], c => c.setFieldsMany(writes))
+    for (const entry of entries) {
+      const row = ws.data.databases.get(id)?.rows.find(r => r.id === entry.rowId)
+      const prop = ws.data.databases.get(id)?.properties.find(p => p.id === entry.propId)
+      if (row && prop) entry.after = valueAt(row, prop)
+    }
+    if (record) history.current.push(entries)
+  }
+  const writeValues = (changes: Parameters<typeof applyValues>[0], record = true) => {
+    const write = pendingWrites.current.then(() => applyValues(changes, record))
+    pendingWrites.current = write.catch(() => {})
+    return write
+  }
+  const focusCell = (r: number, c: number, extend = false) => {
+    if (!tableRows.length || !props.length) return
+    const next: [number, number] = [Math.max(0, Math.min(r, tableRows.length - 1)), Math.max(0, Math.min(c, props.length - 1))]
+    setCellSelection(current => ({ anchor: extend && current ? current.anchor : next, active: next }))
+    tableRef.current?.querySelector<HTMLElement>(`[data-grid-row="${next[0]}"][data-grid-col="${next[1]}"]`)?.focus()
+  }
+  const bounds = cellSelection && {
+    r1: Math.min(cellSelection.anchor[0], cellSelection.active[0]), r2: Math.max(cellSelection.anchor[0], cellSelection.active[0]),
+    c1: Math.min(cellSelection.anchor[1], cellSelection.active[1]), c2: Math.max(cellSelection.anchor[1], cellSelection.active[1]),
+  }
+  const handleGridKey = (event: React.KeyboardEvent<HTMLTableElement>) => {
+    const target = event.target as HTMLElement
+    if (!target.matches('td[data-grid-row]') || event.nativeEvent.isComposing || !cellSelection || !bounds) return
+    const [r, c] = cellSelection.active
+    const mod = event.metaKey || event.ctrlKey
+    if (commandMatches(event.nativeEvent, 'Select all database cells')) {
+      event.preventDefault(); setCellSelection({ anchor: [0, 0], active: [tableRows.length - 1, props.length - 1] }); return
+    }
+    if (commandMatches(event.nativeEvent, 'Undo database edit')) {
+      event.preventDefault()
+      const undo = pendingWrites.current.then(async () => {
+        const entry = history.current.at(-1)
+        if (!entry) return
+        const current = ws.data.databases.get(id)
+        const changes = entry.map(item => ({ row: current?.rows.find(row => row.id === item.rowId), p: current?.properties.find(p => p.id === item.propId), item }))
+        // Do not overwrite a value changed since this edit.
+        if (changes.some(({ row, p, item }) => !row || !p || !sameValue(valueAt(row, p), item.after))) { setGridError(t('Some fields changed since; undo was not applied.')); return }
+        history.current.pop()
+        await applyValues(changes.map(({ row, p, item }) => ({ row: row!, p: p!, value: item.before })), false)
+      })
+      pendingWrites.current = undo.catch(error => { setGridError(String(error)) })
+      return
+    }
+    const fill = commandMatches(event.nativeEvent, 'Fill down')
+    if (fill || commandMatches(event.nativeEvent, 'Clear database cells')) {
+      event.preventDefault()
+      const changes: Array<{ row: RowModel; p: PropertyModel; value: CellValue }> = []
+      for (let ri = bounds.r1 + (fill ? 1 : 0); ri <= bounds.r2; ri++) for (let ci = bounds.c1; ci <= bounds.c2; ci++) {
+        const row = tableRows[ri], p = props[ci], source = tableRows[bounds.r1]
+        if (row && p && source && !p.isTitle) changes.push({ row, p, value: fill ? valueAt(source, p) : p.type === 'checkbox' ? false : p.type === 'multiSelect' || p.type === 'relation' ? [] : null })
+      }
+      void writeValues(changes).catch(error => setGridError(String(error))); return
+    }
+    if (commandMatches(event.nativeEvent, 'Edit database cell')) {
+      event.preventDefault()
+      target.querySelector<HTMLElement>('input, button, summary, select, textarea')?.focus(); return
+    }
+    if (mod || event.altKey) return
+    const direction: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }
+    const delta = direction[event.key]
+    if (delta) { event.preventDefault(); focusCell(r + delta[0], c + delta[1], event.shiftKey) }
+  }
   const picked = rows.filter(row => selected.has(row.id))
   const toggleRow = (rowId: string, on: boolean) => setSelected(current => {
     const next = new Set(current)
@@ -158,7 +277,40 @@ export function DatabaseView({ ws, id, onPeek }: { ws: Workspace; id: string; on
     return next
   })
   const saveView = (patch: Parameters<typeof patchViewConfig>[1]) => view && ws.mutate([view.id], c => setViewConfig(c, view.id, patchViewConfig(view.config, patch)))
+  const previewWidth = (id: string, width: number | null) => {
+    resizeGeneration.current++
+    setResizePreview(width === null ? null : { id, width })
+  }
+  const saveWidth = (propId: string, width: number | null) => {
+    if (!view) return
+    const viewId = view.id
+    const generation = ++resizeGeneration.current
+    setResizePreview(width === null ? null : { id: propId, width })
+    // Serialize rapid keyboard changes and patch the latest config at the time of each write.
+    resizeWrites.current = resizeWrites.current.then(async () => {
+      const current = ws.data.databases.get(id)?.views.find(item => item.id === viewId)
+      if (!current) throw new Error('View no longer exists')
+      const widths = { ...readViewConfig(current.config, ws.data.databases.get(id)?.properties).columnWidths }
+      if (width === null) delete widths[propId]; else widths[propId] = width
+      await ws.mutate([viewId], c => setViewConfig(c, viewId, patchViewConfig(current.config, { columnWidths: widths })))
+    }).catch(() => { ws.notify(t('Could not complete the action. Please try again.')) }).finally(() => {
+      if (resizeGeneration.current === generation) setResizePreview(null)
+    })
+  }
+  const moveColumn = (p: PropertyModel, delta: number) => {
+    const index = props.findIndex(prop => prop.id === p.id), target = props[index + delta]
+    if (!target || p.isTitle || target.isTitle) return
+    const ids = orderedProps.map(prop => prop.id)
+    const from = ids.indexOf(p.id), to = ids.indexOf(target.id)
+    ids.splice(from, 1); ids.splice(to, 0, p.id)
+    setCellSelection(null)
+    void saveView({ columnOrder: ids })
+  }
   const colItems = (p: PropertyModel): MenuItem[] => [
+    { label: t('Move column earlier'), disabled: props.findIndex(prop => prop.id === p.id) <= 1 || p.isTitle, onSelect: () => moveColumn(p, -1) },
+    { label: t('Move column later'), disabled: props.findIndex(prop => prop.id === p.id) < 0 || props.findIndex(prop => prop.id === p.id) >= props.length - 1 || p.isTitle, onSelect: () => moveColumn(p, 1) },
+    { label: config.frozenThrough === p.id ? t('Unfreeze columns') : t('Freeze through this column'), onSelect: () => void saveView({ frozenThrough: config.frozenThrough === p.id ? '' : p.id }) },
+    { kind: 'sep' },
     { label: t('Rename'), icon: <Icon name="pencil" size={16} />, onSelect: () => void promptDialog({ title: t('Column name'), initial: p.name }).then(n => { if (n?.trim() && n.trim() !== p.name) void ws.mutate([p.id], c => renameProperty(c, p.id, n.trim())) }) },
     { kind: 'sep' },
     { label: t('Sort ascending'), icon: <Icon name="arrow-up" size={16} />, checked: config.sort[0]?.prop === p.id && config.sort[0].dir === 'asc', onSelect: () => void saveView({ sort: [{ prop: p.id, dir: 'asc' }] }) },
@@ -171,8 +323,9 @@ export function DatabaseView({ ws, id, onPeek }: { ws: Workspace; id: string; on
       <header className="dv-page-head"><input className="dv-page-title" data-testid="db-title" dir="auto" aria-label={t('Database title')} value={title} placeholder={t('Untitled database')} onChange={e => { setTitle(e.target.value); ws.setTitle(id, e.target.value) }} />
       <p className="dv-page-line">{t('{n} items', { n: rows.length.toLocaleString() })}</p></header>
       <div className="dv">
+      {gridError && <p className="err" role="alert">{gridError}</p>}
       {view && <DatabaseToolbar ws={ws} db={db} view={view} onActive={setActiveView} search={search} onSearch={setSearch} onNewRow={() => addRow()} onNewPageRow={() => addRow(true)} onDelete={() => { void ws.trash(id); go({ name: 'home' }) }} />}
-      {view?.type === 'board' ? <BoardView ws={ws} db={db} config={config} rows={rows} titleProp={tp} /> : (
+      {presentation === 'board' ? <BoardView ws={ws} db={db} config={config} rows={rows} titleProp={tp} /> : presentation === 'list' || presentation === 'gallery' ? <DatabasePresentations ws={ws} presentation={presentation} groups={groups} grouped={!!grouped} props={props} onPeek={onPeek} onNew={() => { void ws.mutate([id], c => createRow(c, db)).then(onPeek) }} /> : (
       <div className="dv-table-wrap dbtable-wrap">
         {picked.length > 0 && <div className="dv-bulk"><b>{t('{n} selected', { n: picked.length })}</b><Button size="sm" variant="danger" onClick={() => {
           setSelected(new Set())
@@ -180,17 +333,18 @@ export function DatabaseView({ ws, id, onPeek }: { ws: Workspace; id: string; on
             for (const row of picked) await trashRow(client, row.id)
           })
         }}>{t('Delete')}</Button></div>}
-        <table className="dbtable" data-testid="db-table">
+        <table ref={tableRef} className="dbtable" data-testid="db-table" onKeyDown={handleGridKey}>
           <thead>
             <tr>
-              <th className="dbtable-handle"><Checkbox label={t('Select all')} checked={rows.length > 0 && picked.length === rows.length} disabled={!rows.length} onChange={on => setSelected(new Set(on ? rows.map(row => row.id) : []))} /></th>
-              {props.map(p => (
-                <th key={p.id} data-prop={p.name}>
+              <th className="dbtable-handle" data-frozen={frozenIndex >= 0 || undefined} style={frozenIndex >= 0 ? { insetInlineStart: 0 } : undefined}><Checkbox label={t('Select all')} checked={rows.length > 0 && picked.length === rows.length} disabled={!rows.length} onChange={on => setSelected(new Set(on ? rows.map(row => row.id) : []))} /></th>
+              {props.map((p, ci) => (
+                <th key={p.id} data-prop={p.name} data-title={p.isTitle || undefined} data-frozen={ci <= frozenIndex || undefined} style={{ ...frozenStyle(ci), ...((resizePreview?.id === p.id || config.columnWidths[p.id] !== undefined) ? { inlineSize: resizePreview?.id === p.id ? resizePreview.width : config.columnWidths[p.id], minInlineSize: resizePreview?.id === p.id ? resizePreview.width : config.columnWidths[p.id] } : {}) }}>
                   <button type="button" className="dv-th-btn" data-testid="col-head" aria-haspopup="menu" onClick={e => setColMenu({ rect: e.currentTarget.getBoundingClientRect(), p })}>
                     <span className="dv-kind"><Icon name={KIND_ICON[p.type]} size={15} /></span>
                     <span className="dv-th-name" dir="auto">{p.name}</span>
                     {config.sort[0]?.prop === p.id && <Icon name={config.sort[0].dir === 'asc' ? 'arrow-up' : 'arrow-down'} size={14} className="dv-th-sort" />}
                   </button>
+                  <ColumnResize name={p.name} width={resizePreview?.id === p.id ? resizePreview.width : config.columnWidths[p.id] ?? (p.isTitle ? 320 : 280)} onPreview={width => previewWidth(p.id, width)} onCommit={width => saveWidth(p.id, width)} onReset={() => saveWidth(p.id, null)} />
                   {(p.type === 'select' || p.type === 'multiSelect') && <OptionAdder ws={ws} p={p} />}
                 </th>
               ))}
@@ -201,7 +355,7 @@ export function DatabaseView({ ws, id, onPeek }: { ws: Workspace; id: string; on
             {grouped && <tr><th scope="rowgroup" colSpan={props.length + 2} className="dbtable-group"><span dir="auto">{group.name || t('No value')}</span><span className="ds-badge">{group.rows.length}</span></th></tr>}
             {group.rows.map(r => (
               <tr key={r.id} data-testid="db-row" data-id={r.id} data-checked={selected.has(r.id) || undefined} tabIndex={0}
-                onKeyDown={event => { if (event.key === 'Enter' && event.target === event.currentTarget) onPeek(r.id) }}
+                onKeyDown={event => { if (event.key === 'Enter' && event.target === event.currentTarget) { event.preventDefault(); onPeek(r.id) } }}
                 onClick={event => {
                   const target = event.target as Element
                   if (!event.currentTarget.contains(target) || target.closest('.dbtable-handle, button, a, label, select, textarea, summary')) return
@@ -210,18 +364,20 @@ export function DatabaseView({ ws, id, onPeek }: { ws: Workspace; id: string; on
                   if (selection?.anchorNode && event.currentTarget.contains(selection.anchorNode) && selection.toString()) return
                   onPeek(r.id)
                 }}>
-                <td className="dbtable-handle">
+                <td className="dbtable-handle" data-frozen={frozenIndex >= 0 || undefined} style={frozenIndex >= 0 ? { insetInlineStart: 0 } : undefined}>
                   <button type="button" className="dv-grip" aria-label={t('Item actions')} onClick={e => rowMenu.open([
                     { label: 'Open as page', icon: <Icon name="panel-right" size={16} className="ds-flip" />, onSelect: () => onPeek(r.id) },
                     { label: 'Delete row', icon: <Icon name="trash" size={16} />, danger: true, onSelect: () => void ws.mutate([r.id], c => trashRow(c, r.id)) },
                   ], e.currentTarget)}><Icon name="more-vertical" size={16} /></button>
                   <Checkbox label={t('Select item')} checked={selected.has(r.id)} onChange={on => toggleRow(r.id, on)} />
                 </td>
-                {props.map(p => (
-                  <td key={p.id} data-testid="cell" data-prop={p.name} data-row={rowIndexes.get(r.id)}>
+                {props.map((p, ci) => (
+                  <td key={p.id} data-testid="cell" data-prop={p.name} data-row={rowIndexes.get(r.id)} data-grid-row={gridRowIndexes.get(r.id)!} data-grid-col={ci} data-frozen={ci <= frozenIndex || undefined} style={frozenStyle(ci)} tabIndex={0}
+                    data-cell-selected={bounds && gridRowIndexes.get(r.id)! >= bounds.r1 && gridRowIndexes.get(r.id)! <= bounds.r2 && ci >= bounds.c1 && ci <= bounds.c2 || undefined}
+                    onFocus={event => { if (event.target === event.currentTarget) setCellSelection(current => current?.active[0] === gridRowIndexes.get(r.id)! && current.active[1] === ci ? current : { anchor: [gridRowIndexes.get(r.id)!, ci], active: [gridRowIndexes.get(r.id)!, ci] }) }}>
                     <span className="db-cellbox" data-kind={p.isTitle ? 'title' : undefined}>
                       {p.isTitle && <Icon name="file" size={16} className="dbcell-file" />}
-                      <Cell ws={ws} db={db} p={p} row={r} />
+                      <Cell ws={ws} db={db} p={p} row={r} onWrite={(row, prop, value) => writeValues([{ row, p: prop, value }])} />
                     </span>
                   </td>
                 ))}

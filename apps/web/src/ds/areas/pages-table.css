@@ -6,11 +6,11 @@
 .pt-tags .ds-chip-btn[aria-pressed='true'] > .ds-icon:first-child { color: inherit; }
 .pt-wrap { margin-block-start: var(--ds-s4); }
 /* fixed column widths: the table always fits its frame, whatever a title, a path or a page with many tags holds */
-.pt { table-layout: fixed; }
-.pt th:nth-child(1) { inline-size: 32%; }
+.pt { table-layout: fixed; min-inline-size: 400px; }
+.pt th:nth-child(1) { inline-size: auto; }
 .pt .pt-col-path { inline-size: 18%; }
 .pt .pt-col-tags { inline-size: 26%; }
-.pt th:nth-child(4) { inline-size: 168px; } /* fits the widest status chip (In progress) with the cell padding */
+.pt th:nth-child(4) { inline-size: 190px; } /* Keep the Persian status chip and cell padding visible. */
 .pt .pt-col-words { inline-size: 80px; }
 .pt th:nth-child(6) { inline-size: 136px; }
 
@@ -46,6 +46,6 @@
 .pt tbody tr:has(.pt-none):hover td { background: none; }
 
 /* narrow: path, then word count, then tags give way to the title */
-@container (max-width: 900px) { .pt .pt-col-path { display: none; } .pt th:nth-child(1) { inline-size: 40%; } .pt .pt-col-tags { inline-size: 34%; } }
+@container (max-width: 900px) { .pt .pt-col-path { display: none; } .pt .pt-col-tags { inline-size: 34%; } }
 @container (max-width: 720px) { .pt .pt-col-words { display: none; } .pt th:nth-child(6) { inline-size: 112px; } }
 @container (max-width: 560px) { .pt .pt-col-tags { display: none; } .pt th:nth-child(1) { inline-size: auto; } }

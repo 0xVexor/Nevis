@@ -107,10 +107,13 @@ const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v))
  * Drawn on one canvas: panning, zooming and hovering repaint the picture without going through React, so the map
  * stays smooth with thousands of pages. The layout is computed in a worker.
  */
-export function GraphView({ currentId, onOpen, onClose, pages, edges }: { currentId?: string; onOpen: (id: string) => void; onClose: () => void; pages: Page[]; edges: [string, string][] }) {
-  const pageById = useMemo(() => new Map(pages.map((p) => [p.id, p])), [pages])
+export function GraphView({ currentId, onOpen, onClose, pages, edges, relationPages, relationEdges }: { currentId?: string; onOpen: (id: string) => void; onClose: () => void; pages: Page[]; edges: [string, string][]; relationPages: Page[]; relationEdges: [string, string][] }) {
+  const [showRelations, setShowRelations] = useState(false)
+  const allPages = useMemo(() => showRelations ? [...pages, ...relationPages] : pages, [pages, relationPages, showRelations])
+  const allEdges = useMemo(() => showRelations ? [...edges, ...relationEdges] : edges, [edges, relationEdges, showRelations])
+  const pageById = useMemo(() => new Map(allPages.map((p) => [p.id, p])), [allPages])
   // the pages that have links, and the links between them (typed database links — relations, dependencies, sub-items — come with the database screens)
-  const g = useMemo(() => { const ok = edges.filter(([a, b]) => pageById.has(a) && pageById.has(b)); const ids = new Set(ok.flat()); return { nodes: pages.filter((p) => ids.has(p.id)), edges: ok } }, [pages, edges, pageById])
+  const g = useMemo(() => { const ok = allEdges.filter(([a, b]) => pageById.has(a) && pageById.has(b)); const ids = new Set(ok.flat()); return { nodes: allPages.filter((p) => ids.has(p.id)), edges: ok } }, [allPages, allEdges, pageById])
   const [scope, setScope] = useState<'local' | 'all'>(currentId && g.edges.some(([a, b]) => a === currentId || b === currentId) ? 'local' : 'all')
   // the page "Around this page" is centred on: the open page at first, any page you explore from afterwards
   const [root, setRoot] = useState<string | null>(currentId ?? null)
@@ -747,6 +750,14 @@ export function GraphView({ currentId, onOpen, onClose, pages, edges }: { curren
     </button>
   )
 
+  const relationToggle = relationEdges.length > 0 && (
+    <div className="gr-tags" role="group" aria-label={t('Database links')}>
+      <ChipButton aria-pressed={showRelations} icon={<Icon name="relation" size={12} />} onClick={() => setShowRelations(!showRelations)}>
+        {t('Relations')} <span className="dv-count">{num(relationEdges.length)}</span>
+      </ChipButton>
+    </div>
+  )
+
   return (
     <div className="gr" role="region" aria-label={t('Graph')}>
       {picked.pages.length === 0 ? (
@@ -755,6 +766,7 @@ export function GraphView({ currentId, onOpen, onClose, pages, edges }: { curren
             <Icon name="graph" />
             <b>{t('No links yet')}</b>
             <span>{t('Link pages with [[ or @ and they appear here, joined by their links.')}</span>
+            {relationToggle}
           </div>
         </div>
       ) : (
@@ -853,6 +865,7 @@ export function GraphView({ currentId, onOpen, onClose, pages, edges }: { curren
                 </div>
               </div>
             )}
+            {relationToggle}
             {tags.length > 0 && (
               <div className="gr-tags" role="group" aria-label={t('Light up a tag')}>
                 {tags.map((x) => (

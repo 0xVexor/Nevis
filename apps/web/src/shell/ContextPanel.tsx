@@ -8,6 +8,7 @@ import { t } from '../i18n'
 import type { Settings } from '../deviceSettings'
 import { HorizontalScroll } from './HorizontalScroll'
 import type { Page } from './model'
+import type { SavedSearchModel } from '@nevis/core'
 import type { PageIndex } from './pageIndex'
 import { PageIcon } from './PageIcon'
 import { CompactList, TreeFrame, TreeRow, type RowProps } from './PageTree'
@@ -16,7 +17,7 @@ import { SidebarTags, type TagInfo } from './SidebarTags'
 export const SIDE_MIN = 240
 export const SIDE_MAX = 600
 const ROOT_CAP = 200
-type Shut = { favs?: boolean; pages?: boolean; tags?: boolean }
+type Shut = { favs?: boolean; pages?: boolean; tags?: boolean; saved?: boolean }
 
 export interface ContextPanelProps {
   title: string
@@ -36,6 +37,9 @@ export interface ContextPanelProps {
   onSettings: (patch: Partial<Settings>) => void
   onReveal: () => void
   onOpen: (id: string) => void
+  savedSearches: SavedSearchModel[]
+  onSavedSearch: (query: string) => void
+  onDeleteSavedSearch: (id: string) => void
   onExpandAll: () => void
   onCollapseAll: () => void
   treeFrame: Omit<React.ComponentProps<typeof TreeFrame>, 'children' | 'className'>
@@ -77,7 +81,7 @@ export function ContextPanel(p: ContextPanelProps) {
   const allRoots = p.index.kids.get(null) ?? []
   const roots = allRoots.slice(0, rootCap)
   const compact = p.settings.pagesView === 'compact'
-  const pagesShut = !!shut.pages && favs.length > 0
+  const pagesShut = !!shut.pages && (favs.length > 0 || p.savedSearches.length > 0)
   const flip = (k: keyof Shut) => setShut(s => ({ ...s, [k]: !s[k] }))
   return (
     <>
@@ -109,6 +113,13 @@ export function ContextPanel(p: ContextPanelProps) {
         <div className="side-scroll" ref={p.setHost}>
           {p.kind === 'vault' && p.open && (
             <div className="side-collections">
+              {p.savedSearches.length > 0 && <div>
+                <button className={'section' + (shut.saved ? ' shut' : '')} aria-expanded={!shut.saved} onClick={() => flip('saved')}>{t('Saved searches')}<Icon name="chevron-right" size={13} /></button>
+                {!shut.saved && p.savedSearches.map(saved => <div key={saved.id} className="row saved-row" style={{ paddingInlineStart: 24 }}>
+                  <button type="button" className="saved-search-open" title={saved.query} onClick={() => p.onSavedSearch(saved.query)}><span className="ic"><Icon name="search" size={15} /></span><span className="ntitle" dir="auto">{saved.name}</span></button>
+                  <IconButton label={t('Delete')} onClick={() => p.onDeleteSavedSearch(saved.id)}><Icon name="x" size={14} /></IconButton>
+                </div>)}
+              </div>}
               {favs.length > 0 && (
                 <div>
                   <div className="fav-zone">
@@ -122,7 +133,7 @@ export function ContextPanel(p: ContextPanelProps) {
                   </div>
                 </div>
               )}
-              {favs.length > 0 && (
+              {(favs.length > 0 || p.savedSearches.length > 0) && (
                 <div className="tree-heading">
                   <button className={'section' + (shut.pages ? ' shut' : '')} aria-expanded={!shut.pages} onClick={() => flip('pages')}>{t('Pages')}<Icon name="chevron-right" size={13} /></button>
                 </div>

@@ -2,6 +2,7 @@
 // column (header.topbar + .scroller). Markup and class names are the old ones, so the copied stylesheets (ds/areas) apply as they did there;
 // only the data comes from the new layer (shell/adapt.ts). The regions live in Rail.tsx, ContextPanel.tsx and Topbar.tsx.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { updateSavedSearch } from '@nevis/core'
 import { Icon, IconButton, Menu, type MenuItem } from '../ds'
 import { t } from '../i18n'
 import { go, href, type Route } from '../router'
@@ -10,6 +11,7 @@ import { download } from '../download'
 import type { Workspace, WsStatus } from '../workspace'
 import { legacyPages } from './adapt'
 import { bindingHint, matches } from '../shortcutBindings'
+import { commandMatches, matchesSidebarShortcut } from '../shortcutCommands'
 import { ContextPanel } from './ContextPanel'
 import { PageChrome } from './pageChrome'
 import { PagePanel } from './PagePanel'
@@ -64,6 +66,7 @@ export interface ShellProps {
 export function AppShell({ ws, route, status, children, onSearch, searchOpen, onCloseSearch, onNewPage, onNewDatabase, onNewTodo, onOpen, onSignOut, onWorkspaces, workspaceName, onHistory, dueCards = 0, pageTools, save = 'saved' }: ShellProps) {
   const settings = useSettings()
   const [rowMenu, setRowMenu] = useState<{ id: string; rect: DOMRect } | null>(null)
+  const [searchInit, setSearchInit] = useState('')
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   const [selected, setSelected] = useState<string | null>(null)
   const [railW, setRailW] = useStoredNumber('nevis.railW', RAIL_MIN, RAIL_MAX)
@@ -177,14 +180,19 @@ export function AppShell({ ws, route, status, children, onSearch, searchOpen, on
   const overlay = !['home', 'page', 'row', 'tasks', 'settings'].includes(route.name)
   const iconsOnly = settings.sidebar === 'icons' || narrow
   const onPage = route.name === 'page' && !!current && current.kind !== 'folder'
+  const revealCurrent = () => { if (currentId) { setSelected(currentId); setCollapsed(c => { const n = new Set(c); for (let p = byId.get(currentId); p; p = p.parentId ? byId.get(p.parentId) : undefined) n.delete(p.id); return n }) } }
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || document.querySelector('.dv-peek-layer, [role="dialog"], .ds-pop')) return
       const wider = matches(e, 'widerColumn')
       if (wider || matches(e, 'narrowerColumn')) { e.preventDefault(); savePageW(Math.min(PAGE_W.max, Math.max(PAGE_W.min, pageW + (wider ? PAGE_W.step : -PAGE_W.step)))) }
       if (matches(e, 'reader')) { e.preventDefault(); setReader(r => !r) }
-      if (matches(e, 'sidebar')) { e.preventDefault(); togglePanelFromKeys() }
+      if (matchesSidebarShortcut(e)) { e.preventDefault(); togglePanelFromKeys() }
+      if (commandMatches(e, 'Open Settings')) { e.preventDefault(); goTo('settings') }
+      if (commandMatches(e, 'Reveal active note') && currentId) { e.preventDefault(); revealCurrent() }
+      if (commandMatches(e, 'Full screen')) { e.preventDefault(); toggleFullScreen() }
       if (e.key === 'Escape' && narrow && drawer && !document.querySelector('.ds-pop, [role="dialog"]')) { setDrawer(false); requestAnimationFrame(restoreFocus) }
-      if (e.key === 'Escape' && reader && !document.querySelector('.lightbox, .palette-overlay, .ds-pop')) setReader(false)
+      if (reader && commandMatches(e, 'Leave reader mode') && !document.querySelector('.lightbox, .palette-overlay, .ds-pop, [role="dialog"]')) { e.preventDefault(); setReader(false) }
     }
     const toggleReader = () => setReader(r => !r)
     const history = () => onHistory?.()
@@ -255,7 +263,10 @@ export function AppShell({ ws, route, status, children, onSearch, searchOpen, on
       {!overlay && <ContextPanel
         title={t(PANEL_TITLES[route.name] ?? 'Pages')} kind={panelKind} open={panelOpen} narrow={narrow} width={sideW} onWidth={setSideW} onClose={() => setDrawer(false)} setHost={setHost}
         pages={pages} index={index} currentId={currentId} rowProps={rowProps} settings={settings} onSettings={updateSettings}
-        onReveal={() => { if (currentId) { setSelected(currentId); setCollapsed(c => { const n = new Set(c); for (let p = byId.get(currentId); p; p = p.parentId ? byId.get(p.parentId) : undefined) n.delete(p.id); return n }) } }}
+        savedSearches={ws.data.savedSearches.filter(search => !search.trashed)}
+        onSavedSearch={query => { setSearchInit(query); onSearch() }}
+        onDeleteSavedSearch={id => { void ws.mutate([id], c => updateSavedSearch(c, id, { trashed: true })).catch(() => ws.notify(t('Could not complete the action. Please try again.'))) }}
+        onReveal={revealCurrent}
         tools={route.name === 'tasks' ? <IconButton label={t('New list')} onClick={() => void ws.newTodoList(t('New list')).then(id => go({ name: 'page', id }))}><Icon name="plus" size={15} /></IconButton> : undefined}
         onOpen={open} onExpandAll={() => setCollapsed(new Set())} onCollapseAll={() => setCollapsed(new Set(boxes()))} treeFrame={treeFrame}
       />}
@@ -283,7 +294,7 @@ export function AppShell({ ws, route, status, children, onSearch, searchOpen, on
       </main>
       {rowMenu && <Menu anchor={rowMenu.rect} align="end" onClose={() => setRowMenu(null)} items={rowItems(rowMenu.id)} />}
       {pageActions.dialogs}
-      {searchOpen && <Palette ws={ws} commands={paletteCommands()} onClose={onCloseSearch} onOpen={open} />}
+      {searchOpen && <Palette ws={ws} commands={paletteCommands()} initialQuery={searchInit} onClose={() => { setSearchInit(''); onCloseSearch() }} onOpen={open} />}
     </div>
   )
 }

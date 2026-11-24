@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/core'
 import { createWorkspaceEditor } from './editor/createWorkspaceEditor'
+import { usePageFind } from './editor/usePageFind'
 import { closeCommandPalette } from './editor/commandPalette'
 import { LayoutControls } from './LayoutControls'
 import { TableBubble } from './TableBubble'
@@ -23,6 +24,7 @@ export function RowPage({ ws, dbId, id, peek = false }: { ws: Workspace; dbId: s
   const row = db?.rows.find(r => r.id === id && !r.trashed)
   const host = useRef<HTMLDivElement>(null)
   const [editor, setEditor] = useState<Editor | null>(null)
+  const { open: findOpen, bar: findBar } = usePageFind(editor)
   const tp = db ? titleProperty(db.properties) : undefined
   const [title, setTitle] = useState(row?.title ?? '')
   const ready = !!(db && row && tp) // the body's host exists only once the row is known
@@ -36,7 +38,7 @@ export function RowPage({ ws, dbId, id, peek = false }: { ws: Workspace; dbId: s
       if (dead) return
       handle = h
       if (h.needsUpdate || !host.current) return
-      ed = createWorkspaceEditor(ws, h.ydoc, host.current, false)
+      ed = createWorkspaceEditor(ws, h.ydoc, host.current)
       setEditor(ed)
     })
     return () => { dead = true; if (ed) { closeCommandPalette(ed); ed.destroy() }; if (handle) void ws.closeDoc(id) }
@@ -45,7 +47,8 @@ export function RowPage({ ws, dbId, id, peek = false }: { ws: Workspace; dbId: s
   const props = db.properties.filter(p => !p.trashed && !p.isTitle)
   return (
     <div className="page-cols" data-testid="row-page">
-      <div className="page">
+      <div className={'page' + (findOpen ? ' finding' : '')}>
+        {findBar}
         <header className="pg-head">
           {!peek && <div className="pg-add"><IconButton label={t('Back to the database')} data-testid="row-back" onClick={() => go({ name: 'page', id: db.id })}><Icon name="arrow-right" size={16} className="ds-flip" /></IconButton></div>}
           <div className="pg-title-row">
@@ -58,7 +61,7 @@ export function RowPage({ ws, dbId, id, peek = false }: { ws: Workspace; dbId: s
         <PropertyList className="pg-props" label={t('Page properties')}>
           {props.map(p => (
             <PropertyRow key={p.id} icon={<Icon name={KIND_ICON[p.type] ?? 'type'} size={16} />} label={p.name}>
-              <Cell ws={ws} db={db} p={p} row={row} />
+              <Cell ws={ws} db={db} p={p} row={row} propertyField />
             </PropertyRow>
           ))}
         </PropertyList>
