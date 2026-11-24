@@ -1,10 +1,12 @@
 // Paste (Markdown, a web page, Word, an AI chat). Pasted content is UNTRUSTED: it is cleaned before ProseMirror parses it, and the
 // schema filters attributes again when it parses (`isSafeHref`, `safeImageSrc`). Browser-only (DOMParser).
-import { Extension } from '@tiptap/core'
+import { Extension, type Editor } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
 import { isSafeHref, safeImageSrc } from '@nevis/schema'
 import { marked } from 'marked'
 import { looksLikeMermaid } from './mermaidText'
+import { explain, sniffBlob, sniffImage } from './attachments'
+import { optionsOf } from './options'
 
 // ---------------------------------------------------------------------------------------------------------------- Markdown
 
@@ -36,7 +38,7 @@ function withMath(md: string): string {
 }
 
 /** Markdown -> HTML that the editor schema understands (task lists use TipTap's data attributes). The result is cleaned too. */
-export function markdownToHtml(md: string): string {
+export function markdownToHtml(md: string, clean = true): string {
   const html = marked.parse(withMath(md), { gfm: true, breaks: false, async: false }) as string
   const doc = new DOMParser().parseFromString(html, 'text/html')
 
@@ -78,7 +80,7 @@ export function markdownToHtml(md: string): string {
     li.parentElement?.setAttribute('data-type', 'taskList')
     box.remove()
   })
-  return cleanPastedHtml(doc.body.innerHTML)
+  return clean ? cleanPastedHtml(doc.body.innerHTML) : doc.body.innerHTML
 }
 
 // ---------------------------------------------------------------------------------------------------------------- cleaning
@@ -117,6 +119,88 @@ export function cleanPastedHtml(html: string): string {
   return doc.body.innerHTML
 }
 
+/** Store embedded raster images before inserting their references. Data URLs never enter the document. */
+function embeddedImages(editor: Editor, html: string, file?: File): { html: string; pending: Promise<void>[] } {
+  const port = optionsOf(editor).attachments
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const pending: Promise<void>[] = []
+  if (!port) return { html, pending }
+  doc.querySelectorAll(DROP).forEach(el => el.remove())
+  const images = doc.querySelectorAll('img[src]')
+  let paired: Element | undefined
+  if (file && file.type.startsWith('image/') && images.length === 1 && file.size <= port.maxBytes) {
+    const img = images[0]!
+    paired = img
+    pending.push((async () => {
+      try {
+        const mime = await sniffBlob(file)
+        if (!mime) return
+        const ref = await port.add(file, img.getAttribute('alt') || file.name || 'image', mime)
+        const figure = doc.createElement('figure')
+        figure.setAttribute('data-type', 'image')
+        figure.setAttribute('data-alt', img.getAttribute('alt') ?? '')
+        figure.setAttribute('data-title', img.getAttribute('title') ?? '')
+        figure.setAttribute('data-blob', ref.blob)
+        figure.setAttribute('data-mime', ref.mime)
+        figure.setAttribute('data-size', String(ref.size))
+        img.replaceWith(figure)
+      } catch (error) { explain(editor, error) }
+    })())
+  }
+  doc.querySelectorAll('img[src^="data:"]').forEach(img => {
+    if (img === paired) return
+    const source = img.getAttribute('src') ?? ''
+    const match = /^data:image\/(?:png|jpeg|gif|webp|avif);base64,([a-z0-9+/=\s]+)$/i.exec(source)
+    if (!match || match[1]!.length > Math.ceil(port.maxBytes / 3) * 4 + 8) return
+    let bytes: Uint8Array<ArrayBuffer>
+    try { const binary = atob(match[1]!); bytes = Uint8Array.from(binary, c => c.charCodeAt(0)) } catch { return }
+    const mime = sniffImage(bytes.subarray(0, 16))
+    if (!mime || bytes.length > port.maxBytes) return
+    const figure = doc.createElement('figure')
+    figure.setAttribute('data-type', 'image')
+    figure.setAttribute('data-alt', img.getAttribute('alt') ?? '')
+    figure.setAttribute('data-title', img.getAttribute('title') ?? '')
+    img.replaceWith(figure)
+    const blob = new Blob([bytes], { type: mime })
+    pending.push(port.add(blob, img.getAttribute('alt') || 'image', mime).then(ref => {
+      figure.setAttribute('data-blob', ref.blob)
+      figure.setAttribute('data-mime', ref.mime)
+      figure.setAttribute('data-size', String(ref.size))
+    }).catch(error => { explain(editor, error) }))
+  })
+  // Serialize only after all writes have completed, as promises modify the detached document.
+  return { get html() { return doc.body.innerHTML }, pending }
+}
+
+function cleanRichHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(cleanPastedHtml(html), 'text/html')
+  doc.querySelectorAll('pre').forEach(pre => {
+    const code = pre.textContent ?? ''
+    if (pre.querySelector('code.language-mermaid') || looksLikeMermaid(code)) {
+      const d = doc.createElement('div')
+      d.setAttribute('data-type', 'mermaid')
+      d.setAttribute('data-code', code.replace(/\n$/, ''))
+      pre.replaceWith(d)
+    }
+  })
+  return doc.body.innerHTML
+}
+
+function insertWithEmbeddedImages(editor: Editor, html: string, file?: File): boolean {
+  const result = embeddedImages(editor, html, file)
+  if (!result.pending.length) return false
+  let bookmark = editor.state.selection.getBookmark()
+  const map = ({ transaction }: { transaction: import('@tiptap/pm/state').Transaction }) => { bookmark = bookmark.map(transaction.mapping) }
+  editor.on('transaction', map)
+  void Promise.all(result.pending).then(() => {
+    editor.off('transaction', map)
+    if (editor.isDestroyed) return
+    const selection = bookmark.resolve(editor.state.doc)
+    editor.chain().insertContentAt({ from: selection.from, to: selection.to }, cleanRichHtml(result.html)).run()
+  })
+  return true
+}
+
 // ---------------------------------------------------------------------------------------------------------------- extension
 
 export const MarkdownPaste = Extension.create({
@@ -127,33 +211,26 @@ export const MarkdownPaste = Extension.create({
       new Plugin({
         props: {
           // rich paste (a web page, Word, a chat): clean it; a code block that holds Mermaid becomes a diagram block, not code
-          transformPastedHTML: html => {
-            const doc = new DOMParser().parseFromString(cleanPastedHtml(html), 'text/html')
-            doc.querySelectorAll('pre').forEach(pre => {
-              const code = pre.textContent ?? ''
-              if (pre.querySelector('code.language-mermaid') || looksLikeMermaid(code)) {
-                const d = doc.createElement('div')
-                d.setAttribute('data-type', 'mermaid')
-                d.setAttribute('data-code', code.replace(/\n$/, ''))
-                pre.replaceWith(d)
-              }
-            })
-            return doc.body.innerHTML
-          },
+          transformPastedHTML: cleanRichHtml,
           handlePaste: (view, event) => {
             const cd = event.clipboardData
             if (!cd) return false
-            if (cd.files.length) return false // images are handled by ImageFiles
             const inCode = view.state.selection.$from.parent.type.name === 'codeBlock'
             const raw = cd.getData('text/plain')
             if (!cd.getData('text/html') && !inCode && looksLikeMermaid(raw)) { // raw Mermaid text -> one diagram block, not a pile of paragraphs
               editor.chain().focus().insertContent({ type: 'mermaid', attrs: { code: raw.trim() } }).run()
               return true
             }
-            if (cd.getData('text/html')) return false // real rich content: ProseMirror handles it (after transformPastedHTML)
+            const file = cd.files.length === 1 ? cd.files[0] : undefined
+            const html = cd.getData('text/html')
+            if (html) {
+              if (insertWithEmbeddedImages(editor, html, file)) return true
+              return false // ProseMirror handles rich content after transformPastedHTML
+            }
             if (inCode) return false // keep code literal
             if (!raw || !looksLikeMarkdown(raw)) return false
-            editor.chain().focus().insertContent(markdownToHtml(raw)).run()
+            const markdownHtml = markdownToHtml(raw, false)
+            if (!insertWithEmbeddedImages(editor, markdownHtml, file)) editor.chain().focus().insertContent(cleanPastedHtml(markdownHtml)).run()
             return true
           },
         },

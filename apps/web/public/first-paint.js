@@ -4,7 +4,7 @@
           var s = JSON.parse(localStorage.getItem("nevis.device") || "null") || {}
           var dark = s.theme === "dark" || (s.theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches)
           var r = document.documentElement, st = r.style
-          r.lang = s.lang === "en" ? "en" : "fa"
+          r.lang = s.lang === "fa" ? "fa" : "en"
           r.dir = s.dir === "rtl" || s.dir === "ltr" ? s.dir : r.lang === "fa" ? "rtl" : "ltr"
           if (s.theme === "light" || s.theme === "dark") r.dataset.theme = s.theme
           st.setProperty("--sp-bg", dark ? "#191c20" : "#fcfcfb")

@@ -44,7 +44,7 @@ export interface Settings {
 }
 
 export const DEFAULTS: Settings = {
-  lang: 'fa',
+  lang: 'en',
   dir: 'auto',
   theme: 'light',
   appearancePreset: 'calm',
@@ -292,6 +292,10 @@ export function reloadSettings() {
   subs.forEach((f) => f())
 }
 
+window.addEventListener('storage', event => {
+  if (event.storageArea === localStorage && (event.key === KEY || event.key === null)) reloadSettings()
+})
+
 export const useSettings = () => useSyncExternalStore(subscribe, getSettings)
 
 /** Is the dark palette showing right now? */
@@ -377,6 +381,8 @@ export function loadFont(f: FontDef) {
 
 export function apply(s: Settings = state) {
   const root = document.documentElement
+  root.style.removeProperty('color-scheme')
+  root.style.removeProperty('background')
   s.theme === 'system' ? delete root.dataset.theme : (root.dataset.theme = s.theme)
   root.lang = s.lang
   root.dir = s.dir === 'auto' ? (s.lang === 'fa' ? 'rtl' : 'ltr') : s.dir

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { createNew, appReady } from './shell-helpers'
+import { createNew, appReady, reopenWorkspace } from './shell-helpers'
 
 // ROADMAP M8a: paste from Markdown, from a web page / Word / an AI chat. Pasted content is untrusted: nothing that runs, nothing huge.
 const pw = 'correct horse battery'
@@ -20,6 +20,7 @@ async function open(page: Page) {
   await createNew(page, 'new-page')
   await page.waitForFunction(() => !!(window as unknown as { __editor?: unknown }).__editor)
   await page.getByTestId('editor').locator('.ProseMirror').click()
+  return name
 }
 const paste = (page: Page, data: { text?: string; html?: string }) => page.evaluate(d => {
   const dt = new DataTransfer()
@@ -81,4 +82,54 @@ test('raw Mermaid text becomes one diagram block; plain prose stays text', async
   await page.keyboard.press('Enter') // a new line: the next paste would otherwise replace what is selected
   await paste(page, { text: 'graph TD\n  A --> B\n  B --> C' })
   expect(all(await json(page)).filter(n => n.type === 'mermaid').length).toBe(1)
+})
+
+test('rich paste syncs embedded image bytes, links and Mermaid to another device', async ({ page, browser, storageState }) => {
+  const username = await open(page)
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a8sAAAAASUVORK5CYII='
+  await paste(page, { html: `<p>Before <a href="https://example.com">link</a></p><img src="data:image/png;base64,${png}" alt="pixel"><pre><code class="language-mermaid">graph TD\n A--&gt;B</code></pre>` })
+  await expect.poll(async () => all(await json(page)).find(n => n.type === 'image')?.attrs?.blob).toMatch(/^[a-f0-9]{64}$/)
+  const nodes = all(await json(page))
+  expect(nodes.find(n => n.type === 'image')!.attrs).toMatchObject({ mime: 'image/png', alt: 'pixel', src: '' })
+  expect(nodes.some(n => n.marks?.some(m => m.type === 'link' && m.attrs?.href === 'https://example.com'))).toBe(true)
+  expect(nodes.find(n => n.type === 'mermaid')?.attrs?.code).toContain('A-->B')
+  await expect(page.locator('.image-block img')).toBeVisible()
+  await page.waitForTimeout(900)
+  await expect(page.locator('span:has([data-testid=outbox])').first()).toHaveText(/: 0$/, { timeout: 30_000 })
+  await page.reload()
+  await page.getByTestId('page-row').first().dblclick()
+  await page.waitForFunction(() => !!(window as unknown as { __editor?: unknown }).__editor)
+  await expect.poll(async () => all(await json(page)).find(n => n.type === 'image')?.attrs?.blob).toMatch(/^[a-f0-9]{64}$/)
+  const second = await browser.newContext({ storageState })
+  try {
+    const other = await second.newPage()
+    await other.goto('/')
+    await other.locator('input[name=username]').fill(username)
+    await other.locator('input[name=password]').fill(pw)
+    await other.getByTestId('auth-submit').click()
+    await reopenWorkspace(other)
+    await other.getByTestId('page-row').first().dblclick()
+    const body = other.getByTestId('editor')
+    await expect(body.locator('.image-block img')).toBeVisible({ timeout: 30_000 })
+    await expect(body.locator('a[href="https://example.com"]')).toHaveText('link')
+    await expect.poll(async () => all(await json(other)).find(n => n.type === 'mermaid')?.attrs?.code).toContain('A-->B')
+  } finally { await second.close() }
+})
+
+test('a rich clipboard image uses its accompanying file bytes without losing text', async ({ page }) => {
+  await open(page)
+  await page.evaluate(() => {
+    const dt = new DataTransfer()
+    const binary = atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==')
+    dt.items.add(new File([Uint8Array.from(binary, c => c.charCodeAt(0))], 'pixel.png', { type: 'image/png' }))
+    dt.setData('text/html', '<p>Before <a href="https://example.com">link</a></p><img src="https://example.com/expires.png" alt="pixel"><p>After</p>')
+    document.querySelector('.ProseMirror')!.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+  })
+  await expect.poll(async () => all(await json(page)).find(n => n.type === 'image')?.attrs?.blob).toMatch(/^[a-f0-9]{64}$/)
+  const nodes = all(await json(page))
+  expect(nodes.filter(n => n.type === 'image')).toHaveLength(1)
+  expect(nodes.find(n => n.type === 'image')!.attrs).toMatchObject({ mime: 'image/png', alt: 'pixel', src: '' })
+  expect(JSON.stringify(nodes)).toContain('Before')
+  expect(JSON.stringify(nodes)).toContain('After')
+  expect(nodes.some(n => n.marks?.some(m => m.type === 'link' && m.attrs?.href === 'https://example.com'))).toBe(true)
 })

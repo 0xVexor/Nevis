@@ -101,7 +101,7 @@ export function Rail(p: RailProps) {
       </div>
       <div className="side-scroll">
         <button aria-label={t('Search')} className="row plain search-row" data-testid="open-palette" onClick={p.onSearch}>
-          <span className="ic"><Icon name="search" /></span><span className="ntitle">{t('Search')}...</span><kbd dir="ltr">{p.searchHint}</kbd>
+          <span className="ic"><Icon name="search" /></span><span className="ntitle">{t('Search…')}</span><kbd dir="ltr">{p.searchHint}</kbd>
         </button>
         {MAIN.map(row)}
       </div>

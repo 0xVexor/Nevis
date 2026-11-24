@@ -19,7 +19,8 @@ export function httpNet(o: HttpNetOptions = {}): Net {
     if (o.offline?.()) throw new NetError(0, 'offline', true)
     let res: Response
     try {
-      res = await f(base + path, { method, headers: { ...(o.token ? { Authorization: `Bearer ${o.token}` } : {}), 'Nevis-Proto': '1', ...(body ? { 'Content-Type': 'application/json' } : {}) }, body, signal })
+      const timeout = AbortSignal.timeout(signal ? 40_000 : 20_000)
+      res = await f(base + path, { method, headers: { ...(o.token ? { Authorization: `Bearer ${o.token}` } : {}), 'Nevis-Proto': '1', ...(body ? { 'Content-Type': 'application/json' } : {}) }, body, signal: signal ? AbortSignal.any([signal, timeout]) : timeout })
     } catch (e) {
       if (signal?.aborted) throw e
       throw new NetError(0, 'unreachable', true)

@@ -21,8 +21,8 @@ async function start(page: Page) {
 }
 const settled = (p: Page) => expect(p.locator('span:has([data-testid=outbox])').first()).toHaveText(/: 0$/, { timeout: 30_000 })
 
-test('save a version, change the page, restore it: the old text is back, a version of the newer text was kept, and the other device converges', async ({ browser }) => {
-  const ca = await browser.newContext(), cb = await browser.newContext()
+test('save a version, change the page, restore it: the old text is back, a version of the newer text was kept, and the other device converges', async ({ browser, storageState }) => {
+  const ca = await browser.newContext({ storageState }), cb = await browser.newContext({ storageState })
   try {
     const a = await ca.newPage()
     const user = await start(a)

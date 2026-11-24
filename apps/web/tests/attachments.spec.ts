@@ -99,9 +99,9 @@ test('a file that is not a picture becomes a file card and downloads as the iden
   await expect(page.locator('.image-block img')).toHaveCount(0)
 })
 
-test('offline: the image is kept and shown here, the op waits; online: it uploads and another browser shows it', async ({ browser }) => {
-  const ca = await browser.newContext()
-  const cb = await browser.newContext()
+test('offline: the image is kept and shown here, the op waits; online: it uploads and another browser shows it', async ({ browser, storageState }) => {
+  const ca = await browser.newContext({ storageState })
+  const cb = await browser.newContext({ storageState })
   try {
     const a = await ca.newPage()
     const user = await signUp(a)

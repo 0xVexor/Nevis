@@ -61,10 +61,10 @@ export class TabCoordinator {
     this.abort = new AbortController()
     const signal = this.abort.signal
     this.offMessage = this.o.channel.onMessage(m => {
-      const msg = m as ChangedMessage
-      if (!msg || msg.type !== 'changed' || msg.from === this.tabId) return
-      this.o.onRemoteChange?.(msg)
-      this.kick() // if this tab leads, push what the other tab wrote
+      const msg = m as ChangedMessage | { type: 'retry'; from: string }
+      if (!msg || msg.from === this.tabId) return
+      if (msg.type === 'changed') this.o.onRemoteChange?.(msg)
+      if (msg.type === 'changed' || msg.type === 'retry') this.kick()
     })
     void this.o.locks.request(`nevis-sync-${this.o.ws}`, signal, () => this.lead(signal)).catch(e => {
       if (!signal.aborted) this.o.onError?.(e)
@@ -85,6 +85,11 @@ export class TabCoordinator {
   notifyLocalChange(info: { docs?: string[]; ents?: string[] } = {}) {
     this.o.channel.post({ type: 'changed', from: this.tabId, ...info } satisfies ChangedMessage)
     this.kick()
+  }
+
+  retry() {
+    this.kick()
+    if (!this.leader) this.o.channel.post({ type: 'retry', from: this.tabId })
   }
 
   /** Sync as soon as possible (a no-op in a tab that is not the leader). */
@@ -123,7 +128,7 @@ export class TabCoordinator {
           if (!news && !this.kicked && !signal.aborted && Date.now() - t0 < 50) await new Promise<void>(r => setTimeout(r, this.o.intervalMs))
         } else if (!this.kicked) await new Promise<void>(res => {
           const t = setTimeout(done, wait)
-          function done() { clearTimeout(t); res() }
+          function done() { clearTimeout(t); signal.removeEventListener('abort', done); res() }
           this.wake = done
           signal.addEventListener('abort', done, { once: true })
         })

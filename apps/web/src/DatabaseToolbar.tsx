@@ -62,7 +62,7 @@ export function DatabaseToolbar({ ws, db, view, onActive, search, onSearch, onNe
         </div>
         <div className="dv-tools" role="toolbar" aria-label={t('Database tools')}>
           {searchOpen || search ? (
-            <SearchField className="dv-search" autoFocus value={search} onChange={v => { onSearch(v); if (!v) setSearchOpen(false) }} label={t('Search this database')} placeholder={t('Search…')} clearLabel={t('Clear search')} />
+            <SearchField className="dv-search" autoFocus value={search} onChange={v => { onSearch(v); if (!v) setSearchOpen(false) }} label={t('Search this database')} placeholder={t('Search items…')} clearLabel={t('Clear search')} />
           ) : <IconButton label={t('Search')} onClick={() => setSearchOpen(true)}><Icon name="search" size={16} /></IconButton>}
           <ChipButton icon={<Icon name="filter" size={14} />} aria-pressed={ruleCount > 0} data-testid="chip-filter" onClick={open('filter')}>{ruleCount ? t('Filter · {n}', { n: ruleCount }) : t('Filter')}</ChipButton>
           <ChipButton icon={<Icon name="sort" size={14} />} aria-pressed={config.sort.length > 0} data-testid="chip-sort" onClick={open('sort')}>{config.sort.length ? t('Sort · {n}', { n: config.sort.length }) : t('Sort')}</ChipButton>

@@ -14,17 +14,19 @@ const lines = (x: number, y: number, widths: number[], gap = 13, h = 6, c = SOFT
 const box = (x: number, y: number, w: number, h: number, fill = PAPER, r = 6, stroke = SOFT) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${fill}" stroke="${stroke}"/>`
 const label = (x: number, y: number, s: string, size = 10, c = INK, weight = 600) =>
   `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" fill="${c}" font-family="var(--ds-font-ui)">${s}</text>`
-const mono = (x: number, y: number, s: string, size = 9, c = INK) => `<text x="${x}" y="${y}" font-size="${size}" fill="${c}" font-family="var(--ds-font-mono)">${s}</text>`
+const mono = (x: number, y: number, s: string, size = 9, c = INK) => `<text x="${x}" y="${y}" direction="ltr" unicode-bidi="isolate" text-anchor="start" font-size="${size}" fill="${c}" font-family="var(--ds-font-mono)">${s}</text>`
 const svg = (body: string) => `<svg viewBox="0 0 200 120" aria-hidden="true">${body}</svg>`
 
 const heading = (h: number) => svg(bar(24, 26, 96, h, INK) + lines(24, 26 + h + 14, [152, 120, 140]))
 const code = (name?: string) =>
   svg(
     box(16, 14, 168, 92, SUNK, 8) +
-      (name ? label(24, 30, name, 9, INK, 600) : '') +
-      mono(24, name ? 48 : 38, 'const x = 42', 10, ACCENT) +
-      mono(24, name ? 64 : 54, 'print(x)', 10, INK) +
-      mono(24, name ? 80 : 70, '// done', 10, SOFT),
+      mono(26, 32, name ?? 'JavaScript', 9) +
+      `<path d="M24 41H176" stroke="${SOFT}"/>` +
+      (name && name !== 'JavaScript'
+        ? lines(26, 53, [106, 69, 88], 14)
+        : mono(26, 59, 'const count = 42;', 10, ACCENT) +
+          mono(26, 77, 'console.log(count);', 10)),
   )
 const table = () =>
   svg(

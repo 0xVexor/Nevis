@@ -302,6 +302,11 @@ async fn auth_signup(state: State<'_, AppState>, username: String, password: Str
 }
 
 #[tauri::command]
+async fn auth_recover(state: State<'_, AppState>, username: String, recovery_key: String, new_password: String, device_name: String, challenge: String, counter: u64) -> Result<NetResponse, String> {
+    device_auth(&state, "/v1/auth/recover", json!({ "username": username, "recoveryKey": recovery_key, "newPassword": new_password, "deviceName": device_name, "challenge": challenge, "counter": counter })).await
+}
+
+#[tauri::command]
 async fn auth_signout(state: State<'_, AppState>) -> Result<(), String> {
     let server = state.server()?;
     let _ = state.request("POST", "/v1/auth/signout", None, None).await; // best effort: the token is dropped locally either way
@@ -384,7 +389,7 @@ pub fn run() {
                 });
             }
         })
-        .invoke_handler(tauri::generate_handler![app_info, server_set, store_commit, store_read, net_request, net_cancel, mirror_sync, blob_put, blob_get, blob_meta, blob_list, blob_set, blob_delete, blob_head, blob_put_piece, blob_get_range, auth_signin, auth_signup, auth_signout, flush_ready, flush_done, app_log, ui_close, app_exit])
+        .invoke_handler(tauri::generate_handler![app_info, server_set, store_commit, store_read, net_request, net_cancel, mirror_sync, blob_put, blob_get, blob_meta, blob_list, blob_set, blob_delete, blob_head, blob_put_piece, blob_get_range, auth_signin, auth_signup, auth_recover, auth_signout, flush_ready, flush_done, app_log, ui_close, app_exit])
         .run(tauri::generate_context!())
         .expect("error while running Nevis");
 }

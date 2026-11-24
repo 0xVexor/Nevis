@@ -6,8 +6,8 @@ const pw = 'correct horse battery'
 test.setTimeout(180_000)
 const settled = (p: Page) => expect(p.locator('span:has([data-testid=outbox])').first()).toHaveText(/: 0$/, { timeout: 30_000 })
 
-test('a page deleted permanently in one browser is gone in the other, and its ops are gone from the server', async ({ browser }) => {
-  const ca = await browser.newContext(), cb = await browser.newContext()
+test('a page deleted permanently in one browser is gone in the other, and its ops are gone from the server', async ({ browser, storageState }) => {
+  const ca = await browser.newContext({ storageState }), cb = await browser.newContext({ storageState })
   try {
     const a = await ca.newPage()
     const user = `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`

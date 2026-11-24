@@ -109,6 +109,7 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
           {coverMenu && <Popover anchor={coverMenu} onClose={() => setCoverMenu(null)}><CoverPicker page={meta!} onPick={setCover} onClose={() => setCoverMenu(null)} /></Popover>}
           <div className="pg-title-row" dir={dirOf(name)}>
             {meta?.icon && <button type="button" className="pg-icon" data-testid="page-icon" aria-label={t('Change icon')} title={t('Change icon')} onClick={e => setPicker(e.currentTarget.getBoundingClientRect())}><span className="pg-icon-glyph" style={isGlyph(meta.icon) ? { color: parseIcon(meta.icon).color ?? toneOf(id) } : undefined}>{iconNode(meta.icon, 40)}</span></button>}
+            <h1 className="pg-print-title" dir={name.trim() ? 'auto' : undefined}>{name.trim() || t('Untitled')}</h1>
             <textarea
               className="pg-title" data-testid="title" rows={1} dir={name.trim() ? 'auto' : undefined} aria-label={t('Page title')} placeholder={t('Untitled')} value={name}
               ref={el => { titleInput.current = el; if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' } }}
@@ -125,7 +126,7 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
               <span className="ds-chip-field">
                 <Icon name="tag" size={14} />
                 <input
-                  className="pg-tag-input" data-testid="tag-input" dir="auto" autoFocus value={tagDraft} aria-label={t('Tag name…')} placeholder={t('Tag name…')}
+                  className="pg-tag-input" data-testid="tag-input" dir={tagDraft.trim() ? 'auto' : undefined} autoFocus value={tagDraft} aria-label={t('Tag name…')} placeholder={t('Tag name…')}
                   onChange={e => setTagDraft(e.target.value)}
                   onKeyDown={e => {
                     if ((e.key === 'Enter' || e.key === ',' || e.key === '،') && tagDraft.trim()) { e.preventDefault(); void ws.tagPageByName(id, tagDraft.replace(/^#+/, '').trim(), true); setTagDraft('') }

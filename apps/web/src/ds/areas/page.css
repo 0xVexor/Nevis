@@ -39,6 +39,7 @@
 .pg-add .ds-btn { color: var(--ds-text-3); }
 .pg-add .ds-btn:hover { color: var(--ds-text); }
 .pg-title { display: block; inline-size: 100%; margin: 0; padding: 0 0 var(--ds-s1); border: 0; outline: none; resize: none; overflow: hidden; background: none; color: var(--ds-text); font-family: inherit; font-size: calc(var(--ds-text-heading) * 1.25); font-weight: 600; line-height: 1.2; letter-spacing: -0.025em; }
+.pg-print-title { display: none; }
 .pg-title::placeholder { color: var(--ds-text-3); }
 
 /* ───────── properties (PropertyList from the design system) ───────── */

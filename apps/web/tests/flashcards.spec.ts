@@ -40,8 +40,8 @@ test('a toggle is a card; review it; it is no longer due; the review is an event
   await expect(page.getByTestId('fc-due')).toContainText('همه را مرور کرده‌اید') // "You are up to date"
 })
 
-test('the same card reviewed on two devices while apart: both reviews are kept after they meet (the schedule folds both)', async ({ browser }) => {
-  const ca = await browser.newContext(), cb = await browser.newContext()
+test('the same card reviewed on two devices while apart: both reviews are kept after they meet (the schedule folds both)', async ({ browser, storageState }) => {
+  const ca = await browser.newContext({ storageState }), cb = await browser.newContext({ storageState })
   try {
     const a = await ca.newPage()
     const user = await start(a)

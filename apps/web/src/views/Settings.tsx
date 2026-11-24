@@ -17,13 +17,19 @@ import { SETTINGS_TABS, type SettingsTab } from '../settings/settingsTabs'
 import { PanelHost } from '../shell/panelHost'
 import type { Workspace } from '../workspace'
 
-export function Settings({ ws, initialTab, onTabChange, onLeave }: { ws: Workspace; initialTab?: string; onTabChange?: (tab: SettingsTab) => void; onLeave?: () => void }) {
+export function Settings({ ws, initialTab, onTabChange, onLeave, onWorkspaces }: { ws: Workspace; initialTab?: string; onTabChange?: (tab: SettingsTab) => void; onLeave?: () => void; onWorkspaces?: () => void }) {
   const synced = readSynced(ws)
   const [account, setAccount] = useState<Me | null>(null)
   useEffect(() => { let dead = false; void me().then(m => { if (!dead) setAccount(m) }, () => undefined); return () => { dead = true } }, [])
   const files = ws.rt.blobStatus()
   const host = useContext(PanelHost)
   const reset = () => { if (confirm(t('Reset all settings to their defaults? Language and direction stay as they are.'))) { const c = getSettings(); updateSettings({ ...DEFAULTS, lang: c.lang, dir: c.dir }) } }
+  const saveExport = async (kind: 'bundle' | 'markdown') => {
+    try {
+      const bytes = await (kind === 'bundle' ? ws.exportBundle() : ws.exportMarkdown())
+      download(bytes, kind === 'bundle' ? 'nevis.nevis.zip' : 'nevis-markdown.zip')
+    } catch { ws.notify(t('Could not complete the action. Please try again.')) }
+  }
   return (
     <div data-testid="settings">
       <SettingsWorkspace
@@ -46,8 +52,9 @@ export function Settings({ ws, initialTab, onTabChange, onLeave }: { ws: Workspa
             <>
               <div data-testid="settings-data">
                 <PreferenceGroup title={t('Your data')}>
-                  <PreferenceRow label={t('All notes, lossless (bundle)')}><button className="ds-btn ds-btn--sm" data-testid="export-bundle" onClick={() => void ws.exportBundle().then(b => download(b, 'nevis.nevis.zip'))}>{t('Download bundle')}</button></PreferenceRow>
-                  <PreferenceRow label={t('Markdown files (readable by other tools)')}><button className="ds-btn ds-btn--sm" data-testid="export-markdown" onClick={() => void ws.exportMarkdown().then(b => download(b, 'nevis-markdown.zip'))}>{t('Download Markdown')}</button></PreferenceRow>
+                  {onWorkspaces && <PreferenceRow label={t('Choose Import notes from the workspace list.')}><button type="button" className="ds-btn ds-btn--sm" onClick={onWorkspaces}>{t('Workspaces')}</button></PreferenceRow>}
+                  <PreferenceRow label={t('All notes, lossless (bundle)')}><button type="button" className="ds-btn ds-btn--sm" data-testid="export-bundle" onClick={() => void saveExport('bundle')}>{t('Download bundle')}</button></PreferenceRow>
+                  <PreferenceRow label={t('Markdown files (readable by other tools)')}><button type="button" className="ds-btn ds-btn--sm" data-testid="export-markdown" onClick={() => void saveExport('markdown')}>{t('Download Markdown')}</button></PreferenceRow>
                   {isDesktop && (
                     <PreferenceRow label={t('Markdown mirror (one-way: the app writes and never reads; edits to the files are overwritten)')}>
                       <input data-testid="mirror-dir" dir="ltr" defaultValue={mirrorFolder(ws.ws)} placeholder="/Users/you/Notes" aria-label={t('Mirror folder')}
@@ -69,7 +76,7 @@ export function Settings({ ws, initialTab, onTabChange, onLeave }: { ws: Workspa
               )}
             </>
           ),
-          sync: <PreferenceGroup title={t('Sync')}><PreferenceRow label={t('Status')}><span data-testid="settings-sync">{ws.rt.lastError || (ws.rt.lastSyncAt ? t('Synced') : t('Connecting'))}</span></PreferenceRow></PreferenceGroup>,
+          sync: <PreferenceGroup title={t('Sync')}><PreferenceRow label={t('Status')}><span data-testid="settings-sync">{ws.rt.lastError || (ws.rt.lastSyncAt ? t('Synced') : t('Connecting'))}</span></PreferenceRow><PreferenceRow label={t('Sync')}><button type="button" className="ds-btn ds-btn--sm" onClick={() => ws.rt.retry()}>{t('Sync now')}</button></PreferenceRow></PreferenceGroup>,
           shortcuts: <ShortcutsSettings />,
           about: <About />,
         }}

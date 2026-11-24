@@ -1,6 +1,7 @@
 import { addProp, choose } from './db-helpers'
 import { expect, test, type Page } from '@playwright/test'
 import { createNew, appReady, reopenWorkspace } from './shell-helpers'
+import type { Workspace } from '../src/workspace'
 
 // ROADMAP M7: a database "کتاب‌ها" in the real app: properties of several types, a select option, cells (with Persian digits),
 // reload: everything persisted and read back typed.
@@ -136,17 +137,29 @@ test('table keyboard selection, fill, clear and undo preserve input editing', as
 
 test('column order and frozen columns persist after reopening the database', async ({ page }) => {
   page.setDefaultTimeout(5_000)
+  await page.setViewportSize({ width: 1600, height: 900 })
   await signUpAndOpen(page)
   await createNew(page, 'new-database')
   await page.getByTestId('db-title').fill('Column layout')
-  await addProp(page, 'First', 'text')
-  await addProp(page, 'Second', 'text')
   await page.getByTestId('db-add-row').click()
   const headers = page.locator('thead th[data-prop]')
   const selectAll = page.locator('th.dbtable-handle .ds-check')
   const selectRow = page.locator('td.dbtable-handle .ds-check').first()
-  const checkboxAlignment = await Promise.all([selectAll, selectRow].map(locator => locator.evaluate(element => { const rect = element.getBoundingClientRect(); return rect.left + rect.width / 2 })))
-  expect(Math.abs(checkboxAlignment[0]! - checkboxAlignment[1]!)).toBeLessThan(1)
+  await expect(selectRow).toBeVisible()
+  for (const direction of ['ltr', 'rtl']) {
+    await page.evaluate(dir => { document.documentElement.dir = dir }, direction)
+    const table = (await page.getByTestId('db-table').boundingBox())!
+    const heading = (await selectAll.boundingBox())!
+    const row = (await selectRow.boundingBox())!
+    const add = (await page.getByTestId('col-add').locator('svg').boundingBox())!
+    const selectionInset = direction === 'rtl' ? table.x + table.width - heading.x - heading.width : heading.x - table.x
+    const addInset = direction === 'rtl' ? add.x - table.x : table.x + table.width - add.x - add.width
+    expect(selectionInset).toBeLessThan(40)
+    expect(addInset).toBeLessThan(24)
+    expect(heading.x).toBeCloseTo(row.x, 0)
+  }
+  await addProp(page, 'First', 'text')
+  await addProp(page, 'Second', 'text')
   await page.locator('td.dbtable-handle').first().hover()
   await expect(page.locator('td.dbtable-handle .dv-grip').first()).toHaveCSS('opacity', '1')
   await page.locator('th[data-prop="Second"] button[data-testid="col-head"]').click()
@@ -192,9 +205,11 @@ test('column order and frozen columns persist after reopening the database', asy
 })
 
 test('column resizing follows the layout direction and survives reload', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 })
   await signUpAndOpen(page)
   await createNew(page, 'new-database')
   await addProp(page, 'Resizable', 'text')
+  await addProp(page, 'Trailing column', 'text')
   const header = page.locator('th[data-prop="Resizable"]')
   const handle = header.getByRole('separator')
   const before = (await header.boundingBox())!.width
@@ -202,9 +217,16 @@ test('column resizing follows the layout direction and survives reload', async (
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   await page.mouse.down()
   await page.mouse.move(box.x - 80, box.y + box.height / 2)
-  await page.mouse.up()
   await expect.poll(async () => (await header.boundingBox())!.width).toBeGreaterThan(before + 50)
+  await page.mouse.up()
   const resized = (await header.boundingBox())!.width
+  await expect.poll(() => page.evaluate(() => {
+    const ws = (window as unknown as { __ws: Workspace }).__ws
+    const database = ws.data.databases.get(location.hash.split('/').pop()!)
+    const property = database?.properties.find(p => p.name === 'Resizable')
+    const config = database?.views[0]?.config as { columnWidths?: Record<string, number> } | undefined
+    return (property && config?.columnWidths?.[property.id]) ?? 0
+  })).toBeGreaterThan(280)
   await page.reload()
   await reopenWorkspace(page)
   await expect.poll(async () => (await header.boundingBox())!.width).toBeCloseTo(resized, 0)

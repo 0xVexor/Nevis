@@ -10,7 +10,7 @@ export class AuthError extends Error {
 }
 
 async function call(method: string, path: string, body?: unknown): Promise<any> {
-  const res = await (isDesktop ? desktopFetch : fetch)(path, { method, headers: { 'Nevis-Proto': '1', ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined })
+  const res = await (isDesktop ? desktopFetch : fetch)(path, { method, headers: { 'Nevis-Proto': '1', ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20_000) })
   const j = await res.json().catch(() => ({}))
   if (!res.ok) throw new AuthError(res.status, j?.error?.code ?? `http_${res.status}`, j?.error?.message ?? `HTTP ${res.status}`)
   return j
@@ -45,5 +45,11 @@ export async function signUp(username: string, password: string, deviceName: str
   const counter = ch.bits ? await solve(ch.challenge, ch.bits) : 0
   if (isDesktop) return deviceAuth('auth_signup', { username, password, deviceName, invite: invite || null, challenge: ch.challenge, counter })
   return call('POST', '/v1/auth/signup', { username, password, client: 'web', deviceName, invite: invite || undefined, challenge: ch.challenge, counter })
+}
+export async function recoverAccount(username: string, recoveryKey: string, newPassword: string, deviceName: string): Promise<{ recoveryKey: string }> {
+  const ch = await call('GET', '/v1/auth/challenge')
+  const counter = ch.bits ? await solve(ch.challenge, ch.bits) : 0
+  const args = { username, recoveryKey: recoveryKey.trim(), newPassword, deviceName, challenge: ch.challenge, counter }
+  return isDesktop ? deviceAuth('auth_recover', args) : call('POST', '/v1/auth/recover', { ...args, client: 'web' })
 }
 export const deviceLabel = (): string => (isDesktop ? 'Nevis Desktop' : /iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : /Firefox/.test(navigator.userAgent) ? 'Firefox' : /Chrome/.test(navigator.userAgent) ? 'Chrome' : 'Safari')

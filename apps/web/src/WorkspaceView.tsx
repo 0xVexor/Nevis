@@ -97,7 +97,7 @@ export function WorkspaceView({ ws, onSignOut, onWorkspaces, workspaceName }: { 
     }
     if (route.name === 'all') return <div data-testid="all-pages"><PagesTable pages={legacyPages(ws).filter(p => !p.deletedAt)} onOpen={select} onStatus={(id, st) => void ws.setMeta(id, { status: st ?? '' })} onClose={() => undefined} /></div>
     if (route.name === 'templates') return <Templates ws={ws} />
-    if (route.name === 'settings') return <Settings ws={ws} initialTab={route.tab} onTabChange={tab => go({ name: 'settings', tab })} />
+    if (route.name === 'settings') return <Settings ws={ws} initialTab={route.tab} onTabChange={tab => go({ name: 'settings', tab })} onWorkspaces={onWorkspaces} />
     if (route.name === 'row') return <RowPage key={route.id} ws={ws} dbId={route.db} id={route.id} />
     if (route.name === 'databases') return <Databases ws={ws} />
     if (route.name === 'drawings') return <Drawings ws={ws} />

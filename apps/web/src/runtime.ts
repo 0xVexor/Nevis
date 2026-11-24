@@ -105,10 +105,11 @@ export class SyncRuntime {
         await this.blobSync.reportRefs(this.store).catch(() => undefined)
         if (await this.snapshotter.run().catch(() => 0)) this.coord.kick() // snapshots of documents with many ops (the server may later drop what they cover)
         if (s.applied || s.pulled) this.tellAvailable()
+        const wasUnreachable = Boolean(this.lastError)
         this.lastError = s.rejected ? `${s.rejected} change(s) were refused by the server and could not be sent (kept in quarantine)` : ''
         this.lastSyncAt = Date.now()
         if (s.applied) this.o.onApplied?.(s)
-        if (s.applied || s.pushed) this.o.onChange?.()
+        if (s.applied || s.pushed || wasUnreachable) this.o.onChange?.()
         return s
       },
       idle: signal => this.engine.listen(signal),
@@ -118,14 +119,21 @@ export class SyncRuntime {
     })
     this.coord.start()
     // the browser says the network is back: try now instead of waiting out the backoff
-    const online = () => this.coord.kick()
-    addEventListener('online', online)
-    this.offOnline = () => removeEventListener('online', online)
+    const resume = () => { if (!document.hidden && navigator.onLine) this.retry() }
+    window.addEventListener('online', resume)
+    window.addEventListener('focus', resume)
+    document.addEventListener('visibilitychange', resume)
+    this.offOnline = () => {
+      window.removeEventListener('online', resume)
+      window.removeEventListener('focus', resume)
+      document.removeEventListener('visibilitychange', resume)
+    }
     this.o.onChange?.()
   }
 
   /** This tab wrote something: tell the other tabs, and sync soon. */
   written(info: { docs?: string[]; ents?: string[] } = {}) { this.coord.notifyLocalChange(info) }
+  retry() { this.coord?.retry(); this.o.onChange?.() }
 
   /** Stops syncing and releases the leader lock (sign-out, close). */
   stop() { this.offOnline?.(); this.coord?.stop() }

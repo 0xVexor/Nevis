@@ -123,8 +123,8 @@
 /* a tag, tinted in its own hue (--hue, 0 to 360); the name opens it, the cross shows on hover or focus */
 .ds-tag {
   --tag: light-dark(oklch(0.5 0.13 var(--hue, 270)), oklch(0.82 0.09 var(--hue, 270)));
-  display: inline-flex; align-items: center; max-inline-size: 220px; block-size: var(--ds-control-sm); padding-inline: var(--ds-s3); border-radius: var(--ds-r-sm);
-  background: color-mix(in oklab, var(--tag) 13%, transparent); color: var(--tag); font: 500 var(--ds-text-small) var(--ds-font-ui);
+  box-sizing: border-box; display: inline-flex; align-items: center; max-inline-size: 220px; min-block-size: var(--ds-control-sm); padding-inline: var(--ds-s3); border-radius: var(--ds-r-sm);
+  background: color-mix(in oklab, var(--tag) 13%, transparent); color: var(--tag); font: 500 var(--ds-text-small) / 1.5 var(--ds-font-ui);
 }
 .ds-tag-name { min-inline-size: 0; overflow: hidden; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-overflow: ellipsis; white-space: nowrap; }
 button.ds-tag-name { cursor: var(--cursor-hand, pointer); }
@@ -412,7 +412,7 @@ button.ds-list-row:focus-visible { outline: 2px solid var(--ds-accent); outline-
 .ds-search { display: flex; align-items: center; gap: var(--ds-s2); min-inline-size: 0; block-size: var(--ds-control); padding-inline: var(--ds-s3) var(--ds-s1); border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); color: var(--ds-text-3); transition: border-color var(--ds-fast); }
 .ds-search:hover { border-color: var(--ds-line-strong); }
 .ds-search:focus-within { border-color: var(--ds-accent); box-shadow: 0 0 0 3px var(--ds-accent-soft); }
-.ds-search > input { flex: 1; min-inline-size: 0; border: 0; outline: 0; background: none; color: var(--ds-text); font: inherit; }
+.ds-search > input { appearance: none; flex: 1; min-inline-size: 0; padding: 0; border: 0; outline: 0; background: none; color: var(--ds-text); font: inherit; text-align: start; }
 .ds-search > input::placeholder { color: var(--ds-text-3); }
 .ds-search > input::-webkit-search-cancel-button { display: none; }
 .ds-search-clear { display: grid; place-items: center; inline-size: var(--ds-control-sm); block-size: var(--ds-control-sm); padding: 0; border: 0; border-radius: var(--ds-r-sm); background: none; color: var(--ds-text-3); cursor: var(--cursor-hand, pointer); }

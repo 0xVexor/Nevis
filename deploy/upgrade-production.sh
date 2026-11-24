@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Update the manual production installation and append a batch of invitation codes.
+# Update the manual production installation, optionally appending invitation codes.
 set -Eeuo pipefail
 
-if [[ $# != 4 || $(id -u) != 0 || $(hostname -s) != vexor-server ]]; then
-  echo "Run as root on vexor-server: $0 IMAGE_TAR VERSION WEB_ENTRY INVITE_FILE" >&2
+if [[ ( $# != 3 && $# != 4 ) || $(id -u) != 0 || $(hostname -s) != vexor-server ]]; then
+  echo "Run as root on vexor-server: $0 IMAGE_TAR VERSION WEB_ENTRY [INVITE_FILE]" >&2
   exit 2
 fi
 
 archive=$1
 version=$2
 web_entry=$3
-invites=$4
+invites=${4:-}
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
 [[ $web_entry =~ ^assets/index-[A-Za-z0-9_-]+\.js$ ]]
 image=nevis-next:$version
@@ -33,7 +33,7 @@ rollback() {
   local status=$?
   trap - EXIT
   if $switched; then
-    echo 'Restoring the previous image and registration settings.' >&2
+    echo 'Restoring the previous production configuration.' >&2
     install -m 600 "$workdir/compose.before" "$compose" &&
       install -m 600 "$workdir/env.before" "$env_file" &&
       docker compose -f "$compose" up -d --force-recreate app || exit 1
@@ -46,7 +46,8 @@ cp -p "$compose" "$workdir/compose.before"
 cp -p "$env_file" "$workdir/env.before"
 sed -E "s|^    image: nevis-next:[0-9]+\.[0-9]+\.[0-9]+$|    image: $image|" "$compose" > "$workdir/compose.next"
 [[ $(docker compose --project-directory /opt/nevis -f "$workdir/compose.next" config --images) == "$image" ]]
-python3 - "$env_file" "$invites" "$workdir/env.next" <<'PY'
+if [[ -n $invites ]]; then
+  python3 - "$env_file" "$invites" "$workdir/env.next" <<'PY'
 import re
 import sys
 from pathlib import Path
@@ -65,10 +66,13 @@ if len(existing) != 1 or not re.fullmatch(r"[A-Za-z0-9,_-]*", existing[0]):
 updated = ",".join(dict.fromkeys(filter(None, existing[0].split(",") + codes)))
 output.write_text(re.sub(r"^INVITE_CODES=.*$", "INVITE_CODES=" + updated, settings, count=1, flags=re.M))
 PY
+fi
 
 switched=true
 install -m 600 "$workdir/compose.next" "$compose"
-install -m 600 "$workdir/env.next" "$env_file"
+if [[ -n $invites ]]; then
+  install -m 600 "$workdir/env.next" "$env_file"
+fi
 docker compose -f "$compose" up -d --force-recreate app
 
 ready=false
@@ -85,4 +89,7 @@ for attempt in {1..30}; do
 done
 [[ $ready == true && -s /var/lib/nevis/nevis.db ]]
 switched=false
-echo "Nevis $version is live at $domain. Ten invite codes were added."
+echo "Nevis $version is live at $domain."
+if [[ -n $invites ]]; then
+  echo 'Ten invite codes were added.'
+fi

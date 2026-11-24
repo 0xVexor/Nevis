@@ -32,7 +32,7 @@ export function SearchField({ value, onChange, onEnter, onKeyDown, label, placeh
   return (
     <div className={cx('ds-search', className)}>
       <Icon name="search" size={16} />
-      <input type="search" dir="auto" autoComplete="off" value={value} placeholder={placeholder} aria-label={label} autoFocus={autoFocus} onChange={(event) => onChange(event.target.value)} onKeyDown={(event) => (onKeyDown?.(event), event.defaultPrevented) ? undefined : (event.key === 'Escape' && value ? (event.stopPropagation(), onChange('')) : event.key === 'Enter' && onEnter ? (event.preventDefault(), onEnter()) : undefined)} />
+      <input type="search" dir={value.trim() ? 'auto' : undefined} autoComplete="off" value={value} placeholder={placeholder} aria-label={label} autoFocus={autoFocus} onChange={(event) => onChange(event.target.value)} onKeyDown={(event) => (onKeyDown?.(event), event.defaultPrevented) ? undefined : (event.key === 'Escape' && value ? (event.stopPropagation(), onChange('')) : event.key === 'Enter' && onEnter ? (event.preventDefault(), onEnter()) : undefined)} />
       {value && (
         <button type="button" className="ds-search-clear" aria-label={clearLabel} title={clearLabel} onClick={() => onChange('')}>
           <Icon name="x" size={14} />
@@ -180,13 +180,13 @@ export function Tag({
   onContextMenu?: (event: MouseEvent<HTMLElement>) => void
 }) {
   return (
-    <span className="ds-tag" dir="auto" style={{ '--hue': tagHue(label) } as CSSProperties} onContextMenu={onContextMenu}>
+    <span className="ds-tag" style={{ '--hue': tagHue(label) } as CSSProperties} onContextMenu={onContextMenu}>
       {onOpen ? (
-        <button type="button" className="ds-tag-name" title={openLabel} onClick={onOpen}>
+        <button type="button" className="ds-tag-name" dir="auto" title={openLabel} onClick={onOpen}>
           {label}
         </button>
       ) : (
-        <span className="ds-tag-name">{label}</span>
+        <bdi className="ds-tag-name">{label}</bdi>
       )}
       {onRemove && (
         <button type="button" className="ds-tag-x" aria-label={`${removeLabel} ${label}`} title={removeLabel} onClick={onRemove}>

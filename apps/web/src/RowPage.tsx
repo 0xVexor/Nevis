@@ -52,6 +52,7 @@ export function RowPage({ ws, dbId, id, peek = false }: { ws: Workspace; dbId: s
         <header className="pg-head">
           {!peek && <div className="pg-add"><IconButton label={t('Back to the database')} data-testid="row-back" onClick={() => go({ name: 'page', id: db.id })}><Icon name="arrow-right" size={16} className="ds-flip" /></IconButton></div>}
           <div className="pg-title-row">
+            <h1 className="pg-print-title" dir={title.trim() ? 'auto' : undefined}>{title.trim() || t('Untitled')}</h1>
             <textarea ref={titleBox} className="pg-title" data-testid="row-title" rows={1} dir={title.trim() ? 'auto' : undefined} aria-label={t('Page title')} placeholder={t('Untitled')} value={title}
               onInput={e => { const el = e.currentTarget; el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' }}
               onChange={e => { const v = e.target.value.replace(/\n/g, ' '); setTitle(v); void ws.mutate([row.id], c => setCell(c, row.id, tp, v)) }}

@@ -57,6 +57,13 @@ export const AttachFiles = Extension.create({
         handlePaste: (_view, event) => {
           const files = filesOf(event.clipboardData)
           if (!files.length || !optionsOf(editor).attachments) return false
+          const html = event.clipboardData?.getData('text/html') ?? ''
+          const text = event.clipboardData?.getData('text/plain') ?? ''
+          if (html || text) {
+            // Rich clipboard data often includes the same image as a file. Preserve the text and avoid a duplicate.
+            if (!/<img\b/i.test(html) && !/!\[[^\]]*\]\(/.test(text)) queueMicrotask(() => void attachFiles(editor, files))
+            return false
+          }
           event.preventDefault()
           void attachFiles(editor, files)
           return true

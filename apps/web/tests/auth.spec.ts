@@ -66,3 +66,42 @@ test('a wrong password is refused with a readable message; signing out one brows
   await other.reload()
   await expect(other.getByTestId('ws-new')).toBeVisible()
 })
+
+test('fresh profiles start in English and the recovery key can reset the password', async ({ browser }) => {
+  const context = await browser.newContext({ storageState: { cookies: [], origins: [] } })
+  try {
+    const page = await context.newPage()
+    const name = user()
+    await page.goto('/')
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+    await expect(page.locator('html')).toHaveAttribute('dir', 'ltr')
+    await page.getByTestId('auth-switch').click()
+    await page.locator('input[name=username]').fill(name)
+    await page.locator('input[name=password]').fill(pw)
+    await page.getByTestId('auth-submit').click()
+    const key = page.getByTestId('recovery').locator('code')
+    await expect(key).not.toBeEmpty()
+    const original = await key.innerText()
+    await page.getByRole('button', { name: 'Copy recovery key' }).click()
+    await expect(key).toHaveText(original)
+    await page.getByTestId('signout').click()
+    await page.getByRole('button', { name: 'Forgot your password?' }).click()
+    await page.locator('input[name=username]').fill(name)
+    await page.locator('input[name=recoveryKey]').fill(original)
+    await page.locator('input[name=password]').fill('a replacement password')
+    await page.getByTestId('auth-submit').click()
+    await expect(key).toBeVisible()
+    await expect(key).not.toHaveText(original)
+  } finally { await context.close() }
+})
+
+test('the sign-in screen recovers after the network returns', async ({ page }) => {
+  // The page itself is served by Vite. Simulate losing only the API on startup.
+  const fail = (route: import('@playwright/test').Route) => route.abort()
+  await page.route('**/v1/me', fail)
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: 'تلاش دوباره' })).toBeVisible()
+  await page.unroute('**/v1/me', fail)
+  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+  await expect(page.getByTestId('auth-form')).toBeVisible()
+})

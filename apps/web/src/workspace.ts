@@ -174,11 +174,33 @@ export class Workspace {
     const text = toMarkdown(json, { titleOf: x => byId.get(x)?.title ?? '', attachment: h => { refs.add(h); return `${up}attachments/${h}` } }, { id, title: p.title, parent: p.parent, created: p.createdAt })
     return { path: `${folder}${mdFileName(p.title, id)}`, text }
   }
-  /** A zip of Markdown files laid out as the page tree, with the attachments next to them. One way: nothing is read back from it. */
+  /** A zip of Markdown files laid out as the page tree, with the attachments next to them. */
   async exportMarkdown(): Promise<Uint8Array> {
+    await this.flushAll()
     const files: Zippable = {}
     const refs = new Set<string>()
-    for (const p of this.data.pages.filter(x => !x.trashed && x.type !== 'database' && !this.isFolder(x.id))) { const f = await this.markdownOf(p.id, refs); files[f.path] = strToU8(f.text) }
+    const titles = new Map([...this.data.databases.values()].flatMap(db => db.rows.map(row => [row.id, row.title] as const)))
+    const escape = (value: string) => value.replace(/[\\`*_\[\]<>]/g, '\\$&').replace(/\r?\n/g, ' ')
+    for (const page of this.data.pages.filter(item => !item.trashed)) {
+      const { path, text } = await this.markdownOf(page.id, refs)
+      files[path] = strToU8(text)
+      const database = this.data.databases.get(page.id)
+      if (!database || database.trashed) continue
+      const folder = path.replace(/\.md$/, '') + '/'
+      const up = '../'.repeat(folder.split('/').filter(Boolean).length)
+      const fields = database.properties.filter(prop => !prop.trashed && !prop.isTitle)
+      for (const row of database.rows.filter(row => !row.trashed)) {
+        const properties = fields.map(prop => {
+          const cell = row.cells[prop.id]
+          const display = (value: string) => prop.type === 'relation' ? titles.get(value) ?? value : prop.options.find(option => option.id === value)?.name ?? value
+          const value = Array.isArray(cell) ? cell.map(display).join(', ') : typeof cell === 'string' ? display(cell) : cell == null ? '' : String(cell)
+          return `- **${escape(prop.name)}**: ${escape(value)}`
+        })
+        const body = project(await this.rt.store.run(tx => loadDoc(tx, row.id)))
+        const note = toMarkdown(body, { attachment: hash => { refs.add(hash); return `${up}attachments/${hash}` } }, { id: row.id, title: row.title, parent: database.id, created: row.createdAt })
+        files[folder + mdFileName(row.title, row.id)] = strToU8(note + (properties.length ? `\n${properties.join('\n')}\n` : ''))
+      }
+    }
     for (const h of refs) { const a = await this.attachment(h); if (a) files[`attachments/${h}`] = [new Uint8Array(await a.data.arrayBuffer()), { level: 0 }] }
     return zipSync(files)
   }
@@ -302,7 +324,7 @@ export class Workspace {
   inboxId(): string | undefined { const v = this.data.settings.inbox; return typeof v === 'string' && this.data.pages.some(p => p.id === v) ? v : undefined }
   async ensureInbox(): Promise<string> {
     const have = this.inboxId(); if (have) return have
-    const id = await createPage(this.rt.client, { parent: '', title: 'صندوق ورودی' })
+    const id = await createPage(this.rt.client, { parent: '', title: t('Inbox') })
     await this.mutate([this.ws], c => setSetting(c, 'inbox', id))
     await this.wrote(id)
     return id

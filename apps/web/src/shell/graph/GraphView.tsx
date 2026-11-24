@@ -43,14 +43,13 @@ const NO_SET = new Set<number>()
 const LINE_BUDGET = 1_500_000 // px of link (|dx| + |dy| summed) drawn per full repaint before evenly spread links start being skipped; the repaint cost grows with it
 let quiet = new Float32Array(0) // scratch for the links of one repaint
 const VARS = ['--ds-accent', '--ds-line-strong', '--ds-text', '--ds-text-2', '--ds-text-3', '--ds-bg'] as const
-let palette: { key: string; at: number; c: Record<(typeof VARS)[number], string>; font: string } | null = null
+let palette: { key: string; c: Record<(typeof VARS)[number], string>; font: string } | null = null
 
-/** Theme colours as plain rgb() strings (the canvas does not understand light-dark() or color-mix() that the stylesheet uses) and the font; looked up at most twice a second, not on every frame. */
+/** Resolve canvas colours again when the global theme or appearance settings change. */
 function colors(host: HTMLElement) {
-  const now = performance.now()
-  if (palette && now - palette.at < 500) return palette
-  const key = `${document.documentElement.dataset.theme ?? ''}|${getComputedStyle(document.body).colorScheme}|${matchMedia('(prefers-color-scheme: dark)').matches}`
-  if (palette?.key === key) return ((palette.at = now), palette)
+  const root = document.documentElement
+  const key = `${root.dataset.theme ?? ''}|${root.style.cssText}|${matchMedia('(prefers-color-scheme: dark)').matches}`
+  if (palette?.key === key) return palette
   const probe = document.createElement('i')
   host.append(probe)
   const c = {} as Record<(typeof VARS)[number], string>
@@ -59,7 +58,7 @@ function colors(host: HTMLElement) {
     c[v] = getComputedStyle(probe).color
   }
   probe.remove()
-  palette = { key, at: now, c, font: getComputedStyle(host).fontFamily }
+  palette = { key, c, font: getComputedStyle(host).fontFamily }
   return palette
 }
 
@@ -69,7 +68,7 @@ let measure: CanvasRenderingContext2D | null = null
 
 /** A page title drawn with its outline, cached: the same labels come back on every repaint while zooming and panning. */
 function labelSprite(label: string, bold: boolean, text: string, halo: string, font: string, dpr: number) {
-  const key = `${bold ? 1 : 0}|${dpr}|${text}|${halo}|${label}`
+  const key = `${bold ? 1 : 0}|${dpr}|${text}|${halo}|${font}|${label}`
   const hit = sprites.get(key)
   if (hit) return hit
   const css = `${bold ? 600 : 500} 12px ${font}`

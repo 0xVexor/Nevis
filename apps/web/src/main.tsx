@@ -1,13 +1,14 @@
+import { importNotes, prepareImport } from './markdownImport'
 import type { ReactNode } from 'react'
 import { t } from './i18n'
 import { StrictMode, useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import { uuidv7 } from '@nevis/protocol'
-import { AuthError, createWorkspace, deviceLabel, me, signIn, signOut, signUp, workspaces, type Me, type WorkspaceInfo } from './auth'
+import { AuthError, createWorkspace, deviceLabel, me, recoverAccount, signIn, signOut, signUp, workspaces, type Me, type WorkspaceInfo } from './auth'
 import { Lab, type Note, type Status } from './lab'
 import { appInfo, getDesktopPreference, isDesktop, onWindowFlush, setDesktopPreference, setServer } from './desktop'
 import { installTranslator } from './i18n'
-import { apply as applyDeviceSettings, restoreDesktopSettings } from './deviceSettings'
+import { apply as applyDeviceSettings, restoreDesktopSettings, useSettings } from './deviceSettings'
 import { Workspace } from './workspace'
 import { WorkspaceView } from './WorkspaceView'
 import { Brand } from './shell/Brand'
@@ -86,14 +87,14 @@ function LabView({ lab, started, onSignOut }: { lab: Lab; started: Promise<void>
 
 const errText = (e: unknown): string => {
   if (e instanceof AuthError) {
-    const m: Record<string, string> = { bad_credentials: t('The username or password is not right'), rate_limited: t('Too many tries; try again in a moment'), username_taken: 'این نام کاربری گرفته شده', registration_closed: 'این سرور حساب تازه نمی‌پذیرد', bad_invite: 'کد دعوت درست نیست', weak_password: 'گذرواژه ضعیف است' }
+    const m: Record<string, string> = { bad_credentials: t('The username or password is not right'), rate_limited: t('Too many tries; try again in a moment'), username_taken: t('This username is taken'), registration_closed: t('This server does not accept new accounts'), bad_invite: t('The invite code is incorrect'), weak_password: t('Password needs at least eight characters'), bad_recovery_key: t('The recovery key is incorrect') }
     return m[e.code] ?? e.message
   }
   return t('The server is not reachable')
 }
 
 function SignInForm({ onDone, onServer }: { onDone: (recoveryKey?: string) => Promise<void>; onServer?: () => void }) {
-  const [mode, setMode] = useState<'in' | 'up'>('in')
+  const [mode, setMode] = useState<'in' | 'up' | 'recover'>('in')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const submit = async (ev: FormEvent<HTMLFormElement>) => {
@@ -103,24 +104,31 @@ function SignInForm({ onDone, onServer }: { onDone: (recoveryKey?: string) => Pr
     setBusy(true); setErr('')
     try {
       if (mode === 'in') { await signIn(u, p, deviceLabel()); await onDone() }
-      else { const r = await signUp(u, p, deviceLabel(), inv); await onDone(r.recoveryKey) }
+      else {
+        const r = mode === 'recover'
+          ? await recoverAccount(u, String(f.get('recoveryKey') ?? ''), p, deviceLabel())
+          : await signUp(u, p, deviceLabel(), inv)
+        await onDone(r.recoveryKey)
+      }
     } catch (e) { setErr(errText(e)) } finally { setBusy(false) }
   }
   return (
     <Frame surface="auth">
-      <h1>{mode === 'in' ? t('Sign in') : t('Create account')}</h1>
-      <p>{mode === 'in' ? t('Sign in so your notes sync.') : t('Create an account to sync your notes.')}</p>
+      <h1>{mode === 'recover' ? t('Recover account') : mode === 'in' ? t('Sign in') : t('Create account')}</h1>
+      <p>{mode === 'recover' ? t('Enter your recovery key and choose a new password.') : mode === 'in' ? t('Sign in so your notes sync.') : t('Create an account to sync your notes.')}</p>
       <form onSubmit={e => void submit(e)} data-testid="auth-form" className="onb-form">
         <label className="onb-field"><span>{t('Username')}</span><input className="ds-field" name="username" autoComplete="username" required dir="ltr" /></label>
-        <label className="onb-field"><span>{t('Password')}</span><input className="ds-field" name="password" type="password" autoComplete={mode === 'in' ? 'current-password' : 'new-password'} required dir="ltr" /></label>
+        {mode === 'recover' && <label className="onb-field"><span>{t('Recovery key')}</span><input className="ds-field" name="recoveryKey" required dir="ltr" autoComplete="off" /></label>}
+        <label className="onb-field"><span>{t(mode === 'recover' ? 'New password' : 'Password')}</span><input key={mode} className="ds-field" name="password" type="password" autoComplete={mode === 'in' ? 'current-password' : 'new-password'} required dir="ltr" /></label>
         {mode === 'up' && <label className="onb-field"><span>{t('Invite code (if needed)')}</span><input className="ds-field" name="invite" dir="ltr" /></label>}
         {err && <p className="err" role="alert" data-testid="auth-error">{err}</p>}
         <div className="onb-actions">
           <Button type="button" variant="ghost" disabled={busy} data-testid="auth-switch" onClick={() => { setMode(mode === 'in' ? 'up' : 'in'); setErr('') }}>{mode === 'in' ? t('I have no account') : t('I have an account')}</Button>
-          <Button type="submit" variant="primary" disabled={busy} data-testid="auth-submit">{mode === 'in' ? t('Sign in') : t('Create account')}</Button>
+          <Button type="submit" variant="primary" disabled={busy} data-testid="auth-submit">{mode === 'recover' ? t('Reset password') : mode === 'in' ? t('Sign in') : t('Create account')}</Button>
         </div>
         {busy && <Pending />}
       </form>
+      {mode === 'in' && <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setErr(''); setMode('recover') }}>{t('Forgot your password?')}</Button>}
       {onServer && <Button variant="ghost" size="sm" disabled={busy} icon={<Icon name="settings" size={16} />} data-testid="custom-server" onClick={onServer}>{t('Server address')}</Button>}
     </Frame>
   )
@@ -144,7 +152,12 @@ function Frame({ children, wide, surface }: { children: ReactNode; wide?: boolea
 function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string; onSignedOut: () => void }) {
   const [list, setList] = useState<WorkspaceInfo[] | null>(null)
   const [open, setOpen] = useState<{ ws: Workspace } | null>(null)
-  const [key, setKey] = useState(recoveryKey)
+  const [copyState, setCopyState] = useState<'idle' | 'done' | 'error'>('idle')
+  const copyRecovery = async () => {
+    if (!recoveryKey) return
+    try { await navigator.clipboard.writeText(recoveryKey); setCopyState('done') }
+    catch { setCopyState('error') }
+  }
   const [busy, setBusy] = useState(false)
   const [checkingLast, setCheckingLast] = useState(true)
   const [error, setError] = useState('')
@@ -213,16 +226,35 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
     } catch (error) { setError(errText(error)) }
     finally { pending.current = false; setBusy(false) }
   }
-  /** A bundle always goes into a NEW workspace (ADR-0009 §2). */
+  /** Imported data always goes into a new workspace. */
   const importFile = async (file: File) => {
-    const id = uuidv7()
-    await createWorkspace(id, file.name.replace(/\.nevis\.zip$|\.zip$/i, '') || t('Import'))
-    const ws = new Workspace(id, null)
-    ;(window as unknown as { __ws?: Workspace }).__ws = ws
-    await ws.start()
-    try { await ws.importBundle(new Uint8Array(await file.arrayBuffer())) } catch (e) { alert('ورود ناموفق: ' + String((e as Error).message ?? e)) }
-    await remember(id)
-    setOpen({ ws })
+    if (pending.current) return
+    pending.current = true
+    setBusy(true)
+    try {
+      const prepared = await prepareImport(file)
+      const id = uuidv7()
+      const name = file.name.replace(/\.nevis\.zip$|\.(zip|md|markdown|txt)$/i, '') || t('Import')
+      await createWorkspace(id, name)
+      setList(current => [...(current ?? []), { id, name, role: 'owner', head: 0 }])
+      const ws = new Workspace(id, null)
+      try {
+        await ws.start()
+        if (prepared.kind === 'bundle') await ws.importBundle(prepared.bytes)
+        else await importNotes(ws, prepared.notes, prepared.files)
+        if (isDesktop) {
+          flushOff.current?.()
+          flushOff.current = await onWindowFlush(async () => {
+            await ws.flushAll()
+            await Promise.race([ws.rt.engine.cycle().catch(() => undefined), new Promise(r => setTimeout(r, 4000))])
+          })
+        }
+      } catch (error) { await ws.stop().catch(() => undefined); throw error }
+      ;(window as unknown as { __ws?: Workspace }).__ws = ws
+      await remember(id)
+      setOpen({ ws })
+    } catch (error) { setError(t('Import failed') + ' — ' + (error instanceof AuthError ? errText(error) : String((error as Error).message ?? error))) }
+    finally { pending.current = false; setBusy(false) }
   }
   const back = async () => { flushOff.current?.(); await open?.ws.stop(); setOpen(null); void workspaces().then(setList, error => setError(errText(error))) }
   if (open) return <WorkspaceView ws={open.ws} onSignOut={() => void leave()} onWorkspaces={() => void back()} workspaceName={list?.find(w => w.id === open.ws.ws)?.name} />
@@ -230,7 +262,7 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
     <Frame wide surface="workspaces">
       <h1>{t('Choose a workspace')}</h1>
       <p>{t('Open a workspace or create one.')}</p>
-      {key && <div className="recovery onb-key" data-testid="recovery"><p>کلید بازیابی شما (فقط یک بار نشان داده می‌شود؛ جایی امن نگه دارید):</p><code dir="ltr">{key}</code> <Button size="sm" onClick={() => setKey(undefined)}>نوشتم</Button></div>}
+      {recoveryKey && <div className="recovery onb-key" data-testid="recovery"><p>{t('Save your recovery key before leaving this screen.')}</p><code dir="ltr">{recoveryKey}</code> <Button size="sm" onClick={() => void copyRecovery()}>{t(copyState === 'done' ? 'Copied' : 'Copy recovery key')}</Button>{copyState === 'error' && <p role="status">{t('Could not copy the key. Select and copy it manually.')}</p>}</div>}
       {error && <p role="alert" className="err">{error}</p>}
       {(checkingLast || list === null || busy) && <Pending />}
       {!checkingLast && list !== null && (
@@ -242,7 +274,7 @@ function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string
       )}
       <div className="onb-actions">
         <Button variant="primary" data-testid="ws-new" disabled={busy || checkingLast} onClick={() => void make()}>{t('New workspace')}</Button>
-        <label className="ds-btn ds-btn--ghost">{t('Import a bundle')} <input type="file" accept=".zip" data-testid="ws-import" disabled={busy || checkingLast} hidden onChange={e => { const f = e.target.files?.[0]; if (f) void importFile(f) }} /></label>
+        <label className="ds-btn ds-btn--ghost">{t('Import notes')} <input type="file" accept=".zip,.md,.markdown,.txt" data-testid="ws-import" disabled={busy || checkingLast} hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void importFile(f) }} /></label>
         <Button variant="ghost" data-testid="signout" disabled={busy || checkingLast} onClick={() => void leave()}>{t('Sign out')}</Button>
       </div>
     </Frame>
@@ -270,17 +302,41 @@ function ServerForm({ onDone, onBack }: { onDone: () => void; onBack: () => void
 }
 
 function Root() {
+  useSettings()
   const [state, setState] = useState<'loading' | 'server' | 'out' | 'unreachable' | { me: Me; recoveryKey?: string }>('loading')
-  const refresh = async (recoveryKey?: string) => {
-    if (isDesktop) {
-      try {
+  const refreshing = useRef(false)
+  const pendingRecovery = useRef<string | undefined>(undefined)
+  const refresh = useCallback(async (recoveryKey?: string) => {
+    if (recoveryKey) pendingRecovery.current = recoveryKey
+    if (refreshing.current) return
+    refreshing.current = true
+    try {
+      if (isDesktop) {
         const info = await appInfo()
         if (!info.server || !info.hasToken) { setState('out'); return }
-      } catch { setState('unreachable'); return }
+      }
+      const account = await me()
+      setState(account ? { me: account, recoveryKey: pendingRecovery.current } : 'out')
+      pendingRecovery.current = undefined
+    } catch {
+      setState('unreachable')
+    } finally { refreshing.current = false }
+  }, [])
+  useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => {
+    if (state !== 'unreachable') return
+    const retry = () => { if (navigator.onLine && !document.hidden) void refresh() }
+    const timer = window.setInterval(retry, 15_000)
+    window.addEventListener('online', retry)
+    window.addEventListener('focus', retry)
+    document.addEventListener('visibilitychange', retry)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('online', retry)
+      window.removeEventListener('focus', retry)
+      document.removeEventListener('visibilitychange', retry)
     }
-    await me().then(m => setState(m ? { me: m, recoveryKey } : 'out'), () => setState('unreachable'))
-  }
-  useEffect(() => { void refresh() }, [])
+  }, [state, refresh])
   // the start animation (index.html) fades away once the app has something to show
   useEffect(() => { if (state !== 'loading') (window as unknown as { __splashDone?: () => void }).__splashDone?.() }, [state])
   if (state === 'loading') return <Frame><Pending /></Frame>

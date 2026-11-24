@@ -111,11 +111,13 @@ ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 .dbtable th[data-prop] > .dv-th-btn:hover { background: var(--ds-hover, var(--ds-sunk-2)); }
 .dbtable tr[data-checked] { background: var(--ds-accent-soft); }
 .dbtable td { vertical-align: middle; block-size: 36px; }
-.dbtable .dbtable-handle { position: relative; inline-size: 56px; padding-inline: var(--ds-s1) var(--ds-s2); white-space: nowrap; text-align: end; }
+/* Keep surplus table width in data columns. A small percentage lets the control columns sit at their minimums across table layout engines. */
+.dbtable :is(.dbtable-handle, .dbtable-add) { box-sizing: border-box; inline-size: .1%; }
+.dbtable .dbtable-handle { position: relative; min-inline-size: 56px; padding-inline: var(--ds-s1) var(--ds-s2); white-space: nowrap; text-align: end; }
 .dbtable-handle .dv-grip { position: absolute; inset-inline-start: var(--ds-s1); inset-block-start: 50%; transform: translateY(-50%); display: inline-grid; }
 .dbtable tr:hover .dbtable-handle .dv-grip, .dbtable tr[data-checked] .dbtable-handle .dv-grip { opacity: 1; }
 .dbtable-handle .ds-checkbox { position: absolute; inset-inline-end: var(--ds-s2); inset-block-start: 50%; transform: translateY(-50%); }
-.dbtable-add { inline-size: 38px; }
+.dbtable-add { min-inline-size: 44px; }
 .dbtable-add .dv-th-btn { justify-content: center; padding-inline: 0; }
 .db-cellbox { position: relative; min-block-size: 34px; padding-inline: var(--ds-s1); border-radius: var(--ds-r); }
 .db-cellbox:hover, .db-cellbox:focus-within { background: var(--ds-sunk); }
@@ -136,7 +138,7 @@ ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 .dbtable [data-frozen] { position: sticky; background: var(--ds-bg); z-index: 1; }
 .dbtable thead [data-frozen] { background: var(--ds-sunk); z-index: 2; }
 
-.dv-page-cols { max-inline-size: none; }
+.dv-page-cols { max-inline-size: none; padding-inline: 0; }
 .dv-page-cols .dv-page { max-inline-size: none; padding-inline: clamp(16px, 2vw, 32px); }
 .pg-props .ds-prop-value > .ds-field { flex: 1; min-inline-size: 0; box-sizing: border-box; }
 .pg-props .dv-date-field { gap: var(--ds-s2); }

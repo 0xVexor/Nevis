@@ -12,7 +12,11 @@ export default defineConfig({
   reporter: [['list']],
   globalSetup: './tests/global-setup.ts',
   // reducedMotion: the start animation (a 2-second logo) is skipped, as it is for a person who asks for less motion
-  use: { baseURL, reducedMotion: 'reduce' },
+  use: {
+    baseURL, reducedMotion: 'reduce',
+    // Existing UI scenarios exercise Persian labels and RTL. Fresh-profile tests override this fixture.
+    storageState: { cookies: [], origins: [{ origin: baseURL, localStorage: [{ name: 'nevis.device', value: '{"lang":"fa"}' }] }] },
+  },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'], channel: 'chrome' } },
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },

@@ -21,7 +21,7 @@ export function HomeRoute({ ws, onOpen, onNewPage, onTemplate, onWorkspaces }: {
       <HomeScreen
         pages={pages} tasks={tasks} due={due} now={Date.now()} showIcons={settings.showIcons} onCheck={(task, checked) => { const blockId = ws.search.tasks().filter(x => x.page === task.pageId)[task.index]?.task.blockId; void ws.setTaskChecked(task.pageId, blockId ?? '', checked, task.index) }}
         onOpen={onOpen} onNew={onNewPage} onTable={() => go({ name: 'all' })} onCards={() => go({ name: 'cards' })} onTemplates={() => go({ name: 'templates' })} onTemplate={onTemplate}
-        onImport={() => { ws.notify(t('Choose Import a bundle from the workspace list.')); onWorkspaces?.() }} onFiles={() => go({ name: 'files' })} onTasks={() => go({ name: 'tasks' })}
+        onImport={() => { ws.notify(t('Choose Import notes from the workspace list.')); onWorkspaces?.() }} onFiles={() => go({ name: 'files' })} onTasks={() => go({ name: 'tasks' })}
         note={<HomeNote ws={ws} onOpen={onOpen} autoFocus={focusFirstNote} />}
       />
     </div>

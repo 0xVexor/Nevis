@@ -258,7 +258,7 @@ export function AppShell({ ws, route, status, children, onSearch, searchOpen, on
         onNewPage={() => onNewPage('')} onNewDatabase={onNewDatabase} onNewTodo={newTodo}
         onNewBoard={onNewBoard}
         onNewFolder={() => pageActions.newFolder()}
-        onOpenSettings={() => goTo('settings')} onSignOut={onSignOut} workspaceName={workspaceName ?? ''} onWorkspaces={onWorkspaces ?? (() => undefined)}
+        onOpenSettings={() => { go({ name: 'settings', tab: 'sync' }); setDrawer(false) }} onSignOut={onSignOut} workspaceName={workspaceName ?? ''} onWorkspaces={onWorkspaces ?? (() => undefined)}
       />
       {!overlay && <ContextPanel
         title={t(PANEL_TITLES[route.name] ?? 'Pages')} kind={panelKind} open={panelOpen} narrow={narrow} width={sideW} onWidth={setSideW} onClose={() => setDrawer(false)} setHost={setHost}

@@ -89,7 +89,7 @@ export function SearchPalette({
             <input
               id="ds-palette-query"
               ref={input}
-              dir="auto"
+              dir={query.trim() ? 'auto' : undefined}
               autoComplete="off"
               spellCheck={false}
               placeholder={placeholder}

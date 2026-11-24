@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises'
-import { unzipSync, strFromU8 } from 'fflate'
+import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate'
 import { expect, test, type Page } from '@playwright/test'
 import { appReady, createNew } from './shell-helpers'
+import { addProp } from './db-helpers'
 
 // ROADMAP M12 in the real app: download the bundle and the Markdown zip, import the bundle into a NEW workspace of the same account.
 const pw = 'correct horse battery'
@@ -9,8 +10,8 @@ test.setTimeout(180_000)
 const body = (p: Page) => p.getByTestId('editor').locator('.ProseMirror')
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
 
-test('export the bundle and the Markdown zip; import the bundle into a new workspace: the pages, the text and the picture are there', async ({ browser }) => {
-  const c1 = await browser.newContext({ acceptDownloads: true }), c2 = await browser.newContext()
+test('export the bundle and the Markdown zip; import the bundle into a new workspace: the pages, the text and the picture are there', async ({ browser, storageState }) => {
+  const c1 = await browser.newContext({ acceptDownloads: true, storageState }), c2 = await browser.newContext({ storageState })
   try {
     const a = await c1.newPage()
     const user = `x${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
@@ -60,4 +61,64 @@ test('export the bundle and the Markdown zip; import the bundle into a new works
     await expect(body(b)).toContainText('متن فارسی و English')
     await expect(b.locator('.image-block img')).toBeVisible({ timeout: 30_000 })
   } finally { await c1.close(); await c2.close() }
+})
+
+
+test('import a Markdown zip with multiple notes and a nested folder', async ({ page }) => {
+  const user = `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
+  await page.goto('/')
+  await page.getByRole('button', { name: 'حساب ندارم' }).click()
+  await page.locator('input[name=username]').fill(user); await page.locator('input[name=password]').fill(pw)
+  await page.getByTestId('auth-submit').click()
+  await page.getByTestId('ws-import').setInputFiles({ name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from(zipSync({
+    'First.md': strToU8('# First heading\n\n**Bold text**\n\n![Archived image](images/p.png)'),
+    'Folder/Second.md': strToU8('Second note content'),
+    'images/p.png': PNG,
+  })) })
+  await appReady(page)
+  await expect(page.getByTestId('page-row')).toHaveCount(3, { timeout: 30_000 })
+  await page.getByTestId('page-row').filter({ hasText: 'First' }).dblclick()
+  await expect(body(page)).toContainText('First heading')
+  await expect(body(page).locator('strong')).toHaveText('Bold text')
+  await expect(body(page).locator('.image-block img')).toBeVisible()
+})
+
+for (const [name, text] of [['single.md', '# Standalone Markdown'], ['single.txt', 'Standalone plain text']] as const) {
+  test(`import ${name} directly`, async ({ page }) => {
+    const user = `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
+    await page.goto('/')
+    await page.getByTestId('auth-switch').click()
+    await page.locator('input[name=username]').fill(user)
+    await page.locator('input[name=password]').fill(pw)
+    await page.getByTestId('auth-submit').click()
+    await page.getByTestId('ws-import').setInputFiles({ name, mimeType: 'text/plain', buffer: Buffer.from(text) })
+    await appReady(page)
+    await page.getByTestId('page-row').first().dblclick()
+    await expect(body(page)).toContainText(text.replace(/^# /, ''))
+  })
+}
+
+test('workspace Markdown includes database record values', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('auth-switch').click()
+  await page.locator('input[name=username]').fill('mdrecord' + Date.now().toString(36))
+  await page.locator('input[name=password]').fill(pw)
+  await page.getByTestId('auth-submit').click()
+  await page.getByTestId('ws-new').click()
+  await createNew(page, 'new-database')
+  await page.getByTestId('db-title').fill('Projects')
+  await addProp(page, 'Budget', 'number')
+  await page.getByTestId('db-add-row').click()
+  const record = page.getByTestId('db-row').first()
+  await record.locator('[data-prop="نام"] input').fill('Garden')
+  const budget = record.locator('[data-prop="Budget"] input')
+  await budget.fill('42')
+  await budget.blur()
+  await page.getByTestId('nav-settings').click()
+  await page.getByTestId('settings-tab-data').click()
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId('export-markdown').click()])
+  const files = unzipSync(new Uint8Array(await readFile((await download.path())!)))
+  const recordPath = Object.keys(files).find(path => /^Projects--[^/]+\/Garden--.+\.md$/.test(path))
+  expect(recordPath).toBeDefined()
+  expect(strFromU8(files[recordPath!]!)).toContain('**Budget**: 42')
 })
