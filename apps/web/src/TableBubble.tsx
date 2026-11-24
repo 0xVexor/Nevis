@@ -62,7 +62,8 @@ export function TableBubble({ editor }: { editor: Editor }) {
     if (!s) setArmed(false)
   }, [s])
   const open = !!s && armed
-  const box = useAnchor(editor, open, () => tableDom(editor), [s?.w, s?.align])
+  // A toolbar shown below a table must leave its following paragraph clickable.
+  const box = useAnchor(editor, open, () => tableDom(editor), [s?.w, s?.align], 56)
 
   if (!open) return null
   const run = (fn: (c: ChainedCommands) => ChainedCommands) => fn(editor.chain().focus()).run()

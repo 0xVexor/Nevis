@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef } from 'react'
 import { LAYOUT_INTERACTION, layoutInteractionBusy } from './layoutInteraction'
 
 /** Editor-local floating tools never cover block chrome or intercept a layout interaction. */
-export function useAnchor(editor: Editor, open: boolean, getEl: () => HTMLElement | null, deps: unknown[] = []) {
+export function useAnchor(editor: Editor, open: boolean, getEl: () => HTMLElement | null, deps: unknown[] = [], clearBelow = 0) {
   const box = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     if (!open || editor.isDestroyed) return
@@ -53,9 +53,12 @@ export function useAnchor(editor: Editor, open: boolean, getEl: () => HTMLElemen
       const caps = Array.from(root.querySelectorAll<HTMLElement>('[data-layout-drag-surface]'))
         .map((surface) => surface.getBoundingClientRect())
         .filter((cap) => cap.width && cap.height && cap.bottom > viewportTop && cap.top < viewportBottom)
-      const candidates = [r.top - h - 12, r.bottom + 12, minTop, viewportBottom - h - 8, ...caps.flatMap((cap) => [cap.top - h - 8, cap.bottom + 8])]
+      const below = r.bottom + Math.max(12, clearBelow)
+      const candidates = [r.top - h - 12, below, minTop, viewportBottom - h - 8, ...caps.flatMap((cap) => [cap.top - h - 8, cap.bottom + 8])]
       const top = candidates.find(
-        (y) => y >= minTop && y + h <= viewportBottom - 8 && !caps.some((cap) => left < cap.right + 4 && left + w > cap.left - 4 && y < cap.bottom + 6 && y + h > cap.top - 6),
+        (y) => y >= minTop && y + h <= viewportBottom - 8 &&
+          (!clearBelow || y + h <= r.bottom || y >= below) &&
+          !caps.some((cap) => left < cap.right + 4 && left + w > cap.left - 4 && y < cap.bottom + 6 && y + h > cap.top - 6),
       )
       if (top == null) {
         hide()
@@ -97,6 +100,6 @@ export function useAnchor(editor: Editor, open: boolean, getEl: () => HTMLElemen
     }
     // The caller passes the node identity/attributes in deps; event callbacks resolve the current DOM.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editor, ...deps])
+  }, [open, editor, clearBelow, ...deps])
   return box
 }
