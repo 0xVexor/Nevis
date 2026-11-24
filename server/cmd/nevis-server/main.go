@@ -26,6 +26,8 @@ import (
 // backupKeep is how many daily backups of the database stay in DATA_DIR/backup (older ones are removed).
 const backupKeep = 14
 
+var version = "dev" // Set by the release build.
+
 func env(k, def string) string {
 	if v := os.Getenv(k); v != "" {
 		return v
@@ -91,6 +93,7 @@ func main() {
 	quota, _ := strconv.Atoi(env("QUOTA_MB", "1024"))
 	maxBlob, _ := strconv.Atoi(env("MAX_BLOB_MB", "100"))
 	handler := api.New(st, api.Config{
+		Version: version,
 		DevMode: devMode, DevToken: os.Getenv("DEV_TOKEN"), Secret: secret, Registration: reg, InviteCodes: invites, PowBits: bits, SignupsPerHour: envInt("SIGNUPS_PER_HOUR"),
 		QuotaBytes: int64(quota) << 20, DataDir: dataDir, MaxBlobBytes: int64(maxBlob) << 20, WebDir: os.Getenv("WEB_DIR"), InsecureCookies: insecure, Log: log,
 	})

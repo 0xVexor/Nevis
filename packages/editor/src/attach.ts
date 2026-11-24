@@ -61,7 +61,8 @@ export const AttachFiles = Extension.create({
           const text = event.clipboardData?.getData('text/plain') ?? ''
           if (html || text) {
             // Rich clipboard data often includes the same image as a file. Preserve the text and avoid a duplicate.
-            if (!/<img\b/i.test(html) && !/!\[[^\]]*\]\(/.test(text)) queueMicrotask(() => void attachFiles(editor, files))
+            const imageCount = (html.match(/<img\b/gi) ?? []).length || (text.match(/!\[[^\]]*\]\(/g) ?? []).length
+            if (!imageCount || files.some(f => !f.type.startsWith('image/')) || files.length !== imageCount) queueMicrotask(() => void attachFiles(editor, files))
             return false
           }
           event.preventDefault()

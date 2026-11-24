@@ -55,6 +55,20 @@ describe('bundle round trip (ADR-0009)', () => {
     const files = unzipSync(zip); files['pages/' + Object.keys(files).find(k => k.startsWith('pages/'))!.slice(6)] = strToU8('{"type":"doc"}')
     await expect(importBundle(z(files), { client: (await workspace()).client, store: (await workspace()).store })).rejects.toThrow(/damaged/)
   })
+  it('rejects unverified pages and missing attachment bytes before importing', async () => {
+    const { w, hash } = await seeded()
+    const zip = await exportBundle(source(w))
+    const { unzipSync } = await import('fflate')
+    const extra = unzipSync(zip)
+    extra['pages/extra.json'] = strToU8('{"type":"doc"}')
+    const first = await workspace()
+    await expect(importBundle(zipSync(extra), first)).rejects.toThrow(/unverified file/)
+    const missing = unzipSync(zip)
+    delete missing[`attachments/${hash}`]
+    const second = await workspace()
+    await expect(importBundle(zipSync(missing), second)).rejects.toThrow(/missing attachment/)
+    expect(await second.store.run(tx => tx.entities())).toHaveLength(0)
+  })
   it('lists an attachment it could not read instead of writing bytes under a wrong name', async () => {
     const { w, hash } = await seeded()
     const zip = await exportBundle({ ...source(w), blob: async () => undefined })

@@ -334,3 +334,27 @@ test('clicking a pending page link creates the page and saves the resolved link'
   await expect(page).toHaveURL(target)
   await expect(page.getByTestId('page-row').filter({ hasText: 'Second note' })).toHaveCount(1)
 })
+
+test('table cells can be selected by dragging and a paragraph follows the last table', async ({ page }) => {
+  await start(page)
+  await slash(page, 'table')
+  const table = body(page).locator('table')
+  const cells = table.locator('th, td')
+  const a = (await cells.nth(0).boundingBox())!
+  const b = (await cells.nth(4).boundingBox())!
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 10 })
+  await page.mouse.up()
+  await expect(table.locator('.selectedCell')).toHaveCount(4)
+  await expect(page.locator('.table-bubble').getByRole('button', { name: 'Merge cells' })).toBeEnabled()
+  await expect.poll(async () => new Set(await table.locator('.selectedCell').evaluateAll(cells => cells.map(cell => getComputedStyle(cell).backgroundColor))).size).toBe(1)
+  await cells.first().click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Table', exact: true }).hover()
+  await expect(page.getByRole('menuitem', { name: 'Merge cells', exact: true })).toBeEnabled()
+  await page.keyboard.press('Escape')
+  await expect(body(page).locator(':scope > p').last()).toBeVisible()
+  await body(page).locator(':scope > p').last().click()
+  await page.keyboard.type('Below the table')
+  await expect(body(page).locator(':scope > p').last()).toHaveText('Below the table')
+})

@@ -1,7 +1,6 @@
 import { composeFonts } from './fontStack'
 import { workspaceAppearance, appearancePresets, deckThemeForAppearance, syntaxColors, themeColors, type AppearancePreset } from './appearancePresets'
-// DEVICE settings: how THIS device looks (the old app's appearance model, copied). They never leave the device: this module cannot reach the
-// synced log (rule `device-settings-never-reach-the-outbox`), and the e2e test checks that the outbox does not change.
+// Local settings are applied immediately. A signed-in account may sync selected appearance fields separately from the workspace log.
 // Everything is applied as CSS variables on <html> (see docs/design-language.md),
 // so no component needs to know about them. Persisted on the device only.
 import { useSyncExternalStore } from 'react'
@@ -16,7 +15,7 @@ export type FontId = 'vazir' | 'estedad' | 'notosans' | 'ibm' | 'kufi' | 'naskh'
 export type Background = { kind: 'default' } | { kind: 'none' } | { kind: 'preset'; id: string } | { kind: 'image'; file: string }
 
 export interface Settings {
-  lang: Lang // UI language (Persian by default for this product; the old app defaulted to English)
+  lang: Lang // UI language
   dir: LayoutDir // layout direction of the whole UI (sidebar side, lists, panels)
   theme: Theme
   appearancePreset: AppearancePreset
@@ -259,11 +258,12 @@ function load(native?: string): Settings {
 
 let state: Settings = load()
 const subs = new Set<() => void>()
+const edits = new Set<(patch: Partial<Settings>) => void>()
 
 export const getSettings = () => state
 const subscribe = (fn: () => void) => (subs.add(fn), () => void subs.delete(fn))
 
-export function updateSettings(patch: Partial<Settings>) {
+function saveSettings(patch: Partial<Settings>) {
   state = { ...state, ...patch }
   const stored = JSON.stringify(state)
   try {
@@ -274,6 +274,20 @@ export function updateSettings(patch: Partial<Settings>) {
   if (isDesktop) void setDesktopPreference(KEY, stored).catch(error => console.warn('Could not save device preferences', error))
   apply()
   subs.forEach((f) => f())
+}
+
+export function updateSettings(patch: Partial<Settings>) {
+  saveSettings(patch)
+  edits.forEach(fn => fn(patch))
+}
+
+export function subscribeSettingsEdits(fn: (patch: Partial<Settings>) => void) {
+  edits.add(fn)
+  return () => { edits.delete(fn) }
+}
+
+export function applyAccountAppearance(patch: Partial<Settings>) {
+  if (Object.entries(patch).some(([key, value]) => state[key as keyof Settings] !== value)) saveSettings(patch)
 }
 
 export async function restoreDesktopSettings() {

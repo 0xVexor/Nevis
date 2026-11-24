@@ -14,6 +14,7 @@ import { MermaidBlock } from './mermaid'
 import { Drawing, Image, Table } from './nodeViews'
 import { PhysicalShortcuts } from './physicalShortcuts'
 import { TableColumnResize } from './tableResize'
+import { TableTrailingParagraph } from './tableTrailingParagraph'
 import { MarkdownTab } from './markdownTab'
 
 /** The app's reference UI replaces the package's minimal demo controls, on the same Yjs schema. */
@@ -37,5 +38,5 @@ export function referenceEditorExtensions(pages: () => PageRef[]) {
       })]
     },
   })
-  return [LayoutGroup, LayoutColumn, LayoutSafety, DragHandle, SlashCommand, PageLinks, CommandPalette, CodeBlock, MathBlock, MathInline, MathAuto, MermaidBlock, Image, Table, TableColumnResize, Drawing, PhysicalShortcuts, MarkdownTab, Extension.create({ name: 'floatingBars' })]
+  return [LayoutGroup, LayoutColumn, LayoutSafety, DragHandle, SlashCommand, PageLinks, CommandPalette, CodeBlock, MathBlock, MathInline, MathAuto, MermaidBlock, Image, Table, TableColumnResize, TableTrailingParagraph, Drawing, PhysicalShortcuts, MarkdownTab, Extension.create({ name: 'floatingBars' })]
 }

@@ -3,10 +3,12 @@ import type { CSSProperties } from 'react'
 import { Button, Disclosure, Icon, PreferenceGroup, PreferenceRow } from '../ds'
 import { BrandMark } from '../shell/BrandMark'
 import appPackage from '../../package.json' // the version shown in About
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FONTS, TEXT_COLORS, loadFontPreview, updateSettings, useSettings, type FontDef, type FontGroup, type FontId } from '../deviceSettings'
 import { t } from '../i18n'
 import { LATIN_DEFAULT } from '../fontStack'
+import { serverVersion } from '../auth'
+import { isDesktop } from '../desktop'
 
 // ───── building blocks: a card holds rows; a row is "label + hint" on one side and its control on the other ─────
 
@@ -119,6 +121,12 @@ export function EditorExtras() {
 }
 
 export function About() {
+  const [server, setServer] = useState<string>()
+  useEffect(() => {
+    let active = true
+    void serverVersion().then(version => { if (active) setServer(version) }, () => undefined)
+    return () => { active = false }
+  }, [])
   return (
     <>
       <PreferenceGroup title={<Brand />}>
@@ -127,7 +135,8 @@ export function About() {
             <BrandMark size={34} />
           </span>
           <p>{t('Your notes, checklists and drawings in one calm place. Everything stays on your device.')}</p>
-          <small>{t('Version {version}', { version: appPackage.version })}</small>
+          <small>{t(isDesktop ? 'Desktop version {version}' : 'Web version {version}', { version: appPackage.version })}</small>
+          <small>{server ? t('Server version {version}', { version: server }) : t('Server version unavailable')}</small>
           <small>{t('Created by')} Vexor</small>
         </div>
       </PreferenceGroup>

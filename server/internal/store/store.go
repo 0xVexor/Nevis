@@ -29,6 +29,8 @@ CREATE INDEX IF NOT EXISTS op_doc ON op (ws, doc, seq);
 CREATE TABLE IF NOT EXISTS purged (ws TEXT NOT NULL, doc TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (ws, doc));
 CREATE TABLE IF NOT EXISTS account (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, pass_hash TEXT NOT NULL,
   recovery_hash TEXT NOT NULL, created_at INTEGER NOT NULL, used_bytes INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS account_appearance (account TEXT NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (account, name)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS member (ws TEXT NOT NULL, account TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('owner','editor','viewer')),
   PRIMARY KEY (ws, account));
 CREATE INDEX IF NOT EXISTS member_account ON member (account);

@@ -40,6 +40,15 @@ export const signIn = (username: string, password: string, deviceName: string) =
 export const signOut = () => (isDesktop ? invoke('auth_signout') : call('POST', '/v1/auth/signout'))
 export const workspaces = async (): Promise<WorkspaceInfo[]> => (await call('GET', '/v1/ws')).workspaces
 export const createWorkspace = (id: string, name: string) => call('POST', '/v1/ws', { id, name })
+export type AppearanceValues = Record<string, string | number | null>
+interface AppearanceResponse { accountId: string; values: AppearanceValues }
+export const readAccountAppearance = (): Promise<AppearanceResponse> => call('GET', '/v1/me/appearance')
+export const serverVersion = async (): Promise<string | undefined> => {
+  const health = await call('GET', '/v1/health')
+  return typeof health.version === 'string' && health.version ? health.version : undefined
+}
+export const writeAccountAppearance = (accountId: string, values: AppearanceValues, initialize = false): Promise<AppearanceResponse> =>
+  call('PATCH', '/v1/me/appearance', { accountId, values, initialize })
 export async function signUp(username: string, password: string, deviceName: string, invite: string): Promise<{ recoveryKey?: string }> {
   const ch = await call('GET', '/v1/auth/challenge')
   const counter = ch.bits ? await solve(ch.challenge, ch.bits) : 0

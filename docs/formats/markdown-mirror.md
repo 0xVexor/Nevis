@@ -1,6 +1,6 @@
 # آینهٔ Markdown (یک‌طرفه)
 
-مبدل: `packages/bundle/src/markdown.ts` (یک پیاده‌سازی برای آینهٔ دسکتاپ و «دانلود Markdown» وب). **هرگز Markdown را پس نمی‌خواند.** fixture طلایی: `packages/bundle/test/golden/all.md` (یک تغییر مبدل = تغییر بازبینی‌شدهٔ این فایل).
+آینهٔ دسکتاپ و خروجی Markdown وب از `packages/bundle/src/markdown.ts` استفاده می‌کنند. آینه یک‌طرفه است. از فهرست فضاهای کاری می‌توان Markdown، متن ساده یا ZIP حاوی یادداشت‌ها و تصاویر را در یک فضای تازه وارد کرد. برای حفظ ساختار دیتابیس، رویدادها و دادهٔ بوم از باندل `.nevis.zip` استفاده کنید. آزمون مرجع مبدل در `packages/bundle/test/golden/all.md` است.
 
 | بلوک | Markdown |
 |---|---|

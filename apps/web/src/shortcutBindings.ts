@@ -2,6 +2,7 @@
 // the modifiers first, the key last. Keys are matched by the physical key (event.code), so they also work
 // with the Persian layout, where event.key is a Persian letter.
 import { getSettings } from './deviceSettings'
+import { isMac } from './shortcuts'
 
 export type BindingId = 'search' | 'sidebar' | 'reader' | 'widerColumn' | 'narrowerColumn' | 'find'
 export type Chord = string[]
@@ -59,7 +60,9 @@ export function eventKey(e: KeyboardEvent): string | null {
 export function chordOf(e: KeyboardEvent): Chord | null {
   const key = eventKey(e)
   if (!key || e.isComposing || e.getModifierState?.('AltGraph')) return null
-  return [...(e.ctrlKey || e.metaKey ? ['Mod'] : []), ...(e.altKey ? ['Alt'] : []), ...(e.shiftKey ? ['Shift'] : []), key]
+  // Control and Command are distinct on macOS; leave native Control chords alone.
+  if (isMac() ? e.ctrlKey : e.metaKey) return null
+  return [...((isMac() ? e.metaKey : e.ctrlKey) ? ['Mod'] : []), ...(e.altKey ? ['Alt'] : []), ...(e.shiftKey ? ['Shift'] : []), key]
 }
 
 export const sameChord = (a: Chord, b: Chord) => a.length === b.length && a.every((k, i) => k === b[i])

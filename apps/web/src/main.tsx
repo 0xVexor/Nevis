@@ -5,6 +5,7 @@ import { StrictMode, useCallback, useEffect, useRef, useState, type FormEvent } 
 import { createRoot } from 'react-dom/client'
 import { uuidv7 } from '@nevis/protocol'
 import { AuthError, createWorkspace, deviceLabel, me, recoverAccount, signIn, signOut, signUp, workspaces, type Me, type WorkspaceInfo } from './auth'
+import { syncAccountAppearance } from './accountAppearance'
 import { Lab, type Note, type Status } from './lab'
 import { appInfo, getDesktopPreference, isDesktop, onWindowFlush, setDesktopPreference, setServer } from './desktop'
 import { installTranslator } from './i18n'
@@ -150,6 +151,7 @@ function Frame({ children, wide, surface }: { children: ReactNode; wide?: boolea
 
 /** Signed in: pick (or create) a workspace, then open it. */
 function Home({ who, recoveryKey, onSignedOut }: { who: Me; recoveryKey?: string; onSignedOut: () => void }) {
+  useEffect(() => syncAccountAppearance(who.account.id), [who.account.id])
   const [list, setList] = useState<WorkspaceInfo[] | null>(null)
   const [open, setOpen] = useState<{ ws: Workspace } | null>(null)
   const [copyState, setCopyState] = useState<'idle' | 'done' | 'error'>('idle')

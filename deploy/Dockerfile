@@ -3,12 +3,13 @@ FROM node:24-bookworm AS web
 WORKDIR /src
 RUN corepack enable
 COPY . .
-RUN pnpm install --frozen-lockfile && pnpm --filter web build
+RUN pnpm install --frozen-lockfile && pnpm --filter web build && node -p "require('./apps/web/package.json').version" > /tmp/nevis-version
 
 FROM golang:1.26 AS server
 WORKDIR /src/server
 COPY server/ .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /nevis-server ./cmd/nevis-server
+COPY --from=web /tmp/nevis-version /tmp/nevis-version
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=$(cat /tmp/nevis-version)" -o /nevis-server ./cmd/nevis-server
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=server /nevis-server /nevis-server

@@ -5,7 +5,7 @@ import { Plugin } from '@tiptap/pm/state'
 import { isSafeHref, safeImageSrc } from '@nevis/schema'
 import { marked } from 'marked'
 import { looksLikeMermaid } from './mermaidText'
-import { explain, sniffBlob, sniffImage } from './attachments'
+import { explain, sniffBlob } from './attachments'
 import { optionsOf } from './options'
 
 // ---------------------------------------------------------------------------------------------------------------- Markdown
@@ -119,23 +119,76 @@ export function cleanPastedHtml(html: string): string {
   return doc.body.innerHTML
 }
 
-/** Store embedded raster images before inserting their references. Data URLs never enter the document. */
-function embeddedImages(editor: Editor, html: string, file?: File): { html: string; pending: Promise<void>[] } {
+/** Read public images using the image policy, which is narrower than granting cross-origin fetch to the editor. */
+function captureRemoteImage(url: string): Promise<Blob | null> {
+  return new Promise(resolve => {
+    const image = new Image()
+    image.crossOrigin = 'anonymous'
+    image.referrerPolicy = 'no-referrer'
+    const finish = (result: Blob | null) => {
+      clearTimeout(timer)
+      image.onload = image.onerror = null
+      image.removeAttribute('src')
+      resolve(result)
+    }
+    const timer = setTimeout(() => finish(null), 5_000)
+    image.onerror = () => finish(null)
+    image.onload = () => {
+      const { naturalWidth: width, naturalHeight: height } = image
+      if (!width || !height || width * height > 20_000_000) { finish(null); return }
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const context = canvas.getContext('2d')
+      if (!context) { finish(null); return }
+      try {
+        context.drawImage(image, 0, 0)
+        canvas.toBlob(finish, 'image/png')
+      } catch { finish(null) }
+    }
+    image.src = url
+  })
+}
+
+/** Capture clipboard image bytes before inserting references. Failed downloads retain their original URL for repair. */
+function embeddedImages(editor: Editor, html: string, files: File[]): { html: string; pending: Promise<void>[] } {
   const port = optionsOf(editor).attachments
   const doc = new DOMParser().parseFromString(html, 'text/html')
   const pending: Promise<void>[] = []
   if (!port) return { html, pending }
   doc.querySelectorAll(DROP).forEach(el => el.remove())
-  const images = doc.querySelectorAll('img[src]')
-  let paired: Element | undefined
-  if (file && file.type.startsWith('image/') && images.length === 1 && file.size <= port.maxBytes) {
-    const img = images[0]!
-    paired = img
+  const images = Array.from(doc.querySelectorAll('img[src]'))
+  const imageFiles = files.filter(file => file.type.startsWith('image/'))
+  // Only pair when the mapping is unambiguous; otherwise preserve the URLs.
+  const paired = imageFiles.length === images.length ? imageFiles : []
+  images.forEach((img, index) => {
+    const source = img.getAttribute('src') ?? ''
+    const file = paired[index]
+    const data = /^data:image\/(?:png|jpeg|gif|webp|avif);base64,([a-z0-9+/=\s]+)$/i.exec(source)
+    const safe = safeImageSrc(source)
+    let publicUrl = false
+    if (safe) {
+      const host = new URL(safe).hostname
+      publicUrl = host.includes('.') && !/^(?:\d+\.){3}\d+$/.test(host) && !host.endsWith('.local') && !host.endsWith('.localhost')
+    }
+    if (!file && !data && !publicUrl) return
     pending.push((async () => {
       try {
-        const mime = await sniffBlob(file)
+        let blob: Blob
+        if (file) blob = file
+        else if (data) {
+          if (data[1]!.length > Math.ceil(port.maxBytes / 3) * 4 + 8) return
+          const binary = atob(data[1]!)
+          blob = new Blob([Uint8Array.from(binary, c => c.charCodeAt(0))])
+        } else {
+          const captured = await captureRemoteImage(safe)
+          if (!captured) return
+          blob = captured
+        }
+        if (blob.size > port.maxBytes) return
+        const mime = await sniffBlob(blob)
         if (!mime) return
-        const ref = await port.add(file, img.getAttribute('alt') || file.name || 'image', mime)
+        const ref = await port.add(blob, img.getAttribute('alt') || file?.name || 'image', mime)
         const figure = doc.createElement('figure')
         figure.setAttribute('data-type', 'image')
         figure.setAttribute('data-alt', img.getAttribute('alt') ?? '')
@@ -144,31 +197,12 @@ function embeddedImages(editor: Editor, html: string, file?: File): { html: stri
         figure.setAttribute('data-mime', ref.mime)
         figure.setAttribute('data-size', String(ref.size))
         img.replaceWith(figure)
-      } catch (error) { explain(editor, error) }
+      } catch (error) {
+        // CORS and expired URLs are common; the original source remains available for repair.
+        if (file || data) explain(editor, error)
+      }
     })())
-  }
-  doc.querySelectorAll('img[src^="data:"]').forEach(img => {
-    if (img === paired) return
-    const source = img.getAttribute('src') ?? ''
-    const match = /^data:image\/(?:png|jpeg|gif|webp|avif);base64,([a-z0-9+/=\s]+)$/i.exec(source)
-    if (!match || match[1]!.length > Math.ceil(port.maxBytes / 3) * 4 + 8) return
-    let bytes: Uint8Array<ArrayBuffer>
-    try { const binary = atob(match[1]!); bytes = Uint8Array.from(binary, c => c.charCodeAt(0)) } catch { return }
-    const mime = sniffImage(bytes.subarray(0, 16))
-    if (!mime || bytes.length > port.maxBytes) return
-    const figure = doc.createElement('figure')
-    figure.setAttribute('data-type', 'image')
-    figure.setAttribute('data-alt', img.getAttribute('alt') ?? '')
-    figure.setAttribute('data-title', img.getAttribute('title') ?? '')
-    img.replaceWith(figure)
-    const blob = new Blob([bytes], { type: mime })
-    pending.push(port.add(blob, img.getAttribute('alt') || 'image', mime).then(ref => {
-      figure.setAttribute('data-blob', ref.blob)
-      figure.setAttribute('data-mime', ref.mime)
-      figure.setAttribute('data-size', String(ref.size))
-    }).catch(error => { explain(editor, error) }))
   })
-  // Serialize only after all writes have completed, as promises modify the detached document.
   return { get html() { return doc.body.innerHTML }, pending }
 }
 
@@ -186,8 +220,8 @@ function cleanRichHtml(html: string): string {
   return doc.body.innerHTML
 }
 
-function insertWithEmbeddedImages(editor: Editor, html: string, file?: File): boolean {
-  const result = embeddedImages(editor, html, file)
+function insertWithEmbeddedImages(editor: Editor, html: string, files: File[]): boolean {
+  const result = embeddedImages(editor, html, files)
   if (!result.pending.length) return false
   let bookmark = editor.state.selection.getBookmark()
   const map = ({ transaction }: { transaction: import('@tiptap/pm/state').Transaction }) => { bookmark = bookmark.map(transaction.mapping) }
@@ -221,16 +255,16 @@ export const MarkdownPaste = Extension.create({
               editor.chain().focus().insertContent({ type: 'mermaid', attrs: { code: raw.trim() } }).run()
               return true
             }
-            const file = cd.files.length === 1 ? cd.files[0] : undefined
+            const files = Array.from(cd.files)
             const html = cd.getData('text/html')
             if (html) {
-              if (insertWithEmbeddedImages(editor, html, file)) return true
+              if (insertWithEmbeddedImages(editor, html, files)) return true
               return false // ProseMirror handles rich content after transformPastedHTML
             }
             if (inCode) return false // keep code literal
             if (!raw || !looksLikeMarkdown(raw)) return false
             const markdownHtml = markdownToHtml(raw, false)
-            if (!insertWithEmbeddedImages(editor, markdownHtml, file)) editor.chain().focus().insertContent(cleanPastedHtml(markdownHtml)).run()
+            if (!insertWithEmbeddedImages(editor, markdownHtml, files)) editor.chain().focus().insertContent(cleanPastedHtml(markdownHtml)).run()
             return true
           },
         },

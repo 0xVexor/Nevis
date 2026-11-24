@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { createNew, appReady } from './shell-helpers'
+import appPackage from '../package.json' with { type: 'json' }
 
 // Sign-in with a real account, in each engine: the cookie must be set, survive a reload, be shared by a second tab, and go on signout.
 const user = () => `u${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
@@ -104,4 +105,45 @@ test('the sign-in screen recovers after the network returns', async ({ page }) =
   await page.unroute('**/v1/me', fail)
   await page.evaluate(() => window.dispatchEvent(new Event('online')))
   await expect(page.getByTestId('auth-form')).toBeVisible()
+})
+
+test('appearance synchronizes across two device profiles under one account', async ({ page, browser }) => {
+  const username = user()
+  await signUp(page, username)
+  await page.getByTestId('ws-new').click()
+  await appReady(page)
+  await page.getByTestId('nav-settings').click()
+  await page.locator('input[type=color]').first().fill('#dd6600')
+  await page.evaluate(async () => {
+    const path = '/src/deviceSettings.ts'
+    const settings = await import(path)
+    settings.updateSettings({ fontSize: 22 })
+  })
+  const readAccent = (target: Page) => target.evaluate(async () => {
+    const response = await fetch('/v1/me/appearance')
+    const body = await response.json()
+    return body.values?.accent
+  })
+  await expect.poll(() => readAccent(page)).toBe('#dd6600')
+  const second = await browser.newContext()
+  try {
+    const other = await second.newPage()
+    await other.goto('/')
+    await other.locator('input[name=username]').fill(username)
+    await other.locator('input[name=password]').fill(pw)
+    await other.getByTestId('auth-submit').click()
+    await other.getByTestId('ws-list').getByRole('button').first().click()
+    await appReady(other)
+    await expect.poll(() => other.locator('html').evaluate(el => el.style.getPropertyValue('--user-accent'))).toBe('#dd6600')
+    await expect.poll(() => other.locator('html').evaluate(el => el.style.getPropertyValue('--editor-size'))).toBe('22px')
+    await other.getByTestId('nav-settings').click()
+    await other.locator('input[type=color]').first().fill('#315bd4')
+    await expect.poll(() => readAccent(other)).toBe('#315bd4')
+    await page.bringToFront()
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+    await expect.poll(() => page.locator('html').evaluate(el => el.style.getPropertyValue('--user-accent'))).toBe('#315bd4')
+    await page.getByTestId('settings-tab-about').click()
+    await expect(page.locator('.prefs-about')).toContainText(appPackage.version)
+    await expect(page.locator('.prefs-about')).toContainText('dev')
+  } finally { await second.close() }
 })

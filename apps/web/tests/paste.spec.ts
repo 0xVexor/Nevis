@@ -60,6 +60,7 @@ test('HTML from a web page, Word or a chat is cleaned: no scripts, handlers, sty
     <iframe src="https://evil.example"></iframe><form><input name="x"></form>`
   await paste(page, { html: dirty })
   expect(await page.evaluate(() => (window as unknown as { __pwned?: number }).__pwned)).toBeUndefined()
+  await expect.poll(async () => JSON.stringify(await json(page))).toContain('سلام')
   const doc = await json(page)
   const nodes = all(doc)
   const text = JSON.stringify(doc)
@@ -132,4 +133,37 @@ test('a rich clipboard image uses its accompanying file bytes without losing tex
   expect(JSON.stringify(nodes)).toContain('Before')
   expect(JSON.stringify(nodes)).toContain('After')
   expect(nodes.some(n => n.marks?.some(m => m.type === 'link' && m.attrs?.href === 'https://example.com'))).toBe(true)
+})
+
+test('rich paste captures multiple image files in order alongside text', async ({ page }) => {
+  await open(page)
+  await page.evaluate(() => {
+    const dt = new DataTransfer()
+    const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='), c => c.charCodeAt(0))
+    dt.items.add(new File([bytes], 'one.png', { type: 'image/png' }))
+    dt.items.add(new File([bytes], 'two.png', { type: 'image/png' }))
+    dt.setData('text/html', '<p>Before</p><img src="https://example.com/1" alt="one"><p>Middle</p><img src="https://example.com/2" alt="two"><p>After</p>')
+    document.querySelector('.ProseMirror')!.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+  })
+  await expect.poll(async () => all(await json(page)).filter(n => n.type === 'image' && n.attrs?.blob).length).toBe(2)
+  const nodes = all(await json(page))
+  expect(nodes.filter(n => n.type === 'image').map(n => n.attrs?.alt)).toEqual(['one', 'two'])
+  expect(JSON.stringify(nodes)).toContain('Middle')
+})
+
+test('a CORS-readable remote image is saved as an attachment', async ({ page }) => {
+  await open(page)
+  await page.evaluate(() => {
+    const policy = document.createElement('meta')
+    policy.httpEquiv = 'Content-Security-Policy'
+    policy.content = "connect-src 'self'; img-src 'self' blob: https:"
+    document.head.append(policy)
+  })
+  await page.route('https://images.example.org/pixel.png', route => route.fulfill({
+    status: 200, headers: { 'access-control-allow-origin': '*' }, contentType: 'image/png',
+    body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'),
+  }))
+  await paste(page, { html: '<p>Caption</p><img src="https://images.example.org/pixel.png" alt="remote">' })
+  await expect.poll(async () => all(await json(page)).find(n => n.type === 'image')?.attrs?.blob).toMatch(/^[a-f0-9]{64}$/)
+  expect(all(await json(page)).find(n => n.type === 'image')?.attrs).toMatchObject({ alt: 'remote', src: '', mime: 'image/png' })
 })

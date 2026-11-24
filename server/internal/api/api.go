@@ -27,6 +27,7 @@ const (
 )
 
 type Config struct {
+	Version string
 	// DevMode turns on the development bearer token (DevToken) and the creation of a workspace by its first push. Never in production.
 	DevMode  bool
 	DevToken string
@@ -98,6 +99,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /v1/auth/recover", s.recoverAccount)
 	s.mux.HandleFunc("POST /v1/auth/signout", s.authed(s.signout))
 	s.mux.HandleFunc("GET /v1/me", s.authed(s.me))
+	s.mux.HandleFunc("GET /v1/me/appearance", s.authed(s.appearance))
+	s.mux.HandleFunc("PATCH /v1/me/appearance", s.authed(s.appearance))
 	s.mux.HandleFunc("GET /v1/ws", s.authed(s.listWorkspaces))
 	s.mux.HandleFunc("POST /v1/ws", s.authed(s.createWorkspace))
 	s.mux.HandleFunc("GET /v1/devices", s.authed(s.listDevices))
@@ -157,7 +160,7 @@ func failErr(w http.ResponseWriter, e *apierr.Error) {
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, 200, map[string]any{"ok": true, "name": "nevis", "proto": Proto, "minProto": MinProto, "registration": s.registration(), "powBits": s.PowBits})
+	writeJSON(w, 200, map[string]any{"ok": true, "name": "nevis", "version": s.Version, "proto": Proto, "minProto": MinProto, "registration": s.registration(), "powBits": s.PowBits})
 }
 
 func (s *Server) registration() string {

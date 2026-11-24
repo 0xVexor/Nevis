@@ -3,12 +3,14 @@
 // 'Mod' is Ctrl on Windows/Linux and ⌘ on macOS.
 
 import type { BindingId } from './shortcutBindings'
+import { isDesktop } from './desktop'
 
 export interface Shortcut {
   label: string // English source string, translated at render time
   binding?: BindingId // a shortcut the person can change in Settings (see shortcutBindings.ts); `keys` is then only its default
   keys: string[][] // alternatives; each is one chord, e.g. [['Mod', 'K']]
   macKeys?: string[][]
+  webMacKeys?: string[][]
 }
 export interface ShortcutGroup {
   title: string
@@ -40,7 +42,7 @@ export const SHORTCUTS: ShortcutGroup[] = [
       sc('Bold', ['Mod', 'B']),
       sc('Italic', ['Mod', 'I']),
       sc('Underline', ['Mod', 'U']),
-      sc('Strikethrough', ['Mod', 'Shift', 'S']),
+      { ...sc('Strikethrough', ['Mod', 'Shift', 'S']), webMacKeys: [['Mod', 'Alt', 'Shift', 'S']] },
       sc('Inline code', ['Mod', 'E']),
       sc('Heading 1', ['Mod', 'Alt', '1']),
       sc('Heading 2', ['Mod', 'Alt', '2']),
@@ -51,24 +53,24 @@ export const SHORTCUTS: ShortcutGroup[] = [
       sc('Bulleted list', ['Mod', 'Shift', '8']),
       sc('Numbered list', ['Mod', 'Shift', '7']),
       sc('Checklist', ['Mod', 'Shift', '9']),
-      sc('Quote', ['Mod', 'Shift', 'B']),
-      sc('Code block', ['Mod', 'Alt', 'C']),
+      { ...sc('Quote', ['Mod', 'Shift', 'B']), webMacKeys: [['Mod', 'Alt', 'Shift', 'B']] },
+      { ...sc('Code block', ['Mod', 'Alt', 'C']), webMacKeys: [['Mod', 'Alt', 'Shift', 'C']] },
       sc('Link', ['Mod', 'Shift', 'K']),
       sc('Link to page', ['Mod', 'Alt', 'K']),
-      sc('Insert image', ['Mod', 'Alt', 'I']),
+      { ...sc('Insert image', ['Mod', 'Alt', 'I']), webMacKeys: [['Mod', 'Alt', 'Shift', 'J']] },
       sc('Insert table', ['Mod', 'Alt', 'T']),
       sc('Align left', ['Mod', 'Shift', 'L']),
       sc('Center', ['Mod', 'Shift', 'E']),
       sc('Align right', ['Mod', 'Shift', 'R']),
       sc('Move to…', ['Mod', 'Alt', 'M']),
-      sc('Snap content left', ['Mod', 'Alt', '←']),
-      sc('Snap content right', ['Mod', 'Alt', '→']),
-      sc('Move block up', ['Mod', 'Alt', '↑']),
-      sc('Move block down', ['Mod', 'Alt', '↓']),
+      { ...sc('Snap content left', ['Mod', 'Alt', '←']), webMacKeys: [['Mod', 'Alt', 'Shift', '←']] },
+      { ...sc('Snap content right', ['Mod', 'Alt', '→']), webMacKeys: [['Mod', 'Alt', 'Shift', '→']] },
+      { ...sc('Move block up', ['Mod', 'Alt', '↑']), webMacKeys: [['Mod', 'Alt', 'Shift', '↑']] },
+      { ...sc('Move block down', ['Mod', 'Alt', '↓']), webMacKeys: [['Mod', 'Alt', 'Shift', '↓']] },
       sc('Add full-width text after layout', ['Mod', 'Alt', 'Enter']),
       sc('Line break', ['Shift', 'Enter']),
       sc('Select all', ['Mod', 'A']),
-      sc('Expand selection', ['Mod', 'W']),
+      { ...sc('Expand selection', ['Mod', 'W']), webMacKeys: [['Mod', 'Alt', 'Shift', 'W']] },
       sc('Undo', ['Mod', 'Z']),
       { ...sc('Redo', ['Mod', 'Y'], ['Mod', 'Shift', 'Z']), macKeys: [['Mod', 'Shift', 'Z']] },
     ],
@@ -149,7 +151,10 @@ const labelFor = (key: string, mac: boolean) => (mac ? (MAC[key] ?? key) : key =
 /** One actual key; keep the single-argument API safe to pass directly to Array.map. */
 export const keyLabel = (key: string) => labelFor(key, isMac())
 export const shortcutLabel = (keys: readonly string[], mac = isMac()) => keys.map((key) => labelFor(key, mac)).join(mac ? '' : '+')
-export const shortcutKeys = (shortcut: Shortcut) => (isMac() && shortcut.macKeys ? shortcut.macKeys : shortcut.keys)
+export function shortcutKeys(shortcut: Shortcut): string[][] {
+  if (!isMac()) return shortcut.keys
+  return (!isDesktop ? shortcut.webMacKeys : undefined) ?? shortcut.macKeys ?? shortcut.keys
+}
 
 // Legacy UI strings use Ctrl to mean the cross-platform Mod binding. Only match key chords,
 // so ordinary phrases such as "Enter your name" and translated prose are preserved.

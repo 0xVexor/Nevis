@@ -48,7 +48,10 @@ export function Popover({ anchor, onClose, children, align = 'start' }: { anchor
     }
     // a menu opened from inside this popover (a dropdown in a panel) is a popover of its own: using it keeps this one open,
     // and Escape or the arrow keys belong to the popover on top
-    const onTop = () => { const all = document.querySelectorAll('.ds-pop'); return all[all.length - 1] === ref.current }
+    const onTop = () => {
+      const all = document.querySelectorAll('.ds-pop:not(.ds-submenu)')
+      return all[all.length - 1] === ref.current
+    }
     const down = (e: MouseEvent) => {
       const target = e.target as Element
       if (ref.current?.contains(target)) return

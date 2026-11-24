@@ -3,7 +3,7 @@ import type { NodeViewRendererProps } from '@tiptap/core'
 import { nodeInputRule } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { Image as ImageSpec, PageLink as PageLinkSpec, isBlobHash, safeImageSrc } from '@nevis/schema'
-import { sniffBlob, whenAvailable } from '../attachments'
+import { explain, sniffBlob, whenAvailable } from '../attachments'
 import { optionsOf } from '../options'
 import { S } from '../strings'
 
@@ -90,6 +90,14 @@ export const Image = ImageSpec.extend({
         if (src) {
           const img = document.createElement('img')
           img.src = src; img.alt = String(a.alt); img.title = String(a.title)
+          img.onerror = () => {
+            if (!img.isConnected) return
+            const ph = document.createElement('div')
+            ph.className = 'image-placeholder'
+            ph.textContent = S.imageUnavailable
+            img.replaceWith(ph)
+            if (editor.isEditable) frame.append(placeholderEditor())
+          }
           img.referrerPolicy = 'no-referrer'; img.loading = 'lazy'; img.decoding = 'async'; img.draggable = false
           frame.append(img)
         } else {
@@ -107,6 +115,21 @@ export const Image = ImageSpec.extend({
         if (!editor.isEditable) return
         for (const [label, w] of WIDTHS) { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.className = Number(a.width) === w ? 'on' : ''; b.onclick = () => set({ width: w }); bar.append(b) }
         for (const [label, v] of ALIGNS) { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.className = a.align === v ? 'on' : ''; b.onclick = () => set({ align: a.align === v ? '' : v }); bar.append(b) }
+        if (!isBlobHash(a.blob) && optionsOf(editor).attachments) {
+          const upload = document.createElement('button'); upload.type = 'button'; upload.textContent = S.imageAttach
+          upload.onclick = () => {
+            const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/png,image/jpeg,image/gif,image/webp,image/avif'
+            input.onchange = () => { const file = input.files?.[0]; const port = optionsOf(editor).attachments; if (!file || !port) return
+              void (async () => { try {
+                if (file.size > port.maxBytes) { explain(editor, { code: 'too_large' }); return }
+                const mime = await sniffBlob(file); if (!mime) { explain(editor, new Error('Not an image')); return }
+                const ref = await port.add(file, file.name, mime)
+                if (!editor.isDestroyed) set({ blob: ref.blob, mime: ref.mime, size: ref.size, src: '' })
+              } catch (error) { explain(editor, error) } })()
+            }; input.click()
+          }
+          bar.append(upload)
+        }
         const rm = document.createElement('button'); rm.type = 'button'; rm.textContent = S.remove; rm.onclick = () => { const pos = getPos(); if (pos != null) editor.view.dispatch(editor.state.tr.delete(pos, pos + cur.nodeSize)) }
         bar.append(rm)
       }

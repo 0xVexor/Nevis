@@ -27,7 +27,8 @@
 
 /* tables */
 .tiptap td > p, .tiptap th > p { margin: 0; }
-.tiptap :is(td, th).selectedCell { background-color: var(--ds-accent-soft); }
+.tiptap .tableWrapper tbody tr > :is(td, th).selectedCell { background: var(--ds-accent-soft); }
+.tiptap .tableWrapper tbody tr:hover > :is(td, th).selectedCell { background: var(--ds-accent-soft); }
 .tiptap .column-resize-handle { position: absolute; inset-inline-end: -2px; top: 0; bottom: 0; width: 4px; background: var(--ds-accent); pointer-events: none; }
 /* ui-allow physical-direction: on purpose (geometry, always-LTR code, or an alignment the user chose) */
 .tiptap .tableWrapper[data-align='left'] { margin-left: 0; margin-right: auto; }

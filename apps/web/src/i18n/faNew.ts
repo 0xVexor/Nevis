@@ -1,5 +1,11 @@
 // Strings of the screens written for the new core (the rest come from the old app's translations).
 export const FA_NEW: Record<string, string> = {
+  'Web version {version}': 'نسخهٔ وب {version}',
+  'Desktop version {version}': 'نسخهٔ دسکتاپ {version}',
+  'Server version {version}': 'نسخهٔ سرور {version}',
+  'Server version unavailable': 'شمارهٔ نسخهٔ سرور در دسترس نیست',
+  'Insert column before': 'درج ستون قبل',
+  'Insert column after': 'درج ستون بعد',
   'Choose Import notes from the workspace list.': 'در فهرست فضاهای کاری، «وارد کردن یادداشت‌ها» را انتخاب کنید.',
   'This username is taken': 'این نام کاربری گرفته شده است',
   'This server does not accept new accounts': 'این سرور حساب تازه نمی‌پذیرد',

@@ -120,6 +120,13 @@ export async function importBundle(zip: Uint8Array, target: { client: Client; st
     if (!f) throw new BundleError(`missing file ${name}`)
     if ((await sha256Hex(f)) !== sha) throw new BundleError(`${name} does not match its hash: the bundle is damaged`)
   }
+  // Import only files covered by the manifest; otherwise an extra ZIP entry could bypass integrity checks.
+  for (const name of Object.keys(files)) {
+    if ((name === 'entities.ndjson' || name === 'attachments.ndjson' || name.startsWith('pages/') || name.startsWith('events/')) && !(name in manifest.files)) {
+      throw new BundleError(`unverified file ${name}`)
+    }
+  }
+  if (!files['entities.ndjson'] || !files['attachments.ndjson']) throw new BundleError('bundle is missing its entity or attachment index')
   const parse = (name: string) => (files[name] ? strFromU8(files[name]!).split('\n').filter(Boolean).map(l => JSON.parse(l) as Record<string, unknown>) : [])
   const entities = parse('entities.ndjson') as { id: string; kind: string; fields: Record<string, never> }[]
   const have = new Set(await target.store.run(tx => tx.entities()))
@@ -129,7 +136,8 @@ export async function importBundle(zip: Uint8Array, target: { client: Client; st
   let attachments = 0
   for (const a of parse('attachments.ndjson') as { hash: string; mime: string }[]) {
     const bytes = files[`attachments/${a.hash}`]
-    if (!bytes || !target.blobs) continue
+    if (!bytes) throw new BundleError(`missing attachment ${a.hash}`)
+    if (!target.blobs) throw new BundleError('this workspace cannot store attachments')
     if ((await sha256Hex(bytes)) !== a.hash) throw new BundleError(`attachment ${a.hash} is damaged`)
     await target.blobs.put(a.hash, new Blob([bytes.slice().buffer as ArrayBuffer]), a.mime)
     attachments++
