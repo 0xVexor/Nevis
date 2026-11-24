@@ -87,7 +87,10 @@ for attempt in {1..30}; do
   fi
   sleep 2
 done
-[[ $ready == true && -s /var/lib/nevis/nevis.db ]]
+if [[ $ready != true || ! -s /var/lib/nevis/nevis.db ]]; then
+  echo 'Production did not serve the expected release.' >&2
+  exit 1
+fi
 switched=false
 echo "Nevis $version is live at $domain."
 if [[ -n $invites ]]; then
