@@ -268,6 +268,7 @@ export const FA_APP: Record<string, string> = {
   'Show as diagram': 'نمایش به‌صورت نمودار',
   // command palette (Ctrl+/)
   Commands: 'دستورها',
+  'Hide keyboard': 'بستن صفحه‌کلید',
   'Wrap in callout': 'قرار دادن در کادر برجسته',
   'Put the selection in a highlighted box': 'متن انتخاب‌شده را در یک کادر برجسته بگذار',
   'Wrap in toggle': 'قرار دادن در بخش جمع‌شو',
