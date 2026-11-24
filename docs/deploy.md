@@ -1,6 +1,6 @@
 # نصب نِویس روی سرور خودتان
 
-> **وضعیت انتشار (۲۰۲۶-۱۱-۲۴).** نسخهٔ `0.1.4` روی `https://nevis.manaz.pro` با ایمیج GitHub Actions نصب شده است. `deploy/upgrade-production.sh` نسخه را با حفظ داده و تنظیمات فعلی جایگزین کرد. Compose در `/opt/nevis` است و Traefik از شبکهٔ `nevis-beta-ingress` به `nevis-app-1:8787` می‌رسد. انتشار از شاخهٔ `nevis-next` و برچسب‌های `nx/vX.Y.Z` است.
+> **وضعیت انتشار (۲۰۲۶-۱۱-۲۴).** نسخهٔ `0.1.7` روی `https://nevis.manaz.pro` با ایمیج GitHub Actions نصب شده است. `deploy/upgrade-production.sh` نسخه را با حفظ داده و تنظیمات فعلی جایگزین کرد. Compose در `/opt/nevis` است و Traefik از شبکهٔ `nevis-beta-ingress` به `nevis-app-1:8787` می‌رسد. انتشار از شاخهٔ `nevis-next` و برچسب‌های `nx/vX.Y.Z` است.
 
 
 تمرین محلی `node tools/deploy-rehearsal.mjs` ساخت بسته، ثبت‌نام، نوشتن، بکاپ و بازگردانی را آزموده است. نصب رسمی با Docker و HTTPS روی لینوکس انجام شده است. مسیر مستقل systemd و Caddy در این انتشار آزموده نشده است.
