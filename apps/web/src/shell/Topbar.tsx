@@ -1,7 +1,7 @@
 // The top bar of the main column (`header.topbar`): panel toggle, back/forward, the breadcrumb path, then the save state and the tools,
 // as the old app laid them out. What a page offers (favorite, share, reader) appears only on a page.
 import { useState, type ReactNode } from 'react'
-import { Button, Icon, IconButton, Menu, SaveStatus, type MenuItem } from '../ds'
+import { contextMenuAnchor, Button, Icon, IconButton, Menu, SaveStatus, type MenuItem } from '../ds'
 import { t } from '../i18n'
 import type { Route } from '../router'
 import type { Page } from './model'
@@ -25,6 +25,7 @@ export interface TopbarProps {
   onTogglePanel: () => void
   onHome: () => void
   onOpen: (id: string) => void
+  onMenu: (id: string, rect: DOMRect) => void
   nav: { canBack: boolean; canForward: boolean; back: () => void; forward: () => void }
   save: 'idle' | 'saving' | 'saved' | 'error'
   dark: boolean
@@ -60,7 +61,7 @@ export function Topbar(p: TopbarProps) {
               onClick={e => setMenu({ rect: e.currentTarget.getBoundingClientRect(), items: p.crumbs.slice(1, -2).map(x => ({ label: x.title || t(x.kind === 'folder' ? 'Folder' : 'Untitled'), raw: !!x.title, icon: x.kind === 'folder' ? <Icon name="folder" /> : iconNode(x.icon, 16, <Icon name="file" />), onSelect: () => x.kind !== 'folder' && p.onOpen(x.id) })) })}>…</button>
           </span>
         ) : (
-          <span key={c.id} className={'crumb' + (i === shown.length - 1 ? ' last' : '')}>
+          <span key={c.id} className={'crumb' + (i === shown.length - 1 ? ' last' : '')} onContextMenu={e => p.onMenu(c.id, contextMenuAnchor(e))}>
             <span className="crumb-sep"><Icon name="chevron-right" size={13} /></span>
             {c.kind === 'folder'
               ? <span className="crumb-folder" dir="auto" title={c.title || t('Folder')}><Icon name="folder" size={14} /><span>{c.title || t('Folder')}</span></span>

@@ -4,12 +4,15 @@ import { Icon, Popover, useMenu, type MenuItem } from '../ds'
 import { t } from '../i18n'
 import { commandHint } from '../shortcutCommands'
 import { shortcutLabel } from '../shortcuts'
+import { openCommandPalette } from './commandPalette'
+import { editLink } from './linkPrompt'
+import { linkSelection } from './slash'
 import { PageLinkPicker } from '../PageLinkPicker'
 import { legacyPages } from '../shell/adapt'
 import type { Workspace } from '../workspace'
 
 /** Clipboard, formatting and page actions use the same menu as the reference app. */
-export function EditorMenus({ editor, ws, id, row = false }: { editor: Editor; ws: Workspace; id: string; row?: boolean }) {
+export function EditorMenus({ editor, ws, id, row = false, quickNote }: { editor: Editor; ws: Workspace; id: string; row?: boolean; quickNote?: readonly string[] }) {
   const { open, menu } = useMenu()
   const [link, setLink] = useState<{ rect: DOMRect; from: number; to: number; text: string; doc: Editor['state']['doc'] } | null>(null)
   useEffect(() => {
@@ -37,16 +40,25 @@ export function EditorMenus({ editor, ws, id, row = false }: { editor: Editor; w
         editor.view.pasteText(await navigator.clipboard.readText())
       } catch { clipboardFailed() }
     }
-    const context = (event: MouseEvent) => {
-      if ((event.target as HTMLElement).closest('input, textarea')) return
+    const context = (event: MouseEvent | KeyboardEvent) => {
+      const target = event.target
+      if (!(target instanceof Element) || target.closest('input, textarea, select')) return
       event.preventDefault()
-      const cell = (event.target as HTMLElement).closest('td, th')
-      if (cell && !cell.classList.contains('selectedCell')) {
-        const position = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
+      event.stopPropagation()
+      const pointer = event instanceof MouseEvent && !!(event.clientX || event.clientY) ? event : null
+      const caretNode = pointer ? target : editor.view.domAtPos(editor.state.selection.head).node
+      const cell = (caretNode instanceof Element ? caretNode : caretNode.parentElement)?.closest('td, th')
+      if (pointer && (cell ? !cell.classList.contains('selectedCell') : editor.state.selection.empty)) {
+        const position = editor.view.posAtCoords({ left: pointer.clientX, top: pointer.clientY })
         if (position) editor.commands.setTextSelection(position.pos)
       }
       const picked = !editor.state.selection.empty
-      const rect = new DOMRect(event.clientX, event.clientY, 0, 0)
+      const rect = pointer
+        ? new DOMRect(pointer.clientX, pointer.clientY, 0, 0)
+        : (() => {
+          const caret = editor.view.coordsAtPos(editor.state.selection.head)
+          return new DOMRect(caret.left, caret.top, 0, caret.bottom - caret.top)
+        })()
       const chain = () => editor.chain().focus()
       const clipboard = (action: 'copy' | 'cut') => { if (!document.execCommand(action)) clipboardFailed() }
       const copy: MenuItem[] = picked ? [{ label: 'Copy', icon: <Icon name="copy" />, hint: shortcutLabel(['Mod', 'C']), onSelect: () => clipboard('copy') }] : []
@@ -60,6 +72,14 @@ export function EditorMenus({ editor, ws, id, row = false }: { editor: Editor; w
           { label: 'Paste', icon: <Icon name="clipboard" />, hint: shortcutLabel(['Mod', 'V']), onSelect: () => void paste(false) },
           { label: 'Paste as plain text', hint: shortcutLabel(['Mod', 'Shift', 'V']), onSelect: () => void paste(true) },
           { kind: 'sep' as const },
+          { label: 'Add block ( / )', icon: <Icon name="plus" />, hint: commandHint('Open the “/” menu'), onSelect: () => {
+            editor.commands.focus()
+            openCommandPalette(editor, quickNote)
+          } },
+          ...(!quickNote ? [
+            { label: 'Link to page', icon: <Icon name="file" />, onSelect: () => { linkSelection(chain(), editor).run() } },
+            { label: 'Link', icon: <Icon name="link" />, onSelect: () => void editLink(editor) },
+          ] : []),
           ...(picked ? [{ label: 'Format', icon: <Icon name="bold" />, items: [
             { label: 'Bold', hint: commandHint('Bold'), icon: <Icon name="bold" />, onSelect: () => { chain().toggleBold().run() } },
             { label: 'Italic', hint: commandHint('Italic'), icon: <Icon name="italic" />, onSelect: () => { chain().toggleItalic().run() } },
@@ -79,30 +99,37 @@ export function EditorMenus({ editor, ws, id, row = false }: { editor: Editor; w
             { kind: 'sep' as const },
             { label: 'Delete row', danger: true, onSelect: () => { chain().deleteRow().run() } },
             { label: 'Delete column', danger: true, onSelect: () => { chain().deleteColumn().run() } },
+            { label: 'Delete table', danger: true, onSelect: () => { chain().deleteTable().run() } },
           ] }] : []),
-          { label: 'Move to…', hint: commandHint('Move to…'), icon: <Icon name="move" />, onSelect: () => dom.dispatchEvent(new CustomEvent('layout-move-menu', { detail: rect })) },
-          { label: 'Convert $…$ to formulas', icon: <Icon name="sigma" />, onSelect: () => { editor.commands.convertFormulas() } },
+          ...(!quickNote ? [
+            { label: 'Move to…', hint: commandHint('Move to…'), icon: <Icon name="move" />, onSelect: () => dom.dispatchEvent(new CustomEvent('layout-move-menu', { detail: rect })) },
+            { label: 'Convert $…$ to formulas', icon: <Icon name="sigma" />, onSelect: () => { editor.commands.convertFormulas() } },
+          ] : []),
         ] : copy),
         { label: 'Select all', hint: commandHint('Select all'), onSelect: () => { chain().selectAll().run() } },
         { kind: 'sep' },
-        { label: 'Find in page', icon: <Icon name="search" />, hint: commandHint('Find in page'), onSelect: () => dom.dispatchEvent(new Event('nevis:find-open')) },
-        ...(!row ? [
+        ...(!quickNote ? [{ label: 'Find in page', icon: <Icon name="search" />, hint: commandHint('Find in page'), onSelect: () => dom.dispatchEvent(new Event('nevis:find-open')) }] : []),
+        ...(!row && !quickNote ? [
           { label: 'History', icon: <Icon name="history" />, onSelect: () => window.dispatchEvent(new Event('open-history')) },
           { label: 'Reader mode', hint: commandHint('Reader mode'), icon: <Icon name="book" />, onSelect: () => window.dispatchEvent(new Event('toggle-reader')) },
         ] : []),
-        { label: 'Print / PDF', icon: <Icon name="printer" />, onSelect: () => window.print() },
+        ...(!quickNote ? [{ label: 'Print / PDF', icon: <Icon name="printer" />, onSelect: () => window.print() }] : []),
       ], rect)
     }
     const pickPage = (event: Event) => {
-      if (!editor.isEditable || editor.isDestroyed || !editor.isFocused) return
+      if (quickNote || !editor.isEditable || editor.isDestroyed || !editor.isFocused) return
       const { from, to } = (event as CustomEvent<{ from: number; to: number }>).detail
       const c = editor.view.coordsAtPos(to)
       setLink({ rect: new DOMRect(c.left, c.top, 0, c.bottom - c.top), from, to, text: editor.state.doc.textBetween(from, to, ' '), doc: editor.state.doc })
     }
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) context(event)
+    }
     dom.addEventListener('contextmenu', context)
+    dom.addEventListener('keydown', key)
     window.addEventListener('pick-page-link', pickPage)
-    return () => { dom.removeEventListener('contextmenu', context); window.removeEventListener('pick-page-link', pickPage) }
-  }, [editor, ws, open, row])
+    return () => { dom.removeEventListener('contextmenu', context); dom.removeEventListener('keydown', key); window.removeEventListener('pick-page-link', pickPage) }
+  }, [editor, ws, open, quickNote, row])
   const pick = async (target: string | null, title?: string) => {
     const selected = link
     setLink(null)

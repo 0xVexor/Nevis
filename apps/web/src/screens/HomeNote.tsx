@@ -7,6 +7,7 @@ import { createEditor } from '@nevis/editor'
 import type { PMJson } from '@nevis/schema'
 import { Button, Icon, SaveStatus } from '../ds'
 import { CommandPalette, closeCommandPalette, openCommandPalette } from '../editor/commandPalette'
+import { EditorMenus } from '../editor/EditorMenus'
 import { SlashCommand } from '../editor/slash'
 import { t } from '../i18n'
 import type { Workspace } from '../workspace'
@@ -16,6 +17,7 @@ const NOTE_COMMANDS = ['Text', 'Heading 1', 'Heading 2', 'Heading 3', 'Bulleted 
 export function HomeNote({ ws, onOpen, autoFocus }: { ws: Workspace; onOpen: (id: string) => void; autoFocus?: boolean }) {
   const host = useRef<HTMLDivElement>(null)
   const editor = useRef<Editor | null>(null)
+  const [menuEditor, setMenuEditor] = useState<Editor | null>(null)
   const page = useRef<string | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const title = useRef('')
@@ -82,6 +84,7 @@ export function HomeNote({ ws, onOpen, autoFocus }: { ws: Workspace; onOpen: (id
     })
     ed.view.dom.setAttribute('aria-label', t('Note content'))
     editor.current = ed
+    setMenuEditor(ed)
     ed.on('update', later)
     window.addEventListener('pagehide', saveQuietly)
     if (autoFocus) ed.commands.focus('start')
@@ -111,6 +114,7 @@ export function HomeNote({ ws, onOpen, autoFocus }: { ws: Workspace; onOpen: (id
           onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); editor.current?.commands.focus('start') } }} />
         <div><div className="home-note-editor" ref={host} data-testid="home-note-editor" /></div>
       </div>
+      {menuEditor && <EditorMenus editor={menuEditor} ws={ws} id={pageId ?? ''} quickNote={NOTE_COMMANDS} />}
       <footer className="home-note-footer">
         <SaveStatus state={status} label={t(status === 'idle' ? 'Saved automatically as you write' : status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved to your pages' : 'Could not save. Your note is still here.')} />
         {status === 'error' ? <Button size="sm" onClick={saveQuietly}>{t('Retry')}</Button> : pageId && <Button size="sm" variant="ghost" onClick={() => void openPage()}>{t('Open page')}<Icon name="arrow-right" size={14} className="ds-flip" /></Button>}

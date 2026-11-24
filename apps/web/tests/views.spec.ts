@@ -76,6 +76,10 @@ test('board view: columns are the options; dragging a card moves it as ONE op; t
   const col = (name: string) => page.getByTestId('board-col').filter({ has: page.getByRole('heading', { name }) })
   await expect(col('در انتظار').getByTestId('board-card')).toHaveCount(2)
   await expect(col('بدون مقدار').getByTestId('board-card')).toHaveCount(1)
+  await col('در انتظار').getByTestId('board-card').first().click({ button: 'right' })
+  await page.getByTestId('db-menu-peek').click()
+  await expect(page.getByTestId('row-peek')).toBeVisible()
+  await page.keyboard.press('Escape')
   await settled(page)
   const h0 = await head(page)
 

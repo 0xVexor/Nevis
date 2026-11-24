@@ -1,8 +1,9 @@
 // @ts-nocheck -- copied from the old app, where this ran as written; the new tsconfig's stricter index checks are not applied to copied code.
-import { useMemo, useState } from 'react'
+import { useContext, useMemo, useState } from 'react'
 import type { Page } from './model'
+import { PageContextMenu } from './pageContextMenu'
 import { PageIcon } from './PageIcon'
-import { Button, Icon, IconButton, Screen, SearchField, dirOf, useMenu, type MenuItem } from '../ds'
+import { Button, Icon, IconButton, Screen, SearchField, contextMenuAnchor, dirOf, useMenu, type MenuItem } from '../ds'
 import { locale, t } from '../i18n'
 
 
@@ -15,6 +16,7 @@ export function Databases({ pages, preview, onOpen, onNew, onDelete }: { pages: 
   const [query, setQuery] = useState('')
   const [picked, setPicked] = useState<string | null>(null)
   const { open: openMenu, menu } = useMenu()
+  const pageMenu = useContext(PageContextMenu)
   const byId = useMemo(() => new Map(pages.map((p) => [p.id, p])), [pages])
   const all = useMemo(() => pages.filter((p) => !!p.dbHost).sort((a, b) => b.updatedAt - a.updatedAt), [pages])
   const q = query.trim().toLowerCase()
@@ -83,7 +85,7 @@ export function Databases({ pages, preview, onOpen, onNew, onDelete }: { pages: 
                     dir={dirOf(p.title)}
                     onClick={() => setPicked(p.id)}
                     onDoubleClick={() => onOpen(p.id)}
-                    onContextMenu={(e) => (e.preventDefault(), openMenu(items(p), e))}
+                    onContextMenu={e => pageMenu ? pageMenu(p.id, contextMenuAnchor(e)) : openMenu(items(p), e)}
                   >
                     <span className="dbs-ic">
                       <PageIcon page={p} />
@@ -94,7 +96,11 @@ export function Databases({ pages, preview, onOpen, onNew, onDelete }: { pages: 
                         {parentName(p)} · {new Date(p.updatedAt).toLocaleDateString(locale())}
                       </small>
                     </div>
-                    <IconButton className="dbs-more" label={t('More')} onClick={(e) => (e.stopPropagation(), openMenu(items(p), e.currentTarget))}>
+                    <IconButton className="dbs-more" label={t('More')} onClick={e => {
+                      e.stopPropagation()
+                      if (pageMenu) pageMenu(p.id, e.currentTarget.getBoundingClientRect())
+                      else openMenu(items(p), e.currentTarget)
+                    }}>
                       <Icon name="more-horizontal" size={16} />
                     </IconButton>
                   </div>

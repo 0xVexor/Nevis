@@ -13,17 +13,17 @@ export interface Template {
 
 const task = (t: string, done = false) => `<li data-type="taskItem" data-checked="${done}"><p>${t}</p></li>`
 const toggle = (q: string, a: string) => `<div data-type="toggle" data-open="false"><p>${q}</p><p>${a}</p></div>`
-const callout = (emoji: string, body: string) => `<div data-type="callout" data-emoji="${emoji}"><p>${body}</p></div>`
+const callout = (glyph: string, body: string) => `<div data-type="callout" data-icon="${glyph}"><p>${body}</p></div>`
 
 const TEMPLATES: Template[] = [
   {
     id: 'lecture',
     title: 'جلسه‌ی درس',
     desc: 'هدف، مفاهیم، کد، پرسش‌ها و کارهای بعد از کلاس',
-    icon: '🎓',
+    icon: 'i:graduation',
     pageTitle: 'جلسه‌ی درس — ',
     html: [
-      callout('🎯', '<b>هدف جلسه:</b> '),
+      callout('target', '<b>هدف جلسه:</b> '),
       '<h2>مفاهیم کلیدی</h2><ul><li></li></ul>',
       '<h2>یادداشت‌ها</h2><p></p>',
       '<h2>مثال و کد</h2><pre><code class="language-java">// نمونه کد</code></pre>',
@@ -35,13 +35,13 @@ const TEMPLATES: Template[] = [
     id: 'chapter',
     title: 'خلاصه‌ی فصل',
     desc: 'چکیده، تعریف‌ها، فرمول‌ها، نکته‌های امتحانی و فلش‌کارت',
-    icon: '📚',
+    icon: 'i:book',
     pageTitle: 'خلاصه‌ی فصل ',
     html: [
-      callout('💡', '<b>چکیده:</b> '),
+      callout('bulb', '<b>چکیده:</b> '),
       '<h2>تعریف‌ها</h2><table dir="rtl"><tbody><tr><th>مفهوم</th><th>تعریف</th></tr><tr><td></td><td></td></tr><tr><td></td><td></td></tr></tbody></table>',
       '<h2>فرمول‌ها</h2><div data-type="math-block" data-latex="E = mc^2"></div>',
-      '<h2>نکته‌های امتحانی</h2>' + callout('⚠️', 'نکته‌ی مهم'),
+      '<h2>نکته‌های امتحانی</h2>' + callout('warning', 'نکته‌ی مهم'),
       '<h2>سؤال‌های مرور</h2>' + toggle('سؤال ۱', 'جواب') + toggle('سؤال ۲', 'جواب'),
     ].join(''),
   },
@@ -49,14 +49,14 @@ const TEMPLATES: Template[] = [
     id: 'exercise',
     title: 'تمرین',
     desc: 'صورت مسئله، ایده، راه‌حل با کد و جمع‌بندی',
-    icon: '✏️',
+    icon: 'i:target',
     pageTitle: 'تمرین ',
     html: [
       '<h2>صورت مسئله</h2><p></p>',
       '<h2>ایده و تحلیل</h2><ul><li></li></ul>',
       '<h2>راه‌حل</h2><pre><code class="language-python"># کد راه‌حل\n</code></pre>',
       '<h2>آزمون و نتیجه</h2><table dir="rtl"><tbody><tr><th>ورودی</th><th>خروجی مورد انتظار</th><th>خروجی واقعی</th></tr><tr><td></td><td></td><td></td></tr></tbody></table>',
-      '<h2>جمع‌بندی</h2>' + callout('📌', 'چه چیزی یاد گرفتم؟'),
+      '<h2>جمع‌بندی</h2>' + callout('pin', 'چه چیزی یاد گرفتم؟'),
       '<ul data-type="taskList">' + task('مسئله را فهمیدم') + task('راه‌حل را آزمودم') + task('بهینه‌سازی / مرور') + '</ul>',
     ].join(''),
   },
@@ -64,15 +64,15 @@ const TEMPLATES: Template[] = [
     id: 'meeting',
     title: 'یادداشت جلسه',
     desc: 'دستور جلسه، تصمیم‌ها و اقدام‌ها',
-    icon: '🗓️',
+    icon: 'i:users',
     pageTitle: 'جلسه — ',
-    html: ['<h2>دستور جلسه</h2><ul><li></li></ul>', '<h2>تصمیم‌ها</h2>' + callout('✅', ''), '<h2>اقدام‌ها</h2><ul data-type="taskList">' + task('') + '</ul>'].join(''),
+    html: ['<h2>دستور جلسه</h2><ul><li></li></ul>', '<h2>تصمیم‌ها</h2>' + callout('check', ''), '<h2>اقدام‌ها</h2><ul data-type="taskList">' + task('') + '</ul>'].join(''),
   },
   {
     id: 'todo',
     title: 'فهرست کارها',
     desc: 'کارهای امروز، این هفته و بعداً با چک‌باکس',
-    icon: '✅',
+    icon: 'i:list',
     pageTitle: 'کارها',
     html: [
       '<h2>امروز</h2><ul data-type="taskList">' + task('') + '</ul>',
@@ -89,7 +89,7 @@ const EN: Record<string, Pick<Template, 'title' | 'desc' | 'pageTitle' | 'html'>
     desc: 'Goal, key concepts, code, open questions and follow-ups',
     pageTitle: 'Lecture — ',
     html: [
-      callout('🎯', '<b>Goal of the session:</b> '),
+      callout('target', '<b>Goal of the session:</b> '),
       '<h2>Key concepts</h2><ul><li></li></ul>',
       '<h2>Notes</h2><p></p>',
       '<h2>Example & code</h2><pre><code class="language-java">// sample code</code></pre>',
@@ -102,10 +102,10 @@ const EN: Record<string, Pick<Template, 'title' | 'desc' | 'pageTitle' | 'html'>
     desc: 'Abstract, definitions, formulas, exam tips and flashcards',
     pageTitle: 'Chapter summary ',
     html: [
-      callout('💡', '<b>Abstract:</b> '),
+      callout('bulb', '<b>Abstract:</b> '),
       '<h2>Definitions</h2><table dir="ltr"><tbody><tr><th>Concept</th><th>Definition</th></tr><tr><td></td><td></td></tr><tr><td></td><td></td></tr></tbody></table>',
       '<h2>Formulas</h2><div data-type="math-block" data-latex="E = mc^2"></div>',
-      '<h2>Exam tips</h2>' + callout('⚠️', 'Important point'),
+      '<h2>Exam tips</h2>' + callout('warning', 'Important point'),
       '<h2>Review questions</h2>' + toggle('Question 1', 'Answer') + toggle('Question 2', 'Answer'),
     ].join(''),
   },
@@ -118,7 +118,7 @@ const EN: Record<string, Pick<Template, 'title' | 'desc' | 'pageTitle' | 'html'>
       '<h2>Idea & analysis</h2><ul><li></li></ul>',
       '<h2>Solution</h2><pre><code class="language-python"># solution code\n</code></pre>',
       '<h2>Tests & result</h2><table dir="ltr"><tbody><tr><th>Input</th><th>Expected output</th><th>Actual output</th></tr><tr><td></td><td></td><td></td></tr></tbody></table>',
-      '<h2>Wrap-up</h2>' + callout('📌', 'What did I learn?'),
+      '<h2>Wrap-up</h2>' + callout('pin', 'What did I learn?'),
       '<ul data-type="taskList">' + task('I understood the problem') + task('I tested the solution') + task('Optimization / review') + '</ul>',
     ].join(''),
   },
@@ -126,7 +126,7 @@ const EN: Record<string, Pick<Template, 'title' | 'desc' | 'pageTitle' | 'html'>
     title: 'Meeting notes',
     desc: 'Agenda, decisions and action items',
     pageTitle: 'Meeting — ',
-    html: ['<h2>Agenda</h2><ul><li></li></ul>', '<h2>Decisions</h2>' + callout('✅', ''), '<h2>Action items</h2><ul data-type="taskList">' + task('') + '</ul>'].join(''),
+    html: ['<h2>Agenda</h2><ul><li></li></ul>', '<h2>Decisions</h2>' + callout('check', ''), '<h2>Action items</h2><ul data-type="taskList">' + task('') + '</ul>'].join(''),
   },
   todo: {
     title: 'To-do list',
@@ -143,12 +143,8 @@ const EN: Record<string, Pick<Template, 'title' | 'desc' | 'pageTitle' | 'html'>
 const EN_TEMPLATES: Template[] = TEMPLATES.map((tp) => ({ ...tp, ...EN[tp.id] }))
 export const getTemplates = (): Template[] => (getSettings().lang === 'fa' ? TEMPLATES : EN_TEMPLATES)
 
-// The old templates carry an emoji on the callout (`data-emoji`); the schema here names a glyph (`data-icon`).
-const GLYPH: Record<string, string> = { '🎯': 'target', '💡': 'bulb', '⚠️': 'warning', '📌': 'pin', '✅': 'check' }
-
 /** A template's page content, as ProseMirror JSON of this app's schema (the HTML is parsed by the schema's own rules). */
 export function templateDoc(tp: Template): unknown {
-  const html = tp.html.replace(/data-emoji="([^"]*)"/g, (_, e: string) => `data-icon="${GLYPH[e] ?? 'bulb'}"`)
-  const body = new window.DOMParser().parseFromString(`<body>${html}</body>`, 'text/html').body
+  const body = new window.DOMParser().parseFromString(`<body>${tp.html}</body>`, 'text/html').body
   return PMParser.fromSchema(schema).parse(body).toJSON()
 }

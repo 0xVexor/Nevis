@@ -1,3 +1,4 @@
+import { contextMenuAnchor } from '../ds'
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import type { Page } from './model'
 import type { PageIndex } from './pageIndex'
@@ -42,7 +43,7 @@ function rowBehaviour(props: Omit<RowProps, 'page' | 'depth'>, page: Page, box: 
     'aria-level': level,
     onClick: () => (props.openOnClick && !folder ? (props.onSelect(page.id), props.onOpen(page.id)) : props.onSelect(page.id)),
     onDoubleClick: () => (folder ? props.onToggle(page.id) : props.onOpen(page.id, true)),
-    onContextMenu: (e: MouseEvent) => (e.preventDefault(), e.stopPropagation(), props.onSelect(page.id), props.onMenu(page.id, new DOMRect(e.clientX, e.clientY, 0, 0))),
+    onContextMenu: (e: MouseEvent) => { props.onSelect(page.id); props.onMenu(page.id, contextMenuAnchor(e)) },
   } as const
 }
 

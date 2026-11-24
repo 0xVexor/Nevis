@@ -27,6 +27,7 @@ export function usePageActions(ws: Workspace, pages: Page[], open: (id: string) 
     const md = await ws.markdownOf(id)
     download(new TextEncoder().encode(md.text), md.path.split('/').pop() || 'page.md', 'text/markdown')
   }
+  const copyPageLink = (id: string) => copy(new URL(href({ name: 'page', id }), location.href).href)
   const organizeItems = (page: Page): MenuItem[] => [
     { label: 'Rename', testid: 'menu-rename', icon: <Icon name="pencil" size={16} />, onSelect: () => setRenaming(page) },
     ...(!databases.has(page.id) && page.kind !== 'folder' ? [{ label: 'Duplicate', testid: 'menu-duplicate', icon: <Icon name="copy" size={16} />, onSelect: () => run(async () => {
@@ -38,6 +39,7 @@ export function usePageActions(ws: Workspace, pages: Page[], open: (id: string) 
     }) }] : []),
     { label: 'Move page', testid: 'menu-move', icon: <Icon name="folder" size={16} />, onSelect: () => { setQuery(''); setMoving(page.id) } },
     ...(page.parentId ? [{ label: 'Move to top level', testid: 'menu-move-root', icon: <Icon name="arrow-up" size={16} />, onSelect: () => run(() => ws.moveTo(page.id, '', ws.children('').length)) }] : []),
+    { label: 'Copy link', testid: 'menu-copy-link', icon: <Icon name="link" size={16} />, onSelect: () => run(() => copyPageLink(page.id)) },
     { label: 'Copy title', testid: 'menu-copy-title', icon: <Icon name="clipboard" size={16} />, onSelect: () => run(() => copy(page.title)) },
     ...(!databases.has(page.id) && page.kind !== 'folder' ? [{ label: 'Export Markdown', testid: 'menu-export-md', icon: <Icon name="markdown" size={16} />, onSelect: () => run(() => exportPage(page.id)) }] : []),
   ]
@@ -48,7 +50,7 @@ export function usePageActions(ws: Workspace, pages: Page[], open: (id: string) 
     { kind: 'sep' },
     { kind: 'head', label: 'Copy' },
     { label: 'Copy as Markdown', testid: 'share-copy-markdown', icon: <Icon name="copy" size={16} />, onSelect: () => run(async () => copy((await ws.markdownOf(id)).text)) },
-    { label: 'Copy link', testid: 'share-copy-link', icon: <Icon name="link" size={16} />, onSelect: () => run(() => copy(location.origin + location.pathname + href({ name: 'page', id }))) },
+    { label: 'Copy link', testid: 'share-copy-link', icon: <Icon name="link" size={16} />, onSelect: () => run(() => copyPageLink(id)) },
     { kind: 'sep' },
     { label: 'Export the whole workspace', testid: 'share-workspace', hint: '.zip', icon: <Icon name="vault" size={16} />, onSelect: () => run(async () => download(await ws.exportMarkdown(), 'nevis-markdown.zip')) },
   ]

@@ -1,8 +1,8 @@
 // @ts-nocheck -- copied from the old app, where this ran as written; the new tsconfig's stricter index checks are not applied to copied code.
 import { commandMatches } from '../../shortcutCommands'
 import { PageIcon } from '../PageIcon'
-import { dirOf, Button, ChipButton, Icon, IconButton, SearchField, Stats, Tag } from '../../ds'
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { dirOf, Button, ChipButton, Icon, IconButton, SearchField, Stats, Tag, useMenu } from '../../ds'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import type { Page } from '../model'
 import { layoutAsync } from './graphLayout'
 import { normalizeFa } from '@nevis/editor'
@@ -107,6 +107,7 @@ const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v))
  * stays smooth with thousands of pages. The layout is computed in a worker.
  */
 export function GraphView({ currentId, onOpen, onClose, pages, edges, relationPages, relationEdges }: { currentId?: string; onOpen: (id: string) => void; onClose: () => void; pages: Page[]; edges: [string, string][]; relationPages: Page[]; relationEdges: [string, string][] }) {
+  const { open: openMenu, menu } = useMenu()
   const [showRelations, setShowRelations] = useState(false)
   const allPages = useMemo(() => showRelations ? [...pages, ...relationPages] : pages, [pages, relationPages, showRelations])
   const allEdges = useMemo(() => showRelations ? [...edges, ...relationEdges] : edges, [edges, relationEdges, showRelations])
@@ -724,6 +725,10 @@ export function GraphView({ currentId, onOpen, onClose, pages, edges, relationPa
   const rootPage = (root ?? currentId) ? pageById.get((root ?? currentId)!) : undefined
   const found = q ? [...matches].slice(0, 6).map((i) => nodes[i]) : []
   const num = (n: number) => n.toLocaleString(locale())
+  const nodeMenu = (id: string, event: MouseEvent) => openMenu([
+    { label: 'Open page', icon: <Icon name="arrow-up-right" className="ds-flip" />, onSelect: () => onOpen(id) },
+    { label: 'Explore from here', icon: <Icon name="graph" />, disabled: scope === 'local' && root === id, onSelect: () => exploreFrom(id) },
+  ], event)
   /** One page in a side list: its colour, its title; hovering lights it on the map, clicking takes you there. */
   const row = (n: N, trailing?: ReactNode) => (
     <button
@@ -737,6 +742,7 @@ export function GraphView({ currentId, onOpen, onClose, pages, edges, relationPa
       onFocus={() => ((hoverRef.current = null), setHover(n.id))}
       onBlur={() => ((hoverRef.current = null), setHover(null))}
       onClick={() => goTo(n.id)}
+      onContextMenu={e => nodeMenu(n.id, e)}
     >
       <span className="gr-row-ic" aria-hidden="true">
         {(() => {
@@ -777,7 +783,12 @@ export function GraphView({ currentId, onOpen, onClose, pages, edges, relationPa
             aria-label={t('Map of {n} pages and {m} links', { n: num(picked.pages.length), m: num(picked.edges.length) })}
             role="img"
             style={hovered ? { cursor: 'var(--cursor-hand, pointer)' } : undefined}
+            onContextMenu={e => {
+              const node = scene?.nodes[nodeAt(e.nativeEvent.offsetX, e.nativeEvent.offsetY)]
+              if (node) nodeMenu(node.id, e)
+            }}
             onPointerDown={(e) => {
+              if (e.button !== 0) return
               try {
                 e.currentTarget.setPointerCapture(e.pointerId)
               } catch {
@@ -955,6 +966,7 @@ export function GraphView({ currentId, onOpen, onClose, pages, edges, relationPa
           />
         </div>
       )}
+      {menu}
     </div>
   )
 }

@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { t } from './i18n'
 import { commandMatches } from './shortcutCommands'
 import { InvalidCell, boardColumns, cellFields, addOption, addProperty, createRow, createView, formatDateFa, patchViewConfig, readViewConfig, removeOption, renameProperty, setCell, setMembers, setViewConfig, trashProperty, trashRow, trashView, viewRows, PROP_TYPES, titleProperty, type CellValue, type DatabaseModel, type PropertyModel, type PropType, type RowModel, type ViewModel } from '@nevis/core'
 import { BoardView } from './BoardView'
 import { DatabasePresentations, databasePresentation } from './DatabasePresentations'
 import { DatabaseToolbar, KIND_ICON } from './DatabaseToolbar'
-import { Button, Checkbox, Dropdown, Icon, IconButton, Menu, useMenu, type MenuItem } from './ds'
+import { Button, Checkbox, Dropdown, Icon, IconButton, useMenu, type MenuItem } from './ds'
 import { ColumnResize } from './ColumnResize'
 import { DatabaseDatePicker } from './DatabaseDatePicker'
-import { go } from './router'
+import { go, href } from './router'
 import { promptDialog } from './dialog'
 import type { Workspace } from './workspace'
 import { readSynced, type SyncedSettings } from './workspaceSettings'
@@ -144,8 +144,7 @@ export function DatabaseView({ ws, id, onPeek }: { ws: Workspace; id: string; on
   const history = useRef<Array<Array<{ rowId: string; propId: string; before: CellValue; after: CellValue }>>>([])
   const tableRef = useRef<HTMLTableElement>(null)
   const pendingWrites = useRef<Promise<void>>(Promise.resolve())
-  const rowMenu = useMenu()
-  const [colMenu, setColMenu] = useState<{ rect: DOMRect; p: PropertyModel } | null>(null)
+  const { open: openMenu, menu } = useMenu()
   const [title, setTitle] = useState(db?.title ?? '')
   const [activeView, setActiveView] = useState('')
   useEffect(() => {
@@ -276,6 +275,28 @@ export function DatabaseView({ ws, id, onPeek }: { ws: Workspace; id: string; on
     else next.delete(rowId)
     return next
   })
+  const rowItems = (rowId: string): MenuItem[] => [
+    { label: 'Open in side peek', testid: 'db-menu-peek', icon: <Icon name="panel-right" size={16} className="ds-flip" />, onSelect: () => onPeek(rowId) },
+    { label: 'Open as full page', testid: 'db-menu-full', icon: <Icon name="maximize" size={16} />, onSelect: () => openFullRow(rowId) },
+    { label: 'Copy link', icon: <Icon name="link" size={16} />, onSelect: async () => {
+      try {
+        const link = new URL(href({ name: 'row', db: id, id: rowId }), location.href)
+        await navigator.clipboard.writeText(link.href)
+        ws.notify(t('Copied'))
+      } catch { ws.notify(t('Could not access the clipboard. Use the keyboard shortcut instead.')) }
+    } },
+    ...(presentation === 'table' ? [{ label: 'Select item', kind: 'item' as const, checked: selected.has(rowId), onSelect: () => toggleRow(rowId, !selected.has(rowId)) }] : []),
+    { kind: 'sep' },
+    { label: 'Delete row', icon: <Icon name="trash" size={16} />, danger: true, onSelect: () => {
+      toggleRow(rowId, false)
+      void ws.mutate([rowId], c => trashRow(c, rowId)).catch(() => ws.notify(t('Could not complete the action. Please try again.')))
+    } },
+  ]
+  const openRowContext = (rowId: string, event: MouseEvent) => {
+    const target = event.target as Element
+    if (!event.currentTarget.contains(target) || target.closest('input:not([type="checkbox"]):focus, textarea, [contenteditable="true"]')) return
+    openMenu(rowItems(rowId), event)
+  }
   const saveView = (patch: Parameters<typeof patchViewConfig>[1]) => view && ws.mutate([view.id], c => setViewConfig(c, view.id, patchViewConfig(view.config, patch)))
   const previewWidth = (id: string, width: number | null) => {
     resizeGeneration.current++
@@ -325,7 +346,7 @@ export function DatabaseView({ ws, id, onPeek }: { ws: Workspace; id: string; on
       <div className="dv">
       {gridError && <p className="err" role="alert">{gridError}</p>}
       {view && <DatabaseToolbar ws={ws} db={db} view={view} onActive={setActiveView} search={search} onSearch={setSearch} onNewRow={() => addRow()} onNewPageRow={() => addRow(true)} onDelete={() => { void ws.trash(id); go({ name: 'home' }) }} />}
-      {presentation === 'board' ? <BoardView ws={ws} db={db} config={config} rows={rows} titleProp={tp} /> : presentation === 'list' || presentation === 'gallery' ? <DatabasePresentations ws={ws} presentation={presentation} groups={groups} grouped={!!grouped} props={props} onPeek={onPeek} onNew={() => { void ws.mutate([id], c => createRow(c, db)).then(onPeek) }} /> : (
+      {presentation === 'board' ? <BoardView ws={ws} db={db} config={config} rows={rows} titleProp={tp} onPeek={onPeek} onItemMenu={openRowContext} /> : presentation === 'list' || presentation === 'gallery' ? <DatabasePresentations ws={ws} presentation={presentation} groups={groups} grouped={!!grouped} props={props} onPeek={onPeek} onItemMenu={openRowContext} onNew={() => { void ws.mutate([id], c => createRow(c, db)).then(onPeek) }} /> : (
       <div className="dv-table-wrap dbtable-wrap">
         {picked.length > 0 && <div className="dv-bulk"><b>{t('{n} selected', { n: picked.length })}</b><Button size="sm" variant="danger" onClick={() => {
           setSelected(new Set())
@@ -338,8 +359,8 @@ export function DatabaseView({ ws, id, onPeek }: { ws: Workspace; id: string; on
             <tr>
               <th className="dbtable-handle" data-frozen={frozenIndex >= 0 || undefined} style={frozenIndex >= 0 ? { insetInlineStart: 0 } : undefined}><Checkbox label={t('Select all')} checked={rows.length > 0 && picked.length === rows.length} disabled={!rows.length} onChange={on => setSelected(new Set(on ? rows.map(row => row.id) : []))} /></th>
               {props.map((p, ci) => (
-                <th key={p.id} data-prop={p.name} data-title={p.isTitle || undefined} data-frozen={ci <= frozenIndex || undefined} style={{ ...frozenStyle(ci), ...((resizePreview?.id === p.id || config.columnWidths[p.id] !== undefined) ? { inlineSize: resizePreview?.id === p.id ? resizePreview.width : config.columnWidths[p.id], minInlineSize: resizePreview?.id === p.id ? resizePreview.width : config.columnWidths[p.id] } : {}) }}>
-                  <button type="button" className="dv-th-btn" data-testid="col-head" aria-haspopup="menu" onClick={e => setColMenu({ rect: e.currentTarget.getBoundingClientRect(), p })}>
+                <th key={p.id} onContextMenu={e => { if (!(e.target as Element).closest('input, [role="separator"]')) openMenu(colItems(p), e) }} data-prop={p.name} data-title={p.isTitle || undefined} data-frozen={ci <= frozenIndex || undefined} style={{ ...frozenStyle(ci), ...((resizePreview?.id === p.id || config.columnWidths[p.id] !== undefined) ? { inlineSize: resizePreview?.id === p.id ? resizePreview.width : config.columnWidths[p.id], minInlineSize: resizePreview?.id === p.id ? resizePreview.width : config.columnWidths[p.id] } : {}) }}>
+                  <button type="button" className="dv-th-btn" data-testid="col-head" aria-haspopup="menu" onClick={e => openMenu(colItems(p), e.currentTarget)}>
                     <span className="dv-kind"><Icon name={KIND_ICON[p.type]} size={15} /></span>
                     <span className="dv-th-name" dir="auto">{p.name}</span>
                     {config.sort[0]?.prop === p.id && <Icon name={config.sort[0].dir === 'asc' ? 'arrow-up' : 'arrow-down'} size={14} className="dv-th-sort" />}
@@ -354,7 +375,7 @@ export function DatabaseView({ ws, id, onPeek }: { ws: Workspace; id: string; on
           {groups.map(group => <tbody key={group.id}>
             {grouped && <tr><th scope="rowgroup" colSpan={props.length + 2} className="dbtable-group"><span dir="auto">{group.name || t('No value')}</span><span className="ds-badge">{group.rows.length}</span></th></tr>}
             {group.rows.map(r => (
-              <tr key={r.id} data-testid="db-row" data-id={r.id} data-checked={selected.has(r.id) || undefined} tabIndex={0}
+              <tr key={r.id} data-testid="db-row" data-id={r.id} data-checked={selected.has(r.id) || undefined} tabIndex={0} onContextMenu={e => openRowContext(r.id, e)}
                 onKeyDown={event => { if (event.key === 'Enter' && event.target === event.currentTarget) { event.preventDefault(); onPeek(r.id) } }}
                 onClick={event => {
                   const target = event.target as Element
@@ -365,10 +386,7 @@ export function DatabaseView({ ws, id, onPeek }: { ws: Workspace; id: string; on
                   onPeek(r.id)
                 }}>
                 <td className="dbtable-handle" data-frozen={frozenIndex >= 0 || undefined} style={frozenIndex >= 0 ? { insetInlineStart: 0 } : undefined}>
-                  <button type="button" className="dv-grip" aria-label={t('Item actions')} onClick={e => rowMenu.open([
-                    { label: 'Open as page', icon: <Icon name="panel-right" size={16} className="ds-flip" />, onSelect: () => onPeek(r.id) },
-                    { label: 'Delete row', icon: <Icon name="trash" size={16} />, danger: true, onSelect: () => void ws.mutate([r.id], c => trashRow(c, r.id)) },
-                  ], e.currentTarget)}><Icon name="more-vertical" size={16} /></button>
+                  <button type="button" className="dv-grip" aria-label={t('Item actions')} onClick={e => openMenu(rowItems(r.id), e.currentTarget)}><Icon name="more-vertical" size={16} /></button>
                   <Checkbox label={t('Select item')} checked={selected.has(r.id)} onChange={on => toggleRow(r.id, on)} />
                 </td>
                 {props.map((p, ci) => (
@@ -396,10 +414,7 @@ export function DatabaseView({ ws, id, onPeek }: { ws: Workspace; id: string; on
         {rows.length > 0 && <div className="dv-newrow"><button type="button" onClick={() => addRow()}><Icon name="plus" size={15} />{t('New item')}</button></div>}
         <div className="db-foot">{t('{n} items', { n: rows.length.toLocaleString() })}</div>
       </div>)}
-      {colMenu && view && (
-        <Menu anchor={colMenu.rect} onClose={() => setColMenu(null)} items={colItems(colMenu.p)} />
-      )}
-      {rowMenu.menu}
+      {menu}
       </div>
     </section></div>
   )

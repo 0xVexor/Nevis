@@ -1,11 +1,11 @@
 // Templates as the old app drew them: the choices on one side (`tpl-option`), a preview of the page the chosen one creates on the other (`tpl-paper`).
 // Arrow keys move through the list, Enter or a double click creates. The preview is read from the template's own ProseMirror JSON.
 import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
-import { allBlocksTemplate, dailyNoteTemplate, meetingNotesTemplate, taskListTemplate } from '@nevis/editor'
+import { allBlocksTemplate, dailyNoteTemplate } from '@nevis/editor'
 import { formatDateFa } from '@nevis/core'
 import { motion } from 'motion/react'
-import { Button, Icon, Screen, useUIMotion } from '../ds'
-import { Glyph } from '../ds/iconSet'
+import { Button, Icon, Screen, useMenu, useUIMotion } from '../ds'
+import { iconNode } from '../ds/iconSet'
 import { go } from '../router'
 import { t } from '../i18n'
 import { getTemplates, templateDoc } from '../shell/oldTemplates'
@@ -53,18 +53,18 @@ function PaperBlock({ block: b }: { block: Block }) {
 
 export function Templates({ ws }: { ws: Workspace }) {
   const motionOf = useUIMotion()
-  const meeting = meetingNotesTemplate(today()), tasks = taskListTemplate(), daily = dailyNoteTemplate(today()), all = allBlocksTemplate()
+  const { open: openMenu, menu } = useMenu()
+  const daily = dailyNoteTemplate(today()), all = allBlocksTemplate()
   const empty: Choice[] = [
     { id: 'blank', title: t('Blank page'), hint: t('Start from scratch'), icon: <Icon name="file-text" />, action: t('Create page'), make: () => null },
     { id: 'drawing', title: t('Drawing'), hint: t('A blank whiteboard for sketches and diagrams.'), icon: <Icon name="pencil" />, action: t('Create drawing'), make: () => 'board' },
     { id: 'database', title: t('Database'), hint: t('Tables, views, forms and dashboards in one database.'), icon: <Icon name="database" />, action: t('Create database'), make: () => 'database' },
   ]
-  const GLYPH: Record<string, string> = { lecture: 'graduation', chapter: 'book', exercise: 'target', meeting: 'users', todo: 'list' } // the old gallery's icons
-  const fromOld: Choice[] = getTemplates().map(tp => { const doc = templateDoc(tp); return { id: tp.id, title: tp.title, hint: tp.desc, icon: <Glyph name={GLYPH[tp.id] ?? 'page'} size={18} />, action: t('Use template'), pageTitle: tp.pageTitle.replace(/[\s—–-]+$/, ''), blocks: outline(doc), make: () => ({ title: tp.pageTitle, content: doc, icon: tp.icon }) } })
+  const fromOld: Choice[] = getTemplates().map(tp => { const doc = templateDoc(tp); return { id: tp.id, title: tp.title, hint: tp.desc, icon: iconNode(tp.icon), action: t('Use template'), pageTitle: tp.pageTitle.replace(/[\s—–-]+$/, ''), blocks: outline(doc), make: () => ({ title: tp.pageTitle, content: doc, icon: tp.icon }) } })
   const ready: Choice[] = [
     ...fromOld,
-    { id: 'daily', title: t('Daily note'), hint: t('Plan and notes for today'), icon: <Glyph name="calendar" size={18} />, action: t('Use template'), pageTitle: today(), blocks: outline(daily), make: () => ({ title: today(), content: daily }) },
-    { id: 'all-blocks', title: t('All blocks sample'), hint: t('One sample of every block'), icon: <Glyph name="templates" size={18} />, action: t('Use template'), pageTitle: t('All blocks'), blocks: outline(all), make: () => ({ title: t('All blocks'), content: all }) },
+    { id: 'daily', title: t('Daily note'), hint: t('Plan and notes for today'), icon: iconNode('i:calendar'), action: t('Use template'), pageTitle: today(), blocks: outline(daily), make: () => ({ title: today(), content: daily, icon: 'i:calendar' }) },
+    { id: 'all-blocks', title: t('All blocks sample'), hint: t('One sample of every block'), icon: iconNode('i:templates'), action: t('Use template'), pageTitle: t('All blocks'), blocks: outline(all), make: () => ({ title: t('All blocks'), content: all, icon: 'i:templates' }) },
   ]
   const choices = [...empty, ...ready]
   const [current, setCurrent] = useState(choices[0]!.id)
@@ -78,6 +78,7 @@ export function Templates({ ws }: { ws: Workspace }) {
     if (made?.icon) await ws.setMeta(id, { icon: made.icon })
     go({ name: 'page', id })
   }
+  const useChoice = (choice: Choice) => void pick(choice).catch(() => ws.notify(t('Could not complete the action. Please try again.')))
   const move = (e: ReactKeyboardEvent) => {
     const i = choices.findIndex(c => c.id === current)
     const next = e.key === 'ArrowDown' ? i + 1 : e.key === 'ArrowUp' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? choices.length - 1 : -2
@@ -88,8 +89,8 @@ export function Templates({ ws }: { ws: Workspace }) {
     list.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`)?.focus()
   }
   const option = (c: Choice) => (
-    <button key={c.id} type="button" role="option" data-id={c.id} data-testid={`template-${c.id}`} aria-selected={c.id === current} tabIndex={c.id === current ? 0 : -1} className="tpl-option"
-      onClick={() => setCurrent(c.id)} onDoubleClick={() => void pick(c)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), void pick(c))}>
+    <button key={c.id} onContextMenu={e => { setCurrent(c.id); openMenu([{ label: c.action, onSelect: () => useChoice(c) }], e) }} type="button" role="option" data-id={c.id} data-testid={`template-${c.id}`} aria-selected={c.id === current} tabIndex={c.id === current ? 0 : -1} className="tpl-option"
+      onClick={() => setCurrent(c.id)} onDoubleClick={() => useChoice(c)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), useChoice(c))}>
       <span className="tpl-option-ic">{c.icon}</span><span className="tpl-option-text"><b dir="auto">{c.title}</b><small dir="auto">{c.hint}</small></span>
     </button>
   )
@@ -103,7 +104,7 @@ export function Templates({ ws }: { ws: Workspace }) {
         <section className="tpl-preview" aria-label={t('Preview')} aria-live="polite">
           <header className="tpl-preview-head">
             <div><h2 dir="auto">{chosen.title}</h2><p dir="auto">{chosen.hint}</p></div>
-            <Button variant="primary" data-testid="tpl-use" onClick={() => void pick(chosen)}>{chosen.action}</Button>
+            <Button variant="primary" data-testid="tpl-use" onClick={() => useChoice(chosen)}>{chosen.action}</Button>
           </header>
           <div className="tpl-stage">
             <motion.div key={chosen.id} className="tpl-paper" initial={motionOf.reduced ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={motionOf.transition}>
@@ -114,6 +115,7 @@ export function Templates({ ws }: { ws: Workspace }) {
           </div>
         </section>
       </div>
+      {menu}
     </Screen>
   )
 }

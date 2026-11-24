@@ -11,6 +11,7 @@ export function Popover({ anchor, onClose, children, align = 'start' }: { anchor
   // Placed under the anchor (above it when there is no room) and kept in view while its content grows or shrinks:
   // a tall popover scrolls inside itself instead of running off the window.
   useLayoutEffect(() => {
+    setLeaving(false)
     const el = ref.current
     if (!el) return
     const place = () => {
@@ -43,6 +44,7 @@ export function Popover({ anchor, onClose, children, align = 'start' }: { anchor
     let exit = 0
     const dismiss = () => {
       if (prefersReducedMotion()) return close.current()
+      window.clearTimeout(exit)
       setLeaving(true)
       exit = window.setTimeout(() => close.current(), MOTION.fast * 1000)
     }
@@ -77,7 +79,7 @@ export function Popover({ anchor, onClose, children, align = 'start' }: { anchor
       document.removeEventListener('mousedown', down)
       document.removeEventListener('keydown', key)
     }
-  }, [])
+  }, [anchor])
 
   return createPortal(
     <div
@@ -88,6 +90,6 @@ export function Popover({ anchor, onClose, children, align = 'start' }: { anchor
     >
       {children}
     </div>,
-    document.body,
+    document.fullscreenElement ?? document.body,
   )
 }

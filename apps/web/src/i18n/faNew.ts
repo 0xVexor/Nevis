@@ -21,6 +21,7 @@ export const FA_NEW: Record<string, string> = {
   'Save your recovery key before leaving this screen.': 'پیش از خروج از این صفحه، کلید بازیابی را ذخیره کنید.',
   'Copy recovery key': 'کپی کلید بازیابی',
   'Could not copy the key. Select and copy it manually.': 'کپی خودکار انجام نشد. کلید را انتخاب و دستی کپی کنید.',
+  'Mark incomplete': 'علامت‌گذاری به‌عنوان انجام‌نشده',
   'Open as full page': 'بازکردن تمام‌صفحه',
   'Folder name': 'نام پوشه',
   'Two columns': 'دو ستون',

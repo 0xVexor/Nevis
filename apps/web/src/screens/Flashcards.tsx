@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { intervalLabel, isDue, type Grade, type RawCard, type Rec } from '@nevis/core'
-import { Button, Icon, Screen, Stats, dirOf, useUIMotion } from '../ds'
+import { Button, Icon, Screen, Stats, dirOf, useMenu, useUIMotion } from '../ds'
 import { commandHint, commandMatches } from '../shortcutCommands'
 import { locale, t } from '../i18n'
 import { go } from '../router'
@@ -22,6 +22,7 @@ export function Flashcards({ ws }: { ws: Workspace }) {
   const [queue, setQueue] = useState<RawCard[]>([])
   const [pos, setPos] = useState(0)
   const motionOf = useUIMotion()
+  const { open: openMenu, menu } = useMenu()
   const [done, setDone] = useState(0)
   const [shown, setShown] = useState(false)
   const started = useRef(0)
@@ -106,7 +107,10 @@ export function Flashcards({ ws }: { ws: Workspace }) {
                   {decks.map(d => {
                     const pct = d.total ? Math.round((d.learned / d.total) * 100) : 0
                     return (
-                      <div key={d.id} className="ds-list-row fc-deck" dir={dirOf(d.title)}>
+                      <div key={d.id} className="ds-list-row fc-deck" dir={dirOf(d.title)} onContextMenu={e => openMenu([
+                        { label: 'Review', icon: <Icon name="cards" />, disabled: !d.due, onSelect: () => start(d.id) },
+                        { label: 'Open source page', icon: <Icon name="file" />, onSelect: () => go({ name: 'page', id: d.id }) },
+                      ], e)}>
                         <span className="fc-deck-ic"><Icon name="cards" /></span>
                         <span className="ds-list-main"><b dir="auto">{d.title}</b><small>{t(d.total === 1 ? '1 card, {m} learned' : '{n} cards, {m} learned', { n: num(d.total), m: num(d.learned) })}</small></span>
                         <span className="ds-progress fc-meter" role="progressbar" aria-label={t('Learned')} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><i style={{ inlineSize: pct + '%' }} /></span>
@@ -126,6 +130,7 @@ export function Flashcards({ ws }: { ws: Workspace }) {
             </>
           )}
         </div>
+        {menu}
       </Screen>
     )
   }

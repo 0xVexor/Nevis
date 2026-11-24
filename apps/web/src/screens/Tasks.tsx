@@ -3,10 +3,11 @@
 import { useContext, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'motion/react'
-import { Button, Checkbox, Icon, IconButton, Screen, useUIMotion } from '../ds'
+import { Button, Checkbox, Icon, IconButton, Screen, contextMenuAnchor, useMenu, useUIMotion } from '../ds'
 import { locale, t } from '../i18n'
 import { go } from '../router'
 import { legacyPages, legacyTasks } from '../shell/adapt'
+import { PageContextMenu } from '../shell/pageContextMenu'
 import { PanelHost } from '../shell/panelHost'
 import { PageIcon } from '../shell/PageIcon'
 import type { Page } from '../shell/model'
@@ -19,6 +20,8 @@ const SETTLE_MS = 700
 
 export function Tasks({ ws }: { ws: Workspace }) {
   const host = useContext(PanelHost)
+  const pageMenu = useContext(PageContextMenu)
+  const { open: openMenu, menu } = useMenu()
   const motionOf = useUIMotion()
   const [source, setSource] = useState<Source>(ALL)
   const [status, setStatus] = useState<Status>('all')
@@ -54,6 +57,11 @@ export function Tasks({ ws }: { ws: Workspace }) {
   }
   const row = (x: (typeof items)[number]) => (
     <motion.div key={x.key} className="ds-list-row tk-row" data-testid="task-row" data-done={x.checked || undefined} style={{ '--depth': 0 } as CSSProperties}
+      onContextMenu={e => openMenu([
+        { label: x.checked ? 'Mark incomplete' : 'Mark complete', icon: <Icon name={x.checked ? 'undo' : 'check'} />, onSelect: () => toggle(x, !x.checked) },
+        { label: 'Open source page', icon: <Icon name="file" />, onSelect: () => go({ name: 'page', id: x.pageId }) },
+        ...(x.pageId === inboxId ? [{ label: 'Delete', danger: true, icon: <Icon name="trash" />, onSelect: () => void ws.removeTask(x.pageId, x.blockId) }] : []),
+      ], e)}
       layout={motionOf.reduced ? false : 'position'} initial={motionOf.reduced ? false : { opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={motionOf.reduced ? undefined : { opacity: 0, height: 0 }} transition={{ ...motionOf.transition, layout: motionOf.spring }}>
       <Checkbox checked={x.checked} onChange={next => toggle(x, next)} className="tk-check"><span className="tk-text" dir="auto">{x.text}</span></Checkbox>
       {x.pageId === inboxId && <IconButton label={t('Delete')} className="tk-del" onClick={() => void ws.removeTask(x.pageId, x.blockId)}><Icon name="trash" size={16} /></IconButton>}
@@ -61,7 +69,7 @@ export function Tasks({ ws }: { ws: Workspace }) {
     </motion.div>
   )
   const sourceButton = (id: Source, icon: ReactNode, name: string, count: number) => (
-    <button key={id.kind === 'page' ? id.id : id.kind} type="button" className="tk-source" aria-current={(current.kind === id.kind && (id.kind !== 'page' || (current.kind === 'page' && current.id === id.id))) || undefined} onClick={() => { setSource(id); setShowDone(false) }}>
+    <button key={id.kind === 'page' ? id.id : id.kind} type="button" className="tk-source" aria-current={(current.kind === id.kind && (id.kind !== 'page' || (current.kind === 'page' && current.id === id.id))) || undefined} onClick={() => { setSource(id); setShowDone(false) }} onContextMenu={id.kind === 'page' && pageMenu ? e => pageMenu(id.id, contextMenuAnchor(e)) : undefined}>
       <span className="tk-source-ic">{icon}</span><span className="tk-source-name" dir="auto">{name}</span>{count > 0 && <span className="ds-badge">{num(count)}</span>}
     </button>
   )
@@ -109,6 +117,7 @@ export function Tasks({ ws }: { ws: Workspace }) {
           )}
         </section>
       </div>
+      {menu}
     </Screen>
   )
 }

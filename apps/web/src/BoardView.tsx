@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type MouseEvent } from 'react'
 import { t } from './i18n'
 import { boardColumns, createRow, moveCard, type DatabaseModel, type PropertyModel, type RowModel, type ViewConfig } from '@nevis/core'
 import { Button, Dropdown } from './ds'
@@ -8,7 +8,7 @@ const COLOR: Record<string, string> = { red: '#fde2e0', blue: '#dbeafe', green: 
 
 /** A board: one column per option of the group-by select property; a card is a row. Dragging a card to a column (or within it) writes the new
  *  option AND the new position in one op. HTML5 drag and drop; every card also has a "move to" menu for touch. */
-export function BoardView({ ws, db, config, rows, titleProp }: { ws: Workspace; db: DatabaseModel; config: ViewConfig; rows: RowModel[]; titleProp: PropertyModel | undefined }) {
+export function BoardView({ ws, db, config, rows, titleProp, onPeek, onItemMenu }: { ws: Workspace; db: DatabaseModel; config: ViewConfig; rows: RowModel[]; titleProp: PropertyModel | undefined; onPeek: (id: string) => void; onItemMenu: (id: string, event: MouseEvent) => void }) {
   const group = db.properties.find(p => p.id === config.groupBy && !p.trashed && p.type === 'select')
   const [over, setOver] = useState<string | null>(null)
   if (!group) return <p className="small" data-testid="board-needs-group">{t('For a board, pick a Select column to group by.')}</p>
@@ -30,8 +30,8 @@ export function BoardView({ ws, db, config, rows, titleProp }: { ws: Workspace; 
           onDragOver={e => { e.preventDefault(); setOver(col.id) }} onDragLeave={() => setOver(o => (o === col.id ? null : o))} onDrop={e => drop(col.id, col, e)}>
           <h3 style={{ background: COLOR[col.color] ?? COLOR.gray }}>{col.id === '' ? t('No value') : col.name} <span className="small">{col.rows.length}</span></h3>
           {col.rows.map(r => (
-            <article key={r.id} className="db-board-card" draggable data-testid="board-card" data-id={r.id} onDragStart={e => { e.dataTransfer.setData('text/plain', r.id); e.dataTransfer.effectAllowed = 'move' }}>
-              <span dir="auto">{label(r)}</span>
+            <article key={r.id} className="db-board-card" draggable data-testid="board-card" data-id={r.id} onContextMenu={e => onItemMenu(r.id, e)} onDragStart={e => { e.dataTransfer.setData('text/plain', r.id); e.dataTransfer.effectAllowed = 'move' }}>
+              <Button size="sm" variant="ghost" onClick={() => onPeek(r.id)}><span dir="auto">{label(r)}</span></Button>
               <Dropdown label={t('Move to')} value={col.id} options={cols.map(c => ({ value: c.id, label: c.id === '' ? t('No value') : c.name, raw: true }))} onChange={option => void move(r.id, option, null)} />
             </article>
           ))}

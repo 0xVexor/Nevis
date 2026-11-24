@@ -1,6 +1,6 @@
 export { Menu, type MenuItem } from './Menu'
 export { Dropdown } from './Dropdown'
-export { useMenu } from './useMenu'
+export { contextMenuAnchor, useMenu } from './useMenu'
 export { Popover } from './Popover'
 export { setTranslator } from './text'
 export { Icon } from './icons'

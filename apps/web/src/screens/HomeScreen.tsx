@@ -1,11 +1,14 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useMemo, useState, type MouseEvent, type ReactNode } from 'react'
+import { useContext, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import type { DocNode } from '../shell/docNode'
 import type { Page } from '../shell/model'
 import type { Task } from '../shell/model'
+import { PageContextMenu } from '../shell/pageContextMenu'
+import { getTemplates } from '../shell/oldTemplates'
+import { iconNode } from '../ds/iconSet'
 import { PageIcon } from '../shell/PageIcon'
 import { ago } from '../shell/ago'
-import { Button, Checkbox, Disclosure, Icon, Row, Section, useMenu, landscapeFor, useUIMotion } from '../ds'
+import { Button, Checkbox, Disclosure, Icon, Row, Section, contextMenuAnchor, useMenu, landscapeFor, useUIMotion } from '../ds'
 import { locale, t } from '../i18n'
 import { HOME_LINES } from './homeLines'
 
@@ -48,6 +51,7 @@ const dayKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}-${date.
 export function HomeScreen({ pages, tasks, due, now, showIcons, onCheck, onOpen, onNew, onTable, onCards, onTemplates, onTemplate, onImport, onFiles, onTasks, note, draftId }: Props) {
   const motionOf = useUIMotion()
   const { open: openMenu, menu } = useMenu()
+  const pageMenu = useContext(PageContextMenu)
   const documents = pages.filter(p => !p.deletedAt && p.kind !== 'folder' && !p.database && p.id !== draftId).sort((a, b) => b.updatedAt - a.updatedAt)
   // Keep the writing surface mounted when the first keystroke creates a page.
   const [firstVisit] = useState(() => documents.length === 0)
@@ -68,7 +72,7 @@ export function HomeScreen({ pages, tasks, due, now, showIcons, onCheck, onOpen,
   const date = new Intl.DateTimeFormat(locale(), { weekday: 'long', month: 'long', day: 'numeric' }).format(now)
   const title = (page: Page) => page.title || t('Untitled')
   const context = (event: MouseEvent, page: Page) => {
-    event.preventDefault()
+    if (pageMenu) { pageMenu(page.id, contextMenuAnchor(event)); return }
     openMenu([
       { label: 'Open source page', icon: <Icon name="file" />, onSelect: () => onOpen(page.id) },
       { label: 'View all pages', icon: <Icon name="table" />, onSelect: onTable },
@@ -107,11 +111,11 @@ export function HomeScreen({ pages, tasks, due, now, showIcons, onCheck, onOpen,
               <p>{t('Choose a template and make it yours.')}</p>
               <div className="home-template-choices">
                 {[
-                  { id: 'meeting', icon: 'users', title: 'Meeting notes', preview: 'Agenda · Decisions · Next steps' },
-                  { id: 'lecture', icon: 'book', title: 'Lecture', preview: 'Key ideas · Notes · Questions' },
-                  { id: 'todo', icon: 'checklist', title: 'To-do list', preview: 'Today · This week · Later' },
+                  { id: 'meeting', title: 'Meeting notes', preview: 'Agenda · Decisions · Next steps' },
+                  { id: 'lecture', title: 'Lecture', preview: 'Key ideas · Notes · Questions' },
+                  { id: 'todo', title: 'To-do list', preview: 'Today · This week · Later' },
                 ].map(template => <button key={template.id} type="button" className="home-template-choice" onClick={() => onTemplate(template.id)} onContextMenu={event => { event.preventDefault(); openMenu([{ label: 'Use this template', onSelect: () => onTemplate(template.id) }], event) }}>
-                  <Icon name={template.icon} /><span><b>{t(template.title)}</b><small>{t(template.preview)}</small></span><Icon name="arrow-right" className="ds-flip" size={14} />
+                  {iconNode(getTemplates().find(choice => choice.id === template.id)?.icon, 18, <Icon name="file" />)}<span><b>{t(template.title)}</b><small>{t(template.preview)}</small></span><Icon name="arrow-right" className="ds-flip" size={14} />
                 </button>)}
               </div>
               <Button variant="ghost" size="sm" onClick={onTemplates}>{t('All templates')}<Icon name="arrow-right" className="ds-flip" size={14} /></Button>

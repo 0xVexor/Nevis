@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useContext, useEffect, useMemo, useState } from 'react'
 import type { Page, PageStatus } from '../shell/model'
 import { normalizeForSearch as normalizeFa } from '@nevis/text-fa'
 import { STATUS, allTags, wordCount } from '../shell/meta'
 import { ago } from '../shell/ago'
 import { iconNode } from '../ds/iconSet'
-import { Button, ChipButton, Dropdown, Icon, Screen, SearchField, Tag, useMenu, type MenuItem } from '../ds'
+import { Button, ChipButton, Dropdown, Icon, Screen, SearchField, Tag, contextMenuAnchor, useMenu, type MenuItem } from '../ds'
+import { PageContextMenu } from '../shell/pageContextMenu'
 import { PageStatusChip } from '../shell/PageStatusChip'
 import { t, locale } from '../i18n'
 
@@ -20,6 +21,7 @@ export function PagesTable({ pages, onOpen, onStatus, onClose }: { pages: Page[]
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
   }, [onClose])
+  const pageMenu = useContext(PageContextMenu)
   const [q, setQ] = useState('')
   const [tags, setTags] = useState<string[]>([])
   const [status, setStatus] = useState<StatusFilter>('')
@@ -148,7 +150,7 @@ export function PagesTable({ pages, onOpen, onStatus, onClose }: { pages: Page[]
               </tr>
             )}
             {rows.slice(0, cap).map(({ p, path, words }) => (
-              <tr key={p.id} data-testid="all-pages-row" onClick={() => open(p.id)}>
+              <tr key={p.id} data-testid="all-pages-row" onClick={() => open(p.id)} onContextMenu={pageMenu ? e => pageMenu(p.id, contextMenuAnchor(e)) : undefined}>
                 <td>
                   <button type="button" className="pt-title" onClick={(e) => (e.stopPropagation(), open(p.id))}>
                     <span className="pt-ic">{iconNode(p.icon, 16, <Icon name="file-text" size={16} />)}</span>

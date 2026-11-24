@@ -25,6 +25,7 @@ import { runEditorCommand } from '../editor/commandPalette'
 import type { Editor } from '@tiptap/core'
 import { Topbar } from './Topbar'
 import { useNavHistory } from './useNavHistory'
+import { PageContextMenu } from './pageContextMenu'
 import { usePageActions } from './usePageActions'
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
@@ -272,7 +273,7 @@ export function AppShell({ ws, route, status, children, onSearch, searchOpen, on
       />}
       <main className={'main' + (drawerOpen && !reader && onPage ? ' drawer-open' : '')}>
         <Topbar
-          noPanel={overlay} routeName={route.name} crumbs={crumbs} current={current} panelOpen={panelOpen} onTogglePanel={togglePanel} onHome={() => goTo('home')} onOpen={open} nav={nav}
+          noPanel={overlay} routeName={route.name} crumbs={crumbs} current={current} panelOpen={panelOpen} onTogglePanel={togglePanel} onHome={() => goTo('home')} onOpen={open} onMenu={rowProps.onMenu} nav={nav}
           save={status && status.unsaved > 0 ? 'saving' : save} dark={dark} onToggleDark={() => updateSettings({ theme: dark ? 'light' : 'dark' })}
           fullScreen={fullScreen} onToggleFullScreen={toggleFullScreen} onFavorite={id => void ws.setMeta(id, { favorite: !byId.get(id)?.favorite })}
           shareItems={currentId ? pageActions.shareItems(currentId) : undefined} onHistory={undefined}
@@ -283,7 +284,7 @@ export function AppShell({ ws, route, status, children, onSearch, searchOpen, on
           </>}
         />
         {reader && onPage && <ReaderBar cfg={readerCfg} onCfg={c => { setReaderCfg(c); try { localStorage.setItem('nevis.reader.cfg', JSON.stringify(c)) } catch { /* private window */ } }} width={pageW} onWidth={savePageW} onExit={() => setReader(false)} />}
-        <div className="scroller"><PageChrome.Provider value={{ reader: reader && onPage }}><PanelHost.Provider value={panelKind === 'host' ? host : null}>{children}</PanelHost.Provider></PageChrome.Provider></div>
+        <div className="scroller"><PageChrome.Provider value={{ reader: reader && onPage }}><PanelHost.Provider value={panelKind === 'host' ? host : null}><PageContextMenu.Provider value={rowProps.onMenu}>{children}</PageContextMenu.Provider></PanelHost.Provider></PageChrome.Provider></div>
         {onPage && current && (
           <PagePanel
             open={drawerOpen && !reader} page={current} pages={pages} onClose={() => setDrawerOpen(false)} onOpen={open} onNewSub={() => onNewPage(current.id)}

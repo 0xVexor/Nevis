@@ -3,16 +3,26 @@ import { Menu, type MenuItem } from './Menu'
 
 type Target = DOMRect | HTMLElement | MouseEvent
 
+export function contextMenuAnchor(event: MouseEvent): DOMRect {
+  event.preventDefault()
+  event.stopPropagation()
+  if (!event.clientX && !event.clientY) {
+    const active = document.activeElement
+    return (active instanceof HTMLElement && event.currentTarget.contains(active) ? active : event.currentTarget).getBoundingClientRect()
+  }
+  return new DOMRect(event.clientX, event.clientY, 0, 0)
+}
+
 const rectOf = (target: Target): DOMRect => {
   if (target instanceof DOMRect) return target
   if ('getBoundingClientRect' in target) return target.getBoundingClientRect()
-  return new DOMRect(target.clientX, target.clientY, 0, 0)
+  return contextMenuAnchor(target)
 }
 
 /**
  * const { open, menu } = useMenu()
  * <button onClick={(e) => open(items, e.currentTarget)}>…</button>      // dropdown under a button
- * <div onContextMenu={(e) => { e.preventDefault(); open(items, e) }}>   // context menu at the pointer
+ * <div onContextMenu={(e) => { open(items, e) }}>   // context menu at the pointer
  * {menu}
  */
 export function useMenu() {

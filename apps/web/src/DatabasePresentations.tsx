@@ -1,3 +1,4 @@
+import type { MouseEvent } from 'react'
 import { formatDateFa, type PropertyModel, type RowModel, type ViewModel } from '@nevis/core'
 import { Icon } from './ds'
 import { t } from './i18n'
@@ -33,8 +34,8 @@ function valueText(ws: Workspace, prop: PropertyModel, row: RowModel): string {
 }
 
 /** Shared rows, sorting, filters, grouping and property visibility come from the database view. */
-export function DatabasePresentations({ ws, presentation, groups, grouped, props, onPeek, onNew }: {
-  ws: Workspace; presentation: 'list' | 'gallery'; groups: Group[]; grouped: boolean; props: PropertyModel[]; onPeek: (id: string) => void; onNew: () => void
+export function DatabasePresentations({ ws, presentation, groups, grouped, props, onPeek, onItemMenu, onNew }: {
+  ws: Workspace; presentation: 'list' | 'gallery'; groups: Group[]; grouped: boolean; props: PropertyModel[]; onPeek: (id: string) => void; onItemMenu: (id: string, event: MouseEvent) => void; onNew: () => void
 }) {
   const visible = props.filter(prop => !prop.isTitle).slice(0, 4)
   const count = groups.reduce((n, group) => n + group.rows.length, 0)
@@ -43,13 +44,13 @@ export function DatabasePresentations({ ws, presentation, groups, grouped, props
     const values = visible.map(prop => ({ prop, text: valueText(ws, prop, row) })).filter(item => item.text)
     const icon = <PageIcon page={{ id: row.id }} />
     return presentation === 'list' ? (
-      <div className="ds-list-row dv-listrow dv-stretch" key={row.id} data-testid="db-list-row">
+      <div className="ds-list-row dv-listrow dv-stretch" key={row.id} data-testid="db-list-row" onContextMenu={e => onItemMenu(row.id, e)}>
         <button type="button" className="dv-stretch-hit" aria-label={title} onClick={() => onPeek(row.id)} />
         {icon}<span className="dv-listrow-title" dir="auto">{title}</span>
         <span className="dv-listrow-props">{values.map(({ prop, text }) => <span className="dv-listrow-prop" key={prop.id} title={prop.name} dir="auto">{text}</span>)}</span>
       </div>
     ) : (
-      <div className="dv-card dv-stretch" key={row.id} data-testid="db-gallery-card">
+      <div className="dv-card dv-stretch" key={row.id} data-testid="db-gallery-card" onContextMenu={e => onItemMenu(row.id, e)}>
         <button type="button" className="dv-stretch-hit" aria-label={title} onClick={() => onPeek(row.id)} />
         <div className="dv-card-title">{icon}<span dir="auto">{title}</span></div>
         {values.length > 0 && <div className="dv-card-props">{values.map(({ prop, text }) => <span className="dv-card-prop" key={prop.id} title={prop.name} dir="auto">{text}</span>)}</div>}
