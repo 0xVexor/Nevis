@@ -57,7 +57,7 @@ export function useAnchor(editor: Editor, open: boolean, getEl: () => HTMLElemen
       const candidates = [r.top - h - 12, below, minTop, viewportBottom - h - 8, ...caps.flatMap((cap) => [cap.top - h - 8, cap.bottom + 8])]
       const top = candidates.find(
         (y) => y >= minTop && y + h <= viewportBottom - 8 &&
-          (!clearBelow || y + h <= r.bottom || y >= below) &&
+          (!clearBelow || y + h <= r.top || y >= below) &&
           !caps.some((cap) => left < cap.right + 4 && left + w > cap.left - 4 && y < cap.bottom + 6 && y + h > cap.top - 6),
       )
       if (top == null) {
