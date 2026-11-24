@@ -91,7 +91,7 @@ test('find in page (Ctrl+F) highlights every match and steps through them; the t
 test('find uses remapped shortcuts instead of its old editor binding', async ({ page }) => {
   await signUpAndOpen(page)
   await createNew(page, 'new-page')
-  await page.evaluate(() => localStorage.setItem('nevis.device', JSON.stringify({ shortcuts: { find: ['Alt', 'F'], 'study:Next match': ['F4'] } })))
+  await page.evaluate(() => localStorage.setItem('nevis.device', JSON.stringify({ ...JSON.parse(localStorage.getItem('nevis.device') || '{}'), shortcuts: { find: ['Alt', 'F'], 'study:Next match': ['F4'] } })))
   await page.reload()
   await reopenWorkspace(page)
   await expect(body(page)).toBeVisible()

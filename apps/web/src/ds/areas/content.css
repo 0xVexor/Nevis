@@ -133,3 +133,8 @@
 .layout-column ul[data-type='taskList'] { padding-inline: 0.2em; }
 .tiptap .table-col-guide { position: absolute; inset-block: 0; inline-size: 3px; border-radius: 2px; background: var(--ds-accent); pointer-events: none; z-index: 3; }
 .tiptap.resize-cursor,.tiptap.resize-cursor td, .tiptap.resize-cursor th { cursor: var(--cursor-ew, col-resize); }
+
+@media (max-width: 760px) {
+  .tiptap { font-size: var(--editor-size, 15px); }
+  .app.reading .tiptap { font-size: inherit; }
+}

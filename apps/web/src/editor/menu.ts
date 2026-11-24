@@ -28,6 +28,8 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
     let items: T[] = []
     let selected = 0
     let cmd: ((i: T) => void) | null = null
+    let currentProps: MenuProps<T> | null = null
+    const reposition = () => { if (currentProps) place(currentProps) }
 
     const dropPreview = () => {
       pv?.remove()
@@ -131,10 +133,16 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
     const place = (props: MenuProps<T>) => {
       const r = props.clientRect?.()
       if (!el || !r) return
-      const h = Math.min(el.offsetHeight || 400, 400)
-      const below = r.bottom + 6 + h < window.innerHeight
-      el.style.top = `${below ? r.bottom + 6 : Math.max(8, r.top - h - 6)}px`
-      el.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 360))}px`
+      const viewport = window.visualViewport
+      const left = viewport?.offsetLeft ?? 0, top = viewport?.offsetTop ?? 0
+      const width = viewport?.width ?? window.innerWidth, height = viewport?.height ?? window.innerHeight
+      const bottom = top + height
+      el.style.maxWidth = `${Math.max(0, width - 16)}px`
+      el.style.maxHeight = `${Math.max(0, Math.min(380, height - 16))}px`
+      const h = el.offsetHeight, w = el.offsetWidth
+      const y = r.bottom + 6 + h <= bottom - 8 ? r.bottom + 6 : r.top - h - 6
+      el.style.top = `${Math.max(top + 8, Math.min(y, bottom - h - 8))}px`
+      el.style.left = `${Math.max(left + 8, Math.min(r.left, left + width - w - 8))}px`
     }
 
     return {
@@ -149,6 +157,10 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
           items.findIndex((item) => !cfg.view(item).disabled),
         )
         cmd = (i) => props.command(i)
+        currentProps = props
+        window.visualViewport?.addEventListener('resize', reposition)
+        window.visualViewport?.addEventListener('scroll', reposition)
+        window.addEventListener('resize', reposition)
         show(props)
       },
       onUpdate: (props: MenuProps<T>) => {
@@ -158,6 +170,7 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
           items.findIndex((item) => !cfg.view(item).disabled),
         )
         cmd = (i) => props.command(i)
+        currentProps = props
         show(props)
       },
       onKeyDown: ({ event }: MenuKeyProps) => {
@@ -180,6 +193,10 @@ export function menuRender<T>(cfg: { label: string | (() => string); view: (i: T
         return false
       },
       onExit: () => {
+        window.visualViewport?.removeEventListener('resize', reposition)
+        window.visualViewport?.removeEventListener('scroll', reposition)
+        window.removeEventListener('resize', reposition)
+        currentProps = null
         dropPreview()
         el?.remove()
         el = null

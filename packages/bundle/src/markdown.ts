@@ -1,7 +1,7 @@
 // ProseMirror JSON -> Markdown, one way (ADR-0009 §3). One implementation, for the desktop mirror and the web's "download Markdown". It
 // never reads Markdown back. What Markdown cannot say is kept as the HTML the ADR names (direction, columns, toggles), so a reader with any
 // Markdown viewer sees the text; the loss is listed in docs/formats/markdown-mirror.md.
-import type { PMJson } from '@nevis/schema'
+import { isSafeHref, type PMJson } from '@nevis/schema'
 
 export interface MdContext {
   /** the title of a page a link points to */
@@ -69,17 +69,71 @@ function block(n: PMJson, c: MdContext): string {
 }
 const blocks = (nodes: PMJson[] | undefined, c: MdContext): string => (nodes ?? []).map(n => block(n, c)).filter(s => s !== '').join('\n\n')
 
+// Markdown is not parsed inside raw HTML tables by common Markdown renderers. Render their
+// contents as HTML, escaping text and attributes independently of the surrounding Markdown.
+const htmlEscape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+function htmlInline(nodes: PMJson[] | undefined, c: MdContext): string {
+  return (nodes ?? []).map(n => {
+    if (n.type === 'text') {
+      let text = htmlEscape(n.text ?? '')
+      for (const mark of n.marks ?? []) {
+        const tag = ({ bold: 'strong', italic: 'em', strike: 's', underline: 'u', code: 'code' } as Record<string, string>)[mark.type]
+        if (tag) text = `<${tag}>${text}</${tag}>`
+        else if (mark.type === 'link' && isSafeHref(String(mark.attrs?.href ?? ''))) text = `<a href="${htmlEscape(String(mark.attrs?.href ?? ''))}">${text}</a>`
+      }
+      return text
+    }
+    if (n.type === 'hardBreak') return '<br>'
+    if (n.type === 'pageLink') {
+      const id = String(attr(n, 'dstId') ?? '')
+      const label = String(c.titleOf?.(id) || attr(n, 'label') || '')
+      return `<span data-type="page-link" data-dst="${htmlEscape(id)}" data-label="${htmlEscape(label)}">${htmlEscape(label)}</span>`
+    }
+    if (n.type === 'mathInline') return `<span data-type="math-inline" data-latex="${htmlEscape(String(attr(n, 'latex') ?? ''))}"></span>`
+    return htmlInline(n.content, c)
+  }).join('')
+}
+function htmlBlocks(nodes: PMJson[] | undefined, c: MdContext): string {
+  return (nodes ?? []).map(n => {
+    if (n.type === 'paragraph' || n.type === 'heading') {
+      const tag = n.type === 'paragraph' ? 'p' : `h${Math.max(1, Math.min(3, Number(attr(n, 'level') ?? 1)))}`
+      const dir = String(attr(n, 'dir') ?? 'auto')
+      return `<${tag}${dir === 'rtl' || dir === 'ltr' ? ` dir="${dir}"` : ''}>${htmlInline(n.content, c)}</${tag}>`
+    }
+    if (n.type === 'bulletList' || n.type === 'orderedList') {
+      const tag = n.type === 'bulletList' ? 'ul' : 'ol'
+      return `<${tag}>${(n.content ?? []).map(item => `<li>${htmlBlocks(item.content, c)}</li>`).join('')}</${tag}>`
+    }
+    if (n.type === 'taskList') return `<ul data-type="taskList">${(n.content ?? []).map(item => `<li data-type="taskItem" data-checked="${attr(item, 'checked') ? 'true' : 'false'}">${htmlBlocks(item.content, c)}</li>`).join('')}</ul>`
+    if (n.type === 'horizontalRule') return '<hr>'
+    if (n.type === 'callout') return `<div data-type="callout" data-icon="${htmlEscape(String(attr(n, 'icon') ?? ''))}">${htmlBlocks(n.content, c)}</div>`
+    if (n.type === 'toggle') return `<div data-type="toggle">${htmlBlocks(n.content, c)}</div>`
+    if (n.type === 'mathBlock') return `<div data-type="math-block" data-latex="${htmlEscape(String(attr(n, 'latex') ?? ''))}"></div>`
+    if (n.type === 'mermaid') return `<div data-type="mermaid" data-code="${htmlEscape(String(attr(n, 'code') ?? ''))}"></div>`
+    if (n.type === 'table') return table(n, c, true)
+    if (n.type === 'blockquote') return `<blockquote>${htmlBlocks(n.content, c)}</blockquote>`
+    if (n.type === 'codeBlock') return `<pre><code>${htmlEscape((n.content ?? []).map(t => t.text ?? '').join(''))}</code></pre>`
+    // Keep the existing Markdown representation for uncommon blocks the mirror already supports.
+    return htmlEscape(block(n, c))
+  }).join('')
+}
+
 /** A GFM table when every cell is one plain paragraph without merged cells; otherwise HTML. */
-function table(n: PMJson, c: MdContext): string {
+function table(n: PMJson, c: MdContext, forceHtml = false): string {
   const rows = n.content ?? []
   const simple = rows.every(r => (r.content ?? []).every(cell => Number(attr(cell, 'colspan') ?? 1) === 1 && Number(attr(cell, 'rowspan') ?? 1) === 1 && (cell.content ?? []).length === 1 && cell.content![0]!.type === 'paragraph'))
-  const dir = String(attr(n, 'dir') ?? 'auto')
-  if (simple && dir === 'auto') {
-    const cells = rows.map(r => (r.content ?? []).map(cell => inline(cell.content![0]!.content, c).replace(/\|/g, '\\|')))
+  const rawDir = String(attr(n, 'dir') ?? 'auto')
+  const dir = rawDir === 'rtl' || rawDir === 'ltr' ? rawDir : 'auto'
+  if (!forceHtml && simple && dir === 'auto') {
+    const cells = rows.map(r => (r.content ?? []).map(cell => inline(cell.content![0]!.content, c).replace(/(?<!\\)\|/g, '\\|')))
     const head = cells[0] ?? []
     return [`| ${head.join(' | ')} |`, `| ${head.map(() => '---').join(' | ')} |`, ...cells.slice(1).map(r => `| ${r.join(' | ')} |`)].join('\n')
   }
-  const tr = rows.map(r => `<tr>${(r.content ?? []).map(cell => `<${cell.type === 'tableHeader' ? 'th' : 'td'}${Number(attr(cell, 'colspan') ?? 1) > 1 ? ` colspan="${attr(cell, 'colspan')}"` : ''}${Number(attr(cell, 'rowspan') ?? 1) > 1 ? ` rowspan="${attr(cell, 'rowspan')}"` : ''}>${blocks(cell.content, c)}</${cell.type === 'tableHeader' ? 'th' : 'td'}>`).join('')}</tr>`).join('\n')
+  const span = (cell: PMJson, key: string) => {
+    const value = Number(attr(cell, key) ?? 1)
+    return Number.isSafeInteger(value) && value > 1 ? ` ${key}="${value}"` : ''
+  }
+  const tr = rows.map(r => `<tr>${(r.content ?? []).map(cell => `<${cell.type === 'tableHeader' ? 'th' : 'td'}${span(cell, 'colspan')}${span(cell, 'rowspan')}>${htmlBlocks(cell.content, c)}</${cell.type === 'tableHeader' ? 'th' : 'td'}>`).join('')}</tr>`).join('\n')
   return `<table${dir !== 'auto' ? ` dir="${dir}"` : ''}>\n${tr}\n</table>`
 }
 

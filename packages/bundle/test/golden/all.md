@@ -51,7 +51,7 @@ graph TD
 | ۱ | ۲ |
 
 <table dir="rtl">
-<tr><td colspan="2">ادغام</td></tr>
+<tr><td colspan="2"><p>ادغام</p></td></tr>
 </table>
 
 <div class="nv-columns">

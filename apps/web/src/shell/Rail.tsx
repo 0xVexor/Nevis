@@ -57,6 +57,9 @@ export interface RailProps {
 }
 
 export function Rail(p: RailProps) {
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const mobileMenuButton = useRef<HTMLButtonElement>(null)
+  const closeMobile = () => { setMobileOpen(false); requestAnimationFrame(() => mobileMenuButton.current?.focus()) }
   const [pinned, setPinned] = useState(false) // the icon column opened from the logo
   const [newMenu, setNewMenu] = useState<DOMRect | null>(null)
   const workspaceMenu = useMenu()
@@ -72,10 +75,16 @@ export function Rail(p: RailProps) {
     document.addEventListener('pointerdown', down, true)
     return () => document.removeEventListener('pointerdown', down, true)
   }, [expanded])
+  useEffect(() => {
+    if (!mobileOpen) return
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') closeMobile() }
+    document.addEventListener('keydown', key)
+    return () => document.removeEventListener('keydown', key)
+  }, [mobileOpen])
   const row = (e: Entry) => {
     const count = e.badge === 'cards' ? p.dueCards : e.badge === 'trash' ? p.trashCount : 0
     return (
-      <button key={e.route} aria-label={t(e.label)} aria-description={count > 0 ? String(count) : undefined} data-testid={e.testid} title={count > 0 ? `${t(e.label)} (${count})` : t(e.label)} className={'row plain' + (p.route.name === e.route ? ' cur' : '')} onClick={() => p.onGo(e.route)}>
+      <button key={e.route} aria-label={t(e.label)} aria-description={count > 0 ? String(count) : undefined} data-testid={e.testid} title={count > 0 ? `${t(e.label)} (${count})` : t(e.label)} className={'row plain' + (p.route.name === e.route ? ' cur' : '')} onClick={() => { p.onGo(e.route); setMobileOpen(false) }}>
         <span className="ic"><Icon name={e.icon} /></span>
         <span className="ntitle">{t(e.label)}</span>
         {count > 0 && <span className="ds-badge" aria-hidden="true">{count > 99 ? '99+' : count}</span>}
@@ -83,9 +92,13 @@ export function Rail(p: RailProps) {
     )
   }
   return (
+    <>
+    {p.narrow && mobileOpen && <button className="mobile-nav-backdrop" aria-label={t('Close')} onClick={closeMobile} />}
     <nav
       ref={nav}
-      className="side"
+      className={'side' + (p.narrow ? ' mobile-drawer' : '')}
+      id={p.narrow ? 'mobile-workspace-menu' : undefined}
+      hidden={p.narrow && !mobileOpen}
       aria-label={t('Workspace navigation')}
       data-rail={p.iconsOnly ? '' : undefined}
       data-icons={p.iconsOnly && !expanded ? '' : undefined}
@@ -94,11 +107,13 @@ export function Rail(p: RailProps) {
     >
       {!p.narrow && labelled && <ResizeHandle label={t('Resize navigation rail')} width={p.width ?? p.defaultWidth} min={RAIL_MIN} max={RAIL_MAX} onResize={p.onWidth} />}
       <div className="ws">
+        {p.narrow && <button className="mobile-drawer-close" aria-label={t('Close')} onClick={closeMobile}><Icon name="x" size={20} /></button>}
         <WorkspaceHeader
           mark={<BrandMark />} name={<Brand />} revealLabel={t(pinned ? 'Unpin sidebar' : 'Pin sidebar')} expanded={labelled}
           pressed={p.iconsOnly ? pinned : undefined} onActivate={p.iconsOnly ? () => setPinned(v => !v) : undefined}
         />
       </div>
+      <div className="side-content">
       <div className="side-scroll">
         <button aria-label={t('Search')} className="row plain search-row" data-testid="open-palette" onClick={p.onSearch}>
           <span className="ic"><Icon name="search" /></span><span className="ntitle">{t('Search…')}</span><kbd dir="ltr">{p.searchHint}</kbd>
@@ -109,18 +124,9 @@ export function Rail(p: RailProps) {
       <div className="side-foot">
         <SyncIndicator status={p.status} onOpenSettings={p.onOpenSettings} />
         {FOOT.map(row)}
-        <Button variant="primary" className="side-new" aria-label={t('New')} aria-haspopup="menu" aria-expanded={!!newMenu} data-testid="new-menu" onClick={e => setNewMenu(newMenu ? null : e.currentTarget.getBoundingClientRect())}>
+        <Button variant="primary" className="side-new" aria-label={t('New')} aria-haspopup="menu" aria-expanded={!!newMenu} data-testid={p.narrow ? undefined : 'new-menu'} onClick={e => setNewMenu(newMenu ? null : e.currentTarget.getBoundingClientRect())}>
           <Icon name="plus" size={16} /><span className="ntitle">{t('New')}</span>
         </Button>
-        {newMenu && (
-          <Menu anchor={newMenu} onClose={() => setNewMenu(null)} items={[
-            { label: t('New page'), testid: 'new-page', icon: <Icon name="file" size={16} />, onSelect: p.onNewPage },
-            { label: t('New folder'), testid: 'new-folder', icon: <Icon name="folder" size={16} />, onSelect: p.onNewFolder },
-            { label: t('New board'), testid: 'new-board', icon: <Icon name="pencil" size={16} />, onSelect: p.onNewBoard },
-            { label: t('New database'), testid: 'new-database', icon: <Icon name="table" size={16} />, onSelect: p.onNewDatabase },
-            { label: t('New to-do list'), testid: 'new-todo', icon: <Icon name="checklist" size={16} />, onSelect: p.onNewTodo },
-          ]} />
-        )}
         <div className="side-workspace">
           <button className="wscard" title={t('Workspaces')} data-testid="workspaces" aria-haspopup="menu" aria-expanded={workspaceMenu.isOpen} onClick={event => workspaceMenu.isOpen ? workspaceMenu.close() : workspaceMenu.open([
             { label: 'Workspaces', icon: <Icon name="vault" size={16} />, onSelect: p.onWorkspaces },
@@ -134,6 +140,23 @@ export function Rail(p: RailProps) {
         </div>
         <div className="side-credit">{t('Created by')} Vexor</div>
       </div>
+      </div>
     </nav>
+        {newMenu && (
+          <Menu anchor={newMenu} onClose={() => setNewMenu(null)} items={[
+            { label: t('New page'), testid: 'new-page', icon: <Icon name="file" size={16} />, onSelect: p.onNewPage },
+            { label: t('New folder'), testid: 'new-folder', icon: <Icon name="folder" size={16} />, onSelect: p.onNewFolder },
+            { label: t('New board'), testid: 'new-board', icon: <Icon name="pencil" size={16} />, onSelect: p.onNewBoard },
+            { label: t('New database'), testid: 'new-database', icon: <Icon name="table" size={16} />, onSelect: p.onNewDatabase },
+            { label: t('New to-do list'), testid: 'new-todo', icon: <Icon name="checklist" size={16} />, onSelect: p.onNewTodo },
+          ]} />
+        )}
+    {p.narrow && <nav className="mobile-nav" aria-label={t('Mobile navigation')}>
+      <button aria-label={t('Home')} onClick={() => { p.onGo('home'); setMobileOpen(false) }}><Icon name="home" size={20} /><span>{t('Home')}</span></button>
+      <button aria-label={t('Search')} onClick={() => { setMobileOpen(false); p.onSearch() }}><Icon name="search" size={20} /><span>{t('Search')}</span></button>
+      <button aria-label={t('New')} data-testid="new-menu" aria-haspopup="menu" aria-expanded={!!newMenu} onClick={e => setNewMenu(newMenu ? null : e.currentTarget.getBoundingClientRect())}><Icon name="plus" size={20} /><span>{t('New')}</span></button>
+      <button ref={mobileMenuButton} aria-label={t('Menu')} data-testid="mobile-menu" aria-controls="mobile-workspace-menu" aria-expanded={mobileOpen} onClick={() => setMobileOpen(open => !open)}><Icon name="list" size={20} /><span>{t('Menu')}</span></button>
+    </nav>}
+    </>
   )
 }

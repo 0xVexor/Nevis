@@ -179,7 +179,7 @@ export function AppShell({ ws, route, status, children, onSearch, searchOpen, on
   const toggleFullScreen = () => void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => undefined)
   // The side panel belongs to Home, a page, Tasks and Settings; every other screen fills the window (as in the old app)
   const overlay = !['home', 'page', 'row', 'tasks', 'settings'].includes(route.name)
-  const iconsOnly = settings.sidebar === 'icons' || narrow
+  const iconsOnly = !narrow && settings.sidebar === 'icons'
   const onPage = route.name === 'page' && !!current && current.kind !== 'folder'
   const revealCurrent = () => { if (currentId) { setSelected(currentId); setCollapsed(c => { const n = new Set(c); for (let p = byId.get(currentId); p; p = p.parentId ? byId.get(p.parentId) : undefined) n.delete(p.id); return n }) } }
   useEffect(() => {
@@ -273,13 +273,22 @@ export function AppShell({ ws, route, status, children, onSearch, searchOpen, on
       />}
       <main className={'main' + (drawerOpen && !reader && onPage ? ' drawer-open' : '')}>
         <Topbar
+          narrow={narrow} mobileItems={[
+            ...(onPage && current ? [
+              { label: t('Reader mode'), icon: <Icon name="book" size={16} />, onSelect: () => setReader(true) },
+              { label: t('Page side panel (quick actions & navigation)'), icon: <Icon name="panel-right" size={16} />, onSelect: () => setDrawerOpen(o => !o) },
+              { label: t(current.favorite ? 'Remove from favorites' : 'Add to favorites'), icon: <Icon name="star" size={16} />, onSelect: () => void ws.setMeta(current.id, { favorite: !current.favorite }) },
+              ...pageActions.shareItems(current.id),
+            ] : []),
+            { label: t(dark ? 'Light mode' : 'Dark mode'), icon: <Icon name={dark ? 'sun' : 'moon'} size={16} />, onSelect: () => updateSettings({ theme: dark ? 'light' : 'dark' }) },
+          ]}
           noPanel={overlay} routeName={route.name} crumbs={crumbs} current={current} panelOpen={panelOpen} onTogglePanel={togglePanel} onHome={() => goTo('home')} onOpen={open} onMenu={rowProps.onMenu} nav={nav}
           save={status && status.unsaved > 0 ? 'saving' : save} dark={dark} onToggleDark={() => updateSettings({ theme: dark ? 'light' : 'dark' })}
           fullScreen={fullScreen} onToggleFullScreen={toggleFullScreen} onFavorite={id => void ws.setMeta(id, { favorite: !byId.get(id)?.favorite })}
           shareItems={currentId ? pageActions.shareItems(currentId) : undefined} onHistory={undefined}
           pageTools={<>
-            <IconButton label={t('Reader mode') + '  ' + bindingHint('reader')} onClick={() => setReader(true)}><Icon name="book" size={17} /></IconButton>
-            <IconButton label={t('Page side panel (quick actions & navigation)')} data-testid="page-panel-toggle" pressed={drawerOpen} onClick={() => setDrawerOpen(o => !o)}><Icon name="panel-right" size={17} /></IconButton>
+            {!narrow && <IconButton label={t('Reader mode') + '  ' + bindingHint('reader')} onClick={() => setReader(true)}><Icon name="book" size={17} /></IconButton>}
+            {!narrow && <IconButton label={t('Page side panel (quick actions & navigation)')} data-testid="page-panel-toggle" pressed={drawerOpen} onClick={() => setDrawerOpen(o => !o)}><Icon name="panel-right" size={17} /></IconButton>}
             {pageTools}
           </>}
         />

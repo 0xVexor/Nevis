@@ -26,3 +26,19 @@
 
 /* the bar shows while writing; it stays while one of its menus is open */
 .page > .toolbar.is-open { opacity: 1; }
+
+@media (max-width: 760px) {
+  .toolbar { justify-content: stretch; }
+  .tb-pill { justify-content: flex-start; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; }
+  .tb-btn { min-inline-size: 44px; min-block-size: 44px; }
+  .tb-btn--menu { min-inline-size: 52px; }
+}
+@media (max-width: 760px) {
+  .table-bubble { flex-wrap: nowrap; overflow-x: auto; max-inline-size: calc(100vw - 24px); overscroll-behavior-inline: contain; }
+  .table-bubble .ds-toolbar-group { flex: none; }
+  .table-bubble .ds-toolbar-btn { min-inline-size: 44px; min-block-size: 44px; }
+}
+
+@media (max-width: 760px) {
+  .slash-menu .ds-menu-foot { display: none; }
+}

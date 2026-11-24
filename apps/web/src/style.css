@@ -150,3 +150,14 @@ ul { list-style: none; padding: 0; } .plain li { padding: 1px 0; }
 .dbtable th[data-prop][data-frozen] { position: sticky; }
 .dbtable-resize { position: absolute; inset-inline-end: -4px; inset-block: 0; inline-size: 8px; z-index: 3; cursor: col-resize; touch-action: none; }
 .dbtable-resize:hover, .dbtable-resize:focus-visible { background: var(--ds-accent); outline: none; }
+
+@media (max-width: 760px) and (pointer: coarse) {
+  .dbtable .dbtable-handle { min-inline-size: 82px; }
+  .dbtable-handle .dv-grip { opacity: 1; inline-size: 40px; block-size: 44px; }
+  .dbtable td { block-size: 48px; }
+}
+
+/* Editable controls stay at 16px on phones so iOS does not zoom when they receive focus. */
+@media (max-width: 760px) {
+  :is(input:not([type]), input[type='text'], input[type='search'], input[type='email'], input[type='password'], input[type='url'], input[type='number'], textarea, select):not(.pg-title) { font-size: max(16px, 1em); }
+}

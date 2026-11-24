@@ -36,6 +36,24 @@ describe('Markdown mirror', () => {
     const out = toMarkdown(golden, { titleOf: id => (id === 'X' ? 'صفحهٔ ایکس' : '') })
     expect(out).toBe(readFileSync(join(import.meta.dirname, 'golden', 'all.md'), 'utf8'))
   })
+  it('renders rich contents as HTML in merged tables without interpreting literal text', () => {
+    const cell: PMJson = { type: 'tableCell', attrs: { colspan: 2 }, content: [p(
+      t('literal **x** & <tag> '), t('bold', ['bold']), t(' '), t('code', ['code']),
+      { ...t('safe'), marks: [{ type: 'link', attrs: { href: 'https://example.com/?a=1&b=2' } }] },
+      { ...t('unsafe'), marks: [{ type: 'link', attrs: { href: 'javascript:alert(1)' } }] },
+      { type: 'pageLink', attrs: { dstId: 'page-1', label: 'صفحه' } },
+    ), p(t("second 'paragraph'"))] }
+    const out = toMarkdown({ type: 'doc', content: [{ type: 'table', attrs: { dir: 'rtl' }, content: [{ type: 'tableRow', content: [cell] }] }] })
+    expect(out).toContain('literal **x** &amp; &lt;tag&gt; <strong>bold</strong> <code>code</code>')
+    expect(out).toContain('<a href="https://example.com/?a=1&amp;b=2">safe</a>unsafe')
+    expect(out).toContain('<span data-type="page-link" data-dst="page-1" data-label="صفحه">صفحه</span>')
+    expect(out).toContain("</p><p>second 'paragraph'</p>")
+    expect(out).not.toContain('javascript:')
+  })
+  it('escapes a literal pipe once in a GFM table cell', () => {
+    const cell: PMJson = { type: 'tableHeader', content: [p(t('a|b'))] }
+    expect(toMarkdown({ type: 'doc', content: [{ type: 'table', content: [{ type: 'tableRow', content: [cell] }] }] })).toContain('| a\\|b |')
+  })
   it('front matter and the file name', () => {
     const md = toMarkdown({ type: 'doc', content: [p(t('x'))] }, {}, { id: 'abc-12345678', title: 'عنوان "ویژه"', tags: ['t'], created: 1, updated: 2 })
     expect(md.startsWith('---\nid: "abc-12345678"\ntitle: "عنوان \\"ویژه\\""\nparent: ""\ntags: ["t"]\ncreated: 1\nupdated: 2\ndir: auto\n---\n<!--')).toBe(true)

@@ -121,3 +121,9 @@
 .pp-outline-item[aria-current] { color: var(--ds-text); font-weight: 600; }
 .pp-outline-item[aria-current]::before { background: var(--ds-accent); }
 
+
+@media (max-width: 760px) {
+  .page-cols { padding-inline: 0; }
+  .page-cols .page { padding-inline: 20px; padding-block-start: 24px; }
+  .pg-title { font-size: 23px; line-height: 1.3; }
+}

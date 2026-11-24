@@ -5,6 +5,7 @@ import { t } from '../i18n'
 import { commandHint } from '../shortcutCommands'
 import { shortcutLabel } from '../shortcuts'
 import { openCommandPalette } from './commandPalette'
+import { MobileCommands } from './MobileCommands'
 import { editLink } from './linkPrompt'
 import { linkSelection } from './slash'
 import { PageLinkPicker } from '../PageLinkPicker'
@@ -140,5 +141,5 @@ export function EditorMenus({ editor, ws, id, row = false, quickNote }: { editor
       editor.chain().focus().insertContentAt({ from: selected.from, to: selected.to }, { type: 'pageLink', attrs: { dstId: destination, label: selected.text } }).run()
     } catch { ws.notify(t('Could not complete the action. Please try again.')) }
   }
-  return <>{menu}{link && <Popover anchor={link.rect} onClose={() => setLink(null)}><PageLinkPicker allPages={legacyPages(ws)} text={link.text} currentId={id} onPick={(target, title) => void pick(target, title)} /></Popover>}</>
+  return <><MobileCommands editor={editor} allowedCommands={quickNote} />{menu}{link && <Popover anchor={link.rect} onClose={() => setLink(null)}><PageLinkPicker allPages={legacyPages(ws)} text={link.text} currentId={id} onPick={(target, title) => void pick(target, title)} /></Popover>}</>
 }

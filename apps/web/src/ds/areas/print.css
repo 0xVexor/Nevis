@@ -7,7 +7,7 @@
     --pre-bg: #f6f6f6; --code-bg: #eee; --code-text: #80251e;
   }
   :root:root:root, :root:root:root > body, :root:root:root #root { height: auto; min-height: 0; background: #fff; background-image: none; }
-  :root:root:root :is(.side, .context-panel, .context-backdrop, .ds-window-bar, .topbar, .page-drawer, .ds-toolbar, .slash-menu, .ds-toast, .ds-pop, .ds-scrim, .ds-modal-layer, .cover, .code-bar, .toggle-btn, .callout-ic, .toolbar, .img-bar, .img-handle, .mermaid-bar, .drawing-actions, .lightbox, .ds-grip, .section-drag-surface, .layout-snap-hover-outline, .table-col-guide, .column-resize-handle, .pg-add, .pg-props, .pg-title, .hscroll-rail) { display: none; }
+  :root:root:root :is(.side, .mobile-nav, .mobile-nav-backdrop, .mobile-commands, .context-panel, .context-backdrop, .ds-window-bar, .topbar, .page-drawer, .ds-toolbar, .slash-menu, .ds-toast, .ds-pop, .ds-scrim, .ds-modal-layer, .cover, .code-bar, .toggle-btn, .callout-ic, .toolbar, .img-bar, .img-handle, .mermaid-bar, .drawing-actions, .lightbox, .ds-grip, .section-drag-surface, .layout-snap-hover-outline, .table-col-guide, .column-resize-handle, .pg-add, .pg-props, .pg-title, .hscroll-rail) { display: none; }
   :root:root:root :is(.desktop-frame, .desktop-content, .app, .main, .scroller, .page-cols) { display: block; height: auto; min-height: 0; max-height: none; block-size: auto; overflow: visible; position: static; width: auto; max-width: none; margin: 0; padding: 0; box-shadow: none; border: 0; border-radius: 0; background: #fff; animation: none; }
   :root:root:root .page-cols .page { width: auto; max-width: none; padding: 0; margin: 0; }
   :root:root:root :is(.pg-head, .page-cols.has-cover .pg-head:has(.pg-icon)) { padding: 0; margin: 0 0 8mm; }

@@ -122,3 +122,22 @@ test('workspace Markdown includes database record values', async ({ page }) => {
   expect(recordPath).toBeDefined()
   expect(strFromU8(files[recordPath!]!)).toContain('**Budget**: 42')
 })
+
+test('import formatted HTML table from a Markdown export', async ({ page }) => {
+  const user = `table${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
+  const text = '<table dir="rtl">\n<tr><td colspan="2"><p>literal **x** &amp; &lt;tag&gt; <strong>bold</strong> <code>code</code> <a href="https://example.com">link</a></p><p>second</p></td></tr>\n</table>\n'
+  await page.goto('/')
+  await page.getByTestId('auth-switch').click()
+  await page.locator('input[name=username]').fill(user)
+  await page.locator('input[name=password]').fill(pw)
+  await page.getByTestId('auth-submit').click()
+  await page.getByTestId('ws-import').setInputFiles({ name: 'table.md', mimeType: 'text/markdown', buffer: Buffer.from(text) })
+  await appReady(page)
+  await page.getByTestId('page-row').first().dblclick()
+  const cell = body(page).locator('td')
+  await expect(cell).toContainText('literal **x** & <tag>')
+  await expect(cell.locator('strong')).toHaveText('bold')
+  await expect(cell.locator('code')).toHaveText('code')
+  await expect(cell.locator('a')).toHaveAttribute('href', 'https://example.com')
+  await expect(cell.locator('p')).toHaveCount(2)
+})

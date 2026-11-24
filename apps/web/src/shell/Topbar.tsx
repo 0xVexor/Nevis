@@ -17,6 +17,8 @@ const CRUMB: Partial<Record<Name, { label: string; icon?: string }>> = {
 
 export interface TopbarProps {
   /** the screen fills the window: there is no side panel to toggle */
+  narrow?: boolean
+  mobileItems?: MenuItem[]
   noPanel?: boolean
   routeName: Name
   crumbs: Page[]
@@ -76,16 +78,17 @@ export function Topbar(p: TopbarProps) {
         {onPage && p.onHistory && <IconButton label={t('Version history')} data-testid="open-history" onClick={p.onHistory}><Icon name="history" size={17} /></IconButton>}
         {onPage && p.pageTools}
         <IconButton label={(p.fullScreen ? t('Exit full screen') : t('Full screen')) + '  ' + commandHint('Full screen')} pressed={p.fullScreen} className="ds-icon-btn--toggle topbar-fullscreen" onClick={p.onToggleFullScreen}><Icon name={p.fullScreen ? 'minimize' : 'maximize'} size={17} /></IconButton>
-        <IconButton label={p.dark ? t('Light mode') : t('Dark mode')} onClick={p.onToggleDark}><Icon name={p.dark ? 'sun' : 'moon'} size={17} /></IconButton>
+        {!p.narrow && <IconButton label={p.dark ? t('Light mode') : t('Dark mode')} onClick={p.onToggleDark}><Icon name={p.dark ? 'sun' : 'moon'} size={17} /></IconButton>}
       </div>
-      {onPage && p.current && p.onFavorite && (
+      {!p.narrow && onPage && p.current && p.onFavorite && (
         <IconButton className="ds-icon-btn--toggle" pressed={!!p.current.favorite} label={p.current.favorite ? t('Remove from favorites') : t('Add to favorites')} onClick={() => p.onFavorite!(p.current!.id)}><Icon name="star" size={18} /></IconButton>
       )}
-      {onPage && p.shareItems && (
+      {!p.narrow && onPage && p.shareItems && (
         <Button variant="primary" size="sm" className="share-btn" title={t('Share & export')} icon={<Icon name="share" size={16} />} aria-haspopup="menu" onClick={e => setMenu({ rect: e.currentTarget.getBoundingClientRect(), items: p.shareItems! })}>
           <span className="share-btn-label">{t('Share')}</span>
         </Button>
       )}
+      {p.narrow && <IconButton label={t('More')} data-testid="mobile-top-more" onClick={e => setMenu({ rect: e.currentTarget.getBoundingClientRect(), items: p.mobileItems ?? [] })}><Icon name="more-horizontal" size={20} /></IconButton>}
     </header>
   )
 }

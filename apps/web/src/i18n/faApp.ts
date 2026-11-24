@@ -353,6 +353,8 @@ export const FA_APP: Record<string, string> = {
   'Restore failed': 'بازیابی ناموفق بود',
   'Created by': 'ساخته‌شده توسط',
   Search: 'جست‌وجو',
+  Menu: 'منو',
+  'Mobile navigation': 'ناوبری موبایل',
   Favorites: 'علاقه‌مندی‌ها',
   Pages: 'صفحه‌ها',
   'No pages yet': 'هنوز صفحه‌ای نیست',
