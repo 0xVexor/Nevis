@@ -15,6 +15,7 @@ import { Icon, IconButton, PropertyList, PropertyRow } from './ds'
 import { t } from './i18n'
 import { go } from './router'
 import { Toolbar } from './shell/Toolbar'
+import { ResponsiveProperties } from './shell/ResponsiveProperties'
 import type { Workspace } from './workspace'
 
 const KIND_ICON: Record<string, string> = { text: 'type', number: 'hash', date: 'calendar', select: 'list', multiSelect: 'list', relation: 'link', checkbox: 'check', url: 'link' }
@@ -59,13 +60,13 @@ export function RowPage({ ws, dbId, id, peek = false }: { ws: Workspace; dbId: s
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); editor?.commands.focus('start') } }} />
           </div>
         </header>
-        <PropertyList className="pg-props" label={t('Page properties')}>
+        <ResponsiveProperties><PropertyList className="pg-props" label={t('Page properties')}>
           {props.map(p => (
             <PropertyRow key={p.id} icon={<Icon name={KIND_ICON[p.type] ?? 'type'} size={16} />} label={p.name}>
               <Cell ws={ws} db={db} p={p} row={row} propertyField />
             </PropertyRow>
           ))}
-        </PropertyList>
+        </PropertyList></ResponsiveProperties>
         {editor && <Toolbar editor={editor} />}
         {editor && <><LayoutControls editor={editor} /><TableBubble editor={editor} /><ImageBubble editor={editor} /><EditorMenus editor={editor} ws={ws} id={id} row /></>}
         <div className="ec editor" data-testid="row-editor" ref={host} />

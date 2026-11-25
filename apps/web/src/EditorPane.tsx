@@ -2,6 +2,7 @@ import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { PageChrome } from './shell/pageChrome'
 import { Toolbar } from './shell/Toolbar'
+import { ResponsiveProperties } from './shell/ResponsiveProperties'
 import { createWorkspaceEditor } from './editor/createWorkspaceEditor'
 import { LayoutControls } from './LayoutControls'
 import { TableBubble } from './TableBubble'
@@ -118,7 +119,7 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
             />
           </div>
         </header>
-        <PropertyList className="pg-props" label={t('Page properties')}>
+        <ResponsiveProperties><PropertyList className="pg-props" label={t('Page properties')}>
           <PropertyRow icon={<Icon name="flag" size={16} />} label={t('Status')}><PageStatusChip status={meta?.status} onChange={st => void ws.setMeta(id, { status: st ?? '' })} /></PropertyRow>
           <PropertyRow icon={<Icon name="tag" size={16} />} label={t('Tags')}>
             {(meta?.tags ?? []).map(tag => <Tag key={tag} label={tag} onOpen={() => window.dispatchEvent(new CustomEvent('nevis:show-tag', { detail: tag }))} openLabel={t('Show pages with this tag')} onRemove={() => void ws.tagPageByName(id, tag, false)} removeLabel={t('Remove tag')} />)}
@@ -150,7 +151,7 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
             )}
           </PropertyRow>
           <PropertyRow icon={<Icon name="clock" size={16} />} label={t('Last edited')}>{ago(meta?.updatedAt ?? Date.now())}</PropertyRow>
-        </PropertyList>
+        </PropertyList></ResponsiveProperties>
         {diverged && (
           <p role="alert" className="err" data-testid="too-large">
             {t('The last edit was too large and was not saved; nothing written after it is saved either.')} <button onClick={() => void ws.reopenDoc(id)}>{t('Reopen from the last saved version')}</button>

@@ -42,3 +42,16 @@
 @media (max-width: 760px) {
   .slash-menu .ds-menu-foot { display: none; }
 }
+
+@media (max-width: 760px) {
+  .page > .toolbar { justify-content: flex-start; opacity: 1; margin: 0 0 10px; }
+  .page > .toolbar .tb-pill { padding: 0; border: 0; background: transparent; box-shadow: none; }
+  .page > .toolbar .tb-pill > :not(.tb-btn--primary) { display: none; }
+  .page > .toolbar .tb-btn--primary { background: var(--ds-accent-soft); color: var(--ds-accent); }
+  :root[data-mobile-keyboard] .page > .toolbar { display: none; }
+}
+.mobile-command-label { display: none; }
+@media (max-width: 760px) {
+  .page > .toolbar .tb-btn--primary { display: inline-flex; width: auto; padding-inline: 12px; gap: 6px; }
+  .mobile-command-label { display: inline; font-size: 13px; }
+}

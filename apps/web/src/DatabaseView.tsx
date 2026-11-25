@@ -3,7 +3,7 @@ import { t } from './i18n'
 import { commandMatches } from './shortcutCommands'
 import { InvalidCell, boardColumns, cellFields, addOption, addProperty, createRow, createView, formatDateFa, patchViewConfig, readViewConfig, removeOption, renameProperty, setCell, setMembers, setViewConfig, trashProperty, trashRow, trashView, viewRows, PROP_TYPES, titleProperty, type CellValue, type DatabaseModel, type PropertyModel, type PropType, type RowModel, type ViewModel } from '@nevis/core'
 import { BoardView } from './BoardView'
-import { DatabasePresentations, databasePresentation } from './DatabasePresentations'
+import { DatabasePresentations, databasePresentation, valueText } from './DatabasePresentations'
 import { DatabaseToolbar, KIND_ICON } from './DatabaseToolbar'
 import { Button, Checkbox, Dropdown, Icon, IconButton, useMenu, type MenuItem } from './ds'
 import { ColumnResize } from './ColumnResize'
@@ -134,6 +134,9 @@ function OptionAdder({ ws, p }: { ws: Workspace; p: PropertyModel }) {
 export function DatabaseView({ ws, id, onPeek }: { ws: Workspace; id: string; onPeek: (rowId: string) => void }) {
   const db = ws.data.databases.get(id)
   const [search, setSearch] = useState('')
+  const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 760px)').matches)
+  const [phoneTable, setPhoneTable] = useState(false)
+  useEffect(() => { const m = matchMedia('(max-width: 760px)'); const update = () => setNarrow(m.matches); m.addEventListener('change', update); return () => m.removeEventListener('change', update) }, [])
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const resizeGeneration = useRef(0)
   const resizeWrites = useRef<Promise<void>>(Promise.resolve())
@@ -170,6 +173,7 @@ export function DatabaseView({ ws, id, onPeek }: { ws: Workspace; id: string; on
   const liveProps = db.properties.filter(p => !p.trashed)
   const orderedProps = [...config.columnOrder.map(id => liveProps.find(p => p.id === id)).filter((p): p is PropertyModel => !!p), ...liveProps.filter(p => !config.columnOrder.includes(p.id))]
   const props = orderedProps.filter(p => !(view?.type === 'table' && config.hidden.includes(p.id)))
+  const previewProps = props.filter(p => !p.isTitle).slice(0, 4)
   const frozenIndex = props.findIndex(p => p.id === config.frozenThrough)
   const frozenStyle = (index: number) => index <= frozenIndex ? { insetInlineStart: columnOffsets[index + 1] ?? 0 } : undefined
   const q = search.trim().toLowerCase()
@@ -346,7 +350,17 @@ export function DatabaseView({ ws, id, onPeek }: { ws: Workspace; id: string; on
       <div className="dv">
       {gridError && <p className="err" role="alert">{gridError}</p>}
       {view && <DatabaseToolbar ws={ws} db={db} view={view} onActive={setActiveView} search={search} onSearch={setSearch} onNewRow={() => addRow()} onNewPageRow={() => addRow(true)} onDelete={() => { void ws.trash(id); go({ name: 'home' }) }} />}
-      {presentation === 'board' ? <BoardView ws={ws} db={db} config={config} rows={rows} titleProp={tp} onPeek={onPeek} onItemMenu={openRowContext} /> : presentation === 'list' || presentation === 'gallery' ? <DatabasePresentations ws={ws} presentation={presentation} groups={groups} grouped={!!grouped} props={props} onPeek={onPeek} onItemMenu={openRowContext} onNew={() => { void ws.mutate([id], c => createRow(c, db)).then(onPeek) }} /> : (
+      {narrow && presentation === 'table' && <div className="mobile-db-mode"><button type="button" data-testid="mobile-db-mode" onClick={() => setPhoneTable(value => !value)}><Icon name={phoneTable ? 'list' : 'table'} size={16} />{t(phoneTable ? 'Show records' : 'Show table')}</button></div>}
+      {narrow && presentation === 'table' && !phoneTable ? <div className="mobile-db-list" data-testid="mobile-db-list">
+        {rows.length === 0 ? <p className="mobile-db-empty">{t('Nothing here yet')}</p> : groups.map(group => <section key={group.id}>
+          {grouped && <h3 className="dv-section-head" dir="auto">{group.name || t('No value')}</h3>}
+          {group.rows.map(row => <button type="button" className="mobile-db-row" data-testid="mobile-db-row" key={row.id} onClick={event => { event.currentTarget.focus({ preventScroll: true }); onPeek(row.id) }}>
+            <span className="mobile-db-row-title" dir="auto">{row.title || t('Untitled')}</span>
+            <span className="mobile-db-row-values">{previewProps.map(p => ({ p, text: valueText(ws, p, row) })).filter(v => v.text).slice(0, 2).map(({ p, text }) => <span key={p.id} dir="auto">{p.name}: {text}</span>)}</span>
+            <Icon name="chevron-right" size={16} className="ds-flip" />
+          </button>)}
+        </section>)}
+      </div> : presentation === 'board' ? <BoardView ws={ws} db={db} config={config} rows={rows} titleProp={tp} onPeek={onPeek} onItemMenu={openRowContext} /> : presentation === 'list' || presentation === 'gallery' ? <DatabasePresentations ws={ws} presentation={presentation} groups={groups} grouped={!!grouped} props={props} onPeek={onPeek} onItemMenu={openRowContext} onNew={() => { void ws.mutate([id], c => createRow(c, db)).then(onPeek) }} /> : (
       <div className="dv-table-wrap dbtable-wrap">
         {picked.length > 0 && <div className="dv-bulk"><b>{t('{n} selected', { n: picked.length })}</b><Button size="sm" variant="danger" onClick={() => {
           setSelected(new Set())

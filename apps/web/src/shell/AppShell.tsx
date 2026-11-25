@@ -148,7 +148,7 @@ export function AppShell({ ws, route, status, children, onSearch, searchOpen, on
   const boxes = () => live.filter(p => (index.kids.get(p.id) ?? []).length > 0 || p.kind === 'folder').map(p => p.id)
 
   const rowProps = {
-    index, currentId, selectedId: selected, onSelect: setSelected, openOnClick: settings.treeSingleClick, collapsed, onToggle: toggle,
+    index, currentId, selectedId: selected, onSelect: setSelected, openOnClick: narrow || settings.treeSingleClick, collapsed, onToggle: toggle,
     onOpen: (id: string) => open(id), onAdd: (parent: string) => onNewPage(parent),
     onMenu: (id: string, rect: DOMRect) => setRowMenu({ id, rect }),
     onMove: (id: string, parentId: string | null, beforeId: string | null) => {

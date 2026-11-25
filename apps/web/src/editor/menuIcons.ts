@@ -24,6 +24,8 @@ const ICONS: Record<string, string> = {
   file: 'file',
 }
 
+export const commandIconName = (name: string) => ICONS[name]
+
 /** Menu icons are written as `i:name` in the item lists; anything else (a letter, a page emoji) is shown as text. */
 export const ICON_PREFIX = 'i:'
 export const iconSvg = (name: string, size = 16) => {

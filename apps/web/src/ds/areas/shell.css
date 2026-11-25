@@ -321,8 +321,23 @@
   :root[data-mobile-keyboard] .app { padding-block-end: 0; }
   :root[data-mobile-keyboard] .mobile-nav { display: none; }
   .scroller:has(.ProseMirror-focused) { scroll-padding-block-end: 72px; }
-  .mobile-commands { position: fixed; z-index: var(--ds-z-float); inset-inline: 0; display: flex; justify-content: space-between; align-items: center; min-block-size: 44px; padding-inline: 8px; border-block: 1px solid var(--ds-line); background: var(--ds-side); color: var(--ds-text); }
-  .mobile-commands button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-block-size: 44px; min-inline-size: 44px; padding-inline: 10px; border: 0; border-radius: var(--ds-r-sm); background: transparent; color: inherit; font: 500 12px var(--ds-font-ui); }
-  .mobile-command-key { display: grid; place-items: center; min-inline-size: 28px; block-size: 30px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-sm); background: var(--ds-raised); font-size: 19px; }
+  .mobile-commands { position: fixed; z-index: var(--ds-z-float); inset-inline: 0; display: flex; justify-content: space-around; align-items: stretch; box-sizing: border-box; block-size: 52px; padding-inline: 4px; border-block: 1px solid var(--ds-line); background: var(--ds-side); color: var(--ds-text); }
+  .mobile-commands button { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-inline-size: 0; padding: 3px 2px; border: 0; border-radius: var(--ds-r-sm); background: transparent; color: inherit; font: 500 10px var(--ds-font-ui); }
+  .mobile-commands button > span { max-inline-size: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-commands button:first-child { flex-direction: row; justify-content: flex-start; gap: 8px; padding-inline: 12px; font-size: 13px; }
+  .mobile-commands button:last-child { flex: 0 0 64px; }
+  .mobile-commands--choosing { flex-direction: column; padding: 0; }
+  .mobile-commands .mobile-block-head { display: flex; flex: none; align-items: center; justify-content: space-between; min-block-size: 44px; padding-inline: 16px 4px; border-block-end: 1px solid var(--ds-line); font-size: 13px; }
+  .mobile-commands .mobile-block-head .mobile-block-close { flex: none; min-inline-size: 54px; min-block-size: 44px; flex-direction: row; gap: 4px; padding-inline: 8px; font-size: 12px; }
+  .mobile-commands .mobile-block-options { display: block; flex: 1; min-block-size: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 4px 8px; }
+  .mobile-commands .mobile-block-options button { display: flex; flex-direction: row; justify-content: flex-start; align-items: center; gap: 10px; inline-size: 100%; min-block-size: 48px; padding: 5px 8px; text-align: start; font-size: 13px; }
+  .mobile-commands .mobile-block-options button:disabled { opacity: .4; }
+  .mobile-commands .mobile-block-icon { display: grid; place-items: center; flex: none; inline-size: 32px; block-size: 32px; border: 1px solid var(--ds-line); border-radius: var(--ds-r-sm); background: var(--ds-raised); color: var(--ds-text-2); font-weight: 650; }
+  .mobile-commands .mobile-block-text { display: flex; min-inline-size: 0; flex-direction: column; align-items: flex-start; gap: 1px; }
+  .mobile-commands .mobile-block-text b, .mobile-commands .mobile-block-text small { max-inline-size: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-commands .mobile-block-text b { color: var(--ds-text); font-size: 13px; font-weight: 600; }
+  .mobile-commands .mobile-block-text small { color: var(--ds-text-3); font-size: 11px; }
+  .scroller:has(.ProseMirror-focused), .dv-peek-body:has(.ProseMirror-focused) { padding-block-end: var(--mobile-block-room, 0px); scroll-padding-block-end: max(72px, var(--mobile-block-room, 0px)); box-sizing: border-box; }
+
   .app.reading ~ .mobile-commands { display: none; }
 }

@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Editor } from '@tiptap/core'
 import { t } from '../i18n'
 import { Icon } from '../ds'
-import { openCommandPalette } from './commandPalette'
+import { runEditorCommand } from './commandPalette'
+import { paletteItems, shownItem } from './slash'
+import { commandIconName, ICON_PREFIX } from './menuIcons'
 
 /** A small web accessory; the browser controls the actual keyboard and its geometry. */
 export function MobileCommands({ editor, allowedCommands }: { editor: Editor; allowedCommands?: readonly string[] }) {
@@ -11,6 +13,8 @@ export function MobileCommands({ editor, allowedCommands }: { editor: Editor; al
   const [focused, setFocused] = useState(editor.isFocused)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [choosing, setChoosing] = useState(false)
+  const bar = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const media = matchMedia('(max-width: 760px)')
     const update = () => setNarrow(media.matches)
@@ -36,6 +40,13 @@ export function MobileCommands({ editor, allowedCommands }: { editor: Editor; al
     return () => { observer.disconnect(); viewport?.removeEventListener('resize', update); viewport?.removeEventListener('scroll', update); window.removeEventListener('resize', update) }
   }, [focused, narrow])
   const keyboardOpen = keyboardOffset >= 100
+  useEffect(() => { if (!narrow || !focused || !keyboardOpen || menuOpen) setChoosing(false) }, [narrow, focused, keyboardOpen, menuOpen])
+  useEffect(() => {
+    if (!choosing) return
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setChoosing(false) } }
+    document.addEventListener('keydown', key, true)
+    return () => document.removeEventListener('keydown', key, true)
+  }, [choosing])
   useEffect(() => {
     if (!focused || !keyboardOpen || !narrow) return
     document.documentElement.setAttribute('data-mobile-keyboard', '')
@@ -68,11 +79,59 @@ export function MobileCommands({ editor, allowedCommands }: { editor: Editor; al
     document.addEventListener('touchcancel', cancel, { passive: true })
     return () => { document.removeEventListener('touchstart', start); document.removeEventListener('touchmove', move); document.removeEventListener('touchend', end); document.removeEventListener('touchcancel', cancel) }
   }, [editor, narrow, focused, keyboardOpen, menuOpen])
+  useLayoutEffect(() => {
+    if (!choosing || !narrow || !focused || !keyboardOpen || editor.isDestroyed) return
+    const root = editor.view.dom
+    const scroller = root.closest<HTMLElement>('.scroller, .dv-peek-body')
+    if (!scroller) return
+    scroller.style.setProperty('--mobile-block-room', '210px')
+    let frame = 0
+    const place = () => {
+      frame = 0
+      if (!bar.current || editor.isDestroyed) return
+      const limit = bar.current.getBoundingClientRect().top - 12
+      const adjust = (element: HTMLElement) => {
+        const caret = editor.view.coordsAtPos(editor.state.selection.head)
+        const delta = caret.bottom - limit
+        if (delta > 0) element.scrollTop += delta
+      }
+      // A quick note has its own scrolling editor inside the page scroller.
+      for (let element: HTMLElement | null = root; element && element !== scroller; element = element.parentElement) {
+        if (element.scrollHeight > element.clientHeight && /(auto|scroll)/.test(getComputedStyle(element).overflowY)) adjust(element)
+      }
+      adjust(scroller)
+    }
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(place) }
+    schedule()
+    window.visualViewport?.addEventListener('resize', schedule)
+    window.visualViewport?.addEventListener('scroll', schedule)
+    window.addEventListener('resize', schedule)
+    return () => { cancelAnimationFrame(frame); scroller.style.removeProperty('--mobile-block-room'); window.visualViewport?.removeEventListener('resize', schedule); window.visualViewport?.removeEventListener('scroll', schedule); window.removeEventListener('resize', schedule) }
+  }, [choosing, narrow, focused, keyboardOpen, keyboardOffset, editor])
   if (!narrow || !focused || !keyboardOpen || menuOpen || editor.isDestroyed || !editor.isEditable) return null
-  return createPortal(<div className="mobile-commands" data-testid="mobile-keyboard-bar" style={{ bottom: `${keyboardOffset}px` }}>
-    <button type="button" data-testid="mobile-commands" aria-label={t('Commands')}
-      onPointerDown={event => event.preventDefault()}
-      onClick={() => { if (!document.querySelector('.slash-menu')) openCommandPalette(editor, allowedCommands) }}><span className="mobile-command-key">/</span><span>{t('Commands')}</span></button>
-    <button type="button" data-testid="dismiss-keyboard" aria-label={t('Hide keyboard')} onPointerDown={event => event.preventDefault()} onClick={() => editor.commands.blur()}><Icon name="keyboard" size={20} /><Icon name="chevron-down" size={14} /><span>{t('Hide keyboard')}</span></button>
+  const preferred = ['Text', 'Heading 1', 'Bulleted list', 'Checklist']
+  const items = choosing ? paletteItems('', editor, undefined, allowedCommands).sort((a, b) => {
+    const rank = (title: string) => { const index = preferred.indexOf(title); return index < 0 ? preferred.length : index }
+    return rank(a.title) - rank(b.title)
+  }) : []
+  const visibleHeight = window.visualViewport?.height ?? window.innerHeight
+  const dockHeight = Math.max(110, Math.min(192, visibleHeight - 90))
+  return createPortal(<div ref={bar} className={'mobile-commands' + (choosing ? ' mobile-commands--choosing' : '')} data-testid="mobile-keyboard-bar" role="toolbar" aria-label={t('Commands')} style={{ bottom: `${keyboardOffset}px`, ...(choosing ? { blockSize: `${dockHeight}px` } : {}) }}>
+    {choosing ? <>
+      <div className="mobile-block-head"><b>{t('Blocks')}</b><button type="button" className="mobile-block-close" data-testid="mobile-block-close" aria-label={t('Close')} onMouseDown={event => event.preventDefault()} onClick={() => setChoosing(false)}><Icon name="x" size={18} /><span>{t('Close')}</span></button></div>
+      <div className="mobile-block-options" data-testid="mobile-block-options" role="group" aria-label={t('Blocks')}>
+        {items.map(item => {
+          const shown = shownItem(item)
+          const name = shown.icon.startsWith(ICON_PREFIX) ? commandIconName(shown.icon.slice(ICON_PREFIX.length)) : undefined
+          return <button type="button" key={item.title} data-testid={`mobile-block-${item.title.replace(/ /g, '-').toLowerCase()}`} disabled={item.disabled} aria-label={shown.title}
+            onMouseDown={event => event.preventDefault()} onClick={() => { runEditorCommand(editor, item); setChoosing(false) }}>
+            <span className="mobile-block-icon">{name ? <Icon name={name} size={17} /> : shown.icon}</span><span className="mobile-block-text"><b>{shown.title}</b><small>{shown.desc}</small></span>
+          </button>
+        })}
+      </div>
+    </> : <>
+      <button type="button" data-testid="mobile-commands" aria-label={t('Blocks')} onMouseDown={event => event.preventDefault()} onClick={() => setChoosing(true)}><Icon name="plus" size={19} /><span>{t('Blocks')}</span><Icon name="chevron-down" size={15} /></button>
+      <button type="button" data-testid="dismiss-keyboard" aria-label={t('Hide keyboard')} onMouseDown={event => event.preventDefault()} onClick={() => editor.commands.blur()}><Icon name="keyboard" size={19} /><span>{t('Close')}</span></button>
+    </>}
   </div>, document.body)
 }

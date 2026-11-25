@@ -8,9 +8,12 @@ import { legacyPages, legacyTasks } from '../shell/adapt'
 import type { Workspace } from '../workspace'
 import { HomeNote } from './HomeNote'
 import { HomeScreen } from './HomeScreen'
+import { MobileHome } from './MobileHome'
 
 export function HomeRoute({ ws, onOpen, onNewPage, onTemplate, onWorkspaces }: { ws: Workspace; onOpen: (id: string) => void; onNewPage: () => void; onTemplate: (id: string) => void; onWorkspaces?: () => void }) {
   const settings = useSettings()
+  const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 760px)').matches)
+  useEffect(() => { const m = matchMedia('(max-width: 760px)'); const update = () => setNarrow(m.matches); m.addEventListener('change', update); return () => m.removeEventListener('change', update) }, [])
   const pages = useMemo(() => legacyPages(ws).filter(page => !ws.data.databases.has(page.id)), [ws.data, ws.search.ready, ws.search.progress.done]) // eslint-disable-line react-hooks/exhaustive-deps
   const [focusFirstNote] = useState(() => !pages.some(page => !page.deletedAt && page.kind !== 'folder'))
   const tasks = useMemo(() => legacyTasks(ws), [ws.data, ws.search.ready, ws.search.progress.done]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -18,12 +21,14 @@ export function HomeRoute({ ws, onOpen, onNewPage, onTemplate, onWorkspaces }: {
   useEffect(() => { let live = true; void ws.reviewData().then(d => { if (live) setDue(ws.search.cards().filter(c => isDue(d.recs.get(c.id), Date.now())).length) }); return () => { live = false } }, [ws, ws.data, ws.search.ready, ws.search.progress.done])
   return (
     <div data-testid="home">
-      <HomeScreen
+      {narrow ? <MobileHome ws={ws} pages={pages} tasks={tasks} due={due} showIcons={settings.showIcons} onCheck={(task, checked) => { const blockId = ws.search.tasks().filter(x => x.page === task.pageId)[task.index]?.task.blockId; void ws.setTaskChecked(task.pageId, blockId ?? '', checked, task.index) }} onOpen={onOpen} onNew={onNewPage}
+        onAll={() => go({ name: 'all' })} onTemplates={() => go({ name: 'templates' })} onFiles={() => go({ name: 'files' })} onTasks={() => go({ name: 'tasks' })} onCards={() => go({ name: 'cards' })}
+        onImport={() => { ws.notify(t('Choose Import notes from the workspace list.')); onWorkspaces?.() }} /> : <HomeScreen
         pages={pages} tasks={tasks} due={due} now={Date.now()} showIcons={settings.showIcons} onCheck={(task, checked) => { const blockId = ws.search.tasks().filter(x => x.page === task.pageId)[task.index]?.task.blockId; void ws.setTaskChecked(task.pageId, blockId ?? '', checked, task.index) }}
         onOpen={onOpen} onNew={onNewPage} onTable={() => go({ name: 'all' })} onCards={() => go({ name: 'cards' })} onTemplates={() => go({ name: 'templates' })} onTemplate={onTemplate}
         onImport={() => { ws.notify(t('Choose Import notes from the workspace list.')); onWorkspaces?.() }} onFiles={() => go({ name: 'files' })} onTasks={() => go({ name: 'tasks' })}
         note={<HomeNote ws={ws} onOpen={onOpen} autoFocus={focusFirstNote} />}
-      />
+      />}
     </div>
   )
 }

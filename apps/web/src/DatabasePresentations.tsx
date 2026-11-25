@@ -18,7 +18,7 @@ export function databasePresentation(view: ViewModel): DatabasePresentation {
 
 type Group = { id: string; name: string; rows: RowModel[] }
 
-function valueText(ws: Workspace, prop: PropertyModel, row: RowModel): string {
+export function valueText(ws: Workspace, prop: PropertyModel, row: RowModel): string {
   const value = row.cells[prop.id]
   if (prop.type === 'checkbox') return value === true ? '☑' : '☐'
   if (prop.type === 'select') return prop.options.find(option => option.id === value)?.name ?? ''

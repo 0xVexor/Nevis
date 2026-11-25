@@ -188,7 +188,7 @@ export function Toolbar({ editor, diagram }: { editor: Editor; diagram?: { from:
   return (
     <div className={'toolbar' + (menu ? ' is-open' : '')} role="toolbar" aria-label={t('Formatting')} ref={wrap}>
       <div className="tb-pill" ref={pill}>
-        <button type="button" className="ds-icon-btn tb-btn tb-btn--primary" aria-label={t('Open the “/” menu')} title={tip('Open the “/” menu')} onMouseDown={e => e.preventDefault()} onClick={() => openCommandPalette(editor)}><Icon name="plus" size={16} /></button>
+        <button type="button" className="ds-icon-btn tb-btn tb-btn--primary" aria-label={t('Open the “/” menu')} title={tip('Open the “/” menu')} onMouseDown={e => e.preventDefault()} onClick={() => openCommandPalette(editor)}><Icon name="plus" size={16} /><span className="mobile-command-label">{t('Commands')}</span></button>
         <span className="tb-sep" />
         <B editor={editor} label="Heading 1" icon={<span className="tb-tx">H1</span>} on={is('heading', { level: 1 })} run={(c) => c.toggleHeading({ level: 1 })} />
         <B editor={editor} label="Heading 2" icon={<span className="tb-tx">H2</span>} on={is('heading', { level: 2 })} run={(c) => c.toggleHeading({ level: 2 })} />

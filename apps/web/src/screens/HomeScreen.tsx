@@ -34,7 +34,7 @@ interface Props extends HomeActions {
   draftId?: string | null
 }
 
-function excerpt(content: unknown): string {
+export function excerpt(content: unknown): string {
   let text = ''
   const walk = (node: DocNode) => {
     if (text.length >= 160) return
