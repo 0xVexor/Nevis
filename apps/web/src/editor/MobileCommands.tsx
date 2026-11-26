@@ -8,15 +8,18 @@ import { paletteItems, shownItem } from './slash'
 import { commandIconName, ICON_PREFIX } from './menuIcons'
 
 /** A small web accessory; the browser controls the actual keyboard and its geometry. */
-export function MobileCommands({ editor, allowedCommands }: { editor: Editor; allowedCommands?: readonly string[] }) {
+export function MobileCommands({ editor, allowedCommands, titleInput }: { editor: Editor; allowedCommands?: readonly string[]; titleInput?: HTMLInputElement | HTMLTextAreaElement | null }) {
   const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 760px)').matches)
-  const [focused, setFocused] = useState(editor.isFocused)
+  const [editorFocused, setEditorFocused] = useState(editor.isFocused)
+  const [titleFocused, setTitleFocused] = useState(() => !!titleInput && document.activeElement === titleInput)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const [keyboardOpen, setKeyboardOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [choosing, setChoosing] = useState(false)
   const bar = useRef<HTMLDivElement>(null)
   const restingViewport = useRef({ width: window.innerWidth, height: window.visualViewport?.height ?? window.innerHeight })
+  const focused = editorFocused || titleFocused
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
   useEffect(() => {
     const media = matchMedia('(max-width: 760px)')
     const update = () => setNarrow(media.matches)
@@ -24,25 +27,35 @@ export function MobileCommands({ editor, allowedCommands }: { editor: Editor; al
     return () => media.removeEventListener('change', update)
   }, [])
   useEffect(() => {
-    const focus = () => setFocused(true)
-    const blur = () => setFocused(false)
+    const focus = () => setEditorFocused(true)
+    const blur = () => setEditorFocused(false)
     editor.on('focus', focus); editor.on('blur', blur)
     return () => { editor.off('focus', focus); editor.off('blur', blur) }
   }, [editor])
+  useEffect(() => {
+    if (!titleInput) return
+    const focus = () => setTitleFocused(true)
+    const blur = () => setTitleFocused(false)
+    setTitleFocused(document.activeElement === titleInput)
+    titleInput.addEventListener('focus', focus)
+    titleInput.addEventListener('blur', blur)
+    return () => { titleInput.removeEventListener('focus', focus); titleInput.removeEventListener('blur', blur) }
+  }, [titleInput])
   useEffect(() => {
     if (!narrow) return
     const viewport = window.visualViewport
     const update = () => {
       const visibleHeight = viewport?.height ?? window.innerHeight
-      const unscaled = !viewport || viewport.scale <= 1.05
+      const scale = viewport?.scale || 1
+      const unscaled = scale <= 1.05
       if (unscaled && Math.abs(window.innerWidth - restingViewport.current.width) > 40) {
         restingViewport.current = { width: window.innerWidth, height: visibleHeight }
       } else if (unscaled && !focused && visibleHeight > restingViewport.current.height) {
         restingViewport.current.height = visibleHeight
       }
-      const heightLost = Math.max(window.innerHeight, restingViewport.current.height) - visibleHeight
-      setKeyboardOpen(focused && unscaled && heightLost >= 100)
-      setKeyboardOffset(viewport && unscaled ? Math.max(0, window.innerHeight - visibleHeight - viewport.offsetTop) : 0)
+      const heightLost = Math.max(window.innerHeight, restingViewport.current.height) / scale - visibleHeight
+      setKeyboardOpen(focused && heightLost >= 100)
+      setKeyboardOffset(viewport ? Math.max(0, window.innerHeight - visibleHeight - viewport.offsetTop) : 0)
     }
     const menu = () => setMenuOpen(!!document.querySelector('.slash-menu'))
     update(); menu()
@@ -52,7 +65,8 @@ export function MobileCommands({ editor, allowedCommands }: { editor: Editor; al
     window.addEventListener('resize', update)
     return () => { observer.disconnect(); viewport?.removeEventListener('resize', update); viewport?.removeEventListener('scroll', update); window.removeEventListener('resize', update) }
   }, [focused, narrow])
-  useEffect(() => { if (!narrow || !focused || !keyboardOpen || menuOpen) setChoosing(false) }, [narrow, focused, keyboardOpen, menuOpen])
+  const showAccessory = focused && (keyboardOpen || ios)
+  useEffect(() => { if (!narrow || !showAccessory || menuOpen) setChoosing(false) }, [narrow, showAccessory, menuOpen])
   useEffect(() => {
     if (!choosing) return
     const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setChoosing(false) } }
@@ -65,7 +79,7 @@ export function MobileCommands({ editor, allowedCommands }: { editor: Editor; al
     return () => document.documentElement.removeAttribute('data-mobile-keyboard')
   }, [focused, keyboardOpen, narrow])
   useEffect(() => {
-    if (!narrow || !focused || !keyboardOpen || menuOpen) return
+    if (!narrow || !showAccessory || menuOpen) return
     let gesture: { x: number; y: number; id: number; cancelled: boolean } | null = null
     const start = (event: TouchEvent) => {
       const target = event.target
@@ -90,9 +104,9 @@ export function MobileCommands({ editor, allowedCommands }: { editor: Editor; al
     document.addEventListener('touchend', end, { passive: true })
     document.addEventListener('touchcancel', cancel, { passive: true })
     return () => { document.removeEventListener('touchstart', start); document.removeEventListener('touchmove', move); document.removeEventListener('touchend', end); document.removeEventListener('touchcancel', cancel) }
-  }, [editor, narrow, focused, keyboardOpen, menuOpen])
+  }, [editor, narrow, showAccessory, menuOpen])
   useLayoutEffect(() => {
-    if (!choosing || !narrow || !focused || !keyboardOpen || editor.isDestroyed) return
+    if (!choosing || !narrow || !showAccessory || editor.isDestroyed) return
     const root = editor.view.dom
     const scroller = root.closest<HTMLElement>('.scroller, .dv-peek-body')
     if (!scroller) return
@@ -119,8 +133,8 @@ export function MobileCommands({ editor, allowedCommands }: { editor: Editor; al
     window.visualViewport?.addEventListener('scroll', schedule)
     window.addEventListener('resize', schedule)
     return () => { cancelAnimationFrame(frame); scroller.style.removeProperty('--mobile-block-room'); window.visualViewport?.removeEventListener('resize', schedule); window.visualViewport?.removeEventListener('scroll', schedule); window.removeEventListener('resize', schedule) }
-  }, [choosing, narrow, focused, keyboardOpen, keyboardOffset, editor])
-  if (!narrow || !focused || !keyboardOpen || menuOpen || editor.isDestroyed || !editor.isEditable) return null
+  }, [choosing, narrow, showAccessory, keyboardOffset, editor])
+  if (!narrow || !showAccessory || menuOpen || editor.isDestroyed || !editor.isEditable) return null
   const preferred = ['Text', 'Heading 1', 'Bulleted list', 'Checklist']
   const items = choosing ? paletteItems('', editor, undefined, allowedCommands).sort((a, b) => {
     const rank = (title: string) => { const index = preferred.indexOf(title); return index < 0 ? preferred.length : index }
@@ -142,8 +156,8 @@ export function MobileCommands({ editor, allowedCommands }: { editor: Editor; al
         })}
       </div>
     </> : <>
-      <button type="button" data-testid="mobile-commands" aria-label={t('Blocks')} onMouseDown={event => event.preventDefault()} onClick={() => setChoosing(true)}><Icon name="plus" size={19} /><span>{t('Blocks')}</span><Icon name="chevron-down" size={15} /></button>
-      <button type="button" data-testid="dismiss-keyboard" aria-label={t('Hide keyboard')} onMouseDown={event => event.preventDefault()} onClick={() => editor.commands.blur()}><Icon name="keyboard" size={19} /><span>{t('Close')}</span></button>
+      <button type="button" data-testid="mobile-commands" aria-label={t('Blocks')} onMouseDown={event => event.preventDefault()} onClick={() => { if (titleFocused) editor.commands.focus('start'); setChoosing(true) }}><Icon name="plus" size={19} /><span>{t('Blocks')}</span><Icon name="chevron-down" size={15} /></button>
+      <button type="button" data-testid="dismiss-keyboard" aria-label={t('Hide keyboard')} onMouseDown={event => event.preventDefault()} onClick={() => { if (titleFocused) titleInput?.blur(); else editor.commands.blur() }}><Icon name="keyboard" size={19} /><span>{t('Close')}</span></button>
     </>}
   </div>, document.body)
 }

@@ -68,7 +68,7 @@ export function RowPage({ ws, dbId, id, peek = false }: { ws: Workspace; dbId: s
           ))}
         </PropertyList></ResponsiveProperties>
         {editor && <Toolbar editor={editor} />}
-        {editor && <><LayoutControls editor={editor} /><TableBubble editor={editor} /><ImageBubble editor={editor} /><EditorMenus editor={editor} ws={ws} id={id} row /></>}
+        {editor && <><LayoutControls editor={editor} /><TableBubble editor={editor} /><ImageBubble editor={editor} /><EditorMenus editor={editor} ws={ws} id={id} row titleInput={titleBox.current} /></>}
         <div className="ec editor" data-testid="row-editor" ref={host} />
       </div>
     </div>

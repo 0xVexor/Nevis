@@ -175,7 +175,7 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
         )}
         {editor && !reader && !diverged && <Toolbar editor={editor} />}
         {editor && !reader && !diverged && <LayoutControls editor={editor} />}
-        {editor && <EditorMenus editor={editor} ws={ws} id={id} />}
+        {editor && <EditorMenus editor={editor} ws={ws} id={id} titleInput={titleInput.current} />}
         <div className="ec editor" data-testid="editor" ref={host} />
         {editor && !reader && !diverged && <><TableBubble editor={editor} /><ImageBubble editor={editor} /></>}
         <Backlinks ws={ws} id={id} />

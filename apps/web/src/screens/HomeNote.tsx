@@ -21,6 +21,7 @@ export function HomeNote({ ws, onOpen, autoFocus }: { ws: Workspace; onOpen: (id
   const page = useRef<string | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const title = useRef('')
+  const titleInput = useRef<HTMLInputElement>(null)
   const [titleText, setTitleText] = useState('')
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [pageId, setPageId] = useState<string | null>(null)
@@ -110,11 +111,11 @@ export function HomeNote({ ws, onOpen, autoFocus }: { ws: Workspace; onOpen: (id
         <Button variant="ghost" size="sm" onMouseDown={e => e.preventDefault()} onClick={() => { const ed = editor.current; if (ed) openCommandPalette(ed, NOTE_COMMANDS) }}><kbd>/</kbd>{t('Commands')}</Button>
       </div>
       <div className="home-note-writing" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) saveQuietly() }}>
-        <input className="home-note-title" aria-label={t('Note title')} placeholder={t('Title (optional)')} dir={titleText.trim() ? 'auto' : undefined} value={titleText} onChange={e => { title.current = e.target.value; setTitleText(e.target.value); later() }}
+        <input ref={titleInput} className="home-note-title" aria-label={t('Note title')} placeholder={t('Title (optional)')} dir={titleText.trim() ? 'auto' : undefined} value={titleText} onChange={e => { title.current = e.target.value; setTitleText(e.target.value); later() }}
           onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); editor.current?.commands.focus('start') } }} />
         <div><div className="home-note-editor" ref={host} data-testid="home-note-editor" /></div>
       </div>
-      {menuEditor && <EditorMenus editor={menuEditor} ws={ws} id={pageId ?? ''} quickNote={NOTE_COMMANDS} />}
+      {menuEditor && <EditorMenus editor={menuEditor} ws={ws} id={pageId ?? ''} quickNote={NOTE_COMMANDS} titleInput={titleInput.current} />}
       <footer className="home-note-footer">
         <SaveStatus state={status} label={t(status === 'idle' ? 'Saved automatically as you write' : status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved to your pages' : 'Could not save. Your note is still here.')} />
         {status === 'error' ? <Button size="sm" onClick={saveQuietly}>{t('Retry')}</Button> : pageId && <Button size="sm" variant="ghost" onClick={() => void openPage()}>{t('Open page')}<Icon name="arrow-right" size={14} className="ds-flip" /></Button>}

@@ -13,7 +13,7 @@ import { legacyPages } from '../shell/adapt'
 import type { Workspace } from '../workspace'
 
 /** Clipboard, formatting and page actions use the same menu as the reference app. */
-export function EditorMenus({ editor, ws, id, row = false, quickNote }: { editor: Editor; ws: Workspace; id: string; row?: boolean; quickNote?: readonly string[] }) {
+export function EditorMenus({ editor, ws, id, row = false, quickNote, titleInput }: { editor: Editor; ws: Workspace; id: string; row?: boolean; quickNote?: readonly string[]; titleInput?: HTMLInputElement | HTMLTextAreaElement | null }) {
   const { open, menu } = useMenu()
   const [link, setLink] = useState<{ rect: DOMRect; from: number; to: number; text: string; doc: Editor['state']['doc'] } | null>(null)
   useEffect(() => {
@@ -141,5 +141,5 @@ export function EditorMenus({ editor, ws, id, row = false, quickNote }: { editor
       editor.chain().focus().insertContentAt({ from: selected.from, to: selected.to }, { type: 'pageLink', attrs: { dstId: destination, label: selected.text } }).run()
     } catch { ws.notify(t('Could not complete the action. Please try again.')) }
   }
-  return <><MobileCommands editor={editor} allowedCommands={quickNote} />{menu}{link && <Popover anchor={link.rect} onClose={() => setLink(null)}><PageLinkPicker allPages={legacyPages(ws)} text={link.text} currentId={id} onPick={(target, title) => void pick(target, title)} /></Popover>}</>
+  return <><MobileCommands editor={editor} allowedCommands={quickNote} titleInput={titleInput} />{menu}{link && <Popover anchor={link.rect} onClose={() => setLink(null)}><PageLinkPicker allPages={legacyPages(ws)} text={link.text} currentId={id} onPick={(target, title) => void pick(target, title)} /></Popover>}</>
 }
