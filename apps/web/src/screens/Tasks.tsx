@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Button, Checkbox, Icon, IconButton, Screen, contextMenuAnchor, useMenu, useUIMotion } from '../ds'
 import { locale, t } from '../i18n'
 import { go } from '../router'
-import { legacyPages, legacyTasks } from '../shell/adapt'
+import { legacyPages } from '../shell/adapt'
 import { PageContextMenu } from '../shell/pageContextMenu'
 import { PanelHost } from '../shell/panelHost'
 import { PageIcon } from '../shell/PageIcon'
@@ -28,12 +28,19 @@ export function Tasks({ ws }: { ws: Workspace }) {
   const [showDone, setShowDone] = useState(false)
   const [settling, setSettling] = useState<string[]>([])
   const [draft, setDraft] = useState('')
+  const [adding, setAdding] = useState(false)
+  const addingRef = useRef(false)
   const input = useRef<HTMLInputElement>(null)
   const pages = useMemo(() => new Map(legacyPages(ws, false).map(p => [p.id, p])), [ws.data, ws.search.ready, ws.search.progress.done]) // eslint-disable-line react-hooks/exhaustive-deps
-  const raw = ws.search.tasks().filter(x => x.task.text)
-  const tasks = legacyTasks(ws).filter(x => x.text)
+  const raw = ws.search.tasks()
   const inboxId = ws.inboxId() ?? ''
-  const items = tasks.map((x, i) => ({ key: `${x.pageId}:${x.index}`, text: x.text, checked: x.checked, page: pages.get(x.pageId), blockId: raw[i]?.task.blockId ?? '', pageId: x.pageId }))
+  const pageIndexes = new Map<string, number>()
+  const createdAt = new Map(ws.data.pages.map(page => [page.id, page.createdAt]))
+  const items = raw.map(({ page: pageId, task }) => {
+    const index = pageIndexes.get(pageId) ?? 0
+    pageIndexes.set(pageId, index + 1)
+    return { key: `${pageId}:${task.blockId || index}`, text: task.text, checked: task.checked, page: pages.get(pageId), blockId: task.blockId ?? '', pageId, index }
+  }).filter(item => item.text).sort((a, b) => (createdAt.get(a.pageId) ?? 0) - (createdAt.get(b.pageId) ?? 0) || a.pageId.localeCompare(b.pageId) || a.index - b.index)
   const num = (n: number) => n.toLocaleString(locale())
   const counts = new Map<string, number>()
   for (const x of items) if (!x.checked) counts.set(x.pageId, (counts.get(x.pageId) ?? 0) + 1)
@@ -44,7 +51,16 @@ export function Tasks({ ws }: { ws: Workspace }) {
   const current: Source = source.kind === 'page' && !page ? ALL : source
   const shown = items.filter(x => current.kind === 'all' || (current.kind === 'inbox' ? x.pageId === inboxId : x.pageId === current.id))
   const canAdd = current.kind === 'all' || current.kind === 'inbox'
-  const add = () => { const text = draft.trim(); if (!text) return; setDraft(''); void ws.ensureInbox().then(id => ws.appendTask(id, text)); input.current?.focus() }
+  const add = () => {
+    const text = draft.trim()
+    if (!text || addingRef.current) return
+    addingRef.current = true
+    setAdding(true)
+    void ws.ensureInbox().then(id => ws.appendTask(id, text)).then(() => {
+      setDraft(currentDraft => currentDraft.trim() === text ? '' : currentDraft)
+    }).catch(() => ws.notify(t('Could not complete the action. Please try again.'))).finally(() => { addingRef.current = false; setAdding(false) })
+    input.current?.focus()
+  }
   const newList = () => void ws.newTodoList(t('New list')).then(id => go({ name: 'page', id }))
   const open = shown.filter(x => !x.checked || settling.includes(x.key))
   const done = shown.filter(x => x.checked && !settling.includes(x.key))
@@ -53,7 +69,7 @@ export function Tasks({ ws }: { ws: Workspace }) {
   const allOpen = items.filter(x => !x.checked).length
   const toggle = (x: (typeof items)[number], next: boolean) => {
     if (next) { setSettling(s => [...s, x.key]); window.setTimeout(() => setSettling(s => s.filter(k => k !== x.key)), SETTLE_MS) }
-    void ws.setTaskChecked(x.pageId, x.blockId, next, items.filter(y => y.pageId === x.pageId).indexOf(x))
+    void ws.setTaskChecked(x.pageId, x.blockId, next, x.index)
   }
   const row = (x: (typeof items)[number]) => (
     <motion.div key={x.key} className="ds-list-row tk-row" data-testid="task-row" data-done={x.checked || undefined} style={{ '--depth': 0 } as CSSProperties}
@@ -86,10 +102,16 @@ export function Tasks({ ws }: { ws: Workspace }) {
   )
   const title = current.kind === 'all' ? t('All tasks') : current.kind === 'inbox' ? t('Inbox') : page?.title || t('Untitled')
   return (
-    <Screen width="wide" title={t('Tasks')} description={allOpen ? t('{n} open across your pages and inbox', { n: num(allOpen) }) : t('Checklist items from all your pages appear here.')}>
+    <Screen width="wide" className="tasks-screen" title={t('Tasks')} description={allOpen ? t('{n} open across your pages and inbox', { n: num(allOpen) }) : t('Checklist items from all your pages appear here.')}>
       <div className="tk" data-testid="tasks">
         {host && createPortal(sourcesNav, host)}
         <section className="tk-main" aria-labelledby="tk-title">
+          <Button className="tk-mobile-source" data-testid="task-sources" aria-haspopup="menu" onClick={e => openMenu([
+            { label: 'All tasks', icon: <Icon name="checklist" />, onSelect: () => { setSource(ALL); setShowDone(false) } },
+            { label: 'Inbox', icon: <Icon name="inbox" />, onSelect: () => { setSource({ kind: 'inbox' }); setShowDone(false) } },
+            ...[...lists, ...sources].map(p => ({ label: p.title || t('Untitled'), raw: true, icon: <PageIcon page={p} />, onSelect: () => { setSource({ kind: 'page', id: p.id }); setShowDone(false) } })),
+            { label: 'New list', icon: <Icon name="plus" />, onSelect: newList },
+          ], e.currentTarget)}><Icon name="list" size={16} /><span dir="auto">{title}</span><Icon name="chevron-down" size={15} /></Button>
           <header className="tk-main-head">
             <div className="tk-main-title"><h2 id="tk-title" dir="auto">{title}</h2><p>{total ? t('{done} of {total} done', { done: num(shown.filter(x => x.checked).length), total: num(total) }) : t('Nothing here yet')}</p></div>
             {page && <Button variant="ghost" size="sm" icon={<Icon name="arrow-up-right" size={15} className="ds-flip" />} onClick={() => go({ name: 'page', id: page.id })}>{t('Open page')}</Button>}
@@ -98,8 +120,9 @@ export function Tasks({ ws }: { ws: Workspace }) {
           {canAdd && (
             <form className="tk-add" onSubmit={e => { e.preventDefault(); add() }}>
               <Icon name="plus" size={18} />
-              <input ref={input} data-testid="task-add" value={draft} onChange={e => setDraft(e.target.value)} placeholder={t('Add a task to your inbox')} aria-label={t('New task')} dir="auto" autoComplete="off" />
+              <input ref={input} data-testid="task-add" value={draft} onChange={e => setDraft(e.target.value)} placeholder={t('Add a task to your inbox')} aria-label={t('New task')} dir="auto" autoComplete="off" enterKeyHint="done" />
               {draft.trim() && <kbd className="ds-kbd">{t('Enter')}</kbd>}
+              <IconButton type="submit" className="tk-mobile-add" data-testid="task-submit" label={t('Add task')} disabled={!draft.trim() || adding}><Icon name="plus" size={18} /></IconButton>
             </form>
           )}
           <div className="tk-status" role="group" aria-label={t('Task status')}>

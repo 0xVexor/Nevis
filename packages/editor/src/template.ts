@@ -60,14 +60,14 @@ export function meetingNotesTemplate(date: string): J {
 export function taskListTemplate(): J {
   return { type: 'doc', content: [{ type: 'heading', attrs: { level: 1 }, content: [t('فهرست کارها')] }, { type: 'taskList', content: ['', '', ''].map(() => ({ type: 'taskItem', content: [p('')] })) }] }
 }
-export function dailyNoteTemplate(date: string): J {
+export function dailyNoteTemplate(date: string, labels: { plan: string; notes: string } = { plan: 'برنامهٔ امروز', notes: 'یادداشت‌ها' }): J {
   return {
     type: 'doc',
     content: [
       { type: 'heading', attrs: { level: 1 }, content: [t(date)] },
-      { type: 'heading', attrs: { level: 2 }, content: [t('برنامهٔ امروز')] },
+      { type: 'heading', attrs: { level: 2 }, content: [t(labels.plan)] },
       { type: 'taskList', content: [{ type: 'taskItem', content: [p('')] }] },
-      { type: 'heading', attrs: { level: 2 }, content: [t('یادداشت‌ها')] },
+      { type: 'heading', attrs: { level: 2 }, content: [t(labels.notes)] },
       p(''),
     ],
   }

@@ -273,7 +273,7 @@ export function AppShell({ ws, route, status, children, onSearch, searchOpen, on
       />}
       <main className={'main' + (drawerOpen && !reader && onPage ? ' drawer-open' : '')}>
         <Topbar
-          narrow={narrow} mobileItems={[
+          narrow={narrow} mobileDocument={narrow && onPage && !!current && !ws.isBoard(current.id) && ws.tree.byId.get(current.id)?.page.type !== 'database'} mobileItems={[
             ...(onPage && current ? [
               { label: t('Reader mode'), icon: <Icon name="book" size={16} />, onSelect: () => setReader(true) },
               { label: t('Page side panel (quick actions & navigation)'), icon: <Icon name="panel-right" size={16} />, onSelect: () => setDrawerOpen(o => !o) },

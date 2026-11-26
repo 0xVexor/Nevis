@@ -60,3 +60,31 @@
 
 .tk-status { display: flex; gap: var(--ds-s1); margin-block: var(--ds-s3); }
 .tk-status [aria-pressed='true'] { color: var(--ds-accent); background: var(--ds-accent-soft); }
+
+.tk-mobile-source.ds-btn, .tk-mobile-add.ds-icon-btn { display: none; }
+@media (max-width: 760px) {
+  .tasks-screen { padding: 24px 20px 36px; }
+  .tasks-screen .ds-screen-head { margin-block-end: 18px; }
+  .tasks-screen .ds-screen-title h1 { font-size: 23px; line-height: 1.35; font-weight: 650; }
+  .tasks-screen .ds-screen-title p { margin-block-start: 4px; font-size: 12px; }
+  .tk-mobile-source.ds-btn { display: flex; width: 100%; min-block-size: 48px; justify-content: flex-start; gap: 8px; margin-block-end: 14px; padding-inline: 12px; border: 1px solid var(--ds-line); border-radius: var(--ds-r); background: var(--ds-raised); }
+  .tk-mobile-source > span { flex: 1; min-inline-size: 0; overflow: hidden; text-align: start; text-overflow: ellipsis; white-space: nowrap; }
+  .tk-mobile-source > svg:first-child { color: var(--ds-accent); }
+  .tk-main-title h2 { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); }
+  .tk-main-title p { margin: 0 0 10px; font-size: 12px; }
+  .tk-main-head > .ds-btn { min-block-size: 44px; }
+  .tk-progress { margin-block: 0 16px; }
+  .tk-add { min-block-size: 52px; block-size: auto; padding-inline: 12px 4px; border-style: solid; background: var(--ds-raised); }
+  .tk-add input { font-size: 16px; }
+  .tk-add > svg:first-child { display: none; }
+  .tk-add .ds-kbd { display: none; }
+  .tk-mobile-add.ds-icon-btn { display: inline-grid; place-items: center; flex: none; inline-size: 44px; block-size: 44px; color: var(--ds-accent); }
+  .tk-status { gap: 4px; margin-block: 12px; }
+  .tk-status .ds-btn { flex: 1; min-block-size: 44px; }
+  .tk-list .tk-row { flex-wrap: wrap; gap: 0 8px; min-block-size: 56px; padding: 6px 12px; }
+  .tk-row .tk-check { flex: 1 1 calc(100% - 52px); min-block-size: 44px; align-items: center; }
+  .tk-row .tk-text { font-size: 14px; }
+  .tk-row .tk-del { inline-size: 44px; block-size: 44px; opacity: 1; }
+  .tk-row .tk-from { max-inline-size: calc(100% - 44px); min-block-size: 36px; margin-inline-start: 32px; margin-block-end: 4px; }
+  .tk-done-toggle { min-block-size: 44px; }
+}

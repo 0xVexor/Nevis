@@ -68,6 +68,34 @@ test('keyboard block menu changes only the current paragraph and keeps typing at
   await page.getByTestId('mobile-home-quick').tap()
   const editor = page.getByTestId('home-note-editor').locator('.ProseMirror')
   await editor.tap()
+  await expect(page.getByTestId('mobile-keyboard-bar')).toHaveCount(0)
+  // Some iOS viewports pan as the keyboard opens; detection must use lost height, not the bottom inset.
+  await page.evaluate(() => {
+    const viewport = window.visualViewport!
+    Object.defineProperty(viewport, 'height', { configurable: true, value: 440 })
+    Object.defineProperty(viewport, 'offsetTop', { configurable: true, value: 404 })
+    viewport.dispatchEvent(new Event('resize'))
+  })
+  await expect(page.getByTestId('mobile-keyboard-bar')).toBeVisible()
+  await expect(page.getByTestId('mobile-keyboard-bar')).toHaveCSS('bottom', '0px')
+  // Other browsers resize the layout viewport as well as the visual viewport.
+  await page.evaluate(() => {
+    ;(window as any).__originalInnerHeight = Object.getOwnPropertyDescriptor(window, 'innerHeight')
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 440 })
+    Object.defineProperty(window.visualViewport!, 'offsetTop', { configurable: true, value: 0 })
+    window.dispatchEvent(new Event('resize'))
+  })
+  await expect(page.getByTestId('mobile-keyboard-bar')).toBeVisible()
+  await page.evaluate(() => {
+    const descriptor = (window as any).__originalInnerHeight
+    if (descriptor) Object.defineProperty(window, 'innerHeight', descriptor)
+    else delete (window as unknown as { innerHeight?: number }).innerHeight
+    delete (window as any).__originalInnerHeight
+    delete (window.visualViewport! as unknown as { height?: number }).height
+    delete (window.visualViewport! as unknown as { offsetTop?: number }).offsetTop
+    window.visualViewport!.dispatchEvent(new Event('resize'))
+  })
+  await expect(page.getByTestId('mobile-keyboard-bar')).toHaveCount(0)
   await page.keyboard.type('اول'); await page.keyboard.press('Enter')
   await page.keyboard.type('دوم'); await page.keyboard.press('Enter')
   await page.keyboard.type('سوم')

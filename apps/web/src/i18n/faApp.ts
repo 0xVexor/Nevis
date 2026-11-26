@@ -828,6 +828,8 @@ export const FA_APP: Record<string, string> = {
   'Blank page': 'صفحه‌ی خالی',
   'Start from scratch': 'شروع از صفر',
   'Use template': 'استفاده از قالب',
+  "Today's plan": 'برنامهٔ امروز',
+  'Add task': 'افزودن کار',
   'New from template…': 'صفحه از قالب…',
   'Copy as Markdown': 'کپی به‌صورت Markdown',
   Copied: 'کپی شد',

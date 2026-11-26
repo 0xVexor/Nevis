@@ -19,6 +19,13 @@ describe('extractPage', () => {
     expect(r.tasks).toEqual([{ blockId: 't1', text: 'کار یک', checked: true, due: '2026-01-02' }, { blockId: 't2', text: 'کار دو', checked: false, due: '' }])
   })
   it('an empty page is empty', () => expect(extractPage({ type: 'doc' })).toEqual({ text: '', links: [], tasks: [], drawings: [] }))
+  it('keeps an absent task identity empty even when an ancestor has one', () => {
+    const doc: PMNode = { type: 'doc', content: [{ type: 'taskList', attrs: { blockId: 'list' }, content: [
+      { type: 'taskItem', attrs: { checked: false }, content: [p(t('old task'))] },
+      { type: 'taskItem', attrs: { blockId: 'child', checked: true }, content: [p(t('new task'))] },
+    ] }] }
+    expect(extractPage(doc).tasks.map(task => task.blockId)).toEqual(['', 'child'])
+  })
   it('a drawing block is listed with whether anything is drawn', () => {
     const doc = { type: 'doc', content: [{ type: 'drawing', attrs: { blockId: 'b1', scene: '{}' } }, { type: 'drawing', attrs: { blockId: 'b2', scene: '' } }] }
     expect(extractPage(doc).drawings).toEqual([{ blockId: 'b1', filled: true }, { blockId: 'b2', filled: false }])

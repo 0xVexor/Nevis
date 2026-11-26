@@ -1,6 +1,6 @@
 // Templates as the old app drew them: the choices on one side (`tpl-option`), a preview of the page the chosen one creates on the other (`tpl-paper`).
 // Arrow keys move through the list, Enter or a double click creates. The preview is read from the template's own ProseMirror JSON.
-import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { allBlocksTemplate, dailyNoteTemplate } from '@nevis/editor'
 import { formatDateFa } from '@nevis/core'
 import { motion } from 'motion/react'
@@ -9,9 +9,14 @@ import { iconNode } from '../ds/iconSet'
 import { go } from '../router'
 import { t } from '../i18n'
 import { getTemplates, templateDoc } from '../shell/oldTemplates'
+import { readSynced } from '../workspaceSettings'
 import type { Workspace } from '../workspace'
 
-const today = () => formatDateFa(new Date().toISOString().slice(0, 10))
+const today = (calendar: 'jalali' | 'gregorian') => {
+  const now = new Date()
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  return calendar === 'jalali' ? formatDateFa(date) : date
+}
 
 type N = { type?: string; attrs?: Record<string, unknown>; content?: N[]; text?: string }
 type Block =
@@ -54,7 +59,8 @@ function PaperBlock({ block: b }: { block: Block }) {
 export function Templates({ ws }: { ws: Workspace }) {
   const motionOf = useUIMotion()
   const { open: openMenu, menu } = useMenu()
-  const daily = dailyNoteTemplate(today()), all = allBlocksTemplate()
+  const dailyDate = today(readSynced(ws).calendar)
+  const daily = dailyNoteTemplate(dailyDate, { plan: t("Today's plan"), notes: t('Notes') }), all = allBlocksTemplate()
   const empty: Choice[] = [
     { id: 'blank', title: t('Blank page'), hint: t('Start from scratch'), icon: <Icon name="file-text" />, action: t('Create page'), make: () => null },
     { id: 'drawing', title: t('Drawing'), hint: t('A blank whiteboard for sketches and diagrams.'), icon: <Icon name="pencil" />, action: t('Create drawing'), make: () => 'board' },
@@ -63,13 +69,31 @@ export function Templates({ ws }: { ws: Workspace }) {
   const fromOld: Choice[] = getTemplates().map(tp => { const doc = templateDoc(tp); return { id: tp.id, title: tp.title, hint: tp.desc, icon: iconNode(tp.icon), action: t('Use template'), pageTitle: tp.pageTitle.replace(/[\s—–-]+$/, ''), blocks: outline(doc), make: () => ({ title: tp.pageTitle, content: doc, icon: tp.icon }) } })
   const ready: Choice[] = [
     ...fromOld,
-    { id: 'daily', title: t('Daily note'), hint: t('Plan and notes for today'), icon: iconNode('i:calendar'), action: t('Use template'), pageTitle: today(), blocks: outline(daily), make: () => ({ title: today(), content: daily, icon: 'i:calendar' }) },
+    { id: 'daily', title: t('Daily note'), hint: t('Plan and notes for today'), icon: iconNode('i:calendar'), action: t('Use template'), pageTitle: dailyDate, blocks: outline(daily), make: () => ({ title: dailyDate, content: daily, icon: 'i:calendar' }) },
     { id: 'all-blocks', title: t('All blocks sample'), hint: t('One sample of every block'), icon: iconNode('i:templates'), action: t('Use template'), pageTitle: t('All blocks'), blocks: outline(all), make: () => ({ title: t('All blocks'), content: all, icon: 'i:templates' }) },
   ]
   const choices = [...empty, ...ready]
   const [current, setCurrent] = useState(choices[0]!.id)
+  const [mobilePreview, setMobilePreview] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const creatingRef = useRef(false)
+  const savedScroll = useRef(0)
+  const restoreFocus = useRef(false)
   const chosen = choices.find(c => c.id === current) ?? choices[0]!
   const list = useRef<HTMLDivElement>(null)
+  const root = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    if (!matchMedia('(max-width: 760px)').matches) return
+    const scroller = root.current?.closest<HTMLElement>('.scroller')
+    if (!scroller) return
+    scroller.scrollTop = mobilePreview ? 0 : savedScroll.current
+    if (mobilePreview) {
+      root.current?.querySelector<HTMLElement>('.tpl-mobile-back')?.focus({ preventScroll: true })
+    } else if (restoreFocus.current) {
+      list.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(current)}"]`)?.focus({ preventScroll: true })
+      restoreFocus.current = false
+    }
+  }, [mobilePreview])
   const pick = async (c: Choice) => {
     const made = c.make()
     if (made === 'database') { go({ name: 'page', id: await ws.newDatabase('') }); return }
@@ -78,7 +102,18 @@ export function Templates({ ws }: { ws: Workspace }) {
     if (made?.icon) await ws.setMeta(id, { icon: made.icon })
     go({ name: 'page', id })
   }
-  const useChoice = (choice: Choice) => void pick(choice).catch(() => ws.notify(t('Could not complete the action. Please try again.')))
+  const useChoice = (choice: Choice) => {
+    if (creatingRef.current) return
+    creatingRef.current = true
+    setCreating(true)
+    void pick(choice).catch(() => ws.notify(t('Could not complete the action. Please try again.'))).finally(() => { creatingRef.current = false; setCreating(false) })
+  }
+  const showChoice = (choice: Choice) => {
+    setCurrent(choice.id)
+    if (!matchMedia('(max-width: 760px)').matches) return
+    savedScroll.current = root.current?.closest<HTMLElement>('.scroller')?.scrollTop ?? 0
+    setMobilePreview(true)
+  }
   const move = (e: ReactKeyboardEvent) => {
     const i = choices.findIndex(c => c.id === current)
     const next = e.key === 'ArrowDown' ? i + 1 : e.key === 'ArrowUp' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? choices.length - 1 : -2
@@ -90,27 +125,32 @@ export function Templates({ ws }: { ws: Workspace }) {
   }
   const option = (c: Choice) => (
     <button key={c.id} onContextMenu={e => { setCurrent(c.id); openMenu([{ label: c.action, onSelect: () => useChoice(c) }], e) }} type="button" role="option" data-id={c.id} data-testid={`template-${c.id}`} aria-selected={c.id === current} tabIndex={c.id === current ? 0 : -1} className="tpl-option"
-      onClick={() => setCurrent(c.id)} onDoubleClick={() => useChoice(c)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), useChoice(c))}>
+      onClick={() => showChoice(c)} onDoubleClick={() => { if (!matchMedia('(max-width: 760px)').matches) useChoice(c) }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (matchMedia('(max-width: 760px)').matches) showChoice(c); else useChoice(c) } }}>
       <span className="tpl-option-ic">{c.icon}</span><span className="tpl-option-text"><b dir="auto">{c.title}</b><small dir="auto">{c.hint}</small></span>
     </button>
   )
   return (
-    <Screen width="wide" fill title={t('Templates')} description={t('Pick a starting point. The preview shows what the new page will contain.')}>
-      <div className="tpl" data-testid="templates">
+    <Screen width="wide" fill className={'templates-screen' + (mobilePreview ? ' templates-screen--preview' : '')} title={t('Templates')} description={t('Pick a starting point. The preview shows what the new page will contain.')}>
+      <div ref={root} className={'tpl' + (mobilePreview ? ' tpl--mobile-preview' : '')} data-testid="templates">
         <div ref={list} className="tpl-choices" role="listbox" aria-label={t('Templates')} onKeyDown={move}>
           <div role="group" aria-labelledby="tpl-empty"><h2 id="tpl-empty" className="tpl-group">{t('Start empty')}</h2>{empty.map(option)}</div>
           <div role="group" aria-labelledby="tpl-ready"><h2 id="tpl-ready" className="tpl-group">{t('Ready-made pages')}</h2>{ready.map(option)}</div>
         </div>
         <section className="tpl-preview" aria-label={t('Preview')} aria-live="polite">
+          <button type="button" className="tpl-mobile-back" data-testid="template-back" onClick={() => { restoreFocus.current = true; setMobilePreview(false) }}><Icon name="arrow-left" size={18} className="ds-flip" /><span>{t('Templates')}</span></button>
           <header className="tpl-preview-head">
             <div><h2 dir="auto">{chosen.title}</h2><p dir="auto">{chosen.hint}</p></div>
-            <Button variant="primary" data-testid="tpl-use" onClick={() => useChoice(chosen)}>{chosen.action}</Button>
+            <Button variant="primary" data-testid="tpl-use" disabled={creating} onClick={() => useChoice(chosen)}>{chosen.action}</Button>
           </header>
           <div className="tpl-stage">
             <motion.div key={chosen.id} className="tpl-paper" initial={motionOf.reduced ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={motionOf.transition}>
               <span className="tpl-paper-icon">{chosen.icon}</span>
               <p className="tpl-paper-title" dir="auto" data-empty={!chosen.pageTitle?.trim() || undefined}>{chosen.pageTitle?.trim() || t('Untitled')}</p>
-              {!chosen.blocks?.length ? <p className="tpl-paper-hint">{t('Start writing, or press / for blocks')}</p> : chosen.blocks.map((b, i) => <PaperBlock key={i} block={b} />)}
+              {!chosen.blocks?.length ? <>
+                <p className="tpl-paper-hint">{t('Start writing, or press / for blocks')}</p>
+                {chosen.id === 'drawing' && <div className="tpl-mobile-drawing"><Icon name="pencil" size={24} /><span>{chosen.hint}</span></div>}
+                {chosen.id === 'database' && <div className="tpl-mobile-database"><span><Icon name="type" size={16} />{t('Name')}</span><Icon name="plus" size={16} /></div>}
+              </> : chosen.blocks.map((b, i) => <PaperBlock key={i} block={b} />)}
             </motion.div>
           </div>
         </section>

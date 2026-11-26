@@ -1,5 +1,5 @@
 import { useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
 import { PageChrome } from './shell/pageChrome'
 import { Toolbar } from './shell/Toolbar'
 import { ResponsiveProperties } from './shell/ResponsiveProperties'
@@ -21,6 +21,7 @@ import { toneOf } from './shell/PageIcon'
 import { isGlyph, parseIcon } from './ds/iconSet'
 import { CoverBanner, CoverPicker } from './shell/Cover'
 import { PageStatusChip } from './shell/PageStatusChip'
+import { STATUS } from './shell/meta'
 import { iconNode } from './ds/iconSet'
 import { legacyPages } from './shell/adapt'
 import type { Cover } from './shell/model'
@@ -65,6 +66,8 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
   const [coverMenu, setCoverMenu] = useState<DOMRect | null>(null)
   const [tagDraft, setTagDraft] = useState('')
   const [addingTag, setAddingTag] = useState(false)
+  const tagInput = useRef<HTMLInputElement>(null)
+  const [templatesOpen, setTemplatesOpen] = useState(false)
   const setCover = (c: Cover | undefined) => void ws.setMeta(id, { cover: c ? JSON.stringify(c) : null })
   const q = tagDraft.trim().replace(/^#+/, '').toLowerCase()
   const suggestions = q ? ws.data.tags.map(x => x.name).filter(n => n.toLowerCase().includes(q) && !(meta?.tags ?? []).includes(n)).slice(0, 6) : []
@@ -95,7 +98,7 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
   </>, slot), [slot, heads, editor])
   if (state === 'needs-update') return <div className="page-cols"><div className="page"><p role="alert" className="pg-note" data-testid="needs-update">{t('This page was made with a newer version of the app; an update is needed.')}</p></div></div>
   return (
-    <div className={'page-cols' + (meta?.cover ? ' has-cover' : '')}>
+    <div className={'page-cols document-page' + (meta?.cover ? ' has-cover' : '')}>
       <div className={'page' + (findOpen ? ' finding' : '')}>
         {findBar}
         {meta?.cover && <CoverBanner cover={meta.cover} onChange={setCoverMenu} onRemove={() => setCover(undefined)} />}
@@ -119,7 +122,7 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
             />
           </div>
         </header>
-        <ResponsiveProperties><PropertyList className="pg-props" label={t('Page properties')}>
+        <ResponsiveProperties summary={meta?.status && Object.hasOwn(STATUS, meta.status) ? t(STATUS[meta.status].label) : undefined}><PropertyList className="pg-props" label={t('Page properties')}>
           <PropertyRow icon={<Icon name="flag" size={16} />} label={t('Status')}><PageStatusChip status={meta?.status} onChange={st => void ws.setMeta(id, { status: st ?? '' })} /></PropertyRow>
           <PropertyRow icon={<Icon name="tag" size={16} />} label={t('Tags')}>
             {(meta?.tags ?? []).map(tag => <Tag key={tag} label={tag} onOpen={() => window.dispatchEvent(new CustomEvent('nevis:show-tag', { detail: tag }))} openLabel={t('Show pages with this tag')} onRemove={() => void ws.tagPageByName(id, tag, false)} removeLabel={t('Remove tag')} />)}
@@ -127,7 +130,7 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
               <span className="ds-chip-field">
                 <Icon name="tag" size={14} />
                 <input
-                  className="pg-tag-input" data-testid="tag-input" dir={tagDraft.trim() ? 'auto' : undefined} autoFocus value={tagDraft} aria-label={t('Tag name…')} placeholder={t('Tag name…')}
+                  className="pg-tag-input" data-testid="tag-input" dir={tagDraft.trim() ? 'auto' : undefined} ref={tagInput} value={tagDraft} aria-label={t('Tag name…')} placeholder={t('Tag name…')} autoComplete="off" enterKeyHint="done"
                   onChange={e => setTagDraft(e.target.value)}
                   onKeyDown={e => {
                     if ((e.key === 'Enter' || e.key === ',' || e.key === '،') && tagDraft.trim()) { e.preventDefault(); void ws.tagPageByName(id, tagDraft.replace(/^#+/, '').trim(), true); setTagDraft('') }
@@ -147,7 +150,7 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
                 )}
               </span>
             ) : (
-              <ChipButton empty icon={<Icon name="plus" size={14} />} data-testid="add-tag" onClick={() => setAddingTag(true)}>{t('Add tag…')}</ChipButton>
+              <ChipButton empty icon={<Icon name="plus" size={14} />} data-testid="add-tag" onClick={() => { flushSync(() => setAddingTag(true)); tagInput.current?.focus() }}>{t('Add tag…')}</ChipButton>
             )}
           </PropertyRow>
           <PropertyRow icon={<Icon name="clock" size={16} />} label={t('Last edited')}>{ago(meta?.updatedAt ?? Date.now())}</PropertyRow>
@@ -159,12 +162,15 @@ export function EditorPane({ ws, id, title }: { ws: Workspace; id: string; title
         )}
         {outline}
         {editor && !reader && !diverged && editor.isEmpty && !editor.isFocused && (
-          <div className="pg-starts" role="group" aria-label={t('Quick start with a template')}>
-            <span>{t('Quick start with a template')}</span>
-            {getTemplates().map((tp: Template) => (
-              <Button key={tp.id} size="sm" variant="ghost" title={tp.desc} icon={<Glyph name={TEMPLATE_GLYPH[tp.id] ?? 'page'} size={14} />}
-                onClick={() => { editor.commands.setContent(templateDoc(tp) as never); if (!name.trim()) { const v = tp.pageTitle.replace(/[\s—–-]+$/, ''); setName(v); ws.setTitle(id, v) } editor.commands.focus('start') }}>{tp.title}</Button>
-            ))}
+          <div className="pg-starts-group">
+            <button type="button" className="pg-starts-toggle" aria-expanded={templatesOpen} aria-controls="page-templates" onClick={() => setTemplatesOpen(open => !open)}><Icon name="templates" size={16} /><span>{t('Templates')}</span><Icon name="chevron-down" size={15} /></button>
+            <div id="page-templates" className={'pg-starts' + (templatesOpen ? ' is-open' : '')} role="group" aria-label={t('Quick start with a template')}>
+              <span>{t('Quick start with a template')}</span>
+              {getTemplates().map((tp: Template) => (
+                <Button key={tp.id} size="sm" variant="ghost" title={tp.desc} icon={<Glyph name={TEMPLATE_GLYPH[tp.id] ?? 'page'} size={14} />}
+                  onClick={() => { editor.commands.setContent(templateDoc(tp) as never); if (!name.trim()) { const v = tp.pageTitle.replace(/[\s—–-]+$/, ''); setName(v); ws.setTitle(id, v) } setTemplatesOpen(false); editor.commands.focus('start') }}>{tp.title}</Button>
+              ))}
+            </div>
           </div>
         )}
         {editor && !reader && !diverged && <Toolbar editor={editor} />}

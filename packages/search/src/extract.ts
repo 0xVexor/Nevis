@@ -29,7 +29,8 @@ export function extractPage(doc: PMNode): Extracted {
     if (n.type === 'drawing') drawings.push({ blockId: id, filled: !!(n.attrs?.scene || n.attrs?.sceneBlob) })
     if (n.type === 'taskItem') {
       const own = (n.content ?? []).filter(c => c.type === 'paragraph').map(textOf).join(' ').trim()
-      tasks.push({ blockId: id, text: own, checked: n.attrs?.checked === true, due: String(n.attrs?.due ?? '') })
+      const ownId = typeof n.attrs?.blockId === 'string' ? n.attrs.blockId : ''
+      tasks.push({ blockId: ownId, text: own, checked: n.attrs?.checked === true, due: String(n.attrs?.due ?? '') })
     }
     if (BLOCK_TEXT.has(n.type)) { lines.push(String(n.attrs?.latex ?? n.attrs?.code ?? '')); return }
     if (n.type === 'paragraph' || n.type === 'heading' || n.type === 'codeBlock') { lines.push(textOf(n)); for (const c of n.content ?? []) walkInline(c, id); return }

@@ -54,6 +54,7 @@
 .pg-starts > span { flex: none; margin-inline-end: var(--ds-s2); color: var(--ds-text-3); font-size: var(--ds-text-small); }
 .pg-starts > .ds-btn { flex: none; color: var(--ds-text-2); }
 .pg-starts > .ds-btn > svg { color: var(--ds-accent); }
+.pg-starts-toggle { display: none; }
 
 /* ───────── find in page: floats at the top, out of the flow, so opening it never moves the text ───────── */
 .pg-find-slot { position: sticky; inset-block-start: var(--ds-s2); z-index: 6; block-size: 0; display: flex; justify-content: center; pointer-events: none; }
@@ -131,10 +132,53 @@
 @media (max-width: 760px) {
   .mobile-properties { margin-block: 0 10px; }
   .mobile-properties summary { display: flex; align-items: center; min-block-size: 44px; color: var(--ds-text-3); font-size: 13px; cursor: pointer; }
-  .mobile-properties summary::before { content: '›'; margin-inline-end: 8px; font-size: 19px; transform: rotate(0deg); }
-  .mobile-properties[open] summary::before { transform: rotate(90deg); }
+  .mobile-properties summary { gap: 8px; list-style: none; }
+  .mobile-properties summary::-webkit-details-marker { display: none; }
+  .mobile-properties summary > svg { flex: none; }
+  .mobile-properties-value { margin-inline-start: auto; overflow: hidden; color: var(--ds-accent); text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-properties-chevron { margin-inline-start: auto; transition: transform var(--ds-fast) var(--ds-ease); }
+  .mobile-properties-value + .mobile-properties-chevron { margin-inline-start: 0; }
+  .mobile-properties[open] .mobile-properties-chevron { transform: rotate(180deg); }
   .mobile-properties .pg-props { margin-block-end: 12px; }
 }
 @media (max-width: 760px) {
   .page-cols:not(.has-cover) .pg-head { padding-block-start: 8px; }
+}
+
+/* A document on a phone keeps the title and page controls close to the writing surface. */
+@media (max-width: 760px) {
+  .document-page .page { max-inline-size: 540px; margin-inline: auto; padding-block: 20px 120px; }
+  .document-page .pg-head { gap: 8px; }
+  .document-page .pg-title-row { order: 0; align-items: flex-start; gap: 10px; }
+  .document-page .pg-title { padding-block: 4px; font-size: 29px; line-height: 1.3; letter-spacing: -.02em; }
+  .document-page .pg-icon { inline-size: 40px; block-size: 40px; }
+  .document-page .pg-icon-glyph { font-size: 32px; }
+  .document-page .pg-icon-glyph svg { inline-size: 32px; block-size: 32px; }
+  .document-page .pg-add { order: 1; margin: 0; opacity: 1; gap: 4px; }
+  .document-page .pg-add .ds-btn { min-block-size: 44px; padding-inline: 8px; border-radius: var(--ds-r); font-size: 12px; }
+  .document-page .mobile-properties { margin-block: 8px 16px; border-block-end: 1px solid var(--ds-line); }
+  .document-page .mobile-properties summary { min-block-size: 48px; padding-inline: 4px; color: var(--ds-text-2); font-size: 12px; font-weight: 500; }
+  .document-page .mobile-properties summary > svg:first-child { color: var(--ds-accent); }
+  .document-page .mobile-properties .pg-props { margin: 0 0 14px; }
+  .document-page .pg-tag-input { font-size: 16px; }
+  .document-page .pg-starts-toggle { display: flex; align-items: center; gap: 8px; width: 100%; min-block-size: 44px; padding: 0 4px; border: 0; background: transparent; color: var(--ds-text-2); text-align: start; font: 500 12px var(--ds-font-ui); }
+  .document-page .pg-starts-toggle > svg:first-child { color: var(--ds-accent); }
+  .document-page .pg-starts-toggle > span { flex: 1; }
+  .document-page .pg-starts-toggle[aria-expanded='true'] > svg:last-child { transform: rotate(180deg); }
+  .document-page .pg-starts { display: none; flex-wrap: wrap; gap: 2px; overflow: visible; margin: 0 0 12px; }
+  .document-page .pg-starts.is-open { display: flex; }
+  .document-page .pg-starts > span { display: none; }
+  .document-page .pg-starts > .ds-btn { min-block-size: 44px; }
+  .document-page .page > .toolbar { display: none; }
+  .document-page .ec .tiptap { min-block-size: 45vh; font-size: var(--editor-size, 15px); line-height: 1.8; }
+  .document-page .ec .tiptap h2::before { inset-inline-start: -8px; }
+  .document-page .cover { block-size: 145px; margin-block-end: 0; }
+  .document-page .cover-acts { opacity: 1; }
+  .document-page .cover-acts .ds-btn { min-block-size: 44px; }
+  .cover-pop > .ds-tabs { overflow-x: auto; }
+  .document-page.has-cover .pg-head:has(.pg-icon) { padding-block-start: 36px; }
+  .document-page.has-cover .pg-icon { inset-block-start: -28px; inset-inline-start: 8px; inline-size: 58px; block-size: 58px; }
+  .document-page.has-cover .pg-title-row { min-block-size: 36px; }
+  .document-page .pg-links { margin-block-start: 28px; }
+  .document-page :is(button, textarea, summary):focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
 }

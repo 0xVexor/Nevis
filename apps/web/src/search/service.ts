@@ -7,8 +7,8 @@ import { extractPage, type Hit, type PageLinkRef, type PageTask, type SearchDoc 
 
 const INDEX_KEY = 'derived_search'
 const PAGES_KEY = 'derived_pages'
-/** The shape of what is kept per page: bump it when a field is added, so a saved copy without it is rebuilt. (2: drawings.) */
-const SHAPE = 2
+/** The cached page metadata is rebuilt when its representation or extraction semantics change. */
+const SHAPE = 3
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 interface PageInfo { title: string; links: PageLinkRef[]; tasks: PageTask[]; /** the first ~160 characters of the text */ excerpt?: string; /** when this device last saw the page change (0 = not known) */ at?: number; /** the flashcards of the page (toggle blocks) */ cards?: RawCard[]; /** words in the text */ words?: number; /** the drawing blocks of the page */ drawings?: { blockId: string; filled: boolean }[] }

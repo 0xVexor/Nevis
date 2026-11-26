@@ -12,9 +12,11 @@ export function MobileCommands({ editor, allowedCommands }: { editor: Editor; al
   const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 760px)').matches)
   const [focused, setFocused] = useState(editor.isFocused)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const [keyboardOpen, setKeyboardOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [choosing, setChoosing] = useState(false)
   const bar = useRef<HTMLDivElement>(null)
+  const restingViewport = useRef({ width: window.innerWidth, height: window.visualViewport?.height ?? window.innerHeight })
   useEffect(() => {
     const media = matchMedia('(max-width: 760px)')
     const update = () => setNarrow(media.matches)
@@ -28,9 +30,20 @@ export function MobileCommands({ editor, allowedCommands }: { editor: Editor; al
     return () => { editor.off('focus', focus); editor.off('blur', blur) }
   }, [editor])
   useEffect(() => {
-    if (!focused || !narrow) return
+    if (!narrow) return
     const viewport = window.visualViewport
-    const update = () => setKeyboardOffset(viewport && viewport.scale <= 1.05 ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0)
+    const update = () => {
+      const visibleHeight = viewport?.height ?? window.innerHeight
+      const unscaled = !viewport || viewport.scale <= 1.05
+      if (unscaled && Math.abs(window.innerWidth - restingViewport.current.width) > 40) {
+        restingViewport.current = { width: window.innerWidth, height: visibleHeight }
+      } else if (unscaled && !focused && visibleHeight > restingViewport.current.height) {
+        restingViewport.current.height = visibleHeight
+      }
+      const heightLost = Math.max(window.innerHeight, restingViewport.current.height) - visibleHeight
+      setKeyboardOpen(focused && unscaled && heightLost >= 100)
+      setKeyboardOffset(viewport && unscaled ? Math.max(0, window.innerHeight - visibleHeight - viewport.offsetTop) : 0)
+    }
     const menu = () => setMenuOpen(!!document.querySelector('.slash-menu'))
     update(); menu()
     const observer = new MutationObserver(menu)
@@ -39,7 +52,6 @@ export function MobileCommands({ editor, allowedCommands }: { editor: Editor; al
     window.addEventListener('resize', update)
     return () => { observer.disconnect(); viewport?.removeEventListener('resize', update); viewport?.removeEventListener('scroll', update); window.removeEventListener('resize', update) }
   }, [focused, narrow])
-  const keyboardOpen = keyboardOffset >= 100
   useEffect(() => { if (!narrow || !focused || !keyboardOpen || menuOpen) setChoosing(false) }, [narrow, focused, keyboardOpen, menuOpen])
   useEffect(() => {
     if (!choosing) return

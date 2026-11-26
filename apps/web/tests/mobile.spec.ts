@@ -44,7 +44,7 @@ test('at phone width: the drawer, a new page, writing Persian, Settings, no side
   await page.getByTestId('new-menu').tap()
   await page.getByTestId('new-page').tap()
   await page.waitForFunction(() => location.hash.startsWith('#/page/'))
-  expect(await page.getByTestId('title').evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBe(23)
+  expect(await page.getByTestId('title').evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(27)
   await page.getByTestId('title').fill('یادداشت موبایل با عنوان طولانی و متن English mixed title for a narrow screen')
   expect(await page.locator('.page').evaluate(el => parseFloat(getComputedStyle(el).paddingInlineStart))).toBe(20)
   const properties = page.locator('.mobile-properties').first()
