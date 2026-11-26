@@ -13,6 +13,7 @@ export function MobileCommands({ editor, allowedCommands, titleInput }: { editor
   const [editorFocused, setEditorFocused] = useState(editor.isFocused)
   const [titleFocused, setTitleFocused] = useState(() => !!titleInput && document.activeElement === titleInput)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const [visualBounds, setVisualBounds] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [keyboardOpen, setKeyboardOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [choosing, setChoosing] = useState(false)
@@ -56,6 +57,10 @@ export function MobileCommands({ editor, allowedCommands, titleInput }: { editor
       const heightLost = Math.max(window.innerHeight, restingViewport.current.height) / scale - visibleHeight
       setKeyboardOpen(focused && heightLost >= 100)
       setKeyboardOffset(viewport ? Math.max(0, window.innerHeight - visibleHeight - viewport.offsetTop) : 0)
+      if (viewport && ios) {
+        const next = { top: viewport.offsetTop, left: viewport.offsetLeft, width: viewport.width, height: viewport.height }
+        setVisualBounds(previous => previous && previous.top === next.top && previous.left === next.left && previous.width === next.width && previous.height === next.height ? previous : next)
+      }
     }
     const menu = () => setMenuOpen(!!document.querySelector('.slash-menu'))
     update(); menu()
@@ -64,7 +69,7 @@ export function MobileCommands({ editor, allowedCommands, titleInput }: { editor
     viewport?.addEventListener('resize', update); viewport?.addEventListener('scroll', update)
     window.addEventListener('resize', update)
     return () => { observer.disconnect(); viewport?.removeEventListener('resize', update); viewport?.removeEventListener('scroll', update); window.removeEventListener('resize', update) }
-  }, [focused, narrow])
+  }, [focused, narrow, ios])
   const showAccessory = focused && (keyboardOpen || ios)
   useEffect(() => { if (!narrow || !showAccessory || menuOpen) setChoosing(false) }, [narrow, showAccessory, menuOpen])
   useEffect(() => {
@@ -106,15 +111,15 @@ export function MobileCommands({ editor, allowedCommands, titleInput }: { editor
     return () => { document.removeEventListener('touchstart', start); document.removeEventListener('touchmove', move); document.removeEventListener('touchend', end); document.removeEventListener('touchcancel', cancel) }
   }, [editor, narrow, showAccessory, menuOpen])
   useLayoutEffect(() => {
-    if (!choosing || !narrow || !showAccessory || editor.isDestroyed) return
+    if (!narrow || !showAccessory || !editorFocused || editor.isDestroyed) return
     const root = editor.view.dom
     const scroller = root.closest<HTMLElement>('.scroller, .dv-peek-body')
     if (!scroller) return
-    scroller.style.setProperty('--mobile-block-room', '210px')
     let frame = 0
     const place = () => {
       frame = 0
       if (!bar.current || editor.isDestroyed) return
+      scroller.style.setProperty('--mobile-block-room', `${Math.ceil(bar.current.getBoundingClientRect().height) + 18}px`)
       const limit = bar.current.getBoundingClientRect().top - 12
       const adjust = (element: HTMLElement) => {
         const caret = editor.view.coordsAtPos(editor.state.selection.head)
@@ -129,11 +134,11 @@ export function MobileCommands({ editor, allowedCommands, titleInput }: { editor
     }
     const schedule = () => { if (!frame) frame = requestAnimationFrame(place) }
     schedule()
+    editor.on('selectionUpdate', schedule)
     window.visualViewport?.addEventListener('resize', schedule)
-    window.visualViewport?.addEventListener('scroll', schedule)
     window.addEventListener('resize', schedule)
-    return () => { cancelAnimationFrame(frame); scroller.style.removeProperty('--mobile-block-room'); window.visualViewport?.removeEventListener('resize', schedule); window.visualViewport?.removeEventListener('scroll', schedule); window.removeEventListener('resize', schedule) }
-  }, [choosing, narrow, showAccessory, keyboardOffset, editor])
+    return () => { cancelAnimationFrame(frame); editor.off('selectionUpdate', schedule); scroller.style.removeProperty('--mobile-block-room'); window.visualViewport?.removeEventListener('resize', schedule); window.removeEventListener('resize', schedule) }
+  }, [choosing, narrow, showAccessory, editorFocused, editor])
   if (!narrow || !showAccessory || menuOpen || editor.isDestroyed || !editor.isEditable) return null
   const preferred = ['Text', 'Heading 1', 'Bulleted list', 'Checklist']
   const items = choosing ? paletteItems('', editor, undefined, allowedCommands).sort((a, b) => {
@@ -142,7 +147,11 @@ export function MobileCommands({ editor, allowedCommands, titleInput }: { editor
   }) : []
   const visibleHeight = window.visualViewport?.height ?? window.innerHeight
   const dockHeight = Math.max(110, Math.min(192, visibleHeight - 90))
-  return createPortal(<div ref={bar} className={'mobile-commands' + (choosing ? ' mobile-commands--choosing' : '')} data-testid="mobile-keyboard-bar" role="toolbar" aria-label={t('Commands')} style={{ bottom: `${keyboardOffset}px`, ...(choosing ? { blockSize: `${dockHeight}px` } : {}) }}>
+  const barHeight = choosing ? dockHeight : 52
+  const position = ios && visualBounds
+    ? { top: `${Math.max(visualBounds.top, visualBounds.top + visualBounds.height - barHeight)}px`, bottom: 'auto', left: `${visualBounds.left}px`, right: 'auto', width: `${visualBounds.width}px` }
+    : { bottom: `${keyboardOffset}px` }
+  return createPortal(<div ref={bar} className={'mobile-commands' + (choosing ? ' mobile-commands--choosing' : '')} data-testid="mobile-keyboard-bar" role="toolbar" aria-label={t('Commands')} style={{ ...position, ...(choosing ? { blockSize: `${dockHeight}px` } : {}) }}>
     {choosing ? <>
       <div className="mobile-block-head"><b>{t('Blocks')}</b><button type="button" className="mobile-block-close" data-testid="mobile-block-close" aria-label={t('Close')} onMouseDown={event => event.preventDefault()} onClick={() => setChoosing(false)}><Icon name="x" size={18} /><span>{t('Close')}</span></button></div>
       <div className="mobile-block-options" data-testid="mobile-block-options" role="group" aria-label={t('Blocks')}>
